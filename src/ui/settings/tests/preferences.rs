@@ -109,8 +109,8 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
             ThemeManager::seed_saved_preferences_for_test();
             ThemeManager::seed_omarchy_for_test();
             let manager = ThemeManager::shared();
-            let (first, _) = theme_page(manager.clone());
-            let (second, _) = theme_page(manager.clone());
+            let first = theme_page(manager.clone()).widget;
+            let second = theme_page(manager.clone()).widget;
             let first_hints = keybindings_page(manager.clone());
             let second_hints = keybindings_page(manager.clone());
             let (first_channel, _) = channel_option(manager.clone(), None);

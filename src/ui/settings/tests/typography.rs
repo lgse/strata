@@ -51,22 +51,38 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
             overlay.add_overlay(&layer);
             layer.set_visible(true);
             window.present();
-            let stack = descendants(layer.upcast_ref()).into_iter()
-                .find_map(|widget| widget.downcast::<gtk::Stack>().ok()).expect("settings pages");
-            let responsive = descendants(layer.upcast_ref()).into_iter()
-                .find_map(|widget| widget.downcast::<ResponsiveBin>().ok()).expect("responsive panel");
+            let stack = descendants(layer.upcast_ref())
+                .into_iter()
+                .find_map(|widget| widget.downcast::<gtk::Stack>().ok())
+                .expect("settings pages");
+            let responsive = descendants(layer.upcast_ref())
+                .into_iter()
+                .find_map(|widget| widget.downcast::<ResponsiveBin>().ok())
+                .expect("responsive panel");
             for (width, height) in [(1200, 800), (640, 480)] {
                 window.set_default_size(width, height);
                 for pixels in [8, 11, 17, 24, 32, 48, 13] {
                     manager.set_text_size(TextSize::new(pixels));
                     settle();
-                    for page in ["General", "Theme & appearance", "Keybindings", "About", "Updates"] {
+                    for page in [
+                        "General",
+                        "Theme & appearance",
+                        "Keybindings",
+                        "About",
+                        "Updates",
+                    ] {
                         if page == "Updates" {
                             if stack.child_by_name("updates-test").is_none() {
-                                let (updates, actions) = updates_page(manager.clone(), Rc::new(|_| {}),
-                                    install_guard(), UpdateMethod::InPlace);
+                                let (updates, actions) = updates_page(
+                                    manager.clone(),
+                                    Rc::new(|_| {}),
+                                    install_guard(),
+                                    UpdateMethod::InPlace,
+                                );
                                 stack.add_named(&updates, Some("updates-test"));
-                                for (row, button) in actions { responsive.add_action(row, button); }
+                                for (row, button) in actions {
+                                    responsive.add_action(row, button);
+                                }
                             }
                             stack.set_visible_child_name("updates-test");
                         } else {
@@ -171,14 +187,19 @@ fn custom_text_size_settings_remain_reachable_on_small_logical_displays() {
                     .iter()
                     .find_map(|widget| widget.downcast_ref::<gtk::SpinButton>())
                     .expect("text size control");
+                assert!(theme.grab_focus());
                 assert!(control.is_mapped() && control.grab_focus());
                 assert_eq!(control.value_as_int(), pixels as i32);
                 settle();
-                let bounds = control.compute_bounds(&window).expect("focused editor bounds");
+                let bounds = control
+                    .compute_bounds(&window)
+                    .expect("focused editor bounds");
                 assert!(bounds.x() >= 0.0 && bounds.y() >= 0.0);
-                assert!(bounds.x() + bounds.width() <= window.width() as f32
-                    && bounds.y() + bounds.height() <= window.height() as f32,
-                    "focused text-size editor must remain visible at {pixels}px");
+                assert!(
+                    bounds.x() + bounds.width() <= window.width() as f32
+                        && bounds.y() + bounds.height() <= window.height() as f32,
+                    "focused text-size editor must remain visible at {pixels}px: {bounds:?}"
+                );
             }
             window.destroy();
         },

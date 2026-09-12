@@ -34,6 +34,12 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
                 ArtifactCollector(test_name=f"settings-text-size-{pixels}").directory
                 / "general.png"
             )
+        _reveal_page_control(strata, "Configure…")
+        if request.config.getoption("--keep-artifacts"):
+            strata.screenshot(
+                ArtifactCollector(test_name=f"settings-text-size-{pixels}").directory
+                / "configure.png"
+            )
         theme = strata.window.find(role="button", name="Theme & appearance")
         assert theme is not None and theme.activate()
         control = strata.wait(
@@ -68,12 +74,44 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
                 "updated settings text",
             )
         else:
-            reset = strata.window.find(role="button", name="Reset")
-            assert reset is not None and reset.activate()
+            reset = _reveal_page_control(strata, "Reset")
+            strata.pointer.click(reset)
             strata.wait(
                 lambda: strata.environment.read_preferences().get("text_size") == "13",
                 "Reset to restore the default text size",
             )
+    updates = strata.window.find(role="button", name="Updates")
+    assert updates is not None and updates.activate()
+    _reveal_page_control(strata, "Check now")
+    if request.config.getoption("--keep-artifacts"):
+        strata.screenshot(
+            ArtifactCollector(test_name="settings-updates").directory / "check-now.png"
+        )
+
+
+def _reveal_page_control(strata, name):
+    node = strata.reveal(role="button", name=name)
+    if not _inside_scroll_view(node):
+        scroll = next(parent for parent in node.ancestors() if parent.role == "scroll pane")
+        viewport = scroll.screen_bounds()
+        centre = (viewport.x + viewport.width // 2, viewport.y + viewport.height // 2)
+        strata.pointer.scroll(centre, clicks=3, down=node.screen_bounds().y > centre[1])
+        strata.settle(node)
+    strata.wait(lambda: _inside_scroll_view(node), f"reachable {name} button")
+    return node
+
+
+def _inside_scroll_view(node):
+    scroll = next(parent for parent in node.ancestors() if parent.role == "scroll pane")
+    bounds, viewport = node.screen_bounds(), scroll.screen_bounds()
+    return (
+        bounds.width > 0
+        and bounds.height > 0
+        and viewport.x <= bounds.x
+        and viewport.y <= bounds.y
+        and bounds.x + bounds.width <= viewport.x + viewport.width
+        and bounds.y + bounds.height <= viewport.y + viewport.height
+    )
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

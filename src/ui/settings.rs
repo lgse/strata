@@ -539,11 +539,13 @@ pub fn build_layer(
             if built.borrow_mut().insert(name) {
                 match name {
                     "theme" => {
-                        let (theme_widget, flows) = theme_page(themes.clone());
-                        stack.add_named(&theme_widget, Some("theme"));
-                        for (flow, columns) in flows {
+                        let page = theme_page(themes.clone());
+                        stack.add_named(&page.widget, Some("theme"));
+                        for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
                         }
+                        responsive_panel
+                            .add_action(page.text_size_actions.0, page.text_size_actions.1);
                     }
                     "updates" => {
                         let container = updates_container.clone();
@@ -2208,7 +2210,8 @@ fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
 // Prose wraps to the viewport; long editable values scroll inside their entry,
 // rather than making the whole settings page wider.
 fn constrain_page_text(widget: &gtk::Widget) {
-    if widget.has_css_class("settings-single-line") {
+    // Action buttons keep native label sizing; segmented choices may wrap.
+    if widget.is::<gtk::Button>() && !widget.is::<gtk::ToggleButton>() {
         return;
     }
     if let Some(label) = widget.downcast_ref::<gtk::Label>()
@@ -2216,7 +2219,6 @@ fn constrain_page_text(widget: &gtk::Widget) {
     {
         label.set_wrap(true);
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-        label.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
     }
     if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
         entry.set_width_chars(1);

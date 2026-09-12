@@ -1946,30 +1946,6 @@ fn selecting_entries_by_name_preserves_the_full_matching_selection() {
     assert_eq!(selected_names, ["large", "small"]);
 }
 #[test]
-fn navigation_events_are_delivered_to_every_observer() {
-    let browser = Browser::new(Rc::new(FakeFileSource));
-    let first_reset = Rc::new(Cell::new(false));
-    let observed_first = first_reset.clone();
-    browser.observe(move |event| {
-        if matches!(event, BrowserEvent::Reset) {
-            observed_first.set(true);
-        }
-    });
-    let second_reset = Rc::new(Cell::new(false));
-    let observed_second = second_reset.clone();
-    browser.observe(move |event| {
-        if matches!(event, BrowserEvent::Reset) {
-            observed_second.set(true);
-        }
-    });
-
-    browser.navigate(Location::local("/fixture"));
-
-    assert!(first_reset.get());
-    assert!(second_reset.get());
-}
-
-#[test]
 fn filesystem_notifications_update_the_affected_column_incrementally() {
     let notify = Rc::new(RefCell::new(None::<WatchCallback>));
     let browser = Browser::new(Rc::new(WatchingFileSource {
@@ -4308,6 +4284,12 @@ fn fan_out_shares_one_event_with_every_observer() {
 
     browser.navigate(Location::local("/fixture"));
     for collected in [first.clone(), second.clone(), third.clone()] {
+        assert!(
+            collected
+                .borrow()
+                .iter()
+                .any(|event| matches!(event, BrowserEvent::Reset))
+        );
         let published: Vec<_> = collected
             .borrow()
             .iter()

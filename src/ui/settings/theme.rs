@@ -24,12 +24,18 @@ use super::{
 mod editor;
 use editor::theme_editor;
 
-pub(super) fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32)>) {
+pub(super) struct ThemePage {
+    pub(super) widget: gtk::Widget,
+    pub(super) flows: Vec<(gtk::FlowBox, u32)>,
+    pub(super) text_size_actions: (gtk::Box, gtk::Button),
+}
+
+pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
     let content = page_content();
     content.add_css_class("theme-page");
 
     let follow = append_follow_omarchy_option(&content, &manager);
-    append_text_size_option(&content, &manager);
+    let text_size_actions = append_text_size_option(&content, &manager);
 
     let catalog = append_theme_catalog(&content);
     append_heading(&content, "YOUR THEMES");
@@ -50,10 +56,11 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::F
         ThemeManager::follows_omarchy,
         ThemeManager::set_follow_omarchy,
     );
-    (
-        scroller,
-        vec![(catalog.packaged, 3), (custom, 3), (editor_fields, 4)],
-    )
+    ThemePage {
+        widget: scroller,
+        flows: vec![(catalog.packaged, 3), (custom, 3), (editor_fields, 4)],
+        text_size_actions,
+    }
 }
 
 struct ThemeCatalog {
@@ -166,7 +173,10 @@ fn append_follow_omarchy_option(content: &gtk::Box, manager: &ThemeManager) -> g
     follow
 }
 
-fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_text_size_option(
+    content: &gtk::Box,
+    manager: &Rc<ThemeManager>,
+) -> (gtk::Box, gtk::Button) {
     append_heading(content, "TYPOGRAPHY");
     let text_size_control =
         gtk::SpinButton::with_range(f64::from(TextSize::MIN), f64::from(TextSize::MAX), 1.0);
@@ -192,13 +202,9 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         |manager| f64::from(manager.text_size().root_font_px()),
         |manager, value| manager.set_text_size(TextSize::new(value as u32)),
     );
-    let input = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    input.add_css_class("settings-single-line");
-    input.set_halign(gtk::Align::Start);
-    input.append(&text_size_control);
+    text_size_control.set_halign(gtk::Align::Start);
     let reset = gtk::Button::with_label("Reset");
     reset.add_css_class("action-dialog-cancel");
-    reset.add_css_class("settings-single-line");
     reset.set_halign(gtk::Align::Start);
     reset.set_valign(gtk::Align::Center);
     reset.set_tooltip_text(Some("Reset text size to 13 px"));
@@ -207,17 +213,10 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     let control_height = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
     control_height.add_widget(&text_size_control);
     control_height.add_widget(&reset);
-    let controls = gtk::FlowBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .min_children_per_line(1)
-        .max_children_per_line(2)
-        .column_spacing(8)
-        .row_spacing(8)
-        .build();
-    controls.add_css_class("text-size-actions");
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     controls.set_halign(gtk::Align::Start);
-    controls.insert(&input, -1);
-    controls.insert(&reset, -1);
+    controls.append(&text_size_control);
+    controls.append(&reset);
     let text_size_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
     text_size_row.add_css_class("settings-option");
     let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -236,6 +235,7 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     text_size_row.append(&text_size_copy);
     text_size_row.append(&controls);
     content.append(&text_size_row);
+    (controls, reset)
 }
 
 fn theme_grid() -> gtk::FlowBox {

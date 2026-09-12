@@ -1071,10 +1071,6 @@ spinbutton.text-size-control button.down {
   border-radius: 4px 0 0 4px;
 }
 
-.text-size-actions > flowboxchild {
-  padding: 0;
-}
-
 spinbutton.form-control text selection {
   background: @theme_accent;
   color: @theme_bg;

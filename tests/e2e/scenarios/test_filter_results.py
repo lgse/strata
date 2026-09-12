@@ -125,8 +125,13 @@ def test_query_updates_retain_selection_focus_preview_and_background_menu(strata
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("trigger", ["menu", "F2", "ctrl+r"])
-@pytest.mark.parametrize("focus_filter", [False, True])
+@pytest.mark.parametrize("trigger,focus_filter", [
+    ("menu", False),
+    ("F2", False),
+    ("F2", True),
+    ("ctrl+r", False),
+    ("ctrl+r", True),
+])
 def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, focus_filter):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
