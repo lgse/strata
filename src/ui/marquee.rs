@@ -38,10 +38,24 @@ pub(super) type MarqueeTargets = Rc<RefCell<Vec<MarqueeTarget>>>;
 /// rendered label text) is correctly claimed as item space and not as marquee
 /// background.
 pub(super) fn item_bounds_predicate(targets: MarqueeTargets) -> ItemPredicate {
-    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets))
+    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets, None))
 }
 
-fn hits_item_bounds(surface: &gtk::Widget, x: f64, y: f64, targets: &MarqueeTargets) -> bool {
+/// Applies a content policy in each mapped item's local coordinates.
+pub(super) fn item_content_predicate(
+    targets: MarqueeTargets,
+    content: ItemPredicate,
+) -> ItemPredicate {
+    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets, Some(&content)))
+}
+
+fn hits_item_bounds(
+    surface: &gtk::Widget,
+    x: f64,
+    y: f64,
+    targets: &MarqueeTargets,
+    content: Option<&ItemPredicate>,
+) -> bool {
     for target in targets.borrow().iter() {
         let mut hit = false;
         (target.visit_items)(&mut |_, widget| {
@@ -54,7 +68,13 @@ fn hits_item_bounds(surface: &gtk::Widget, x: f64, y: f64, targets: &MarqueeTarg
                 && y >= f64::from(bounds.y())
                 && y < f64::from(bounds.y() + bounds.height())
             {
-                hit = true;
+                hit |= content.is_none_or(|content| {
+                    surface
+                        .compute_point(widget, &graphene::Point::new(x as f32, y as f32))
+                        .is_some_and(|point| {
+                            content(widget, f64::from(point.x()), f64::from(point.y()))
+                        })
+                });
             }
         });
         if hit {
@@ -328,7 +348,7 @@ pub(super) fn install_shared_origin_surface(
             {
                 return;
             }
-            state.dragging.set(true);
+            state.start_drag();
             state.drag_to(
                 &surface_for_update,
                 (start_x + offset_x, start_y + offset_y),
@@ -373,7 +393,7 @@ fn connect_drag_progress(gesture: &gtk::GestureDrag, state: &Rc<MarqueeState>) {
             ) {
                 return;
             }
-            state_for_update.dragging.set(true);
+            state_for_update.start_drag();
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
         state_for_update.drag_to(&origin, (start_x + offset_x, start_y + offset_y));
@@ -435,6 +455,78 @@ impl MarqueeState {
             modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
             modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
         ));
+    }
+
+    fn start_drag(&self) {
+        if !self.active.get() || self.dragging.replace(true) {
+            return;
+        }
+        if let Some(view) = self.view() {
+            if let Some(window) = view.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+            let has_focus = view
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focus| focus == view || focus.is_ancestor(&view));
+            if has_focus {
+                return;
+            }
+            // Focusing an old off-screen cursor can scroll away from the marquee anchor.
+            if let Some(item) = self.nearest_visible_item()
+                && item.parent().unwrap_or(item).grab_focus()
+            {
+                return;
+            }
+            if !view.grab_focus() {
+                view.child_focus(gtk::DirectionType::TabForward);
+            }
+        }
+    }
+
+    fn nearest_visible_item(&self) -> Option<gtk::Widget> {
+        let scroll = self.scroll()?;
+        let width = f64::from(scroll.width());
+        let height = f64::from(scroll.height());
+        let (x, y) = self.pointer.get();
+        let mut nearest: Option<(bool, f64, gtk::Widget)> = None;
+        for target in self.targets.borrow().iter() {
+            (target.visit_items)(&mut |position, widget| {
+                if position >= target.selection.n_items() || !widget.is_mapped() {
+                    return;
+                }
+                let Some(bounds) = widget.compute_bounds(&scroll) else {
+                    return;
+                };
+                let left = f64::from(bounds.x());
+                let top = f64::from(bounds.y());
+                let right = left + f64::from(bounds.width());
+                let bottom = top + f64::from(bounds.height());
+                if right <= left
+                    || bottom <= top
+                    || right <= 0.0
+                    || left >= width
+                    || bottom <= 0.0
+                    || top >= height
+                {
+                    return;
+                }
+                let clipped = top < 0.0 || bottom > height;
+                let dx = (left - x).max(0.0).max(x - right);
+                let dy = (top - y).max(0.0).max(y - bottom);
+                let distance = dx * dx + dy * dy;
+                if nearest
+                    .as_ref()
+                    .is_none_or(|(old_clipped, old_distance, _)| {
+                        (!clipped && *old_clipped)
+                            || (clipped == *old_clipped && distance < *old_distance)
+                    })
+                {
+                    nearest = Some((clipped, distance, widget.clone()));
+                }
+            });
+        }
+        nearest.map(|(_, _, widget)| widget)
     }
 
     fn finish(&self) {

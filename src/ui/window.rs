@@ -213,6 +213,25 @@ fn schedule_due_update_check(
         });
     });
 }
+pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
+    ThemeManager::shared().bind_interface_scale(paned, |widget, scale| {
+        let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
+        if paned.position() > 0 {
+            paned.set_position(scaled_sidebar_width(paned, scale));
+        }
+    });
+}
+
+fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
+    let preferred = (f64::from(SIDEBAR_WIDTH) * scale).round() as i32;
+    let available = if paned.width() > 0 {
+        paned.width() / 2
+    } else {
+        preferred
+    };
+    preferred.min(available).max(MIN_SIDEBAR_WIDTH)
+}
+
 fn animate_sidebar(
     paned: &gtk::Paned,
     sidebar: &gtk::Widget,
@@ -224,7 +243,11 @@ fn animate_sidebar(
     generation.set(animation_id);
     animating.set(true);
     paned.set_shrink_start_child(true);
-    let target = if expanded { SIDEBAR_WIDTH } else { 0 };
+    let target = if expanded {
+        scaled_sidebar_width(paned, ThemeManager::shared().interface_scale())
+    } else {
+        0
+    };
     let start = paned.position();
     if expanded {
         sidebar.set_visible(true);
@@ -650,6 +673,36 @@ pub(super) fn build_appearance_menu(
     content.append(&airy);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    append_menu_heading(&content, "TEXT SIZE");
+    let text_controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    for (label, tooltip, delta) in [
+        ("−", "Decrease text size (Ctrl+−)", -1),
+        ("+", "Increase text size (Ctrl++)", 1),
+    ] {
+        let button = gtk::Button::with_label(label);
+        button.add_css_class("appearance-option");
+        button.set_tooltip_text(Some(tooltip));
+        super::accessibility::set_label(&button, tooltip);
+        let manager = preferences.clone();
+        button.connect_clicked(move |_| manager.set_text_size(manager.text_size().stepped(delta)));
+        text_controls.append(&button);
+    }
+    let reset_size = gtk::Button::new();
+    reset_size.add_css_class("appearance-option");
+    reset_size.set_hexpand(true);
+    reset_size.set_tooltip_text(Some("Reset text size (Ctrl+0)"));
+    preferences.bind_preference(&reset_size, ThemeManager::text_size, |widget, size| {
+        widget
+            .downcast_ref::<gtk::Button>()
+            .expect("text size reset")
+            .set_label(&format!("{} px", size.root_font_px()));
+    });
+    let manager = preferences.clone();
+    reset_size.connect_clicked(move |_| manager.set_text_size(super::theme::TextSize::default()));
+    text_controls.append(&reset_size);
+    content.append(&text_controls);
+
+    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&group_by_type);
     let (hidden, hidden_check, hidden_icon) = appearance_option_with_shortcut(
         if hidden_files_shown {
@@ -687,7 +740,25 @@ pub(super) fn build_appearance_menu(
     });
     content.append(&hidden);
 
-    popover.set_child(Some(&content));
+    let scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_width(true)
+        .propagate_natural_height(true)
+        .max_content_height(600)
+        .child(&content)
+        .build();
+    let anchor = button.downgrade();
+    let constrained = scroll.downgrade();
+    popover.connect_show(move |_| {
+        if let (Some(anchor), Some(scroll)) = (anchor.upgrade(), constrained.upgrade())
+            && let Some(window) = anchor.root().and_downcast::<gtk::Window>()
+        {
+            scroll.set_max_content_height((window.height() - anchor.height() - 48).max(1));
+            scroll.set_max_content_width((window.width() - 24).max(1));
+        }
+    });
+    popover.set_child(Some(&scroll));
     button.set_child(Some(&button_icon));
     button.add_css_class("header-action");
     button.set_cursor_from_name(Some("pointer"));
@@ -814,7 +885,7 @@ fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents 
 fn event_changes_trash_contents(event: &BrowserEvent) -> bool {
     matches!(
         event,
-        BrowserEvent::DeletionFinished
+        BrowserEvent::DeletionFinished { .. }
             | BrowserEvent::RestorationFinished
             | BrowserEvent::TransferFinished { .. }
             | BrowserEvent::OperationCompletedWithErrors { .. }
@@ -1019,6 +1090,7 @@ impl SidebarState {
             BrowserEvent::Reset
                 | BrowserEvent::ColumnAdded { .. }
                 | BrowserEvent::ColumnsTruncated { .. }
+                | BrowserEvent::ColumnsRelocated { .. }
                 | BrowserEvent::FocusChanged { .. }
         )
     }

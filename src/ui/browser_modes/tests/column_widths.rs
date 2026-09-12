@@ -26,7 +26,7 @@ fn mode_fits_default_width_and_remains_resizable() {
             let themes = ThemeManager::shared();
             crate::ui::prepare_portal_ui();
             let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
-            for size in [TextSize::Small, TextSize::Medium, TextSize::Large] {
+            for size in [11, 13, 15, 24, 32, 48].map(TextSize::new) {
                 themes.set_text_size(size);
                 for density in ["density-compact", "density-airy"] {
                     for width in [480, 1000] {
@@ -78,7 +78,7 @@ fn mode_fits_default_width_and_remains_resizable() {
                                 scroll.hadjustment().upper() > scroll.hadjustment().page_size()
                             );
                         }
-                        for resized in [80, 220] {
+                        for resized in [80, (220.0 * themes.interface_scale()).ceil() as i32] {
                             set_list_column_width(&columns, 1, resized);
                             settle();
                             assert_eq!(mode.width_request(), resized);

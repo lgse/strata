@@ -187,7 +187,7 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
-    pending_delete_animation_cleanup: RefCell<Option<dissolve_delete::DissolveCleanup>>,
+    pending_delete_dissolve: RefCell<Option<dissolve_delete::PreparedDissolve>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
@@ -497,7 +497,7 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
-            pending_delete_animation_cleanup: RefCell::new(None),
+            pending_delete_dissolve: RefCell::new(None),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_lookup: RefCell::new(None),
@@ -786,6 +786,9 @@ impl BrowserView {
         let weak_state = Rc::downgrade(&self.state);
         super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
             let state = weak_state.upgrade()?;
+            // Sidebar-origin events do not reach the browser's pointer controllers.
+            state.hovered_column.set(None);
+            state.pointer_navigation();
             let mode = state.mode_views.borrow().mode();
             if mode == BrowserMode::Columns {
                 return state
@@ -1498,6 +1501,27 @@ impl BrowserView {
         column.filter_button.set_active(false);
         column.list.grab_focus();
         true
+    }
+
+    pub fn dismiss_filter_on_outside_click(&self, root: &gtk::Widget, x: f64, y: f64) {
+        if self.view_mode() != BrowserMode::Columns {
+            return;
+        }
+        let picked = root.pick(x, y, gtk::PickFlags::DEFAULT);
+        let filter_button = {
+            let columns = self.state.columns.borrow();
+            let Some(column) = columns.iter().find(|c| c.filter_button.is_active()) else {
+                return;
+            };
+            let inside = picked.as_ref().is_some_and(|p| {
+                p == column.shell.upcast_ref::<gtk::Widget>() || p.is_ancestor(&column.shell)
+            });
+            if inside {
+                return;
+            }
+            column.filter_button.clone()
+        };
+        filter_button.set_active(false);
     }
 }
 

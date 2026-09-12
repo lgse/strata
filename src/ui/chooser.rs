@@ -422,7 +422,22 @@ impl ChooserState {
         }
     }
 
+    fn selected_folder(&self) -> Option<PathBuf> {
+        let entries = self
+            .view
+            .selected_search_results()
+            .unwrap_or_else(|| self.view.browser().selected_entries());
+        if entries.len() == 1 && entries[0].is_directory() {
+            entries[0].location.native_path().map(Path::to_path_buf)
+        } else {
+            None
+        }
+    }
+
     fn active_folder(&self) -> Result<PathBuf, &'static str> {
+        if let Some(folder) = self.selected_folder() {
+            return Ok(folder);
+        }
         self.view
             .browser()
             .active_location()
@@ -852,6 +867,7 @@ fn build_chooser(
     content.set_wide_handle(false);
     content.set_position(SIDEBAR_WIDTH);
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
+    super::window::bind_sidebar_text_size(&content);
     content.set_shrink_start_child(false);
     content.set_resize_start_child(false);
     content.set_start_child(Some(&sidebar.widget));
@@ -1284,6 +1300,11 @@ fn install_shortcuts(
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        let preferences = ThemeManager::shared();
+        if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
+            preferences.set_text_size(size);
+            return glib::Propagation::Stop;
+        }
         if let Some(layer) = visible_modal_layer(&state.window) {
             let focused = gtk::prelude::RootExt::focus(&state.window);
             if !focused.is_some_and(|focus| focus == layer || focus.is_ancestor(&layer)) {
@@ -1399,7 +1420,10 @@ fn install_shortcuts(
             )
             && let Some(entry) = state.view.selected_search_result()
         {
-            preview.toggle(preview_target(Some(entry)));
+            preview.toggle(
+                preview_target(Some(entry)),
+                state.view.browser().active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if control
@@ -1625,7 +1649,10 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !control && !alt {
-            preview.toggle(preview_target(browser.focused_entry()));
+            preview.toggle(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {

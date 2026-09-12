@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod preferences;
+mod text_size;
 
 use std::{cell::RefCell, collections::HashSet};
 
@@ -274,8 +275,7 @@ fn assert_preference_defaults(preferences: &Preferences) {
         Channel::parse(&preferences.release_channel),
         Channel::Stable
     );
-    assert_eq!(preferences.text_size, "medium");
-    assert_eq!(TextSize::parse(&preferences.text_size), TextSize::Medium);
+    assert_eq!(preferences.text_size, TextSize::default());
     assert_eq!(
         preferences.cross_volume_drop_strategy,
         CrossVolumeDropStrategy::Ask.as_str()
@@ -434,32 +434,53 @@ fn unknown_release_channel_value_parses_to_stable() {
 }
 
 #[test]
-fn unknown_text_size_value_parses_to_medium() {
-    assert_eq!(TextSize::parse("huge"), TextSize::Medium);
+fn custom_text_sizes_round_trip_through_toml() {
+    for pixels in [8, 11, 13, 15, 20, 24, 32, 48] {
+        let size = TextSize::new(pixels);
+        let preferences = Preferences {
+            text_size: size,
+            ..Preferences::default()
+        };
+        let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+        let restored: Preferences =
+            toml::from_str(&serialized).expect("preferences should deserialize");
+        assert_eq!(restored.text_size, size);
+        assert!(serialized.contains(&format!("text_size = {pixels}")));
+    }
 }
 
 #[test]
-fn text_sizes_map_to_a_strictly_increasing_root_font_size() {
-    let small = TextSize::Small.root_font_px();
-    let medium = TextSize::Medium.root_font_px();
-    let large = TextSize::Large.root_font_px();
-    assert!(small < medium);
-    assert!(medium < large);
-    assert_eq!(medium, 13, "medium should match the unscaled base size");
+fn legacy_text_sizes_migrate_and_numeric_values_are_bounded() {
+    for (stored, pixels) in [
+        ("\"small\"", 11),
+        ("\"medium\"", 13),
+        ("\"large\"", 15),
+        ("\"huge\"", 13),
+        ("-1", 8),
+        ("0", 8),
+        ("100000", 48),
+    ] {
+        let preferences: Preferences = toml::from_str(&format!(
+            "mode = \"theme\"\ntheme = \"nord\"\ntext_size = {stored}\n"
+        ))
+        .expect("legacy or bounded numeric preferences");
+        assert_eq!(preferences.text_size.root_font_px(), pixels);
+    }
+    assert_eq!(TextSize::new(8).stepped(-1).root_font_px(), 8);
+    assert_eq!(TextSize::new(48).stepped(1).root_font_px(), 48);
 }
 
 #[test]
 fn root_font_size_snaps_to_a_whole_effective_pixel() {
     let scale_factor = 13.0 / 11.0;
-    let root_font_px = snapped_root_font_px(TextSize::Large.root_font_px(), scale_factor);
+    let root_font_px = snapped_root_font_px(15, scale_factor);
 
-    assert!((root_font_px - 15.230_769).abs() < 0.000_001);
-    assert!((root_font_px * scale_factor - 18.0).abs() < f64::EPSILON);
+    assert_eq!(root_font_px, 18.0);
 }
 
 #[test]
 fn root_font_size_is_unchanged_without_desktop_scaling() {
-    for size in [TextSize::Small, TextSize::Medium, TextSize::Large] {
+    for size in [8, 11, 13, 15, 24, 32, 48].map(TextSize::new) {
         assert_eq!(
             snapped_root_font_px(size.root_font_px(), 1.0),
             f64::from(size.root_font_px())
