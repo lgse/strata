@@ -587,36 +587,19 @@ impl ViewState {
         header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
-        let filter_entry = gtk::Entry::builder()
-            .placeholder_text("Filter 0 items…")
-            .has_frame(false)
-            .hexpand(true)
-            .build();
-        filter_entry.add_css_class("column-filter-entry");
-        let filter_icon = crate::assets::chrome_icon(crate::assets::icons::FUNNEL);
-        let filter_control = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-        filter_control.add_css_class("column-filter");
-        filter_control.append(&filter_icon);
-        filter_control.append(&filter_entry);
-        let filter_revealer = gtk::Revealer::builder()
-            .transition_type(gtk::RevealerTransitionType::SlideDown)
-            .child(&filter_control)
-            .build();
-        let filter_button = gtk::ToggleButton::builder()
-            .tooltip_text("Filter this pane (Ctrl+F)")
-            .build();
-        filter_button.set_child(Some(&crate::assets::chrome_icon(
-            crate::assets::icons::FUNNEL,
-        )));
-        crate::ui::controls::pane_header_action(&filter_button);
-        let shown_filter = filter_revealer.clone();
-        let focused_filter = filter_entry.clone();
+        let (filter_entry, filter_revealer, filter_button) =
+            crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
+        filter_entry.set_placeholder_text(Some("Filter 0 items…"));
+        let weak_self = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
-            shown_filter.set_reveal_child(button.is_active());
-            if button.is_active() {
-                focused_filter.grab_focus();
-            } else {
-                focused_filter.set_text("");
+            if button.is_active()
+                && let Some(state) = weak_self.upgrade()
+            {
+                for (other_depth, other) in state.columns.borrow().iter().enumerate() {
+                    if other_depth != depth && other.filter_button.is_active() {
+                        other.filter_button.set_active(false);
+                    }
+                }
             }
         });
         header_actions.append(&filter_button);

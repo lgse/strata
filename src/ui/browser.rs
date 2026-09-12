@@ -1499,6 +1499,30 @@ impl BrowserView {
         column.list.grab_focus();
         true
     }
+
+    pub fn dismiss_filter_on_outside_click(&self, root: &gtk::Widget, x: f64, y: f64) {
+        if self.view_mode() != BrowserMode::Columns {
+            return;
+        }
+        let picked = root.pick(x, y, gtk::PickFlags::DEFAULT);
+        let filter_button = {
+            let columns = self.state.columns.borrow();
+            let Some(column) = columns.iter().find(|c| c.filter_button.is_active()) else {
+                return;
+            };
+            let inside = picked.as_ref().is_some_and(|p| {
+                p == column.filter_entry.upcast_ref::<gtk::Widget>()
+                    || p == column.filter_button.upcast_ref::<gtk::Widget>()
+                    || p.is_ancestor(&column.filter_entry)
+                    || p.is_ancestor(&column.filter_button)
+            });
+            if inside {
+                return;
+            }
+            column.filter_button.clone()
+        };
+        filter_button.set_active(false);
+    }
 }
 
 impl ViewState {

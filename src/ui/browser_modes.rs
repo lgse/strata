@@ -1412,7 +1412,7 @@ struct IconsControls {
     empty_trash_button: Option<gtk::Button>,
 }
 
-fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
+pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
         .placeholder_text("Filter items…")
         .has_frame(false)
