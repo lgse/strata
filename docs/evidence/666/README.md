@@ -20,3 +20,18 @@ menus, selection/focus preservation, and navigation/scrolling. Real key routing
 and activation live in `test_dialogs_and_menus.py`; recursive-result targeting
 and focus restoration extend `test_filter_results.py`. These replace the PR's
 trigger-exists and no-crash-only tests.
+
+## Right-click dismissal
+
+Select `readme.md`, right-click `documents`, then press Escape. Before this fix
+(`f94e8b15`), `documents` was selected but the keyboard cursor returned to
+`readme.md`. Afterward, `documents` owns both selection and keyboard focus, and
+Up continues from that folder rather than the previous file. The folder is not
+opened. These captures use disposable fixtures, not the owner's recording.
+
+[Before](before-right-click-escape.png) · [After](after-right-click-escape.png)
+
+`test_selection.py` covers files, folders, subsequent arrow navigation, and
+multi-selection in all three views. The adjacent Rust fixture also checks
+hidden/grouped views and chooser selection; the recursive-result tests verify
+that Escape restores the clicked result without changing the query.

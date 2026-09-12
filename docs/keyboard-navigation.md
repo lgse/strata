@@ -123,6 +123,10 @@ that item — or the full multi-selection, if the focused item is part of one. W
 selection, it opens the active pane's background menu. The menu is anchored to the
 focused item or pane, never to the pointer.
 
+Right-clicking an item also makes it the keyboard cursor, without opening it.
+An already-selected item keeps the existing multi-selection; an unselected item
+becomes the only selected item. Escape returns keyboard focus to that clicked item.
+
 Once open: **Up/Down** move between enabled actions, wrapping past the first/last;
 **Home/End** jump to the first/last enabled action; separators and disabled actions
 are skipped. **Enter/Space** activates the focused action. **Escape** closes the menu

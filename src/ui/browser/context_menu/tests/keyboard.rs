@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::context_menu_popover;
-use super::menus::{MenuSource, descendants, label, wait_until};
+use super::menus::{MenuSource, descendants, label, open_menu, wait_until};
 use crate::model::Location;
 use crate::ui::browser::{BrowserView, PeekBehavior};
 use crate::ui::browser_modes::BrowserMode;
@@ -67,9 +67,9 @@ fn native_selection_count(view: &BrowserView) -> u64 {
 }
 
 #[test]
-fn keyboard_menus_preserve_filtered_grouped_and_chooser_selections() {
+fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
     crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::keyboard_menus_preserve_filtered_grouped_and_chooser_selections",
+        "ui::browser::context_menu::tests::keyboard::context_menus_preserve_filtered_grouped_and_chooser_selections",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
                 for chooser in [false, true] {
@@ -139,6 +139,19 @@ fn keyboard_menus_preserve_filtered_grouped_and_chooser_selections() {
                         assert_eq!(selected_locations(), before);
                         assert_eq!(native_selection_count(&view), 2);
                         assert_eq!(gtk::prelude::RootExt::focus(&window), origin);
+
+                        let popup = open_menu(&view, Some("notes.txt"));
+                        press(&popup, Key::Escape);
+                        wait_until(|| popup.parent().is_none());
+                        assert_eq!(selected_locations(), before);
+                        assert_eq!(native_selection_count(&view), 2);
+                        assert_eq!(view.browser().focused_item().expect("cursor").1, notes);
+                        wait_until(|| {
+                            let focused = gtk::prelude::RootExt::focus(&window);
+                            label(&view.widget(), "notes.txt").is_some_and(|label| {
+                                focused.is_some_and(|focused| label.is_ancestor(&focused))
+                            })
+                        });
 
                         view.browser().clear_active_selection();
                         assert!(view.open_focused_context_menu());

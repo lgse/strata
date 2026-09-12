@@ -131,7 +131,9 @@ pub(super) fn open_menu(view: &BrowserView, name: Option<&str>) -> gtk::Popover 
                     .filter(|popover| popover.is_visible())
             }) {
                 wait_until(|| popover.is_mapped());
-                let expected = if name.is_some() {
+                let expected = if !view.state.interactive {
+                    "chooser-context-menu"
+                } else if name.is_some() {
                     "item-context-menu"
                 } else {
                     "folder-context-menu"

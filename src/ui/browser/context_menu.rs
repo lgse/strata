@@ -158,6 +158,22 @@ pub(super) fn focus_context_column(state: &Rc<ViewState>, depth: usize) {
     state.pointer_navigation();
 }
 
+pub(super) fn focus_context_entry(
+    state: &Rc<ViewState>,
+    depth: usize,
+    position: Option<usize>,
+    entry: &FileEntry,
+) {
+    if let Some(position) = current_context_position(state, depth, position, entry) {
+        let positions = state.browser.selected_positions(depth);
+        state.browser.commit_selection();
+        state.browser.set_selection(depth, &positions, Some(position));
+    } else {
+        focus_search_result(state, depth, entry);
+    }
+    focus_context_column(state, depth);
+}
+
 pub(super) fn show_context_popover(
     popover: &gtk::Popover,
     scroll: &gtk::ScrolledWindow,
@@ -1035,7 +1051,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         let Some((position, entry)) = resolve(&picked) else {
             return false;
         };
-        state.browser.set_active_column(depth);
+        focus_context_entry(&state, depth, position, &entry);
         target.replace(Some((position, entry.clone())));
         let entries = context_entries(&state, &target);
         let open_with_entries = entries.clone();
@@ -1115,7 +1131,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             single.set_visible(true);
             multiple.set_visible(false);
         }
-        focus_context_column(&state, depth);
         show_context_popover(&popover_for_trigger, &scroll_for_trigger, &widget, x, y);
         true
     });
@@ -1194,7 +1209,9 @@ fn focus_search_result(state: &ViewState, depth: usize, entry: &FileEntry) {
             .flatten()
     });
     if let Some(row) = row.filter(|row| row.is_mapped()) {
-        column.selection.select_item(position as u32, true);
+        if !column.selection.is_selected(position as u32) {
+            column.selection.select_item(position as u32, true);
+        }
         if let Some(item) = row.parent() {
             item.grab_focus();
         }

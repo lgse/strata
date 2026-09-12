@@ -10,7 +10,8 @@ use super::{
     ViewState,
     context_menu::{
         ContextResolver, bind_column_context_owner, context_menu_option, context_menu_popover,
-        focus_context_column, preview_context_entry, rename_context_entry, show_context_popover,
+        focus_context_column, focus_context_entry, preview_context_entry, rename_context_entry,
+        show_context_popover,
     },
 };
 
@@ -138,6 +139,7 @@ pub(super) fn install_item(
         let Some((source, entry)) = resolve(&picked) else {
             return false;
         };
+        focus_context_entry(&state, depth, source, &entry);
         let single = source.is_none() || state.browser.selected_entries().len() == 1;
         let mut options = vec![(
             Action::Rename,
@@ -177,7 +179,6 @@ pub(super) fn install_item(
             }
         });
         bind_column_context_owner(&state, &popover, depth);
-        focus_context_column(&state, depth);
         show_context_popover(&popover, &scroll, &widget, x, y);
         true
     });

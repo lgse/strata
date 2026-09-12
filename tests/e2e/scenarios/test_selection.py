@@ -129,25 +129,32 @@ def test_control_click_toggles_individual_entries(strata, mode, root):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_right_click_selects_the_entry_under_the_pointer(strata, mode, root):
+@pytest.mark.parametrize("target,previous", [("todo.txt", "readme.md"), ("documents", "archive")])
+def test_right_click_selects_the_entry_under_the_pointer(strata, mode, root, target, previous):
     strata.select_entry("readme.md", directory=root)
+    strata.wait_for_focused_entry("readme.md")
 
-    strata.open_context_menu("todo.txt", directory=root)
+    strata.open_context_menu(target, directory=root)
 
-    strata.wait(
-        lambda: strata.selected_names(root) == ["todo.txt"],
-        "the right-clicked entry to become the selection",
-    )
+    strata.wait_for_selection([target], root)
     strata.dismiss_menu()
+    strata.wait_for_focused_entry(target)
+    assert strata.pane_names() == [root], "a folder context menu must not navigate"
+    strata.keyboard.press("Left" if mode == "Icons" else "Up")
+    strata.wait_for_focused_entry(previous)
+    strata.wait_for_selection([previous], root)
 
 
-def test_right_click_keeps_an_existing_multi_selection(strata, root):
-    strata.select_entry("readme.md", directory=root)
-    strata.click_entry_with("todo.txt", ["ctrl"], directory=root)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_right_click_keeps_an_existing_multi_selection(strata, mode, root):
+    strata.select_entry("todo.txt", directory=root)
+    entry = strata.entry("readme.md", root)
+    strata.pointer.click(entry, at=_name_label_point(entry, leftover=False), modifiers=("ctrl",))
     strata.wait(
         lambda: strata.selected_names(root) == ["readme.md", "todo.txt"],
         "both files to be selected",
     )
+    strata.wait_for_focused_entry("readme.md")
 
     strata.open_context_menu("todo.txt", directory=root)
 
@@ -155,6 +162,8 @@ def test_right_click_keeps_an_existing_multi_selection(strata, root):
         "right-clicking inside a multi-selection must not collapse it"
     )
     strata.dismiss_menu()
+    strata.wait_for_focused_entry("todo.txt")
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
