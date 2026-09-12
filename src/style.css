@@ -2,6 +2,16 @@
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
 }
 
+.file-icon {
+  min-width: 1.307692rem;
+  min-height: 1.307692rem;
+}
+
+.list-file-icon {
+  min-width: 1.384615rem;
+  min-height: 1.384615rem;
+}
+
 window {
   background: @theme_bg;
   color: @theme_text;
@@ -95,7 +105,7 @@ headerbar menubutton {
 }
 
 .location-control {
-  min-width: 8em;
+  min-width: 104px;
 }
 
 .global-activity-spinner {
@@ -801,7 +811,7 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .open-with-heading {
   color: @theme_dim_text;
-  font-size: 11px;
+  font-size: 0.846154em;
   font-weight: 700;
 }
 
@@ -849,18 +859,18 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .open-with-name {
   color: @theme_text;
-  font-size: 13px;
+  font-size: 1em;
   font-weight: 600;
 }
 
 .open-with-description {
   color: @theme_dim_text;
-  font-size: 11px;
+  font-size: 0.846154em;
 }
 
 .open-with-empty {
   color: @theme_dim_text;
-  font-size: 13px;
+  font-size: 1em;
   padding: 24px 12px;
 }
 
@@ -1035,6 +1045,69 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 4px;
   min-height: 8px;
+}
+
+spinbutton.form-control {
+  background: @theme_bg;
+  color: @theme_text;
+  border: 1px solid @theme_border;
+  border-radius: 5px;
+}
+
+spinbutton.form-control text {
+  background: transparent;
+  color: @theme_text;
+  caret-color: @theme_accent;
+}
+
+spinbutton.text-size-control text {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+spinbutton.text-size-control button.down {
+  border-left: none;
+  border-right: 1px solid @theme_border;
+  border-radius: 4px 0 0 4px;
+}
+
+spinbutton.form-control text selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+spinbutton.form-control button {
+  background: @theme_surface;
+  background-image: none;
+  color: @theme_accent;
+  border-color: @theme_border;
+  box-shadow: none;
+}
+
+spinbutton.form-control button image {
+  color: @theme_accent;
+}
+
+spinbutton.form-control:hover,
+spinbutton.form-control:focus-within {
+  border-color: @theme_accent;
+}
+
+spinbutton.form-control:focus-within {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+spinbutton.form-control button:hover,
+spinbutton.form-control button:active {
+  background: @theme_highlight;
+  color: @theme_text;
+}
+
+spinbutton.form-control:disabled,
+spinbutton.form-control button:disabled {
+  color: @theme_dim_text;
+  opacity: 0.55;
 }
 
 entry.form-control {
@@ -1276,8 +1349,8 @@ menubutton.form-control:disabled > button {
 
 .settings-titlebar {
   border-bottom: 1px solid alpha(@theme_border, 0.24);
-  min-height: 46px;
-  padding: 0 14px 0 20px;
+  min-height: 0;
+  padding: 6px 6px 6px 20px;
 }
 
 .settings-title {
@@ -1840,6 +1913,32 @@ scrollbar slider:active {
 paned > separator {
   background: alpha(@theme_border, 0.6);
   min-width: 1px;
+}
+
+.sidebar-split > .sidebar-shell {
+  border-right: none;
+}
+
+/* The resize handle supplies four surface pixels of the trailing inset. */
+.sidebar-split .sidebar {
+  padding-right: 3px;
+}
+
+.sidebar-split .sidebar-update {
+  margin-left: 4px;
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+.sidebar-split .sidebar-update-separator {
+  margin-right: 0;
+}
+
+.sidebar-split > separator {
+  padding: 0 2px;
+  border: none;
+  background: @theme_surface;
+  box-shadow: inset -1px 0 alpha(@theme_border, 0.6);
 }
 
 .preview-split > separator {
@@ -3473,7 +3572,8 @@ colorchooser colorswatch overlay {
 .keyboard-navigation .file-list row:hover:not(:selected),
 .keyboard-navigation .file-list-mode row:hover:not(:selected),
 .keyboard-navigation .file-icons > child:hover:not(:selected),
-.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card {
+.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card-icon-frame,
+.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card-label {
   background: transparent;
   color: @theme_text;
 }
@@ -3948,8 +4048,12 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   background: transparent;
 }
 
-.file-icons > child:hover .icons-card {
+.file-icons > child:hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.15);
+}
+
+.file-icons > child:hover .icons-card-label {
+  background: alpha(@theme_accent, 0.10);
 }
 
 .file-icons > child:selected {
@@ -3958,21 +4062,21 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   outline: none;
 }
 
-.file-icons > child:selected .icons-card {
+.file-icons > child:selected .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.22);
-  outline: 1px solid alpha(@theme_accent, 0.9);
+  outline: 1px solid alpha(@theme_accent, 0.6);
   outline-offset: -1px;
 }
 
-.file-icons > child:selected:hover .icons-card {
+.file-icons > child:selected:hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.30);
 }
 
-.keyboard-navigation .file-icons > child:selected:hover .icons-card {
+.keyboard-navigation .file-icons > child:selected:hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.22);
 }
 
-.file-icons > child:focus-visible .icons-card {
+.file-icons > child:focus-visible .icons-card-icon-frame {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
@@ -3984,12 +4088,24 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   padding: 2px 4px;
 }
 
+.icons-card-icon-frame,
+.icons-card-caption {
+  margin: 0;
+  padding: 0;
+}
+
+.icons-card-icon-frame {
+  border-radius: 6px;
+}
+
 .icons-card-icon {
   color: @theme_accent;
 }
 
 .icons-card-label {
+  border-radius: 4px;
   color: @theme_text;
+  padding: 2px 4px;
 }
 
 .list-fast-scroll .list-row,
@@ -3997,11 +4113,11 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   transition: none;
 }
 
-.icons-card.drop-destination,
-.icons-card:drop(active) {
+.file-icons > child .icons-card.drop-destination .icons-card-icon-frame,
+.file-icons > child .icons-card:drop(active) .icons-card-icon-frame {
   background: alpha(@theme_highlight, 0.82);
-  color: @theme_accent;
-  outline-color: @theme_accent;
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .icons-card.dragging {
@@ -4013,8 +4129,11 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   opacity: 0.46;
 }
 
-.file-icons > child:selected .icons-card-label {
-  color: @theme_text;
+.file-icons > child:selected .icons-card-label,
+.file-icons > child .icons-card.drop-destination .icons-card-label,
+.file-icons > child .icons-card:drop(active) .icons-card-label {
+  background: @theme_accent;
+  color: @theme_bg;
 }
 
 .mode-icons.density-airy .file-icons {

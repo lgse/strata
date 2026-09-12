@@ -41,6 +41,7 @@ struct ListColumnLayout {
     widths: Rc<Vec<Cell<i32>>>,
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
     name_manually_resized: Rc<Cell<bool>>,
+    scale: Rc<Cell<f64>>,
 }
 
 impl ListColumnLayout {
@@ -49,6 +50,7 @@ impl ListColumnLayout {
             widths: Rc::new(LIST_COLUMN_WIDTHS.into_iter().map(Cell::new).collect()),
             cells: Rc::new((0..5).map(|_| RefCell::new(Vec::new())).collect()),
             name_manually_resized: Rc::new(Cell::new(false)),
+            scale: Rc::new(Cell::new(1.0)),
         }
     }
 }
@@ -2149,6 +2151,8 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
         let label = gtk::Label::new(Some(text));
         label.set_xalign(0.0);
         label.set_hexpand(true);
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        label.set_max_width_chars(1);
         let arrow = crate::assets::primary_icon(
             if preferences.sort_direction == SortDirection::Ascending {
                 crate::assets::icons::ARROW_UP
@@ -2205,6 +2209,21 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
         cell.append(&button_overlay);
         headings.append(&cell);
     }
+    let scaled_columns = columns.clone();
+    super::theme::ThemeManager::shared().bind_interface_scale(&headings, move |_, scale| {
+        let ratio = scale / scaled_columns.scale.replace(scale);
+        for (index, width) in scaled_columns.widths.iter().enumerate() {
+            let scaled = (f64::from(width.get()) * ratio).round() as i32;
+            width.set(scaled);
+            scaled_columns.cells[index].borrow_mut().retain(|weak| {
+                let Some(cell) = weak.upgrade() else {
+                    return false;
+                };
+                cell.set_width_request(scaled);
+                true
+            });
+        }
+    });
     headings
 }
 
@@ -2613,6 +2632,11 @@ fn icons_loading_skeleton(thumbnail_size: i32, density: BrowserDensity) -> gtk::
         let slot = icons_card_icon_slot(thumbnail_size);
         let icon = block(slot, slot);
         icon.set_halign(gtk::Align::Center);
+        let padding = super::icons_cell::ICONS_CARD_ICON_PADDING;
+        icon.set_margin_top(padding);
+        icon.set_margin_bottom(padding);
+        icon.set_margin_start(padding);
+        icon.set_margin_end(padding);
         card.append(&icon);
         let label = block(96, 10);
         label.set_halign(gtk::Align::Center);
@@ -2710,6 +2734,10 @@ fn pane_base(
     heading_box.set_valign(gtk::Align::Center);
     let heading = gtk::Label::new(Some(title));
     heading.set_xalign(0.0);
+    heading.set_hexpand(true);
+    heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    heading.set_max_width_chars(1);
+    heading.set_tooltip_text(Some(title));
     let spinner = gtk::Spinner::new();
     spinner.set_valign(gtk::Align::Center);
     spinner.start();
@@ -2784,7 +2812,7 @@ fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
-    whole_row: bool,
+    list_rows: bool,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -2792,8 +2820,11 @@ fn collection_with_marquee(
     overlay.set_vexpand(true);
     super::scrolling::install_autoscroll(&scroll, &overlay);
 
-    let is_item = if whole_row {
-        super::marquee::item_bounds_predicate(targets.clone())
+    let is_item = if list_rows {
+        super::marquee::item_content_predicate(
+            targets.clone(),
+            Rc::new(super::pointer::hits_list_item_content),
+        )
     } else {
         Rc::new(super::pointer::hits_item_content)
     };
@@ -2932,7 +2963,7 @@ fn install_list_drag_drop(
         bool,
     ),
 ) {
-    let (drag_icon, multi_drag_icon, content_click, whole_row) = drag_icon_and_content_click;
+    let (drag_icon, multi_drag_icon, content_click, list_rows) = drag_icon_and_content_click;
     if transfer_handler.borrow().is_none() {
         return;
     }
@@ -2949,10 +2980,11 @@ fn install_list_drag_drop(
     let prepare_row = row.downgrade();
     drag.connect_prepare(move |source, x, y| {
         let prepare_row = prepare_row.upgrade()?;
-        if whole_row {
-            if prepare_row
-                .pick(x, y, gtk::PickFlags::DEFAULT)
-                .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+        if list_rows {
+            if !super::pointer::hits_list_item_content(&prepare_row, x, y)
+                || prepare_row
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
             {
                 return None;
             }
@@ -3687,6 +3719,8 @@ fn assemble_list_row() -> gtk::Box {
     let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     name_cell.add_css_class("list-name-cell");
     let icon = super::thumbnail::ThumbnailSlot::new(18);
+    icon.add_css_class("list-file-icon");
+    icon.set_valign(gtk::Align::Center);
     let name = gtk::Label::new(None);
     name.add_css_class("alternate-rename-label");
     name.set_xalign(0.0);
