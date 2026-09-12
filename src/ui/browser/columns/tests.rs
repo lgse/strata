@@ -118,3 +118,28 @@ fn reveal_target_can_scroll_back_to_an_earlier_column() {
         300.0
     );
 }
+
+#[test]
+fn reveal_target_for_child_column_advances_viewport_rightward() {
+    // 600px viewport with 300px columns:
+    // Clicking column 0 (0..300) when child column 1 (300..600) is already visible does not scroll.
+    assert_eq!(
+        horizontal_reveal_target(0.0, 600.0, 0.0, 1_200.0, 300.0, 600.0),
+        0.0
+    );
+    // Clicking column 1 (300..600) reveals child column 2 (600..900) by scrolling to 300.0.
+    assert_eq!(
+        horizontal_reveal_target(0.0, 600.0, 0.0, 1_200.0, 600.0, 900.0),
+        300.0
+    );
+    // Clicking column 2 (600..900) reveals child column 3 (900..1200) by scrolling to 600.0.
+    assert_eq!(
+        horizontal_reveal_target(300.0, 600.0, 0.0, 1_200.0, 900.0, 1_200.0),
+        600.0
+    );
+    // Clicking last column 3 (900..1200) with no child column targets itself and stays at 600.0.
+    assert_eq!(
+        horizontal_reveal_target(600.0, 600.0, 0.0, 1_200.0, 900.0, 1_200.0),
+        600.0
+    );
+}

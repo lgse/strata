@@ -1266,50 +1266,66 @@ impl ViewState {
             };
             state.browser.set_active_column(depth);
             state.browser.focus_active();
-            let shell = state
-                .columns
-                .borrow()
-                .get(depth)
-                .map(|column| column.shell.clone());
-            if let Some(shell) = shell {
-                state.reveal_column(shell);
+            let columns = state.columns.borrow();
+            let left_shell = columns.get(depth).map(|column| column.shell.clone());
+            let right_shell = columns.get(depth + 1).map(|column| column.shell.clone());
+            drop(columns);
+            if let Some(left_shell) = left_shell {
+                state.reveal_column_span(left_shell, right_shell);
             }
         });
         surface.add_controller(click.clone());
         click
     }
 
-    pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
+    pub(super) fn reveal_column_span(
+        self: &Rc<Self>,
+        left_shell: gtk::Box,
+        right_shell: Option<gtk::Box>,
+    ) {
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
         let weak = Rc::downgrade(self);
-        let measured_shell = shell.downgrade();
+        let measured_left = left_shell.downgrade();
+        let measured_right = right_shell.as_ref().map(|s| s.downgrade());
         let _tick = self.scroller.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
             };
-            let Some(measured_shell) = measured_shell.upgrade() else {
+            let Some(measured_left) = measured_left.upgrade() else {
                 return glib::ControlFlow::Break;
             };
             if state.horizontal_scroll_generation.get() != animation_id
-                || measured_shell.parent().is_none()
+                || measured_left.parent().is_none()
             {
                 return glib::ControlFlow::Break;
             }
             let adjustment = state.scroller.hadjustment();
-            if measured_shell.width() <= 0 || adjustment.page_size() <= 0.0 {
+            if measured_left.width() <= 0 || adjustment.page_size() <= 0.0 {
                 return glib::ControlFlow::Continue;
             }
-            let Some(bounds) = measured_shell.compute_bounds(&state.columns_widget) else {
+            let Some(left_bounds) = measured_left.compute_bounds(&state.columns_widget) else {
                 return glib::ControlFlow::Continue;
+            };
+            let item_left = f64::from(left_bounds.x());
+            let item_right = if let Some(measured_right) =
+                measured_right.as_ref().and_then(|w| w.upgrade())
+            {
+                if let Some(right_bounds) = measured_right.compute_bounds(&state.columns_widget) {
+                    f64::from(right_bounds.x() + right_bounds.width())
+                } else {
+                    f64::from(left_bounds.x() + left_bounds.width())
+                }
+            } else {
+                f64::from(left_bounds.x() + left_bounds.width())
             };
             let target = horizontal_reveal_target(
                 adjustment.value(),
                 adjustment.page_size(),
                 adjustment.lower(),
                 adjustment.upper(),
-                f64::from(bounds.x()),
-                f64::from(bounds.x() + bounds.width()),
+                item_left,
+                item_right,
             );
             animate_horizontal_scroll(
                 &state.scroller,
@@ -1320,6 +1336,10 @@ impl ViewState {
             );
             glib::ControlFlow::Break
         });
+    }
+
+    pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
+        self.reveal_column_span(shell, None);
     }
 
     pub(super) fn truncate(self: &Rc<Self>, len: usize) {
