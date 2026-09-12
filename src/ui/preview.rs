@@ -15,15 +15,15 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, MetadataValue},
     services::{
-        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        PreviewRequestId,
+        LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
+        PreviewRequest, PreviewRequestId,
     },
 };
 
 use super::{blur::BlurBin, controls::modal_layout};
 
 const DEFAULT_WIDTH: i32 = 520;
-const MIN_WIDTH: i32 = 280;
+const MIN_WIDTH: i32 = 560;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
@@ -32,7 +32,8 @@ const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
 const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
-const MEDIA_PLUGIN_INSTALL_COMMAND: &str = "sudo pacman -S --needed gst-plugins-good gst-libav";
+const MEDIA_PLUGIN_INSTALL_COMMAND: &str =
+    "sudo pacman -S --needed gst-plugins-base gst-plugins-good";
 
 pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
     entry.filter(entry_supports_quick_preview)
@@ -88,6 +89,7 @@ struct PreviewState {
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
+    current_depth: Cell<Option<usize>>,
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
@@ -118,9 +120,9 @@ impl PreviewDrawer {
         pane.set_hexpand(true);
         pane.set_vexpand(true);
 
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let header = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         header.add_css_class("preview-header");
-        let icon = crate::assets::primary_icon(crate::assets::icons::DOCUMENTS, 18);
+        let icon = crate::assets::chrome_icon(crate::assets::icons::DOCUMENTS);
         let title = gtk::Label::new(None);
         title.add_css_class("preview-title");
         title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
@@ -154,6 +156,7 @@ impl PreviewDrawer {
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header_handle.add_css_class("preview-header-handle");
         header_handle.set_hexpand(true);
+        header_handle.set_margin_end(8);
         header_handle.set_cursor_from_name(Some("grab"));
         header_handle.append(&icon);
         header_handle.append(&title);
@@ -171,6 +174,15 @@ impl PreviewDrawer {
         metadata.append(&size_group);
         metadata.append(&modified_group);
         metadata.append(&type_group);
+        super::theme::ThemeManager::shared().bind_interface_scale(&metadata, |widget, scale| {
+            let metadata = widget.downcast_ref::<gtk::Box>().expect("preview metadata");
+            metadata.set_orientation(if scale > 1.5 {
+                gtk::Orientation::Vertical
+            } else {
+                gtk::Orientation::Horizontal
+            });
+            metadata.set_spacing(if scale > 1.5 { 6 } else { 18 });
+        });
         pane.append(&metadata);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -205,6 +217,7 @@ impl PreviewDrawer {
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
+            current_depth: Cell::new(None),
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
@@ -219,6 +232,12 @@ impl PreviewDrawer {
             animation_generation: Rc::new(Cell::new(0)),
         });
         install_preview_drag(&header_handle, &state);
+        let weak = Rc::downgrade(&state);
+        state.pane.connect_unrealize(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.stop();
+            }
+        });
         let weak = Rc::downgrade(&state);
         open.connect_clicked(move |_| {
             let Some(state) = weak.upgrade() else {
@@ -268,7 +287,9 @@ impl PreviewDrawer {
 
     pub fn handle_browser_event(&self, browser: &Browser, event: &BrowserEvent) {
         match event {
-            BrowserEvent::PreviewRequested { entry } => self.show(entry.clone()),
+            BrowserEvent::PreviewRequested { entry } => {
+                self.show(entry.clone(), browser.active_depth());
+            }
             BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
@@ -286,7 +307,7 @@ impl PreviewDrawer {
                     .entry_at(*depth, *position)
                     .and_then(|entry| preview_target(Some(entry)))
                 {
-                    self.show(entry);
+                    self.show(entry, Some(*depth));
                 } else {
                     self.close();
                 }
@@ -296,6 +317,21 @@ impl PreviewDrawer {
                 if self.is_open() =>
             {
                 self.close()
+            }
+            BrowserEvent::EntriesSpliced { depth, splices }
+                if self.is_open()
+                    && self.state.current_depth.get() == Some(*depth)
+                    && splices.iter().any(|splice| splice.removed > 0) =>
+            {
+                let Some(current) = self.state.current.borrow().clone() else {
+                    return;
+                };
+                let still_present = (0..)
+                    .map_while(|position| browser.entry_at(*depth, position))
+                    .any(|entry| entry.location == current.location);
+                if !still_present {
+                    self.close();
+                }
             }
             _ => {}
         }
@@ -393,19 +429,19 @@ impl PreviewDrawer {
         }
     }
 
-    pub fn show(&self, entry: FileEntry) {
-        self.state.show(entry);
+    pub fn show(&self, entry: FileEntry, depth: Option<usize>) {
+        self.state.show(entry, depth);
     }
 
     pub fn close(&self) {
         self.state.close();
     }
 
-    pub fn toggle(&self, entry: Option<FileEntry>) {
+    pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         if self.is_open() {
             self.close();
         } else if let Some(entry) = entry {
-            self.show(entry);
+            self.show(entry, depth);
         }
     }
 
@@ -414,8 +450,15 @@ impl PreviewDrawer {
     }
 }
 
+impl Drop for PreviewState {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 impl PreviewState {
-    fn show(self: &Rc<Self>, entry: FileEntry) {
+    fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
+        self.current_depth.set(depth);
         let was_open = self.opened.replace(true);
         let already_showing = self.current.borrow().as_ref() == Some(&entry);
         if !was_open {
@@ -453,11 +496,10 @@ impl PreviewState {
         }
 
         let started = Instant::now();
-        let split = split.clone();
         let pane = self.pane.clone();
         let generation = self.animation_generation.clone();
         let weak = Rc::downgrade(self);
-        let _tick = split.clone().add_tick_callback(move |_, _| {
+        let _tick = split.add_tick_callback(move |split, _| {
             if generation.get() != animation_id {
                 return glib::ControlFlow::Break;
             }
@@ -491,16 +533,22 @@ impl PreviewState {
         desired_width.clamp(MIN_WIDTH, maximum_width)
     }
 
-    fn close(self: &Rc<Self>) {
+    fn stop(&self) {
         self.opened.set(false);
         self.animating.set(false);
         self.animation_generation
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
+        self.current_depth.set(None);
         self.load.borrow_mut().take();
         self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
         self.cancel_print();
+        self.stop_media();
+    }
+
+    fn close(self: &Rc<Self>) {
+        self.stop();
         self.clear_content();
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
@@ -661,6 +709,7 @@ impl PreviewState {
                 entry,
                 text_byte_limit: PRINT_TEXT_BYTE_LIMIT,
                 pdf_page,
+                media_size: self.media_preview_size(),
             },
             emit,
         );
@@ -731,6 +780,38 @@ impl PreviewState {
         }
     }
 
+    fn media_preview_size(&self) -> MediaPreviewSize {
+        let split = self.split.borrow();
+        let width = split
+            .as_ref()
+            .filter(|split| split.width() > 0)
+            .map(|split| {
+                if self.animating.get() {
+                    self.opening_width(split.width())
+                } else {
+                    split.width().saturating_sub(split.position())
+                }
+            })
+            .filter(|width| *width > 0)
+            .unwrap_or_else(|| {
+                if self.content.width() > 0 {
+                    self.content.width()
+                } else {
+                    DEFAULT_WIDTH
+                }
+            });
+        let height = if self.content.height() > 0 {
+            self.content.height()
+        } else {
+            split
+                .as_ref()
+                .map(|split| split.height())
+                .filter(|height| *height > 0)
+                .unwrap_or(DEFAULT_WIDTH)
+        };
+        MediaPreviewSize::for_viewport(width, height, self.pane.scale_factor())
+    }
+
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
         self.current.replace(Some(entry.clone()));
         crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
@@ -761,6 +842,7 @@ impl PreviewState {
                 entry,
                 text_byte_limit: TEXT_BYTE_LIMIT,
                 pdf_page,
+                media_size: self.media_preview_size(),
             },
             emit,
         );
@@ -853,12 +935,10 @@ impl PreviewState {
                     Err(error) => self.show_message("Preview unavailable", &error.to_string()),
                 }
             }
-            PreviewContent::SandboxedMedia { data } => {
-                let bytes = glib::Bytes::from_owned(data);
-                let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                let media = gtk::MediaFile::for_input_stream(&stream);
+            PreviewContent::SandboxedMedia { media: source } => {
+                let media = super::media::DecodedMedia::new(source).upcast::<gtk::MediaStream>();
                 let is_gif = preview.content_type == "image/gif";
-                self.media.replace(Some(media.clone().upcast()));
+                self.media.replace(Some(media.clone()));
                 let weak = Rc::downgrade(self);
                 media.connect_error_notify(move |media| {
                     let Some(error) = media.error() else {
@@ -935,7 +1015,7 @@ impl PreviewState {
         }
     }
 
-    fn build_media_view(self: &Rc<Self>, media: &gtk::MediaFile) -> (gtk::Overlay, gtk::Button) {
+    fn build_media_view(self: &Rc<Self>, media: &gtk::MediaStream) -> (gtk::Overlay, gtk::Button) {
         let picture = gtk::Picture::for_paintable(media);
         picture.add_css_class("preview-media");
         picture.set_content_fit(gtk::ContentFit::Contain);
@@ -943,6 +1023,22 @@ impl PreviewState {
         picture.set_vexpand(true);
         picture.set_cursor_from_name(Some("grab"));
         install_preview_drag(&picture, self);
+        let weak_state = Rc::downgrade(self);
+        let weak_media = media.downgrade();
+        picture.add_tick_callback(move |_, _| {
+            let Some(state) = weak_state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let Some(media) = weak_media.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if !state.animating.get()
+                && let Some(media) = media.downcast_ref::<super::media::DecodedMedia>()
+            {
+                media.resize(state.media_preview_size());
+            }
+            glib::ControlFlow::Continue
+        });
 
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&picture));
@@ -1026,6 +1122,7 @@ impl PreviewState {
 
         let provider = self.provider.clone();
         let loads = self.pdf_loads.clone();
+        let render_size = self.media_preview_size();
         let initial_page = Rc::new(RefCell::new(Some((initial_page, initial_png))));
         let next_request = Rc::new(Cell::new(self.next_request.get().saturating_add(10_000)));
         let entry_for_bind = entry.clone();
@@ -1122,6 +1219,7 @@ impl PreviewState {
                     entry: entry_for_bind.clone(),
                     text_byte_limit: TEXT_BYTE_LIMIT,
                     pdf_page: page_index,
+                    media_size: render_size,
                 },
                 emit,
             );
@@ -1253,7 +1351,7 @@ impl PreviewState {
 
     fn append_media_controls(
         self: &Rc<Self>,
-        media: &gtk::MediaFile,
+        media: &gtk::MediaStream,
         preferences: &Rc<super::theme::ThemeManager>,
         _video_area: &gtk::Widget,
         center_play: &gtk::Button,
@@ -1349,6 +1447,16 @@ impl PreviewState {
         bar.append(&seek);
         bar.append(&volume_toggle);
         bar.append(&volume_slider);
+        preferences.bind_interface_scale(&bar, |widget, scale| {
+            widget
+                .downcast_ref::<gtk::Box>()
+                .expect("media controls")
+                .set_orientation(if scale > 1.5 {
+                    gtk::Orientation::Vertical
+                } else {
+                    gtk::Orientation::Horizontal
+                });
+        });
         self.content.append(&bar);
 
         self.media_volume_slider
@@ -1442,16 +1550,20 @@ impl PreviewState {
         });
     }
 
-    fn clear_content(&self) {
+    fn stop_media(&self) {
         if let Some(stream) = self.media.borrow_mut().take() {
             for handler in self.media_signals.borrow_mut().drain(..) {
                 stream.disconnect(handler);
             }
             stream.set_playing(false);
-            if let Some(media_file) = stream.downcast_ref::<gtk::MediaFile>() {
-                media_file.clear();
+            if let Some(media) = stream.downcast_ref::<super::media::DecodedMedia>() {
+                media.close();
             }
         }
+    }
+
+    fn clear_content(&self) {
+        self.stop_media();
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);

@@ -20,17 +20,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Format, lint, and test
+  quality-build:
+    name: Quality build and lint
     runs-on: blacksmith-4vcpu-ubuntu-2404
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     timeout-minutes: 20
+    outputs:
+      environment_image: ${{ steps.environment.outputs.environment_image }}
+      candidate: ${{ steps.environment.outputs.candidate }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Set up image inspection
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -55,6 +58,7 @@ jobs:
             fi
             echo 'Environment inputs changed: explicitly building this unpublished candidate without publishing it.'
             reference="environment_image=$(python3 scripts/e2e_base.py build --engine docker)"
+            echo 'candidate=true' >> "$GITHUB_OUTPUT"
           fi
           printf '%s\n' "$reference" >> "$GITHUB_OUTPUT"
           echo "inputs=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
@@ -81,12 +85,46 @@ jobs:
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: ./scripts/quality.sh clippy
 
-      - name: Run tests on a private display
+      - name: Compile all test targets once and plan four shards
         env:
           STRATA_CONTAINER_ENGINE: docker
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
-          STRATA_REQUIRE_DEVICE_TESTS: "1"
+          STRATA_QUALITY_TASK: build
         run: ./scripts/quality.sh test
+
+      - name: Share test binaries and inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-bundle-${{ github.run_attempt }}
+          path: target/quality-bundle
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Share the small quality plan separately
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-plan-${{ github.run_attempt }}
+          path: target/quality-bundle/plan.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Export an unpublished candidate environment for the shards
+        if: steps.environment.outputs.candidate == 'true'
+        env:
+          IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: |
+          mkdir -p target/quality-environment
+          docker save "$IMAGE" | zstd -T0 -1 > target/quality-environment/image.tar.zst
+
+      - name: Share the unpublished environment without publishing it
+        if: steps.environment.outputs.candidate == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-environment-${{ github.run_attempt }}
+          path: target/quality-environment/image.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Save trusted quality cache
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -96,6 +134,91 @@ jobs:
             target/quality-container/cargo
             target/quality-container/build
           key: strata-quality-v1-${{ steps.environment.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.sha }}
+
+  quality-shard:
+    name: Rust tests shard ${{ matrix.shard }}
+    needs: quality-build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull the exact published environment
+        if: needs.quality-build.outputs.candidate != 'true'
+        env:
+          IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+        run: docker pull --platform=linux/amd64 "$IMAGE"
+
+      - name: Download an unpublished candidate environment
+        if: needs.quality-build.outputs.candidate == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-environment-${{ github.run_attempt }}
+          path: target/quality-environment
+
+      - name: Load the unpublished candidate
+        if: needs.quality-build.outputs.candidate == 'true'
+        run: zstd -dc target/quality-environment/image.tar.zst | docker load
+
+      - name: Download this attempt's test binaries and plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-bundle-${{ github.run_attempt }}
+          path: target/quality-bundle
+
+      - name: Run assigned tests on a private display and bus without compiling
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+          STRATA_QUALITY_TASK: shard
+          STRATA_QUALITY_SHARD: ${{ matrix.shard }}
+        run: ./scripts/quality.sh test
+
+      - name: Share quality reports and logs even on failure
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-report-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: target/quality-reports
+          if-no-files-found: error
+          retention-days: 7
+
+  quality:
+    name: Format, lint, and test
+    needs: [quality-build, quality-shard]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require successful compilation, lint, and every shard
+        env:
+          BUILD_RESULT: ${{ needs.quality-build.result }}
+          SHARD_RESULT: ${{ needs.quality-shard.result }}
+        run: test "$BUILD_RESULT" = success && test "$SHARD_RESULT" = success
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the quality plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-plan-${{ github.run_attempt }}
+          path: target/quality-bundle
+
+      - name: Download all quality reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: quality-report-${{ github.run_attempt }}-*
+          path: target/quality-reports
+          merge-multiple: true
+
+      - name: Verify exact Rust test coverage
+        run: python3 scripts/quality_ci.py verify
 
   e2e-build:
     name: E2E build and plan

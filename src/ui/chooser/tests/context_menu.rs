@@ -105,6 +105,121 @@ fn edit_name(state: &ChooserState, name: &str) {
 }
 
 #[test]
+fn chooser_routes_menu_shortcuts_and_preserves_completion_on_escape() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::context_menu::chooser_routes_menu_shortcuts_and_preserves_completion_on_escape",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                ThemeManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                std::fs::write(root.path().join("note.txt"), "notes").expect("file");
+                std::fs::write(root.path().join("peer.txt"), "peer").expect("file");
+                let state = build_chooser(
+                    ChooserRequest {
+                        token: format!("keyboard-menu-{mode:?}"),
+                        title: "Keyboard menu".into(),
+                        accept_label: "Open".into(),
+                        modal: false,
+                        parent: None,
+                        parent_size_hint: None,
+                        initial_directory: root.path().into(),
+                        kind: ChooserKind::Open {
+                            directory: false,
+                            multiple: true,
+                        },
+                        filters: vec![],
+                        current_filter: None,
+                        choices: vec![],
+                    },
+                    Arc::new(AtomicBool::new(false)),
+                    |_| {},
+                )
+                .expect("chooser");
+                let browser = state.view.browser();
+                wait_until(|| browser.entry_at(0, 1).is_some());
+                browser.select(0, 0);
+                browser.focus_active();
+                wait_until(|| state.view.item_view_has_focus());
+                let controllers = state.window.observe_controllers();
+                let keys = (0..controllers.n_items())
+                    .filter_map(|index| {
+                        controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                    })
+                    .find(|keys| keys.propagation_phase() == gtk::PropagationPhase::Capture)
+                    .expect("chooser keys");
+                for (key, modifiers) in [
+                    (gtk::gdk::Key::Menu, gtk::gdk::ModifierType::empty()),
+                    (gtk::gdk::Key::F10, gtk::gdk::ModifierType::SHIFT_MASK),
+                ] {
+                    assert!(keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]));
+                    wait_until(|| {
+                        find_class(state.window.upcast_ref(), "chooser-context-menu").is_some()
+                    });
+                    let buttons = menu_buttons(&state);
+                    assert!(buttons.iter().any(|button| button.is_sensitive()));
+                    assert!(!keys.emit_by_name::<bool>(
+                        "key-pressed",
+                        &[
+                            &gtk::gdk::Key::Escape,
+                            &0u32,
+                            &gtk::gdk::ModifierType::empty(),
+                        ]
+                    ));
+                    let popup = buttons[0]
+                        .ancestor(gtk::Popover::static_type())
+                        .and_downcast::<gtk::Popover>()
+                        .expect("popover");
+                    popup.popdown();
+                    wait_until(|| popup.parent().is_none());
+                    assert!(state.completion.borrow().is_some());
+                    assert_eq!(browser.selected_entries()[0].display_name, "note.txt");
+                }
+                browser.set_selection(0, &[0, 1], Some(0));
+                browser.focus_active();
+                wait_until(|| state.view.item_view_has_focus());
+                let origin = focused(&state);
+                assert!(keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[
+                        &gtk::gdk::Key::Return,
+                        &0u32,
+                        &gtk::gdk::ModifierType::ALT_MASK,
+                    ]
+                ));
+                wait_until(|| visible_modal_layer(&state.window).is_some());
+                find_class(state.window.upcast_ref(), "action-dialog-close")
+                    .and_downcast::<gtk::Button>()
+                    .expect("Properties close button")
+                    .emit_clicked();
+                wait_until(|| visible_modal_layer(&state.window).is_none());
+                assert_eq!(
+                    focused(&state),
+                    origin,
+                    "Properties must restore chooser focus"
+                );
+                assert_eq!(browser.selected_positions(0), [0, 1]);
+                assert!(state.completion.borrow().is_some());
+
+                assert!(state.view.show_filter());
+                assert!(!keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[
+                        &gtk::gdk::Key::Menu,
+                        &0u32,
+                        &gtk::gdk::ModifierType::empty(),
+                    ]
+                ));
+                assert!(find_class(state.window.upcast_ref(), "chooser-context-menu").is_none());
+                state.cancel();
+            }
+        },
+    );
+}
+
+#[test]
 #[ignore = "requires X11, xdotool, and isolated XDG directories; run this test alone"]
 fn chooser_context_menus_and_rename_work_in_every_view() {
     gtk::init().expect("GTK display");

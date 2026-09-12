@@ -8,11 +8,22 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::services::MediaPreviewSize;
+
+const MEDIA_PREVIEW: super::ParseOperation =
+    super::ParseOperation::PreviewMedia(MediaPreviewSize {
+        width: 640,
+        height: 800,
+    });
+const PDF_PREVIEW: super::ParseOperation = super::ParseOperation::PreviewPdf(PdfRenderSize {
+    width: 640,
+    height: 800,
+});
+
 use super::{
-    Cancellation, MAX_RASTER_INPUT_BYTES, MEDIA_WALL_TIME_LIMIT, MediaPreviewBackend,
-    ParseOperation, PrivateOutput, WALL_TIME_LIMIT, gpu_devices, parse, polaris_gpu_available_at,
-    resolve_renderer_executable, sandbox_command, sandbox_input_path, spawn_renderer, valid_output,
-    wait_for_renderer, wait_for_renderer_output,
+    Cancellation, MAX_RASTER_INPUT_BYTES, MediaPreviewBackend, ParseOperation, PdfRenderSize,
+    PrivateOutput, gpu_devices, parse, polaris_gpu_available_at, resolve_renderer_executable,
+    sandbox_command, sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
 };
 
 #[test]
@@ -139,7 +150,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Downloads/untrusted.pdf"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewPdf,
+        PDF_PREVIEW,
         2,
         MediaPreviewBackend::Software,
         &[],
@@ -159,6 +170,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
     assert!(joined.contains("--fsize=536870912"));
     assert!(joined.contains("--setenv MALLOC_ARENA_MAX 1"));
     assert!(joined.contains("--size 536870912 --tmpfs /tmp"));
+    assert!(joined.contains("preview-pdf /input.pdf /output/result.png 2:640x800 software"));
     // RLIMIT_NPROC counts every process owned by the host user, not just the
     // sandbox, and can prevent legitimate media decoders from starting.
     assert!(!joined.contains("--nproc"));
@@ -168,7 +180,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 
 #[test]
 fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits() {
-    let operation = ParseOperation::PreviewMedia;
+    let operation = MEDIA_PREVIEW;
     let command = sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
@@ -179,8 +191,6 @@ fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits()
         &[],
     );
 
-    assert_eq!(operation.wall_time_limit(), MEDIA_WALL_TIME_LIMIT);
-    assert!(MEDIA_WALL_TIME_LIMIT > WALL_TIME_LIMIT);
     let joined = command
         .get_args()
         .map(|argument| argument.to_string_lossy())
@@ -277,7 +287,7 @@ fn every_polaris_range_uses_the_safe_default_but_remains_available_for_opt_in() 
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewMedia,
+        MEDIA_PREVIEW,
         0,
         MediaPreviewBackend::Automatic,
         &devices,
@@ -356,7 +366,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewMedia,
+        MEDIA_PREVIEW,
         0,
         MediaPreviewBackend::Automatic,
         &devices,
@@ -383,7 +393,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewMedia,
+        MEDIA_PREVIEW,
         0,
         MediaPreviewBackend::Software,
         &["/dev/dri/renderD128".into(), "/dev/nvidia0".into()],
@@ -396,7 +406,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
 
     assert!(!joined.contains("--dev-bind-try"));
     assert!(!joined.contains("/sys"));
-    assert!(joined.ends_with("0 software"));
+    assert!(joined.ends_with("640x800 software"));
 }
 
 #[test]
@@ -454,34 +464,23 @@ fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
 }
 
 #[test]
-fn accepts_only_bounded_png_webm_or_mp4_outputs() {
+fn accepts_only_bounded_png_outputs_and_never_compressed_media() {
     assert!(valid_output(ParseOperation::ThumbnailImage, &png(256, 256)));
     assert!(!valid_output(ParseOperation::ThumbnailImage, &png(257, 1)));
     assert!(valid_output(ParseOperation::PreviewImage, &png(800, 800)));
     assert!(!valid_output(ParseOperation::PreviewImage, &png(801, 1)));
-    assert!(valid_output(ParseOperation::PreviewPdf, &png(1_400, 1_785)));
-    assert!(!valid_output(
-        ParseOperation::PreviewPdf,
-        &png(1_400, 1_800)
-    ));
-    assert!(!valid_output(ParseOperation::PreviewPdf, &png(0, 100)));
+    assert!(valid_output(PDF_PREVIEW, &png(640, 800)));
+    assert!(!valid_output(PDF_PREVIEW, &png(641, 799)));
+    assert!(!valid_output(PDF_PREVIEW, &png(640, 801)));
+    assert!(!valid_output(PDF_PREVIEW, &png(0, 100)));
     assert!(!valid_output(
         ParseOperation::PreviewImage,
         b"\x89PNG\r\n\x1a\n"
     ));
-    assert!(valid_output(
-        ParseOperation::PreviewMedia,
-        b"\x1a\x45\xdf\xa3content"
-    ));
-    assert!(valid_output(
-        ParseOperation::PreviewMedia,
-        b"\0\0\0\x18ftypisom"
-    ));
-    assert!(!valid_output(ParseOperation::PreviewMedia, b""));
-    assert!(!valid_output(
-        ParseOperation::PreviewMedia,
-        b"unrelated data"
-    ));
+    assert!(!valid_output(MEDIA_PREVIEW, b"\x1a\x45\xdf\xa3content"));
+    assert!(!valid_output(MEDIA_PREVIEW, b"\0\0\0\x18ftypisom"));
+    assert!(!valid_output(MEDIA_PREVIEW, b""));
+    assert!(!valid_output(MEDIA_PREVIEW, b"unrelated data"));
 }
 
 #[test]
@@ -595,37 +594,6 @@ fn running_thumbnail_process_trees_are_stopped_on_timeout_and_cancellation() {
     assert_eq!(error, "Preview cancelled");
     assert!(cancelled.try_wait().expect("inspect renderer").is_some());
     assert_process_marker_stopped(&cancellation_marker);
-}
-
-#[test]
-fn streamed_media_output_is_bounded_before_it_reaches_the_application() {
-    let mut exact_command = Command::new("sh");
-    exact_command.args(["-c", "printf 1234"]);
-    exact_command.stdout(std::process::Stdio::piped());
-    let mut exact = spawn_renderer(&mut exact_command).expect("start exact renderer");
-    let (status, output) = wait_for_renderer_output(
-        &mut exact,
-        &Cancellation::default(),
-        Duration::from_secs(1),
-        4,
-    )
-    .expect("read output at limit");
-    assert!(status.success());
-    assert_eq!(output, b"1234");
-
-    let mut oversized_command = Command::new("sh");
-    oversized_command.args(["-c", "head -c 1025 /dev/zero"]);
-    oversized_command.stdout(std::process::Stdio::piped());
-    let mut oversized = spawn_renderer(&mut oversized_command).expect("start oversized renderer");
-    let error = wait_for_renderer_output(
-        &mut oversized,
-        &Cancellation::default(),
-        Duration::from_secs(1),
-        1_024,
-    )
-    .expect_err("reject oversized output");
-    assert_eq!(error, "Preview provider output exceeded its limit");
-    assert!(oversized.try_wait().expect("inspect renderer").is_some());
 }
 
 fn process_tree_command(marker: &Path) -> Command {

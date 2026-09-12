@@ -43,6 +43,7 @@ impl Header {
             .build();
         sidebar_toggle.set_child(Some(&assets::primary_icon(icons::PANEL_LEFT, 17)));
         sidebar_toggle.add_css_class("sidebar-toggle");
+        sidebar_toggle.set_cursor_from_name(Some("pointer"));
         let location = browser.location_widget();
         location.set_hexpand(true);
         let search = header_action(icons::SEARCH, "Search (Ctrl+K)");
@@ -78,6 +79,7 @@ fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::builder().tooltip_text(tooltip).build();
     button.set_child(Some(&assets::chrome_icon(icon)));
     button.add_css_class("header-action");
+    button.set_cursor_from_name(Some("pointer"));
     button
 }
 
@@ -150,7 +152,9 @@ fn browser_split(
     toggle: &gtk::ToggleButton,
 ) -> gtk::Paned {
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-    content.set_wide_handle(false);
+    content.add_css_class("sidebar-split");
+    // Wide handles keep GTK's mouse hit area inside the divider allocation.
+    content.set_wide_handle(true);
     content.set_shrink_start_child(false);
     content.set_resize_start_child(false);
     content.set_position(SIDEBAR_WIDTH);
@@ -160,6 +164,7 @@ fn browser_split(
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
     bind_sidebar_toggle(&content, &sidebar.widget, toggle);
+    super::super::bind_sidebar_text_size(&content);
     content
 }
 

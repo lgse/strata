@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    path::{Path, PathBuf},
     process::Command,
     time::{Duration, Instant},
 };
@@ -9,121 +8,10 @@ use std::{
 use gdk_pixbuf::prelude::*;
 
 use super::{
-    MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
-    render_simple_dcraw, run, run_media_backends, scale_embedded_thumbnail,
+    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, pdf_render_request,
+    read_limited, render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
+    scale_embedded_thumbnail,
 };
-use crate::sandbox::MediaPreviewBackend;
-
-fn arguments(backend: &MediaBackend) -> String {
-    media_command(backend, Path::new("/input"))
-        .get_args()
-        .map(|argument| argument.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-#[test]
-fn media_backends_are_deterministic_and_ordered() {
-    let devices = [
-        PathBuf::from("/dev/nvidiactl"),
-        PathBuf::from("/dev/dri/renderD129"),
-        PathBuf::from("/dev/nvidia0"),
-        PathBuf::from("/dev/dri/renderD128"),
-    ];
-
-    assert_eq!(
-        media_backends(&devices, MediaPreviewBackend::Automatic),
-        [
-            MediaBackend::VaApi("/dev/dri/renderD128".into()),
-            MediaBackend::VaApi("/dev/dri/renderD129".into()),
-            MediaBackend::Vulkan(0),
-            MediaBackend::Vulkan(1),
-            MediaBackend::Software,
-        ]
-    );
-    assert_eq!(
-        media_backends(&devices, MediaPreviewBackend::VaApi),
-        [
-            MediaBackend::VaApi("/dev/dri/renderD128".into()),
-            MediaBackend::VaApi("/dev/dri/renderD129".into()),
-            MediaBackend::Software,
-        ]
-    );
-    assert_eq!(
-        media_backends(&devices, MediaPreviewBackend::Vulkan),
-        [
-            MediaBackend::Vulkan(0),
-            MediaBackend::Vulkan(1),
-            MediaBackend::Software,
-        ]
-    );
-    assert_eq!(
-        media_backends(&devices, MediaPreviewBackend::Software),
-        [MediaBackend::Software]
-    );
-    assert_eq!(
-        media_backends(
-            &["/dev/nvidia0".into(), "/dev/nvidiactl".into()],
-            MediaPreviewBackend::Automatic,
-        ),
-        [MediaBackend::Vulkan(0), MediaBackend::Software]
-    );
-}
-
-#[test]
-fn hardware_failures_fall_back_and_first_success_stops() {
-    let backends = [
-        MediaBackend::VaApi("/dev/dri/renderD128".into()),
-        MediaBackend::Vulkan(0),
-        MediaBackend::Software,
-    ];
-    let mut attempts = Vec::new();
-    let result = run_media_backends(&backends, |backend| {
-        attempts.push(backend.clone());
-        match backend {
-            MediaBackend::VaApi(_) => Err(()),
-            MediaBackend::Vulkan(_) => Ok(None),
-            MediaBackend::Software => Ok(Some("software")),
-        }
-    });
-
-    assert_eq!(result, Ok("software"));
-    assert_eq!(attempts, backends);
-
-    attempts.clear();
-    let result = run_media_backends(&backends, |backend| {
-        attempts.push(backend.clone());
-        Ok::<_, ()>(matches!(backend, MediaBackend::Vulkan(_)).then_some("vulkan"))
-    });
-    assert_eq!(result, Ok("vulkan"));
-    assert_eq!(attempts, &backends[..2]);
-}
-
-#[test]
-fn final_software_failure_returns_the_normalization_error() {
-    assert_eq!(
-        run_media_backends(&[MediaBackend::Software], |_| Ok::<Option<()>, ()>(None)),
-        Err("Unable to normalize media preview".to_owned())
-    );
-}
-
-#[test]
-fn forced_backend_failure_goes_directly_to_software() {
-    for backends in [
-        media_backends(&["/dev/dri/renderD128".into()], MediaPreviewBackend::VaApi),
-        media_backends(&["/dev/dri/renderD128".into()], MediaPreviewBackend::Vulkan),
-    ] {
-        let mut attempts = Vec::new();
-        run_media_backends(&backends, |backend| {
-            attempts.push(backend.clone());
-            Ok::<_, ()>((*backend == MediaBackend::Software).then_some(()))
-        })
-        .expect("software fallback should succeed");
-        assert_eq!(attempts, backends);
-        assert_eq!(attempts.len(), 2);
-    }
-}
 
 #[test]
 fn timed_bounded_commands_stop_and_report_failure_at_their_deadline() {
@@ -152,6 +40,22 @@ fn timed_bounded_commands_stop_and_report_failure_at_their_deadline() {
         Duration::from_secs(1),
     );
     assert!(oversized.is_err());
+}
+
+#[test]
+fn pdf_preview_requests_carry_a_bounded_page_and_viewport() {
+    assert_eq!(
+        pdf_render_request("12:640x800"),
+        Ok((12, crate::sandbox::PdfRenderSize::new(640, 800)))
+    );
+    assert_eq!(
+        pdf_render_request("0:99999x1"),
+        Ok((0, crate::sandbox::PdfRenderSize::new(99999, 1)))
+    );
+    assert!(pdf_render_request("12").is_err());
+    assert!(pdf_render_request("12:0").is_err());
+    assert!(pdf_render_request("page:640x800").is_err());
+    assert!(pdf_render_request("12:wide").is_err());
 }
 
 #[test]
@@ -201,56 +105,6 @@ fn file_reads_stop_before_exceeding_the_output_limit() {
 
     std::fs::write(&path, vec![0_u8; 1025]).expect("write oversized");
     assert!(read_limited(std::fs::File::open(&path).expect("open oversized"), 1024).is_err());
-}
-
-#[test]
-fn media_commands_select_the_backend_and_preserve_limits() {
-    for backend in [
-        MediaBackend::VaApi("/dev/dri/renderD129".into()),
-        MediaBackend::Vulkan(1),
-    ] {
-        assert!(
-            media_command(&backend, Path::new("/input"))
-                .get_envs()
-                .any(|(name, value)| name == "MALLOC_ARENA_MAX" && value == Some("1".as_ref()))
-        );
-    }
-
-    let vaapi = arguments(&MediaBackend::VaApi("/dev/dri/renderD129".into()));
-    assert!(vaapi.contains("-threads 1 -filter_threads 1"));
-    assert!(vaapi.contains("-hwaccel vaapi -hwaccel_device /dev/dri/renderD129"));
-    assert!(vaapi.contains("-hwaccel_output_format vaapi"));
-    assert!(
-        vaapi.contains(
-            "-vf scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12 -c:v h264_vaapi"
-        )
-    );
-    assert!(vaapi.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
-
-    let vulkan = arguments(&MediaBackend::Vulkan(1));
-    assert!(vulkan.contains("-threads 1 -filter_threads 1"));
-    assert!(vulkan.contains("-init_hw_device vulkan=vk:1 -filter_hw_device vk"));
-    assert!(vulkan.contains("-hwaccel vulkan -hwaccel_device vk"));
-    assert!(vulkan.contains(
-        "-vf scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12 -c:v h264_vulkan"
-    ));
-    assert!(vulkan.contains("-usage transcode -tune ull"));
-    assert!(vulkan.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
-
-    let software = arguments(&MediaBackend::Software);
-    assert!(software.contains(
-        "-vf scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p -c:v libvpx -auto-alt-ref 0"
-    ));
-    assert!(software.contains("-threads 2 -deadline realtime -cpu-used 8"));
-    assert!(software.contains("-c:a libopus -b:a 96k -f webm"));
-
-    for command in [vaapi, vulkan, software] {
-        assert!(command.contains("-max_alloc 536870912 -max_pixels 50000000"));
-        assert!(command.contains("-map 0:v:0 -map 0:a:0? -sn -dn -t 30"));
-        assert!(command.contains("-fpsmax 30"));
-        assert!(command.contains("-b:v 2M -maxrate 3M -bufsize 4M"));
-        assert!(command.ends_with("pipe:1"));
-    }
 }
 
 #[test]
@@ -332,7 +186,7 @@ fn thumbnail_raw_uses_embedded_preview_fallbacks() {
     ]);
 
     match thumbnail {
-        Ok(_) => helper.expect("thumbnail-raw should use RAW fallbacks"),
+        Ok(_) => helper.expect("thumbnail-raw should use embedded preview fallbacks"),
         Err(thumbnail) => {
             assert_ne!(pixbuf, thumbnail);
             assert_eq!(

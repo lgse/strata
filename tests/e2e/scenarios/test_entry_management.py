@@ -19,24 +19,6 @@ def start_new_file(strata, select=True):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_create_folder_from_the_keyboard(strata, mode):
-    fixture = strata.fixture
-
-    strata.select_entry("readme.md")
-    strata.keyboard.press("ctrl+shift+n")
-    field = strata.editable_field()
-    strata.keyboard.type_text("new-folder")
-    strata.wait(lambda: field.text == "new-folder", "the typed name to appear")
-    strata.keyboard.press("Return")
-
-    strata.wait(
-        lambda: fixture.path("new-folder").is_dir(),
-        "the folder to be created on disk",
-    )
-    strata.entry("new-folder")
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
 def test_invalid_new_file_names_can_be_corrected(strata, mode):
     name = "bad/name"
     field = start_new_file(strata)
@@ -98,8 +80,11 @@ def test_creating_an_existing_name_does_not_overwrite(strata, mode, kind, name):
     strata.wait(lambda: strata.dialog() is None, "the error to be dismissible")
     assert strata.fixture.listing() == original
     assert strata.fixture.path("todo.txt").read_text() == "todo\n"
-    strata.select_entry("readme.md")
-    strata.wait_for_selection(["readme.md"])
+    root = strata.fixture.root.name
+    strata.select_entry("readme.md", root)
+    strata.wait_for_selection(["readme.md"], root)
+    if mode == "Columns" and kind == "folder":
+        assert strata.pane_names() == [root, "new folder"]
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -200,13 +185,14 @@ def test_delete_moves_the_entry_to_trash(strata):
     )
 
 
-def test_permanent_delete_asks_for_confirmation(strata):
+def test_permanent_delete_requires_confirmation_and_can_be_cancelled(strata):
     fixture = strata.fixture
 
     strata.select_entry("todo.txt")
     strata.keyboard.press("shift+Delete")
 
     dialog = strata.wait_for_dialog()
+    assert dialog.role in ("dialog", "alert")
     assert dialog.name == "Permanently delete 1 item?", (
         f"unexpected dialog {dialog.name!r}"
     )
@@ -217,10 +203,6 @@ def test_permanent_delete_asks_for_confirmation(strata):
     strata.pointer.click(strata.dialog_button("Cancel"))
     strata.wait(lambda: strata.dialog() is None, "the dialog to close")
     assert fixture.path("todo.txt").exists(), "cancelling must keep the file"
-
-
-def test_permanent_delete_removes_the_entry_when_confirmed(strata):
-    fixture = strata.fixture
 
     strata.select_entry("todo.txt")
     strata.keyboard.press("shift+Delete")

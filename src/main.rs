@@ -4,6 +4,7 @@ mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod media;
 mod metrics;
 mod model;
 mod portal;

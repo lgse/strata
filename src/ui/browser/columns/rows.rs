@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    BoundRow, PendingPointerActivation, column_size_text, set_active_path_style,
-    set_cut_path_style, should_activate_single_click, should_preserve_drag_selection,
-    should_preview_pointer_press,
+    BoundRow, PendingActivationKind, PendingPointerActivation, column_size_text,
+    set_active_path_style, set_cut_path_style, should_activate_single_click,
+    should_preserve_drag_selection, should_preview_pointer_press,
 };
 use crate::ui::{
     browser::{
@@ -72,13 +72,6 @@ pub(super) fn column_rows(
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("file-row");
-        row.add_css_class("file-appear");
-        let weak_row = row.downgrade();
-        glib::idle_add_local_once(move || {
-            if let Some(row) = weak_row.upgrade() {
-                row.remove_css_class("file-appear");
-            }
-        });
         let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
         let drag_icon = icon.clone();
@@ -123,11 +116,13 @@ pub(super) fn column_rows(
         let size = gtk::Label::new(None);
         size.add_css_class("file-size");
         size.set_halign(gtk::Align::End);
-        size.set_valign(gtk::Align::Center);
+        size.set_valign(gtk::Align::Fill);
         size.set_xalign(1.0);
+        size.set_yalign(0.5);
         let middle = gtk::Overlay::new();
+        middle.add_css_class("file-row-content");
         middle.set_hexpand(true);
-        middle.set_valign(gtk::Align::Center);
+        middle.set_valign(gtk::Align::Fill);
         let path = gtk::Label::builder()
             .xalign(0.0)
             .wrap(true)
@@ -138,6 +133,7 @@ pub(super) fn column_rows(
             .build();
         path.add_css_class("file-search-path");
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        content.set_valign(gtk::Align::Center);
         content.append(&editor);
         content.append(&path);
         middle.set_child(Some(&content));
@@ -393,11 +389,11 @@ pub(super) fn column_rows(
                     selection_for_click.select_item(position, true);
                 }
             }
-            if (control || shift)
-                && let Some(widget) = gesture.widget()
-                && crate::ui::pointer::hits_item_content(&widget, x, y)
-            {
-                if let Some(item_widget) = widget.parent() {
+            if control || shift {
+                if let Some(widget) = gesture.widget()
+                    && crate::ui::pointer::hits_item_content(&widget, x, y)
+                    && let Some(item_widget) = widget.parent()
+                {
                     item_widget.grab_focus();
                 }
                 gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -411,41 +407,43 @@ pub(super) fn column_rows(
                     && !shift
                     && let Some(state) = weak_state_for_click.upgrade()
                 {
-                    let activated = if search_active_for_click.get() {
-                        if state.browser.is_chooser_mode() {
-                            search_results_for_click
-                                .borrow()
-                                .get(position as usize)
-                                .map(|item| {
-                                    if item.is_directory {
-                                        state.browser.navigate(crate::model::Location::local(
-                                            item.path.clone(),
-                                        ));
-                                    }
-                                    true
-                                })
-                                .unwrap_or(false)
-                        } else {
-                            activate_recursive_search_result(
-                                &Rc::downgrade(&state.browser),
-                                &search_results_for_click,
-                                position,
-                            )
-                        }
+                    let pending = if search_active_for_click.get() {
+                        search_results_for_click
+                            .borrow()
+                            .get(position as usize)
+                            .map(|item| {
+                                let kind = if state.browser.is_chooser_mode() {
+                                    PendingActivationKind::ChooserSearchNavigate
+                                } else {
+                                    PendingActivationKind::RecursiveSearch
+                                };
+                                (
+                                    position as usize,
+                                    crate::model::Location::local(item.path.clone()),
+                                    kind,
+                                )
+                            })
                     } else {
                         map_for_click
                             .source_position(position)
-                            .map(|source_position| {
+                            .and_then(|source_position| {
+                                let entry = state.browser.entry_at(depth, source_position)?;
                                 state.browser.select(depth, source_position);
-                                if !state.browser.is_chooser_mode() {
-                                    state.browser.activate_in_place(depth, source_position);
-                                }
-                                true
+                                Some((
+                                    source_position,
+                                    entry.location,
+                                    PendingActivationKind::Mapped,
+                                ))
                             })
-                            .is_some()
                     };
-                    if activated {
-                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                    if let Some((position, location, kind)) = pending {
+                        pending_activation_for_press.replace(Some(PendingPointerActivation {
+                            position,
+                            location,
+                            press: (x, y),
+                            moved: false,
+                            kind,
+                        }));
                     }
                 }
                 return;
@@ -482,7 +480,7 @@ pub(super) fn column_rows(
                             location: entry.location.clone(),
                             press: (x, y),
                             moved: false,
-                            preview,
+                            kind: PendingActivationKind::Standard { preview },
                         }));
                     }
                 }
@@ -498,6 +496,7 @@ pub(super) fn column_rows(
             }
         });
         let weak_state_for_release = weak_state.clone();
+        let search_results_for_release = search_results_for_factory.clone();
         selection_click.connect_released(move |gesture, _, x, y| {
             if gesture.current_event_state().intersects(
                 gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
@@ -514,20 +513,64 @@ pub(super) fn column_rows(
             let Some(state) = weak_state_for_release.upgrade() else {
                 return;
             };
-            if !state
-                .browser
-                .entry_at(depth, pending.position)
-                .is_some_and(|entry| pending.can_activate(&entry.location))
-            {
-                return;
-            }
             // GTK 4.14's DragSource needs the release to reset before the next press.
-            if pending.preview {
-                if state.single_click_previews.get() {
-                    state.browser.preview(depth, pending.position);
+            match pending.kind {
+                PendingActivationKind::Standard { preview } => {
+                    if !state
+                        .browser
+                        .entry_at(depth, pending.position)
+                        .is_some_and(|entry| pending.can_activate(&entry.location))
+                    {
+                        return;
+                    }
+                    if preview {
+                        if state.single_click_previews.get() {
+                            state.browser.preview(depth, pending.position);
+                        }
+                    } else {
+                        state.browser.activate(depth, pending.position);
+                    }
                 }
-            } else {
-                state.browser.activate(depth, pending.position);
+                PendingActivationKind::Mapped => {
+                    if !state
+                        .browser
+                        .entry_at(depth, pending.position)
+                        .is_some_and(|entry| pending.can_activate(&entry.location))
+                    {
+                        return;
+                    }
+                    if !state.browser.is_chooser_mode() {
+                        state.browser.activate_in_place(depth, pending.position);
+                    }
+                }
+                PendingActivationKind::ChooserSearchNavigate => {
+                    let Some(item) = search_results_for_release
+                        .borrow()
+                        .get(pending.position)
+                        .cloned()
+                    else {
+                        return;
+                    };
+                    let location = crate::model::Location::local(item.path.clone());
+                    if item.is_directory && pending.can_activate(&location) {
+                        state.browser.navigate(location);
+                    }
+                }
+                PendingActivationKind::RecursiveSearch => {
+                    let matches = search_results_for_release
+                        .borrow()
+                        .get(pending.position)
+                        .is_some_and(|item| {
+                            pending.can_activate(&crate::model::Location::local(item.path.clone()))
+                        });
+                    if matches {
+                        activate_recursive_search_result(
+                            &Rc::downgrade(&state.browser),
+                            &search_results_for_release,
+                            pending.position as u32,
+                        );
+                    }
+                }
             }
         });
         selection_click.connect_cancel(move |_, _| {
@@ -614,6 +657,11 @@ pub(super) fn column_rows(
         label.set_visible(true);
         spacer.set_visible(true);
         let searching = search_active_for_bind.get();
+        if searching {
+            row.add_css_class("filter-result");
+        } else {
+            row.remove_css_class("filter-result");
+        }
         let source_position = (!searching)
             .then(|| map_for_bind.source_position(item.position()))
             .flatten();

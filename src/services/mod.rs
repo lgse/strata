@@ -28,7 +28,8 @@ pub use operations::{
     validate_basename,
 };
 pub use preview::{
-    Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+    MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
+    PreviewRequestId, SandboxedMedia,
 };
 pub(crate) use preview::{
     content_family, has_plain_text_extension, is_extensionless_dotfile,
@@ -45,7 +46,8 @@ pub(crate) use transfer_action::{
 // reachable from UI code.
 pub(crate) use release_channel::{BuildKind, Channel, Version};
 pub(crate) use search::{
-    SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_filter, index_tree, index_trees,
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, fold_for_search, index_filter,
+    index_tree, index_trees,
 };
 pub(crate) use update_check::{
     ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,

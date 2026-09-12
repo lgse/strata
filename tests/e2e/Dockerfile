@@ -25,9 +25,11 @@ COPY tests/e2e/install-packages.sh /opt/e2e-install-packages.sh
 RUN --mount=type=bind,from=package-indexes,source=/var/lib/apt/lists,target=/opt/e2e-apt-lists \
     cp -a /opt/e2e-apt-lists/. /var/lib/apt/lists/ \
     && DEBIAN_FRONTEND=noninteractive sh /opt/e2e-install-packages.sh \
-    at-spi2-core bubblewrap ca-certificates dbus-bin dbus-daemon fonts-cantarell \
-    gir1.2-atspi-2.0 gir1.2-gtk-4.0 imagemagick libfontconfig1 libgtk-4-1 \
-    libgtksourceview-5-0 libpoppler-glib8 librsvg2-common python3-gi python3-venv \
+    at-spi2-core bubblewrap ca-certificates dbus-bin dbus-daemon ffmpeg fonts-cantarell \
+    gir1.2-atspi-2.0 gir1.2-gtk-4.0 gstreamer1.0-libav gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good imagemagick libfontconfig1 libgtk-4-1 \
+    libgtk-4-media-gstreamer libgtksourceview-5-0 libpoppler-glib8 librsvg2-common \
+    python3-gi python3-venv \
     xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 
@@ -49,7 +51,7 @@ RUN --mount=type=bind,from=package-indexes,source=/var/lib/apt/lists,target=/opt
     cp -a /opt/e2e-apt-lists/. /var/lib/apt/lists/ \
     && DEBIAN_FRONTEND=noninteractive sh /opt/e2e-install-packages.sh \
         build-essential libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev \
-        libpoppler-glib-dev pkg-config rustup \
+        libpoppler-glib-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev pkg-config rustup \
     && rm -rf /var/lib/apt/lists/*
 ENV RUSTUP_HOME=/opt/rustup RUSTUP_TOOLCHAIN=1.98.1
 RUN rustup toolchain install 1.98.1 --no-self-update --profile minimal --component clippy,rustfmt \

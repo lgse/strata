@@ -22,11 +22,14 @@ use super::{
     extraction::{ArchiveOutcome, ExtractionSession, MemberContent},
 };
 
+mod rar;
+pub(super) use rar::extract_rar;
+
 #[cfg(test)]
 mod tests;
 
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
-// Plain-header 7z cannot distinguish wrong passwords from content decode failures.
+// Plain-header 7z and ZipCrypto cannot distinguish a wrong password from a content checksum failure.
 const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
 
 pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
@@ -59,6 +62,21 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
     }
 }
 
+fn unrar_decode_error(error: unrar::error::UnrarError, password_supplied: bool) -> ArchiveError {
+    use unrar::error::Code;
+    match error.code {
+        Code::MissingPassword => archive_failed("A password is required to extract this archive."),
+        Code::BadPassword => archive_failed(MAYBE_BAD_PASSWORD),
+        Code::BadData if password_supplied => archive_failed(MAYBE_BAD_PASSWORD),
+        Code::BadArchive | Code::UnknownFormat | Code::BadData => archive_failed(INVALID_ARCHIVE),
+        Code::EOpen | Code::ERead | Code::EClose => archive_failed(archive_read_error(
+            std::io::Error::other(error.to_string()),
+            password_supplied,
+        )),
+        _ => archive_failed(error),
+    }
+}
+
 fn archive_read_error(error: std::io::Error, password_supplied: bool) -> std::io::Error {
     use std::io::ErrorKind;
     let checksum_failed = matches!(
@@ -70,7 +88,7 @@ fn archive_read_error(error: std::io::Error, password_supplied: bool) -> std::io
     if password_supplied
         && (matches!(
             error.kind(),
-            ErrorKind::InvalidData | ErrorKind::UnexpectedEof
+            ErrorKind::InvalidData | ErrorKind::UnexpectedEof | ErrorKind::InvalidInput
         ) || checksum_failed)
     {
         return std::io::Error::new(ErrorKind::InvalidData, MAYBE_BAD_PASSWORD);
@@ -146,6 +164,7 @@ pub(super) fn extract_zip_from_archive(
     if let Some(claimed) = archive.decompressed_size() {
         session.preflight_claimed_size(claimed)?;
     }
+    let password_supplied = password.is_some();
     let pw_bytes = password.map(str::as_bytes);
     let mut next_index = 0;
     let result = (|| {
@@ -161,7 +180,10 @@ pub(super) fn extract_zip_from_archive(
                 .ok_or_else(|| format!("Refusing unsafe ZIP path: {name}"))?;
             let declared_size = entry.size();
             let directory = entry.is_dir();
-            let mut reader = ArchiveReader::new(&mut entry);
+            let mut reader = ArchiveReader {
+                inner: &mut entry,
+                password_supplied,
+            };
             let content = if directory {
                 MemberContent::Directory
             } else {

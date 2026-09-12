@@ -12,14 +12,19 @@ use crate::{
 };
 
 impl ModeViews {
+    #[cfg(test)]
     pub fn handle(&mut self, event: &BrowserEvent) {
+        self.handle_with_deferred_empty(event, false);
+    }
+
+    pub(crate) fn handle_with_deferred_empty(&mut self, event: &BrowserEvent, defer_empty: bool) {
         if self.handle_structure_event(event) {
             return;
         }
-        if self.handle_rows_event(event) {
+        if self.handle_rows_event(event, defer_empty) {
             return;
         }
-        if self.handle_loading_event(event) {
+        if self.handle_loading_event(event, defer_empty) {
             return;
         }
         self.handle_selection_event(event);
@@ -27,11 +32,36 @@ impl ModeViews {
 
     fn handle_structure_event(&mut self, event: &BrowserEvent) -> bool {
         match event {
+            BrowserEvent::NavigationStarting => {
+                if self.mode == BrowserMode::List
+                    && let Some(pane) = self.list_pane.as_ref()
+                {
+                    self.list_navigation
+                        .borrow_mut()
+                        .capture(pane, &self.browser);
+                }
+            }
             BrowserEvent::Reset => {
                 self.clear_icons();
                 self.clear_list();
             }
             BrowserEvent::ColumnsTruncated { .. } => self.rebuild_active_mode(),
+            BrowserEvent::ColumnsRelocated { from_depth } => {
+                if let Some(depth) = self
+                    .browser
+                    .active_depth()
+                    .filter(|depth| depth >= from_depth)
+                {
+                    let refocus = self
+                        .panes_at(depth)
+                        .iter()
+                        .any(|pane| pane_holds_keyboard_focus(pane));
+                    self.rebuild_active_mode();
+                    if refocus {
+                        self.focus_visible_pane(depth);
+                    }
+                }
+            }
             BrowserEvent::ColumnAdded { depth, .. } => {
                 if self.browser.active_depth() == Some(*depth) {
                     self.rebuild_active_mode();
@@ -50,13 +80,15 @@ impl ModeViews {
         }
     }
 
-    fn handle_rows_event(&self, event: &BrowserEvent) -> bool {
+    fn handle_rows_event(&self, event: &BrowserEvent, defer_empty: bool) -> bool {
         match event {
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 self.update_panes(*depth, |pane| pane.insert_rows(insertions));
             }
             BrowserEvent::EntriesReplaced { depth, count } => {
-                self.update_panes(*depth, |pane| pane.replace_rows(&self.browser, *count));
+                self.update_panes(*depth, |pane| {
+                    pane.replace_rows(&self.browser, *count, defer_empty)
+                });
             }
             BrowserEvent::EntriesPublished {
                 depth,
@@ -68,7 +100,49 @@ impl ModeViews {
                 });
             }
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
-                self.update_panes(*depth, |pane| pane.splice_rows(splices));
+                let restore_cursor = self
+                    .panes_at(*depth)
+                    .iter()
+                    .any(|pane| pane_holds_keyboard_focus(pane));
+                let positions = self.browser.selected_positions(*depth);
+                self.update_panes(*depth, |pane| {
+                    pane.splice_rows(splices, defer_empty);
+                    set_selections(pane, &positions);
+                });
+                if restore_cursor && !positions.is_empty() && !self.rename_is_active() {
+                    let target = self.browser.focused_item().map(|(_, position, _)| position);
+                    let missing_cursor = !self.panes_at(*depth).iter().any(|pane| {
+                        pane.item_sections().iter().any(|section| {
+                            let Some(focused) = section.view.root().and_then(|root| root.focus())
+                            else {
+                                return false;
+                            };
+                            if self.mode == BrowserMode::Icons && focused.is_ancestor(&section.view)
+                            {
+                                return true;
+                            }
+                            section.bound_items.borrow().iter().any(|bound| {
+                                let Some(item) = bound.item.upgrade() else {
+                                    return false;
+                                };
+                                let source = item
+                                    .item()
+                                    .and_then(|item| pane.source_index.of_item(&item));
+                                source == target
+                                    && bound
+                                        .widget
+                                        .upgrade()
+                                        .and_then(|widget| widget.parent())
+                                        .as_ref()
+                                        == Some(&focused)
+                            })
+                        })
+                    });
+                    if missing_cursor {
+                        self.suppress_focus_scroll();
+                        self.focus_visible_pane(*depth);
+                    }
+                }
             }
             BrowserEvent::MetadataFilled { depth, updates } => {
                 if self.mode == BrowserMode::List {
@@ -80,7 +154,7 @@ impl ModeViews {
         true
     }
 
-    fn handle_loading_event(&self, event: &BrowserEvent) -> bool {
+    fn handle_loading_event(&self, event: &BrowserEvent, defer_empty: bool) -> bool {
         match event {
             BrowserEvent::SortingStarted { depth } => {
                 self.update_panes(*depth, Pane::start_sorting)
@@ -90,10 +164,24 @@ impl ModeViews {
             }
             BrowserEvent::ColumnReloaded { depth } => self.update_panes(*depth, Pane::reload_rows),
             BrowserEvent::LoadFinished { depth, truncated } => {
-                self.update_panes(*depth, |pane| pane.finish_loading(*truncated));
+                self.update_panes(*depth, |pane| pane.finish_loading(*truncated, defer_empty));
+                if self.mode == BrowserMode::List
+                    && let Some(pane) = self.list_pane.as_ref().filter(|pane| pane.depth == *depth)
+                {
+                    self.list_navigation
+                        .borrow_mut()
+                        .restore(pane, &self.browser);
+                }
             }
             BrowserEvent::LoadFailed { depth, message } => {
                 self.update_panes(*depth, |pane| pane.fail_loading(message));
+                if self
+                    .list_pane
+                    .as_ref()
+                    .is_some_and(|pane| pane.depth == *depth)
+                {
+                    self.list_navigation.borrow_mut().cancel();
+                }
             }
             _ => return false,
         }
@@ -101,6 +189,9 @@ impl ModeViews {
     }
 
     fn handle_selection_event(&self, event: &BrowserEvent) {
+        if self.mode == BrowserMode::List && self.list_navigation.borrow().is_restoring() {
+            return;
+        }
         match event {
             BrowserEvent::SelectionSetChanged {
                 depth,
@@ -110,14 +201,23 @@ impl ModeViews {
             } => {
                 self.update_selection(*depth, positions, *take_focus);
             }
-            BrowserEvent::FocusChanged { depth, position } => {
-                self.update_panes(*depth, |pane| {
-                    set_selections(pane, &position.iter().copied().collect::<Vec<_>>())
-                });
+            BrowserEvent::FocusChanged { depth, .. } => {
+                let positions = self.browser.selected_positions(*depth);
+                self.update_panes(*depth, |pane| set_selections(pane, &positions));
                 self.focus_visible_pane(*depth);
             }
             _ => {}
         }
+    }
+
+    pub(crate) fn show_empty_if_empty(&self, depth: usize) {
+        self.update_panes(depth, |pane| {
+            let showing_error = pane.stack.visible_child_name().as_deref() == Some("status")
+                && pane.status.has_css_class("error");
+            if pane.model.n_items() == 0 && !pane.spinner.is_spinning() && !showing_error {
+                show_count(pane);
+            }
+        });
     }
 
     fn update_selection(&self, depth: usize, positions: &[usize], take_focus: bool) {
@@ -145,11 +245,12 @@ impl Pane {
         self.show_count_when_idle();
     }
 
-    fn replace_rows(&self, browser: &Browser, count: usize) {
+    fn replace_rows(&self, browser: &Browser, count: usize, defer_empty: bool) {
         if count > 0 {
             self.hide_spinner();
         }
         replace_entries(self, browser, count);
+        self.show_count_after_update(defer_empty);
     }
 
     fn publish_rows(&self, browser: &Browser, position: usize, count: usize) {
@@ -165,10 +266,20 @@ impl Pane {
         self.show_count_when_idle();
     }
 
-    fn splice_rows(&self, splices: &[EntrySplice]) {
+    fn splice_rows(&self, splices: &[EntrySplice], defer_empty: bool) {
         for splice in splices {
             let values: Vec<_> = splice.entries.iter().map(entry_model_value).collect();
             self.splice_values(splice.position as u32, splice.removed as u32, &values);
+        }
+        self.show_count_after_update(defer_empty);
+    }
+
+    fn show_count_after_update(&self, defer_empty: bool) {
+        if defer_empty && self.model.n_items() == 0 {
+            if let Some(button) = &self.empty_trash_button {
+                button.set_sensitive(false);
+            }
+            return;
         }
         show_count(self);
     }
@@ -218,11 +329,11 @@ impl Pane {
         self.loading.start();
     }
 
-    fn finish_loading(&self, truncated: bool) {
+    fn finish_loading(&self, truncated: bool, defer_empty: bool) {
         reconnect_pane_model(self);
         self.hide_spinner();
         self.truncated_hint.set_visible(truncated);
-        show_count(self);
+        self.show_count_after_update(defer_empty);
     }
 
     fn fail_loading(&self, message: &str) {

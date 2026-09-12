@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
+    RAR_COMMENT_HPW_FIXTURE, RAR_ENCRYPTED_FIXTURE, RAR_UNICODE_FIXTURE, RAR_VERSION_FIXTURE,
     always_cancelled, completed_extract, extract_zip, never_cancelled, patch_zip_uncompressed_size,
     write_7z, write_7z_entries, write_compression_fixture, write_tar, write_tar_entries, write_zip,
 };
 use super::{
-    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar, extract_zip_from_archive,
+    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_rar, extract_tar,
+    extract_zip_from_archive,
 };
 use crate::{model::Location, services::ArchiveFormat};
 use std::{
     error::Error,
     fs,
-    io::{self, Cursor, Read, Seek, SeekFrom},
+    io::{self, Cursor, Read, Seek, SeekFrom, Write},
     path::Path,
     sync::{
         Arc,
@@ -49,6 +51,7 @@ fn decode_fixture(
             progress,
             &cancelled,
         ),
+        ArchiveFormat::Rar => extract_rar(archive, destination, password, progress, &cancelled),
     }
 }
 
@@ -431,6 +434,7 @@ fn extraction_rejects_final_and_intermediate_symlinks() -> Result<(), Box<dyn Er
                 ArchiveFormat::Tar | ArchiveFormat::TarGz => {
                     write_tar(&archive, name, b"escaped", format == ArchiveFormat::TarGz)?;
                 }
+                ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
             }
             assert!(
                 decode_fixture(
@@ -782,6 +786,7 @@ fn pending_unsafe_names_are_omitted_by_every_decoder() -> Result<(), Box<dyn Err
                 b"contents",
                 format == ArchiveFormat::TarGz,
             )?,
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
         let destination = tempfile::tempdir()?;
         let cancelled = always_cancelled();
@@ -811,6 +816,7 @@ fn pending_unsafe_names_are_omitted_by_every_decoder() -> Result<(), Box<dyn Err
                 &progress,
                 &cancelled,
             )?,
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         };
         assert!(
             matches!(outcome, ArchiveOutcome::Cancelled { completed, failed, not_attempted }
@@ -929,6 +935,7 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
             ArchiveFormat::Tar | ArchiveFormat::TarGz => {
                 write_tar(&archive, "zeros.bin", &zeros, true)?;
             }
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
         let ratio = SIZE / fs::metadata(&archive)?.len();
         assert!(
@@ -1093,6 +1100,221 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
     }
 }
 
+fn write_zipcrypto(
+    path: &Path,
+    password: &[u8],
+    name: &str,
+    contents: &[u8],
+    compression: zip::CompressionMethod,
+) -> Result<(), Box<dyn Error>> {
+    use zip::unstable::write::FileOptionsExt;
+    let mut writer = zip::ZipWriter::new(fs::File::create(path)?);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(compression)
+        .with_deprecated_encryption(password)?;
+    writer.start_file(name, options)?;
+    writer.write_all(contents)?;
+    writer.finish()?;
+    Ok(())
+}
+
+fn zipcrypto_crc_collision(archive_path: &Path) -> Result<String, Box<dyn Error>> {
+    for candidate in 0..4096u32 {
+        let password = candidate.to_string();
+        let file = fs::File::open(archive_path)?;
+        let mut archive = zip::ZipArchive::new(file)?;
+        let options = zip::read::ZipReadOptions::new().password(Some(password.as_bytes()));
+        let mut entry = match archive.by_index_with_options(0, options) {
+            Err(zip::result::ZipError::InvalidPassword) => continue,
+            Err(error) => return Err(error.into()),
+            Ok(entry) => entry,
+        };
+        let mut buf = Vec::new();
+        if entry.read_to_end(&mut buf).is_err() {
+            return Ok(password);
+        }
+    }
+    Err("no ZipCrypto CRC collision in 0..4096".into())
+}
+
+fn zipcrypto_fixture(root: &Path) -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let archive = root.join("password.zip");
+    write_zipcrypto(
+        &archive,
+        b"zipsecret",
+        "some.txt",
+        b"hello from zipcrypto",
+        zip::CompressionMethod::Stored,
+    )?;
+    Ok(archive)
+}
+
+fn zipcrypto_collision_is_retryable(
+    compression: zip::CompressionMethod,
+    contents: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("password.zip");
+    write_zipcrypto(&archive, b"zipsecret", "some.txt", contents, compression)?;
+    let collision = zipcrypto_crc_collision(&archive)?;
+
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        Some(&collision),
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("ZipCrypto {compression:?} collision {collision} extracted");
+    };
+    assert_eq!(error.to_string(), super::MAYBE_BAD_PASSWORD);
+    assert!(destination.path().read_dir()?.next().is_none());
+
+    let correct = tempfile::tempdir()?;
+    completed_extract(decode_fixture(
+        &archive,
+        correct.path(),
+        ArchiveFormat::Zip,
+        Some("zipsecret"),
+        &Arc::new(AtomicUsize::new(0)),
+    )?)?;
+    assert_eq!(fs::read(correct.path().join("some.txt"))?, contents);
+    Ok(())
+}
+
+#[test]
+fn zipcrypto_header_collision_is_retryable() -> Result<(), Box<dyn Error>> {
+    zipcrypto_collision_is_retryable(zip::CompressionMethod::Stored, b"hello from zipcrypto")
+}
+
+#[test]
+fn zipcrypto_deflated_header_collision_is_retryable() -> Result<(), Box<dyn Error>> {
+    zipcrypto_collision_is_retryable(
+        zip::CompressionMethod::Deflated,
+        &b"hello from zipcrypto\n".repeat(64),
+    )
+}
+
+#[test]
+fn zipcrypto_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = zipcrypto_fixture(root.path())?;
+    let mut wrong_password = None;
+    for candidate in 0..4096u32 {
+        let password = candidate.to_string();
+        let mut zip = zip::ZipArchive::new(fs::File::open(&archive)?)?;
+        let options = zip::read::ZipReadOptions::new().password(Some(password.as_bytes()));
+        match zip.by_index_with_options(0, options) {
+            Err(zip::result::ZipError::InvalidPassword) => {
+                wrong_password = Some(password);
+                break;
+            }
+            Err(error) => return Err(error.into()),
+            Ok(_) => {}
+        }
+    }
+    let wrong_password = wrong_password.ok_or("no non-colliding ZipCrypto password in 0..4096")?;
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        Some(&wrong_password),
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("ZipCrypto accepted a non-colliding wrong password");
+    };
+    assert_eq!(error.to_string(), "provided password is incorrect");
+    assert!(destination.path().read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn zipcrypto_without_password_still_requires_one() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = zipcrypto_fixture(root.path())?;
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("ZipCrypto extracted without a password");
+    };
+    assert!(error.to_string().contains("Password required"), "{error}");
+    assert!(destination.path().read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn aes_zip_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("file.txt");
+    fs::write(&source, b"contents")?;
+    let archive = root.path().join("archive.zip");
+    write_compression_fixture(
+        &archive,
+        &[source],
+        ArchiveFormat::Zip,
+        Some("test-password"),
+    )?;
+
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        Some("wrong"),
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("AES zip accepted a wrong password");
+    };
+    assert_eq!(error.to_string(), "provided password is incorrect");
+    assert!(destination.path().read_dir()?.next().is_none());
+
+    let correct = tempfile::tempdir()?;
+    completed_extract(decode_fixture(
+        &archive,
+        correct.path(),
+        ArchiveFormat::Zip,
+        Some("test-password"),
+        &Arc::new(AtomicUsize::new(0)),
+    )?)?;
+    assert_eq!(fs::read(correct.path().join("file.txt"))?, b"contents");
+    Ok(())
+}
+
+#[test]
+fn unencrypted_zip_checksum_failure_stays_damaged() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("archive.zip");
+    super::super::fixtures::write_zip_stored(&archive, &[("file.txt", b"checksum-payload")])?;
+    let mut bytes = fs::read(&archive)?;
+    let offset = bytes
+        .windows(b"checksum-payload".len())
+        .position(|bytes| bytes == b"checksum-payload")
+        .expect("stored payload");
+    bytes[offset] ^= 1;
+    fs::write(&archive, &bytes)?;
+
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("accepted a checksum-damaged zip");
+    };
+    assert_eq!(error.to_string(), super::INVALID_ARCHIVE);
+    assert!(destination.path().read_dir()?.next().is_none());
+    Ok(())
+}
+
 #[test]
 fn wrong_password_for_content_encrypted_7z_is_retryable() -> Result<(), Box<dyn Error>> {
     // Generated with `7z a -psecret -mhe=off` using 7-Zip 26.02.
@@ -1135,6 +1357,24 @@ fn checksum_failure_without_a_password_remains_damaged() {
 }
 
 #[test]
+fn corrupt_deflate_stream_without_a_password_stays_damaged() {
+    let error = io::Error::new(io::ErrorKind::InvalidInput, "corrupt deflate stream");
+    assert_eq!(
+        super::archive_read_error(error, false).to_string(),
+        super::INVALID_ARCHIVE
+    );
+}
+
+#[test]
+fn corrupt_deflate_stream_after_a_password_is_retryable() {
+    let error = io::Error::new(io::ErrorKind::InvalidInput, "corrupt deflate stream");
+    assert_eq!(
+        super::archive_read_error(error, true).to_string(),
+        super::MAYBE_BAD_PASSWORD
+    );
+}
+
+#[test]
 fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
     for gzip in [false, true] {
         let root = tempfile::tempdir()?;
@@ -1171,4 +1411,230 @@ fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
         assert_eq!(fs::read_dir(&destination)?.count(), 1);
     }
     Ok(())
+}
+
+#[test]
+fn rar_extracts_simple_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("version.rar");
+    fs::write(&archive, RAR_VERSION_FIXTURE)?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+
+    assert_eq!(
+        completed_extract(extract_rar(
+            &archive,
+            &destination,
+            None,
+            &progress,
+            &never_cancelled(),
+        )?)?,
+        Some("VERSION".to_owned())
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(fs::read(destination.join("VERSION"))?, b"unrar-0.4.0");
+    Ok(())
+}
+
+#[test]
+fn rar_extracts_password_protected_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("encrypted.rar");
+    fs::write(&archive, RAR_ENCRYPTED_FIXTURE)?;
+
+    let dest_no_pw = root.path().join("dest_no_pw");
+    fs::create_dir_all(&dest_no_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_no_pw,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting password-protected archive without password must fail");
+    };
+    assert_eq!(
+        err.to_string(),
+        "A password is required to extract this archive."
+    );
+
+    let dest_wrong_pw = root.path().join("dest_wrong_pw");
+    fs::create_dir_all(&dest_wrong_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_wrong_pw,
+        Some("wrong-password"),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting password-protected archive with wrong password must fail");
+    };
+    assert_eq!(err.to_string(), super::MAYBE_BAD_PASSWORD);
+
+    let dest_correct = root.path().join("dest_correct");
+    fs::create_dir_all(&dest_correct)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+    assert_eq!(
+        completed_extract(extract_rar(
+            &archive,
+            &dest_correct,
+            Some("unrar"),
+            &progress,
+            &never_cancelled(),
+        )?)?,
+        Some(".gitignore".to_owned())
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        fs::read(dest_correct.join(".gitignore"))?,
+        b"target\nCargo.lock\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn rar_extracts_encrypted_headers_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("comment-hpw-password.rar");
+    fs::write(&archive, RAR_COMMENT_HPW_FIXTURE)?;
+
+    let dest_no_pw = root.path().join("dest_no_pw");
+    fs::create_dir_all(&dest_no_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_no_pw,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting encrypted-headers archive without password must fail");
+    };
+    assert_eq!(
+        err.to_string(),
+        "A password is required to extract this archive."
+    );
+
+    let dest_wrong_pw = root.path().join("dest_wrong_pw");
+    fs::create_dir_all(&dest_wrong_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_wrong_pw,
+        Some("wrong-password"),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting encrypted-headers archive with wrong password must fail");
+    };
+    assert_eq!(err.to_string(), super::MAYBE_BAD_PASSWORD);
+
+    let dest_correct = root.path().join("dest_correct");
+    fs::create_dir_all(&dest_correct)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+    assert_eq!(
+        completed_extract(extract_rar(
+            &archive,
+            &dest_correct,
+            Some("password"),
+            &progress,
+            &never_cancelled(),
+        )?)?,
+        Some(".gitignore".to_owned())
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        fs::read(dest_correct.join(".gitignore"))?,
+        b"target\nCargo.lock\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn rar_extracts_unicode_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("unicode.rar");
+    fs::write(&archive, RAR_UNICODE_FIXTURE)?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+
+    completed_extract(extract_rar(
+        &archive,
+        &destination,
+        None,
+        &progress,
+        &never_cancelled(),
+    )?)?;
+    assert!(progress.load(Ordering::Relaxed) >= 1);
+    Ok(())
+}
+
+#[test]
+fn rar_corrupt_archive_fails() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("corrupt.rar");
+    fs::write(&archive, b"Rar!\x1a\x07\x00corrupt garbage data")?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+
+    let Err(err) = extract_rar(
+        &archive,
+        &destination,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("corrupt archive extraction must fail");
+    };
+    assert_eq!(err.to_string(), super::INVALID_ARCHIVE);
+    Ok(())
+}
+
+#[test]
+fn rar_cancellation_stops_extraction() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("version.rar");
+    fs::write(&archive, RAR_VERSION_FIXTURE)?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+
+    let outcome = extract_rar(&archive, &destination, None, &progress, &always_cancelled())?;
+    assert!(matches!(outcome, ArchiveOutcome::Cancelled { .. }));
+    Ok(())
+}
+
+#[test]
+fn rar_decode_error_mapping() {
+    use unrar::error::{Code, UnrarError, When};
+
+    let make_err = |code| UnrarError {
+        code,
+        when: When::Process,
+    };
+
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::MissingPassword), false).to_string(),
+        "A password is required to extract this archive."
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadPassword), true).to_string(),
+        super::MAYBE_BAD_PASSWORD
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadData), true).to_string(),
+        super::MAYBE_BAD_PASSWORD
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadData), false).to_string(),
+        super::INVALID_ARCHIVE
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadArchive), false).to_string(),
+        super::INVALID_ARCHIVE
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::UnknownFormat), false).to_string(),
+        super::INVALID_ARCHIVE
+    );
 }

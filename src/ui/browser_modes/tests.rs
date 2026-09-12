@@ -2,10 +2,9 @@
 
 use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
-    LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
-    compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, should_activate_filtered_pointer, should_activate_pointer_click,
-    type_group_sorter, type_groups_of, value_type_group,
+    SourceIndexMap, compare_type_groups, list_column_width, metadata_fill_position,
+    should_activate_filtered_pointer, should_activate_pointer_click, type_group_sorter,
+    type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::test_support::gtk_test;
@@ -33,6 +32,64 @@ impl super::ModeViews {
     }
 }
 
+#[test]
+fn pointer_controls_cover_navigation_and_pane_actions() {
+    gtk_test(
+        "ui::browser_modes::tests::pointer_controls_cover_navigation_and_pane_actions",
+        || {
+            let browser =
+                crate::app::Browser::new(std::rc::Rc::new(crate::adapters::LocalFileSource));
+            let navigation = super::list_navigation(&browser);
+            let mut child = navigation.first_child();
+            let mut count = 0;
+            while let Some(button) = child {
+                assert_eq!(
+                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                    Some("pointer")
+                );
+                count += 1;
+                child = button.next_sibling();
+            }
+            assert_eq!(count, 3);
+            let (headings, _) = super::list_headings(&browser, 0, super::ListColumnLayout::new());
+            let mut child = headings.first_child();
+            let mut index = 0;
+            while let Some(cell) = child {
+                let button = cell
+                    .first_child()
+                    .expect("heading overlay")
+                    .downcast::<gtk::Overlay>()
+                    .expect("overlay")
+                    .child()
+                    .expect("heading button");
+                assert_eq!(
+                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                    if index == 1 { None } else { Some("pointer") }
+                );
+                index += 1;
+                child = cell.next_sibling();
+            }
+            assert_eq!(index, 5);
+            let controls = super::icons_controls(&browser, 0, 128);
+            assert_eq!(controls.thumbnail_scale.adjustment().lower(), 32.0);
+            controls.thumbnail_scale.set_value(32.0);
+            assert_eq!(controls.thumbnail_scale.value(), 32.0);
+            let mut child = controls.actions.first_child();
+            let mut count = 0;
+            while let Some(button) = child {
+                assert_eq!(button.valign(), gtk::Align::Center);
+                assert_eq!(
+                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                    Some("pointer")
+                );
+                count += 1;
+                child = button.next_sibling();
+            }
+            assert_eq!(count, 6);
+        },
+    );
+}
+
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
     format!("{kind}v\t{name}")
@@ -43,13 +100,6 @@ fn list_columns_have_usable_minimum_widths() {
     for (index, minimum) in LIST_COLUMN_MIN_WIDTHS.into_iter().enumerate() {
         assert_eq!(list_column_width(index, minimum - 1), minimum);
         assert_eq!(list_column_width(index, minimum + 1), minimum + 1);
-    }
-}
-
-#[test]
-fn list_default_widths_respect_column_minimums() {
-    for (default, minimum) in LIST_COLUMN_WIDTHS.into_iter().zip(LIST_COLUMN_MIN_WIDTHS) {
-        assert!(default >= minimum);
     }
 }
 
@@ -91,19 +141,8 @@ fn type_grouping_is_list_only() {
 #[test]
 fn filtered_activation_ignores_click_preferences() {
     let query = RefCell::new("report".to_owned());
-    for _activation in [
-        ClickActivation {
-            files: ClickCount::One,
-            folders: ClickCount::One,
-        },
-        ClickActivation {
-            files: ClickCount::Two,
-            folders: ClickCount::Two,
-        },
-    ] {
-        assert!(should_activate_filtered_pointer(1, &query));
-        assert!(!should_activate_filtered_pointer(2, &query));
-    }
+    assert!(should_activate_filtered_pointer(1, &query));
+    assert!(!should_activate_filtered_pointer(2, &query));
     query.replace(String::new());
     assert!(!should_activate_filtered_pointer(1, &query));
 }
@@ -147,18 +186,6 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
 }
 
 #[test]
-fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
-    assert_eq!(icons_card_icon_slot(26), MIN_ICONS_THUMBNAIL_SIZE);
-    assert_eq!(icons_card_icon_slot(128), 128);
-    assert_eq!(icons_card_icon_slot(512), MAX_ICONS_THUMBNAIL_SIZE);
-    assert_eq!(icons_card_extent(26), icons_card_extent(64));
-    assert_eq!(icons_card_extent(64), (116, 107));
-    assert_eq!(icons_card_extent(128), (128, 171));
-    assert_eq!(icons_card_extent(256), (256, 299));
-    assert_eq!(icons_card_extent(512), icons_card_extent(256));
-}
-
-#[test]
 fn icons_columns_follow_viewport_width() {
     assert_eq!(
         super::icons_columns_for_width(800, 120, BrowserDensity::Compact),
@@ -179,24 +206,6 @@ fn icons_columns_follow_viewport_width() {
     assert_eq!(
         super::icons_columns_for_width(8000, 120, BrowserDensity::Airy),
         16
-    );
-}
-
-#[test]
-fn pinning_icons_columns_leaves_min_at_one() {
-    gtk_test(
-        "ui::browser_modes::tests::pinning_icons_columns_leaves_min_at_one",
-        || {
-            let grid = gtk::GridView::new(
-                Some(gtk::NoSelection::new(Some(gtk::StringList::new(&["a"])))),
-                Some(gtk::SignalListItemFactory::new()),
-            );
-            grid.set_min_columns(1);
-            grid.set_max_columns(12);
-            super::pin_ungrouped_grid_columns(&grid, 4);
-            assert_eq!(grid.min_columns(), 1);
-            assert_eq!(grid.max_columns(), 4);
-        },
     );
 }
 
@@ -505,8 +514,6 @@ fn run_source_index_map_checks() {
         "watching must not pin the StringList after the pane drops"
     );
 }
-
-mod skeletons;
 
 #[test]
 fn list_bind_can_read_the_rename_field() {

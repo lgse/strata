@@ -26,6 +26,9 @@ struct State {
     positions: RefCell<HashMap<gtk::ListBoxRow, usize>>,
     handle: RefCell<Option<SearchHandle>>,
     generation: Cell<u64>,
+    root: PathBuf,
+    recursive: Cell<bool>,
+    context_menu_trigger: RefCell<Option<super::browser::ContextMenuTrigger>>,
 }
 
 #[derive(Clone)]
@@ -57,12 +60,24 @@ impl InlineSearch {
             state.list.select_row(Some(&row));
             Some((None, entry))
         });
-        super::browser::install_resolved_item_context_menu(
+        let trigger = super::browser::install_resolved_item_context_menu(
             view,
             state.list.upcast_ref(),
             resolve,
             depth,
         );
+        state.context_menu_trigger.replace(Some(trigger));
+    }
+
+    pub fn context_menu_target(&self) -> Option<super::browser::ContextMenuTarget> {
+        let state = self.state.as_ref()?;
+        let row = state.list.selected_row()?;
+        let bounds = row.compute_bounds(&state.list)?;
+        Some((
+            state.context_menu_trigger.borrow().as_ref()?.clone(),
+            f64::from(bounds.center().x()),
+            f64::from(bounds.center().y()),
+        ))
     }
 
     pub fn selected_entry(&self) -> Option<crate::model::FileEntry> {
@@ -97,6 +112,47 @@ impl InlineSearch {
             .into_iter()
             .collect();
         Some(entries)
+    }
+
+    pub fn focus_result(&self, path: &Path) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let position = state
+            .items
+            .borrow()
+            .iter()
+            .position(|item| item.path == path);
+        let Some(row) = position.and_then(|position| state.list.row_at_index(position as i32))
+        else {
+            return false;
+        };
+        state.list.select_row(Some(&row));
+        row.set_focusable(true);
+        row.grab_focus()
+    }
+
+    pub fn prune_missing(&self) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        if state.handle.borrow().is_none() {
+            return;
+        }
+        let pruned: Vec<_> = state
+            .items
+            .borrow()
+            .iter()
+            .filter(|item| search_path_present(&item.path))
+            .cloned()
+            .collect();
+        if pruned.len() != state.items.borrow().len() {
+            let recursive = state.recursive.get();
+            update_rows(state, pruned, &state.root, recursive);
+        }
     }
 }
 
@@ -141,6 +197,9 @@ pub(super) fn wrap(
         positions: RefCell::new(HashMap::new()),
         handle: RefCell::new(None),
         generation: Cell::new(0),
+        root: root.clone(),
+        recursive: Cell::new(false),
+        context_menu_trigger: RefCell::new(None),
     });
     let weak = Rc::downgrade(&state);
     state.list.set_sort_func(move |left, right| {
@@ -228,20 +287,23 @@ pub(super) fn wrap(
             || modifiers.intersects(
                 gtk::gdk::ModifierType::CONTROL_MASK
                     | gtk::gdk::ModifierType::ALT_MASK
-                    | gtk::gdk::ModifierType::SUPER_MASK,
+                    | gtk::gdk::ModifierType::SUPER_MASK
+                    | gtk::gdk::ModifierType::SHIFT_MASK,
             )
         {
             return glib::Propagation::Proceed;
         }
         let current = state.list.selected_row().map(|row| row.index() as u32);
-        if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down) {
-            let next = super::browser::search_result_navigation_position(
-                current,
-                state.items.borrow().len() as u32,
-                if key == gtk::gdk::Key::Down { 1 } else { -1 },
-            );
-            if let Some(row) = next.and_then(|position| state.list.row_at_index(position as i32)) {
+        if key == gtk::gdk::Key::Up {
+            return glib::Propagation::Stop;
+        }
+        if key == gtk::gdk::Key::Down {
+            if let Some(row) = state.list.row_at_index(current.unwrap_or(0) as i32) {
                 state.list.select_row(Some(&row));
+                if let Some(window) = state.list.root().and_downcast::<gtk::Window>() {
+                    window.set_focus_visible(true);
+                }
+                row.grab_focus();
             }
             return glib::Propagation::Stop;
         }
@@ -257,12 +319,47 @@ pub(super) fn wrap(
         glib::Propagation::Proceed
     });
     entry.add_controller(keys);
+    let return_to_filter = gtk::EventControllerKey::new();
+    return_to_filter.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(&state);
+    return_to_filter.connect_key_pressed(move |_, key, _, modifiers| {
+        let Some(state) = weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        if key != gtk::gdk::Key::Up
+            || modifiers.intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK
+                    | gtk::gdk::ModifierType::SHIFT_MASK
+                    | gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK,
+            )
+            || !state
+                .list
+                .selected_row()
+                .is_some_and(|row| row.index() == 0)
+            || state
+                .list
+                .root()
+                .and_then(|root| root.focus())
+                .and_then(|focus| focus.ancestor(gtk::Popover::static_type()))
+                .is_some()
+        {
+            return glib::Propagation::Proceed;
+        }
+        state
+            .entry
+            .upgrade()
+            .filter(|entry| entry.grab_focus_without_selecting())
+            .map_or(glib::Propagation::Proceed, |_| glib::Propagation::Stop)
+    });
+    state.list.add_controller(return_to_filter);
     let weak_browser = Rc::downgrade(browser);
     let search = InlineSearch {
         widget: stack.clone().upcast(),
         state: Some(state.clone()),
     };
     super::browser::bind_filter_query(entry, move |text, recursive, restart| {
+        state.recursive.set(recursive);
         if restart {
             state.generation.set(state.generation.get().wrapping_add(1));
             state.handle.borrow_mut().take();
@@ -311,13 +408,14 @@ pub(super) fn wrap(
             }
             if let Some(SearchEvent::Results {
                 query: returned,
-                items,
+                mut items,
                 indexing,
                 coverage,
             }) = latest
                 && !returned.is_empty()
                 && returned == entry.text().trim()
             {
+                items.retain(|item| search_path_present(&item.path));
                 state
                     .status
                     .set_visible(items.is_empty() || coverage.is_partial());
@@ -334,6 +432,14 @@ pub(super) fn wrap(
         });
     });
     search
+}
+
+pub(super) fn search_path_present(path: &Path) -> bool {
+    // Preserve dangling symlinks and uncertain paths; only confirmed absence removes a hit.
+    path.symlink_metadata().map_or_else(
+        |error| error.kind() != std::io::ErrorKind::NotFound,
+        |_| true,
+    )
 }
 
 fn result_at_widget(state: &State, picked: &gtk::Widget) -> Option<gtk::ListBoxRow> {
@@ -430,11 +536,11 @@ fn result_row(
     recursive: bool,
 ) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
-    // Keep keyboard focus in the query, away from file-operation shortcuts.
-    row.set_focusable(false);
+    row.set_focusable(true);
     super::accessibility::set_label(&row, &item.name);
     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     line.add_css_class("file-row");
+    line.add_css_class("filter-result");
     let icon = super::thumbnail::ThumbnailSlot::new(17);
     line.append(&icon);
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);

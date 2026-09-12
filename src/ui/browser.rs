@@ -32,8 +32,11 @@ mod context_menu;
 mod customization;
 mod desktop;
 mod destination;
+mod dissolve_delete;
 mod entry;
+mod entry_animation;
 mod events;
+mod fly_to_trash;
 mod inline_edit;
 mod location;
 mod pane_header;
@@ -57,12 +60,12 @@ pub(crate) use crate::ui::browser::collection::{
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
     notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
     reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
-    search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
 pub(super) use crate::ui::browser::context_menu::{
-    install_folder_context_menu, install_item_context_menu, install_resolved_item_context_menu,
+    ContextMenuTarget, ContextMenuTrigger, install_folder_context_menu, install_item_context_menu,
+    install_resolved_item_context_menu,
 };
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location};
 pub(super) use crate::ui::browser::entry::{
@@ -137,6 +140,7 @@ pub(super) struct ViewState {
     global_activity_spinner: gtk::Spinner,
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
+    breadcrumb_scroller: gtk::ScrolledWindow,
     location_entry: gtk::Entry,
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
@@ -145,6 +149,7 @@ pub(super) struct ViewState {
     hovered_column: Cell<Option<usize>>,
     context_menu_column: Cell<Option<usize>>,
     context_menu_generation: Cell<u64>,
+    context_menu_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     source_generation: Rc<Cell<u64>>,
@@ -183,12 +188,16 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
+    /// Visible permanent-delete rows captured before the operation mutates the model.
+    pending_delete_dissolve: RefCell<Option<(usize, dissolve_delete::PreparedDissolve)>>,
+    deferred_delete_empty_depth: Cell<Option<usize>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
+    trash_button: RefCell<Option<gtk::Button>>,
     browser: Rc<Browser>,
 }
 
@@ -292,18 +301,130 @@ impl BrowserView {
         breadcrumbs.add_css_class("breadcrumbs");
         let breadcrumb_scroller = gtk::ScrolledWindow::builder()
             .child(&breadcrumbs)
-            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .hscrollbar_policy(gtk::PolicyType::External)
             .vscrollbar_policy(gtk::PolicyType::Never)
             .hexpand(true)
             .build();
-        breadcrumb_scroller.add_css_class("fixed-scrollbar");
+        breadcrumb_scroller.add_css_class("breadcrumb-scroller");
+
+        let fade_left = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        fade_left.add_css_class("breadcrumb-fade");
+        fade_left.add_css_class("breadcrumb-fade-left");
+        fade_left.set_halign(gtk::Align::Start);
+        fade_left.set_valign(gtk::Align::Fill);
+        fade_left.set_can_target(false);
+        fade_left.set_opacity(0.0);
+
+        let fade_right = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        fade_right.add_css_class("breadcrumb-fade");
+        fade_right.add_css_class("breadcrumb-fade-right");
+        fade_right.set_halign(gtk::Align::End);
+        fade_right.set_valign(gtk::Align::Fill);
+        fade_right.set_can_target(false);
+        fade_right.set_opacity(0.0);
+
+        let breadcrumb_overlay = gtk::Overlay::new();
+        breadcrumb_overlay.set_child(Some(&breadcrumb_scroller));
+        breadcrumb_overlay.add_overlay(&fade_left);
+        breadcrumb_overlay.add_overlay(&fade_right);
+        breadcrumb_overlay.set_hexpand(true);
+
+        let hadjustment = breadcrumb_scroller.hadjustment();
+        let breadcrumb_scrollbar =
+            gtk::Scrollbar::new(gtk::Orientation::Horizontal, Some(&hadjustment));
+        breadcrumb_scrollbar.add_css_class("breadcrumb-scrollbar");
+        breadcrumb_scrollbar.set_visible(false);
+
+        let breadcrumb_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        breadcrumb_container.add_css_class("breadcrumb-container");
+        breadcrumb_container.append(&breadcrumb_overlay);
+        breadcrumb_container.append(&breadcrumb_scrollbar);
+        breadcrumb_container.set_hexpand(true);
+
+        let motion_controller = gtk::EventControllerMotion::new();
+        let weak_scrollbar = breadcrumb_scrollbar.downgrade();
+        motion_controller.connect_enter(move |_, _, _| {
+            if let Some(scrollbar) = weak_scrollbar.upgrade() {
+                scrollbar.add_css_class("hovered");
+            }
+        });
+        let weak_scrollbar = breadcrumb_scrollbar.downgrade();
+        motion_controller.connect_leave(move |_| {
+            if let Some(scrollbar) = weak_scrollbar.upgrade() {
+                scrollbar.remove_css_class("hovered");
+            }
+        });
+        breadcrumb_container.add_controller(motion_controller);
+
+        let scroll_timer: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+        let flash_scrollbar = {
+            let breadcrumb_scrollbar = breadcrumb_scrollbar.downgrade();
+            let scroll_timer = scroll_timer.clone();
+            move || {
+                let Some(breadcrumb_scrollbar) = breadcrumb_scrollbar.upgrade() else {
+                    return;
+                };
+                breadcrumb_scrollbar.add_css_class("scrolling");
+                if let Some(source) = scroll_timer.borrow_mut().take() {
+                    source.remove();
+                }
+                let weak_scrollbar = breadcrumb_scrollbar.downgrade();
+                let timer_cell = scroll_timer.clone();
+                let source = glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(1200),
+                    move || {
+                        timer_cell.borrow_mut().take();
+                        if let Some(sb) = weak_scrollbar.upgrade() {
+                            sb.remove_css_class("scrolling");
+                        }
+                    },
+                );
+                *scroll_timer.borrow_mut() = Some(source);
+            }
+        };
+
+        let update_overflow = {
+            let fade_left = fade_left.downgrade();
+            let fade_right = fade_right.downgrade();
+            let breadcrumb_scrollbar = breadcrumb_scrollbar.downgrade();
+            move |hadjustment: &gtk::Adjustment| {
+                let (Some(fade_left), Some(fade_right), Some(breadcrumb_scrollbar)) = (
+                    fade_left.upgrade(),
+                    fade_right.upgrade(),
+                    breadcrumb_scrollbar.upgrade(),
+                ) else {
+                    return;
+                };
+                let value = hadjustment.value();
+                let upper = hadjustment.upper();
+                let page_size = hadjustment.page_size();
+                let max_scroll = (upper - page_size).max(0.0);
+                let has_overflow = max_scroll > 1.0;
+                breadcrumb_scrollbar.set_visible(has_overflow);
+                let show_left = value > 1.0;
+                let show_right = has_overflow && value < max_scroll - 1.0;
+                fade_left.set_opacity(if show_left { 1.0 } else { 0.0 });
+                fade_right.set_opacity(if show_right { 1.0 } else { 0.0 });
+            }
+        };
+
+        hadjustment.connect_value_changed({
+            let update_overflow = update_overflow.clone();
+            let flash_scrollbar = flash_scrollbar.clone();
+            move |adjustment| {
+                update_overflow(adjustment);
+                flash_scrollbar();
+            }
+        });
+        hadjustment.connect_changed(update_overflow);
+
         let location_stack = gtk::Stack::builder()
             .hhomogeneous(false)
             .vhomogeneous(false)
             .transition_type(gtk::StackTransitionType::Crossfade)
             .transition_duration(100)
             .build();
-        location_stack.add_named(&breadcrumb_scroller, Some("breadcrumbs"));
+        location_stack.add_named(&breadcrumb_container, Some("breadcrumbs"));
         location_stack.add_named(&entry_control, Some("entry"));
         location_stack.set_visible_child_name("breadcrumbs");
         location_stack.set_hexpand(true);
@@ -338,6 +459,7 @@ impl BrowserView {
             global_activity_spinner,
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
+            breadcrumb_scroller: breadcrumb_scroller.clone(),
             location_entry,
             columns_widget,
             scroller,
@@ -346,6 +468,7 @@ impl BrowserView {
             hovered_column: Cell::new(None),
             context_menu_column: Cell::new(None),
             context_menu_generation: Cell::new(0),
+            context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             source_generation,
@@ -378,12 +501,15 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
+            pending_delete_dissolve: RefCell::new(None),
+            deferred_delete_empty_depth: Cell::new(None),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_lookup: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
             auto_refresh: RefCell::new(None),
+            trash_button: RefCell::new(None),
             browser,
         });
 
@@ -463,6 +589,46 @@ impl BrowserView {
         });
         breadcrumb_scroller.add_controller(edit_location);
 
+        let hierarchy_menu = gtk::GestureClick::new();
+        hierarchy_menu.set_button(gtk::gdk::BUTTON_SECONDARY);
+        hierarchy_menu.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_state = Rc::downgrade(&state);
+        hierarchy_menu.connect_pressed(move |gesture, _, x, y| {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            if let Some(state) = weak_state.upgrade()
+                && let Some(widget) = gesture.widget()
+            {
+                state.show_breadcrumb_hierarchy_menu(&widget, x, y);
+            }
+        });
+        breadcrumb_scroller.add_controller(hierarchy_menu);
+
+        let scroll_controller =
+            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+        let hadjustment_for_scroll = breadcrumb_scroller.hadjustment();
+        scroll_controller.connect_scroll(move |controller, dx, dy| {
+            let delta = if dx.abs() > 0.001 { dx } else { dy };
+            if delta.abs() > 0.001 {
+                let unit = controller.unit();
+                let step = delta
+                    * match unit {
+                        gtk::gdk::ScrollUnit::Wheel => {
+                            hadjustment_for_scroll.page_size().powf(2.0 / 3.0).max(30.0)
+                        }
+                        gtk::gdk::ScrollUnit::Surface => 2.5,
+                        _ => 1.0,
+                    };
+                let current = hadjustment_for_scroll.value();
+                let max =
+                    (hadjustment_for_scroll.upper() - hadjustment_for_scroll.page_size()).max(0.0);
+                hadjustment_for_scroll.set_value((current + step).clamp(0.0, max));
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        breadcrumb_scroller.add_controller(scroll_controller);
+
         let view = Self { state };
         view.bind_preferences(&preferences);
         view
@@ -500,6 +666,21 @@ impl BrowserView {
 
     pub(crate) fn downgrade(&self) -> WeakBrowserView {
         WeakBrowserView(Rc::downgrade(&self.state))
+    }
+
+    pub(super) fn can_trash_file_drop(sources: &[Location]) -> bool {
+        !sources.is_empty()
+            && sources
+                .iter()
+                .all(|source| source.parent().is_some() && !paths::is_trash_location(source))
+    }
+
+    pub(super) fn trash_file_drop(&self, sources: Vec<Location>) -> bool {
+        if !Self::can_trash_file_drop(&sources) {
+            return false;
+        }
+        self.state.trash_dropped_locations(sources);
+        true
     }
 
     pub fn commit_file_drop(
@@ -541,7 +722,27 @@ impl BrowserView {
         self.state.browser.set_operation_provider(provider);
     }
 
+    pub fn set_trash_button(&self, button: gtk::Button) {
+        self.state.trash_button.replace(Some(button));
+    }
+
     pub fn begin_rename(&self) -> bool {
+        if self.filter_has_focus() || self.selected_search_results().is_some() {
+            let Some(entry) = self.selected_search_result() else {
+                return false;
+            };
+            if self.state.rename_operation_pending() {
+                return false;
+            }
+            self.state.cancel_new_entry();
+            context_menu::rename_context_entry(
+                &self.state,
+                self.state.destination_depth().unwrap_or(0),
+                None,
+                entry,
+            );
+            return true;
+        }
         self.state.begin_rename()
     }
 
@@ -590,6 +791,9 @@ impl BrowserView {
         let weak_state = Rc::downgrade(&self.state);
         super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
             let state = weak_state.upgrade()?;
+            // Sidebar-origin events do not reach the browser's pointer controllers.
+            state.hovered_column.set(None);
+            state.pointer_navigation();
             let mode = state.mode_views.borrow().mode();
             if mode == BrowserMode::Columns {
                 return state
@@ -1303,6 +1507,79 @@ impl BrowserView {
         column.list.grab_focus();
         true
     }
+
+    pub(super) fn open_focused_context_menu(&self) -> bool {
+        let focused = self.state.browser.focused_item();
+        let depth = focused
+            .as_ref()
+            .map(|(depth, ..)| *depth)
+            .or_else(|| self.state.browser.active_depth());
+        let Some(depth) = depth else {
+            return false;
+        };
+        let position = focused.map(|(_, position, _)| position).filter(|position| {
+            self.state
+                .browser
+                .selected_positions(depth)
+                .contains(position)
+        });
+
+        let target = if self.view_mode() == BrowserMode::Columns {
+            self.columns_context_menu_target(depth, position)
+        } else {
+            self.mode_views_context_menu_target(depth, position)
+        };
+
+        let Some((trigger, x, y)) = target else {
+            return false;
+        };
+        trigger(x, y);
+        true
+    }
+
+    fn columns_context_menu_target(
+        &self,
+        depth: usize,
+        position: Option<usize>,
+    ) -> Option<ContextMenuTarget> {
+        self.state
+            .columns
+            .borrow()
+            .get(depth)?
+            .context_menu_target(position)
+    }
+
+    fn mode_views_context_menu_target(
+        &self,
+        depth: usize,
+        position: Option<usize>,
+    ) -> Option<ContextMenuTarget> {
+        self.state
+            .mode_views
+            .borrow()
+            .context_menu_target(depth, position)
+    }
+
+    pub fn dismiss_filter_on_outside_click(&self, root: &gtk::Widget, x: f64, y: f64) {
+        if self.view_mode() != BrowserMode::Columns {
+            return;
+        }
+        let picked = root.pick(x, y, gtk::PickFlags::DEFAULT);
+        let filter_button = {
+            let columns = self.state.columns.borrow();
+            let Some(column) = columns.iter().find(|c| c.filter_button.is_active()) else {
+                return;
+            };
+            let inside = picked.as_ref().is_some_and(|p| {
+                p == column.shell.upcast_ref::<gtk::Widget>() || p.is_ancestor(&column.shell)
+            });
+            if inside {
+                return;
+            }
+            column.filter_button.clone()
+        };
+        filter_button.set_active(false);
+    }
 }
 
 impl ViewState {
@@ -1483,6 +1760,11 @@ impl ViewState {
             .map(|(depth, position, _)| (depth, position));
         for (depth, column) in self.columns.borrow().iter().enumerate() {
             let show_actions = destination == Some(depth);
+            if show_actions {
+                column.shell.add_css_class("active-column");
+            } else {
+                column.shell.remove_css_class("active-column");
+            }
             if !show_actions
                 && self
                     .overlay
@@ -1545,6 +1827,10 @@ impl ViewState {
     }
 
     fn select_all(&self, depth: usize) {
+        if self.mode_views.borrow().mode() != BrowserMode::Columns {
+            self.browser.select_all(depth);
+            return;
+        }
         if let Some(column) = self.columns.borrow().get(depth) {
             column.selection.select_all();
             column.list.grab_focus();

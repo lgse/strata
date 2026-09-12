@@ -149,6 +149,31 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata, mode)
     assert len(launch_counter.read_text().splitlines()) == 1
 
 
+@pytest.mark.preferences(browser_mode="columns")
+def test_filtered_columns_result_waits_for_release_before_launching(launch_counter, strata):
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("spreadsheet")
+    strata.wait(lambda: field.text == "spreadsheet", "the filter query")
+    result = strata.wait(
+        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        "the filtered file result",
+    )
+
+    def assert_not_launched_on_press():
+        assert not launch_counter.exists(), "a held press must not launch the file"
+
+    start = strata.pointer.drag_origin(result)
+    end = (start[0] + 40, start[1] + 40)
+    strata.pointer.drag_points(
+        start, end, release=False, after_press=assert_not_launched_on_press
+    )
+    try:
+        assert not launch_counter.exists(), "crossing the drag threshold must not launch the file"
+    finally:
+        strata.pointer.connection.button(1, False)
+
+
 @pytest.mark.preferences(filter_include_subfolders=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_directory_only_filter_matches_immediate_files_and_folders(strata, mode, root):
@@ -286,6 +311,34 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
     )
     strata.keyboard.press("Return")
     strata.wait_for_directory("navigation-final")
+
+
+@pytest.mark.preferences(search_open_files_directly=False)
+def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata):
+    folder = strata.environment.home / "preview-deletion"
+    folder.mkdir()
+    previewed = folder / "preview-deletion-fixture.txt"
+    previewed.write_text("search preview deletion fixture\n")
+    (folder / "remaining.txt").write_text("remaining file\n")
+    strata.keyboard.press("ctrl+l")
+    strata.keyboard.type_text(str(folder))
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(folder.name)
+    strata.wait(lambda: "remaining.txt" in strata.entry_names(), "loaded folder")
+    strata.keyboard.press("ctrl+k")
+    strata.keyboard.type_text("preview-deletion-fixture")
+    strata.wait(
+        lambda: strata.window.find(role="label", name=previewed.name) is not None,
+        "indexed search result",
+    )
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.preview_shows("search preview deletion fixture"),
+        "search result preview",
+    )
+    previewed.unlink()
+    strata.wait(lambda: strata.preview() is None, "deleted result preview to close")
+    assert "remaining.txt" in strata.entry_names()
 
 
 def test_global_search_finds_a_file_under_home(strata, root):

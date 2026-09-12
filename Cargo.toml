@@ -1,6 +1,6 @@
 [package]
 name = "strata"
-version = "0.15.0"
+version = "0.16.0"
 edition = "2024"
 description = "A fast, keyboard-first file manager for Linux"
 authors = ["LGSE Ltd."]
@@ -22,6 +22,8 @@ gdk4-wayland = { version = "0.11.4", features = ["v4_12"] }
 gio = { version = "0.22.9", features = ["v2_72"] }
 gio-unix = "0.22.8"
 glib = "0.22.9"
+gstreamer = { version = "0.25.3", features = ["v1_20"] }
+gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 ignore = "0.4.23"
 pangocairo = "0.22.0"
@@ -37,10 +39,13 @@ tempfile = "3.27.0"
 toml = "1.1"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
+unicode-normalization = "0.1.25"
 ureq = { version = "3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zstd = "0.13.3"
 zip = "8.6.0"
+unrar = "0.5.8"
+unrar_sys = "0.5.8"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"

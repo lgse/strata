@@ -8,9 +8,9 @@ use crate::model::FileEntry;
 use crate::services::LocationValidationError;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::{
-    column_size_text, scroll_column_to, set_column_busy, set_column_selection,
-    set_column_selections, set_filter_placeholder, stop_column_spinner, touch_source_model,
-    update_empty_trash_sensitivity,
+    column_size_text, prune_missing_search_results, restore_column_cursor, scroll_column_to,
+    set_column_busy, set_column_selections, set_filter_placeholder, stop_column_spinner,
+    touch_source_model, update_empty_trash_sensitivity,
 };
 use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::item_count_label;
@@ -18,9 +18,7 @@ use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::trash::retryable_delete_entries;
 use crate::ui::browser_modes::BrowserMode;
-use crate::ui::modal::{
-    show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
-};
+use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::collections::HashMap;
@@ -31,6 +29,7 @@ impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
         match event {
             BrowserEvent::SelectionSynced { .. } => return,
+            BrowserEvent::NavigationStarting => {}
             BrowserEvent::Reset => {
                 self.pending_new_entry.take();
                 self.pending_location_credentials.take();
@@ -53,6 +52,30 @@ impl ViewState {
                 self.set_location(location);
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     self.append_column(*depth, location);
+                }
+            }
+            BrowserEvent::ColumnsRelocated { from_depth } => {
+                if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    let refocus = self
+                        .focused_column_depth()
+                        .is_some_and(|depth| depth >= *from_depth);
+                    let active = self.browser.active_depth();
+                    self.rebuild_columns_from(*from_depth);
+                    // A rename is not navigation: keep the user's horizontal viewport.
+                    self.horizontal_scroll_generation
+                        .set(self.horizontal_scroll_generation.get().saturating_add(1));
+                    if let Some(depth) = active {
+                        self.browser.set_active_column(depth);
+                        if refocus {
+                            self.browser.focus_active();
+                        }
+                    }
+                }
+                if let Some(location) = (0..)
+                    .map_while(|depth| self.browser.location_at(depth))
+                    .last()
+                {
+                    self.set_location(&location);
                 }
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {
@@ -183,11 +206,9 @@ impl ViewState {
                     set_column_busy(column, false);
                 }
             }
-            BrowserEvent::EntriesSpliced {
-                depth,
-                splices,
-                selected,
-            } => {
+            BrowserEvent::EntriesSpliced { depth, splices, .. } => {
+                let defer_empty = self.delete_animation_defers_empty_state(*depth);
+                let restore_cursor = self.focused_column_depth() == Some(*depth);
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     let mut count = column.entry_count.get();
                     for splice in splices {
@@ -203,14 +224,24 @@ impl ViewState {
                     }
                     column.entry_count.set(count);
                     set_filter_placeholder(column, count);
-                    set_column_selection(
-                        column,
-                        selected
-                            .and_then(|position| column.map.view_position(position))
-                            .unwrap_or(gtk::INVALID_LIST_POSITION),
-                    );
+                    let positions: Vec<_> = self
+                        .browser
+                        .selected_positions(*depth)
+                        .into_iter()
+                        .filter_map(|position| column.map.view_position(position))
+                        .collect();
+                    set_column_selections(column, &positions);
+                    if restore_cursor
+                        && let Some((focused_depth, position, _)) = self.browser.focused_item()
+                        && focused_depth == *depth
+                        && let Some(position) = column.map.view_position(position)
+                    {
+                        restore_column_cursor(column, position);
+                    }
                     if count == 0 {
-                        column.presentation.show_empty();
+                        if !defer_empty {
+                            column.presentation.show_empty();
+                        }
                     } else {
                         column.presentation.show_content();
                     }
@@ -261,6 +292,7 @@ impl ViewState {
                 self.mode_views.borrow().set_show_hidden(*show_hidden);
             }
             BrowserEvent::LoadFinished { depth, truncated } => {
+                let defer_empty = self.delete_animation_defers_empty_state(*depth);
                 let archive_destination_loaded = !self.pending_select.borrow().is_empty()
                     && self
                         .pending_archive_destination
@@ -284,7 +316,9 @@ impl ViewState {
                     column.truncated_hint.set_visible(*truncated);
                     let count = column.entry_count.get();
                     if count == 0 {
-                        column.presentation.show_empty();
+                        if !defer_empty {
+                            column.presentation.show_empty();
+                        }
                     } else {
                         column.presentation.show_content();
                     }
@@ -312,31 +346,51 @@ impl ViewState {
                             }
                         });
                     }
-                } else if self.browser.active_depth() == Some(*depth)
-                    && (self.mode_views.borrow().mode() != BrowserMode::Columns
-                        || self.pending_archive_destination.borrow().is_none())
-                {
-                    let names = self.pending_select.take();
-                    let properties = self.pending_select_properties.replace(false);
-                    let locations = self
+                } else {
+                    let transfer_target_loaded = self
                         .pending_transfer_selection
-                        .take()
-                        .filter(|(target, _)| {
-                            self.browser.active_location().as_ref() == Some(target)
-                        })
-                        .map(|(_, locations)| locations)
-                        .unwrap_or_default();
+                        .borrow()
+                        .as_ref()
+                        .is_some_and(|(target, _)| {
+                            self.browser.location_at(*depth).as_ref() == Some(target)
+                        });
+                    if transfer_target_loaded
+                        && self.mode_views.borrow().mode() == BrowserMode::Columns
+                    {
+                        self.browser.set_active_column(*depth);
+                    }
+                    let locations = if transfer_target_loaded {
+                        self.pending_transfer_selection
+                            .take()
+                            .map(|(_, locations)| locations)
+                            .unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    };
+                    let names = if self.browser.active_depth() == Some(*depth)
+                        && (self.mode_views.borrow().mode() != BrowserMode::Columns
+                            || self.pending_archive_destination.borrow().is_none())
+                    {
+                        self.pending_select.take()
+                    } else {
+                        Vec::new()
+                    };
+                    let properties =
+                        !names.is_empty() && self.pending_select_properties.replace(false);
                     if !names.is_empty() || !locations.is_empty() {
                         let weak = Rc::downgrade(self);
-                        let location = self.browser.active_location();
+                        let depth = *depth;
+                        let destination = self.browser.location_at(depth);
                         glib::idle_add_local_once(move || {
                             if let Some(state) = weak.upgrade()
-                                && state.browser.active_location() == location
+                                && state.browser.location_at(depth) == destination
                             {
-                                if locations.is_empty() {
-                                    state.browser.select_entries_by_name(&names);
-                                } else {
-                                    state.browser.select_entries_by_location(&locations);
+                                if !locations.is_empty() {
+                                    state
+                                        .browser
+                                        .select_entries_by_location_at(depth, &locations);
+                                } else if !names.is_empty() {
+                                    state.browser.select_entries_by_name_at(depth, &names);
                                 }
                                 if state
                                     .pending_archive_destination
@@ -455,6 +509,11 @@ impl ViewState {
                 }
             }
             BrowserEvent::PreviewRequested { .. } => {}
+            BrowserEvent::ExtractRequested { entry } => {
+                if self.interactive {
+                    self.extract_entry_to_subfolder(entry.clone());
+                }
+            }
             BrowserEvent::OpenRequested { location } => {
                 if self.interactive {
                     open_location(location, &self.overlay);
@@ -465,6 +524,7 @@ impl ViewState {
             }
             BrowserEvent::RenameCompleted { request_id } => {
                 self.complete_pending_rename(*request_id);
+                self.prune_stale_search_results();
             }
             BrowserEvent::RenameAbandoned { request_id } => {
                 self.abandon_pending_rename(*request_id);
@@ -507,6 +567,7 @@ impl ViewState {
                     self.complete_cut_transfer(moved_locations);
                 }
                 self.dismiss_file_operation_progress();
+                self.prune_stale_search_results();
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();
@@ -521,7 +582,33 @@ impl ViewState {
             BrowserEvent::DeletionProgress { completed, total } => {
                 self.update_item_progress(*completed, *total);
             }
-            BrowserEvent::DeletionFinished => self.dismiss_file_operation_progress(),
+            BrowserEvent::DeletionFinished { succeeded } => {
+                if let Some((depth, dissolve)) = self.pending_delete_dissolve.take() {
+                    self.deferred_delete_empty_depth.set(Some(depth));
+                    let succeeded = *succeeded;
+                    let weak = Rc::downgrade(self);
+                    self.dismiss_file_operation_progress_then(move || {
+                        glib::idle_add_local_once(move || {
+                            let Some(state) = weak.upgrade() else {
+                                return;
+                            };
+                            if succeeded {
+                                let weak = Rc::downgrade(&state);
+                                dissolve.play(move || {
+                                    if let Some(state) = weak.upgrade() {
+                                        state.finish_delete_animation(depth);
+                                    }
+                                });
+                            } else {
+                                state.finish_delete_animation(depth);
+                            }
+                        });
+                    });
+                } else {
+                    self.dismiss_file_operation_progress();
+                }
+                self.prune_stale_search_results();
+            }
             BrowserEvent::RestorationStarted { total } => {
                 let browser = self.browser.clone();
                 self.show_file_operation_progress(
@@ -538,16 +625,22 @@ impl ViewState {
             BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
                 self.pending_new_entry.take();
+                self.clear_delete_animation();
                 self.dismiss_file_operation_progress();
                 self.pending_archive_destination.take();
                 let retry = self.pending_extract_retry.take();
-                if let Some((entry, dest)) = retry {
-                    let lower = message.to_lowercase();
-                    if lower.contains("password") || lower.contains("encrypt") {
-                        let invalid_password = lower.contains("incorrect");
-                        self.show_extract_password_dialog(entry, dest, invalid_password);
-                        return;
-                    }
+                if let Some((entry, dest)) = retry
+                    && extract_error_needs_password(message)
+                {
+                    let invalid_password = message.to_lowercase().contains("incorrect");
+                    let navigate_after_extract = self.pending_navigate.take();
+                    self.show_extract_password_dialog(
+                        entry,
+                        dest,
+                        invalid_password,
+                        navigate_after_extract,
+                    );
+                    return;
                 }
                 show_error_dialog(&self.overlay, "Unable to complete operation", message);
             }
@@ -585,20 +678,14 @@ impl ViewState {
                 affected_locations,
             } => {
                 self.pending_archive_destination.take();
+                self.browser.refresh_after_cancellation(affected_locations);
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
                     item_count_label(*completed),
                     item_count_label(*failed),
                     item_count_label(*not_attempted),
                 );
-                let browser = self.browser.clone();
-                let affected = affected_locations.clone();
-                show_error_dialog_after_close(
-                    &self.overlay,
-                    "Operation cancelled",
-                    &message,
-                    Rc::new(move || browser.refresh_after_cancellation(&affected)),
-                );
+                show_error_dialog(&self.overlay, "Operation cancelled", &message);
             }
             BrowserEvent::NavigationRejected {
                 parent_depth,
@@ -753,7 +840,17 @@ impl ViewState {
         if Self::event_refreshes_active_path(event) {
             self.refresh_active_path_rows();
         }
-        self.mode_views.borrow_mut().handle(event);
+        let defer_empty = match event {
+            BrowserEvent::EntriesReplaced { depth, .. }
+            | BrowserEvent::EntriesSpliced { depth, .. }
+            | BrowserEvent::LoadFinished { depth, .. } => {
+                self.delete_animation_defers_empty_state(*depth)
+            }
+            _ => false,
+        };
+        self.mode_views
+            .borrow_mut()
+            .handle_with_deferred_empty(event, defer_empty);
         self.reconcile_pending_rename();
         match event {
             BrowserEvent::ColumnAdded { depth, .. } | BrowserEvent::ColumnReloaded { depth } => {
@@ -850,12 +947,37 @@ impl ViewState {
         }
     }
 
+    fn finish_delete_animation(&self, depth: usize) {
+        if self.deferred_delete_empty_depth.get() != Some(depth) {
+            return;
+        }
+        self.deferred_delete_empty_depth.set(None);
+        if self.delete_animation_defers_empty_state(depth) {
+            return;
+        }
+        if let Some(column) = self.columns.borrow().get(depth)
+            && column.entry_count.get() == 0
+            && !column.spinner.is_spinning()
+        {
+            column.presentation.show_empty_if_ready();
+        }
+        self.mode_views.borrow().show_empty_if_empty(depth);
+    }
+
+    fn prune_stale_search_results(&self) {
+        for column in self.columns.borrow().iter() {
+            prune_missing_search_results(column);
+        }
+        self.mode_views.borrow().prune_stale_search_results();
+    }
+
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {
         matches!(
             event,
             BrowserEvent::Reset
                 | BrowserEvent::ColumnAdded { .. }
                 | BrowserEvent::ColumnsTruncated { .. }
+                | BrowserEvent::ColumnsRelocated { .. }
                 | BrowserEvent::FocusChanged { .. }
                 | BrowserEvent::SelectionSetChanged { .. }
                 | BrowserEvent::EntriesInserted { .. }
@@ -864,6 +986,18 @@ impl ViewState {
                 | BrowserEvent::EntriesReplaced { .. }
         )
     }
+}
+
+fn extract_error_needs_password(message: &str) -> bool {
+    // Member diagnostics quote one unescaped filename, which can itself contain backticks.
+    let (prefix, suffix) = match (message.find('`'), message.rfind('`')) {
+        (Some(start), Some(end)) if start < end => (&message[..start], &message[end + 1..]),
+        _ => (message, ""),
+    };
+    [prefix, suffix].iter().any(|text| {
+        let lower = text.to_lowercase();
+        lower.contains("password") || lower.contains("encrypt")
+    })
 }
 
 #[cfg(test)]

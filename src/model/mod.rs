@@ -113,8 +113,28 @@ impl Location {
     }
 
     pub fn rebase(&self, from: &Self, to: &Self) -> Option<Self> {
-        let suffix = self.native_path()?.strip_prefix(from.native_path()?).ok()?;
-        Some(Self::local(to.native_path()?.join(suffix)))
+        match (&self.kind, &from.kind, &to.kind) {
+            (LocationKind::Native(path), LocationKind::Native(from), LocationKind::Native(to)) => {
+                let suffix = path.strip_prefix(from).ok()?;
+                Some(Self::local(if suffix.as_os_str().is_empty() {
+                    to.clone()
+                } else {
+                    to.join(suffix)
+                }))
+            }
+            (LocationKind::Uri(uri), LocationKind::Uri(from), LocationKind::Uri(to)) => {
+                let file = gio::File::for_uri(uri);
+                let from = gio::File::for_uri(from);
+                let to = gio::File::for_uri(to);
+                let relocated = if file.equal(&from) {
+                    to
+                } else {
+                    to.resolve_relative_path(from.relative_path(&file)?)
+                };
+                Some(Self::uri(relocated.uri()))
+            }
+            _ => None,
+        }
     }
 
     pub fn is_within(&self, other: &Self) -> bool {

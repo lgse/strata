@@ -25,7 +25,7 @@ use crate::{
 use compression::{
     compress_7z, compress_tar, compress_zip, count_archive_files, write_staged_archive,
 };
-use decoders::{extract_7z_from_reader, extract_tar, extract_zip_from_archive};
+use decoders::{extract_7z_from_reader, extract_rar, extract_tar, extract_zip_from_archive};
 use extraction::ArchiveOutcome;
 use gtk::{gio, glib};
 use std::{
@@ -139,6 +139,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
                     ArchiveFormat::Tar => {
                         compress_tar(file, &entries, false, &work_progress, &work_cancelled)
                     }
+                    ArchiveFormat::Rar => Err(ArchiveError::Failed(
+                        "RAR compression is not supported".to_owned(),
+                    )),
                 }
             },
         )
@@ -209,6 +212,15 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
+        let created_dest = !dest_dir.exists();
+        if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
+            emit(OperationEvent::Failed {
+                request_id: request.id,
+                message: format!("Could not create folder: {e}"),
+            });
+            return;
+        }
+        let dest_dir_for_cleanup = dest_dir.clone();
         let format = ArchiveFormat::from_extension(&request.entry.display_name);
         let password = request.password.clone();
         let display_name = request.entry.display_name.clone();
@@ -257,12 +269,26 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 &work_progress,
                 &work_cancelled,
             ),
+            Some(ArchiveFormat::Rar) => extract_rar(
+                &archive_path,
+                &dest_dir,
+                password.as_deref(),
+                &work_progress,
+                &work_cancelled,
+            ),
             None => Err(archive_failed(format!(
                 "Unsupported archive format: {display_name}"
             ))),
         })
         .await;
         timer_id.remove();
+        if created_dest
+            && !matches!(result, Ok(Ok(ArchiveOutcome::Completed(_))))
+            && std::fs::read_dir(&dest_dir_for_cleanup)
+                .is_ok_and(|mut entries| entries.next().is_none())
+        {
+            let _ = std::fs::remove_dir(&dest_dir_for_cleanup);
+        }
         match result {
             Ok(Ok(ArchiveOutcome::Completed(first_name))) => emit(OperationEvent::Extracted {
                 request_id: request.id,

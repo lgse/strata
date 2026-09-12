@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::{ffi::OsStr, path::Path, rc::Rc};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use crate::model::FileEntry;
 
@@ -9,12 +13,42 @@ use super::LoadHandle;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PreviewRequestId(pub u64);
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct MediaPreviewSize {
+    pub width: i32,
+    pub height: i32,
+}
+
+impl MediaPreviewSize {
+    pub const MAX_EDGE: i32 = 1280;
+
+    pub fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.clamp(16, Self::MAX_EDGE),
+            height: height.clamp(16, Self::MAX_EDGE),
+        }
+    }
+
+    pub fn for_viewport(width: i32, height: i32, scale: i32) -> Self {
+        Self::new(width.saturating_mul(scale), height.saturating_mul(scale))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PreviewRequest {
     pub id: PreviewRequestId,
     pub entry: FileEntry,
     pub text_byte_limit: usize,
     pub pdf_page: i32,
+    pub media_size: MediaPreviewSize,
+}
+
+/// A decode request, not a playable file. Only the sandbox may open `path`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SandboxedMedia {
+    pub(crate) path: PathBuf,
+    pub(crate) size: MediaPreviewSize,
+    pub(crate) backend: crate::sandbox::MediaPreviewBackend,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,7 +57,7 @@ pub enum PreviewContent {
     Image,
     Media,
     Rasterized { png: Vec<u8> },
-    SandboxedMedia { data: Vec<u8> },
+    SandboxedMedia { media: SandboxedMedia },
     Pdf { png: Vec<u8>, page: i32, pages: i32 },
     Unsupported,
 }

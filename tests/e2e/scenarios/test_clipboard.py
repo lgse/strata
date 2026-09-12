@@ -25,7 +25,6 @@ def test_same_folder_copy_creates_a_numbered_duplicate(strata, mode, source, dup
     else:
         strata.keyboard.press("ctrl+c")
         strata.paste_into(fixture.root.name)
-
     strata.wait(lambda: fixture.path(duplicate).exists(), "the numbered copy")
     strata.entry(duplicate, directory=fixture.root.name)
     assert fixture.path(source).exists()
@@ -87,10 +86,7 @@ def test_paste_into_parent_uses_the_current_directory(strata, mode):
     strata.keyboard.press("alt+Up")
     strata.wait_for_directory(root)
     if mode != "Columns":
-        strata.wait(
-            lambda: strata.selected_names() == ["archive"],
-            "the parent load cursor to settle on the first folder",
-        )
+        strata.wait_for_selection(["documents" if mode == "List" else "archive"])
     strata.keyboard.press("ctrl+v")
 
     strata.wait(
@@ -100,30 +96,36 @@ def test_paste_into_parent_uses_the_current_directory(strata, mode):
     assert not fixture.path("archive/notes.txt").exists(), (
         "the auto-selected first folder must not steal the paste"
     )
+    assert not fixture.path("documents/notes (1).txt").exists(), (
+        "the restored selection must not steal the paste"
+    )
     assert fixture.path("documents/notes.txt").exists()
 
 
 @pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
 @pytest.mark.parametrize("selection", ["click", "Home"])
-def test_paste_into_explicitly_selected_load_cursor(strata, mode, selection):
+def test_paste_into_explicit_selection_after_returning_to_parent(strata, mode, selection):
     fixture = strata.fixture
     strata.open_directory("documents")
     strata.select_entry("notes.txt")
     strata.keyboard.press("ctrl+c")
     strata.keyboard.press("alt+Up")
     strata.wait_for_directory(fixture.root.name)
-    strata.wait(
-        lambda: strata.selected_names() == ["archive"],
-        "the parent load cursor",
-    )
+    restored = "documents" if mode == "List" else "archive"
+    strata.wait_for_selection([restored])
     if selection == "click":
-        strata.click_entry("archive")
+        strata.click_entry(restored)
     else:
         strata.keyboard.press(selection)
+    destination = (
+        "documents/notes (1).txt"
+        if mode == "List" and selection == "click"
+        else "archive/notes.txt"
+    )
     strata.keyboard.press("ctrl+v")
     strata.wait(
-        lambda: fixture.path("archive/notes.txt").exists(),
-        "the copy to land in the explicitly selected load cursor",
+        lambda: fixture.path(destination).exists(),
+        "the copy to land in the explicitly selected folder",
     )
     assert not fixture.path("notes.txt").exists()
 
@@ -210,12 +212,15 @@ def _paste_from_context_menu(strata):
     strata.choose_menu_item("Paste")
 
 
-def test_pasting_a_duplicate_name_asks_before_replacing(strata):
+def test_skipping_one_collision_still_pastes_the_rest(strata):
     fixture = strata.fixture
-    fixture.path("archive/todo.txt").write_text("existing\n")
-
-    strata.select_entry("todo.txt")
+    fixture.path("archive/notes.txt").write_text("existing\n")
+    strata.open_directory("documents")
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("ctrl+a")
     strata.keyboard.press("ctrl+c")
+    strata.keyboard.press("alt+Up")
+    strata.wait_for_directory(fixture.root.name)
     strata.open_directory("archive")
     strata.paste_into("archive")
 
@@ -223,12 +228,28 @@ def test_pasting_a_duplicate_name_asks_before_replacing(strata):
     assert dialog.name == "File already exists", (
         "a duplicate name must be surfaced rather than silently resolved"
     )
+    assert dialog.find(role="button", name="Skip") is not None, (
+        "skip must stay available when other items are already accepted"
+    )
+    assert dialog.find(name="Apply to All") is None, (
+        "apply to all has no further conflicts left to apply to"
+    )
 
     strata.pointer.click(strata.dialog_button("Skip"))
     strata.wait(lambda: strata.dialog() is None, "the conflict dialog to close")
-    assert fixture.path("archive/todo.txt").read_text() == "existing\n", (
-        "skipping must leave the existing file alone"
+    assert fixture.path("archive/notes.txt").read_text() == "existing\n", (
+        "skipping must leave the conflicting file alone"
     )
+    assert not fixture.path("archive/notes (1).txt").exists(), (
+        "skipping must not create a numbered copy"
+    )
+    for name in ("report.md", "spreadsheet.csv"):
+        source = fixture.path(f"documents/{name}")
+        copied = fixture.path(f"archive/{name}")
+        strata.wait(
+            lambda: copied.is_file() and copied.read_bytes() == source.read_bytes(),
+            f"the non-conflicting {name} copy to finish",
+        )
 
 
 def test_replacing_on_a_duplicate_name_overwrites(strata):

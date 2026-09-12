@@ -108,7 +108,17 @@ from native builds. Artifacts remain in `target/e2e-artifacts` and are owned by
 the invoking user. Minimal generated passwd/group files provide the invoking
 UID/GID to D-Bus, so one published environment works across local user IDs without
 rebuilding it or mounting the host's account database.
-The image includes bubblewrap for sandboxed thumbnail decoding. Rootless Podman
+The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
+and GTK's GStreamer media backend with the base/good/libav plugins. Rust media
+regressions exercise actual normalization, playback, and long-source duration
+limits rather than skipping when optional host tools are missing. These packages
+come from the existing dated Ubuntu snapshot; the GTK/GLib baseline and Rust
+compiler are unchanged. This test-only dependency addition does not apply or
+retire the version-specific GTK 4.22.4/GstPlay 1.28.6 patches in
+`packaging/media-runtime/`; that opt-in kit remains unchanged and is not shipped
+by this image update.
+
+Rootless Podman
 runs unmask `/proc/*` inside the test container so bubblewrap can mount its own
 private `/proc`; the decoder's sandbox and the container's seccomp policy remain
 enabled. Docker's outer seccomp/AppArmor profiles and system-path masks must be
@@ -144,15 +154,71 @@ shown above.
 Quality's Cargo home and build directory are under `target/quality-container`,
 separate from E2E and native builds. Its Actions cache is keyed by environment,
 Cargo manifests, and source revision, with same-environment/manifest restoration.
-Only successful main pushes save caches; PR consumers cannot populate main's
-cache. Cold quality compilation includes test-only and all-feature dependencies,
-so the E2E application dependency cache is not advertised as a full quality hit.
+Only successful quality builds on main pushes save caches; PR consumers cannot
+populate main's cache. These are compilation caches, not evidence of passing tests;
+the aggregate gate separately requires all test shards to pass. Cold quality
+compilation includes test-only and all-feature dependencies, so the E2E application
+dependency cache is not advertised as a full quality hit.
 
 The Rust suite runs with `--all-targets --all-features --locked` inside private
 Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
 GTK initialization failures cannot silently skip tests. Formatting, compiler,
 lint, and test failures remain blocking. Lightweight policy/helper jobs retain
 their existing runners rather than downloading a large GUI image unnecessarily.
+
+### Rust quality shards
+
+CI's **Quality build and lint** job runs formatting and Clippy, then compiles
+`cargo test --locked --all-targets --all-features --no-run` once. It exports only
+test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
+each libtest inventory, including the explicitly ignored tests, and assigns every
+entry to one of four shards. Timing hints in `scripts/quality-durations.json`
+come from successful GTK child runs in
+[run 34560353003](https://github.com/lgse/strata/actions/runs/34560353003).
+Shard 0 is reserved exclusively for
+`ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset`.
+Every other test is balanced longest-first across shards 1–3; unknown tests
+receive a one-second weight and always participate. Timing hints are not an
+allowlist and cannot put another test into shard 0. Validation rejects mixed
+assignments or a missing, duplicated, or ignored isolated test, so renaming or
+removing it requires updating `ISOLATED_TEST` and the reservation policy.
+The roughly 160-second deferred-scroll regression remains unchanged and limits
+the possible speedup; sharding does not shorten an individual test.
+
+Each **Rust tests shard N** verifies the checkout revision, application/Rust-test source
+fingerprint, image inputs, executable checksums, and the entire libtest inventory
+before selecting exact names. Tests share neither a display nor a session bus
+with another shard. The existing per-process GTK serialization still applies.
+The runner checks libtest's actual selection and final passed/ignored counts
+before writing a success receipt; nonzero exits, empty runnable shards, or changed
+inventories fail. Existing `#[ignore]` entries stay explicitly accounted for;
+sharding neither enables them nor silently ignores additional tests. Unsupported
+non-libtest harness inventories fail closed rather than disappearing from coverage.
+
+Published environments are pulled by the build job's exact manifest digest and
+verified again by `quality.sh`. Deliberate unpublished recipe updates transfer
+the same locally built environment as an attempt-scoped artifact instead; shards
+never rebuild it. **Format, lint, and test** retains the required-check name,
+requires successful build/lint and every shard, and verifies no missing, extra,
+duplicate, or stale receipts. Failed shards are not retried, and `fail-fast: false`
+preserves the other shards' results. Reports and logs are attempt-scoped artifacts.
+
+To reproduce the handoff locally using the same pinned container:
+
+```bash
+STRATA_QUALITY_TASK=build ./scripts/quality.sh test
+for shard in 0 1 2 3; do
+  STRATA_QUALITY_TASK=shard STRATA_QUALITY_SHARD="$shard" ./scripts/quality.sh test
+done
+python3 scripts/quality_ci.py verify
+```
+
+The example runs shards sequentially for convenient local diagnosis; CI runs them
+in parallel on separate runners. These environment variables are CI handoff modes,
+not test filters; ordinary `./scripts/quality.sh test` still runs the complete
+unsharded suite. Rebuild the bundle after changing source or checkout revision.
+The four-shard matrix and `SHARDS` constant must be updated together if tuning
+fan-out. Each shard has a ten-minute hang bound; timing is otherwise informational.
 
 ### Hardware-aware parallelism
 
@@ -655,6 +721,14 @@ python3 scripts/e2e_ci.py durations target/e2e-bundle/plan.json target/e2e-repor
 Review and commit the changes. Reports must cover every test and shard; partial or
 failed runs cannot overwrite scheduling measurements. Durations are scheduling
 hints, never an allowlist: new tests always participate without editing this file.
+
+### Coverage audit (#837)
+
+The [test-suite audit](test-suite-audit.md) records the subsequent reduction from
+812 to 770 collected pytest cases (766 to 724 GUI scenarios; 46 harness cases
+unchanged), plus 43 fewer Rust test functions. It maps each consolidation to its
+retained behavioral owner and distinguishes retired cosmetic assertions from
+functional layout, input-routing and lifecycle regressions.
 
 ### Coverage audit (#607)
 

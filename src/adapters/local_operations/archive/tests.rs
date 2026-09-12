@@ -48,6 +48,25 @@ fn run_compression(request: CompressRequest) -> Vec<OperationEvent> {
     events.borrow().clone()
 }
 
+fn run_extraction(request: ExtractRequest) -> Vec<OperationEvent> {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let operation = LocalOperationProvider.extract(
+        request,
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Extracted { .. } | OperationEvent::Failed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+    drop(operation);
+    events.borrow().clone()
+}
+
 #[test]
 fn compression_provider_rejects_escaping_archive_names() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -226,6 +245,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                     &never_cancelled(),
                 )?;
             }
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
         assert_eq!(fs::read(extracted.join("source.txt"))?, b"contents");
         assert_eq!(
@@ -410,11 +430,15 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
             "fake.tar.gz",
             "This file is not a valid archive or is damaged.",
         ),
+        (
+            "fake.rar",
+            "This file is not a valid archive or is damaged.",
+        ),
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a directory"),
         ("unsafe.zip", "Refusing unsafe ZIP path"),
-        ("unknown.rar", "Unsupported archive format"),
+        ("unknown.iso", "Unsupported archive format"),
     ] {
         let archive = root.path().join(name);
         if name != "missing.zip" {
@@ -479,5 +503,62 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         assert!(destination.read_dir()?.next().is_none());
         assert!(!root.path().join("outside").exists());
     }
+    Ok(())
+}
+
+#[test]
+fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("fake.zip");
+    fs::write(&archive, b"not an archive")?;
+    let destination = root.path().join("leftover");
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(908),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        password: None,
+    });
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Failed { .. })),
+        "{:?}",
+        events
+    );
+    assert!(
+        !destination.exists(),
+        "leftover destination was not cleaned up"
+    );
+    Ok(())
+}
+
+#[test]
+fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("fake.zip");
+    fs::write(&archive, b"not an archive")?;
+    let destination = root.path().join("existing");
+    fs::create_dir(&destination)?;
+    fs::write(destination.join("kept.txt"), b"kept")?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(909),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        password: None,
+    });
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Failed { .. })),
+        "{:?}",
+        events
+    );
+    assert!(destination.exists(), "pre-existing destination was removed");
+    assert!(
+        destination.join("kept.txt").exists(),
+        "user content was lost"
+    );
     Ok(())
 }

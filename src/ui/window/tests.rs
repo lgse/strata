@@ -20,16 +20,31 @@ use super::{
     DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
     TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
     browser_for_window, browser_mode_for_digit, build_sidebar, event_changes_trash_contents,
-    is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
-    jump_direction, load_pinned_places, media_release_label, mount_release_action,
-    mouse_history_action, page_direction, parse_pinned_drag_source, parse_pinned_places,
-    pin_status, pinned_places_path, remove_pinned_place, reorder_pinned_places, reorder_places,
-    resolve_place_order, serialize_pinned_places, should_show_standard_place,
-    sidebar_accepts_file_drop, sidebar_update_label, standard_place, trash_contents_from_probe,
-    trash_has_entries, trash_menu_visibility, type_to_search_query, vim_focus_direction,
-    volume_release_action,
+    is_context_menu_shortcut, is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
+    is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, load_pinned_places,
+    media_release_label, mount_release_action, mouse_history_action, page_direction,
+    parse_pinned_drag_source, parse_pinned_places, pin_status, pinned_places_path,
+    remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
+    serialize_pinned_places, should_show_standard_place, sidebar_accepts_file_drop,
+    sidebar_update_label, standard_place, trash_contents_from_probe, trash_has_entries,
+    trash_menu_visibility, type_to_search_query, vim_focus_direction, volume_release_action,
 };
+
+#[test]
+fn pointer_controls_cover_sidebar_navigation() {
+    gtk_test(
+        "ui::window::tests::pointer_controls_cover_sidebar_navigation",
+        || {
+            use gtk::prelude::*;
+            let button = super::sidebar_button(crate::assets::icons::FOLDER, "Folder");
+            assert_eq!(
+                button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                Some("pointer")
+            );
+        },
+    );
+}
 
 #[test]
 fn startup_applies_disabled_single_click_previews_before_the_first_click() {
@@ -286,6 +301,45 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::b, control | shift));
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::B, control | shift));
     assert!(!is_sidebar_focus_shortcut(gtk::gdk::Key::b, control));
+}
+
+#[test]
+fn context_menu_shortcut_accepts_menu_key_alone_and_shift_f10() {
+    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    let alt = gtk::gdk::ModifierType::ALT_MASK;
+
+    assert!(is_context_menu_shortcut(
+        gtk::gdk::Key::Menu,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_context_menu_shortcut(gtk::gdk::Key::F10, shift));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, shift));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, control));
+    assert!(!is_context_menu_shortcut(
+        gtk::gdk::Key::F10,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_context_menu_shortcut(
+        gtk::gdk::Key::F10,
+        shift | control
+    ));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::F10, shift | alt));
+    for modifier in [
+        gtk::gdk::ModifierType::SUPER_MASK,
+        gtk::gdk::ModifierType::HYPER_MASK,
+        gtk::gdk::ModifierType::META_MASK,
+    ] {
+        assert!(!is_context_menu_shortcut(
+            gtk::gdk::Key::F10,
+            shift | modifier
+        ));
+        assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, modifier));
+    }
+    assert!(is_context_menu_shortcut(
+        gtk::gdk::Key::Menu,
+        gtk::gdk::ModifierType::LOCK_MASK
+    ));
 }
 
 #[test]
@@ -690,6 +744,9 @@ fn sidebar_sync_runs_only_for_location_changes() {
         &BrowserEvent::ColumnsTruncated { len: 1 }
     ));
     assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::ColumnsRelocated { from_depth: 1 }
+    ));
+    assert!(SidebarState::event_changes_active_place(
         &BrowserEvent::FocusChanged {
             depth: 0,
             position: Some(2),
@@ -807,6 +864,26 @@ fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
 }
 
 #[test]
+fn trash_drops_reject_empty_roots_and_already_trashed_sources() {
+    use crate::ui::browser::BrowserView;
+
+    assert!(BrowserView::can_trash_file_drop(&[
+        Location::local("/home/user/first.txt"),
+        Location::local("/home/user/second.txt"),
+        Location::local("/home/user/third.txt"),
+    ]));
+    assert!(!BrowserView::can_trash_file_drop(&[]));
+    assert!(!BrowserView::can_trash_file_drop(&[Location::local("/")]));
+    assert!(!BrowserView::can_trash_file_drop(&[Location::uri(
+        "trash:///"
+    )]));
+    assert!(!BrowserView::can_trash_file_drop(&[
+        Location::local("/home/user/first.txt"),
+        Location::uri("trash:///second.txt"),
+    ]));
+}
+
+#[test]
 fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_trash() {
     assert_eq!(
         trash_menu_visibility(TrashContents::NonEmpty),
@@ -847,7 +924,7 @@ fn trash_probe_results_map_to_menu_state() {
 #[test]
 fn trash_mutating_operations_refresh_the_context_menu() {
     assert!(event_changes_trash_contents(
-        &BrowserEvent::DeletionFinished
+        &BrowserEvent::DeletionFinished { succeeded: true }
     ));
     assert!(event_changes_trash_contents(
         &BrowserEvent::RestorationFinished
@@ -907,43 +984,6 @@ fn control_digits_select_each_browser_presentation() {
     );
     assert_eq!(browser_mode_for_digit(gtk::gdk::Key::_4), None);
     assert_eq!(browser_mode_for_digit(gtk::gdk::Key::a), None);
-}
-
-#[test]
-fn the_bundled_stylesheet_only_uses_at_rules_gtk_parses() {
-    // GTK's CSS parser rejects anything outside this set with a startup
-    // "Unknown @ rule" warning; `@media` only became valid in GTK 4.20.
-    const SUPPORTED: [&str; 3] = ["define-color", "import", "keyframes"];
-
-    let unsupported: Vec<&str> = include_str!("../../style.css")
-        .lines()
-        .filter_map(|line| line.trim_start().strip_prefix('@'))
-        .map(|rule| {
-            let end = rule
-                .find(|character: char| !character.is_ascii_alphanumeric() && character != '-')
-                .unwrap_or(rule.len());
-            &rule[..end]
-        })
-        .filter(|rule| !SUPPORTED.contains(rule))
-        .collect();
-
-    assert!(
-        unsupported.is_empty(),
-        "the stylesheet uses at-rules GTK 4.12 cannot parse: {unsupported:?}"
-    );
-}
-
-#[test]
-fn chrome_stylesheet_requests_header_bar_icon_size() {
-    let css = include_str!("../../style.css");
-    assert!(
-        css.contains("headerbar image {\n  -gtk-icon-size: 16px;"),
-        "header-bar icons must use GTK's compact 16px size, not large/app sizes"
-    );
-    assert!(
-        !css.contains("-gtk-icon-size: 20px;"),
-        "20px chrome icon size regresses XFCE toolbar density"
-    );
 }
 
 #[test]

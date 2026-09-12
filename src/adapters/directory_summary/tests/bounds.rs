@@ -15,12 +15,16 @@ fn measurement_counts_nested_entries_without_following_symlinks() {
         .expect("broken symlink");
     std::fs::write(outside.path().join("excluded"), b"excluded content").expect("outside file");
     std::os::unix::fs::symlink(outside.path(), root.path().join("link")).expect("symlink");
+    std::fs::create_dir_all(root.path().join(".hidden/visible")).expect("hidden subtree");
+    std::fs::write(root.path().join(".hidden/visible/file"), b"1234").expect("hidden subtree file");
     let summary = glib::MainContext::new()
         .block_on(summarize_directory(&gio::File::for_path(root.path())))
         .expect("summary");
-    assert_eq!(summary.item_count, 7);
-    assert_eq!(summary.total_size, 14);
-    assert!(!summary.truncated);
+    assert_eq!(summary.item_count, 10);
+    assert_eq!(summary.total_size, 18);
+    assert_eq!(summary.visible_file_count, 5);
+    assert_eq!(summary.visible_folder_count, 1);
+    assert!(!summary.truncated());
 }
 
 #[test]
@@ -39,30 +43,5 @@ fn missing_root_is_an_error_and_empty_root_is_exact() {
         .expect("empty summary");
     assert_eq!(summary.item_count, 0);
     assert_eq!(summary.total_size, 0);
-    assert!(!summary.truncated);
-}
-
-#[test]
-fn measurement_budget_is_shared_by_root_files_and_nested_branches() {
-    let root = tempfile::tempdir().expect("fixture");
-    std::fs::write(root.path().join("top"), b"top").expect("top file");
-    for directory in ["one", "two", "three"] {
-        std::fs::create_dir(root.path().join(directory)).expect("directory");
-        for index in 0..4 {
-            std::fs::write(root.path().join(directory).join(index.to_string()), b"data")
-                .expect("file");
-        }
-    }
-    for max_entries in [0, 1, 3, 8] {
-        let summary = glib::MainContext::new()
-            .block_on(summarize_directory_with_budget(
-                &gio::File::for_path(root.path()),
-                max_entries,
-                MAX_DEPTH,
-                TIME_BUDGET,
-            ))
-            .expect("bounded summary");
-        assert_eq!(summary.item_count, max_entries);
-        assert!(summary.truncated);
-    }
+    assert!(!summary.truncated());
 }

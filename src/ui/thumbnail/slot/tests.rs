@@ -4,6 +4,53 @@ use super::*;
 use crate::test_support::gtk_test;
 
 #[test]
+fn icon_fallbacks_never_exceed_folder_height_and_thumbnails_keep_their_size() {
+    gtk_test(
+        "ui::thumbnail::slot::tests::icon_fallbacks_never_exceed_folder_height_and_thumbnails_keep_their_size",
+        || {
+            crate::ui::prepare_portal_ui();
+            for size in [32, 64, 128, 256] {
+                let slot = ThumbnailSlot::new(size);
+                slot.limit_fallback_height_to_folder();
+                slot.allocate(size, size, -1, None);
+                for icon in [crate::assets::icons::FOLDER, "strata-file-text"] {
+                    let texture =
+                        crate::assets::primary_icon_paintable(icon).expect("icon texture");
+                    slot.set_fallback(icon, Some(&texture));
+                    let scale = slot.imp().fallback_scale.get();
+                    if icon == crate::assets::icons::FOLDER {
+                        assert_eq!(scale, 1.0);
+                    } else {
+                        assert!(scale < 1.0);
+                        assert_eq!(scale, folder_height_scale(&texture));
+                    }
+                    let snapshot = gtk::Snapshot::new();
+                    slot.imp().snapshot(&snapshot);
+                    let bounds = snapshot.to_node().expect("fallback node").bounds();
+                    assert!((f64::from(bounds.height()) - f64::from(size) * scale).abs() < 0.001);
+                    assert_eq!(bounds.width(), bounds.height());
+                    slot.set_texture(&texture);
+                    let snapshot = gtk::Snapshot::new();
+                    slot.imp().snapshot(&snapshot);
+                    assert_eq!(
+                        snapshot
+                            .to_node()
+                            .expect("thumbnail node")
+                            .bounds()
+                            .height(),
+                        size as f32
+                    );
+                }
+                let pixels = glib::Bytes::from_owned(vec![255_u8; 24 * 24 * 4]);
+                let full =
+                    gdk::MemoryTexture::new(24, 24, gdk::MemoryFormat::R8g8b8a8, &pixels, 24 * 4);
+                assert_eq!(folder_height_scale(full.upcast_ref()), 19.0 / 24.0);
+            }
+        },
+    );
+}
+
+#[test]
 fn rendering_inset_preserves_measurement_and_texture_aspect_ratio() {
     gtk_test(
         "ui::thumbnail::slot::tests::rendering_inset_preserves_measurement_and_texture_aspect_ratio",

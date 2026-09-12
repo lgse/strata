@@ -13,7 +13,9 @@ use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
     ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::path::{Path, PathBuf};
@@ -128,6 +130,43 @@ fn delete_confirmation_overflow_label(hidden: usize) -> Option<String> {
 }
 
 impl ViewState {
+    pub(super) fn trash_dropped_locations(self: &Rc<Self>, sources: Vec<Location>) {
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let mut entries = Vec::with_capacity(sources.len());
+            for source in sources {
+                match crate::adapters::query_file_entry(source).await {
+                    Ok(entry) => entries.push(entry),
+                    Err(error) => {
+                        if let Some(state) = weak.upgrade() {
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to move to Trash",
+                                &error.to_string(),
+                            );
+                        }
+                        return;
+                    }
+                }
+            }
+            if let Some(state) = weak.upgrade() {
+                state.request_delete(entries, false);
+            }
+        });
+    }
+
+    pub(super) fn clear_delete_animation(&self) {
+        self.pending_delete_dissolve.take();
+    }
+
+    pub(super) fn delete_animation_defers_empty_state(&self, depth: usize) -> bool {
+        self.pending_delete_dissolve
+            .borrow()
+            .as_ref()
+            .is_some_and(|(pending_depth, _)| *pending_depth == depth)
+            || self.deferred_delete_empty_depth.get() == Some(depth)
+    }
+
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
     fn clear_empty_trash(&self) {
@@ -161,7 +200,7 @@ impl ViewState {
             let trash = gio::File::for_uri("trash:///");
             match summarize_directory(&trash).await {
                 Ok(summary) if summary.item_count > 0 => {
-                    if summary.truncated {
+                    if summary.truncated() {
                         tracing::warn!(
                             item_count = summary.item_count,
                             elapsed_ms = started.elapsed().as_millis() as u64,
@@ -307,9 +346,9 @@ impl ViewState {
             "Empty Trash?",
             &format!(
                 "{}{} · {}{} will be reclaimed",
-                if summary.truncated { "At least " } else { "" },
+                if summary.truncated() { "At least " } else { "" },
                 item_count_label(summary.item_count),
-                if summary.truncated { "at least " } else { "" },
+                if summary.truncated() { "at least " } else { "" },
                 format_file_size(summary.total_size)
             ),
             "Empty Trash",
@@ -648,8 +687,24 @@ impl ViewState {
             self.show_delete_confirmation(entries);
         } else {
             self.pending_delete_entries.replace(entries.clone());
-            self.browser.delete(entries, false);
-            self.browser.focus_active();
+            let weak = Rc::downgrade(self);
+            let entries_for_anim = Rc::new(entries.clone());
+            let run_delete = move || {
+                if let Some(state) = weak.upgrade() {
+                    state.browser.delete((*entries_for_anim).clone(), false);
+                    state.browser.focus_active();
+                }
+            };
+            if let Some(trash_button) = self.trash_button.borrow().as_ref() {
+                super::fly_to_trash::fly_to_trash(
+                    self.overlay.upcast_ref(),
+                    &entries,
+                    trash_button,
+                    run_delete,
+                );
+            } else {
+                run_delete();
+            }
         }
     }
 
@@ -754,14 +809,34 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
+        let overlay_for_dissolve = self.overlay.clone();
+        let entries_for_dissolve = entries.clone();
+        let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
-            dismiss_modal_layer(
+            let browser = browser.clone();
+            let overlay_for_dissolve = overlay_for_dissolve.clone();
+            let entries_for_dissolve = entries_for_dissolve.clone();
+            let weak_ui = weak_ui.clone();
+            dismiss_modal_layer_then(
                 &confirmed_layer,
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
+                move || {
+                    let dissolve = super::dissolve_delete::prepare_dissolve(
+                        overlay_for_dissolve.upcast_ref(),
+                        &entries_for_dissolve,
+                    );
+                    if let Some(ui) = weak_ui.upgrade() {
+                        ui.clear_delete_animation();
+                        if let (Some(depth), Some(dissolve)) = (ui.browser.active_depth(), dissolve)
+                        {
+                            ui.pending_delete_dissolve.replace(Some((depth, dissolve)));
+                        }
+                    }
+                    browser.delete(entries_for_dissolve, true);
+                    browser.focus_active();
+                },
             );
-            browser.delete(entries.clone(), true);
-            browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);

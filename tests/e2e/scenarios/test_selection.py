@@ -7,6 +7,16 @@ import pytest
 
 from harness.modes import ALL_MODES
 
+ROW_MODES = [mode for mode in ALL_MODES if mode.id != "icons"]
+
+
+def _name_label_point(entry, *, leftover: bool) -> tuple[int, int]:
+    label = entry.find(role="label", name=entry.name)
+    assert label is not None
+    bounds = label.screen_bounds()
+    x = bounds.x + bounds.width - 2 if leftover else bounds.x + 4
+    return (x, bounds.center[1])
+
 
 @pytest.fixture
 def root(strata) -> str:
@@ -59,7 +69,8 @@ def test_shift_click_revisits_a_file_after_opening_a_folder(strata, root, target
     strata.wait_for_directory("documents")
     strata.wait_for_selection([], "documents")
     click("todo.txt", ("shift",))
-    strata.wait_for_focused_entry("todo.txt")
+    if target == "name":
+        strata.wait_for_focused_entry("todo.txt")
     names = [entry.name for entry in strata.entries(root)]
     strata.wait_for_selection(names[names.index("documents"):names.index("todo.txt") + 1], root)
 
@@ -118,25 +129,32 @@ def test_control_click_toggles_individual_entries(strata, mode, root):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_right_click_selects_the_entry_under_the_pointer(strata, mode, root):
+@pytest.mark.parametrize("target,previous", [("todo.txt", "readme.md"), ("documents", "archive")])
+def test_right_click_selects_the_entry_under_the_pointer(strata, mode, root, target, previous):
     strata.select_entry("readme.md", directory=root)
+    strata.wait_for_focused_entry("readme.md")
 
-    strata.open_context_menu("todo.txt", directory=root)
+    strata.open_context_menu(target, directory=root)
 
-    strata.wait(
-        lambda: strata.selected_names(root) == ["todo.txt"],
-        "the right-clicked entry to become the selection",
-    )
+    strata.wait_for_selection([target], root)
     strata.dismiss_menu()
+    strata.wait_for_focused_entry(target)
+    assert strata.pane_names() == [root], "a folder context menu must not navigate"
+    strata.keyboard.press("Left" if mode == "Icons" else "Up")
+    strata.wait_for_focused_entry(previous)
+    strata.wait_for_selection([previous], root)
 
 
-def test_right_click_keeps_an_existing_multi_selection(strata, root):
-    strata.select_entry("readme.md", directory=root)
-    strata.click_entry_with("todo.txt", ["ctrl"], directory=root)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_right_click_keeps_an_existing_multi_selection(strata, mode, root):
+    strata.select_entry("todo.txt", directory=root)
+    entry = strata.entry("readme.md", root)
+    strata.pointer.click(entry, at=_name_label_point(entry, leftover=False), modifiers=("ctrl",))
     strata.wait(
         lambda: strata.selected_names(root) == ["readme.md", "todo.txt"],
         "both files to be selected",
     )
+    strata.wait_for_focused_entry("readme.md")
 
     strata.open_context_menu("todo.txt", directory=root)
 
@@ -144,6 +162,8 @@ def test_right_click_keeps_an_existing_multi_selection(strata, root):
         "right-clicking inside a multi-selection must not collapse it"
     )
     strata.dismiss_menu()
+    strata.wait_for_focused_entry("todo.txt")
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -185,6 +205,53 @@ def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode
         == ["notes.txt", "report.md", "spreadsheet.csv"],
         "a shift-click to range from the entry the listing selected on load",
     )
+
+
+@pytest.mark.parametrize("mode", ROW_MODES)
+@pytest.mark.parametrize("target", ["content", "row-space"])
+def test_shift_click_keeps_range_when_shift_releases_before_mouseup(
+    strata, mode, root, target
+):
+    strata.open_directory("documents", directory=root)
+    strata.select_entry("notes.txt", directory="documents")
+
+    entry = strata.entry("spreadsheet.csv", "documents")
+    point = _name_label_point(entry, leftover=(target == "row-space"))
+    strata.pointer.click_releasing_modifiers_before_up(
+        entry, at=point, modifiers=("shift",)
+    )
+
+    strata.wait_for_selection(
+        ["notes.txt", "report.md", "spreadsheet.csv"], "documents"
+    )
+
+
+@pytest.mark.preferences(browser_mode="columns")
+def test_control_click_leftover_toggles_when_ctrl_releases_before_mouseup(strata, root):
+    strata.open_directory("documents", directory=root)
+    strata.select_entry("notes.txt", directory="documents")
+
+    entry = strata.entry("spreadsheet.csv", "documents")
+    strata.pointer.click_releasing_modifiers_before_up(
+        entry,
+        at=_name_label_point(entry, leftover=True),
+        modifiers=("ctrl",),
+    )
+
+    strata.wait_for_selection(["notes.txt", "spreadsheet.csv"], "documents")
+
+
+@pytest.mark.parametrize("mode", ROW_MODES)
+def test_unmodified_leftover_click_replaces_the_selection(strata, mode, root):
+    strata.open_directory("documents", directory=root)
+    strata.select_entry("notes.txt", directory="documents")
+
+    entry = strata.entry("spreadsheet.csv", "documents")
+    strata.pointer.click(
+        entry, at=_name_label_point(entry, leftover=True)
+    )
+
+    strata.wait_for_selection(["spreadsheet.csv"], "documents")
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

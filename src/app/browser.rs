@@ -59,6 +59,8 @@ pub struct BrowserColumnSnapshot {
 
 #[derive(Clone, Debug)]
 pub enum BrowserEvent {
+    /// The outgoing directory is still available for presentation-state capture.
+    NavigationStarting,
     Reset,
     ColumnsTruncated {
         len: usize,
@@ -66,6 +68,10 @@ pub enum BrowserEvent {
     ColumnAdded {
         depth: usize,
         location: Location,
+    },
+    /// Existing directories moved; retain the unaffected views and current focus.
+    ColumnsRelocated {
+        from_depth: usize,
     },
     EntriesInserted {
         depth: usize,
@@ -91,7 +97,6 @@ pub enum BrowserEvent {
     EntriesSpliced {
         depth: usize,
         splices: Vec<EntrySplice>,
-        selected: Option<usize>,
     },
     /// Refreshed entries for already-rendered rows; the order never changes here.
     MetadataFilled {
@@ -141,6 +146,9 @@ pub enum BrowserEvent {
     PreviewRequested {
         entry: FileEntry,
     },
+    ExtractRequested {
+        entry: FileEntry,
+    },
     OpenRequested {
         location: Location,
     },
@@ -177,7 +185,9 @@ pub enum BrowserEvent {
         completed: usize,
         total: usize,
     },
-    DeletionFinished,
+    DeletionFinished {
+        succeeded: bool,
+    },
     RestorationStarted {
         total: usize,
     },
@@ -233,6 +243,7 @@ pub enum BrowserEvent {
 /// emission stays safe.
 type Observer = Rc<dyn Fn(&BrowserEvent)>;
 type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
+type DeferredDirectoryChanges = HashMap<usize, Vec<(Location, DirectoryChange)>>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
@@ -508,6 +519,7 @@ pub struct Browser {
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
+    deferred_file_operation_changes: RefCell<DeferredDirectoryChanges>,
     restoration_operation: Cell<bool>,
     archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
@@ -557,6 +569,7 @@ impl Browser {
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
+            deferred_file_operation_changes: RefCell::new(HashMap::new()),
             restoration_operation: Cell::new(false),
             archive_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
@@ -573,6 +586,12 @@ impl Browser {
 
     pub fn observe(&self, observer: impl Fn(&BrowserEvent) + 'static) {
         self.observers.borrow_mut().push(Rc::new(observer));
+    }
+
+    fn should_extract_on_activate(&self, entry: &FileEntry) -> bool {
+        !self.is_chooser_mode()
+            && entry.location.native_path().is_some()
+            && ArchiveFormat::from_extension(&entry.display_name).is_some()
     }
 
     pub fn set_chooser_mode(&self, chooser: bool) {
@@ -751,6 +770,9 @@ impl Browser {
         if self.active_location().as_ref() == Some(&location) {
             return;
         }
+        if self.active_location().is_some() {
+            self.emit(BrowserEvent::NavigationStarting);
+        }
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
@@ -840,6 +862,10 @@ impl Browser {
         location: Location,
         select_first_on_load: bool,
     ) {
+        if self.location_at(parent_depth).is_none() {
+            return;
+        }
+        self.emit(BrowserEvent::NavigationStarting);
         let request_id = self.new_request_id();
         let mut state = self.state.borrow_mut();
         if !state.descend(parent_depth, location.clone(), request_id) {
@@ -1303,13 +1329,35 @@ impl Browser {
         self.rename_operation.set(Some(request_id));
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
+        let mut renamed = entry.clone();
+        let new_location = entry
+            .location
+            .parent()
+            .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)));
+        renamed.native_name = std::ffi::OsString::from(&new_name);
+        renamed.display_name = new_name.clone();
+        renamed.is_hidden = new_name.starts_with('.');
+        let old_location = entry.location.clone();
+        let weak = Rc::downgrade(self);
+        let publish = Rc::new(move |event: OperationEvent| {
+            if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
+                && let Some(browser) = weak.upgrade()
+                && browser.is_current_operation(request_id)
+                && let Some(location) = new_location.as_ref()
+            {
+                let mut renamed = renamed.clone();
+                renamed.location = location.clone();
+                browser.publish_rename(&old_location, renamed);
+            }
+            emit(event);
+        });
         let load = provider.rename(
             RenameRequest {
                 id: request_id,
                 entry,
                 new_name,
             },
-            emit,
+            publish,
         );
         self.install_operation_load(request_id, load);
         Some(request_id)
@@ -1713,6 +1761,7 @@ impl Browser {
         self.created_locations.borrow_mut().clear();
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
+        self.deferred_file_operation_changes.borrow_mut().clear();
         self.restoration_operation.set(false);
         self.archive_operation.set(false);
         self.current_operation.set(Some(request_id));
@@ -1764,15 +1813,10 @@ impl Browser {
             if let OperationEvent::DeleteProgress {
                 completed,
                 total,
-                deleted_location,
+                deleted_location: _deleted_location,
                 ..
             } = &event
             {
-                if *total <= MAX_INCREMENTAL_OPERATION_UPDATES
-                    && let Some(location) = deleted_location
-                {
-                    browser.remove_deleted_locations(std::slice::from_ref(location));
-                }
                 browser.emit(BrowserEvent::DeletionProgress {
                     completed: *completed,
                     total: *total,
@@ -1816,11 +1860,6 @@ impl Browser {
                 {
                     mark_undo_item_completed(*generation, location);
                 }
-                if *total <= MAX_INCREMENTAL_OPERATION_UPDATES
-                    && let Some(location) = restored_location
-                {
-                    browser.remove_deleted_locations(std::slice::from_ref(location));
-                }
                 browser.emit(BrowserEvent::RestorationProgress {
                     completed: *completed,
                     total: *total,
@@ -1851,6 +1890,28 @@ impl Browser {
             let restoring = browser.restoration_operation.replace(false);
             let archiving = browser.archive_operation.replace(false);
             let destination = browser.transfer_destination.replace(None);
+            let deferred_file_operation_changes = if deleting || restoring {
+                browser.deferred_file_operation_changes.take()
+            } else {
+                HashMap::new()
+            };
+            let completed_changes = match &event {
+                OperationEvent::Deleted { locations, .. }
+                | OperationEvent::Restored { locations, .. } => locations.len(),
+                OperationEvent::CompletedWithErrors {
+                    deleted_locations, ..
+                } => deleted_locations.len(),
+                OperationEvent::RestoreCompletedWithErrors {
+                    restored_locations, ..
+                } => restored_locations.len(),
+                OperationEvent::Cancelled { result, .. } => result.completed.len(),
+                _ => 0,
+            };
+            let file_operation_refreshed = (deleting || restoring)
+                && browser.flush_deferred_file_operation_changes(
+                    deferred_file_operation_changes,
+                    completed_changes > MAX_INCREMENTAL_OPERATION_UPDATES,
+                );
             let undoing = browser.undo_claim.take();
             if let Some((generation, entry)) = &undoing {
                 let completed = match (entry, &event) {
@@ -1945,7 +2006,9 @@ impl Browser {
                 });
             }
             if deleting {
-                browser.emit(BrowserEvent::DeletionFinished);
+                browser.emit(BrowserEvent::DeletionFinished {
+                    succeeded: matches!(&event, OperationEvent::Deleted { .. }),
+                });
             }
             if restoring {
                 browser.emit(BrowserEvent::RestorationFinished);
@@ -1974,7 +2037,9 @@ impl Browser {
                     message,
                     ..
                 } => {
-                    browser.remove_deleted_locations(&deleted_locations);
+                    if !file_operation_refreshed {
+                        browser.remove_deleted_locations(&deleted_locations);
+                    }
                     browser.emit(BrowserEvent::OperationCompletedWithErrors {
                         message,
                         retryable_locations,
@@ -1983,14 +2048,18 @@ impl Browser {
                 }
                 OperationEvent::Deleted { locations, .. }
                 | OperationEvent::Restored { locations, .. } => {
-                    browser.remove_deleted_locations(&locations);
+                    if !file_operation_refreshed {
+                        browser.remove_deleted_locations(&locations);
+                    }
                 }
                 OperationEvent::RestoreCompletedWithErrors {
                     restored_locations,
                     message,
                     ..
                 } => {
-                    browser.remove_deleted_locations(&restored_locations);
+                    if !file_operation_refreshed {
+                        browser.remove_deleted_locations(&restored_locations);
+                    }
                     browser.emit(BrowserEvent::OperationCompletedWithErrors {
                         message,
                         retryable_locations: Vec::new(),
@@ -2001,8 +2070,13 @@ impl Browser {
                     if rename {
                         browser.emit(BrowserEvent::RenameAbandoned { request_id });
                     }
-                    let mut affected_locations = refresh_locations.clone();
-                    affected_locations.extend(result.affected_locations);
+                    let affected_locations = if file_operation_refreshed {
+                        HashSet::new()
+                    } else {
+                        let mut locations = refresh_locations.clone();
+                        locations.extend(result.affected_locations);
+                        locations
+                    };
                     if archiving {
                         browser.emit(BrowserEvent::ArchiveCompleted {
                             select_name: String::new(),
@@ -2119,6 +2193,23 @@ impl Browser {
         self.activate_focused_with_selection(false);
     }
 
+    /// The successful creation has already established the entry's type and location.
+    pub(crate) fn reveal_created_entry(self: &Rc<Self>, depth: usize, position: usize) {
+        let Some(entry) = self.entry_at(depth, position) else {
+            return;
+        };
+        self.select(depth, position);
+        if entry.is_directory() {
+            // Do not start another asynchronous validation that can outlive inline rename.
+            self.bump_navigation_generation();
+            self.close_peek();
+            self.descend_validated(depth, entry.location, false);
+            self.select(depth, position);
+        } else {
+            self.close_column(depth + 1);
+        }
+    }
+
     pub(crate) fn is_open_child(&self, parent_depth: usize, location: &Location) -> bool {
         parent_depth
             .checked_add(1)
@@ -2144,6 +2235,8 @@ impl Browser {
         };
         if entry.is_directory() {
             self.navigate_with_selection(entry.location, select_first);
+        } else if self.should_extract_on_activate(&entry) {
+            self.emit(BrowserEvent::ExtractRequested { entry });
         } else {
             self.emit(BrowserEvent::OpenRequested {
                 location: entry.location,
@@ -2245,6 +2338,8 @@ impl Browser {
             } else {
                 self.descend_with_selection(depth, entry.location, select_first);
             }
+        } else if self.should_extract_on_activate(&entry) {
+            self.emit(BrowserEvent::ExtractRequested { entry });
         } else {
             self.emit(BrowserEvent::OpenRequested {
                 location: entry.location,
@@ -2253,6 +2348,7 @@ impl Browser {
     }
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
+        self.emit(BrowserEvent::NavigationStarting);
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
@@ -2287,6 +2383,68 @@ impl Browser {
                 depth,
                 position: None,
             });
+        }
+    }
+
+    fn publish_rename(self: &Rc<Self>, old: &Location, entry: FileEntry) {
+        if !(0..)
+            .map_while(|depth| self.location_at(depth))
+            .any(|location| location.is_within(old))
+        {
+            return;
+        }
+        if let Some(parent) = old.parent() {
+            let depths = (0..)
+                .map_while(|depth| self.location_at(depth).map(|location| (depth, location)))
+                .filter_map(|(depth, location)| (location == parent).then_some(depth))
+                .collect::<Vec<_>>();
+            for depth in depths {
+                self.handle_directory_change(
+                    depth,
+                    &parent,
+                    DirectoryChange::Move {
+                        from: old.clone(),
+                        entry: entry.clone(),
+                    },
+                );
+            }
+        }
+        // The source parent need not still be open when the operation completes.
+        self.relocate_open_columns(old, &entry.location);
+    }
+
+    fn relocate_open_columns(self: &Rc<Self>, from: &Location, to: &Location) {
+        let locations = (0..)
+            .map_while(|depth| self.location_at(depth))
+            .collect::<Vec<_>>();
+        let Some(from_depth) = locations.iter().position(|location| {
+            location
+                .rebase(from, to)
+                .is_some_and(|relocated| relocated != *location)
+        }) else {
+            return;
+        };
+        let loads = locations
+            .into_iter()
+            .enumerate()
+            .skip(from_depth)
+            .map(|(depth, location)| {
+                let relocated = location.rebase(from, to).unwrap_or(location);
+                (depth, relocated, self.new_request_id())
+            })
+            .collect::<Vec<_>>();
+        self.close_peek();
+        self.loads.borrow_mut().truncate(from_depth);
+        self.monitors.borrow_mut().truncate(from_depth);
+        self.truncate_deferred_from(from_depth);
+        for (depth, location, request_id) in &loads {
+            self.state
+                .borrow_mut()
+                .relocate_column(*depth, location.clone(), *request_id);
+        }
+        self.emit(BrowserEvent::ColumnsRelocated { from_depth });
+        for (depth, location, request_id) in loads {
+            self.start_load(depth, location, request_id);
         }
     }
 
@@ -3105,6 +3263,7 @@ impl Browser {
         }
     }
 
+    #[cfg(test)]
     pub fn select_entries_by_name(self: &Rc<Self>, names: &[String]) {
         let Some(depth) = self.active_depth() else {
             return;
@@ -3119,12 +3278,13 @@ impl Browser {
         })
     }
 
-    pub fn select_entries_by_location(self: &Rc<Self>, locations: &[Location]) {
+    pub fn select_entries_by_location_at(
+        self: &Rc<Self>,
+        depth: usize,
+        locations: &[Location],
+    ) -> bool {
         let requested: HashSet<_> = locations.iter().collect();
-        let Some(depth) = self.active_depth() else {
-            return;
-        };
-        self.select_entries_matching_at(depth, |entry| requested.contains(&entry.location));
+        self.select_entries_matching_at(depth, |entry| requested.contains(&entry.location))
     }
 
     fn select_entries_matching_at(
@@ -3157,12 +3317,112 @@ impl Browser {
         true
     }
 
+    fn flush_deferred_file_operation_changes(
+        self: &Rc<Self>,
+        changes: DeferredDirectoryChanges,
+        prefer_refresh: bool,
+    ) -> bool {
+        if changes.is_empty() {
+            return false;
+        }
+        let mut batches: Vec<_> = changes.into_iter().collect();
+        batches.sort_by_key(|(depth, _)| *depth);
+        if prefer_refresh {
+            // Monitor batches may cover only some of the operation's source directories.
+            self.refresh_all();
+            return true;
+        }
+
+        for (depth, changes) in batches {
+            if changes
+                .iter()
+                .any(|(_, change)| matches!(change, DirectoryChange::Rescan))
+            {
+                self.refresh_column(depth);
+                continue;
+            }
+            let relocates_open_path = changes.iter().any(|(_, change)| {
+                matches!(change, DirectoryChange::Move { .. })
+                    && self
+                        .state
+                        .borrow()
+                        .path_after_external_change(depth, change)
+                        .is_some()
+            });
+            if relocates_open_path {
+                for (watched, change) in changes {
+                    self.handle_directory_change(depth, &watched, change);
+                }
+                continue;
+            }
+            let path_update = {
+                let state = self.state.borrow();
+                changes
+                    .iter()
+                    .find_map(|(_, change)| state.path_after_external_change(depth, change))
+            };
+            if let Some(path) = path_update {
+                self.restore_path(path);
+                continue;
+            }
+
+            self.drain_publish(depth);
+            let application = {
+                let mut state = self.state.borrow_mut();
+                let mut splices = Vec::new();
+                let mut selected = None;
+                for (watched, change) in changes {
+                    if let Some((mut next, next_selected)) =
+                        state.apply_directory_change(depth, &watched, change)
+                    {
+                        splices.append(&mut next);
+                        selected = next_selected;
+                    }
+                }
+                (!splices.is_empty()).then(|| {
+                    let positions = state.selected_positions(depth);
+                    (splices, selected, positions)
+                })
+            };
+            let Some((splices, selected, positions)) = application else {
+                continue;
+            };
+            self.emit(BrowserEvent::EntriesSpliced { depth, splices });
+            if let Some(focused) = selected {
+                self.emit(BrowserEvent::SelectionSetChanged {
+                    depth,
+                    positions,
+                    focused,
+                    take_focus: false,
+                });
+            }
+            if self.active_depth() == Some(depth) {
+                self.emit(BrowserEvent::FocusChanged {
+                    depth,
+                    position: selected,
+                });
+            }
+        }
+        false
+    }
+
     fn handle_directory_change(
         self: &Rc<Self>,
         depth: usize,
         watched: &Location,
         change: DirectoryChange,
     ) {
+        if self.location_at(depth).as_ref() != Some(watched) {
+            return;
+        }
+        if self.deletion_operation.get() || self.restoration_operation.get() {
+            self.deferred_file_operation_changes
+                .borrow_mut()
+                .entry(depth)
+                .or_default()
+                .push((watched.clone(), change));
+            return;
+        }
         if matches!(&change, DirectoryChange::Rescan) {
             self.refresh_column(depth);
             return;
@@ -3195,37 +3455,31 @@ impl Browser {
             .state
             .borrow()
             .path_after_external_change(depth, &change);
-        if let Some(path) = path_update {
+        if let Some(path) = path_update
+            && !matches!(&change, DirectoryChange::Move { .. })
+        {
             self.restore_path(path);
             return;
         }
+        let relocation = match &change {
+            DirectoryChange::Move { from, entry } => Some((from.clone(), entry.location.clone())),
+            _ => None,
+        };
         let application = self
             .state
             .borrow_mut()
             .apply_directory_change(depth, watched, change);
         if let Some((splices, selected)) = application {
-            let positions = self.state.borrow().selected_positions(depth);
-            self.emit(BrowserEvent::EntriesSpliced {
-                depth,
-                splices,
-                selected,
-            });
-            if let Some(focused) = selected {
-                self.emit(BrowserEvent::SelectionSetChanged {
-                    depth,
-                    positions,
-                    focused,
-                    take_focus: false,
-                });
-            }
-            // Monitor updates to an ancestor must not reclaim focus after a
-            // transfer has revealed its destination in a child column.
-            if self.active_depth() == Some(depth) {
+            self.emit(BrowserEvent::EntriesSpliced { depth, splices });
+            if selected.is_none() && self.active_depth() == Some(depth) {
                 self.emit(BrowserEvent::FocusChanged {
                     depth,
-                    position: selected,
+                    position: None,
                 });
             }
+        }
+        if let Some((from, to)) = relocation {
+            self.relocate_open_columns(&from, &to);
         }
     }
 

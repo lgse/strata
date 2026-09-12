@@ -136,7 +136,10 @@ impl Dispatcher {
                 self.view.copy_path();
             }
             Key::p | Key::P => self.view.pin_focused(),
-            Key::space => self.preview.toggle(preview_target(browser.focused_entry())),
+            Key::space => self.preview.toggle(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            ),
             Key::BackSpace => self.view.navigate_up(),
             _ => return None,
         }

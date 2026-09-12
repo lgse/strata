@@ -3,7 +3,7 @@
 use std::{
     fs,
     io::{self, Read},
-    path::{Path, PathBuf},
+    path::Path,
     process::{Child, Command, Output, Stdio},
     sync::mpsc,
     thread,
@@ -13,45 +13,57 @@ use std::{
 use gdk_pixbuf::prelude::*;
 use gtk::gio;
 
-use crate::sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, gpu_devices, numbered_name};
+use crate::{
+    sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, PdfRenderSize},
+    services::MediaPreviewSize,
+};
 
-const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_secs(8);
-const HARDWARE_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(12);
-const MEDIA_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(28);
-const MAX_MEDIA_ALLOCATION_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_MEDIA_DECODE_PIXELS: u64 = 50_000_000;
+mod media;
+
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum MediaBackend {
-    VaApi(PathBuf),
-    Vulkan(usize),
-    Software,
-}
-
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
+    let (arguments, start_tick) = match arguments {
+        [operation, ..] if operation == "preview-media" && arguments.len() == 6 => (
+            &arguments[..5],
+            arguments[5]
+                .parse::<u32>()
+                .map_err(|_| "Invalid media seek position".to_owned())?,
+        ),
+        _ => (arguments, 0),
+    };
     let [operation, input, output, value, media_backend] = arguments else {
         return Err("Invalid preview helper arguments".to_owned());
     };
     let input = Path::new(input);
     let output = Path::new(output);
-    let value = value
-        .parse::<i32>()
-        .map_err(|_| "Invalid preview helper size or page".to_owned())?;
     let media_backend = MediaPreviewBackend::from_argument(media_backend)
         .ok_or_else(|| "Invalid media preview backend".to_owned())?;
-
+    if operation == "preview-media" {
+        return media::run(input, output, value, media_backend, start_tick);
+    }
+    let numeric_value = || {
+        value
+            .parse::<i32>()
+            .map_err(|_| "Invalid preview helper size or page".to_owned())
+    };
     let (png, metadata) = match operation.as_str() {
-        "thumbnail-image" => (render_pixbuf(input, value.clamp(16, 256))?, None),
-        "thumbnail-raw" => (render_raw_thumbnail(input, value.clamp(16, 256))?, None),
-        "thumbnail-pdf" => (render_pdf_thumbnail(input, value.clamp(16, 256))?, None),
-        "thumbnail-video" => (render_media(input, value.clamp(16, 256))?, None),
+        "thumbnail-image" => (render_raw(input, numeric_value()?.clamp(16, 256))?, None),
+        "thumbnail-raw" => (
+            render_raw_thumbnail(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
+        "thumbnail-pdf" => (
+            render_pdf_thumbnail(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
+        "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
         "preview-image" => (render_raw(input, 800)?, None),
         "preview-pdf" => {
-            let (png, page, pages) = render_pdf_page(input, value)?;
+            let (page, size) = pdf_render_request(value)?;
+            let (png, page, pages) = render_pdf_page(input, page, size)?;
             (png, Some(format!("{page} {pages}")))
         }
-        "preview-media" => (render_media_preview(input, media_backend)?, None),
         _ => return Err("Unknown preview helper operation".to_owned()),
     };
     fs::write(output, png).map_err(|error| error.to_string())?;
@@ -192,7 +204,11 @@ fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     )
 }
 
-fn render_pdf_page(path: &Path, requested_page: i32) -> Result<(Vec<u8>, i32, i32), String> {
+fn render_pdf_page(
+    path: &Path,
+    requested_page: i32,
+    size: PdfRenderSize,
+) -> Result<(Vec<u8>, i32, i32), String> {
     let uri = gio::File::for_path(path).uri();
     let document = poppler::Document::from_file(&uri, None).map_err(|error| error.to_string())?;
     let pages = document.n_pages();
@@ -203,7 +219,14 @@ fn render_pdf_page(path: &Path, requested_page: i32) -> Result<(Vec<u8>, i32, i3
     let page = document
         .page(page_index)
         .ok_or_else(|| "Unable to load that PDF page".to_owned())?;
-    let png = render_pdf_surface(&page, 1400.0, 1800.0, 2_500_000.0)?;
+    let size = PdfRenderSize::new(size.width, size.height);
+    let (_, _, max_pixels) = size.image_limits();
+    let png = render_pdf_surface(
+        &page,
+        f64::from(size.width),
+        f64::from(size.height),
+        max_pixels as f64,
+    )?;
     Ok((png, page_index, pages))
 }
 
@@ -253,181 +276,37 @@ fn bounded_surface_dimensions(
     (width, height, scale)
 }
 
-fn render_media_preview(path: &Path, policy: MediaPreviewBackend) -> Result<Vec<u8>, String> {
-    let backends = media_backends(&gpu_devices(Path::new("/dev"), policy), policy);
-    let started = Instant::now();
-    let hardware_started = Instant::now();
-    run_media_backends(&backends, |backend| {
-        let total_remaining = MEDIA_TOTAL_TIME_LIMIT.saturating_sub(started.elapsed());
-        let timeout = if *backend == MediaBackend::Software {
-            total_remaining
-        } else {
-            let hardware_remaining =
-                HARDWARE_TOTAL_TIME_LIMIT.saturating_sub(hardware_started.elapsed());
-            HARDWARE_ATTEMPT_TIME_LIMIT
-                .min(hardware_remaining)
-                .min(total_remaining)
-        };
-        let mut command = media_command(backend, path);
-        bounded_output_with_timeout(&mut command, MAX_OUTPUT_BYTES, timeout).map(|result| {
-            result.and_then(|output| {
-                (output.status.success() && !output.stdout.is_empty()).then_some(output.stdout)
-            })
-        })
-    })
-}
-
-fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<MediaBackend> {
-    let mut render_nodes: Vec<_> = devices
-        .iter()
-        .filter(|device| {
-            device
-                .file_name()
-                .is_some_and(|name| numbered_name(name, "renderD"))
-        })
-        .cloned()
-        .collect();
-    render_nodes.sort();
-    let nvidia_devices = devices
-        .iter()
-        .filter(|device| {
-            device
-                .file_name()
-                .is_some_and(|name| numbered_name(name, "nvidia"))
-        })
-        .count();
-    let vulkan_devices = render_nodes.len().max(nvidia_devices);
-    let mut backends = Vec::new();
-    if matches!(
-        policy,
-        MediaPreviewBackend::Automatic | MediaPreviewBackend::VaApi
-    ) {
-        backends.extend(render_nodes.into_iter().map(MediaBackend::VaApi));
-    }
-    if matches!(
-        policy,
-        MediaPreviewBackend::Automatic | MediaPreviewBackend::Vulkan
-    ) {
-        backends.extend((0..vulkan_devices).map(MediaBackend::Vulkan));
-    }
-    backends.push(MediaBackend::Software);
-    backends
-}
-
-fn media_command(backend: &MediaBackend, path: &Path) -> Command {
-    let mut command = Command::new("ffmpeg");
-    command
-        .args(["-nostdin", "-v", "error", "-max_alloc"])
-        .arg(MAX_MEDIA_ALLOCATION_BYTES.to_string())
-        .arg("-max_pixels")
-        .arg(MAX_MEDIA_DECODE_PIXELS.to_string());
-    match backend {
-        MediaBackend::VaApi(device) => {
-            command
-                .env("MALLOC_ARENA_MAX", "1")
-                .args([
-                    "-threads",
-                    "1",
-                    "-filter_threads",
-                    "1",
-                    "-hwaccel",
-                    "vaapi",
-                    "-hwaccel_device",
-                ])
-                .arg(device)
-                .args(["-hwaccel_output_format", "vaapi"]);
-        }
-        MediaBackend::Vulkan(index) => {
-            command
-                .env("MALLOC_ARENA_MAX", "1")
-                .args(["-threads", "1", "-filter_threads", "1", "-init_hw_device"])
-                .arg(format!("vulkan=vk:{index}"))
-                .args([
-                    "-filter_hw_device",
-                    "vk",
-                    "-hwaccel",
-                    "vulkan",
-                    "-hwaccel_device",
-                    "vk",
-                    "-hwaccel_output_format",
-                    "vulkan",
-                ]);
-        }
-        MediaBackend::Software => {
-            command.args(["-threads", "2"]);
-        }
-    }
-    command
-        .arg("-i")
-        .arg(path)
-        .args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-t", "30"]);
-    match backend {
-        MediaBackend::VaApi(_) => {
-            command.args([
-                "-vf",
-                "scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12",
-                "-c:v",
-                "h264_vaapi",
-            ]);
-        }
-        MediaBackend::Vulkan(_) => {
-            command.args([
-                "-vf",
-                "scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12",
-                "-c:v",
-                "h264_vulkan",
-                "-usage",
-                "transcode",
-                "-tune",
-                "ull",
-            ]);
-        }
-        MediaBackend::Software => {
-            command.args([
-                "-vf",
-                "scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p",
-                "-c:v",
-                "libvpx",
-                "-auto-alt-ref",
-                "0",
-                "-threads",
-                "2",
-                "-deadline",
-                "realtime",
-                "-cpu-used",
-                "8",
-            ]);
-        }
-    }
-    command.args(["-fpsmax", "30"]);
-    command.args(["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]);
-    match backend {
-        MediaBackend::Software => command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]),
-        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => command.args([
-            "-c:a",
-            "aac",
-            "-b:a",
-            "96k",
-            "-movflags",
-            "+frag_keyframe+empty_moov",
-            "-f",
-            "mp4",
-        ]),
+fn pdf_render_request(value: &str) -> Result<(i32, PdfRenderSize), String> {
+    let (page, dimensions) = value
+        .split_once(':')
+        .ok_or_else(|| "Invalid PDF preview request".to_owned())?;
+    let page = page
+        .parse::<i32>()
+        .map_err(|_| "Invalid PDF preview page".to_owned())?;
+    let (width, height) = dimensions
+        .split_once('x')
+        .ok_or_else(|| "Invalid PDF preview dimensions".to_owned())?;
+    let parse = |dimension: &str| {
+        dimension
+            .parse::<i32>()
+            .map_err(|_| "Invalid PDF preview dimensions".to_owned())
     };
-    command.arg("pipe:1");
-    command
+    Ok((page, PdfRenderSize::new(parse(width)?, parse(height)?)))
 }
 
-fn run_media_backends<T, E>(
-    backends: &[MediaBackend],
-    mut run: impl FnMut(&MediaBackend) -> Result<Option<T>, E>,
-) -> Result<T, String> {
-    for backend in backends {
-        if let Ok(Some(output)) = run(backend) {
-            return Ok(output);
-        }
+fn media_preview_size(value: &str) -> Result<MediaPreviewSize, String> {
+    if value == "0" {
+        return Ok(MediaPreviewSize::new(1280, 1280));
     }
-    Err("Unable to normalize media preview".to_owned())
+    let (width, height) = value
+        .split_once('x')
+        .ok_or_else(|| "Invalid media preview dimensions".to_owned())?;
+    let parse = |dimension: &str| {
+        dimension
+            .parse::<i32>()
+            .map_err(|_| "Invalid media preview dimensions".to_owned())
+    };
+    Ok(MediaPreviewSize::new(parse(width)?, parse(height)?))
 }
 
 fn bounded_output_with_timeout(

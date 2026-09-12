@@ -25,6 +25,7 @@ const FILES: &[Shortcut] = &[
     ("Ctrl+A", "Select all items in the focused pane"),
     ("Shift+↑ / ↓", "Extend selection"),
     ("Alt+Enter", "Show item properties"),
+    ("Menu / Shift+F10", "Open the context menu"),
     ("y / p", "Copy path / pin a folder (type-to-search off)"),
 ];
 
@@ -434,7 +435,7 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
             ),
             (
                 "h / j / k / l",
-                "Vim movement; l opens the item (type-to-search off)",
+                "Move between items; l opens the item (type-to-search off)",
             ),
         ],
         BrowserMode::Icons => vec![

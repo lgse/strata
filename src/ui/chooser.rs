@@ -422,7 +422,22 @@ impl ChooserState {
         }
     }
 
+    fn selected_folder(&self) -> Option<PathBuf> {
+        let entries = self
+            .view
+            .selected_search_results()
+            .unwrap_or_else(|| self.view.browser().selected_entries());
+        if entries.len() == 1 && entries[0].is_directory() {
+            entries[0].location.native_path().map(Path::to_path_buf)
+        } else {
+            None
+        }
+    }
+
     fn active_folder(&self) -> Result<PathBuf, &'static str> {
+        if let Some(folder) = self.selected_folder() {
+            return Ok(folder);
+        }
         self.view
             .browser()
             .active_location()
@@ -820,6 +835,7 @@ fn build_chooser(
         17,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
+    sidebar_toggle.set_cursor_from_name(Some("pointer"));
     let location = view.location_widget();
     location.set_hexpand(true);
     let appearance = build_appearance_menu(&view, &browser, theme.clone());
@@ -851,6 +867,7 @@ fn build_chooser(
     content.set_wide_handle(false);
     content.set_position(SIDEBAR_WIDTH);
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
+    super::window::bind_sidebar_text_size(&content);
     content.set_shrink_start_child(false);
     content.set_resize_start_child(false);
     content.set_start_child(Some(&sidebar.widget));
@@ -1283,6 +1300,11 @@ fn install_shortcuts(
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        let preferences = ThemeManager::shared();
+        if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
+            preferences.set_text_size(size);
+            return glib::Propagation::Stop;
+        }
         if let Some(layer) = visible_modal_layer(&state.window) {
             let focused = gtk::prelude::RootExt::focus(&state.window);
             if !focused.is_some_and(|focus| focus == layer || focus.is_ancestor(&layer)) {
@@ -1295,6 +1317,33 @@ fn install_shortcuts(
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focused = gtk::prelude::RootExt::focus(&state.window);
+        if focused
+            .as_ref()
+            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
+            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        {
+            return glib::Propagation::Proceed;
+        }
+        if super::window::is_context_menu_shortcut(key, modifiers)
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+            && state.view.open_focused_context_menu()
+        {
+            return glib::Propagation::Stop;
+        }
+        // Filtered rows own navigation, not the hidden directory selection.
+        if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
+            && state.view.selected_search_results().is_some()
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+        {
+            state.window.set_focus_visible(true);
+            return glib::Propagation::Proceed;
+        }
         let original_key = key;
         let key = super::focus_navigation::navigation_key(
             key,
@@ -1398,7 +1447,10 @@ fn install_shortcuts(
             )
             && let Some(entry) = state.view.selected_search_result()
         {
-            preview.toggle(preview_target(Some(entry)));
+            preview.toggle(
+                preview_target(Some(entry)),
+                state.view.browser().active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if control
@@ -1485,6 +1537,14 @@ fn install_shortcuts(
             )
         {
             browser.toggle_hidden();
+            return glib::Propagation::Stop;
+        }
+        if control
+            && !shift
+            && !alt
+            && let Some(mode) = super::window::browser_mode_for_digit(key)
+        {
+            super::window::apply_browser_mode(&state.view, &ThemeManager::shared(), mode);
             return glib::Propagation::Stop;
         }
         if control {
@@ -1616,7 +1676,10 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !control && !alt {
-            preview.toggle(preview_target(browser.focused_entry()));
+            preview.toggle(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {

@@ -47,7 +47,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Features
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
-- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
+- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
@@ -158,7 +158,7 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 # Optional SMB and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
@@ -329,19 +329,21 @@ Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share
 
 ## Theming
 
-Open **Settings → Theme & appearance** from the gear menu or with <kbd>Ctrl</kbd>+<kbd>,</kbd>. Theme changes apply immediately across the interface.
+Open **Settings → Appearance** from the gear menu or with <kbd>Ctrl</kbd>+<kbd>,</kbd>. Theme changes apply immediately across the interface.
+
+Use **Search settings** to filter options across pages and navigate to the closest match, including keywords such as “font size.” In compact windows, the magnifying-glass button opens the search field. Clear the query or press <kbd>Esc</kbd> in the field to restore all settings.
 
 ![Strata Theme and appearance settings showing Omarchy following, six bundled themes, and the Add a theme option](docs/assets/strata-themes.png)
 
 ### Follow Omarchy Quattro
 
-On **Omarchy Quattro**, turn on **Follow Omarchy** under **Settings → Theme & appearance**. Strata maps the active Omarchy palette to its semantic colors, monitors the current theme, and updates live whenever Omarchy's theme changes.
+On **Omarchy Quattro**, turn on **Follow Omarchy** under **Settings → Appearance**. Strata maps the active Omarchy palette to its semantic colors, monitors the current theme, and updates live whenever Omarchy's theme changes.
 
 This integration supports Omarchy Quattro only. The switch is hidden when Strata cannot find a valid Quattro current-theme state; legacy Omarchy theme layouts are not supported.
 
 ### Bundled themes
 
-Choose any included theme from **Settings → Theme & appearance**: Azure Glow, Tokyo Night, Catppuccin, Everforest, Rosé Pine, or Omarchy Light. Selecting a bundled theme turns off Omarchy following and keeps that theme active across restarts.
+Choose any included theme from **Settings → Appearance**: Azure Glow, Tokyo Night, Catppuccin, Everforest, Rosé Pine, or Omarchy Light. Selecting a bundled theme turns off Omarchy following and keeps that theme active across restarts.
 
 ### Custom themes
 
@@ -373,7 +375,7 @@ The deliberate tradeoff: this is fast **filename and path** search, not file-con
 
 Files shown while browsing are untrusted. Image, camera RAW, PDF, thumbnail, and media parsing therefore runs out of process through **Bubblewrap**, not inside the main Strata process. Each short-lived helper receives namespace isolation, a minimal read-only runtime, exactly one canonicalized input file, private output and temporary directories, no network, and no capabilities. Memory, CPU/wall time, input, file, and parent-side output limits bound the work.
 
-Only media helpers may receive allowlisted GPU render devices, and only for accelerated transcoding; image, PDF, and thumbnail helpers receive no device mounts. Outputs are normalized and bounded, then checked for expected PNG, MP4, or WebM signatures before use. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
+Only media helpers may receive allowlisted GPU render devices, and only for accelerated decoding; image, PDF, and thumbnail helpers receive no device mounts. Images are normalized to bounded PNG images. Media arrives incrementally as validated raw RGBA frames and fixed-format PCM: GTK presents textures and GStreamer outputs raw audio, without opening the original file or decoding a compressed clip. Four media sessions per process, bounded queues, and paused-worker cleanup limit concurrent work. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
 
 Plain-text and source previews are different: they stay in process because they do not invoke a native format parser, and reads are capped at 1 MiB. See [Preview sandbox](docs/preview-sandbox.md) for provider ordering, exact mounts, formats, and resource budgets.
 
@@ -387,17 +389,17 @@ Plain-text and source previews are different: they stay in process because they 
 | Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
 | Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
 | Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick, classic `dcraw`, and LibRaw `simple_dcraw` expand camera RAW support |
-| Hardware acceleration | Media-only VA-API or Vulkan attempts with software VP8/WebM fallback; GPU and codec support depend on host drivers/plugins |
+| Hardware acceleration | Media-only VA-API or Vulkan decoding with software fallback; GPU and codec support depend on host drivers |
 | Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
 | Packaging | Dynamically linked release archive with SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
 
 ## Development and documentation
 
-Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
+Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, Fontconfig, and GStreamer 1.20+ (including its app/base development libraries). [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
 
 ```bash
 sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 mise run start-dev        # rebuild and restart as files change
 mise run dev              # build and launch the main app once
 mise run chooser-dev      # build and open an isolated Save chooser with choices

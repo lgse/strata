@@ -49,6 +49,17 @@ fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
         .to_owned()
 }
 
+fn archive_stem(name: &str) -> &str {
+    const SUFFIXES: &[&str] = &[".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"];
+    let lower = name.to_ascii_lowercase();
+    for suffix in SUFFIXES {
+        if lower.ends_with(suffix) {
+            return &name[..name.len() - suffix.len()];
+        }
+    }
+    name
+}
+
 /// Whether `destination` already contains a child named `archive_name`.
 ///
 /// Collision checks use the final filename, including the format extension.
@@ -448,6 +459,35 @@ impl ViewState {
         self.browser.extract(entry, parent, None);
     }
 
+    pub(super) fn extract_entry_to_subfolder(self: &Rc<Self>, entry: FileEntry) {
+        if entry.location.native_path().is_none() {
+            return;
+        }
+        let Some(parent) = entry.location.parent() else {
+            show_error_dialog(
+                &self.overlay,
+                "Cannot extract",
+                "This archive has no parent directory.",
+            );
+            return;
+        };
+        let stem = archive_stem(&entry.display_name);
+        if stem.is_empty() || stem == "." || stem == ".." || stem.contains('/') {
+            self.extract_entry(entry);
+            return;
+        }
+        let Some(destination) = parent.child(std::ffi::OsStr::new(stem)) else {
+            self.extract_entry(entry);
+            return;
+        };
+        let format = ArchiveFormat::from_extension(&entry.display_name);
+        if format.map(|f| f.supports_password()).unwrap_or(false) {
+            self.pending_extract_retry
+                .replace(Some((entry.clone(), destination.clone())));
+        }
+        self.browser.extract(entry, destination, None);
+    }
+
     /// Opens the "Extract to" folder picker for `entry`.
     ///
     /// Returns immediately when the archive is not a native path. Confirm
@@ -531,14 +571,6 @@ impl ViewState {
                 confirm_field.grab_focus();
                 return;
             }
-            if !path.exists()
-                && let Err(e) = std::fs::create_dir_all(&path)
-            {
-                confirm_error.set_text(&format!("Could not create folder: {e}"));
-                confirm_error.set_visible(true);
-                confirm_field.add_css_class("error");
-                return;
-            }
             let dest = Location::local(path);
             let format = ArchiveFormat::from_extension(&extract_entry.display_name);
             if format.map(|f| f.supports_password()).unwrap_or(false) {
@@ -567,6 +599,7 @@ impl ViewState {
         entry: FileEntry,
         destination: Location,
         invalid_password: bool,
+        navigate_after_extract: Option<Location>,
     ) {
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);
@@ -614,6 +647,9 @@ impl ViewState {
                     .pending_extract_retry
                     .replace(Some((entry.clone(), destination.clone())));
             }
+            extract_state
+                .pending_navigate
+                .replace(navigate_after_extract.clone());
             dismiss_for_confirm();
             browser.extract(entry.clone(), destination.clone(), Some(pw));
         });
