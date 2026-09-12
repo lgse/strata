@@ -1915,10 +1915,30 @@ paned > separator {
   min-width: 1px;
 }
 
+.sidebar-split > .sidebar-shell {
+  border-right: none;
+}
+
+/* The resize handle supplies four surface pixels of the trailing inset. */
+.sidebar-split .sidebar {
+  padding-right: 3px;
+}
+
+.sidebar-split .sidebar-update {
+  margin-left: 4px;
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+.sidebar-split .sidebar-update-separator {
+  margin-right: 0;
+}
+
 .sidebar-split > separator {
   padding: 0 2px;
   border: none;
-  background: transparent;
+  background: @theme_surface;
+  box-shadow: inset -1px 0 alpha(@theme_border, 0.6);
 }
 
 .preview-split > separator {

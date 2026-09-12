@@ -104,6 +104,8 @@ def test_pane_corner_marquee_does_not_resize_sidebar(strata, text_size, corner):
     folder = _full_directory(strata)
     before = sorted(folder.iterdir())
     sidebar = strata.sidebar_button("Home").parent
+    while sidebar is not None and sidebar.role != "scroll pane":
+        sidebar = sidebar.parent
     assert sidebar is not None
     sidebar_before = sidebar.screen_bounds()
     pane = strata.pane().screen_bounds()
