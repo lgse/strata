@@ -501,6 +501,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut]) {
             .xalign(0.0)
             .hexpand(true)
             .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
             .build();
         action.add_css_class("shortcut-reference-description");
         row.append(&key);

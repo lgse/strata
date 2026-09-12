@@ -281,6 +281,13 @@ def test_the_shortcut_reference_opens_and_closes(strata):
     )
     for chord in ["Ctrl+Alt+Space", "Ctrl+Alt+← / →", "Ctrl+Alt+↑ / ↓", "Ctrl+Alt+M"]:
         assert strata.window.find(role="label", name=chord, rendered=False) is not None
+    strata.keyboard.press("Tab")
+    strata.keyboard.press("End")
+    description = strata.window.find(role="label", name="Seek −5 / +5 seconds", rendered=False)
+    scroll = next(node for node in description.ancestors() if node.role == "scroll pane")
+    scrollbar = scroll.find(role="scroll bar")
+    bounds = description.window_bounds()
+    assert bounds.x + bounds.width <= scrollbar.window_bounds().x
 
     strata.keyboard.press("Escape")
     strata.wait(
