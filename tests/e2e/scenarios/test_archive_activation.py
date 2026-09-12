@@ -25,7 +25,6 @@ def test_archive_activation_extracts_in_place(strata, mode, activation, format):
     else:
         shutil.copyfile(Path(__file__).parents[2] / "fixtures/rar/version.rar", fixture.path(archive_name))
         member, contents = "VERSION", "unrar-0.4.0"
-    strata.keyboard.press("F5")
     strata.entry(archive_name)
 
     if activation == "keyboard":
