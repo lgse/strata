@@ -231,26 +231,29 @@ fn menu_keys_skip_inactive_actions_wrap_scroll_and_activate() {
             wait_until(|| {
                 popup.is_mapped() && scroll.vadjustment().upper() > scroll.vadjustment().page_size()
             });
-            press(&popup, Key::Home);
-            assert!(buttons[0].has_focus());
-            press(&popup, Key::Down);
-            assert!(buttons[3].has_focus());
-            press(&popup, Key::Up);
-            assert!(buttons[0].has_focus());
-            press(&popup, Key::Up);
-            assert!(buttons[29].has_focus());
-            wait_until(|| {
-                let bounds = buttons[29].compute_bounds(&scroll).expect("button bounds");
-                bounds.y() >= -0.5 && bounds.y() + bounds.height() <= scroll.height() as f32 + 0.5
-            });
-            press(&popup, Key::Down);
-            assert!(buttons[0].has_focus());
-            press(&popup, Key::End);
-            assert!(buttons[29].has_focus());
-            press(&popup, Key::Tab);
-            assert!(buttons[0].has_focus());
-            press(&popup, Key::ISO_Left_Tab);
-            assert!(buttons[29].has_focus());
+            for (key, index) in [
+                (Key::Home, 0),
+                (Key::Down, 3),
+                (Key::Up, 0),
+                (Key::Up, 29),
+                (Key::Down, 0),
+                (Key::End, 29),
+                (Key::Tab, 0),
+                (Key::ISO_Left_Tab, 29),
+            ] {
+                window.set_focus_visible(false);
+                press(&popup, key);
+                assert!(
+                    buttons[index]
+                        .state_flags()
+                        .contains(gtk::StateFlags::FOCUSED | gtk::StateFlags::FOCUS_VISIBLE),
+                    "{key:?} must visibly focus Action {index} after the focus indicator expires"
+                );
+                wait_until(|| {
+                    let bounds = buttons[index].compute_bounds(&scroll).expect("button bounds");
+                    bounds.y() >= -0.5 && bounds.y() + bounds.height() <= scroll.height() as f32 + 0.5
+                });
+            }
             press(&popup, Key::Return);
             wait_until(|| activated.get() == 1);
             press(&popup, Key::space);

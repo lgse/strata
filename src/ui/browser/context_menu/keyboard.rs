@@ -15,6 +15,10 @@ pub(super) fn install(popover: &gtk::Popover) {
         ) {
             return glib::Propagation::Stop;
         }
+        // Captured menu keys bypass GTK's focus-indicator timeout refresh.
+        if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
+            window.set_focus_visible(true);
+        }
         match key {
             Key::Escape => popover.popdown(),
             Key::Home => focus_first_or_last_menu_item(&popover, true),
