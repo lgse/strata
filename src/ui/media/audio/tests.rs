@@ -41,8 +41,10 @@ fn audio_enforces_sample_exact_duration_limit() {
     let timestamp = (MAX_FRAMES - 1) * 1_000_000 / SAMPLE_RATE;
     assert!(output.push(vec![0; 8], timestamp).is_err());
     output.push(vec![0; 4], timestamp).expect("last sample");
-    assert!(!output.has_capacity());
+    assert!(output.has_capacity());
     assert!(output.push(vec![0; 4], 30_000_000).is_err());
+    output.finish().expect("EOS at duration limit");
+    assert!(!output.has_capacity());
 }
 
 #[test]

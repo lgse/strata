@@ -295,6 +295,29 @@ fn audio_ends_cleanly_between_sample_boundaries_including_after_a_seek() {
 }
 
 #[test]
+fn full_length_audio_preview_reaches_end_and_releases_resources() {
+    gtk_test(
+        "ui::media::tests::full_length_audio_preview_reaches_end_and_releases_resources",
+        || {
+            let player = player(true, media::LIMIT_US);
+            player.play();
+            let deadline = Instant::now() + Duration::from_secs(40);
+            while !player.is_ended() {
+                assert!(player.error().is_none(), "{:?}", player.error());
+                assert!(Instant::now() < deadline, "full preview did not end");
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert_eq!(player.timestamp() as u64, media::LIMIT_US);
+            assert!(!player.is_playing());
+            assert!(player.imp().session.borrow().is_none());
+            assert!(player.imp().audio.borrow().is_none());
+            player.close();
+        },
+    );
+}
+
+#[test]
 fn additional_windows_report_busy_without_interrupting_four_existing_players() {
     gtk_test(
         "ui::media::tests::additional_windows_report_busy_without_interrupting_four_existing_players",

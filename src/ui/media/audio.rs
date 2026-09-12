@@ -16,7 +16,6 @@ const MAX_TIME_NS: u64 = 200_000_000;
 const MAX_CHUNK_NS: u64 = 33_333_334;
 const MAX_FRAMES: u64 = SAMPLE_RATE * 30;
 
-/// Bounded PCM output, owned and polled by the GTK thread.
 pub(super) struct PcmOutput {
     pipeline: gst::Pipeline,
     source: AppSrc,
@@ -124,7 +123,6 @@ impl PcmOutput {
     pub(super) fn has_capacity(&self) -> bool {
         !self.finished.get()
             && self.failure.borrow().is_none()
-            && self.frames.get() < MAX_FRAMES
             && self.source.current_level_bytes() <= MAX_BYTES - MAX_CHUNK_BYTES as u64
             && self.source.current_level_time().nseconds() <= MAX_TIME_NS - MAX_CHUNK_NS
     }
