@@ -47,7 +47,7 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
 
 #[test]
 fn shared_thumbnail_lookup_is_limited_to_supported_placeholders() {
-    assert!(uses_shared_thumbnail(ParseOperation::PreviewImage, 0));
+    assert!(!uses_shared_thumbnail(ParseOperation::PreviewImage, 0));
     assert!(uses_shared_thumbnail(ParseOperation::PreviewPdf, 0));
     assert!(!uses_shared_thumbnail(ParseOperation::PreviewPdf, 1));
     assert!(!uses_shared_thumbnail(

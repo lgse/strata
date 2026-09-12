@@ -118,11 +118,7 @@ pub(super) fn browser_layout(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    let measured_browser = browser.clone();
-    preview.attach_split(
-        &preview_split,
-        Rc::new(move || content.position() + measured_browser.preview_occupied_width()),
-    );
+    preview.attach_split(&preview_split, &content, browser);
     root.append(&preview_split);
     root
 }

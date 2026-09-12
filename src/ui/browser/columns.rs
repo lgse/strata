@@ -28,7 +28,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-pub(super) const COLUMN_WIDTH: i32 = 300;
+pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
 const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 

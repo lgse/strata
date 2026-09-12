@@ -94,6 +94,11 @@ stored as a complete clip. Seeking/looping begins a new bounded generation.
 
 There is **no whole-clip media cache**. Closing or revisiting a file requires a new
 decode. The existing byte/entry-bounded image/PDF preview cache is unchanged.
+Image renders preserve small source dimensions so the UI can enforce its 2×
+upscaling limit. Image previews do not use normalized shared-thumbnail
+placeholders, which can already be enlarged and lack reliable native dimensions;
+they request the bounded full render immediately. PDF placeholders and file-list
+thumbnail reuse are unaffected. See [preview sizing](evidence/885/README.md).
 
 ## Scheduling and deadlines
 

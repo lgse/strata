@@ -260,9 +260,6 @@ impl PreviewProvider for LocalPreviewProvider {
                             pages: 1,
                         })
                     }
-                    ParseOperation::PreviewImage => {
-                        Some(PreviewContent::Rasterized { png: thumb_png })
-                    }
                     _ => None,
                 });
                 let placeholder_emitted = placeholder.is_some();
@@ -377,8 +374,9 @@ impl PreviewProvider for LocalPreviewProvider {
 }
 
 fn uses_shared_thumbnail(operation: ParseOperation, pdf_page: i32) -> bool {
-    operation == ParseOperation::PreviewImage
-        || (operation == ParseOperation::PreviewPdf && pdf_page == 0)
+    // Shared thumbnails can be upscaled and do not retain reliable source dimensions.
+    // Image previews need a native-bounded render to enforce the UI's upscaling limit.
+    operation == ParseOperation::PreviewPdf && pdf_page == 0
 }
 
 fn full_render_settle_delay(has_placeholder: bool) -> Duration {

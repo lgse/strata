@@ -22,6 +22,9 @@ use crate::{
 
 use super::{blur::BlurBin, controls::modal_layout};
 
+mod layout;
+mod media_layout;
+
 const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 560;
 const MAX_WIDTH: i32 = 3_000;
@@ -87,7 +90,7 @@ struct PreviewState {
     media_volume_icon: RefCell<Option<gtk::Image>>,
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     split: RefCell<Option<gtk::Paned>>,
-    occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
+    sizing: layout::SplitSizing,
     current: RefCell<Option<FileEntry>>,
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
@@ -98,7 +101,6 @@ struct PreviewState {
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
     opened: Cell<bool>,
-    last_split_width: Cell<i32>,
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
 }
@@ -205,7 +207,7 @@ impl PreviewDrawer {
             media_volume_icon: RefCell::new(None),
             media_toggle_mute: RefCell::new(None),
             split: RefCell::new(None),
-            occupied_width: RefCell::new(None),
+            sizing: layout::SplitSizing::default(),
             current: RefCell::new(None),
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
@@ -216,7 +218,6 @@ impl PreviewDrawer {
             current_request: Cell::new(None),
             next_request: Cell::new(1),
             opened: Cell::new(false),
-            last_split_width: Cell::new(0),
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
         });
@@ -311,30 +312,6 @@ impl PreviewDrawer {
 
     pub fn widget(&self) -> gtk::Widget {
         self.state.revealer.clone().upcast()
-    }
-
-    pub fn attach_split(&self, split: &gtk::Paned, occupied_width: Rc<dyn Fn() -> i32>) {
-        self.state.split.replace(Some(split.clone()));
-        self.state.occupied_width.replace(Some(occupied_width));
-        if !self.state.opened.get() {
-            split.set_end_child(None::<&gtk::Widget>);
-        }
-        let weak = Rc::downgrade(&self.state);
-        split.add_tick_callback(move |split, _| {
-            let Some(state) = weak.upgrade() else {
-                return glib::ControlFlow::Break;
-            };
-            let available = split.width();
-            if available > 0
-                && available != state.last_split_width.replace(available)
-                && state.opened.get()
-                && !state.animating.get()
-            {
-                let opening_width = state.opening_width(available);
-                split.set_position(available.saturating_sub(opening_width));
-            }
-            glib::ControlFlow::Continue
-        });
     }
 
     pub fn is_open(&self) -> bool {
@@ -446,67 +423,10 @@ impl PreviewState {
         }
     }
 
-    fn animate_open(self: &Rc<Self>, split: &gtk::Paned) {
-        let available = split.width();
-        if available <= MIN_WIDTH {
-            return;
-        }
-        self.last_split_width.set(available);
-        let target = available.saturating_sub(self.opening_width(available));
-        let start = available;
-        split.set_position(start);
-        let animation_id = self.animation_generation.get().saturating_add(1);
-        self.animation_generation.set(animation_id);
-        self.animating.set(true);
-
-        if !super::motion::animations_enabled() {
-            split.set_position(target);
-            self.pane.set_size_request(MIN_WIDTH, -1);
-            self.animating.set(false);
-            return;
-        }
-
-        let started = Instant::now();
-        let pane = self.pane.clone();
-        let generation = self.animation_generation.clone();
-        let weak = Rc::downgrade(self);
-        let _tick = split.add_tick_callback(move |split, _| {
-            if generation.get() != animation_id {
-                return glib::ControlFlow::Break;
-            }
-            let progress =
-                (started.elapsed().as_secs_f64() / TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
-            let eased = super::motion::emphasized_deceleration(progress);
-            let position = f64::from(start) + f64::from(target - start) * eased;
-            split.set_position(position.round() as i32);
-            if progress >= 1.0 {
-                split.set_position(target);
-                pane.set_size_request(MIN_WIDTH, -1);
-                if let Some(state) = weak.upgrade() {
-                    state.animating.set(false);
-                }
-                glib::ControlFlow::Break
-            } else {
-                glib::ControlFlow::Continue
-            }
-        });
-    }
-
-    fn opening_width(&self, available: i32) -> i32 {
-        let occupied_width = self
-            .occupied_width
-            .borrow()
-            .as_ref()
-            .map_or(available.saturating_sub(DEFAULT_WIDTH), |width| width())
-            .clamp(0, available);
-        let desired_width = preview_width_for_empty_space(available, occupied_width);
-        let maximum_width = MAX_WIDTH.min(available.saturating_sub(MIN_WIDTH).max(MIN_WIDTH));
-        desired_width.clamp(MIN_WIDTH, maximum_width)
-    }
-
     fn stop(&self) {
         self.opened.set(false);
         self.animating.set(false);
+        self.sizing.cancel_resize();
         self.animation_generation
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
@@ -779,7 +699,11 @@ impl PreviewState {
                 .filter(|height| *height > 0)
                 .unwrap_or(DEFAULT_WIDTH)
         };
-        MediaPreviewSize::for_viewport(width, height, self.pane.scale_factor())
+        MediaPreviewSize::for_viewport(
+            width.min(media_layout::MAX_CONTENT_WIDTH),
+            height,
+            self.pane.scale_factor(),
+        )
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
@@ -900,7 +824,8 @@ impl PreviewState {
                         picture.set_vexpand(true);
                         picture.set_cursor_from_name(Some("grab"));
                         install_preview_drag(&picture, self);
-                        self.content.append(&picture);
+                        self.content
+                            .append(&media_layout::section(&picture, &texture));
                     }
                     Err(error) => self.show_message("Preview unavailable", &error.to_string()),
                 }
@@ -920,7 +845,8 @@ impl PreviewState {
                 });
 
                 let (overlay, center_play) = self.build_media_view(&media);
-                self.content.append(&overlay);
+                let section = media_layout::section(&overlay, &media);
+                self.content.append(&section);
 
                 if is_gif {
                     media.set_loop(true);
@@ -928,7 +854,7 @@ impl PreviewState {
                     self.append_media_controls(
                         &media,
                         &super::theme::ThemeManager::shared(),
-                        &overlay.upcast(),
+                        &section,
                         &center_play,
                         true,
                     );
@@ -942,13 +868,7 @@ impl PreviewState {
                     };
                     media.set_volume(volume);
                     media.set_muted(muted);
-                    self.append_media_controls(
-                        &media,
-                        &preferences,
-                        &overlay.upcast(),
-                        &center_play,
-                        false,
-                    );
+                    self.append_media_controls(&media, &preferences, &section, &center_play, false);
                     media.play();
                 }
 
@@ -989,6 +909,7 @@ impl PreviewState {
         let picture = gtk::Picture::for_paintable(media);
         picture.add_css_class("preview-media");
         picture.set_content_fit(gtk::ContentFit::Contain);
+        picture.set_can_shrink(true);
         picture.set_hexpand(true);
         picture.set_vexpand(true);
         picture.set_cursor_from_name(Some("grab"));
@@ -1322,7 +1243,7 @@ impl PreviewState {
         self: &Rc<Self>,
         media: &gtk::MediaStream,
         preferences: &Rc<super::theme::ThemeManager>,
-        _video_area: &gtk::Widget,
+        section: &gtk::Box,
         center_play: &gtk::Button,
         is_gif: bool,
     ) {
@@ -1367,7 +1288,7 @@ impl PreviewState {
         self.media_signals.borrow_mut().push(handler);
 
         if is_gif {
-            self.content.append(&bar);
+            section.append(&bar);
             return;
         }
 
@@ -1416,7 +1337,7 @@ impl PreviewState {
         bar.append(&seek);
         bar.append(&volume_toggle);
         bar.append(&volume_slider);
-        self.content.append(&bar);
+        section.append(&bar);
 
         self.media_volume_slider
             .replace(Some(volume_slider.clone()));
@@ -1881,14 +1802,6 @@ fn set_pdf_page_texture(
     };
     picture.set_paintable(Some(&texture));
     resize_pdf_page(overlay, picture, target_width);
-}
-
-fn preview_width_for_empty_space(available: i32, occupied: i32) -> i32 {
-    available
-        .saturating_sub(occupied)
-        .saturating_mul(9)
-        .saturating_div(10)
-        .max(MIN_WIDTH)
 }
 
 fn pdf_zoom_after_scroll(current: f64, dy: f64) -> f64 {

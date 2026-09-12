@@ -197,6 +197,55 @@ def test_preview_renders_markdown(strata):
     )
 
 
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(strata):
+    def adjacent():
+        column = strata.containers()[-1].screen_bounds()
+        preview = strata.preview().screen_bounds()
+        return abs(preview.x - (column.x + column.width)) <= 3
+
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the first preview")
+    strata.wait(adjacent, "the preview to meet the last column")
+    initial = strata.preview().screen_bounds().width
+    strata.keyboard.press("Down")
+    strata.wait(lambda: strata.preview_shows("Body text."), "keyboard selection to update the preview")
+    strata.keyboard.press("space")
+    strata.open_directory("folder")
+    strata.select_entry_with_keyboard("inner.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("inner"), "the nested preview")
+    strata.wait(adjacent, "columns to scroll left beside the minimum-width preview")
+    minimum = strata.preview().screen_bounds().width
+    assert minimum < initial
+    assert strata.containers()[0].screen_bounds().x < strata.pane("folder").screen_bounds().x
+
+    bounds = strata.preview().screen_bounds()
+    start = (bounds.x - 1, bounds.y + bounds.height // 2)
+    distance = bounds.width // 5
+    strata.pointer.drag_points(start, (start[0] + distance, start[1]))
+    strata.wait(
+        lambda: strata.preview().screen_bounds().width < minimum - distance // 2,
+        "the dragged width to override the automatic minimum",
+    )
+    chosen = strata.preview().screen_bounds().width
+    resized = strata.preview().screen_bounds()
+    window = strata.window_bounds()
+    assert abs(resized.x + resized.width - window.x - window.width) <= 2
+    strata.keyboard.press("space")
+    strata.select_entry_with_keyboard("nested-notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the reopened preview")
+    assert abs(strata.preview().screen_bounds().width - chosen) <= 2
+    strata.keyboard.press("space")
+    strata.keyboard.press("alt+Left")
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the parent preview")
+    assert abs(strata.preview().screen_bounds().width - chosen) <= 2
+
+
 def test_space_opens_the_preview_after_a_pointer_selection(strata):
     strata.select_entry("notes.txt")
 

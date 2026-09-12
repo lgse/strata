@@ -873,12 +873,7 @@ fn build_chooser(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    let measured_content = content.clone();
-    let measured_view = view.clone();
-    preview.attach_split(
-        &preview_split,
-        Rc::new(move || measured_content.position() + measured_view.preview_occupied_width()),
-    );
+    preview.attach_split(&preview_split, &content, &view);
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
     details.add_css_class("chooser-details");

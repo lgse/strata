@@ -8,7 +8,8 @@ use crate::model::{FileEntry, Location};
 use crate::services::{FileSource, LoadHandle, OperationProvider};
 use crate::ui::browser::clipboard::{copy_locations, register_cut_view};
 use crate::ui::browser::collection::cancel_source;
-use crate::ui::browser::columns::{COLUMN_WIDTH, ColumnView};
+pub(super) use crate::ui::browser::columns::COLUMN_WIDTH;
+use crate::ui::browser::columns::ColumnView;
 use crate::ui::browser::desktop::selected_terminal_location;
 use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
 use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
@@ -767,16 +768,46 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
-    pub fn preview_occupied_width(&self) -> i32 {
+    pub(super) fn preview_occupied_width(&self, available: i32) -> i32 {
         if self.view_mode() != BrowserMode::Columns {
-            return single_pane_preview_reservation(self.state.overlay.width());
+            return single_pane_preview_reservation(available);
         }
         self.state
             .columns
             .borrow()
             .iter()
-            .map(|column| column.shell.width().max(COLUMN_WIDTH))
+            .map(|column| {
+                column
+                    .shell
+                    .width()
+                    .max(column.shell.width_request())
+                    .max(COLUMN_WIDTH)
+            })
             .fold(0, i32::saturating_add)
+    }
+
+    pub(super) fn bind_preview_scrolling(&self, preview: &gtk::Revealer) {
+        let weak = Rc::downgrade(&self.state);
+        let weak_preview = preview.downgrade();
+        self.state.scroller.hadjustment().connect_changed(move |_| {
+            let weak = weak.clone();
+            let weak_preview = weak_preview.clone();
+            // GtkViewport must finish allocating before its scroll value is changed.
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade()
+                    && state.mode_views.borrow().mode() == BrowserMode::Columns
+                    && weak_preview
+                        .upgrade()
+                        .is_some_and(|preview| preview.reveals_child())
+                {
+                    state
+                        .horizontal_scroll_generation
+                        .set(state.horizontal_scroll_generation.get().saturating_add(1));
+                    let adjustment = state.scroller.hadjustment();
+                    adjustment.set_value((adjustment.upper() - adjustment.page_size()).max(0.0));
+                }
+            });
+        });
     }
 
     /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
