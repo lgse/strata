@@ -7,7 +7,11 @@ extend-exclude = [
 ]
 
 [default]
-extend-ignore-re = ["`crypted\\.rar`"]
+extend-ignore-re = [
+  "`crypted\\.rar`",
+  # Deliberately misspelled input in the Settings closest-match regression.
+  '"relase chanel"',
+]
 
 [default.extend-words]
 Omarchy = "Omarchy"

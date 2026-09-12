@@ -361,6 +361,41 @@ fn inactive_depths_and_cached_modes_do_not_receive_row_updates() {
 }
 
 #[test]
+fn relocation_preserves_external_focus_and_rebuilds_only_affected_panes() {
+    gtk_test(
+        "ui::browser_modes::events::tests::relocation_preserves_external_focus_and_rebuilds_only_affected_panes",
+        || {
+            for (mode, grouped) in presentations() {
+                let mut fixture = Fixture::new(mode, grouped);
+                fixture.show();
+                fixture.outside.grab_focus();
+                let original = fixture.pane().shell;
+                fixture
+                    .views
+                    .handle(&BrowserEvent::ColumnsRelocated { from_depth: 1 });
+                assert_eq!(fixture.pane().shell, original);
+                fixture
+                    .views
+                    .handle(&BrowserEvent::ColumnsRelocated { from_depth: 0 });
+                assert_ne!(fixture.pane().shell, original);
+                pump_until(|| fixture.pane().section.view.is_mapped());
+                let focus = gtk::prelude::RootExt::focus(&fixture.window).expect("outside focus");
+                assert!(focus == fixture.outside || focus.is_ancestor(&fixture.outside));
+
+                fixture.browser.select(0, 1);
+                fixture.views.focus_visible_pane(0);
+                pump_until(|| pane_holds_keyboard_focus(&fixture.pane()));
+                fixture
+                    .views
+                    .handle(&BrowserEvent::ColumnsRelocated { from_depth: 0 });
+                pump_until(|| pane_holds_keyboard_focus(&fixture.pane()));
+                assert_eq!(fixture.browser.selected_positions(0), [1]);
+            }
+        },
+    );
+}
+
+#[test]
 fn structural_events_rebuild_only_the_active_presentation() {
     gtk_test(
         "ui::browser_modes::events::tests::structural_events_rebuild_only_the_active_presentation",

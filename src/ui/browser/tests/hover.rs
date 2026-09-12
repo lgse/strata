@@ -29,6 +29,8 @@ fn background(window: &gtk::Window, row: &gtk::Widget) -> [u8; 4] {
     let surface = row
         .first_child()
         .filter(|child| child.has_css_class("icons-card"))
+        .and_then(|card| crate::ui::icons_cell::parts(&card))
+        .and_then(|(icon, _)| icon.parent())
         .unwrap_or_else(|| row.clone());
     let bounds = surface.compute_bounds(window).expect("row bounds");
     let x = (bounds.x() + bounds.width() - 12.0) as usize;
@@ -50,14 +52,14 @@ fn preselected_entries_keep_hover_feedback_in_all_modes() {
                 let factory = gtk::SignalListItemFactory::new();
                 factory.connect_setup(move |_, item| {
                     let item = item.downcast_ref::<gtk::ListItem>().expect("list item");
-                    let label = gtk::Label::new(Some("sample"));
-                    label.set_height_request(26);
                     if mode == "Icons" {
-                        let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                        card.add_css_class("icons-card");
-                        card.append(&label);
+                        let card = crate::ui::icons_cell::new_card(64);
+                        let (_, label) = crate::ui::icons_cell::parts(&card).expect("icon card");
+                        label.set_text(Some("sample"));
                         item.set_child(Some(&card));
                     } else {
+                        let label = gtk::Label::new(Some("sample"));
+                        label.set_height_request(26);
                         item.set_child(Some(&label));
                     }
                 });

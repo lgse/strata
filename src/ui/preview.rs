@@ -87,6 +87,7 @@ struct PreviewState {
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
+    current_depth: Cell<Option<usize>>,
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
@@ -171,6 +172,15 @@ impl PreviewDrawer {
         metadata.append(&size_group);
         metadata.append(&modified_group);
         metadata.append(&type_group);
+        super::theme::ThemeManager::shared().bind_interface_scale(&metadata, |widget, scale| {
+            let metadata = widget.downcast_ref::<gtk::Box>().expect("preview metadata");
+            metadata.set_orientation(if scale > 1.5 {
+                gtk::Orientation::Vertical
+            } else {
+                gtk::Orientation::Horizontal
+            });
+            metadata.set_spacing(if scale > 1.5 { 6 } else { 18 });
+        });
         pane.append(&metadata);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -205,6 +215,7 @@ impl PreviewDrawer {
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
+            current_depth: Cell::new(None),
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
@@ -274,7 +285,9 @@ impl PreviewDrawer {
 
     pub fn handle_browser_event(&self, browser: &Browser, event: &BrowserEvent) {
         match event {
-            BrowserEvent::PreviewRequested { entry } => self.show(entry.clone()),
+            BrowserEvent::PreviewRequested { entry } => {
+                self.show(entry.clone(), browser.active_depth());
+            }
             BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
@@ -292,7 +305,7 @@ impl PreviewDrawer {
                     .entry_at(*depth, *position)
                     .and_then(|entry| preview_target(Some(entry)))
                 {
-                    self.show(entry);
+                    self.show(entry, Some(*depth));
                 } else {
                     self.close();
                 }
@@ -302,6 +315,21 @@ impl PreviewDrawer {
                 if self.is_open() =>
             {
                 self.close()
+            }
+            BrowserEvent::EntriesSpliced { depth, splices }
+                if self.is_open()
+                    && self.state.current_depth.get() == Some(*depth)
+                    && splices.iter().any(|splice| splice.removed > 0) =>
+            {
+                let Some(current) = self.state.current.borrow().clone() else {
+                    return;
+                };
+                let still_present = (0..)
+                    .map_while(|position| browser.entry_at(*depth, position))
+                    .any(|entry| entry.location == current.location);
+                if !still_present {
+                    self.close();
+                }
             }
             _ => {}
         }
@@ -399,19 +427,19 @@ impl PreviewDrawer {
         }
     }
 
-    pub fn show(&self, entry: FileEntry) {
-        self.state.show(entry);
+    pub fn show(&self, entry: FileEntry, depth: Option<usize>) {
+        self.state.show(entry, depth);
     }
 
     pub fn close(&self) {
         self.state.close();
     }
 
-    pub fn toggle(&self, entry: Option<FileEntry>) {
+    pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         if self.is_open() {
             self.close();
         } else if let Some(entry) = entry {
-            self.show(entry);
+            self.show(entry, depth);
         }
     }
 
@@ -427,7 +455,8 @@ impl Drop for PreviewState {
 }
 
 impl PreviewState {
-    fn show(self: &Rc<Self>, entry: FileEntry) {
+    fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
+        self.current_depth.set(depth);
         let was_open = self.opened.replace(true);
         let already_showing = self.current.borrow().as_ref() == Some(&entry);
         if !was_open {
@@ -508,6 +537,7 @@ impl PreviewState {
         self.animation_generation
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
+        self.current_depth.set(None);
         self.load.borrow_mut().take();
         self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
@@ -1414,6 +1444,16 @@ impl PreviewState {
         bar.append(&seek);
         bar.append(&volume_toggle);
         bar.append(&volume_slider);
+        preferences.bind_interface_scale(&bar, |widget, scale| {
+            widget
+                .downcast_ref::<gtk::Box>()
+                .expect("media controls")
+                .set_orientation(if scale > 1.5 {
+                    gtk::Orientation::Vertical
+                } else {
+                    gtk::Orientation::Horizontal
+                });
+        });
         self.content.append(&bar);
 
         self.media_volume_slider

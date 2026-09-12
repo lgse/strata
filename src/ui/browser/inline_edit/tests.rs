@@ -24,6 +24,7 @@ use std::{
 };
 
 mod caret;
+mod created_columns;
 mod entries;
 mod lifecycle;
 mod setup;
