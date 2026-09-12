@@ -279,8 +279,7 @@ impl PreviewDrawer {
     pub fn handle_browser_event(&self, browser: &Browser, event: &BrowserEvent) {
         match event {
             BrowserEvent::PreviewRequested { entry } => {
-                self.state.current_depth.set(browser.active_depth());
-                self.show(entry.clone());
+                self.show(entry.clone(), browser.active_depth());
             }
             BrowserEvent::FocusChanged {
                 depth,
@@ -299,8 +298,7 @@ impl PreviewDrawer {
                     .entry_at(*depth, *position)
                     .and_then(|entry| preview_target(Some(entry)))
                 {
-                    self.state.current_depth.set(Some(*depth));
-                    self.show(entry);
+                    self.show(entry, Some(*depth));
                 } else {
                     self.close();
                 }
@@ -422,19 +420,19 @@ impl PreviewDrawer {
         }
     }
 
-    pub fn show(&self, entry: FileEntry) {
-        self.state.show(entry);
+    pub fn show(&self, entry: FileEntry, depth: Option<usize>) {
+        self.state.show(entry, depth);
     }
 
     pub fn close(&self) {
         self.state.close();
     }
 
-    pub fn toggle(&self, entry: Option<FileEntry>) {
+    pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         if self.is_open() {
             self.close();
         } else if let Some(entry) = entry {
-            self.show(entry);
+            self.show(entry, depth);
         }
     }
 
@@ -450,7 +448,8 @@ impl Drop for PreviewState {
 }
 
 impl PreviewState {
-    fn show(self: &Rc<Self>, entry: FileEntry) {
+    fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
+        self.current_depth.set(depth);
         let was_open = self.opened.replace(true);
         let already_showing = self.current.borrow().as_ref() == Some(&entry);
         if !was_open {
