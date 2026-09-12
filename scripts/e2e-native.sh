@@ -32,7 +32,7 @@ if ! cmp -s "$suite/requirements.txt" "$venv/strata-requirements.txt"; then
 fi
 
 if [[ -z "${STRATA_BINARY:-}" ]]; then
-  cargo build --manifest-path "$repository/Cargo.toml" --bin strata
+  cargo build --manifest-path "$repository/Cargo.toml" --workspace --bins
   STRATA_BINARY="$(realpath "${CARGO_TARGET_DIR:-$repository/target}/debug/strata")"
   export STRATA_BINARY
 fi

@@ -427,7 +427,7 @@ jobs:
           STRATA_E2E_WORKERS: '2'
           SHARD: ${{ matrix.shard }}
         run: |
-          chmod +x target/e2e-bundle/strata
+          chmod +x target/e2e-bundle/strata target/e2e-bundle/strata-media-helper
           ./scripts/e2e.sh -p no:cacheprovider --timeout=60 \
             --e2e-plan=target/e2e-bundle/plan.json --e2e-shard="$SHARD" \
             --e2e-report="target/e2e-reports/shard-$SHARD.json" \

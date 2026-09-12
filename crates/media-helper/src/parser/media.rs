@@ -8,8 +8,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use strata_media_protocol::{self as media, AUDIO_BYTES, FRAME_TIMEOUT, Frame, Header, TimedReader,
-    Cancellation, MediaPreviewBackend, MediaPreviewSize, devices::{gpu_devices, numbered_name}};
+use strata_media_protocol::{
+    self as media, AUDIO_BYTES, Cancellation, FRAME_TIMEOUT, Frame, Header, MediaPreviewBackend,
+    MediaPreviewSize, TimedReader,
+    devices::{gpu_devices, numbered_name},
+};
 
 use super::{bounded_output_with_timeout, media_preview_size, stop_child};
 

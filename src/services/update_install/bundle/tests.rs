@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, fs, os::unix::fs::symlink, path::Path, sync::{Arc, Barrier}, thread};
+use std::{
+    collections::HashMap,
+    fs,
+    os::unix::fs::symlink,
+    path::Path,
+    sync::{Arc, Barrier},
+    thread,
+};
 
 use flate2::{Compression, write::GzEncoder};
 use serde_json::json;
 
-use super::{ExpectedBundle, acquire_lock, build_target, expected_bundle_from_url, extract_and_verify, install_archive, sha256_file, verify_elf};
+use super::{
+    ExpectedBundle, acquire_lock, build_target, expected_bundle_from_url, extract_and_verify,
+    install_archive, sha256_file, verify_elf,
+};
 
 fn expected() -> ExpectedBundle {
     let target = build_target().to_owned();
@@ -19,7 +29,7 @@ fn expected() -> ExpectedBundle {
 
 fn elf(machine: u16) -> Vec<u8> {
     let mut bytes = vec![0_u8; 120];
-    bytes[..6].copy_from_slice(b"\x7fELF\x02\x01");
+    bytes[..7].copy_from_slice(b"\x7fELF\x02\x01\x01");
     bytes[16..18].copy_from_slice(&2_u16.to_le_bytes());
     bytes[18..20].copy_from_slice(&machine.to_le_bytes());
     bytes[20..24].copy_from_slice(&1_u32.to_le_bytes());
@@ -35,7 +45,11 @@ fn elf(machine: u16) -> Vec<u8> {
 }
 
 fn host_machine() -> u16 {
-    if build_target().starts_with("x86_64-") { 62 } else { 183 }
+    if build_target().starts_with("x86_64-") {
+        62
+    } else {
+        183
+    }
 }
 
 fn hash_bytes(bytes: &[u8], dir: &Path, name: &str) -> String {
@@ -44,7 +58,11 @@ fn hash_bytes(bytes: &[u8], dir: &Path, name: &str) -> String {
     sha256_file(&path).expect("hash input")
 }
 
-fn archive(files: &[(&str, Vec<u8>)], expected: &ExpectedBundle, manifest_files: Option<HashMap<String, String>>) -> Vec<u8> {
+fn archive(
+    files: &[(&str, Vec<u8>)],
+    expected: &ExpectedBundle,
+    manifest_files: Option<HashMap<String, String>>,
+) -> Vec<u8> {
     let encoder = GzEncoder::new(Vec::new(), Compression::default());
     let mut builder = tar::Builder::new(encoder);
     for (name, contents) in files {
@@ -52,7 +70,13 @@ fn archive(files: &[(&str, Vec<u8>)], expected: &ExpectedBundle, manifest_files:
         header.set_size(contents.len() as u64);
         header.set_mode(0o755);
         header.set_cksum();
-        builder.append_data(&mut header, format!("{}/{name}", expected.top_directory), &contents[..]).expect("append file");
+        builder
+            .append_data(
+                &mut header,
+                format!("{}/{name}", expected.top_directory),
+                &contents[..],
+            )
+            .expect("append file");
     }
     if let Some(hashes) = manifest_files {
         let manifest = serde_json::to_vec(&json!({
@@ -62,18 +86,33 @@ fn archive(files: &[(&str, Vec<u8>)], expected: &ExpectedBundle, manifest_files:
             "source_commit": "0123456789abcdef0123456789abcdef01234567",
             "media_protocol": 1,
             "files": hashes,
-        })).expect("manifest json");
+        }))
+        .expect("manifest json");
         let mut header = tar::Header::new_gnu();
         header.set_size(manifest.len() as u64);
         header.set_mode(0o644);
         header.set_cksum();
-        builder.append_data(&mut header, format!("{}/bundle.json", expected.top_directory), &manifest[..]).expect("append manifest");
+        builder
+            .append_data(
+                &mut header,
+                format!("{}/bundle.json", expected.top_directory),
+                &manifest[..],
+            )
+            .expect("append manifest");
     }
     builder.finish().expect("finish archive");
-    builder.into_inner().expect("take encoder").finish().expect("compress archive")
+    builder
+        .into_inner()
+        .expect("take encoder")
+        .finish()
+        .expect("compress archive")
 }
 
-fn archive_with_manifest(files: &[(&str, Vec<u8>)], expected: &ExpectedBundle, manifest: &[u8]) -> Vec<u8> {
+fn archive_with_manifest(
+    files: &[(&str, Vec<u8>)],
+    expected: &ExpectedBundle,
+    manifest: &[u8],
+) -> Vec<u8> {
     let encoder = GzEncoder::new(Vec::new(), Compression::default());
     let mut builder = tar::Builder::new(encoder);
     for (name, contents) in files {
@@ -81,15 +120,31 @@ fn archive_with_manifest(files: &[(&str, Vec<u8>)], expected: &ExpectedBundle, m
         header.set_size(contents.len() as u64);
         header.set_mode(0o755);
         header.set_cksum();
-        builder.append_data(&mut header, format!("{}/{name}", expected.top_directory), &contents[..]).expect("append file");
+        builder
+            .append_data(
+                &mut header,
+                format!("{}/{name}", expected.top_directory),
+                &contents[..],
+            )
+            .expect("append file");
     }
     let mut header = tar::Header::new_gnu();
     header.set_size(manifest.len() as u64);
     header.set_mode(0o644);
     header.set_cksum();
-    builder.append_data(&mut header, format!("{}/bundle.json", expected.top_directory), manifest).expect("append manifest");
+    builder
+        .append_data(
+            &mut header,
+            format!("{}/bundle.json", expected.top_directory),
+            manifest,
+        )
+        .expect("append manifest");
     builder.finish().expect("finish archive");
-    builder.into_inner().expect("take encoder").finish().expect("compress archive")
+    builder
+        .into_inner()
+        .expect("take encoder")
+        .finish()
+        .expect("compress archive")
 }
 
 fn valid_archive(dir: &Path, expected: &ExpectedBundle) -> Vec<u8> {
@@ -97,9 +152,109 @@ fn valid_archive(dir: &Path, expected: &ExpectedBundle) -> Vec<u8> {
     let helper = elf(host_machine());
     let hashes = HashMap::from([
         ("strata".to_owned(), hash_bytes(&binary, dir, "hash-strata")),
-        ("strata-media-helper".to_owned(), hash_bytes(&helper, dir, "hash-helper")),
+        (
+            "strata-media-helper".to_owned(),
+            hash_bytes(&helper, dir, "hash-helper"),
+        ),
     ]);
-    archive(&[("strata", binary), ("strata-media-helper", helper)], expected, Some(hashes))
+    archive(
+        &[("strata", binary), ("strata-media-helper", helper)],
+        expected,
+        Some(hashes),
+    )
+}
+
+#[test]
+fn rollback_to_audited_binary_only_releases_preserves_bundles_and_rechecks_cached_bytes() {
+    let dir = tempfile::tempdir().expect("fixture");
+    let bin = dir.path().join("bin");
+    fs::create_dir(&bin).expect("bin");
+    let launcher = bin.join("strata");
+    fs::write(&launcher, b"initial executable").expect("initial");
+    let modern = expected();
+    let archive_path = dir.path().join("modern.tar.gz");
+    fs::write(&archive_path, valid_archive(dir.path(), &modern)).expect("modern archive");
+    let modern_hash = sha256_file(&archive_path).expect("modern digest");
+    let installed = install_archive(&archive_path, &modern_hash, &modern, &bin, &launcher)
+        .expect("modern install");
+    let legacy = expected_bundle_from_url(&format!(
+        "https://github.com/lgse/strata/releases/download/v0.16.0/strata-0.16.0-{}.tar.gz",
+        build_target()
+    ))
+    .expect("audited URL");
+    let legacy_archive = dir.path().join("legacy.tar.gz");
+    fs::write(
+        &legacy_archive,
+        archive(&[("strata", elf(host_machine()))], &legacy, None),
+    )
+    .expect("legacy archive");
+    let legacy_hash = sha256_file(&legacy_archive).expect("legacy digest");
+    let rolled_back = install_archive(
+        &legacy_archive,
+        &legacy_hash,
+        &legacy,
+        &bin,
+        &installed.join("strata"),
+    )
+    .expect("legacy rollback");
+    assert_eq!(
+        fs::canonicalize(&launcher).expect("old activated"),
+        rolled_back.join("strata")
+    );
+    assert!(installed.join("strata-media-helper").is_file());
+    assert!(!rolled_back.join("strata-media-helper").exists());
+    install_archive(
+        &archive_path,
+        &modern_hash,
+        &modern,
+        &bin,
+        &rolled_back.join("strata"),
+    )
+    .expect("restore pair");
+    let mut damaged = elf(host_machine());
+    damaged[119] = 1;
+    fs::write(rolled_back.join("strata"), damaged).expect("corrupt retained release");
+    assert!(
+        install_archive(
+            &legacy_archive,
+            &legacy_hash,
+            &legacy,
+            &bin,
+            &installed.join("strata")
+        )
+        .is_err()
+    );
+    assert_eq!(
+        fs::canonicalize(&launcher).expect("pair still active"),
+        installed.join("strata")
+    );
+}
+
+#[test]
+fn only_audited_published_tags_accept_a_manifestless_archive() {
+    let dir = tempfile::tempdir().expect("fixture");
+    for tag in include_str!("legacy-releases.txt")
+        .lines()
+        .chain(["v1.2.3", "v0.16.0-rc.99"])
+    {
+        let version = tag.trim_start_matches('v');
+        let expected = expected_bundle_from_url(&format!(
+            "https://github.com/lgse/strata/releases/download/{tag}/strata-{version}-{}.tar.gz",
+            build_target()
+        ))
+        .expect("valid URL");
+        let path = dir.path().join(format!("{tag}.tar.gz"));
+        fs::write(
+            &path,
+            archive(&[("strata", elf(host_machine()))], &expected, None),
+        )
+        .expect("archive");
+        assert_eq!(
+            extract_and_verify(&path, &dir.path().join(tag), &expected).is_ok(),
+            tag != "v1.2.3" && tag != "v0.16.0-rc.99",
+            "{tag}"
+        );
+    }
 }
 
 #[test]
@@ -107,14 +262,23 @@ fn release_url_is_the_only_source_of_expected_identity() {
     let target = build_target();
     let parsed = expected_bundle_from_url(&format!(
         "https://github.com/LGSE/strata/releases/download/v1.2.3/strata-1.2.3-{target}.tar.gz"
-    )).expect("trusted URL");
+    ))
+    .expect("trusted URL");
     assert_eq!(parsed, expected());
     for url in [
         format!("https://example.test/releases/download/v1.2.3/strata-1.2.3-{target}.tar.gz"),
-        format!("https://github.com/lgse/strata/releases/download/v1.2.3/../strata-1.2.3-{target}.tar.gz"),
-        format!("https://github.com/lgse/strata/releases/download/v9.9.9/strata-1.2.3-{target}.tar.gz"),
-        format!("https://github.com/lgse/strata/releases/download/v１.2.3/strata-１.2.3-{target}.tar.gz"),
-        format!("https://github.com/lgse/strata/releases/download/not-semver/strata-not-semver-{target}.tar.gz"),
+        format!(
+            "https://github.com/lgse/strata/releases/download/v1.2.3/../strata-1.2.3-{target}.tar.gz"
+        ),
+        format!(
+            "https://github.com/lgse/strata/releases/download/v9.9.9/strata-1.2.3-{target}.tar.gz"
+        ),
+        format!(
+            "https://github.com/lgse/strata/releases/download/v１.2.3/strata-１.2.3-{target}.tar.gz"
+        ),
+        format!(
+            "https://github.com/lgse/strata/releases/download/not-semver/strata-not-semver-{target}.tar.gz"
+        ),
     ] {
         assert!(expected_bundle_from_url(&url).is_err(), "accepted {url}");
     }
@@ -134,11 +298,24 @@ fn archive_rejects_traversal_symlink_and_duplicate_entries() {
     traversal.set_size(1);
     traversal.set_mode(0o644);
     traversal.set_cksum();
-    builder.append(&traversal, &b"x"[..]).expect("append traversal");
+    builder
+        .append(&traversal, &b"x"[..])
+        .expect("append traversal");
     builder.finish().expect("finish");
-    fs::write(&archive_path, builder.into_inner().expect("encoder").finish().expect("gzip")).expect("archive");
-    assert!(extract_and_verify(&archive_path, &dir.path().join("out-traversal"), &expected).unwrap_err().contains("unsafe path"));
-
+    fs::write(
+        &archive_path,
+        builder
+            .into_inner()
+            .expect("encoder")
+            .finish()
+            .expect("gzip"),
+    )
+    .expect("archive");
+    assert!(
+        extract_and_verify(&archive_path, &dir.path().join("out-traversal"), &expected)
+            .expect_err("traversal rejected")
+            .contains("unsafe path")
+    );
 
     let encoder = GzEncoder::new(Vec::new(), Compression::default());
     let mut builder = tar::Builder::new(encoder);
@@ -148,20 +325,45 @@ fn archive_rejects_traversal_symlink_and_duplicate_entries() {
     link.set_mode(0o777);
     link.set_link_name("elsewhere").expect("link name");
     link.set_cksum();
-    builder.append_data(&mut link, format!("{}/strata", expected.top_directory), &[][..]).expect("append link");
+    builder
+        .append_data(
+            &mut link,
+            format!("{}/strata", expected.top_directory),
+            &[][..],
+        )
+        .expect("append link");
     builder.finish().expect("finish");
-    fs::write(&archive_path, builder.into_inner().expect("encoder").finish().expect("gzip")).expect("archive");
-    assert!(extract_and_verify(&archive_path, &dir.path().join("out-link"), &expected).unwrap_err().contains("link or non-regular"));
+    fs::write(
+        &archive_path,
+        builder
+            .into_inner()
+            .expect("encoder")
+            .finish()
+            .expect("gzip"),
+    )
+    .expect("archive");
+    assert!(
+        extract_and_verify(&archive_path, &dir.path().join("out-link"), &expected)
+            .expect_err("symlink rejected")
+            .contains("link or non-regular")
+    );
 
     let duplicate = archive(&[("strata", vec![1]), ("strata", vec![2])], &expected, None);
     fs::write(&archive_path, duplicate).expect("duplicate archive");
-    assert!(extract_and_verify(&archive_path, &dir.path().join("out-duplicate"), &expected).unwrap_err().contains("duplicate"));
+    assert!(
+        extract_and_verify(&archive_path, &dir.path().join("out-duplicate"), &expected)
+            .expect_err("duplicate rejected")
+            .contains("duplicate")
+    );
 }
 
 #[test]
 fn accepts_the_real_dynamically_linked_test_executable() {
-    verify_elf(&std::env::current_exe().expect("test executable"), build_target())
-        .expect("a dynamically linked host ELF is valid");
+    verify_elf(
+        &std::env::current_exe().expect("test executable"),
+        build_target(),
+    )
+    .expect("a dynamically linked host ELF is valid");
 }
 
 #[test]
@@ -171,17 +373,40 @@ fn archive_rejects_missing_helper_and_wrong_elf_architecture() {
     let binary = elf(host_machine());
     let hashes = HashMap::from([("strata".to_owned(), hash_bytes(&binary, dir.path(), "one"))]);
     let path = dir.path().join("archive.tar.gz");
-    fs::write(&path, archive(&[("strata", binary)], &expected, Some(hashes))).expect("archive");
-    assert!(extract_and_verify(&path, &dir.path().join("missing"), &expected).unwrap_err().contains("required binary"));
+    fs::write(
+        &path,
+        archive(&[("strata", binary)], &expected, Some(hashes)),
+    )
+    .expect("archive");
+    assert!(
+        extract_and_verify(&path, &dir.path().join("missing"), &expected)
+            .expect_err("missing helper rejected")
+            .contains("required binary")
+    );
 
     let wrong = elf(if host_machine() == 62 { 183 } else { 62 });
     let helper = elf(host_machine());
     let hashes = HashMap::from([
         ("strata".to_owned(), hash_bytes(&wrong, dir.path(), "wrong")),
-        ("strata-media-helper".to_owned(), hash_bytes(&helper, dir.path(), "helper")),
+        (
+            "strata-media-helper".to_owned(),
+            hash_bytes(&helper, dir.path(), "helper"),
+        ),
     ]);
-    fs::write(&path, archive(&[("strata", wrong), ("strata-media-helper", helper)], &expected, Some(hashes))).expect("archive");
-    assert!(extract_and_verify(&path, &dir.path().join("wrong-arch"), &expected).unwrap_err().contains("wrong ELF architecture"));
+    fs::write(
+        &path,
+        archive(
+            &[("strata", wrong), ("strata-media-helper", helper)],
+            &expected,
+            Some(hashes),
+        ),
+    )
+    .expect("archive");
+    assert!(
+        extract_and_verify(&path, &dir.path().join("wrong-arch"), &expected)
+            .expect_err("wrong architecture rejected")
+            .contains("wrong ELF architecture")
+    );
 }
 
 #[test]
@@ -190,15 +415,30 @@ fn archive_rejects_duplicate_manifest_keys_and_bad_gzip_endings() {
     let dir = tempfile::tempdir().expect("tempdir");
     let binary = elf(host_machine());
     let hash = hash_bytes(&binary, dir.path(), "binary-hash");
-    let manifest = format!(r#"{{"format":1,"release_tag":"v1.2.3","target":"{}","source_commit":"0123456789abcdef0123456789abcdef01234567","media_protocol":1,"files":{{"strata":"{hash}","strata":"{hash}"}}}}"#, expected.target);
+    let manifest = format!(
+        r#"{{"format":1,"release_tag":"v1.2.3","target":"{}","source_commit":"0123456789abcdef0123456789abcdef01234567","media_protocol":1,"files":{{"strata":"{hash}","strata":"{hash}"}}}}"#,
+        expected.target
+    );
     let path = dir.path().join("duplicate-manifest.tar.gz");
-    fs::write(&path, archive_with_manifest(&[("strata", binary)], &expected, manifest.as_bytes())).expect("archive");
-    assert!(extract_and_verify(&path, &dir.path().join("duplicate-manifest"), &expected).unwrap_err().contains("duplicate bundle manifest path"));
+    fs::write(
+        &path,
+        archive_with_manifest(&[("strata", binary)], &expected, manifest.as_bytes()),
+    )
+    .expect("archive");
+    assert!(
+        extract_and_verify(&path, &dir.path().join("duplicate-manifest"), &expected)
+            .expect_err("duplicate manifest rejected")
+            .contains("duplicate bundle manifest path")
+    );
 
     let mut trailing = valid_archive(dir.path(), &expected);
     trailing.extend_from_slice(b"untrusted trailing bytes");
     fs::write(&path, trailing).expect("trailing archive");
-    assert!(extract_and_verify(&path, &dir.path().join("trailing"), &expected).unwrap_err().contains("trailing data"));
+    assert!(
+        extract_and_verify(&path, &dir.path().join("trailing"), &expected)
+            .expect_err("trailing bytes rejected")
+            .contains("trailing data")
+    );
 
     let mut truncated = valid_archive(dir.path(), &expected);
     truncated.truncate(truncated.len() - 4);
@@ -207,10 +447,24 @@ fn archive_rejects_duplicate_manifest_keys_and_bad_gzip_endings() {
 }
 
 #[test]
+fn finished_transactions_release_the_lock_despite_a_fork_style_descriptor_duplicate() {
+    let dir = tempfile::tempdir().expect("fixture");
+    let lock = acquire_lock(dir.path()).expect("installer lock");
+    let _inherited = lock.file.try_clone().expect("fork-style duplicate");
+    assert!(acquire_lock(dir.path()).is_err());
+    drop(lock);
+    assert!(acquire_lock(dir.path()).is_ok());
+}
+
+#[test]
 fn process_lock_rejects_a_concurrent_installer() {
     let dir = tempfile::tempdir().expect("tempdir");
     let _first = acquire_lock(dir.path()).expect("first lock");
-    assert!(acquire_lock(dir.path()).unwrap_err().contains("already installing"));
+    assert!(
+        acquire_lock(dir.path())
+            .expect_err("competing lock rejected")
+            .contains("already installing")
+    );
 }
 
 #[test]
@@ -248,7 +502,8 @@ fn concurrent_install_archive_is_rejected_by_the_process_lock() {
         child_barrier.wait();
     });
     barrier.wait();
-    let error = install_archive(&archive_path, &hash, &expected, &bin, &launcher).unwrap_err();
+    let error = install_archive(&archive_path, &hash, &expected, &bin, &launcher)
+        .expect_err("concurrent install rejected");
     barrier.wait();
     holder.join().expect("holder");
     assert!(error.contains("already installing"));
@@ -268,7 +523,10 @@ fn failed_verification_keeps_the_old_launcher_usable() {
     let hash = sha256_file(&archive_path).expect("archive hash");
 
     assert!(install_archive(&archive_path, &hash, &expected, &bin, &launcher).is_err());
-    assert_eq!(fs::read(&launcher).expect("old executable remains"), b"old executable");
+    assert_eq!(
+        fs::read(&launcher).expect("old executable remains"),
+        b"old executable"
+    );
     assert!(!bin.join(".strata-bundles/current").exists());
 }
 
@@ -286,9 +544,13 @@ fn activation_failure_keeps_the_old_launcher_and_does_not_claim_success() {
     fs::write(&archive_path, valid_archive(dir.path(), &expected)).expect("archive");
     let hash = sha256_file(&archive_path).expect("hash");
 
-    let error = install_archive(&archive_path, &hash, &expected, &bin, &launcher).unwrap_err();
+    let error = install_archive(&archive_path, &hash, &expected, &bin, &launcher)
+        .expect_err("invalid pointer rejected");
     assert!(error.contains("current bundle pointer"));
-    assert_eq!(fs::read(&launcher).expect("old launcher"), b"old executable");
+    assert_eq!(
+        fs::read(&launcher).expect("old launcher"),
+        b"old executable"
+    );
 }
 
 #[test]
@@ -305,11 +567,22 @@ fn first_bundle_install_atomically_migrates_the_stable_launcher() {
 
     install_archive(&archive_path, &hash, &expected, &bin, &launcher).expect("install");
 
-    assert_eq!(fs::read_link(&launcher).expect("stable launcher"), Path::new(".strata-bundles/current/strata"));
-    assert_eq!(fs::read_link(bin.join(".strata-bundles/current")).expect("current"), Path::new("versions").join(hash));
-    let previous = fs::read_link(bin.join(".strata-bundles/previous")).expect("legacy rollback pointer");
+    assert_eq!(
+        fs::read_link(&launcher).expect("stable launcher"),
+        Path::new(".strata-bundles/current/strata")
+    );
+    assert_eq!(
+        fs::read_link(bin.join(".strata-bundles/current")).expect("current"),
+        Path::new("versions").join(hash)
+    );
+    let previous =
+        fs::read_link(bin.join(".strata-bundles/previous")).expect("legacy rollback pointer");
     assert!(previous.to_string_lossy().starts_with("versions/legacy-"));
-    assert_eq!(fs::read(bin.join(".strata-bundles").join(previous).join("strata")).expect("preserved legacy"), b"running legacy");
+    assert_eq!(
+        fs::read(bin.join(".strata-bundles").join(previous).join("strata"))
+            .expect("preserved legacy"),
+        b"running legacy"
+    );
 }
 
 #[test]
@@ -328,11 +601,21 @@ fn updating_from_an_immutable_version_switches_the_pair_and_preserves_old() {
     fs::write(&archive_path, valid_archive(dir.path(), &expected)).expect("archive");
     let hash = sha256_file(&archive_path).expect("archive hash");
 
-    let installed = install_archive(&archive_path, &hash, &expected, &bin, &old.join("strata")).expect("install");
+    let installed = install_archive(&archive_path, &hash, &expected, &bin, &old.join("strata"))
+        .expect("install");
 
-    assert_eq!(fs::read(old.join("strata")).expect("running old remains"), b"running old");
-    assert_eq!(fs::read_link(root.join("current")).expect("current target"), Path::new("versions").join(&hash));
-    assert_eq!(fs::read_link(root.join("previous")).expect("rollback target"), Path::new("versions/old"));
+    assert_eq!(
+        fs::read(old.join("strata")).expect("running old remains"),
+        b"running old"
+    );
+    assert_eq!(
+        fs::read_link(root.join("current")).expect("current target"),
+        Path::new("versions").join(&hash)
+    );
+    assert_eq!(
+        fs::read_link(root.join("previous")).expect("rollback target"),
+        Path::new("versions/old")
+    );
     assert!(installed.join("strata").is_file());
     assert!(installed.join("strata-media-helper").is_file());
 }

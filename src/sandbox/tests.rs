@@ -18,8 +18,8 @@ const MEDIA_PREVIEW: super::ParseOperation =
 
 use super::{
     Cancellation, MAX_RASTER_INPUT_BYTES, MediaPreviewBackend, ParseOperation, PrivateOutput,
-    gpu_devices, parse, polaris_gpu_available_at, sandbox_command,
-    sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
+    gpu_devices, parse, polaris_gpu_available_at, sandbox_command, sandbox_input_path,
+    spawn_renderer, valid_output, wait_for_renderer,
 };
 
 #[test]

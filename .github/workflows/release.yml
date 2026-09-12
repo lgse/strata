@@ -245,7 +245,7 @@ jobs:
             exit 1
           fi
 
-      - name: Package binary
+      - name: Package the matching executable bundle
         env:
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           TARGET: ${{ matrix.target }}
@@ -261,7 +261,7 @@ jobs:
           printf '%s\n' "$SOURCE_SHA" > "dist/$package/SOURCE_COMMIT"
           cp README.md LICENSE THIRD_PARTY_LICENSES.md data/licenses/UnRAR.txt "dist/$package/"
           mkdir -p "dist/$package/docs" "dist/$package/portal"
-          cp docs/portal-file-chooser.md "dist/$package/docs/"
+          cp docs/portal-file-chooser.md docs/preview-sandbox.md docs/media-helper-bundles.md "dist/$package/docs/"
           cp data/portal/* "dist/$package/portal/"
           install -m 644 data/io.github.lgse.Strata.desktop "dist/$package/"
           install -m 644 data/io.github.lgse.Strata.FileManager1.service "dist/$package/"

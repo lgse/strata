@@ -28,6 +28,7 @@ const PORTAL_BACKEND_UNIT: &str = "dbus-:*-org.freedesktop.impl.portal.desktop.s
 pub(crate) fn install() -> Result<String, String> {
     let executable = env::current_exe()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::installation::launch_path(&executable)?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
     dismiss_prompt_at(&context)?;
@@ -73,6 +74,7 @@ pub(crate) fn refresh_stale_portal() -> Result<(), String> {
     let context = SetupContext::from_environment()?;
     let executable = env::current_exe()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::installation::launch_path(&executable)?;
     refresh_stale_portal_at(&context, &executable, Path::new("/proc"), || {
         refresh_portals()
     })

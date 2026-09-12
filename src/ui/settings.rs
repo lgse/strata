@@ -1612,20 +1612,12 @@ fn restart_application(button: &gtk::Button) {
 fn restart(application: Option<&gtk::Application>) {
     use std::{os::unix::process::CommandExt, process::Stdio};
 
-    let Ok(mut current_exe) = std::env::current_exe() else {
+    let Ok(current_exe) = std::env::current_exe() else {
         return;
     };
-    // On Linux, replacing the running executable makes /proc/self/exe resolve to
-    // the old path with " (deleted)" appended. Relaunch the replacement at the
-    // original path instead of treating that suffix as part of the filename.
-    if !current_exe.exists()
-        && let Some(path) = current_exe
-            .to_str()
-            .and_then(|path| path.strip_suffix(" (deleted)"))
-        && std::path::Path::new(path).is_file()
-    {
-        current_exe = path.into();
-    }
+    let Ok(current_exe) = crate::installation::launch_path(&current_exe) else {
+        return;
+    };
     // Wait for this process to exit completely before relaunching. A fixed
     // delay could overlap the old and new GTK/Wayland clients and rapidly hand
     // keyboard focus through an underlying terminal. Besides re-activating the
@@ -1634,7 +1626,8 @@ fn restart(application: Option<&gtk::Application>) {
     // put it in its own process group so applying an update cannot disturb the
     // terminal that launched Strata.
     let parent_pid = std::process::id().to_string();
-    if std::process::Command::new("sh")
+    if std::process::Command::new("/bin/sh")
+        .env("PATH", "/usr/bin:/bin")
         .args([
             "-c",
             "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; sleep 0.5; exec \"$2\"",

@@ -33,7 +33,10 @@ def main() -> int:
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
         }
-        subprocess.run(["cargo", "build", "--locked", "-p", "strata-media-helper"], cwd=REPOSITORY, env=environment, check=True)
+        child = subprocess.Popen(["cargo", "build", "--locked", "-p", "strata-media-helper"], cwd=REPOSITORY, env=environment, start_new_session=True)
+        result = child.wait()
+        if result:
+            return result
         child = subprocess.Popen(
             ["cargo", "test", "--all-targets", "--all-features", *sys.argv[1:]],
             cwd=REPOSITORY,

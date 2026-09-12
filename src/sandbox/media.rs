@@ -86,7 +86,9 @@ impl Session {
         })
     }
 
-    pub(crate) fn lease(&self) -> Arc<WorkerSlot> { self._slot.clone() }
+    pub(crate) fn lease(&self) -> Arc<WorkerSlot> {
+        self._slot.clone()
+    }
 
     pub fn receive(&self) -> Option<Event> {
         match self.receiver.try_recv() {
@@ -192,7 +194,13 @@ fn consume(
         deadline: Instant::now() + STARTUP_TIMEOUT,
         cancellation,
     };
-    crate::media::ipc::check_hello(&mut reader, crate::media::ipc::PARSER, job, crate::build_info::RELEASE_TAG, crate::build_info::COMMIT)?;
+    crate::media::ipc::check_hello(
+        &mut reader,
+        crate::media::ipc::PARSER,
+        job,
+        crate::build_info::RELEASE_TAG,
+        crate::build_info::COMMIT,
+    )?;
     let header = Header::read(&mut reader, source.size, start_tick)?;
     send(sender, Event::Prepared(header), cancellation).map_err(io::Error::other)?;
     let mut decoder = Decoder::new(header);

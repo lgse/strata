@@ -136,6 +136,43 @@ fn seeking_and_total_frame_audio_budgets_never_extend_past_thirty_seconds() {
 }
 
 #[test]
+fn blocked_writes_cancel_or_timeout_and_closed_workers_return_epipe() {
+    let (write, read) = UnixStream::pair().expect("private transport");
+    let cancellation = Cancellation::default();
+    let mut writer = TimedWriter::new(
+        &write,
+        Instant::now() + Duration::from_millis(40),
+        &cancellation,
+    )
+    .expect("nonblocking transport");
+    assert_eq!(
+        writer
+            .write_all(&vec![0; 1024 * 1024])
+            .expect_err("bounded write deadline")
+            .kind(),
+        io::ErrorKind::TimedOut
+    );
+    writer.deadline = Instant::now() + Duration::from_secs(10);
+    cancellation.cancel();
+    assert_eq!(
+        writer.write_all(&[1]).expect_err("cancelled writer").kind(),
+        io::ErrorKind::ConnectionAborted
+    );
+    drop(read);
+    let cancellation = Cancellation::default();
+    let mut writer = TimedWriter::new(
+        &write,
+        Instant::now() + Duration::from_secs(1),
+        &cancellation,
+    )
+    .expect("closed pipe writer");
+    assert_eq!(
+        writer.write_all(&[1]).expect_err("EPIPE").kind(),
+        io::ErrorKind::BrokenPipe
+    );
+}
+
+#[test]
 fn partial_reads_and_silent_workers_obey_deadlines_and_cancellation() {
     let (read, mut write) = UnixStream::pair().expect("private pipe");
     write.write_all(b"a").expect("partial record");

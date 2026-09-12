@@ -54,33 +54,20 @@ run = "./scripts/start-dev.sh"
 
 [tasks.dev]
 description = "Build and launch the main app once"
-run = "cargo run"
+run = "cargo build -p strata-media-helper && cargo run"
 
 [tasks.chooser-dev]
 description = "Build and open an isolated file chooser"
 run = "./scripts/chooser-dev.sh"
 
 [tasks.build]
-description = "Build the release binary"
+description = "Build both release executables"
 run = "cargo build --release"
 
 [tasks.install-local]
-description = "Install a per-user binary, icon, and desktop entry"
+description = "Install a matching per-user bundle, icon, and desktop entry"
 depends = ["build"]
-run = '''
-#!/usr/bin/env bash
-set -euo pipefail
-data_home="${DATA_HOME:-$HOME/.local/share}"
-bin_dir="${BIN_DIR:-$HOME/.local/bin}"
-install -Dm755 target/release/strata "$bin_dir/strata"
-install -Dm644 data/icons/scalable/apps/io.github.lgse.Strata.svg \
-  "$data_home/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg"
-install -d "$data_home/applications"
-sed "s|^Exec=strata |Exec=$bin_dir/strata |" data/io.github.lgse.Strata.desktop \
-  > "$data_home/applications/io.github.lgse.Strata.desktop"
-update-desktop-database "$data_home/applications" 2>/dev/null || true
-gtk-update-icon-cache -qtf "$data_home/icons/hicolor" 2>/dev/null || true
-'''
+run = "./scripts/install-local.sh"
 
 [tasks.install-file-manager]
 description = "Install the per-user FileManager1 D-Bus service"
@@ -113,13 +100,18 @@ rm -f "$data_home/dbus-1/services/io.github.lgse.Strata.FileManager1.service"
 '''
 
 [tasks.uninstall-local]
-description = "Remove the per-user binary, icon, and desktop entry"
+description = "Remove the per-user bundle, icon, and desktop entry (close Strata first)"
 depends = ["uninstall-file-manager"]
 run = '''
 #!/usr/bin/env bash
 set -euo pipefail
 data_home="${DATA_HOME:-$HOME/.local/share}"
 bin_dir="${BIN_DIR:-$HOME/.local/bin}"
+if pgrep -u "$(id -u)" -x strata >/dev/null; then
+  echo "Close all Strata and portal instances before removing their versioned bundles." >&2
+  exit 1
+fi
+rm -rf -- "$bin_dir/.strata-bundles"
 rm -f "$bin_dir/strata" \
   "$data_home/applications/io.github.lgse.Strata.desktop" \
   "$data_home/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg"

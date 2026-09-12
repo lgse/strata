@@ -109,7 +109,15 @@ the invoking user. Minimal generated passwd/group files provide the invoking
 UID/GID to D-Bus, so one published environment works across local user IDs without
 rebuilding it or mounting the host's account database.
 The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
-and GTK's GStreamer media backend with the base/good/libav plugins. Rust media
+and GStreamer with the base/good/libav plugins. Builds and artifact handoffs now
+include both `strata` and `strata-media-helper`; hashes and source fingerprints
+include the helper crates. Downloaded CI artifacts must restore executable bits
+on both files. Native targeted tests build the helper before the test executable.
+The debug E2E environment sets `STRATA_MEDIA_TEST_SINK=1`; this only selects a
+fakesink inside the isolated PCM helper, never the user's audio server. Release
+builds ignore that test override. These checks do not establish actual speaker
+output, and the unresolved Ubuntu alternatives-library sandbox failure (#806)
+must be tested separately rather than inferred away from ordinary E2E success. Rust media
 regressions exercise actual normalization, playback, and long-source duration
 limits rather than skipping when optional host tools are missing. These packages
 come from the existing dated Ubuntu snapshot; the GTK/GLib baseline and Rust

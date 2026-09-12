@@ -1,9 +1,15 @@
 """Focused tests for the interactive Bash installer helpers."""
 
+import fcntl
+import hashlib
+import io
+import json
 import os
 import pathlib
 import shutil
+import struct
 import subprocess
+import tarfile
 import tempfile
 import unittest
 
@@ -25,6 +31,147 @@ def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.Comple
         text=True,
         env=test_env,
     )
+
+
+def bundle_archive(root, version="1.2.3", target="x86_64-unknown-linux-gnu", defect=None):
+    binary = bytearray(120)
+    binary[:7] = b"\x7fELF\x02\x01\x01"
+    struct.pack_into("<HHI", binary, 16, 3, 62 if target.startswith("x86_64") else 183, 1)
+    struct.pack_into("<Q", binary, 32, 64)
+    struct.pack_into("<HHH", binary, 52, 64, 56, 1)
+    binary[64] = 1
+    binary = bytes(binary)
+    files = {"strata": binary, "strata-media-helper": binary}
+    if defect in ("missing-helper", "legacy"):
+        del files["strata-media-helper"]
+    manifest = dict(format=1, release_tag=f"v{version}", target=target, source_commit="a" * 40,
+                    media_protocol=2 if defect == "protocol" else 1,
+                    files={name: hashlib.sha256(data).hexdigest() for name, data in files.items()})
+    if defect == "corrupt-helper":
+        files["strata-media-helper"] += b"corrupt"
+    if defect != "legacy":
+        files["bundle.json"] = json.dumps(manifest).encode()
+    path = root / f"{version}-{defect}.tar.gz"
+    with tarfile.open(path, "w:gz") as archive:
+        for name, data in files.items():
+            member = tarfile.TarInfo(f"strata-{version}-{target}/{name}")
+            member.size = len(data)
+            member.mode = 0o755
+            archive.addfile(member, io.BytesIO(data))
+            if defect == "duplicate" and name == "strata":
+                archive.addfile(member, io.BytesIO(data))
+        if defect in ("symlink", "traversal"):
+            member = tarfile.TarInfo(f"strata-{version}-{target}/" + ("../escaped" if defect == "traversal" else "link"))
+            if defect == "symlink":
+                member.type, member.linkname = tarfile.SYMTYPE, "/etc/passwd"
+            archive.addfile(member, io.BytesIO())
+    if defect == "truncated":
+        path.write_bytes(path.read_bytes()[:-8])
+    return path
+
+
+class BundleInstallerTests(unittest.TestCase):
+    def install(self, archive, launcher, version="1.2.3", target="x86_64-unknown-linux-gnu"):
+        return bash('install_bundle "$ARCHIVE" "$VERSION" "$TARGET" "$LAUNCHER"', env={
+            "ARCHIVE": str(archive), "VERSION": version, "TARGET": target, "LAUNCHER": str(launcher)})
+
+    def test_both_architectures_install_without_executing_binaries_or_loading_media_libraries(self):
+        for target in ("x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                archive = bundle_archive(root, target=target)
+                launcher = root / "custom install % path/bin/strata"
+                result = self.install(archive, launcher, target=target)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(launcher.is_symlink())
+                self.assertTrue((launcher.resolve().parent / "strata-media-helper").is_file())
+                self.assertEqual(launcher.readlink().as_posix(), ".strata-bundles/current/strata")
+
+    def test_only_audited_published_versions_accept_binary_only_archives(self):
+        tags = (ROOT / "src/services/update_install/bundle/legacy-releases.txt").read_text().splitlines()
+        for version, allowed in [(tag[1:], True) for tag in tags] + [("1.2.3", False), ("0.16.0-rc.99", False)]:
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                archive = bundle_archive(root, version=version, defect="legacy")
+                launcher = root / "bin/strata"
+                result = self.install(archive, launcher, version=version)
+                self.assertEqual(result.returncode == 0, allowed, result.stderr)
+                self.assertEqual(launcher.exists(), allowed)
+
+    def test_invalid_archives_never_replace_the_old_install(self):
+        for defect in ("missing-helper", "corrupt-helper", "protocol", "duplicate", "symlink", "traversal", "truncated"):
+            with self.subTest(defect=defect), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                launcher = root / "bin/strata"
+                launcher.parent.mkdir()
+                launcher.write_bytes(b"old executable")
+                result = self.install(bundle_archive(root, defect=defect), launcher)
+                self.assertNotEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(launcher.read_bytes(), b"old executable")
+                self.assertFalse(launcher.is_symlink())
+
+    def test_local_source_install_uses_the_same_transaction_and_reuses_identical_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            target = f"{os.uname().machine}-unknown-linux-gnu"
+            archive = bundle_archive(root, target=target)
+            with tarfile.open(archive) as stream:
+                binary = stream.extractfile(f"strata-1.2.3-{target}/strata").read()
+            build = root / "build/release"
+            build.mkdir(parents=True)
+            for name in ("strata", "strata-media-helper"):
+                (build / name).write_bytes(binary)
+                (build / name).chmod(0o755)
+            env = os.environ | {"HOME": str(root / "home"), "DATA_HOME": str(root / "data"),
+                                "BIN_DIR": str(root / "custom bin"), "CARGO_TARGET_DIR": str(root / "build"),
+                                "CARGO_BUILD_TARGET": "", "STRATA_RELEASE_TAG": "v1.2.3"}
+            launcher = root / "custom bin/strata"
+            active = None
+            for _ in range(2):
+                result = subprocess.run([BASH, str(ROOT / "scripts/install-local.sh")], env=env,
+                                        text=True, capture_output=True, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(launcher.resolve().with_name("strata-media-helper").is_file())
+                if active is not None:
+                    self.assertEqual(launcher.resolve(), active)
+                active = launcher.resolve()
+            desktop = (root / "data/applications/io.github.lgse.Strata.desktop").read_text()
+            self.assertIn(str(launcher), desktop)
+
+    def test_update_and_rollback_switch_the_pair_and_keep_old_instances_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            launcher = root / "bin/strata"
+            first = bundle_archive(root)
+            second = bundle_archive(root, "1.2.4")
+            self.assertEqual(self.install(first, launcher).returncode, 0)
+            old = launcher.resolve()
+            self.assertEqual(self.install(second, launcher, "1.2.4").returncode, 0)
+            self.assertNotEqual(launcher.resolve(), old)
+            self.assertTrue(old.is_file())
+            self.assertTrue(old.with_name("strata-media-helper").is_file())
+            result = self.install(first, launcher)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(launcher.resolve(), old)
+
+    def test_foreign_writable_ancestors_and_competing_installer_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            archive = bundle_archive(root)
+            unsafe = root / "unsafe"
+            unsafe.mkdir(mode=0o777)
+            unsafe.chmod(0o777)
+            result = self.install(archive, unsafe / "private/bin/strata")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((unsafe / "private").exists())
+            launcher = root / "bin/strata"
+            storage = launcher.parent / ".strata-bundles"
+            storage.mkdir(parents=True, mode=0o700)
+            with (storage / "install.lock").open("wb") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                result = self.install(archive, launcher)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(launcher.exists())
 
 
 class InstallerTests(unittest.TestCase):

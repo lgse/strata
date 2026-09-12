@@ -39,25 +39,49 @@ fn main() {
 }
 
 fn embed_media_helper() {
-    use std::{fs, io::Write};
     use sha2::{Digest, Sha256};
+    use std::{fs, io::Write};
     println!("cargo::rerun-if-env-changed=STRATA_MEDIA_HELPER_BUNDLE");
     println!("cargo::rerun-if-env-changed=STRATA_RELEASE_BUILD");
     let output = PathBuf::from(env::var_os("OUT_DIR").expect("build output directory"));
     let source = if let Some(path) = env::var_os("STRATA_MEDIA_HELPER_BUNDLE") {
-        let path = PathBuf::from(path).canonicalize().expect("release helper must exist");
+        let path = PathBuf::from(path)
+            .canonicalize()
+            .expect("release helper must exist");
         println!("cargo::rerun-if-changed={}", path.display());
         let bytes = fs::read(path).expect("read release helper");
-        assert!(bytes.len() >= 64 && bytes.len() <= 256 * 1024 * 1024, "invalid release helper size");
-        let machine: u16 = match env::var("CARGO_CFG_TARGET_ARCH").expect("target").as_str() { "x86_64" => 62, "aarch64" => 183, _ => panic!("unsupported helper target") };
-        assert!(bytes.starts_with(b"\x7fELF\x02\x01\x01") && bytes[18..20] == machine.to_le_bytes(), "wrong release helper architecture");
-        let hash = format!("{:x}", Sha256::digest(&bytes));
+        assert!(
+            bytes.len() >= 64 && bytes.len() <= 256 * 1024 * 1024,
+            "invalid release helper size"
+        );
+        let machine: u16 = match env::var("CARGO_CFG_TARGET_ARCH").expect("target").as_str() {
+            "x86_64" => 62,
+            "aarch64" => 183,
+            _ => panic!("unsupported helper target"),
+        };
+        assert!(
+            bytes.starts_with(b"\x7fELF\x02\x01\x01") && bytes[18..20] == machine.to_le_bytes(),
+            "wrong release helper architecture"
+        );
+        let hash = Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
         let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
         encoder.write_all(&bytes).expect("compress helper");
-        fs::write(output.join("media-helper.gz"), encoder.finish().expect("finish helper compression")).expect("write embedded helper");
-        format!("pub const EMBEDDED: Option<(&[u8], &str)> = Some((include_bytes!(concat!(env!(\"OUT_DIR\"), \"/media-helper.gz\")), \"{hash}\"));\n")
+        fs::write(
+            output.join("media-helper.gz"),
+            encoder.finish().expect("finish helper compression"),
+        )
+        .expect("write embedded helper");
+        format!(
+            "pub const EMBEDDED: Option<(&[u8], &str)> = Some((include_bytes!(concat!(env!(\"OUT_DIR\"), \"/media-helper.gz\")), \"{hash}\"));\n"
+        )
     } else {
-        assert!(env::var_os("STRATA_RELEASE_BUILD").is_none(), "release builds require the exact offline media helper payload");
+        assert!(
+            env::var_os("STRATA_RELEASE_BUILD").is_none(),
+            "release builds require the exact offline media helper payload"
+        );
         "pub const EMBEDDED: Option<(&[u8], &str)> = None;\n".into()
     };
     fs::write(output.join("media-helper.rs"), source).expect("write helper metadata");

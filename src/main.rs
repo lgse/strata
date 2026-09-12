@@ -4,6 +4,7 @@ mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod installation;
 mod media;
 mod media_helper;
 mod metrics;
@@ -58,8 +59,11 @@ fn main() -> gtk::glib::ExitCode {
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
         LaunchMode::RepairMedia => {
-            return finish_portal_setup(tempfile::tempdir().map_err(|e| e.to_string())
-                .and_then(|dir| media_helper::snapshot(dir.path()).map(|_| "The matching media helper is installed. Retry the preview.".to_owned())));
+            return finish_portal_setup(media_helper::private_tempdir().and_then(|dir| {
+                media_helper::snapshot(dir.path()).map(|_| {
+                    "The matching media helper is installed. Retry the preview.".to_owned()
+                })
+            }));
         }
         LaunchMode::GvfsProbe => {
             let _vfs = gio::Vfs::default();
@@ -123,13 +127,18 @@ fn main() -> gtk::glib::ExitCode {
     application.run()
 }
 
-fn run_command_with_timeout(command: &mut std::process::Command, timeout: Duration) -> std::io::Result<bool> {
+fn run_command_with_timeout(
+    command: &mut std::process::Command,
+    timeout: Duration,
+) -> std::io::Result<bool> {
     let mut child = command.spawn()?;
     let deadline = std::time::Instant::now() + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status.success()),
-            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20))
+            }
             result => {
                 let _ = child.kill();
                 let _ = child.wait();

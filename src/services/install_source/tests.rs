@@ -235,6 +235,16 @@ fn the_marker_is_resolved_relative_to_the_install_prefix() {
             "/opt/strata/share/strata/install-source.toml"
         ))
     );
+    let versioned = format!(
+        "/opt/strata/bin/.strata-bundles/versions/{}/strata",
+        "a".repeat(64)
+    );
+    assert_eq!(
+        marker_path_for_executable(Path::new(&versioned)),
+        Some(PathBuf::from(
+            "/opt/strata/share/strata/install-source.toml"
+        ))
+    );
     assert_eq!(marker_path_for_executable(Path::new("strata")), None);
 }
 

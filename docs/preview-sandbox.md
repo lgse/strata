@@ -7,9 +7,10 @@ parsing and decoding run inside bubblewrap, never in the application.
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
   images to dimension- and size-bounded PNG images.
-- `ffmpegthumbnailer` produces bounded media thumbnails. One helper serves at most
-  64 queued unique requests; duplicate requests share work, obsolete targets
-  cancel it, and failures are cached for 30 seconds.
+- `ffmpegthumbnailer` produces bounded media thumbnails. The thumbnail coordinator
+  queues at most 64 unique requests in request order; duplicates share work,
+  obsolete targets cancel it, and failures are cached for 30 seconds. Each decode
+  uses a fresh helper and sandbox, not a reusable native parser.
 - Media previews use the incremental decoded-frame transport described below.
 - Plain text stays in-process, invokes no native format parser, and is capped at
   1 MiB.
@@ -20,8 +21,9 @@ parsing and decoding run inside bubblewrap, never in the application.
 One original local file (read-only)
   -> bubblewrap: ffprobe + FFmpeg video/audio decoding and scaling
   -> bounded, validated RGBA frames and PCM blocks
-  -> Strata GtkMediaStream: GTK MemoryTexture presentation
-                         + GStreamer appsrc raw-audio output
+  -> strata: validated GTK MemoryTexture presentation
+           + bounded PCM/control pipe
+             -> separate bubblewrap strata-media-helper: GStreamer raw-audio output
 ```
 
 There is no compressed-video encoding, normalized MP4/WebM temporary file,
@@ -29,8 +31,11 @@ There is no compressed-video encoding, normalized MP4/WebM temporary file,
 player. FFmpeg's `rawvideo` output packs RGBA pixels; `pcm_s16le` packs decoded
 samples. GStreamer receives only application-constructed `audio/x-raw` caps and
 validated samples through `appsrc ! audioconvert ! audioresample ! volume !
-autoaudiosink`. No decoder-provided path, pipeline, caps string, or compressed
-packet crosses into an unsandboxed media parser.
+pulsesink` in the **separate PCM worker**. No decoder-provided path, pipeline,
+caps string, or compressed packet crosses into an unsandboxed media parser.
+The UI crate has no GStreamer or Poppler dependency; shared transport and media
+selection types live in `crates/media-protocol`, native parsing/output in
+`crates/media-helper`.
 
 A media worker uses separate FFmpeg video and audio processes when both tracks
 exist. Each decodes only its selected track. This avoids cross-output pipe
@@ -60,7 +65,14 @@ output live; backend preference changes apply on the next preview request.
 
 ## Wire validation and budgets
 
-The versioned `STRRAW01` little-endian protocol has a 40-byte header: magic,
+Both roles first exchange a bounded protocol-1 identity containing the operation
+role, nonzero job/generation, exact release tag and source commit. Parser and PCM
+identities cannot be interchanged. PCM control/data messages also validate job,
+strict sequence, reserved bytes, fixed payload bounds, contiguous sample counts,
+sample-derived timestamps and terminal EOS. Only fixed commands and 48-kHz stereo
+PCM are accepted; there is no IPC pipeline string, URI or command execution.
+
+After the parser handshake, the versioned `STRRAW01` little-endian protocol has a 40-byte header: magic,
 width, height, exact RGBA stride, audio-present flag, duration in microseconds,
 starting tick, and a zero reserved field. Each 24-byte record contains its type,
 tick, timestamp, and video/audio lengths. Frame records are followed by exactly
@@ -87,6 +99,9 @@ that is at most eight directly application-held frames (50 MiB at the maximum
 square size), plus small audio buffers and bounded kernel pipes. FFmpeg's input
 and output packet queues are limited to two packets each. GStreamer's appsrc
 queue is capped at 38,400 bytes / 200 ms; no unbounded queue element is inserted.
+The UI-to-audio queue holds at most three messages, each PCM payload at most 6,400
+bytes; controls use atomic latest-value state so cancellation is not queued behind
+audio. Pipe reads and writes have cancellation and whole-message deadlines.
 GTK/driver rendering caches and codec working memory are additional, not part of
 that application-buffer claim. A full maximum-size generation transfers at most
 900 frames (5,898,240,000 video bytes) and 5,760,000 PCM bytes, incrementally—not
@@ -99,12 +114,23 @@ decode. The existing byte/entry-bounded image/PDF preview cache is unchanged.
 
 At most **four media sessions per application process** may own workers, across
 browser windows and choosers sharing that process. Each owns one parent reader
-thread and at most two FFmpeg decoding processes. A fifth request reports busy
+thread, at most two FFmpeg decoding processes, and (when audio exists) one PCM
+coordinator thread and one separate PCM worker. Both roles share **one** session
+lease, retained until audio teardown finishes. A fifth request reports busy
 instead of interrupting another player. The slot is retained through buffered
 playback, so a fifth player cannot steal it between GIF loops. A short 250-ms
 acquisition grace allows
 an obsolete worker to finish cancellation. Separate application/portal processes
 have separate limits, not a machine-global scheduler.
+
+Raster operations share a separate four-worker fail-fast cap. At most twelve
+helper processes can therefore belong to an application (four parsers, four PCM
+workers, four raster workers), plus up to eight media FFmpeg children and the
+bounded raster tools/bubblewrap supervision. Thumbnail order is FIFO within its
+coordinator; independent raster callers race for the cap rather than reserving
+an unbounded waiting queue. There is no cross-application fairness guarantee.
+Cancellation is checked before admission and takes priority over transport.
+This is not a new parser pool or the coordinator-reuse/RSS work in #841/#516.
 
 | State | Bound / behavior |
 | --- | --- |
@@ -125,11 +151,28 @@ Bubblewrap retains the existing namespace/mount policy:
 
 - new user, mount, PID, IPC, UTS, cgroup, and network namespaces;
 - read-only `/usr`, required runtime libraries and font/ImageMagick configuration,
-  the Strata executable, and exactly one canonicalized regular input file;
+  the pinned helper executable, and exactly one canonicalized regular input file;
 - writable private mode-0700 output directories for image providers and a
   size-limited (512 MiB) private `/tmp`; media uses pipes, not output mounts;
 - an empty environment, nonexistent home, and no desktop, session-bus, or
-  audio-server sockets. Only the application handles presentation/audio output.
+  audio-server sockets. The application alone handles texture presentation.
+
+PCM workers use a different sandbox: no source file, GPU, desktop or session bus,
+only the executable/runtime libraries and a bind of the real, user-owned
+`pulse/native` Unix socket beneath a private user-owned `XDG_RUNTIME_DIR` (and an
+optional local PulseAudio cookie). This supports PulseAudio and PipeWire through
+`pipewire-pulse`, not a native PipeWire/ALSA device fallback. The sink is fixed;
+environment-selected servers, sinks and plugin paths are not inherited. Unsafe
+runtime paths fail closed. Temporary/install path ancestry is validated before
+use, job storage is mode 0700, and only root or the effective user may own trusted
+ancestors (writable ancestors require sticky-directory protection).
+
+Both roles clear the environment, use absolute system tool paths, deny privilege
+gain, disable core dumps, retain private PID/network namespaces and die with the
+parent. The PCM sandbox additionally has a 2-GiB address-space limit. A helper
+is pinned by open file descriptor; package replacement cannot redirect a running
+UI to a different helper inode. Release payload verification also requires the
+exact embedded helper digest. See [bundle installation](media-helper-bundles.md).
 
 Image/PDF parsing has a 512-MiB input cap, 2-GiB address-space cap, 512-MiB file
 cap, 32-MiB parent output cap, 12-second wall limit and 10-second CPU limit.
@@ -156,20 +199,33 @@ GPU access still expands the helper's attack surface into driver code.
 
 ## Compatibility scope
 
-GStreamer app/base development libraries are now direct build dependencies;
-installed systems need their runtime libraries and raw-audio/output plugins.
-In particular, the core and app/base libraries are now required to **launch**
-Strata, even when no preview is open. Minimal installations that self-update only
-the executable must install these packages before updating. Installer/AUR metadata
-retains the legacy codec-plugin recommendation for currently published binaries;
-the new player does not use those decoders.
+GStreamer app/base development libraries belong to the helper build, not the UI
+crate. The common helper links these libraries at startup: missing them disables
+**all helper modes**, including image/PDF thumbnails. The UI can show repair or
+package guidance instead of loading Strata's media implementation at startup.
+Some distributions' GTK builds themselves link GStreamer; removing libraries
+required by the platform toolkit is not supported or claimed to work.
+
+Audio-bearing previews require core/base raw-audio plugins, the `pulsesink` plugin
+(`gst-plugins-good` / `gstreamer1.0-plugins-good`) and an available trusted audio
+server. Unavailable audio fails that preview with actionable guidance, even if
+muted; silent video-only degradation is not implemented. Video-only sources do
+not need a PCM worker. Installing dependencies permits a new preview attempt;
+thumbnail failures may remain cached for 30 seconds. Repairing a mismatched
+package helper may require a restart because existing processes pin their helper.
+The release's offline recovery payload can restore its exact helper, never an
+arbitrary latest download. No private native runtime is bundled.
+
+Installer/AUR metadata retains legacy codec-plugin recommendations for published
+pre-helper binaries; the new player does not use those decoders.
 Toolkit versions and the opt-in patches in
 [`packaging/media-runtime`](../packaging/media-runtime/README.md) are unchanged.
 The new player does not use the two patched `GtkGstSink`/`GstPlay` paths, but this
 change neither applies nor retires that patch kit or claims to fix all RAM growth.
 
-By explicit owner decision, the Ubuntu runtime-library alias problem
-[#806](https://github.com/lgse/strata/issues/806) remains outside this change.
-No additional filesystem mounts have been added to work around it. Affected
-installations still fail closed at sandbox startup, before this playback path can
-run; direct helper/GTK tests are not proof that this platform problem is fixed.
+The Ubuntu runtime-library alias problem
+[#806](https://github.com/lgse/strata/issues/806) is not declared fixed by this split.
+No additional parser filesystem mounts have been added to work around it.
+Affected installations fail closed at sandbox startup. Actual installed-container
+playback evidence is required; direct helper/GTK unit tests are not proof of
+Ubuntu compatibility, real speaker output, ARM64 behavior or a memory plateau.

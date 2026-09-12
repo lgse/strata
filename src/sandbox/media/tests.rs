@@ -119,7 +119,14 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
         start_tick: 0,
     };
     let mut bytes = Vec::new();
-    crate::media::ipc::hello(&mut bytes, crate::media::ipc::PARSER, 1, crate::build_info::RELEASE_TAG, crate::build_info::COMMIT).expect("helper handshake");
+    crate::media::ipc::hello(
+        &mut bytes,
+        crate::media::ipc::PARSER,
+        1,
+        crate::build_info::RELEASE_TAG,
+        crate::build_info::COMMIT,
+    )
+    .expect("helper handshake");
     h.write(&mut bytes).expect("header");
     Frame {
         tick: 0,

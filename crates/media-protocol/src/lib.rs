@@ -8,8 +8,8 @@ use std::{
 
 mod types;
 pub use types::{Cancellation, MediaPreviewBackend, MediaPreviewSize};
-pub mod ipc;
 pub mod devices;
+pub mod ipc;
 
 pub const FPS: u32 = 30;
 pub const LIMIT_US: u64 = 30_000_000;
@@ -279,10 +279,18 @@ pub struct TimedWriter<'a, F> {
 }
 
 impl<F: AsFd> TimedWriter<'_, F> {
-    pub fn new<'a>(fd: &'a F, deadline: Instant, cancellation: &'a Cancellation) -> io::Result<TimedWriter<'a, F>> {
+    pub fn new<'a>(
+        fd: &'a F,
+        deadline: Instant,
+        cancellation: &'a Cancellation,
+    ) -> io::Result<TimedWriter<'a, F>> {
         let flags = rustix::fs::fcntl_getfl(fd)?;
         rustix::fs::fcntl_setfl(fd, flags | rustix::fs::OFlags::NONBLOCK)?;
-        Ok(TimedWriter { fd, deadline, cancellation })
+        Ok(TimedWriter {
+            fd,
+            deadline,
+            cancellation,
+        })
     }
 }
 
@@ -291,22 +299,36 @@ impl<F: AsFd> Write for TimedWriter<'_, F> {
         use rustix::event::{PollFd, PollFlags, Timespec, poll};
         loop {
             if self.cancellation.is_cancelled() {
-                return Err(io::Error::new(io::ErrorKind::ConnectionAborted, "Media cancelled"));
+                return Err(io::Error::new(
+                    io::ErrorKind::ConnectionAborted,
+                    "Media cancelled",
+                ));
             }
             if Instant::now() >= self.deadline {
-                return Err(io::Error::new(io::ErrorKind::TimedOut, "Media transport stalled"));
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "Media transport stalled",
+                ));
             }
             match rustix::io::write(self.fd, buffer) {
                 Ok(count) => return Ok(count),
                 Err(rustix::io::Errno::INTR) => continue,
-                Err(rustix::io::Errno::AGAIN) => {},
+                Err(rustix::io::Errno::AGAIN) => {}
                 Err(error) => return Err(error.into()),
             }
             let mut fds = [PollFd::new(self.fd, PollFlags::OUT)];
-            poll(&mut fds, Some(&Timespec { tv_sec: 0, tv_nsec: 10_000_000 }))?;
+            poll(
+                &mut fds,
+                Some(&Timespec {
+                    tv_sec: 0,
+                    tv_nsec: 10_000_000,
+                }),
+            )?;
         }
     }
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

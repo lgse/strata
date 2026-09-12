@@ -376,7 +376,12 @@ impl DecodedMedia {
                     let audio = header
                         .audio
                         .then(|| {
-                            let lease = imp.session.borrow().as_ref().ok_or("Missing media session")?.lease();
+                            let lease = imp
+                                .session
+                                .borrow()
+                                .as_ref()
+                                .ok_or("Missing media session")?
+                                .lease();
                             PcmOutput::new(self.is_muted(), self.volume(), lease)
                         })
                         .transpose()?;

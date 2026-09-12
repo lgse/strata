@@ -220,4 +220,3 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
     assert_eq!(metadata, "1 2");
     assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
 }
-

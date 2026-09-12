@@ -53,17 +53,8 @@ pub enum UpdateInstall {
     Failed(String),
 }
 
-/// What to install: the archive to download.
-///
-/// Earlier versions of this type also carried the expected `version`
-/// string, but nothing ever read it: `install_update` only uses
-/// `download_url`, and the rollback caller (which was documented as
-/// needing it to flip the persisted channel afterwards) sets
-/// `Channel::Stable` unconditionally instead. Removed rather than wired up
-/// -- verifying the extracted binary against an expected version would
-/// mean executing an untrusted downloaded binary before replacing the
-/// installed one, which is a bigger change than this field's one dead
-/// reader justified.
+/// The trusted release URL supplies the expected version and architecture.
+/// Bundle identity and executable integrity are checked without running downloads.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallRequest {
     pub download_url: String,
@@ -393,8 +384,11 @@ fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Resu
 /// Creates a fresh, uniquely-named staging directory for one install inside
 /// `exe_dir`. See `perform_install` for why uniqueness matters.
 fn stage_workdir(exe_dir: &Path) -> Result<tempfile::TempDir, String> {
+    use std::os::unix::fs::PermissionsExt;
+    let exe_dir = crate::media_helper::trusted_directory(exe_dir)?;
     tempfile::Builder::new()
         .prefix(".strata-update-")
+        .permissions(fs::Permissions::from_mode(0o700))
         .tempdir_in(exe_dir)
         .map_err(|error| format!("Could not stage the update: {error}"))
 }
@@ -412,13 +406,8 @@ fn try_install(
     let _sent = progress.send(UpdateInstall::Verifying);
     let archive_hash = verify_checksum(download_url, &archive_path)?;
     let _sent = progress.send(UpdateInstall::Installing);
-    let package_dir = bundle::install_archive(
-        &archive_path,
-        &archive_hash,
-        expected,
-        exe_dir,
-        current_exe,
-    )?;
+    let package_dir =
+        bundle::install_archive(&archive_path, &archive_hash, expected, exe_dir, current_exe)?;
 
     refresh_desktop_metadata(
         &package_dir,
@@ -448,7 +437,7 @@ fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &P
     }
     match write_application_icon(package_dir, data_home) {
         Ok(()) => {
-            if let Err(error) = run(Command::new("gtk-update-icon-cache")
+            if let Err(error) = run(Command::new("/usr/bin/gtk-update-icon-cache")
                 .arg("-qtf")
                 .arg(data_home.join("icons/hicolor")))
             {
@@ -459,7 +448,7 @@ fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &P
     }
 
     let _refreshed =
-        run(Command::new("update-desktop-database").arg(data_home.join("applications")));
+        run(Command::new("/usr/bin/update-desktop-database").arg(data_home.join("applications")));
 }
 
 fn write_desktop_entry(
@@ -545,6 +534,7 @@ fn download_to_file(
     progress: &Sender<UpdateInstall>,
 ) -> Result<(), String> {
     let config = ureq::Agent::config_builder()
+        .https_only(true)
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build();
     let agent: ureq::Agent = config.into();
@@ -587,6 +577,7 @@ fn download_to_file(
 
 fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<String, String> {
     let config = ureq::Agent::config_builder()
+        .https_only(true)
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build();
     let agent: ureq::Agent = config.into();
@@ -602,7 +593,8 @@ fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<String, St
 
     let actual_hash = bundle::sha256_file(archive_path)?;
 
-    if actual_hash == expected_hash && expected_hash.len() == 64
+    if actual_hash == expected_hash
+        && expected_hash.len() == 64
         && expected_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
     {
         Ok(actual_hash)

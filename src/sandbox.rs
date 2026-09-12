@@ -36,11 +36,13 @@ impl RasterSlot {
     }
 }
 impl Drop for RasterSlot {
-    fn drop(&mut self) { RASTER_WORKERS.fetch_sub(1, Ordering::AcqRel); }
+    fn drop(&mut self) {
+        RASTER_WORKERS.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
-pub(crate) use strata_media_protocol::{Cancellation, MediaPreviewBackend};
 pub(crate) use strata_media_protocol::devices::{gpu_devices, numbered_name};
+pub(crate) use strata_media_protocol::{Cancellation, MediaPreviewBackend};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
@@ -150,18 +152,51 @@ pub(crate) fn parse(
         &devices,
     );
     let job = crate::media_helper::job();
-    command.arg(job.to_string()).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .arg(job.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = spawn_renderer(&mut command).map_err(crate::media_helper::spawn_error)?;
     let started = Instant::now();
-    let handshake = child.stdout.take().ok_or_else(|| "Missing helper pipe".to_owned()).and_then(|stdout| {
-        let mut reader = crate::media::TimedReader { fd: &stdout, deadline: started + WALL_TIME_LIMIT, cancellation };
-        crate::media::ipc::check_hello(&mut reader, crate::media::ipc::PARSER, job, crate::build_info::RELEASE_TAG, crate::build_info::COMMIT).map_err(|e| e.to_string())?;
-        if reader.read(&mut [0]).map_err(|e| e.to_string())? != 0 { return Err("Unexpected parser output".into()); }
-        Ok(())
-    });
-    let result = handshake.and_then(|()| wait_for_renderer(&mut child, cancellation, WALL_TIME_LIMIT.saturating_sub(started.elapsed()))).and_then(|status| {
-        if status.success() { Ok(()) } else { Err("The sandboxed preview renderer failed".to_owned()) }
-    });
+    let handshake = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Missing helper pipe".to_owned())
+        .and_then(|stdout| {
+            let mut reader = crate::media::TimedReader {
+                fd: &stdout,
+                deadline: started + WALL_TIME_LIMIT,
+                cancellation,
+            };
+            crate::media::ipc::check_hello(
+                &mut reader,
+                crate::media::ipc::PARSER,
+                job,
+                crate::build_info::RELEASE_TAG,
+                crate::build_info::COMMIT,
+            )
+            .map_err(|e| e.to_string())?;
+            if reader.read(&mut [0]).map_err(|e| e.to_string())? != 0 {
+                return Err("Unexpected parser output".into());
+            }
+            Ok(())
+        });
+    let result = handshake
+        .and_then(|()| {
+            wait_for_renderer(
+                &mut child,
+                cancellation,
+                WALL_TIME_LIMIT.saturating_sub(started.elapsed()),
+            )
+        })
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err("The sandboxed preview renderer failed".to_owned())
+            }
+        });
     if let Err(error) = result {
         terminate(&mut child);
         return Err(crate::media_helper::failure(&mut child, error));
@@ -296,7 +331,10 @@ fn sandbox_command(
         "/etc/ImageMagick-6",
     ]);
     let sandbox_input = sandbox_input_path(input);
-    command.arg("--ro-bind").arg(executable).arg("/app/strata-media-helper");
+    command
+        .arg("--ro-bind")
+        .arg(executable)
+        .arg("/app/strata-media-helper");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
     if !operation.is_media() {
         command.arg("--bind").arg(output).arg("/output");
@@ -330,9 +368,12 @@ fn sandbox_command(
             .arg("--");
     }
     command.args([
-        "/app/strata-media-helper", "--decode-v1",
-        crate::build_info::RELEASE_TAG, crate::build_info::COMMIT,
-        operation.argument(), &sandbox_input,
+        "/app/strata-media-helper",
+        "--decode-v1",
+        crate::build_info::RELEASE_TAG,
+        crate::build_info::COMMIT,
+        operation.argument(),
+        &sandbox_input,
     ]);
     if let ParseOperation::PreviewMedia(size) = operation {
         let size = MediaPreviewSize::new(size.width, size.height);
@@ -480,7 +521,9 @@ impl PrivateOutput {
     fn create() -> io::Result<Self> {
         use std::os::unix::fs::DirBuilderExt;
 
-        let path = std::env::temp_dir().join(format!(
+        let root = crate::media_helper::trusted_directory(&std::env::temp_dir())
+            .map_err(io::Error::other)?;
+        let path = root.join(format!(
             "strata-preview-{}-{}",
             std::process::id(),
             NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)

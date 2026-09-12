@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::{fs, path::{Path, PathBuf}};
 use crate::MediaPreviewBackend;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 pub fn gpu_devices(dev: &Path, media_backend: MediaPreviewBackend) -> Vec<PathBuf> {
     if media_backend == MediaPreviewBackend::Software {
@@ -36,4 +39,3 @@ pub fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
             !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
         })
 }
-

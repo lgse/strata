@@ -98,12 +98,23 @@ jobs:
             fi
           done
 
-      - name: Confirm packaging does not modify the published binary
+      - name: Confirm both packaged executables retain release provenance
         run: |
-          archive=$(echo packaging/aur/strata-bin/*.pkg.tar.zst)
-          packaged=$(bsdtar -xOf "$archive" usr/bin/strata | sha256sum | cut -d' ' -f1)
-          upstream=$(tar -xOzf packaging/aur/strata-bin/strata-*.tar.gz --wildcards '*/strata' | sha256sum | cut -d' ' -f1)
-          if [[ "$packaged" != "$upstream" ]]; then
-            echo "The packaged binary differs from the published release artifact, which breaks provenance verification." >&2
-            exit 1
-          fi
+          for package in strata-bin strata-rc-bin; do
+            archive=$(echo packaging/aur/"$package"/*.pkg.tar.zst)
+            release=$(echo packaging/aur/"$package"/strata-*.tar.gz)
+            binaries=(strata)
+            members=$(tar -tzf "$release")
+            if grep -q '/bundle.json$' <<< "$members"; then
+              binaries+=(strata-media-helper)
+              bsdtar -tf "$archive" | grep -qx 'usr/share/strata/bundle.json'
+            fi
+            for binary in "${binaries[@]}"; do
+              packaged=$(bsdtar -xOf "$archive" "usr/bin/$binary" | sha256sum | cut -d' ' -f1)
+              upstream=$(tar -xOzf "$release" --wildcards "*/$binary" | sha256sum | cut -d' ' -f1)
+              if [[ "$packaged" != "$upstream" ]]; then
+                echo "The packaged $binary differs from its attested release artifact." >&2
+                exit 1
+              fi
+            done
+          done

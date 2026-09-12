@@ -40,9 +40,25 @@ Run the same workflow manually with `mode` set to `alpha`, `beta`, `rc`, or `nig
 
 RC and nightly publication are intentionally manual. To promote a validated RC line to stable, run the workflow again with `mode: stable` and the same `bump` level. The resulting stable tag supersedes the prerelease line; the guard blocks promotion when an RC commit is not reachable from the stable source.
 
+## Media-helper rollout gate
+
+Every archive now contains a matching `strata` / `strata-media-helper` pair and
+`bundle.json`. Build and finalize helper symbols/stripping first, then set
+`STRATA_RELEASE_BUILD=1` and `STRATA_MEDIA_HELPER_BUNDLE` to those exact bytes when
+building the UI. Both builds must receive the same release tag and source commit.
+The UI embeds offline recovery for already-published updaters that copy only
+`strata`; keep that payload in every subsequent stable, RC and nightly release.
+
+The workflow compares recovered bytes with the packaged helper on both targets.
+This is necessary but not sufficient: first publish a prerelease and complete the
+[installed migration/runtime gates](media-helper-bundles.md#rollout-and-validation-gates)
+before stable promotion. Do not treat synthetic ELF tests, direct `DT_NEEDED`
+checks, fake audio or a successful build as proof of full dependency closure,
+ARM64 runtime behavior, Ubuntu sandbox compatibility or real speaker playback.
+
 ## Debugging a release build
 
-Each release includes a `strata-VERSION-TARGET.debug` file matching its stripped binary. Download the debug file for the installed version and architecture, place it beside the `strata` binary, then run `coredumpctl debug strata`; GDB follows the binary's embedded debug link to load Rust function names and source lines.
+Each release includes a `strata-VERSION-TARGET.debug` file matching its stripped binary. Download the debug file for the installed version and architecture, place it beside the `strata` binary, then run `coredumpctl debug strata`; GDB follows the binary's embedded debug link to load Rust function names and source lines. The helper has its own `strata-media-helper-VERSION-TARGET.debug` artifact. Keep symbols alongside the resolved versioned executable (or configure GDB's separate debug-file directory). Never ask users to upload core dumps.
 
 ## Version calculation
 
