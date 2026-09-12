@@ -941,16 +941,6 @@ impl PreviewState {
                 if let Some(error) = media.error() {
                     self.show_media_error(&error);
                 }
-                if !is_gif {
-                    let notice = gtk::Label::new(Some(
-                        "Preview limited to the first 30 seconds. Open the file to play the full video.",
-                    ));
-                    notice.add_css_class("preview-note");
-                    notice.set_justify(gtk::Justification::Center);
-                    notice.set_wrap(true);
-                    notice.set_xalign(0.5);
-                    self.content.append(&notice);
-                }
             }
             PreviewContent::Image | PreviewContent::Media => {
                 self.show_message(
