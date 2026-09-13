@@ -2,6 +2,8 @@
 
 use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
+use gtk::prelude::Cast;
+
 use super::{
     APPLICATION_ID, GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
     gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, install_application_identity,
