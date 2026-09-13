@@ -147,6 +147,8 @@ struct Preferences {
     cross_volume_drop_strategy: String,
     #[serde(default = "default_release_channel")]
     release_channel: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_directory: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -190,6 +192,7 @@ impl Default for Preferences {
             auto_refresh_interval: 0,
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             release_channel: default_release_channel(),
+            default_directory: None,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
         }
@@ -610,6 +613,15 @@ impl ThemeManager {
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
         self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.save_preferences();
+    }
+
+    pub fn default_directory(&self) -> Option<PathBuf> {
+        self.preferences.borrow().default_directory.clone()
+    }
+
+    pub fn set_default_directory(&self, path: Option<PathBuf>) {
+        self.preferences.borrow_mut().default_directory = path;
         self.save_preferences();
     }
 

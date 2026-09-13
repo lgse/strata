@@ -49,6 +49,7 @@ fn non_default_preferences() -> Preferences {
         auto_refresh_interval: 600,
         cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
         release_channel: "nightly".into(),
+        default_directory: Some("/fixture/default".into()),
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
         custom_icons: HashMap::from([(
             "/fixture/folder".into(),
@@ -410,6 +411,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 CrossVolumeDropStrategy::Move
             );
             assert_eq!(
+                manager.default_directory(),
+                Some(std::path::PathBuf::from("/fixture/default"))
+            );
+            assert_eq!(
                 manager.folder_color(Path::new("/fixture/folder")),
                 FolderColorValue::parse("red")
             );
@@ -514,6 +519,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_text_wrap(false),
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
+                |m| m.set_default_directory(None),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
                 |m| m.set_follow_omarchy(true),
