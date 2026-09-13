@@ -24,6 +24,7 @@ pub(super) fn general_page(
     manager: Rc<ThemeManager>,
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
+
     append_browsing_options(&preferences, &manager);
 
     append_heading(&preferences, "OPENING ITEMS");
@@ -44,6 +45,9 @@ pub(super) fn general_page(
     let portal_row = crate::ui::portal_preferences::settings_row();
     super::search::tag(&portal_row, "Desktop integration");
     preferences.append(&portal_row);
+
+    let startup = super::settings_group(&preferences, "STARTUP");
+    append_default_directory_option(&startup, &manager);
 
     (
         scrollable_page(&preferences, None),
@@ -114,6 +118,93 @@ fn append_preference_switch(
         super::indent_row(&row);
     }
     content.append(&row);
+}
+
+fn append_default_directory_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let choose = gtk::Button::with_label(&default_directory_text(manager.default_directory()));
+    choose.set_valign(gtk::Align::Center);
+    choose.add_css_class("form-control");
+    choose.add_css_class("settings-choice");
+    choose.set_tooltip_text(Some("Select default directory"));
+    super::super::accessibility::set_label(&choose, "Default directory");
+
+    let reset = gtk::Button::with_label("Reset");
+    reset.add_css_class("form-control");
+    reset.set_valign(gtk::Align::Center);
+    reset.set_sensitive(manager.default_directory().is_some());
+    reset.set_tooltip_text(Some("Restore the home directory as default"));
+
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    controls.append(&choose);
+    controls.append(&reset);
+
+    let row = super::control_row(
+        "Default directory",
+        "Open this folder when launching Strata without a target.",
+        &controls,
+    );
+    content.append(&row);
+
+    manager.bind_preference(
+        &choose,
+        ThemeManager::default_directory,
+        move |widget, value| {
+            if let Some(button) = widget.downcast_ref::<gtk::Button>() {
+                button.set_label(&default_directory_text(value));
+            }
+        },
+    );
+    let manager_for_reset = manager.clone();
+    reset.connect_clicked(move |_| {
+        manager_for_reset.set_default_directory(None);
+    });
+    manager.bind_preference(
+        &reset,
+        ThemeManager::default_directory,
+        move |widget, value| {
+            if let Some(button) = widget.downcast_ref::<gtk::Button>() {
+                button.set_sensitive(value.is_some());
+            }
+        },
+    );
+
+    let manager = manager.clone();
+    choose.connect_clicked(move |button| {
+        let Some(window) = button.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        let dialog = gtk::FileDialog::builder()
+            .title("Select default directory")
+            .modal(true)
+            .build();
+        let manager = manager.clone();
+        dialog.select_folder(Some(&window), gio::Cancellable::NONE, move |result| {
+            let Ok(file) = result else {
+                return;
+            };
+            if let Some(path) = file.path() {
+                manager.set_default_directory(Some(path));
+            }
+        });
+    });
+}
+
+fn default_directory_text(path: Option<std::path::PathBuf>) -> String {
+    match path {
+        Some(path) => abbreviate_home(&path),
+        None => "Home directory".to_owned(),
+    }
+}
+
+fn abbreviate_home(path: &std::path::Path) -> String {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    if let Some(home) = home
+        && let Ok(rest) = path.strip_prefix(&home)
+    {
+        format!("~/{}", rest.display())
+    } else {
+        path.display().to_string()
+    }
 }
 
 fn append_cross_volume_drop_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
