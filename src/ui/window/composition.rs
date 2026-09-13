@@ -56,7 +56,7 @@ impl WindowContent {
         preferences: &Rc<ThemeManager>,
     ) -> UpdateNoticeHandler {
         search::install(window, self, preferences);
-        install_browser_actions(window, &self.browser);
+        install_browser_actions(window, &self.browser, preferences);
         let notice = settings::install(window, self, preferences);
         window.set_child(Some(&self.overlay));
         let click_browser = self.browser.clone();
@@ -108,7 +108,11 @@ impl WindowContent {
     }
 }
 
-fn install_browser_actions(window: &gtk::ApplicationWindow, browser: &BrowserView) {
+fn install_browser_actions(
+    window: &gtk::ApplicationWindow,
+    browser: &BrowserView,
+    preferences: &Rc<ThemeManager>,
+) {
     let terminal_view = browser.clone();
     let terminal_action = gio::SimpleAction::new("open-terminal", None);
     terminal_action.connect_activate(move |_, _| {
@@ -122,6 +126,14 @@ fn install_browser_actions(window: &gtk::ApplicationWindow, browser: &BrowserVie
         refresh_view.refresh();
     });
     window.add_action(&refresh_action);
+
+    let toggle_preferences = preferences.clone();
+    let toggle_action = gio::SimpleAction::new("toggle-arrow-scope", None);
+    toggle_action.connect_activate(move |_, _| {
+        let next = !toggle_preferences.arrow_navigation_scoped();
+        toggle_preferences.set_arrow_navigation_scoped(next);
+    });
+    window.add_action(&toggle_action);
     if let Some(application) = window.application() {
         for (action, accels) in super::DEFAULT_ACCELS {
             application.set_accels_for_action(action, accels);

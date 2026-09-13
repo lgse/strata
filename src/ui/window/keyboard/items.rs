@@ -84,6 +84,10 @@ impl Dispatcher {
             self.view.at_left_edge(),
             self.top_bar.sidebar_toggle().is_active(),
         )?;
+        let action = match action {
+            SinglePaneArrow::Sidebar if self.arrows_scoped_to_content() => SinglePaneArrow::Stay,
+            other => other,
+        };
         Some(match action {
             SinglePaneArrow::Native => self.native_selection(event),
             SinglePaneArrow::Stay => Propagation::Stop,
@@ -97,6 +101,7 @@ impl Dispatcher {
     fn native_selection(&self, event: &KeyEvent) -> Propagation {
         if event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
             && event.key == Key::Up
+            && !self.arrows_scoped_to_content()
             && self.view.focus_header_from_top_item()
         {
             return Propagation::Stop;
@@ -160,6 +165,7 @@ impl Dispatcher {
         }
         if !event.alt()
             && matches!(event.key, Key::k | Key::Up)
+            && !self.arrows_scoped_to_content()
             && self.view.focus_header_from_top_item()
         {
             return Some(Propagation::Stop);

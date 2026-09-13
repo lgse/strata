@@ -62,6 +62,7 @@ const SHORTCUTS: &[(&str, &str, &str, &str)] = &[
     ("Application", "Refresh", "", "F5"),
     ("Application", "Open settings", "", "Ctrl + ,"),
     ("Application", "Shortcut reference", "", "F1"),
+    ("Application", "Toggle arrow-key scope", "", "Ctrl + \\"),
 ];
 
 pub(super) fn search_text() -> String {
@@ -87,6 +88,18 @@ pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         ThemeManager::set_show_keybinding_hints,
     );
     row.add_css_class("keybinding-hints");
+    hints.append(&row);
+    let (row, toggle) = settings_option(
+        "Keep arrows in file list",
+        "Stop arrow keys from leaving the file list. Use Tab or the mouse to reach the toolbar and sidebar.",
+        manager.arrow_navigation_scoped(),
+    );
+    bind_switch(
+        &manager,
+        &toggle,
+        ThemeManager::arrow_navigation_scoped,
+        ThemeManager::set_arrow_navigation_scoped,
+    );
     hints.append(&row);
     let reference = gtk::Box::new(gtk::Orientation::Vertical, 0);
     super::search::tag(&reference, "Shortcut reference");
@@ -149,6 +162,7 @@ pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         count.set_text(&format!("{matches} bindings"));
         empty.set_visible(matches == 0);
     });
+
     scrollable_page(&content, Some("settings-keybindings-scroll"))
 }
 

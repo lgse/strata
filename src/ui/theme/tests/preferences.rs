@@ -17,6 +17,7 @@ fn non_default_preferences() -> Preferences {
         video_preview_backend: "vulkan".into(),
         search_open_files_directly: true,
         type_to_search: false,
+        arrow_navigation_scoped: true,
         filter_include_subfolders: false,
         show_keybinding_hints: false,
         reduce_motion: true,
@@ -337,6 +338,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             );
             assert!(manager.search_open_files_directly());
             assert!(!manager.type_to_search());
+            assert!(manager.arrow_navigation_scoped());
             assert!(!manager.filter_include_subfolders());
             assert!(!manager.show_keybinding_hints());
             assert!(manager.reduce_motion());
@@ -477,6 +479,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),
                 |m| m.set_type_to_search(true),
+                |m| m.set_arrow_navigation_scoped(false),
                 |m| m.set_filter_include_subfolders(true),
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_reduce_motion(false),
