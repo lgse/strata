@@ -48,6 +48,7 @@ control that might be midway through synchronization.
 | --- | --- |
 | Folder peeking, single-click previews, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. The chooser explicitly disallows folder peeking regardless of the saved value. |
 | Hidden files | Shared across existing browsers and new columns. |
+| Open folder after dropping files | Drop dispatch reads the saved choice (off by default), including confirmation of cross-device drops. Successful drops reveal the destination only when enabled and the user is still at the transfer origin. Paste and Move/Copy to remain unchanged. |
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Sorting a column updates the persisted defaults. |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
@@ -109,6 +110,15 @@ movement are unchanged; use **Reduce motion** to disable nonessential animations
 | Glow enabled (default) | Glow disabled |
 | --- | --- |
 | ![Element glow enabled](images/element-glow-on.png) | ![Element glow disabled](images/element-glow-off.png) |
+
+## Drag-and-drop destination
+
+In **Settings → General → File transfers**, enable **Open folder after dropping
+files** to show the destination after a successful drop: a child column in
+Columns, or navigation in Icons and List. It is off by default and saved as
+`open_folder_after_drop = false`. Changes apply to subsequent drops across
+windows without restarting. Navigating away during a transfer is respected.
+Paste and **Move/Copy to…** continue to reveal their destination independently.
 
 ## Filter scope
 

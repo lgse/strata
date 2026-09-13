@@ -99,8 +99,8 @@ impl ViewState {
             return;
         }
         match commit {
-            DropCommit::Copy => self.start_transfer_with_reveal(destination, sources, false, false),
-            DropCommit::Move => self.start_transfer_with_reveal(destination, sources, true, false),
+            DropCommit::Copy => self.start_drop_transfer(destination, sources, false),
+            DropCommit::Move => self.start_drop_transfer(destination, sources, true),
             DropCommit::Ask { volume, .. } => {
                 self.confirm_cross_volume_drop(destination, sources, volume);
             }
@@ -178,11 +178,10 @@ impl ViewState {
             let chosen_sources = sources.clone();
             button.connect_clicked(move |_| {
                 dismiss_modal_layer(&chosen_layer, &chosen_overlay, chosen_root.as_ref());
-                chosen_state.start_transfer_with_reveal(
+                chosen_state.start_drop_transfer(
                     chosen_destination.clone(),
                     chosen_sources.clone(),
                     move_sources,
-                    false,
                 );
             });
         }
@@ -213,10 +212,18 @@ impl ViewState {
         self.start_transfer_with_reveal(destination, sources, move_sources, true);
     }
 
-    /// `reveal` controls whether a completed transfer navigates to or reloads
-    /// its destination. A drop onto a folder row moves or copies the file
-    /// without leaving the source listing, so drag-and-drop passes `false`;
-    /// paste and explicit "move/copy to" still show where the item landed.
+    fn start_drop_transfer(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        move_sources: bool,
+    ) {
+        let reveal = crate::ui::theme::ThemeManager::shared().open_folder_after_drop();
+        self.start_transfer_with_reveal(destination, sources, move_sources, reveal);
+    }
+
+    /// Paste and explicit "move/copy to" reveal their result independently of
+    /// the drop preference, which is captured when the transfer starts.
     pub(super) fn start_transfer_with_reveal(
         self: &Rc<Self>,
         destination: Location,

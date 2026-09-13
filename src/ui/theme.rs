@@ -145,6 +145,8 @@ struct Preferences {
     auto_refresh_interval: u32,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
+    #[serde(default)]
+    open_folder_after_drop: bool,
     #[serde(default = "default_release_channel")]
     release_channel: String,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -189,6 +191,7 @@ impl Default for Preferences {
             preview_text_wrap: false,
             auto_refresh_interval: 0,
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
+            open_folder_after_drop: false,
             release_channel: default_release_channel(),
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
@@ -610,6 +613,15 @@ impl ThemeManager {
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
         self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.save_preferences();
+    }
+
+    pub fn open_folder_after_drop(&self) -> bool {
+        self.preferences.borrow().open_folder_after_drop
+    }
+
+    pub fn set_open_folder_after_drop(&self, enabled: bool) {
+        self.preferences.borrow_mut().open_folder_after_drop = enabled;
         self.save_preferences();
     }
 
