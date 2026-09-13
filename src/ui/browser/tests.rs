@@ -15,6 +15,7 @@ mod recursive_search;
 mod restore;
 mod search_result_mutations;
 mod sidebar;
+mod view_mode_filter;
 
 #[test]
 fn global_activity_uses_the_latest_active_label() {
