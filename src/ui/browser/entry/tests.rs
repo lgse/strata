@@ -178,6 +178,10 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
 fn file_names_map_to_specific_lucide_icons() {
     assert_eq!(icon_for_name("setup.sh"), crate::assets::icons::TERMINAL);
     assert_eq!(icon_for_name("photo.webp"), crate::assets::icons::PICTURES);
+    assert_eq!(
+        icon_for_name("IMG_0001.HEIC"),
+        crate::assets::icons::PICTURES
+    );
     assert_eq!(icon_for_name("movie.mkv"), crate::assets::icons::VIDEOS);
     assert_eq!(icon_for_name("source.rs"), crate::assets::icons::FILE_CODE);
     assert_eq!(

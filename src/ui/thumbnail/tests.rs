@@ -50,6 +50,13 @@ fn recognizes_mainstream_image_and_video_formats() {
         thumbnail_kind(Path::new("vector.svg")),
         Some(ThumbnailKind::Image)
     );
+    for name in ["photo.HEIC", "photo.heif", "photo.avif", "photo.jxl"] {
+        assert_eq!(
+            thumbnail_kind(Path::new(name)),
+            Some(ThumbnailKind::Image),
+            "{name}"
+        );
+    }
     assert_eq!(
         thumbnail_kind(Path::new("capture.CR3")),
         Some(ThumbnailKind::RawImage)

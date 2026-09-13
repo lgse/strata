@@ -201,10 +201,10 @@ pub(super) fn icon_for_name(name: &str) -> &'static str {
     match extension.as_deref() {
         Some("sh" | "bash" | "zsh" | "fish") => crate::assets::icons::TERMINAL,
         Some(
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "tif" | "tiff"
-            | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
-            | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
-            | "x3f",
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "heic" | "heif"
+            | "jxl" | "tif" | "tiff" | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf"
+            | "kdc" | "mef" | "mos" | "mrw" | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2"
+            | "rwl" | "sr2" | "srf" | "srw" | "x3f",
         ) => crate::assets::icons::PICTURES,
         Some("mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v") => crate::assets::icons::VIDEOS,
         Some("zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst") => {
