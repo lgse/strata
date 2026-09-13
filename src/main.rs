@@ -37,6 +37,7 @@ enum LaunchMode {
     InstallPortal,
     DismissPortalPrompt,
     UninstallPortal,
+    Version,
     Application,
 }
 
@@ -50,8 +51,17 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
         Some("--install-portal") => LaunchMode::InstallPortal,
         Some("--dismiss-portal-prompt") => LaunchMode::DismissPortalPrompt,
         Some("--uninstall-portal") => LaunchMode::UninstallPortal,
+        Some("--version") => LaunchMode::Version,
         _ => LaunchMode::Application,
     }
+}
+
+fn version_line() -> String {
+    format!(
+        "{} {}",
+        env!("CARGO_PKG_NAME"),
+        build_info::installed_version()
+    )
 }
 
 fn main() -> gtk::glib::ExitCode {
@@ -79,6 +89,10 @@ fn main() -> gtk::glib::ExitCode {
             return finish_portal_setup(portal_setup::dismiss_prompt());
         }
         LaunchMode::UninstallPortal => return finish_portal_setup(portal_setup::uninstall()),
+        LaunchMode::Version => {
+            println!("{}", version_line());
+            return gtk::glib::ExitCode::SUCCESS;
+        }
         LaunchMode::Application => {}
     }
 
