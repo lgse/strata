@@ -5,13 +5,13 @@
 - staging_branch: fix/812-x11-wm-class
 - folder: working-docs/812
 - round: 1
-- stage: round 1 review complete
+- stage: round 1 QA complete
 - review_verdict: approve-with-comments
-- qa_verdict: n/a
+- qa_verdict: pass-with-nits
 - head_sha: 9553be04e418a0ecefff17cff44600b3305bfde6
-- agent_id: bc-009b4098-4ea7-534b-b4d5-fbb908e67c94
+- agent_id: bc-4e962a5b-dc53-558c-ab3a-d774e1adeb34
 - recommended_branch: fix/812-x11-wm-class
-- notes: round 1 review complete on `fix/812-x11-wm-class`. Verdict `approve-with-comments` (nits: stale PR body; code-complete status listed `77be0a30`). No blockers. File-manager prgname and X11 program class are `io.github.lgse.Strata`. Portal FileChooser identity unchanged. E2E `APPLICATION_NAME` follows prgname. Left draft. Did not squash, undraft, drop working-docs, merge, or post a GitHub PR comment. Did not send anything to Origin.
+- notes: round 1 QA complete on product SHA `9553be04`. Verdict `pass-with-nits` (no product non-nits). Mapped FM `WM_CLASS` is `io.github.lgse.Strata`/`io.github.lgse.Strata`. Portal FileChooser identity still split. E2E `test_startup_arguments.py` 2 passed after `APPLICATION_NAME` follows prgname. Docs tip at QA start was `3733e428`. Left draft. Did not squash, undraft, merge, file issues, post a cleanup comment, or send anything to Origin.
 
 ## History
 
@@ -19,6 +19,7 @@
 - staging PR: opened https://github.com/lgse/strata/pull/957 (draft) (bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26, 2026-09-13)
 - round 1 code: complete (bc-1d72a758-95b9-586c-99da-6499ca2fc811, 2026-09-13)
 - round 1 review: approve-with-comments (bc-009b4098-4ea7-534b-b4d5-fbb908e67c94, 2026-09-13)
+- round 1 QA: pass-with-nits (bc-4e962a5b-dc53-558c-ab3a-d774e1adeb34, 2026-09-13)
 
 ## Pick rationale
 
@@ -36,4 +37,4 @@ Bounded identity change in `src/main.rs` plus `gdk4-x11` and one E2E harness con
       desktop_startup_wmclass application_identity x11_program_class portal::window_geometry::tests
     ./scripts/e2e.sh tests/e2e/scenarios/test_startup_arguments.py
 
-See `code-notes.md` for host compiler flags, counts, and live `xprop`.
+See `code-notes.md` for host compiler flags, counts, and live `xprop`. QA re-ran the Rust filter (**12 passed**) and the startup E2E file (**2 passed**) plus mapped-window `xprop` on private `:90`.
