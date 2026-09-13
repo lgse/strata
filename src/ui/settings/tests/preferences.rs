@@ -344,3 +344,54 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
         },
     );
 }
+
+#[test]
+fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
+    gtk_test(
+        "ui::settings::tests::preferences::follow_omarchy_hides_and_falls_back_when_quattro_state_disappears",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            ThemeManager::seed_omarchy_for_test();
+            let manager = ThemeManager::shared();
+            let page = theme_page(manager.clone()).widget;
+            manager.set_follow_omarchy(true);
+            let row = descendants::<gtk::Box>(&page)
+                .into_iter()
+                .find(|widget| widget.widget_name() == "settings-search-omarchy")
+                .expect("Follow Omarchy row");
+            assert!(manager.is_omarchy_available());
+            assert!(row.is_visible());
+
+            std::fs::remove_dir_all(glib::home_dir().join(".local/state/omarchy"))
+                .expect("remove Omarchy state");
+
+            let loop_ = glib::MainLoop::new(None, false);
+            let stop = loop_.clone();
+            let observed = manager.clone();
+            let deadline = Instant::now() + Duration::from_secs(3);
+            glib::timeout_add_local(Duration::from_millis(20), move || {
+                if !observed.follows_omarchy() || Instant::now() >= deadline {
+                    stop.quit();
+                    glib::ControlFlow::Break
+                } else {
+                    glib::ControlFlow::Continue
+                }
+            });
+            loop_.run();
+
+            assert!(!manager.is_omarchy_available());
+            assert!(!manager.follows_omarchy());
+            assert!(!row.is_visible());
+            assert_eq!(manager.appearance_tokens().name, "Nord");
+            let saved: toml::Table = toml::from_str(
+                &std::fs::read_to_string(glib::user_config_dir().join("strata/settings.toml"))
+                    .expect("saved preferences"),
+            )
+            .expect("settings parse");
+            assert_eq!(
+                saved.get("mode").and_then(toml::Value::as_str),
+                Some("theme")
+            );
+        },
+    );
+}

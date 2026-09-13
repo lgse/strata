@@ -288,7 +288,7 @@ pub struct ThemeManager {
     provider: gtk::CssProvider,
     themes: RefCell<Vec<Theme>>,
     preferences: RefCell<Preferences>,
-    omarchy_available: bool,
+    omarchy_available: Cell<bool>,
     omarchy_monitor: RefCell<Option<gio::FileMonitor>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     previewing: Cell<bool>,
@@ -337,7 +337,7 @@ impl ThemeManager {
             persistence_dirty: Cell::new(false),
             persistence_enabled,
             preferences: RefCell::new(preferences),
-            omarchy_available,
+            omarchy_available: Cell::new(omarchy_available),
             omarchy_monitor: RefCell::new(None),
             pending_omarchy_refresh: RefCell::new(None),
             previewing: Cell::new(false),
@@ -354,7 +354,7 @@ impl ThemeManager {
     }
 
     pub fn is_omarchy_available(&self) -> bool {
-        self.omarchy_available
+        self.omarchy_available.get()
     }
 
     pub fn follows_omarchy(&self) -> bool {
@@ -848,7 +848,7 @@ impl ThemeManager {
     }
 
     pub fn set_follow_omarchy(&self, enabled: bool) {
-        if enabled && !self.omarchy_available {
+        if enabled && !self.is_omarchy_available() {
             return;
         }
         self.preferences.borrow_mut().mode = if enabled {
@@ -1024,7 +1024,7 @@ impl ThemeManager {
     }
 
     fn monitor_omarchy(self: &Rc<Self>) {
-        if !self.omarchy_available {
+        if !self.is_omarchy_available() {
             return;
         }
         let file = gio::File::for_path(omarchy_state_dir());
@@ -1054,6 +1054,21 @@ impl ThemeManager {
                     return;
                 };
                 manager.pending_omarchy_refresh.borrow_mut().take();
+                let available = load_omarchy_theme().is_some()
+                    || (manager.is_omarchy_available()
+                        && omarchy_state_dir().join("theme.name").is_file());
+                let availability_changed =
+                    manager.omarchy_available.replace(available) != available;
+                if !available && manager.follows_omarchy() {
+                    manager.preferences.borrow_mut().mode = "theme".to_owned();
+                    manager.apply_selected();
+                    manager.save_preferences();
+                    return;
+                }
+                if availability_changed {
+                    manager.changes.notify(&manager);
+                    return;
+                }
                 if manager.follows_omarchy() && !manager.previewing.get() {
                     manager.apply_selected();
                     manager.changes.notify(&manager);
