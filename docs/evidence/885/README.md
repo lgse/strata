@@ -158,6 +158,7 @@ follow-up above.
 - Image decoders no longer enlarge small source files before handing them to the
   preview. Normalized shared thumbnails do not retain reliable native dimensions,
   so image previews wait for the bounded full render instead of using those
-  placeholders. The existing in-memory preview cache still applies; PDF
-  placeholders and file-list thumbnails are unchanged. This trades the immediate
+  placeholders. The existing in-memory preview cache still applies. After the
+  #898 integration, PDFs also skip shared placeholders to preserve page geometry
+  and verified page counts; file-list thumbnails are unchanged. This trades the immediate
   low-resolution placeholder on slow image/RAW loads for a reliable scale limit.

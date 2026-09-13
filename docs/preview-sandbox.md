@@ -106,8 +106,8 @@ decode. The existing byte/entry-bounded image/PDF preview cache is unchanged.
 Image renders preserve small source dimensions so the UI can enforce its 2×
 upscaling limit. Image previews do not use normalized shared-thumbnail
 placeholders, which can already be enlarged and lack reliable native dimensions;
-they request the bounded full render immediately. PDF placeholders and file-list
-thumbnail reuse are unaffected. See [preview sizing](evidence/885/README.md).
+they request the bounded full render immediately. PDFs likewise wait for a bounded
+page render with verified page count. File-list thumbnail storage/reuse is unchanged. See [preview sizing](evidence/885/README.md).
 
 ## Scheduling and deadlines
 
