@@ -74,6 +74,8 @@ def test_delete_keeps_survivors_in_place_until_dissolve_finishes(strata, mode):
 @pytest.mark.preferences(browser_mode="columns", reduce_motion=False)
 @pytest.mark.parametrize("outcome", [
     "escape", "outside", "copy", "move", "noop", "failed",
+    pytest.param("copy", marks=pytest.mark.preferences(open_folder_after_drop=True), id="copy-open"),
+    pytest.param("move", marks=pytest.mark.preferences(open_folder_after_drop=True), id="move-open"),
     pytest.param("escape", marks=pytest.mark.preferences(reduce_motion=True), id="reduced-motion"),
 ])
 def test_drag_completion_keeps_the_source_label_in_place(strata, outcome):
@@ -126,7 +128,11 @@ def test_drag_completion_keeps_the_source_label_in_place(strata, outcome):
         if outcome in ("copy", "move"):
             strata.wait(lambda: fixture.path("archive/todo.txt").exists(), "the transferred file")
             assert fixture.path("archive/todo.txt").read_bytes() == original
-            strata.entry("todo.txt", directory="archive")
+            open_after_drop = strata.environment.read_preferences().get("open_folder_after_drop") == "true"
+            if open_after_drop:
+                strata.entry("todo.txt", directory="archive")
+            else:
+                assert strata.pane_names() == [fixture.root.name]
             if outcome == "move":
                 strata.wait(lambda: not fixture.path("todo.txt").exists(), "source removal")
                 strata.wait_for_entry_gone("todo.txt", directory=fixture.root.name)

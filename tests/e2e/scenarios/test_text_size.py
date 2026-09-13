@@ -112,9 +112,12 @@ def _reveal_page_control(strata, name, role="button"):
         # The nested theme library ends before this gutter.
         at = (viewport.x + viewport.width - 16, viewport.y + viewport.height // 2)
         bounds = node.screen_bounds()
-        strata.pointer.scroll(
-            at, clicks=1, down=bounds.y + bounds.height > viewport.y + viewport.height
-        )
+        below = bounds.y + bounds.height - (viewport.y + viewport.height)
+        above = viewport.y - bounds.y
+        # Large text makes General several viewports tall. Traverse distant
+        # sections faster, then use single notches so we cannot skip the control.
+        clicks = 3 if max(below, above) > viewport.height else 1
+        strata.pointer.scroll(at, clicks=clicks, down=below > 0)
         return False
 
     strata.wait(revealed, f"reachable {name} control")
