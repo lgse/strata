@@ -9,8 +9,8 @@ use std::{
 use crate::{sandbox::Cancellation, services::MediaPreviewSize};
 
 pub(crate) const FPS: u32 = 30;
-pub(crate) const LIMIT_US: u64 = 30_000_000;
-pub(crate) const MAX_TICKS: u32 = 900;
+// The terminal tick must fit the wire format; this also denotes unknown duration.
+pub(crate) const MAX_DURATION_US: u64 = u32::MAX as u64 * 1_000_000 / FPS as u64;
 pub(crate) const SAMPLE_RATE: u64 = 48_000;
 pub(crate) const AUDIO_BYTES: usize = 6_400;
 pub(crate) const STARTUP_TIMEOUT: Duration = Duration::from_secs(22);
@@ -23,8 +23,11 @@ pub(crate) fn timestamp(tick: u32) -> u64 {
 }
 
 pub(crate) fn seek_tick(time_us: u64, duration_us: u64) -> u32 {
-    (time_us.min(duration_us.saturating_sub(1)).min(LIMIT_US - 1) * u64::from(FPS) / 1_000_000)
-        as u32
+    (time_us
+        .min(duration_us.saturating_sub(1))
+        .min(MAX_DURATION_US - 1)
+        * u64::from(FPS)
+        / 1_000_000) as u32
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +56,7 @@ impl Header {
             || (self.width == 0) != (self.height == 0)
             || (self.width == 0 && !self.audio)
             || self.duration_us == 0
-            || self.duration_us > LIMIT_US
+            || self.duration_us > MAX_DURATION_US
             || self.start_tick != start_tick
             || self.start_tick >= self.ticks()
         {
@@ -189,7 +192,6 @@ impl Decoder {
         }
         if kind != 1
             || tick >= self.header.ticks()
-            || tick >= MAX_TICKS
             || pts != timestamp(tick)
             || video != self.header.video_bytes()
             || audio != if self.header.audio { AUDIO_BYTES } else { 0 }
