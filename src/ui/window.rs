@@ -427,6 +427,7 @@ fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
 
 const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.search", &["<Control>k"]),
+    ("win.jump-folder", &["<Control><Shift>k"]),
     ("win.open-terminal", &["<Primary>t"]),
     ("win.refresh", &["F5"]),
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
