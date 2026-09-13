@@ -1955,6 +1955,22 @@ fn selecting_entries_by_name_preserves_the_full_matching_selection() {
 }
 
 #[test]
+fn selecting_a_hidden_entry_by_name_shows_it() {
+    let source = ScriptedSource::scripted(vec!["visible.txt", ".secret.txt"], Vec::new());
+    let browser = Browser::new(Rc::new(source));
+    browser.navigate(Location::local("/fixture"));
+    assert!(!browser.preferences().show_hidden);
+
+    browser.select_entries_by_name(&[".secret.txt".to_owned()]);
+
+    assert!(browser.preferences().show_hidden);
+    let selected = browser.selected_positions(0);
+    assert_eq!(selected.len(), 1, "{selected:?}");
+    let entry = browser.entry_at(0, selected[0]).expect("selected entry");
+    assert_eq!(entry.display_name, ".secret.txt");
+}
+
+#[test]
 fn reload_active_preserves_a_multi_selection() {
     let browser = Browser::new(Rc::new(RestoredSortingSource));
     browser.navigate(Location::local("/fixture"));
