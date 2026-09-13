@@ -144,6 +144,26 @@ resize handle remains reachable at scrollbar height.
 These captures use the same private-display synthetic fixture as the divider
 follow-up above.
 
+## Stable preview opening
+
+Close-only trailing scroll space is cleared before the opening animation's first
+allocation. It no longer creates a transient horizontal scrollbar that shifts
+the column footer and then disappears. Real overflow continues to scroll.
+
+[Before reopening](review/opening-before.mp4) ·
+[After reopening](review/opening-after.mp4)
+
+Both recordings use synthetic content with animations enabled in private
+Xvfb/D-Bus. The regression observes every painted frame across cold opening and
+reopening in the browser and chooser at wide and narrow widths; the existing
+scrolling and divider-picking cases remain the coverage owners for real overflow.
+
+Media playback also now reaches the full source duration rather than stopping at
+30 seconds. The decoder, transport, and GStreamer PCM regressions cover complete
+35-second playback, hour-end seeks, long GIFs, and duration/clock boundaries.
+Buffer and cancellation limits remain unchanged; see the current
+[media sandbox contract](../../preview-sandbox.md).
+
 ## Tuning and scope
 
 - `MIN_COLUMN_MULTIPLIER` in [`preview/layout.rs`](../../../src/ui/preview/layout.rs)
