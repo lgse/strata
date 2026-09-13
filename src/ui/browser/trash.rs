@@ -155,6 +155,18 @@ impl ViewState {
         });
     }
 
+    pub(super) fn delete_animation_source(&self) -> Option<gtk::Widget> {
+        if self.mode_views.borrow().mode() == crate::ui::browser_modes::BrowserMode::Columns {
+            let depth = self.browser.active_depth()?;
+            self.columns
+                .borrow()
+                .get(depth)
+                .map(|column| column.shell.clone().upcast())
+        } else {
+            Some(self.overlay.clone().upcast())
+        }
+    }
+
     pub(super) fn clear_delete_animation(&self) {
         self.pending_delete_dissolve.take();
     }
@@ -809,12 +821,10 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
-        let overlay_for_dissolve = self.overlay.clone();
         let entries_for_dissolve = entries.clone();
         let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
             let browser = browser.clone();
-            let overlay_for_dissolve = overlay_for_dissolve.clone();
             let entries_for_dissolve = entries_for_dissolve.clone();
             let weak_ui = weak_ui.clone();
             dismiss_modal_layer_then(
@@ -822,11 +832,10 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
                 move || {
-                    let dissolve = super::dissolve_delete::prepare_dissolve(
-                        overlay_for_dissolve.upcast_ref(),
-                        &entries_for_dissolve,
-                    );
                     if let Some(ui) = weak_ui.upgrade() {
+                        let dissolve = ui.delete_animation_source().and_then(|source| {
+                            super::dissolve_delete::prepare_dissolve(&source, &entries_for_dissolve)
+                        });
                         ui.clear_delete_animation();
                         if let (Some(depth), Some(dissolve)) = (ui.browser.active_depth(), dissolve)
                         {

@@ -56,6 +56,51 @@ fn background_splices_preserve_column_multiselection_and_pending_properties() {
 }
 
 #[test]
+fn permanent_delete_animation_targets_the_active_column_with_duplicate_names() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::permanent_delete_animation_targets_the_active_column_with_duplicate_names",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("Child")).expect("child folder");
+            for name in ["item.txt", "Child/item.txt"] {
+                std::fs::write(fixture.path().join(name), "item").expect("file");
+            }
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.select(0, 0);
+            browser.enter_focused_directory();
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            browser.select(1, 0);
+            let entries = browser.selected_entries();
+            let source = view
+                .state
+                .delete_animation_source()
+                .expect("animation source");
+            let right_column = view.state.columns.borrow()[1].shell.clone();
+            wait_until(|| {
+                !super::super::entry_animation::collect_entry_targets(&source, &entries).is_empty()
+            });
+            let targets = super::super::entry_animation::collect_entry_targets(&source, &entries);
+            assert_eq!(targets.len(), 1);
+            assert!(targets[0].row.is_ancestor(&right_column));
+            browser.clear_observer();
+            window.close();
+        },
+    );
+}
+
+#[test]
 fn refresh_preserves_pointer_multi_selection_in_every_mode() {
     crate::test_support::gtk_test(
         "ui::browser::tests::focus::refresh_preserves_pointer_multi_selection_in_every_mode",
