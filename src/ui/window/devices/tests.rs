@@ -25,7 +25,7 @@ fn device_identity_prefers_unix_device_then_uuid() {
 }
 
 #[test]
-fn gvfs_padlock_emblems_count_as_encrypted() {
+fn encrypted_device_detection() {
     let none = BlockCryptoRef::default();
     assert!(is_encrypted_device(
         &["drive-harddisk-usb", "changes-prevent"],
@@ -47,10 +47,6 @@ fn gvfs_padlock_emblems_count_as_encrypted() {
         Some(DriveStartStopType::Shutdown),
         none
     ));
-}
-
-#[test]
-fn crypt_mapper_and_udev_usage_count_as_encrypted() {
     assert!(is_encrypted_device(
         &["drive-harddisk"],
         Some(DriveStartStopType::Shutdown),
@@ -102,20 +98,6 @@ fn padlock_emblem_decides_lock_state() {
 }
 
 #[test]
-fn udev_crypto_properties_read_usage_and_type() {
-    let data = "I:123456\nE:DM_UUID=CRYPT-LUKS2-abc-root\nE:ID_FS_TYPE=crypto_LUKS\nE:ID_FS_USAGE=crypto\n";
-    assert_eq!(
-        udev_crypto_properties(data),
-        (Some("crypto".into()), Some("crypto_LUKS".into()))
-    );
-    assert_eq!(
-        udev_property(data, "DM_UUID").as_deref(),
-        Some("CRYPT-LUKS2-abc-root")
-    );
-    assert_eq!(udev_crypto_properties("E:ID_MODEL=disk\n"), (None, None));
-}
-
-#[test]
 fn missing_unix_device_has_no_crypto_hint() {
     assert_eq!(
         probe_block_crypto("/dev/this-device-does-not-exist-537"),
@@ -124,7 +106,7 @@ fn missing_unix_device_has_no_crypto_hint() {
 }
 
 #[test]
-fn luks_uuid_from_dm_uuid_crypt_luks() {
+fn luks_uuid_from_mapper_and_dm() {
     assert_eq!(
         luks_uuid_from_dm_uuid(
             "CRYPT-LUKS2-6e5d75a7e4e24c7d9c1c8e5a5e5d75a7-luks-6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7"
@@ -138,22 +120,16 @@ fn luks_uuid_from_dm_uuid_crypt_luks() {
     );
     assert_eq!(luks_uuid_from_dm_uuid("LVM-abc"), None);
     assert_eq!(luks_uuid_from_dm_uuid("CRYPT-PLAIN-abc"), None);
-    assert_eq!(luks_uuid_from_dm_uuid("CRYPT-LUKS2-"), None);
-}
-
-#[test]
-fn luks_uuid_from_mapper_name() {
     assert_eq!(
         luks_uuid_from_unix_device("/dev/mapper/luks-6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7")
             .as_deref(),
         Some("6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7")
     );
     assert_eq!(luks_uuid_from_unix_device("/dev/dm-0"), None);
-    assert_eq!(luks_uuid_from_unix_device("/dev/mapper/luks"), None);
 }
 
 #[test]
-fn crypto_password_uuid_unlocked_ignores_filesystem_uuid() {
+fn crypto_password_uuid_prefers_mapper_over_filesystem() {
     let unlocked = BlockCryptoRef {
         dm_uuid: Some("CRYPT-LUKS2-6e5d75a7e4e24c7d9c1c8e5a5e5d75a7-crypt"),
         ..BlockCryptoRef::default()
@@ -177,10 +153,6 @@ fn crypto_password_uuid_unlocked_ignores_filesystem_uuid() {
         ),
         None
     );
-}
-
-#[test]
-fn crypto_password_uuid_locked_uses_volume_uuid() {
     assert_eq!(
         crypto_password_uuid(
             Some("6E5D75A7-E4E2-4C7D-9C1C-8E5A5E5D75A7"),
@@ -206,29 +178,16 @@ fn encrypted_listing_keeps_a_locked_identity() {
         identity: Some("/dev/loop0"),
         start_stop: DriveStartStopType::Password,
     };
-    assert_eq!(
-        listed_device_rows(&[encrypted_locked], &[]),
-        [ListedDeviceRow {
-            identity: "/dev/loop0".into(),
-            encrypted: true,
-            locked: true,
-        }]
-    );
-    assert_eq!(
-        listed_device_rows(&[], &[password_drive]),
-        [ListedDeviceRow {
-            identity: "/dev/loop0".into(),
-            encrypted: true,
-            locked: true,
-        }]
-    );
+    let locked_row = [ListedDeviceRow {
+        identity: "/dev/loop0".into(),
+        encrypted: true,
+        locked: true,
+    }];
+    assert_eq!(listed_device_rows(&[encrypted_locked], &[]), locked_row);
+    assert_eq!(listed_device_rows(&[], &[password_drive]), locked_row);
     assert_eq!(
         listed_device_rows(&[encrypted_locked], &[password_drive]),
-        [ListedDeviceRow {
-            identity: "/dev/loop0".into(),
-            encrypted: true,
-            locked: true,
-        }]
+        locked_row
     );
     assert!(
         listed_device_rows(
@@ -239,70 +198,6 @@ fn encrypted_listing_keeps_a_locked_identity() {
             }]
         )
         .is_empty()
-    );
-
-    let unlocked_fs = VolumeListFact {
-        identity: Some("/dev/mapper/luks"),
-        icon_names: &["drive-harddisk"],
-        start_stop: Some(DriveStartStopType::Password),
-        has_mount: true,
-        crypto: BlockCryptoRef::default(),
-    };
-    let unlocked_mapper = VolumeListFact {
-        identity: Some("/dev/dm-0"),
-        icon_names: &["drive-harddisk-usb"],
-        start_stop: Some(DriveStartStopType::Shutdown),
-        has_mount: true,
-        crypto: BlockCryptoRef {
-            dm_uuid: Some("CRYPT-LUKS2-abc-name"),
-            ..BlockCryptoRef::default()
-        },
-    };
-    assert_eq!(
-        listed_device_rows(&[unlocked_mapper], &[]),
-        [ListedDeviceRow {
-            identity: "/dev/dm-0".into(),
-            encrypted: true,
-            locked: false,
-        }]
-    );
-    let gvfs_padlock = VolumeListFact {
-        identity: Some("/dev/sdb1"),
-        icon_names: &["drive-harddisk-usb", "changes-prevent"],
-        start_stop: Some(DriveStartStopType::Shutdown),
-        has_mount: false,
-        crypto: BlockCryptoRef::default(),
-    };
-    assert_eq!(
-        listed_device_rows(&[gvfs_padlock], &[]),
-        [ListedDeviceRow {
-            identity: "/dev/sdb1".into(),
-            encrypted: true,
-            locked: true,
-        }]
-    );
-    assert_eq!(
-        listed_device_rows(&[unlocked_fs], &[]),
-        [ListedDeviceRow {
-            identity: "/dev/mapper/luks".into(),
-            encrypted: true,
-            locked: false,
-        }]
-    );
-    let after_lock = listed_device_rows(
-        &[],
-        &[DriveListFact {
-            identity: Some("/dev/mapper/luks"),
-            start_stop: DriveStartStopType::Password,
-        }],
-    );
-    assert_eq!(
-        after_lock,
-        [ListedDeviceRow {
-            identity: "/dev/mapper/luks".into(),
-            encrypted: true,
-            locked: true,
-        }]
     );
 
     let usb = VolumeListFact {

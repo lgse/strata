@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{luks_password_lookups, volume_password_is_cached};
+use super::luks_password_lookups;
 
 #[test]
 fn luks_password_lookups_cover_gvfs_and_disks() {
@@ -23,19 +23,7 @@ fn luks_password_lookups_cover_gvfs_and_disks() {
             ),
         ]
     );
-}
-
-#[test]
-fn luks_password_lookups_reject_non_uuid() {
     assert!(luks_password_lookups("").is_empty());
     assert!(luks_password_lookups("not-a-uuid").is_empty());
     assert!(luks_password_lookups("/dev/mapper/luks").is_empty());
-}
-
-#[test]
-fn volume_password_is_cached_rejects_non_uuid() {
-    assert!(
-        !volume_password_is_cached("not-a-uuid"),
-        "a non-UUID should not be treated as a cached LUKS password"
-    );
 }

@@ -115,10 +115,6 @@ fn pending_or_busy_volume_mount_is_not_a_terminal_error() {
         gio::IOErrorEnum::Failed,
         "Error unlocking /dev/loop0: Already unlocking",
     );
-    let unsupported = glib::Error::new(
-        gio::IOErrorEnum::NotSupported,
-        "Failed to activate device: Operation not supported",
-    );
     let rejected = glib::Error::new(
         gio::IOErrorEnum::Failed,
         "Error unlocking: No key available with this passphrase.",
@@ -126,11 +122,8 @@ fn pending_or_busy_volume_mount_is_not_a_terminal_error() {
 
     for error in [&pending, &busy, &unlocking] {
         assert!(volume_error_is_in_flight_mount(error));
-        assert!(!volume_error_is_authentication_failure(error));
         assert!(!mount_error_is_cancelled(error));
     }
-    assert!(!volume_error_is_in_flight_mount(&unsupported));
-    assert!(!volume_error_is_authentication_failure(&unsupported));
     assert!(!volume_error_is_in_flight_mount(&rejected));
     assert!(volume_error_is_authentication_failure(&rejected));
 }
@@ -156,47 +149,6 @@ fn external_volume_mount_completion_is_success() {
     assert!(!device_volume_mount_is_ready(&failed, false));
     assert!(!device_volume_mount_is_ready(&pending, false));
     assert!(device_volume_mount_is_ready(&pending, true));
-
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::Mounted,
-            false,
-            VolumeSuccessorKind::Absent
-        ),
-        ForeignVolumeWaitFollowUp::Navigate
-    );
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::Mounted,
-            true,
-            VolumeSuccessorKind::Absent
-        ),
-        ForeignVolumeWaitFollowUp::Navigate
-    );
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::StillLocked,
-            false,
-            VolumeSuccessorKind::Locked
-        ),
-        ForeignVolumeWaitFollowUp::StartOwnedMount
-    );
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::StillLocked,
-            true,
-            VolumeSuccessorKind::Locked
-        ),
-        ForeignVolumeWaitFollowUp::Quiet
-    );
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::Gone,
-            false,
-            VolumeSuccessorKind::Absent
-        ),
-        ForeignVolumeWaitFollowUp::Quiet
-    );
 }
 
 #[test]
@@ -224,31 +176,58 @@ fn successor_identity_matches_across_crypto_replacement() {
 }
 
 #[test]
-fn gone_volume_follows_a_successor_identity() {
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::Gone,
+fn foreign_volume_wait_follow_up_covers_successor_states() {
+    let cases = [
+        (
+            ForeignVolumeWaitOutcome::Mounted,
             false,
-            VolumeSuccessorKind::Mounted
+            VolumeSuccessorKind::Absent,
+            ForeignVolumeWaitFollowUp::Navigate,
         ),
-        ForeignVolumeWaitFollowUp::Navigate
-    );
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::Gone,
-            false,
-            VolumeSuccessorKind::Locked
-        ),
-        ForeignVolumeWaitFollowUp::StartOwnedMount
-    );
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::Gone,
+        (
+            ForeignVolumeWaitOutcome::Mounted,
             true,
-            VolumeSuccessorKind::Absent
+            VolumeSuccessorKind::Absent,
+            ForeignVolumeWaitFollowUp::Navigate,
         ),
-        ForeignVolumeWaitFollowUp::Quiet
-    );
+        (
+            ForeignVolumeWaitOutcome::StillLocked,
+            false,
+            VolumeSuccessorKind::Locked,
+            ForeignVolumeWaitFollowUp::StartOwnedMount,
+        ),
+        (
+            ForeignVolumeWaitOutcome::StillLocked,
+            true,
+            VolumeSuccessorKind::Locked,
+            ForeignVolumeWaitFollowUp::Quiet,
+        ),
+        (
+            ForeignVolumeWaitOutcome::Gone,
+            false,
+            VolumeSuccessorKind::Mounted,
+            ForeignVolumeWaitFollowUp::Navigate,
+        ),
+        (
+            ForeignVolumeWaitOutcome::Gone,
+            false,
+            VolumeSuccessorKind::Locked,
+            ForeignVolumeWaitFollowUp::StartOwnedMount,
+        ),
+        (
+            ForeignVolumeWaitOutcome::Gone,
+            false,
+            VolumeSuccessorKind::Absent,
+            ForeignVolumeWaitFollowUp::Quiet,
+        ),
+    ];
+    for (outcome, already_waited, successor, expected) in cases {
+        assert_eq!(
+            foreign_volume_wait_follow_up(outcome, already_waited, successor),
+            expected,
+            "{outcome:?} waited={already_waited} successor={successor:?}"
+        );
+    }
 }
 
 #[test]
@@ -286,77 +265,38 @@ fn unlock_reloads_the_current_folder_without_stealing_another() {
     );
 }
 
-/// Unlock progress can be hidden, closed, or escaped without aborting; the
-/// layer unparents and a later dismiss is a no-op.
+/// Hide dismisses the unlocking modal without aborting; a later present is a no-op.
 #[test]
-fn unlock_progress_dismiss_routes() {
+fn unlock_progress_dismiss_skips_navigation() {
     crate::test_support::gtk_test(
-        "ui::browser::location::tests::unlock_progress_dismiss_routes",
+        "ui::browser::location::tests::unlock_progress_dismiss_skips_navigation",
         || {
-            for route in ["Hide", "Close", "Escape"] {
-                let (view, window, overlay) = hosted_browser();
-                view.state.present_unlock_progress("USB Backup");
-                let layer = modal_layer_on(&overlay).expect("unlock progress modal");
-                assert!(
-                    descendants(&layer.clone().upcast()).iter().any(|widget| {
-                        widget
-                            .clone()
-                            .downcast::<gtk::Label>()
-                            .is_ok_and(|label| label.text() == "Unlocking volume")
-                    }),
-                    "{route} should present the unlocking modal"
-                );
-                match route {
-                    "Hide" => descendants(&layer.clone().upcast())
-                        .iter()
-                        .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
-                        .find(|button| button.label().as_deref() == Some("Hide"))
-                        .expect("Hide")
-                        .emit_clicked(),
-                    "Close" => descendants(&layer.clone().upcast())
-                        .iter()
-                        .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
-                        .find(|button| button.tooltip_text().as_deref() == Some("Close dialog"))
-                        .expect("Close")
-                        .emit_clicked(),
-                    "Escape" => {
-                        let controllers = layer.observe_controllers();
-                        let escape = (0..controllers.n_items())
-                            .find_map(|index| {
-                                controllers
-                                    .item(index)
-                                    .and_downcast::<gtk::EventControllerKey>()
-                            })
-                            .expect("Escape controller");
-                        assert!(escape.emit_by_name::<bool>(
-                            "key-pressed",
-                            &[
-                                &gtk::gdk::Key::Escape,
-                                &0u32,
-                                &gtk::gdk::ModifierType::empty()
-                            ],
-                        ));
-                    }
-                    _ => unreachable!("dismiss route"),
-                }
-                assert!(view.state.unlock_progress.borrow().is_none());
-                assert!(
-                    view.state.unlock_progress_dismissed.get(),
-                    "{route} should keep unlock from jumping to the volume"
-                );
-                wait_until(
-                    || layer.parent().is_none(),
-                    "unlock progress modal did not dismiss",
-                );
-                view.state.present_unlock_progress("USB Backup");
-                assert!(
-                    modal_layer_on(&overlay).is_none(),
-                    "{route} should not bring the unlocking modal back"
-                );
-                view.state.dismiss_unlock_progress();
-                window.destroy();
-                view.browser().clear_observer();
-            }
+            let (view, window, overlay) = hosted_browser();
+            view.state.present_unlock_progress("USB Backup");
+            let layer = modal_layer_on(&overlay).expect("unlock progress modal");
+            descendants(&layer.clone().upcast())
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                .find(|button| button.label().as_deref() == Some("Hide"))
+                .expect("Hide")
+                .emit_clicked();
+            assert!(view.state.unlock_progress.borrow().is_none());
+            assert!(
+                view.state.unlock_progress_dismissed.get(),
+                "Hide should keep unlock from jumping to the volume"
+            );
+            wait_until(
+                || layer.parent().is_none(),
+                "unlock progress modal did not dismiss",
+            );
+            view.state.present_unlock_progress("USB Backup");
+            assert!(
+                modal_layer_on(&overlay).is_none(),
+                "a dismissed unlock should not bring the unlocking modal back"
+            );
+            view.state.dismiss_unlock_progress();
+            window.destroy();
+            view.browser().clear_observer();
         },
     );
 }

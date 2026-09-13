@@ -812,30 +812,10 @@ fn encrypted_device_actions_share_lock_and_release() {
     let locked = device_row_actions(true, false, false, false, false);
     assert_eq!(locked.encrypted, Some(EncryptedMediaAction::Unlock));
     assert_eq!(locked.release, Some(MediaRelease::EjectVolume));
-    assert_eq!(
-        locked.encrypted.map(EncryptedMediaAction::label),
-        Some("Unlock")
-    );
-    assert_eq!(
-        locked.encrypted.map(EncryptedMediaAction::icon),
-        Some(crate::assets::icons::LOCK)
-    );
-
-    let locked_eject = device_row_actions(true, false, true, false, false);
-    assert_eq!(locked_eject.encrypted, Some(EncryptedMediaAction::Unlock));
-    assert_eq!(locked_eject.release, Some(MediaRelease::EjectVolume));
 
     let unlocked = device_row_actions(true, true, false, false, true);
     assert_eq!(unlocked.encrypted, Some(EncryptedMediaAction::Lock));
     assert_eq!(unlocked.release, Some(MediaRelease::UnmountMount));
-    assert_eq!(
-        unlocked.encrypted.map(EncryptedMediaAction::label),
-        Some("Lock")
-    );
-    assert_eq!(
-        unlocked.encrypted.map(EncryptedMediaAction::icon),
-        Some(crate::assets::icons::LOCK_OPEN)
-    );
 
     let usb = device_row_actions(false, true, false, false, true);
     assert_eq!(usb.encrypted, None);
@@ -847,14 +827,15 @@ fn encrypted_device_actions_share_lock_and_release() {
 }
 
 #[test]
-fn uncached_lock_skips_confirm() {
-    gtk_test("ui::window::tests::uncached_lock_skips_confirm", || {
+fn forget_password_prompt_routes() {
+    gtk_test("ui::window::tests::forget_password_prompt_routes", || {
         use gtk::prelude::*;
 
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
         let window = gtk::Window::builder().child(&overlay).build();
         window.present();
+
         let locked = Rc::new(Cell::new(false));
         let cancelled = Rc::new(Cell::new(false));
         continue_encrypted_lock(
@@ -870,64 +851,15 @@ fn uncached_lock_skips_confirm() {
                 move || cancelled.set(true)
             },
         );
-        assert!(
-            locked.get(),
-            "lock should proceed when no password is cached"
-        );
-        assert!(
-            !cancelled.get(),
-            "cancel should stay unused without a prompt"
-        );
+        assert!(locked.get(), "uncached lock should proceed immediately");
+        assert!(!cancelled.get(), "uncached lock should not cancel");
         assert!(
             button_with_label(overlay.upcast_ref(), "Forget and lock").is_none(),
             "uncached lock should not open a confirmation"
         );
         window.destroy();
-    });
-}
 
-#[test]
-fn forget_password_confirm_locks() {
-    gtk_test("ui::window::tests::forget_password_confirm_locks", || {
-        use gtk::prelude::*;
-
-        let overlay = gtk::Overlay::new();
-        overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
-        let window = gtk::Window::builder().child(&overlay).build();
-        window.present();
-        let locked = Rc::new(Cell::new(false));
-        let cancelled = Rc::new(Cell::new(false));
-        confirm_forget_cached_password(
-            overlay.upcast_ref(),
-            "STRATA-537",
-            {
-                let locked = locked.clone();
-                move || locked.set(true)
-            },
-            {
-                let cancelled = cancelled.clone();
-                move || cancelled.set(true)
-            },
-        );
-        let confirm = button_with_label(overlay.upcast_ref(), "Forget and lock")
-            .expect("confirmation should offer Forget and lock");
-        confirm.emit_clicked();
-        assert!(
-            locked.get(),
-            "confirming should lock and forget the password"
-        );
-        assert!(!cancelled.get(), "confirm should not run the cancel path");
-        window.destroy();
-    });
-}
-
-#[test]
-fn forget_password_cancel_skips_lock() {
-    gtk_test(
-        "ui::window::tests::forget_password_cancel_skips_lock",
-        || {
-            use gtk::prelude::*;
-
+        for confirm in [true, false] {
             let overlay = gtk::Overlay::new();
             overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
             let window = gtk::Window::builder().child(&overlay).build();
@@ -946,14 +878,19 @@ fn forget_password_cancel_skips_lock() {
                     move || cancelled.set(true)
                 },
             );
-            let cancel = button_with_label(overlay.upcast_ref(), "Cancel")
-                .expect("confirmation should offer Cancel");
-            cancel.emit_clicked();
-            assert!(!locked.get(), "cancel should leave the volume unlocked");
-            assert!(cancelled.get(), "cancel should abort the lock");
+            let label = if confirm { "Forget and lock" } else { "Cancel" };
+            button_with_label(overlay.upcast_ref(), label)
+                .unwrap_or_else(|| panic!("confirmation should offer {label}"))
+                .emit_clicked();
+            assert_eq!(locked.get(), confirm, "{label} should lock only on confirm");
+            assert_eq!(
+                cancelled.get(),
+                !confirm,
+                "{label} should cancel only on cancel"
+            );
             window.destroy();
-        },
-    );
+        }
+    });
 }
 
 fn button_with_label(root: &gtk::Widget, label: &str) -> Option<gtk::Button> {

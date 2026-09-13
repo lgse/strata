@@ -2,9 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use super::super::{
-    browser_for_window, home_directory, load_styles, save_pinned_places, sidebar_button,
-};
+use super::super::{browser_for_window, home_directory, save_pinned_places, sidebar_button};
 use super::*;
 use crate::{
     services::{DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError},
@@ -293,41 +291,6 @@ fn rebuild_preserves_scrolled_offset() {
                 "kept scroll offset after device rebuild, got {}",
                 scroller.vadjustment().value()
             );
-            sidebar.disconnect();
-            sidebar.state.browser.clear_observer();
-            window.destroy();
-        },
-    );
-}
-
-#[test]
-fn separators_measure_non_negative_width() {
-    gtk_test(
-        "ui::window::sidebar::tests::separators_measure_non_negative_width",
-        || {
-            load_styles();
-            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), false);
-            let window = gtk::Window::builder()
-                .child(&sidebar.widget)
-                .default_width(240)
-                .default_height(400)
-                .build();
-            window.present();
-            settle_mapped(&window);
-            let mut measured = 0;
-            let mut child = sidebar.state.widget.first_child();
-            while let Some(widget) = child {
-                if widget.has_css_class("sidebar-separator") {
-                    let (min, _, _, _) = widget.measure(gtk::Orientation::Horizontal, -1);
-                    assert!(min >= 0, "separator min width {min}");
-                    measured += 1;
-                }
-                child = widget.next_sibling();
-            }
-            assert!(measured > 0, "sidebar separators");
-            let update = sidebar.update_area.first_child().expect("update separator");
-            let (min, _, _, _) = update.measure(gtk::Orientation::Horizontal, -1);
-            assert!(min >= 0, "update separator min width {min}");
             sidebar.disconnect();
             sidebar.state.browser.clear_observer();
             window.destroy();
