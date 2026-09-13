@@ -391,3 +391,27 @@ fn shift_after_escape_starts_on_the_focused_entry() {
         },
     );
 }
+
+#[test]
+fn arrow_scope_preference_keeps_up_in_the_file_list() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::arrow_scope_preference_keeps_up_in_the_file_list",
+        || {
+            let fixture = KeyboardFixture::new();
+            fixture.view.set_view_mode(BrowserMode::List);
+            fixture.view.browser().select(0, 0);
+            fixture.view.browser().focus_active();
+            wait_until(|| fixture.view.item_view_has_focus() && fixture.selected() == [0]);
+
+            // Seeded preference is on: Up from the first row stays in the file list.
+            assert!(!fixture.press(Key::Up, ModifierType::empty()));
+            assert!(fixture.view.item_view_has_focus());
+            assert!(!fixture.view.header_actions_have_focus());
+
+            // Toggle off: Up from the first row escapes into the pane header.
+            ThemeManager::shared().set_arrow_navigation_scoped(false);
+            assert!(fixture.press(Key::Up, ModifierType::empty()));
+            assert!(fixture.view.header_actions_have_focus());
+        },
+    );
+}

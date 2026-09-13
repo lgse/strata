@@ -174,6 +174,10 @@ impl Dispatcher {
     fn inline_editing_active(&self) -> bool {
         self.view.rename_is_active() || self.view.new_entry_is_active()
     }
+
+    fn arrows_scoped_to_content(&self) -> bool {
+        self.type_to_search.preferences.arrow_navigation_scoped()
+    }
 }
 
 struct SidebarFocus {

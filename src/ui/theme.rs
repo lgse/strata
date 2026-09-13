@@ -95,6 +95,8 @@ struct Preferences {
     search_open_files_directly: bool,
     #[serde(default = "default_enabled")]
     type_to_search: bool,
+    #[serde(default)]
+    arrow_navigation_scoped: bool,
     #[serde(default = "default_enabled")]
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
@@ -164,6 +166,7 @@ impl Default for Preferences {
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
             type_to_search: true,
+            arrow_navigation_scoped: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             reduce_motion: false,
@@ -516,6 +519,15 @@ impl ThemeManager {
 
     pub fn set_type_to_search(&self, enabled: bool) {
         self.preferences.borrow_mut().type_to_search = enabled;
+        self.save_preferences();
+    }
+
+    pub fn arrow_navigation_scoped(&self) -> bool {
+        self.preferences.borrow().arrow_navigation_scoped
+    }
+
+    pub fn set_arrow_navigation_scoped(&self, scoped: bool) {
+        self.preferences.borrow_mut().arrow_navigation_scoped = scoped;
         self.save_preferences();
     }
 

@@ -427,6 +427,7 @@ const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.search", &["<Control>k"]),
     ("win.open-terminal", &["<Primary>t"]),
     ("win.refresh", &["F5"]),
+    ("win.toggle-arrow-scope", &["<Primary>backslash"]),
 ];
 
 fn is_refresh_shortcut(key: gtk::gdk::Key) -> bool {

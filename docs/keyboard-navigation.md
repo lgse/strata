@@ -94,6 +94,8 @@ Up from the first Icons row or first List item focuses the navigation header, in
 
 From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
 
+**Settings → Keybindings → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use Tab or the mouse to reach the toolbar and sidebar. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
+
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
 
 ## Opening and navigating the context menu
