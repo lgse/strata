@@ -265,3 +265,76 @@ fn keyboard_opened_preview_closes_when_the_displayed_entry_is_spliced_out() {
         assert!(!preview.is_open());
     });
 }
+
+fn selection_set_changed(depth: usize, positions: &[usize], focused: usize) -> BrowserEvent {
+    BrowserEvent::SelectionSetChanged {
+        depth,
+        positions: positions.to_vec(),
+        focused,
+        take_focus: false,
+    }
+}
+
+#[test]
+fn multi_selection_auto_opens_the_preview_summary() {
+    const TEST: &str = "ui::preview::tests::multi_selection_auto_opens_the_preview_summary";
+    crate::test_support::gtk_test(TEST, || {
+        let fixture = tempfile::tempdir().expect("fixture");
+        std::fs::write(fixture.path().join("a.txt"), "aaa").expect("file a");
+        std::fs::write(fixture.path().join("b.txt"), "bb").expect("file b");
+        let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+        browser.navigate(Location::local(fixture.path()));
+        crate::ui::media::tests::wait(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+        let preview = PreviewDrawer::new(Rc::new(NoopPreviewProvider), false);
+        assert!(!preview.is_open());
+        preview.handle_browser_event(&browser, &selection_set_changed(0, &[0, 1], 0));
+        assert!(preview.is_open());
+        assert!(preview.state.selection_summary.get());
+    });
+}
+
+#[test]
+fn selection_summary_auto_closes_below_two_selected() {
+    const TEST: &str = "ui::preview::tests::selection_summary_auto_closes_below_two_selected";
+    crate::test_support::gtk_test(TEST, || {
+        let fixture = tempfile::tempdir().expect("fixture");
+        std::fs::write(fixture.path().join("a.txt"), "aaa").expect("file a");
+        std::fs::write(fixture.path().join("b.txt"), "bb").expect("file b");
+        let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+        browser.navigate(Location::local(fixture.path()));
+        crate::ui::media::tests::wait(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+        let preview = PreviewDrawer::new(Rc::new(NoopPreviewProvider), false);
+        preview.handle_browser_event(&browser, &selection_set_changed(0, &[0, 1], 0));
+        assert!(preview.is_open());
+        preview.handle_browser_event(&browser, &selection_set_changed(0, &[0], 0));
+        assert!(!preview.is_open());
+        assert!(!preview.state.selection_summary.get());
+    });
+}
+
+#[test]
+fn single_item_preview_still_works_alongside_selection_summary() {
+    const TEST: &str =
+        "ui::preview::tests::single_item_preview_still_works_alongside_selection_summary";
+    crate::test_support::gtk_test(TEST, || {
+        let fixture = tempfile::tempdir().expect("fixture");
+        std::fs::write(fixture.path().join("a.txt"), "aaa").expect("file a");
+        std::fs::write(fixture.path().join("b.txt"), "bb").expect("file b");
+        let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+        browser.navigate(Location::local(fixture.path()));
+        crate::ui::media::tests::wait(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+        let entry = browser.entry_at(0, 0).expect("loaded entry");
+        let preview = PreviewDrawer::new(Rc::new(NoopPreviewProvider), false);
+
+        preview.handle_browser_event(&browser, &selection_set_changed(0, &[0, 1], 0));
+        assert!(preview.state.selection_summary.get());
+
+        preview.handle_browser_event(&browser, &selection_set_changed(0, &[0], 0));
+        assert!(!preview.is_open());
+        assert!(!preview.state.selection_summary.get());
+
+        preview.toggle(preview_target(Some(entry)), browser.active_depth());
+        assert!(preview.is_open());
+        assert!(!preview.state.selection_summary.get());
+    });
+}

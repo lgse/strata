@@ -110,6 +110,8 @@ struct PreviewState {
     enabled_action: gio::SimpleAction,
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
+    selection_summary: Cell<bool>,
+    selection_task: RefCell<Option<glib::JoinHandle<()>>>,
 }
 
 pub(super) const PREVIEW_LABEL: &str = "Preview";
@@ -256,6 +258,8 @@ impl PreviewDrawer {
             ),
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
+            selection_summary: Cell::new(false),
+            selection_task: RefCell::new(None),
         });
         let weak = Rc::downgrade(&state);
         state.enabled_action.connect_activate(move |_, _| {
@@ -350,6 +354,14 @@ impl PreviewDrawer {
             BrowserEvent::PreviewRequested { entry } => {
                 self.show(entry.clone(), browser.active_depth());
             }
+            BrowserEvent::SelectionSetChanged {
+                depth,
+                positions,
+                focused,
+                ..
+            } => {
+                self.handle_selection_changed(browser, *depth, positions, *focused);
+            }
             BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
@@ -357,12 +369,7 @@ impl PreviewDrawer {
             | BrowserEvent::SelectionSynced {
                 depth,
                 focused: Some(position),
-            }
-            | BrowserEvent::SelectionSetChanged {
-                depth,
-                focused: position,
-                ..
-            } if self.is_enabled() => {
+            } if self.is_enabled() && !self.state.selection_summary.get() => {
                 if let Some(entry) = browser
                     .entry_at(*depth, *position)
                     .and_then(|entry| preview_target(Some(entry)))
@@ -374,12 +381,13 @@ impl PreviewDrawer {
             }
             BrowserEvent::FocusChanged { position: None, .. }
             | BrowserEvent::SelectionSynced { focused: None, .. }
-                if self.is_enabled() =>
+                if self.is_enabled() && !self.state.selection_summary.get() =>
             {
                 self.clear_target()
             }
             BrowserEvent::EntriesSpliced { depth, splices }
                 if self.is_enabled()
+                    && !self.state.selection_summary.get()
                     && self.state.current_depth.get() == Some(*depth)
                     && splices.iter().any(|splice| splice.removed > 0) =>
             {
@@ -394,6 +402,39 @@ impl PreviewDrawer {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn handle_selection_changed(
+        &self,
+        browser: &Browser,
+        depth: usize,
+        positions: &[usize],
+        focused: usize,
+    ) {
+        if positions.len() >= 2 {
+            let entries: Vec<FileEntry> = positions
+                .iter()
+                .filter_map(|&pos| browser.entry_at(depth, pos))
+                .collect();
+            if !entries.is_empty() {
+                self.state.show_selection_summary(entries, Some(depth));
+                return;
+            }
+        }
+        if self.state.selection_summary.get() {
+            self.state.close();
+            return;
+        }
+        if self.is_enabled() {
+            if let Some(entry) = browser
+                .entry_at(depth, focused)
+                .and_then(|entry| preview_target(Some(entry)))
+            {
+                self.show(entry, Some(depth));
+            } else {
+                self.clear_target();
+            }
         }
     }
 
@@ -502,6 +543,8 @@ impl Drop for PreviewState {
 
 impl PreviewState {
     fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
+        self.cancel_selection_task();
+        self.selection_summary.set(false);
         self.current_depth.set(depth);
         self.set_enabled(true);
         let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();

@@ -296,7 +296,7 @@ impl PreviewState {
     }
 
     pub(super) fn sync_split(self: &Rc<Self>, split: &gtk::Paned) {
-        if self.current.borrow().is_none() {
+        if self.current.borrow().is_none() && !self.selection_summary.get() {
             if !self.reserves_empty_preview() {
                 if self.revealer.reveals_child() {
                     self.hide_panel();

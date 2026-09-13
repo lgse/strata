@@ -87,6 +87,61 @@ pub(crate) async fn summarize_directory(root: &gio::File) -> Result<DirectorySum
     summarize_directory_with_progress(root, |_| {}).await
 }
 
+/// Aggregates a mixed file/folder selection: files contribute their known size directly,
+/// directories are measured recursively via the same bounded walker as `summarize_directory`.
+/// `item_count` is the number of selected entries, not a recursive count.
+pub(crate) async fn summarize_selection(
+    entries: &[crate::model::FileEntry],
+    on_progress: impl Fn(DirectorySummary) + 'static,
+) -> Result<DirectorySummary, glib::Error> {
+    use crate::model::MetadataValue;
+
+    let selection_count = entries.len();
+    let mut summary = DirectorySummary {
+        item_count: selection_count,
+        ..Default::default()
+    };
+    let on_progress = Rc::new(on_progress);
+
+    for entry in entries {
+        if let MetadataValue::Known(bytes) = entry.size {
+            summary.total_size = summary.total_size.saturating_add(bytes);
+        }
+
+        if entry.is_directory()
+            && !entry.is_symbolic_link()
+            && let Some(path) = entry.location.native_path()
+        {
+            let file = gio::File::for_path(path);
+            let base_size = summary.total_size;
+            let callback = on_progress.clone();
+            match summarize_directory_with_progress(&file, move |partial| {
+                let report = DirectorySummary {
+                    item_count: selection_count,
+                    total_size: base_size.saturating_add(partial.total_size),
+                    issues: partial.issues,
+                    ..Default::default()
+                };
+                callback(report);
+            })
+            .await
+            {
+                Ok(folder) => {
+                    summary.total_size = summary.total_size.saturating_add(folder.total_size);
+                    summary.issues.unreadable |= folder.issues.unreadable;
+                    summary.issues.timed_out |= folder.issues.timed_out;
+                    summary.issues.depth_limited |= folder.issues.depth_limited;
+                }
+                Err(_) => summary.issues.unreadable = true,
+            }
+        }
+
+        on_progress(summary);
+    }
+
+    Ok(summary)
+}
+
 pub(crate) async fn summarize_directory_with_progress(
     root: &gio::File,
     on_progress: impl Fn(DirectorySummary) + 'static,

@@ -304,3 +304,78 @@ fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_dept
          not just the first next_files_future batch"
     );
 }
+
+fn selection_entry(
+    path: &std::path::Path,
+    name: &str,
+    size: u64,
+    is_dir: bool,
+) -> crate::model::FileEntry {
+    use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
+    FileEntry {
+        location: Location::local(path),
+        thumbnail_path: None,
+        native_name: std::ffi::OsString::from(name),
+        display_name: name.to_owned(),
+        kind: if is_dir {
+            EntryKind::Directory
+        } else {
+            EntryKind::File
+        },
+        size: MetadataValue::Known(size),
+        modified_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
+        is_hidden: false,
+    }
+}
+
+#[test]
+fn summarize_selection_aggregates_files_and_folders() {
+    let root = tempfile::tempdir().expect("fixture");
+    std::fs::write(root.path().join("a.txt"), b"aaa").expect("file a");
+    std::fs::write(root.path().join("b.txt"), b"bb").expect("file b");
+    std::fs::create_dir(root.path().join("folder")).expect("folder");
+    std::fs::write(root.path().join("folder/inner"), b"12345").expect("inner file");
+
+    let entries = vec![
+        selection_entry(&root.path().join("a.txt"), "a.txt", 3, false),
+        selection_entry(&root.path().join("b.txt"), "b.txt", 2, false),
+        selection_entry(&root.path().join("folder"), "folder", 0, true),
+    ];
+
+    let summary = glib::MainContext::new()
+        .block_on(summarize_selection(&entries, |_| {}))
+        .expect("selection summary");
+    assert_eq!(summary.item_count, 3, "item_count is the selection size");
+    assert_eq!(
+        summary.total_size, 10,
+        "total_size = 3 + 2 + 5 (recursive folder)"
+    );
+    assert!(!summary.truncated());
+}
+
+#[test]
+fn summarize_selection_reports_progress_with_running_total() {
+    let root = tempfile::tempdir().expect("fixture");
+    std::fs::write(root.path().join("a.txt"), b"aaa").expect("file a");
+    std::fs::create_dir(root.path().join("folder")).expect("folder");
+    std::fs::write(root.path().join("folder/inner"), b"12345").expect("inner file");
+
+    let entries = vec![
+        selection_entry(&root.path().join("a.txt"), "a.txt", 3, false),
+        selection_entry(&root.path().join("folder"), "folder", 0, true),
+    ];
+
+    let last_total = Rc::new(Cell::new(0u64));
+    let captured = last_total.clone();
+    let summary = glib::MainContext::new()
+        .block_on(summarize_selection(&entries, move |partial| {
+            captured.set(partial.total_size);
+        }))
+        .expect("selection summary");
+    assert_eq!(summary.total_size, 8);
+    assert!(
+        last_total.get() >= 8,
+        "progress callback should have seen the final total"
+    );
+}

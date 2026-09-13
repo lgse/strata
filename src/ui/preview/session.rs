@@ -45,7 +45,93 @@ impl PreviewState {
         }
     }
 
+    pub(super) fn cancel_selection_task(&self) {
+        if let Some(task) = self.selection_task.borrow_mut().take() {
+            task.abort();
+        }
+    }
+
+    pub(super) fn show_selection_summary(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        depth: Option<usize>,
+    ) {
+        self.cancel_selection_task();
+        self.selection_summary.set(true);
+        self.current_depth.set(depth);
+        self.set_enabled(true);
+
+        self.current_request.set(None);
+        self.load.borrow_mut().take();
+        self.cancel_loading();
+        self.pdf_loads.borrow_mut().clear();
+        self.clear_content();
+        self.current.borrow_mut().take();
+
+        let count = entries.len();
+        self.title.set_text(&format!("{count} items selected"));
+        self.title.set_tooltip_text(None);
+        self.icon.set_visible(false);
+        self.open.set_sensitive(false);
+        self.open.set_visible(false);
+        self.print.set_visible(false);
+        self.wrap.set_visible(false);
+        self.header_handle.set_cursor_from_name(None);
+
+        self.metadata.set_visible(true);
+        self.size.set_text("Calculating…");
+        self.size.set_tooltip_text(None);
+        self.modified.set_text("—");
+        self.content_type.set_text("—");
+
+        let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
+        let split = self.split.borrow().clone();
+        if let Some(split) = split.as_ref()
+            && (!self.can_show_in(split) || self.sizing.is_suspended())
+        {
+            self.sizing.defer_load();
+        } else if !was_open {
+            self.show_panel();
+            if let Some(split) = split.as_ref() {
+                self.animate_open(split);
+            }
+        }
+
+        let weak = Rc::downgrade(self);
+        let progress_weak = weak.clone();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let summary =
+                crate::adapters::directory_summary::summarize_selection(&entries, move |partial| {
+                    if let Some(state) = progress_weak.upgrade() {
+                        let prefix = if partial.truncated() { "≥ " } else { "" };
+                        state
+                            .size
+                            .set_text(&format!("{prefix}{}", format_file_size(partial.total_size)));
+                    }
+                })
+                .await;
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            match summary {
+                Ok(summary) => {
+                    let prefix = if summary.truncated() { "≥ " } else { "" };
+                    state
+                        .size
+                        .set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
+                    state
+                        .size
+                        .set_tooltip_text(Some(&format!("{} items selected", summary.item_count)));
+                }
+                Err(_) => state.size.set_text("Unavailable"),
+            }
+        });
+        self.selection_task.replace(Some(task));
+    }
+
     pub(super) fn clear_target(&self) {
+        self.cancel_selection_task();
+        self.selection_summary.set(false);
         self.animating.set(false);
         self.sizing.close();
         self.animation_generation
