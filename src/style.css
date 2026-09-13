@@ -184,7 +184,7 @@ headerbar menubutton.header-action > button:focus-visible {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   padding: 0;
 }
 
@@ -467,7 +467,7 @@ headerbar menubutton.header-action > button:focus-visible {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   padding: 0;
 }
 
@@ -515,7 +515,7 @@ headerbar menubutton.header-action > button:focus-visible {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   min-height: 452px;
   min-width: 760px;
 }
@@ -713,7 +713,7 @@ headerbar menubutton.header-action > button:focus-visible {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   color: @theme_text;
   min-width: 480px;
 }
@@ -1341,7 +1341,7 @@ menubutton.form-control:disabled > button {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
 }
 
 .settings-navigation {
@@ -2492,7 +2492,7 @@ entry.preview-command-entry selection {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.8);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24), 0 6px 20px alpha(@theme_bg, 0.45);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24), 0 6px 20px alpha(@theme_bg, 0.45);
   color: @theme_text;
   padding: 0;
 }
@@ -2594,7 +2594,7 @@ menubutton.column-header-action > button:active {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   padding: 0;
 }
 
@@ -2947,7 +2947,7 @@ popover.folder-context-popover.background {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   color: @theme_text;
   padding: 0;
 }
@@ -3205,7 +3205,7 @@ popover.folder-context-popover.background {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.68);
   border-radius: 9px;
-  box-shadow: 0 0 16px alpha(@theme_accent, 0.2);
+  box-shadow: 0 0 16px alpha(@theme_glow, 0.2);
   color: @theme_text;
 }
 
@@ -3413,7 +3413,7 @@ colorchooser colorswatch overlay {
   background: alpha(@theme_surface, 0.92);
   border: 1px solid alpha(@theme_accent, 0.38);
   border-radius: 999px;
-  box-shadow: 0 4px 12px alpha(@theme_text, 0.18), 0 0 10px alpha(@theme_accent, 0.12);
+  box-shadow: 0 4px 12px alpha(@theme_text, 0.18), 0 0 10px alpha(@theme_glow, 0.12);
   padding: 3px;
   transform: scale(1);
   transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
@@ -3442,8 +3442,8 @@ colorchooser colorswatch overlay {
 
 @keyframes trash-receiving {
   0% { box-shadow: 0 0 0 0 alpha(@theme_accent, 0); }
-  55% { box-shadow: 0 0 0 3px alpha(@theme_accent, 0.16), 0 0 14px alpha(@theme_accent, 0.18); }
-  100% { box-shadow: 0 0 0 1px alpha(@theme_accent, 0.28), 0 0 8px alpha(@theme_accent, 0.12); }
+  55% { box-shadow: 0 0 0 3px alpha(@theme_accent, 0.16), 0 0 14px alpha(@theme_glow, 0.18); }
+  100% { box-shadow: 0 0 0 1px alpha(@theme_accent, 0.28), 0 0 8px alpha(@theme_glow, 0.12); }
 }
 
 .trash-receiving {
@@ -3452,7 +3452,7 @@ colorchooser colorswatch overlay {
 
 @keyframes trash-impact {
   0% { box-shadow: 0 0 0 1px alpha(@theme_accent, 0.34); transform: scale(0.96); }
-  34% { box-shadow: 0 0 0 5px alpha(@theme_accent, 0.18), 0 0 18px alpha(@theme_accent, 0.22); transform: scale(1.14); }
+  34% { box-shadow: 0 0 0 5px alpha(@theme_accent, 0.18), 0 0 18px alpha(@theme_glow, 0.22); transform: scale(1.14); }
   68% { box-shadow: 0 0 0 8px alpha(@theme_accent, 0); transform: scale(0.97); }
   100% { box-shadow: 0 0 0 10px alpha(@theme_accent, 0); transform: scale(1); }
 }
@@ -3463,7 +3463,7 @@ colorchooser colorswatch overlay {
 
 @keyframes trash-release {
   0% { box-shadow: 0 0 0 4px alpha(@theme_accent, 0.16); transform: scale(0.94); }
-  45% { box-shadow: 0 0 14px alpha(@theme_accent, 0.2); transform: scale(1.08); }
+  45% { box-shadow: 0 0 14px alpha(@theme_glow, 0.2); transform: scale(1.08); }
   100% { box-shadow: none; transform: scale(1); }
 }
 
@@ -3841,14 +3841,14 @@ entry.theme-search {
   border-color: @theme_accent;
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
-  box-shadow: 0 0 13px alpha(@theme_accent, 0.32);
+  box-shadow: 0 0 13px alpha(@theme_glow, 0.32);
 }
 
 .theme-card-check {
   background: @theme_accent;
   border: none;
   border-radius: 999px;
-  box-shadow: 0 0 5px alpha(@theme_accent, 0.32);
+  box-shadow: 0 0 5px alpha(@theme_glow, 0.32);
   min-height: 14px;
   min-width: 14px;
   padding: 0;
@@ -4002,7 +4002,7 @@ entry.theme-search {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   color: @theme_text;
   padding: 14px;
 }
@@ -4389,7 +4389,7 @@ two-column presentation. */
   background: @theme_bg;
   border: 1px solid alpha(@theme_border, 0.65);
   border-radius: 14px;
-  box-shadow: 0 0 28px alpha(@theme_accent, 0.08);
+  box-shadow: 0 0 28px alpha(@theme_glow, 0.08);
 }
 
 .settings-navigation {

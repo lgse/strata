@@ -3085,6 +3085,23 @@ fn escape_clears_only_the_active_selection_and_preserves_the_cursor() {
     }
 }
 
+#[test]
+fn select_all_excludes_hidden_entries_unless_shown() {
+    let source = ScriptedSource::scripted(vec!["visible.txt", ".hidden.txt"], Vec::new());
+    let browser = Browser::new(Rc::new(source));
+    browser.navigate(Location::local("/fixture"));
+
+    browser.select_all(0);
+    let selected = browser.selected_positions(0);
+    assert_eq!(selected.len(), 1, "{selected:?}");
+    let entry = browser.entry_at(0, selected[0]).expect("selected entry");
+    assert_eq!(entry.display_name, "visible.txt");
+
+    browser.toggle_hidden();
+    browser.select_all(0);
+    assert_eq!(browser.selected_positions(0).len(), 2);
+}
+
 type CapturedLoad = Rc<RefCell<Option<(RequestId, Rc<dyn Fn(DirectoryEvent)>)>>>;
 
 struct BatchReplaySource {
@@ -3536,7 +3553,7 @@ impl ScriptedSource {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
-            is_hidden: false,
+            is_hidden: name.starts_with('.'),
         }
     }
     fn answer(

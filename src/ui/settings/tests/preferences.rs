@@ -169,11 +169,17 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
                 );
             }
             manager.set_follow_omarchy(true);
-            assert_eq!(active_switches(&first), [true, true]);
-            assert_eq!(active_switches(&second), [true, true]);
+            assert_eq!(active_switches(&first), [true, false, true]);
+            assert_eq!(active_switches(&second), [true, false, true]);
             manager.set_follow_omarchy(false);
-            assert_eq!(active_switches(&first), [false, true]);
-            assert_eq!(active_switches(&second), [false, true]);
+            assert_eq!(active_switches(&first), [false, false, true]);
+            assert_eq!(active_switches(&second), [false, false, true]);
+            for (page, enabled) in [(&first, true), (&second, false)] {
+                descendants::<gtk::Switch>(page)[1].set_active(enabled);
+                assert_eq!(manager.element_glow(), enabled);
+                assert_eq!(active_switches(&first), [false, enabled, true]);
+                assert_eq!(active_switches(&first), active_switches(&second));
+            }
             for pixels in [32, 11] {
                 manager.set_text_size(TextSize::new(pixels));
                 for page in [&first, &second] {
