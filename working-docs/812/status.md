@@ -1,7 +1,7 @@
 # Pipeline status
 
 - issue: https://github.com/lgse/strata/issues/812
-- staging_pr: none
+- staging_pr: https://github.com/lgse/strata/pull/957 (draft)
 - staging_branch: fix/812-x11-wm-class
 - folder: working-docs/812
 - round: 1
@@ -11,12 +11,12 @@
 - head_sha: n/a
 - agent_id: bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26
 - recommended_branch: fix/812-x11-wm-class
-- notes: staging branch `fix/812-x11-wm-class` from latest `lgse/strata` `main`. Working-docs only; no product/runtime code. Did not assign the issue or change P-band labels. Did not send anything to Origin.
+- notes: staging PR https://github.com/lgse/strata/pull/957 (draft) on `fix/812-x11-wm-class` from latest `lgse/strata` `main`. Working-docs only; no product/runtime code. Closed fork PR wmfeht/strata#31. Did not assign the issue or change P-band labels. Did not send anything to Origin.
 
 ## History
 
 - plan: complete (bc-d2f12994-d476-5779-b4ec-fcd89b474ffb, 2026-09-13)
-- staging PR: pending (bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26, 2026-09-13)
+- staging PR: opened https://github.com/lgse/strata/pull/957 (draft) (bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26, 2026-09-13)
 - round 1 code: pending
 
 ## Pick rationale
