@@ -143,8 +143,7 @@ fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result
         .as_str()
         .and_then(|duration| duration.parse::<f64>().ok())
         .filter(|duration| duration.is_finite() && *duration > 0.0)
-        .unwrap_or(30.0)
-        .min(30.0);
+        .unwrap_or(media::MAX_DURATION_US as f64 / 1_000_000.0);
     let gif_period_us = (value["format"]["format_name"] == "gif" && duration < 30.0)
         .then_some((duration * 1_000_000.0).ceil() as u64);
     let duration = if gif_period_us.is_some() {

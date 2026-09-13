@@ -5,7 +5,6 @@ use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     rc::Rc,
-    time::Duration,
 };
 
 use futures_channel::oneshot;
@@ -24,7 +23,6 @@ use crate::{
 const MAX_PREVIEW_CACHE_ENTRIES: usize = 64;
 const MAX_PREVIEW_CACHE_BYTES: usize = 128 * 1024 * 1024;
 const MAX_CONCURRENT_PDF_RENDERS: usize = 1;
-const PROGRESSIVE_RENDER_SETTLE_DELAY: Duration = Duration::from_millis(50);
 
 #[derive(Default)]
 struct PdfRenderQueue {
@@ -339,38 +337,7 @@ impl LocalPreviewProvider {
                     return;
                 }
 
-                let shared_thumbnail = if uses_shared_thumbnail(operation) {
-                    if let Some(mtime) = modified {
-                        let thumbnail_path = path.clone();
-                        gio::spawn_blocking(move || {
-                            crate::ui::thumbnail_cache::lookup(&thumbnail_path, mtime)
-                        })
-                        .await
-                        .ok()
-                        .flatten()
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                let placeholder = shared_thumbnail.and_then(|thumb_png| match operation {
-                    ParseOperation::PreviewImage => {
-                        Some(PreviewContent::Rasterized { png: thumb_png })
-                    }
-                    _ => None,
-                });
-                let placeholder_emitted = placeholder.is_some();
-                if let Some(placeholder) = placeholder {
-                    emit(PreviewEvent::Ready(Preview {
-                        request_id,
-                        entry: entry.clone(),
-                        content_type: content_type.clone(),
-                        content: placeholder,
-                    }));
-                }
-
-                if !wait_for_full_render(placeholder_emitted, &cancellation_for_task).await {
+                if cancellation_for_task.is_cancelled() {
                     return;
                 }
 
@@ -409,7 +376,6 @@ impl LocalPreviewProvider {
                     Ok(Ok(output)) if matches!(operation, ParseOperation::PreviewPdf(_)) => {
                         if let Some(mtime) = modified
                             && request.pdf_page == 0
-                            && !placeholder_emitted
                         {
                             thumbnail_to_store = Some((path.clone(), mtime, output.data.clone()));
                         }
@@ -420,9 +386,7 @@ impl LocalPreviewProvider {
                         }
                     }
                     Ok(Ok(output)) => {
-                        if let Some(mtime) = modified
-                            && !placeholder_emitted
-                        {
+                        if let Some(mtime) = modified {
                             thumbnail_to_store = Some((path.clone(), mtime, output.data.clone()));
                         }
                         PreviewContent::Rasterized { png: output.data }
@@ -492,26 +456,6 @@ impl LocalPreviewProvider {
 
 fn pdf_render_size(viewport: MediaPreviewSize) -> PdfRenderSize {
     PdfRenderSize::for_viewport_width(viewport.width)
-}
-
-fn uses_shared_thumbnail(operation: ParseOperation) -> bool {
-    operation == ParseOperation::PreviewImage
-}
-
-fn full_render_settle_delay(has_placeholder: bool) -> Duration {
-    if has_placeholder {
-        PROGRESSIVE_RENDER_SETTLE_DELAY
-    } else {
-        Duration::ZERO
-    }
-}
-
-async fn wait_for_full_render(has_placeholder: bool, cancellation: &Cancellation) -> bool {
-    let settle_delay = full_render_settle_delay(has_placeholder);
-    if !settle_delay.is_zero() {
-        glib::timeout_future(settle_delay).await;
-    }
-    !cancellation.is_cancelled()
 }
 
 async fn read_text(

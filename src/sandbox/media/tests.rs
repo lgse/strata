@@ -66,7 +66,7 @@ fn four_slots_backpressure_cancellation_and_repeated_teardown_are_bounded() {
         width: 16,
         height: 16,
         audio: true,
-        duration_us: crate::media::LIMIT_US,
+        duration_us: 60_000_000,
         start_tick: 0,
     };
     for _ in 0..30 {

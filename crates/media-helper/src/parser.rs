@@ -79,7 +79,11 @@ fn render_pixbuf(path: &Path, size: i32) -> Result<Vec<u8>, String> {
 }
 
 fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    render_pixbuf(path, size)
+    // Preserve small sources so the preview can bound upscaling by their native dimensions.
+    gdk_pixbuf::Pixbuf::file_info(path)
+        .filter(|(_, width, height)| *width > 0 && *height > 0)
+        .ok_or_else(|| "Unable to read image dimensions".to_owned())
+        .and_then(|(_, width, height)| render_pixbuf(path, size.min(width.max(height))))
         .or_else(|_| render_imagemagick(path, size))
         .or_else(|_| render_dcraw(path, size))
 }
@@ -97,7 +101,7 @@ fn render_imagemagick(path: &Path, size: i32) -> Result<Vec<u8>, String> {
             Command::new(executable)
                 .arg(path)
                 .args(["-auto-orient", "-thumbnail"])
-                .arg(format!("{size}x{size}"))
+                .arg(format!("{size}x{size}>"))
                 .arg("png:-"),
             MAX_OUTPUT_BYTES,
         );

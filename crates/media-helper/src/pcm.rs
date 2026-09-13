@@ -3,7 +3,7 @@
 use crate::audio::PcmOutput;
 use std::{io, time::Instant};
 use strata_media_protocol::{
-    Cancellation, FRAME_TIMEOUT, TimedReader, TimedWriter,
+    Cancellation, FRAME_TIMEOUT, MAX_DURATION_US, TimedReader, TimedWriter,
     ipc::{self, Kind, Message, PcmSequence, u64_at},
 };
 
@@ -88,7 +88,7 @@ pub(super) fn run(job: u64, test_sink: bool) -> Result<(), String> {
         }
         let failed = output.error().is_some();
         let position = output.position_us().unwrap_or(u64::MAX);
-        if position != u64::MAX && position > 30_000_000 {
+        if position != u64::MAX && position > MAX_DURATION_US {
             return Err("Audio clock exceeded interval".into());
         }
         let mut data = Vec::with_capacity(24);

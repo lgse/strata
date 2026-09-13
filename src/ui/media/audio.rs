@@ -387,7 +387,7 @@ fn communicate(
         let position = u64_at(&status.data, 8);
         let old = state.position.load(Ordering::Acquire);
         if position != u64::MAX {
-            if position > 30_000_000 || (old != u64::MAX && position < old) {
+            if position > crate::media::MAX_DURATION_US || (old != u64::MAX && position < old) {
                 return Err("Invalid audio playback clock".into());
             }
             state.position.store(position, Ordering::Release);

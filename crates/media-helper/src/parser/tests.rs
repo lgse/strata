@@ -126,6 +126,24 @@ fn embedded_thumbnails_scale_to_the_requested_size() {
 }
 
 #[test]
+fn image_previews_preserve_small_sources_and_bound_large_decodes() {
+    let directory = tempfile::tempdir().expect("image fixture");
+    let path = directory.path().join("image.png");
+    for (width, height, expected) in [(80, 40, (80, 40)), (1200, 600, (800, 400))] {
+        let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, width, height)
+            .expect("source image");
+        source.fill(0x3366_99ff);
+        source.savev(&path, "png", &[]).expect("save source");
+        let png = render_raw(&path, 800).expect("render image preview");
+        let loader = gdk_pixbuf::PixbufLoader::new();
+        loader.write(&png).expect("load preview");
+        loader.close().expect("finish preview");
+        let preview = loader.pixbuf().expect("decoded preview");
+        assert_eq!((preview.width(), preview.height()), expected);
+    }
+}
+
+#[test]
 fn preview_image_uses_raw_fallbacks() {
     let directory = tempfile::tempdir().expect("tempdir");
     let input = directory.path().join("photo.ARW");

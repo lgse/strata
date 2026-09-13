@@ -35,16 +35,50 @@ fn audio_rejects_invalid_samples_and_timestamps() {
 }
 
 #[test]
-fn audio_enforces_sample_exact_duration_limit() {
-    let output = output();
-    output.frames.set(MAX_FRAMES - 1);
-    let timestamp = (MAX_FRAMES - 1) * 1_000_000 / SAMPLE_RATE;
-    assert!(output.push(vec![0; 8], timestamp).is_err());
-    output.push(vec![0; 4], timestamp).expect("last sample");
-    assert!(output.has_capacity());
-    assert!(output.push(vec![0; 4], 30_000_000).is_err());
-    output.finish().expect("EOS at duration limit");
-    assert!(!output.has_capacity());
+fn audio_keeps_sample_exact_timing_past_thirty_seconds_and_for_long_sources() {
+    gst::init().expect("GStreamer must be available");
+    for seconds in [
+        30,
+        3600,
+        strata_media_protocol::MAX_DURATION_US / 1_000_000 - 1,
+    ] {
+        let sink = gstreamer_app::AppSink::builder().sync(false).build();
+        let output = PcmOutput::with_sink(sink.clone().upcast(), false, 1.0).expect("audio output");
+        let frames = seconds * SAMPLE_RATE - 1;
+        output.frames.set(frames);
+        let timestamp = frames * 1_000_000 / SAMPLE_RATE;
+        output
+            .push(vec![0; 8], timestamp)
+            .expect("samples across boundary");
+        output.play().expect("play");
+        let sample = sink
+            .try_pull_sample(gst::ClockTime::from_seconds(2))
+            .expect("decoded samples");
+        let buffer = sample.buffer().expect("audio buffer");
+        let start_ns = (u128::from(frames) * 1_000_000_000 / u128::from(SAMPLE_RATE)) as u64;
+        let end_ns = (u128::from(frames + 2) * 1_000_000_000 / u128::from(SAMPLE_RATE)) as u64;
+        assert_eq!(buffer.pts().expect("PTS").nseconds(), start_ns);
+        assert_eq!(
+            buffer.duration().expect("duration").nseconds(),
+            end_ns - start_ns
+        );
+        output
+            .push(vec![0; 4], (frames + 2) * 1_000_000 / SAMPLE_RATE)
+            .expect("next sample");
+        output.finish().expect("EOS");
+        assert!(!output.has_capacity());
+    }
+    for frames in [
+        u64::MAX,
+        (u128::from(u64::MAX) * u128::from(SAMPLE_RATE) / 1_000_000_000) as u64,
+    ] {
+        let output = output();
+        output.frames.set(frames);
+        let timestamp = (u128::from(frames) * 1_000_000 / u128::from(SAMPLE_RATE))
+            .min(u128::from(u64::MAX)) as u64;
+        assert!(output.push(vec![0; 8], timestamp).is_err());
+        assert_eq!(output.source.current_level_bytes(), 0);
+    }
 }
 
 #[test]

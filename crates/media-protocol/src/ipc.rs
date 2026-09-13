@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::{AUDIO_BYTES, LIMIT_US, SAMPLE_RATE, invalid};
+use crate::{AUDIO_BYTES, MAX_DURATION_US, SAMPLE_RATE, invalid};
 use std::io::{self, Read, Write};
 
 pub const PROTOCOL: u32 = 1;
@@ -139,7 +139,7 @@ fn validate(kind: Kind, time: u64, length: usize) -> io::Result<()> {
         Kind::Status => length == 24,
         _ => length == 0,
     };
-    if !valid_length || time > LIMIT_US || (kind != Kind::Samples && time != 0) {
+    if !valid_length || time > MAX_DURATION_US || (kind != Kind::Samples && time != 0) {
         return Err(invalid("Invalid PCM framing, timestamp or length"));
     }
     Ok(())
@@ -162,13 +162,16 @@ pub struct PcmSequence {
 impl PcmSequence {
     pub fn push(&mut self, length: usize, time_us: u64) -> io::Result<()> {
         validate(Kind::Samples, time_us, length)?;
-        let end = self.frames + (length / 4) as u64;
+        let end = self
+            .frames
+            .checked_add((length / 4) as u64)
+            .ok_or_else(|| invalid("PCM sample count overflow"))?;
         if self.finished
-            || time_us != self.frames * 1_000_000 / SAMPLE_RATE
-            || end > 30 * SAMPLE_RATE
+            || u128::from(time_us) != u128::from(self.frames) * 1_000_000 / u128::from(SAMPLE_RATE)
+            || end > MAX_DURATION_US * SAMPLE_RATE / 1_000_000
         {
             return Err(invalid(
-                "PCM samples must be contiguous within one 30-second generation",
+                "PCM samples must be contiguous within the representable media timeline",
             ));
         }
         self.frames = end;

@@ -107,9 +107,14 @@ def _reveal_page_control(strata, name, role="button"):
         if _inside_scroll_view(node):
             return True
         viewport = scroll.screen_bounds()
-        # The outer gutter avoids scrolling the nested theme library instead.
-        at = (viewport.x + viewport.width * 99 // 100, viewport.y + viewport.height // 2)
-        strata.pointer.scroll(at, clicks=3, down=node.screen_bounds().y > at[1])
+        # Stay in the content gutter: the scrollbar scrolls by whole pages,
+        # which can jump over a control without ever showing all of it.
+        # The nested theme library ends before this gutter.
+        at = (viewport.x + viewport.width - 16, viewport.y + viewport.height // 2)
+        bounds = node.screen_bounds()
+        strata.pointer.scroll(
+            at, clicks=1, down=bounds.y + bounds.height > viewport.y + viewport.height
+        )
         return False
 
     strata.wait(revealed, f"reachable {name} control")
