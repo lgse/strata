@@ -5,19 +5,19 @@
 - staging_branch: fix/812-x11-wm-class
 - folder: working-docs/812
 - round: 1
-- stage: plan complete; ready for code
+- stage: round 1 code complete
 - review_verdict: n/a
 - qa_verdict: n/a
-- head_sha: 11f7978073444c090158a5c5227a42a50037368e
-- agent_id: bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26
+- head_sha: 329537554176e310f9d200a580762d70fe5f4763
+- agent_id: bc-1d72a758-95b9-586c-99da-6499ca2fc811
 - recommended_branch: fix/812-x11-wm-class
-- notes: staging PR https://github.com/lgse/strata/pull/957 (draft) on `fix/812-x11-wm-class` from latest `lgse/strata` `main`. Working-docs only; no product/runtime code. Closed fork PR wmfeht/strata#31. Did not assign the issue or change P-band labels. Did not send anything to Origin.
+- notes: round 1 code on `fix/812-x11-wm-class`. File-manager prgname and X11 program class are `io.github.lgse.Strata`. Portal FileChooser identity unchanged. E2E `APPLICATION_NAME` follows prgname. Left draft. Did not squash, undraft, drop working-docs, merge, or post a cleanup comment. Did not send anything to Origin. `ManagePullRequest` cannot update lgse#957 from this fork checkout.
 
 ## History
 
 - plan: complete (bc-d2f12994-d476-5779-b4ec-fcd89b474ffb, 2026-09-13)
 - staging PR: opened https://github.com/lgse/strata/pull/957 (draft) (bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26, 2026-09-13)
-- round 1 code: pending
+- round 1 code: complete (bc-1d72a758-95b9-586c-99da-6499ca2fc811, 2026-09-13)
 
 ## Pick rationale
 
@@ -25,12 +25,14 @@ Highest remaining unassigned `bug` by P-band after skip rules. P0 `#854` assigne
 
 ## Code-stage validation (when implementing)
 
-Bounded identity change in `src/main.rs` plus `gdk4-x11` and maybe one E2E harness constant. Targeted:
+Bounded identity change in `src/main.rs` plus `gdk4-x11` and one E2E harness constant. Targeted:
 
-    ./scripts/test-headless.py desktop_startup_wmclass application_identity x11_program_class portal::window_geometry::tests
-
-Rename the filter to the actual test names after they exist. It must collect a nonzero set (new `src/tests.rs` cases plus existing portal centering). If AT-SPI name changes, also:
-
+    cargo fmt --all --check
+    cargo clippy --all-targets --all-features -- -D warnings
+    xvfb-run -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
+      GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+      cargo test --all-targets --all-features -- \
+      desktop_startup_wmclass application_identity x11_program_class portal::window_geometry::tests
     ./scripts/e2e.sh tests/e2e/scenarios/test_startup_arguments.py
 
-Pre-push (later): `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy`. Full `quality.sh` / full `e2e.sh` only if the harness change proves broader than one constant. Record live `xprop` from case 4 in `code-notes.md`.
+See `code-notes.md` for host compiler flags, counts, and live `xprop`.
