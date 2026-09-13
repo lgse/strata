@@ -356,6 +356,12 @@ pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     } else {
         row.remove_css_class("cut");
     }
+    if let Some(icon) = row
+        .first_child()
+        .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+    {
+        icon.set_cut(cut);
+    }
 }
 
 fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {

@@ -609,6 +609,7 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
             super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &cuts);
             assert_eq!(label.tooltip_text().as_deref(), Some("icons-scroll.png"));
             assert!(card.has_css_class("cut"));
+            assert_eq!(icon.opacity(), 1.0);
             assert_eq!(crate::ui::thumbnail::pending_thumbnail_id(&path), job);
             crate::ui::thumbnail::clear_thumbnail_runtime();
         },
