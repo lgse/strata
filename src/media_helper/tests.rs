@@ -89,6 +89,16 @@ fn unsafe_temporary_and_installation_ancestors_are_rejected_before_copying() {
 }
 
 #[test]
+fn finished_recovery_releases_the_lock_despite_a_fork_style_descriptor_duplicate() {
+    let root = tempfile::tempdir().expect("private fixture");
+    let lock = recovery_lock(root.path()).expect("recovery lock");
+    let _inherited = lock.0.try_clone().expect("fork-style duplicate");
+    assert!(recovery_lock(root.path()).is_err());
+    drop(lock);
+    assert!(recovery_lock(root.path()).is_ok());
+}
+
+#[test]
 fn offline_recovery_installs_only_the_exact_embedded_bytes_and_rejects_corruption() {
     use std::io::Write;
     let root = tempfile::tempdir().expect("private fixture");

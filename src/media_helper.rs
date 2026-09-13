@@ -178,6 +178,35 @@ fn hash_file(file: &File) -> Result<String, String> {
         .collect())
 }
 
+struct RecoveryLock(File);
+
+impl Drop for RecoveryLock {
+    fn drop(&mut self) {
+        // A concurrent fork may retain a CLOEXEC duplicate until exec.
+        let _ = rustix::fs::flock(&self.0, rustix::fs::FlockOperation::Unlock);
+    }
+}
+
+fn recovery_lock(root: &Path) -> Result<RecoveryLock, String> {
+    let lock = rustix::fs::open(
+        root.join("install.lock"),
+        rustix::fs::OFlags::CREATE
+            | rustix::fs::OFlags::RDWR
+            | rustix::fs::OFlags::NOFOLLOW
+            | rustix::fs::OFlags::CLOEXEC
+            | rustix::fs::OFlags::NONBLOCK,
+        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+    )
+    .map_err(|_| "Cannot lock media recovery storage")?;
+    let stat = rustix::fs::fstat(&lock).map_err(|_| "Cannot inspect recovery lock")?;
+    if rustix::fs::FileType::from_raw_mode(stat.st_mode) != rustix::fs::FileType::RegularFile {
+        return Err("Invalid recovery lock".into());
+    }
+    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+        .map_err(|_| "Media helper recovery is already in progress; retry the preview.")?;
+    Ok(RecoveryLock(lock.into()))
+}
+
 fn recover_at(cache: &Path, compressed: &[u8], expected: &str) -> Result<PathBuf, String> {
     use std::{
         io::Write,
@@ -215,22 +244,7 @@ fn recover_at(cache: &Path, compressed: &[u8], expected: &str) -> Result<PathBuf
             "Unsafe media recovery storage; reinstall Strata in a private directory.".into(),
         );
     }
-    let lock = rustix::fs::open(
-        root.join("install.lock"),
-        rustix::fs::OFlags::CREATE
-            | rustix::fs::OFlags::RDWR
-            | rustix::fs::OFlags::NOFOLLOW
-            | rustix::fs::OFlags::CLOEXEC
-            | rustix::fs::OFlags::NONBLOCK,
-        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
-    )
-    .map_err(|_| "Cannot lock media recovery storage")?;
-    let stat = rustix::fs::fstat(&lock).map_err(|_| "Cannot inspect recovery lock")?;
-    if rustix::fs::FileType::from_raw_mode(stat.st_mode) != rustix::fs::FileType::RegularFile {
-        return Err("Invalid recovery lock".into());
-    }
-    rustix::fs::flock(&lock, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-        .map_err(|_| "Media helper recovery is already in progress; retry the preview.")?;
+    let _lock = recovery_lock(&root)?;
     let destination = root.join(expected);
     let helper = destination.join(NAME);
     if destination.exists() {
