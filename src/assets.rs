@@ -77,6 +77,7 @@ pub mod icons {
     pub const VIDEOS: &str = "strata-video";
     pub const VOLUME_2: &str = "strata-volume-2";
     pub const VOLUME_X: &str = "strata-volume-x";
+    pub const WRAP_TEXT: &str = "strata-wrap-text";
     pub const X: &str = "strata-x";
 
     pub const CUSTOMIZATION_CHOICES: [(&str, &str); 16] = [

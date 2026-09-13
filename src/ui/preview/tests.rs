@@ -11,7 +11,7 @@ use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
     format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
     preview_target, preview_width_for_empty_space, print_fit, print_page_starts,
-    print_progress_for_page,
+    print_progress_for_page, text_hscroll_policy, text_wrap_mode,
 };
 use crate::app::{Browser, BrowserEvent, EntrySplice};
 use crate::model::Location;
@@ -177,6 +177,14 @@ fn pdf_scroll_zoom_stays_within_its_supported_range() {
     assert!(pdf_zoom_after_scroll(2.0, 1.0) < 2.0);
     assert_eq!(pdf_zoom_after_scroll(PDF_MIN_ZOOM, 100.0), PDF_MIN_ZOOM);
     assert_eq!(pdf_zoom_after_scroll(PDF_MAX_ZOOM, -100.0), PDF_MAX_ZOOM);
+}
+
+#[test]
+fn text_wrap_toggle_selects_word_wrap_only_when_enabled() {
+    assert_eq!(text_wrap_mode(true), gtk::WrapMode::Word);
+    assert_eq!(text_wrap_mode(false), gtk::WrapMode::None);
+    assert_eq!(text_hscroll_policy(true), gtk::PolicyType::Never);
+    assert_eq!(text_hscroll_policy(false), gtk::PolicyType::Automatic);
 }
 
 #[test]
