@@ -243,6 +243,11 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                         });
                         if recursive {
                             assert!(state.view.show_filter_with_query("matched"));
+                            let field = gtk::prelude::RootExt::focus(&state.window)
+                                .expect("filter focus")
+                                .ancestor(gtk::Entry::static_type())
+                                .and_downcast::<gtk::Entry>()
+                                .expect("filter entry");
                             wait_until(|| {
                                 find(state.window.upcast_ref(), &|widget| {
                                     widget.is_mapped()
@@ -252,11 +257,7 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                                 })
                                 .is_some()
                             });
-                            let field = gtk::prelude::RootExt::focus(&state.window)
-                                .expect("filter focus")
-                                .ancestor(gtk::Entry::static_type())
-                                .and_downcast::<gtk::Entry>()
-                                .expect("filter entry");
+                            field.grab_focus_without_selecting();
                             press(
                                 &keys(&field),
                                 gtk::gdk::Key::Down,
