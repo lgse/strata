@@ -9,7 +9,7 @@
 - review_verdict: n/a
 - qa_verdict: n/a
 - product_sha: 6f5c7e79d51bd093f1df3cfa458d075948bf325d
-- head_sha: (working-docs commit after product)
+- head_sha: deff9edeecaaca78b6cf00781d442af1b2415a4b
 - agent_id: bc-6a74cf94-9aa9-5976-b742-db1fc13a74dc
 - notes: PARTIAL ownership trace (no dm_mod, no Nautilus/Wayland). Implemented Finding B/D wait/navigate. Overlay ownership unchanged. Automounter not disabled. P2/UX/bug unchanged.
 
