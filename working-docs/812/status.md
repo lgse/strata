@@ -8,7 +8,7 @@
 - stage: round 1 code complete
 - review_verdict: n/a
 - qa_verdict: n/a
-- head_sha: 329537554176e310f9d200a580762d70fe5f4763
+- head_sha: 77be0a30ea1976a781f5d3c55904ba118ef9aae1
 - agent_id: bc-1d72a758-95b9-586c-99da-6499ca2fc811
 - recommended_branch: fix/812-x11-wm-class
 - notes: round 1 code on `fix/812-x11-wm-class`. File-manager prgname and X11 program class are `io.github.lgse.Strata`. Portal FileChooser identity unchanged. E2E `APPLICATION_NAME` follows prgname. Left draft. Did not squash, undraft, drop working-docs, merge, or post a cleanup comment. Did not send anything to Origin. `ManagePullRequest` cannot update lgse#957 from this fork checkout.
