@@ -308,10 +308,17 @@ impl ViewState {
                 }
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     if column.selection.model().is_none() {
+                        column.syncing_selection.set(true);
                         column.filtered_model.set_model(Some(&column.model));
                         column.selection.set_model(Some(&column.filtered_model));
-                        column.syncing_selection.set(false);
                     }
+                    let positions: Vec<u32> = self
+                        .browser
+                        .selected_positions(*depth)
+                        .into_iter()
+                        .filter_map(|position| column.map.view_position(position))
+                        .collect();
+                    set_column_selections(column, &positions);
                     stop_column_spinner(column);
                     column.truncated_hint.set_visible(*truncated);
                     let count = column.entry_count.get();
