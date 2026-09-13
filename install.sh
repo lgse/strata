@@ -170,7 +170,6 @@ detect_target() {
   esac
 }
 
-# Require a whole N.M token. An unanchored 3/4 match is the bug (#652).
 omarchy_major_from() {
   if [[ $1 =~ (^|[^0-9.])([34])[.][0-9]+ ]]; then
     printf '%s\n' "${BASH_REMATCH[2]}"

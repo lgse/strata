@@ -18,13 +18,20 @@ def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.Comple
     test_env["STRATA_INSTALLER_TESTING"] = "1"
     if env:
         test_env.update(env)
-    return subprocess.run(
-        [BASH, "-c", f'source "$1"; {script}', "bash", str(INSTALLER)],
-        check=False,
-        capture_output=True,
-        text=True,
-        env=test_env,
-    )
+    with tempfile.TemporaryDirectory() as directory:
+        installer = pathlib.Path(directory) / "install.sh"
+        installer.write_text(
+            INSTALLER.read_text().replace(
+                "/usr/share/omarchy/version", f"{directory}/system-version"
+            )
+        )
+        return subprocess.run(
+            [BASH, "-c", f'source "$2"; {script}', "bash", str(INSTALLER), str(installer)],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=test_env,
+        )
 
 
 class InstallerTests(unittest.TestCase):
@@ -288,6 +295,8 @@ class InstallerTests(unittest.TestCase):
 
     def test_omarchy_major_from_requires_a_whole_version_token(self) -> None:
         cases = [
+            ("3.8.5", "3"),
+            ("1:4.0.0-1", "4"),
             ("4.0.0-1", "4"),
             ("4.0.0.alpha", "4"),
             ("Omarchy 2.3.1", ""),
@@ -301,7 +310,7 @@ class InstallerTests(unittest.TestCase):
                 if expected:
                     self.assertEqual(result.returncode, 0, result.stderr)
                 else:
-                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.returncode, 1, result.stderr)
 
     def test_omarchy_dev_hash_is_not_a_major(self) -> None:
         with tempfile.TemporaryDirectory() as home:
@@ -370,7 +379,7 @@ class InstallerTests(unittest.TestCase):
     def test_omarchy_detection_without_command_is_not_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             result = bash(
-                'PATH=/usr/bin:/bin; value=$(detect_omarchy_major); printf "%s" "$value"',
+                'PATH="$HOME"; value=$(detect_omarchy_major); printf "%s" "$value"',
                 env={"HOME": home},
             )
             self.assertEqual(result.returncode, 0, result.stderr)
