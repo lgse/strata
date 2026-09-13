@@ -1301,6 +1301,35 @@ fn successful_transfers_reveal_actual_destination_names_only_without_navigation(
 }
 
 #[test]
+fn a_drop_onto_a_folder_does_not_navigate_into_it() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let root = Location::local("/fixture");
+    browser.navigate(root);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    let destination = Location::local("/fixture/archive");
+    browser.transfer_destination.replace(Some(destination));
+    browser.transfer_reveal.set(false);
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![Location::local("/fixture/report.txt")],
+    });
+
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferReveal { .. })),
+        "a drop must move or copy the file without leaving the source listing"
+    );
+}
+
+#[test]
 fn failed_transfers_do_not_request_a_reveal() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -1337,6 +1366,7 @@ fn a_completed_move_records_where_each_item_landed() {
             conflict: TransferConflict::FailIfExists,
         }],
         true,
+        true,
     );
 
     assert_eq!(
@@ -1360,6 +1390,7 @@ fn a_completed_copy_records_the_destinations_it_created() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
 
     assert_eq!(
@@ -1407,6 +1438,7 @@ fn undoing_a_copy_removes_only_the_destinations_it_created() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1470,6 +1502,7 @@ fn undoing_a_copy_leaves_the_previous_trash_undo_available() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1495,6 +1528,7 @@ fn undoing_a_copy_records_no_trash_undo_of_its_own() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1580,6 +1614,7 @@ fn a_completed_copy_displaces_an_older_trash_undo() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
 
     assert!(!browser.undo_last_trash());
@@ -1597,6 +1632,7 @@ fn a_move_into_the_items_own_directory_records_no_undo() {
             conflict: TransferConflict::FailIfExists,
         }],
         true,
+        true,
     );
 
     assert_eq!(pending_undo_entry(), None);
@@ -1613,6 +1649,7 @@ fn undoing_a_move_transfers_items_back_once() {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
         }],
+        true,
         true,
     );
     let (generation, records) = browser.pending_undo_move().expect("pending move undo");
