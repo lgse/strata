@@ -41,13 +41,19 @@ Video timing is normalized **inside the sandbox** to 30 fps, including holding
 VFR/GIF frames. Audio is 48 kHz, stereo, interleaved signed 16-bit little-endian
 PCM. Resampling preserves gaps/offsets relative to the common source timeline.
 
-The preview interval is always **the original file's first 30 seconds**, including
-hour-long sources. Seeking never opens a fresh 30-second interval at the seek
-point. It restarts the sandbox at a bounded position rounded down to the 30-fps
+Previews play **the entire source**, without a 30-second playback cap. Seeking
+restarts the sandbox at the requested source position, rounded down to the 30-fps
 grid. Video retains decoder preroll so a seek into a VFR gap can show the frame
-covering that point. Short GIFs loop inside a single 30-second generation, with
-seeks mapped to their original animation phase, avoiding a process restart every
-animation cycle. Longer GIFs repeat only their first 30 seconds.
+covering that point. Short GIFs still batch loops into a 30-second generation,
+with seeks mapped to their animation phase to avoid restarting a process every
+cycle; this does not truncate the animation. Longer GIFs play their complete
+animation before looping.
+
+Files without a reported duration play until decoded EOF. Their timeline remains
+unknown and seeking is disabled until the actual end is established; pause/idle
+resume still retains the playback position. The wire's representable terminal
+tick (about 4.5 years at 30 fps) is an arithmetic ceiling and unknown-duration
+sentinel, not a practical preview-length policy.
 
 The decode rectangle follows the pane's logical size times display scale, capped
 at 1280 pixels on either axis. Frames preserve display aspect ratio, including
@@ -69,9 +75,10 @@ those payloads; an explicit end record has no payload. EOF alone is not success.
 The parent independently checks:
 
 - version/reserved fields, flags, requested dimensions, stride, and arithmetic;
-- duration `0 < duration <= 30,000,000 us` and the requested start tick;
-- strictly consecutive ticks, exact `floor(tick * 1,000,000 / 30)` timestamps,
-  and at most 900 ticks, regardless of helper claims;
+- positive duration within the `u32` terminal-tick range and the requested start
+  tick; the maximum representable duration denotes an unknown source duration;
+- strictly consecutive ticks below the declared duration, exact
+  `floor(tick * 1,000,000 / 30)` timestamps, and an end tick that cannot overflow;
 - video length exactly `width * height * 4`, at most 6,553,600 bytes;
 - PCM length exactly 6,400 bytes per tick (1,600 stereo samples), with the last
   block truncated to the advertised content duration before audio output;
@@ -88,12 +95,19 @@ square size), plus small audio buffers and bounded kernel pipes. FFmpeg's input
 and output packet queues are limited to two packets each. GStreamer's appsrc
 queue is capped at 38,400 bytes / 200 ms; no unbounded queue element is inserted.
 GTK/driver rendering caches and codec working memory are additional, not part of
-that application-buffer claim. A full maximum-size generation transfers at most
-900 frames (5,898,240,000 video bytes) and 5,760,000 PCM bytes, incrementally—not
-stored as a complete clip. Seeking/looping begins a new bounded generation.
+that application-buffer claim. Total decoded bytes scale with playback duration,
+but queued memory does not: no complete clip is accumulated. Audio timestamp
+conversion uses wide intermediates and rejects values outside GStreamer's clock
+range rather than overflowing for long playback. Seeking/looping begins a new
+memory-bounded generation.
 
 There is **no whole-clip media cache**. Closing or revisiting a file requires a new
 decode. The existing byte/entry-bounded image/PDF preview cache is unchanged.
+Image renders preserve small source dimensions so the UI can enforce its 2×
+upscaling limit. Image previews do not use normalized shared-thumbnail
+placeholders, which can already be enlarged and lack reliable native dimensions;
+they request the bounded full render immediately. PDFs likewise wait for a bounded
+page render with verified page count. File-list thumbnail storage/reuse is unchanged. See [preview sizing](evidence/885/README.md).
 
 ## Scheduling and deadlines
 
@@ -133,8 +147,8 @@ Bubblewrap retains the existing namespace/mount policy:
 
 Image/PDF parsing has a 512-MiB input cap, 2-GiB address-space cap, 512-MiB file
 cap, 32-MiB parent output cap, 12-second wall limit and 10-second CPU limit.
-Media has no input-file size cap or cumulative CPU limit; decoded output and
-progress deadlines bound each preview generation. Each software FFmpeg process has a 2-GiB
+Media has no input-file size cap, playback-duration policy cap, or cumulative CPU
+limit; per-record sizes, queue limits, and progress deadlines bound active work. Each software FFmpeg process has a 2-GiB
 address-space limit; all decoding processes disable core dumps and cap files and
 individual media allocations at 512 MiB and source frames at 50 million pixels.
 Accelerated decoders retain the existing exemption from the address-space limit

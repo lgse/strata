@@ -544,6 +544,7 @@ pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
     preferences: Rc<super::theme::ThemeManager>,
+    preview: &super::preview::PreviewDrawer,
 ) -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("appearance-menu");
@@ -640,6 +641,35 @@ pub(super) fn build_appearance_menu(
     content.append(&columns);
     content.append(&icons);
     content.append(&list);
+    let (row, check, _) = appearance_row(
+        crate::assets::icons::EYE,
+        "Preview panel",
+        "Space",
+        preview.is_enabled(),
+    );
+    let preview_toggle = gtk::ToggleButton::builder()
+        .child(&row)
+        .has_frame(false)
+        .build();
+    preview_toggle.add_css_class("appearance-option");
+    preview_toggle.add_css_class("preview-panel-option");
+    super::accessibility::set_label(&preview_toggle, "Preview panel");
+    preview_toggle.set_tooltip_text(Some("Toggle preview panel while browsing (Space)"));
+    let actions = gio::SimpleActionGroup::new();
+    actions.add_action(&preview.action());
+    preview_toggle.insert_action_group("preview", Some(&actions));
+    preview_toggle.set_action_name(Some("preview.preview-panel"));
+    preview_toggle
+        .bind_property("active", &check, "visible")
+        .sync_create()
+        .build();
+    let closing = popover_weak.clone();
+    preview_toggle.connect_clicked(move |_| {
+        if let Some(popover) = closing.upgrade() {
+            popover.popdown();
+        }
+    });
+    content.append(&preview_toggle);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "DENSITY");
@@ -807,6 +837,22 @@ fn appearance_option_with_shortcut(
     checked: bool,
     sensitive: bool,
 ) -> (gtk::Button, gtk::Image, gtk::Image) {
+    let (row, check, option) = appearance_row(icon, label, shortcut, checked);
+    let button = gtk::Button::builder()
+        .child(&row)
+        .sensitive(sensitive)
+        .build();
+    button.add_css_class("appearance-option");
+    button.set_has_frame(false);
+    (button, check, option)
+}
+
+fn appearance_row(
+    icon: &str,
+    label: &str,
+    shortcut: &str,
+    checked: bool,
+) -> (gtk::Box, gtk::Image, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(checked);
@@ -822,13 +868,7 @@ fn appearance_option_with_shortcut(
         row.append(&shortcut);
     }
     row.append(&check);
-    let button = gtk::Button::builder()
-        .child(&row)
-        .sensitive(sensitive)
-        .build();
-    button.add_css_class("appearance-option");
-    button.set_has_frame(false);
-    (button, check, option)
+    (row, check, option)
 }
 
 fn append_menu_heading(container: &gtk::Box, text: &str) {

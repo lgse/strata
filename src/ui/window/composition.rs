@@ -30,7 +30,7 @@ impl WindowContent {
     pub(super) fn new(window: &gtk::ApplicationWindow, preferences: &Rc<ThemeManager>) -> Self {
         let browser = super::browser_for_window();
         let preview = layout::preview(&browser, preferences);
-        let header = layout::Header::new(window, &browser, preferences);
+        let header = layout::Header::new(window, &browser, &preview, preferences);
         let sidebar = super::build_sidebar(browser.clone(), preferences.clone(), false);
         let root = layout::browser_layout(&browser, &preview, &sidebar, &header);
         let footer = layout::FooterBinding::new(window, &root, &browser, preferences);
