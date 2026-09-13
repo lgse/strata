@@ -12,7 +12,9 @@ fn closing_preserves_column_positions_without_locking_horizontal_scrolling() {
                 .set_gtk_enable_animations(true);
             let preferences = ThemeManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
-            for (chooser, reduced_motion) in [(false, true), (true, true), (false, false)] {
+            for (chooser, reduced_motion) in
+                [(false, true), (true, true), (false, false), (true, false)]
+            {
                 preferences.set_reduce_motion(reduced_motion);
                 let fixture = Fixture::new(chooser);
                 fixture.resize(1200);
@@ -53,6 +55,39 @@ fn closing_preserves_column_positions_without_locking_horizontal_scrolling() {
                         .expect("closed bounds")
                         .x()
                 );
+
+                let adjustment = fixture.adjustment();
+                adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                fixture.settle();
+                let drift = Rc::new(Cell::new(0.0_f32));
+                let paints = Rc::new(Cell::new(0));
+                let observed_drift = drift.clone();
+                let observed_paints = paints.clone();
+                let observed_column = last.clone();
+                let observed_split = fixture.split.clone();
+                let clock = fixture.split.frame_clock().expect("frame clock");
+                let handler = clock.connect_after_paint(move |_| {
+                    let current = observed_column
+                        .compute_bounds(&observed_split)
+                        .expect("painted bounds")
+                        .x();
+                    observed_drift.set(observed_drift.get().max((current - x).abs()));
+                    observed_paints.set(observed_paints.get() + 1);
+                });
+                fixture.preview.show(entry("reopened.png"), None);
+                fixture.wait_adjacent();
+                wait_until(|| !fixture.preview.state.animating.get());
+                fixture.settle();
+                clock.disconnect(handler);
+                assert!(paints.get() > 0);
+                assert!(
+                    drift.get() <= 1.0,
+                    "a visible column moved during reopening: chooser={chooser}, reduced={reduced_motion}, drift={}",
+                    drift.get()
+                );
+                fixture.preview.close();
+                wait_until(|| fixture.browser.widget().width() > width);
+                fixture.settle();
 
                 fixture.adjustment().set_value(0.0);
                 fixture.settle();

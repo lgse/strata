@@ -234,13 +234,16 @@ impl PreviewState {
         self.geometry(split).can_show_preview()
     }
 
-    pub(super) fn show_panel(&self) {
-        // Closing-only scroll padding must not participate in the opening animation.
+    fn preserve_column_positions(&self, content_width: i32) {
         if let Some(binding) = self.sizing.binding.borrow().as_ref()
+            && let Some(content) = binding.content.upgrade()
             && let Some(browser) = binding.browser.upgrade()
         {
-            browser.clear_preview_scroll_space();
+            browser.preserve_columns_for_viewport((content_width - sidebar_width(&content)).max(0));
         }
+    }
+
+    pub(super) fn show_panel(&self) {
         self.revealer.set_transition_duration(0);
         self.pane.set_width_request(0);
         self.revealer.set_visible(true);
@@ -250,17 +253,15 @@ impl PreviewState {
     pub(super) fn hide_panel(&self) {
         if self.revealer.is_visible()
             && let Some(split) = self.split.borrow().as_ref()
-            && let Some(binding) = self.sizing.binding.borrow().as_ref()
-            && let Some(content) = binding.content.upgrade()
-            && let Some(browser) = binding.browser.upgrade()
         {
-            browser
-                .preserve_columns_after_preview((split.width() - sidebar_width(&content)).max(0));
+            self.preserve_column_positions(split.width());
         }
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
         self.revealer.set_visible(false);
         if let Some(split) = self.split.borrow().as_ref() {
+            split.set_resize_start_child(true);
+            split.set_resize_end_child(false);
             split.set_position(split.width());
         }
     }
@@ -312,6 +313,8 @@ impl PreviewState {
         if self.animating.get() || self.sizing.resizing.get() {
             return;
         }
+        split.set_resize_start_child(true);
+        split.set_resize_end_child(false);
         let restored = self.sizing.suspended.replace(false);
         if restored || !self.revealer.reveals_child() {
             self.show_panel();
@@ -322,6 +325,11 @@ impl PreviewState {
         if self.pane.width_request() != minimum || split.position() != position {
             self.pane.set_width_request(minimum);
             split.set_position(position);
+        }
+        if let Some(binding) = self.sizing.binding.borrow().as_ref()
+            && let Some(browser) = binding.browser.upgrade()
+        {
+            browser.clear_preview_scroll_space();
         }
         if restored {
             if self.sizing.reload_on_resume.replace(false) {
@@ -352,6 +360,10 @@ impl PreviewState {
         let geometry = self.geometry(split);
         let target = geometry.position(self.sizing.manual_width.get());
         let start = split.width();
+        // The animation owns the divider, including after a resize while the pane was hidden.
+        split.set_resize_start_child(false);
+        split.set_resize_end_child(true);
+        self.preserve_column_positions(start);
         split.set_position(start);
         let animation_id = self.animation_generation.get().saturating_add(1);
         self.animation_generation.set(animation_id);
@@ -376,7 +388,10 @@ impl PreviewState {
                 (started.elapsed().as_secs_f64() / TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
             let eased = super::super::motion::emphasized_deceleration(progress);
             let position = f64::from(start) + f64::from(target - start) * eased;
-            split.set_position(position.round() as i32);
+            let position = position.round() as i32;
+            // Shrink the scroll range with the viewport, without clamping its retained offset.
+            state.preserve_column_positions(position);
+            split.set_position(position);
             if progress >= 1.0 {
                 state.animating.set(false);
                 state.sync_split(split);

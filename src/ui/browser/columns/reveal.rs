@@ -25,6 +25,9 @@ impl ColumnSpan {
     }
 
     pub fn reveal_target(self, current: f64, page_size: f64, lower: f64, upper: f64) -> f64 {
+        if self.left >= current && self.right <= current + page_size {
+            return current.clamp(lower, (upper - page_size).max(lower));
+        }
         let budget = self.peek_space(page_size);
         let left_first = self.left < current || self.right >= self.total;
         let left = if self.left > lower && (left_first || budget >= COLUMN_PEEK_WIDTH * 2.0) {

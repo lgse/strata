@@ -146,9 +146,11 @@ follow-up above.
 
 ## Stable preview opening
 
-Close-only trailing scroll space is cleared before the opening animation's first
-allocation. It no longer creates a transient horizontal scrollbar that shifts
-the column footer and then disappears. Real overflow continues to scroll.
+Closing does not add trailing scroll space when the horizontal offset is zero.
+Any padding needed to preserve a nonzero offset shrinks with the opening
+viewport instead of resetting the offset before the animation. Fitting columns
+no longer flash a scrollbar or slide out and back into view. Real overflow
+continues to scroll.
 
 [Before reopening](review/opening-before.mp4) ·
 [After reopening](review/opening-after.mp4)
@@ -157,6 +159,17 @@ Both recordings use synthetic content with animations enabled in private
 Xvfb/D-Bus. The regression observes every painted frame across cold opening and
 reopening in the browser and chooser at wide and narrow widths; the existing
 scrolling and divider-picking cases remain the coverage owners for real overflow.
+
+[Scroll-end reopening before](review/reopening-end-before.mp4) ·
+[Scroll-end reopening after](review/reopening-end-after.mp4)
+
+These additional private-display recordings navigate into nested synthetic
+folders, close the preview, scroll fully to the end, and reopen it. The column
+now stays in place throughout opening. The existing close/scroll regression
+also observes every reopening frame in both browser and chooser, with and
+without reduced motion, then verifies that reopening still reveals a column
+that the user has scrolled out of view. Neighbor peeks no longer move a column
+that is already fully visible.
 
 Media playback also now reaches the full source duration rather than stopping at
 30 seconds. The decoder, transport, and GStreamer PCM regressions cover complete

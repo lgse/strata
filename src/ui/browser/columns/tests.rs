@@ -109,16 +109,14 @@ fn reveal_target_scrolls_only_enough_to_show_the_new_column() {
 }
 
 #[test]
-fn reveal_target_exposes_a_clickable_neighbor_when_space_permits() {
-    assert_eq!(
-        ColumnSpan {
-            left: 900.0,
-            right: 1200.0,
-            total: 1500.0
-        }
-        .reveal_target(300.0, 900.0, 0.0, 1500.0),
-        348.0
-    );
+fn reveal_target_moves_only_clipped_columns_with_best_effort_peeks() {
+    let column = ColumnSpan {
+        left: 900.0,
+        right: 1200.0,
+        total: 1500.0,
+    };
+    assert_eq!(column.reveal_target(300.0, 900.0, 0.0, 1500.0), 300.0);
+    assert_eq!(column.reveal_target(250.0, 900.0, 0.0, 1500.0), 348.0);
 }
 
 #[test]

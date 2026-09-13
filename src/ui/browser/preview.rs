@@ -66,13 +66,17 @@ impl BrowserView {
             .map_or(COLUMN_WIDTH, column_width)
     }
 
-    pub(in crate::ui) fn preserve_columns_after_preview(&self, available: i32) {
+    pub(in crate::ui) fn preserve_columns_for_viewport(&self, available: i32) {
         if self.view_mode() != BrowserMode::Columns {
             return;
         }
         let offset = self.state.scroller.hadjustment().value();
         let occupied = self.preview_occupied_width(available);
-        let gap = (offset + f64::from(available - occupied)).ceil().max(0.0) as i32;
+        let gap = if offset > 0.0 {
+            (offset + f64::from(available - occupied)).ceil().max(0.0) as i32
+        } else {
+            0
+        };
         self.state.columns_widget.set_margin_end(gap);
         self.state.horizontal_scroll_generation.set(
             self.state
