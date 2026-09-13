@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::media::{Decoder, LIMIT_US, Packet};
+use crate::media::{Decoder, Packet};
 use std::{io::Cursor, os::unix::net::UnixStream, thread};
 
 fn success(command: &mut Command) -> Vec<u8> {
@@ -85,28 +85,41 @@ fn raw_software_video_fits_landscape_portrait_hidpi_and_does_not_enlarge() {
 }
 
 #[test]
-fn hour_long_sources_and_seeks_stay_within_the_original_preview_interval() {
+fn full_sources_and_hour_long_seeks_reach_the_original_file_end() {
     let directory = tempfile::tempdir().expect("fixture");
-    let input = directory.path().join("hour.mkv");
-    fixture(&input, "64x48", 1, 3600, false);
-    for (start, count) in [(0, 900), (750, 150), (899, 1)] {
-        let (header, frames, end) = decoded(&input, "520x800", start);
-        assert_eq!(header.duration_us, LIMIT_US);
-        assert_eq!(end, LIMIT_US);
-        assert_eq!(frames.len(), count);
-        assert_eq!(frames[0].tick, start);
-        assert!(frames.iter().all(|frame| frame.samples.is_empty()));
+    for (seconds, audio, starts) in [
+        (35, true, [0, 900, 1049]),
+        (3600, false, [107850, 107970, 107999]),
+    ] {
+        let input = directory.path().join(format!("{seconds}.mkv"));
+        fixture(&input, "64x48", 1, seconds, audio);
+        for start in starts {
+            let (header, frames, end) = decoded(&input, "520x800", start);
+            assert_eq!(header.duration_us, u64::from(seconds) * 1_000_000);
+            assert_eq!(end, header.duration_us);
+            assert_eq!(frames.len(), (seconds * 30 - start) as usize);
+            assert_eq!(frames[0].tick, start);
+            assert_eq!(header.audio, audio);
+            assert!(frames.iter().all(|frame| frame.samples.is_empty() != audio));
+            if audio {
+                assert!(
+                    frames
+                        .iter()
+                        .any(|frame| frame.samples.iter().any(|sample| *sample != 0))
+                );
+            }
+        }
+        assert!(
+            stream(
+                &input,
+                "520x800",
+                MediaPreviewBackend::Software,
+                seconds * 30,
+                &mut Vec::new()
+            )
+            .is_err()
+        );
     }
-    assert!(
-        stream(
-            &input,
-            "520x800",
-            MediaPreviewBackend::Software,
-            900,
-            &mut Vec::new()
-        )
-        .is_err()
-    );
 }
 
 #[test]
@@ -190,7 +203,7 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
 fn first_frames_arrive_before_completion_and_closed_consumers_cancel_backpressure() {
     let directory = tempfile::tempdir().expect("fixture");
     let input = directory.path().join("clip.mkv");
-    fixture(&input, "160x90", 30, 10, true);
+    fixture(&input, "160x90", 30, 35, true);
     let (read, mut write) = UnixStream::pair().expect("private frame pipe");
     let worker = thread::spawn(move || {
         stream(
@@ -258,8 +271,8 @@ fn hardware_order_and_commands_decode_only_and_bound_all_outputs() {
             width: 320,
             height: 180,
             audio: true,
-            duration_us: LIMIT_US,
-            start_tick: 750,
+            duration_us: 3_600_000_000,
+            start_tick: 107850,
         },
         video: Some(0),
         audio: Some(1),
@@ -273,7 +286,7 @@ fn hardware_order_and_commands_decode_only_and_bound_all_outputs() {
             .map(|arg| arg.to_string_lossy())
             .collect::<Vec<_>>()
             .join(" ");
-        assert!(args.contains("-ss 25.000000"));
+        assert!(args.contains("-ss 3595.000000"));
         assert!(args.contains("-t 5.000000"));
         assert!(args.contains("-frames:v 150"));
         assert!(args.contains("-c:v rawvideo"));
@@ -370,9 +383,9 @@ fn short_gifs_loop_inside_the_bounded_decode_generation_and_seek_by_phase() {
             .arg(&input),
     );
     let (header, frames, end) = decoded(&input, "160x90", 0);
-    assert_eq!(header.duration_us, LIMIT_US);
+    assert_eq!(header.duration_us, 30_000_000);
     assert_eq!(frames.len(), 900);
-    assert_eq!(end, LIMIT_US);
+    assert_eq!(end, 30_000_000);
     assert!(frames[0].pixels == frames[30].pixels, "GIF loop phase");
     assert!(frames[0].pixels != frames[15].pixels, "moving GIF frames");
     let (_, sought, _) = decoded(&input, "160x90", 765);
@@ -380,6 +393,28 @@ fn short_gifs_loop_inside_the_bounded_decode_generation_and_seek_by_phase() {
         frames[15].pixels == sought[0].pixels,
         "seek keeps the GIF phase"
     );
+    let long = directory.path().join("long.gif");
+    success(
+        Command::new("ffmpeg")
+            .args([
+                "-nostdin",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x48:rate=10:duration=35",
+                "-threads",
+                "1",
+            ])
+            .arg(&long),
+    );
+    let (header, frames, end) = decoded(&long, "160x90", 0);
+    assert_eq!(header.duration_us, 35_000_000);
+    assert_eq!(frames.len(), 1050);
+    assert_eq!(end, 35_000_000);
+    let (_, sought, _) = decoded(&long, "160x90", 960);
+    assert_eq!(frames[960].pixels, sought[0].pixels);
 }
 
 #[test]
@@ -395,5 +430,20 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
     ] {
         assert!(metadata(value, size, 0).is_err());
     }
+    for duration in ["143165577", "18446744073709551615"] {
+        let value = serde_json::json!({
+            "streams": [{"index": 0, "codec_type": "audio"}],
+            "format": {"duration": duration},
+        });
+        assert!(metadata(&serde_json::to_vec(&value).expect("metadata"), size, 0).is_err());
+    }
+    let unknown = metadata(
+        br#"{"streams":[{"index":0,"codec_type":"audio"}]}"#,
+        size,
+        960,
+    )
+    .expect("unknown duration can resume beyond thirty seconds");
+    assert_eq!(unknown.header.start_tick, 960);
+    assert_eq!(unknown.header.duration_us, media::MAX_DURATION_US);
     assert!(probe(Path::new("/nonexistent-strata-media"), size, 0).is_err());
 }

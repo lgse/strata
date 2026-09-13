@@ -1196,31 +1196,32 @@ fn zipcrypto_deflated_header_collision_is_retryable() -> Result<(), Box<dyn Erro
     )
 }
 
-#[test]
-fn zipcrypto_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let archive = zipcrypto_fixture(root.path())?;
-    let mut wrong_password = None;
-    for candidate in 0..4096u32 {
-        let password = candidate.to_string();
-        let mut zip = zip::ZipArchive::new(fs::File::open(&archive)?)?;
+fn zipcrypto_rejected_password(path: &Path) -> Result<String, Box<dyn Error>> {
+    // ZipCrypto's one-byte header check can accept an arbitrary wrong password.
+    for candidate in 0..4096 {
+        let password = format!("wrong-{candidate}");
+        let mut archive = zip::ZipArchive::new(fs::File::open(path)?)?;
         let options = zip::read::ZipReadOptions::new().password(Some(password.as_bytes()));
-        match zip.by_index_with_options(0, options) {
-            Err(zip::result::ZipError::InvalidPassword) => {
-                wrong_password = Some(password);
-                break;
-            }
+        match archive.by_index_with_options(0, options) {
+            Err(zip::result::ZipError::InvalidPassword) => return Ok(password),
             Err(error) => return Err(error.into()),
             Ok(_) => {}
         }
     }
-    let wrong_password = wrong_password.ok_or("no non-colliding ZipCrypto password in 0..4096")?;
+    Err("no header-rejected ZipCrypto password found".into())
+}
+
+#[test]
+fn zipcrypto_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = zipcrypto_fixture(root.path())?;
+    let password = zipcrypto_rejected_password(&archive)?;
     let destination = tempfile::tempdir()?;
     let Err(error) = decode_fixture(
         &archive,
         destination.path(),
         ArchiveFormat::Zip,
-        Some(&wrong_password),
+        Some(&password),
         &Arc::new(AtomicUsize::new(0)),
     ) else {
         panic!("ZipCrypto accepted a non-colliding wrong password");

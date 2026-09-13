@@ -23,7 +23,7 @@ fn saved_and_live_audio_preferences_reach_every_open_player() {
                 drawer.state.append_media_controls(
                     media.upcast_ref(),
                     &manager,
-                    &gtk::Box::new(gtk::Orientation::Vertical, 0).upcast(),
+                    &gtk::Box::new(gtk::Orientation::Vertical, 0),
                     &gtk::Button::new(),
                     false,
                 );
