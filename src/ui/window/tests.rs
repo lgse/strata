@@ -4,7 +4,7 @@ mod keyboard_dispatch;
 mod preferences;
 mod type_to_search;
 
-use std::{cell::Cell, path::Path};
+use std::{cell::Cell, path::Path, rc::Rc};
 
 use gtk::glib;
 
@@ -17,13 +17,14 @@ use crate::{
 };
 
 use super::{
-    DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
-    TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
-    browser_for_window, browser_mode_for_digit, build_sidebar, event_changes_trash_contents,
-    is_context_menu_shortcut, is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut,
-    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
-    is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, load_pinned_places,
-    media_release_label, mount_release_action, mouse_history_action, page_direction,
+    DEFAULT_ACCELS, EncryptedMediaAction, MediaRelease, MouseHistoryAction, PinStatus,
+    SIDEBAR_WIDTH, STANDARD_PLACE_IDS, TrashContents, TrashMenuVisibility, TypeToSearchQuery,
+    accepts_sidebar_reorder_payload, begin_media_release, browser_for_window,
+    browser_mode_for_digit, build_sidebar, confirm_forget_cached_password, continue_encrypted_lock,
+    device_row_actions, event_changes_trash_contents, is_context_menu_shortcut,
+    is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
+    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
+    jump_direction, load_pinned_places, media_release_label, mouse_history_action, page_direction,
     parse_pinned_drag_source, parse_pinned_places, pin_status, pinned_places_path,
     remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
     serialize_pinned_places, should_show_standard_place, sidebar_accepts_file_drop,
@@ -807,20 +808,313 @@ fn volume_release_prefers_eject_and_hides_fixed_disks() {
 }
 
 #[test]
-fn mount_release_prefers_eject_and_hides_fixed_disks() {
+fn encrypted_device_actions_share_lock_and_release() {
+    let locked = device_row_actions(true, false, false, false, false);
+    assert_eq!(locked.encrypted, Some(EncryptedMediaAction::Unlock));
+    assert_eq!(locked.release, Some(MediaRelease::EjectVolume));
     assert_eq!(
-        mount_release_action(true, false),
-        Some(MediaRelease::EjectMount)
+        locked.encrypted.map(EncryptedMediaAction::label),
+        Some("Unlock")
     );
     assert_eq!(
-        mount_release_action(true, true),
-        Some(MediaRelease::EjectMount)
+        locked.encrypted.map(EncryptedMediaAction::icon),
+        Some(crate::assets::icons::LOCK)
+    );
+
+    let locked_eject = device_row_actions(true, false, true, false, false);
+    assert_eq!(locked_eject.encrypted, Some(EncryptedMediaAction::Unlock));
+    assert_eq!(locked_eject.release, Some(MediaRelease::EjectVolume));
+
+    let unlocked = device_row_actions(true, true, false, false, true);
+    assert_eq!(unlocked.encrypted, Some(EncryptedMediaAction::Lock));
+    assert_eq!(unlocked.release, Some(MediaRelease::UnmountMount));
+    assert_eq!(
+        unlocked.encrypted.map(EncryptedMediaAction::label),
+        Some("Lock")
     );
     assert_eq!(
-        mount_release_action(false, true),
-        Some(MediaRelease::UnmountMount)
+        unlocked.encrypted.map(EncryptedMediaAction::icon),
+        Some(crate::assets::icons::LOCK_OPEN)
     );
-    assert_eq!(mount_release_action(false, false), None);
+
+    let usb = device_row_actions(false, true, false, false, true);
+    assert_eq!(usb.encrypted, None);
+    assert_eq!(usb.release, Some(MediaRelease::UnmountMount));
+
+    let shutdown = device_row_actions(false, false, false, false, false);
+    assert_eq!(shutdown.encrypted, None);
+    assert_eq!(shutdown.release, None);
+}
+
+#[test]
+fn uncached_lock_skips_confirm() {
+    gtk_test("ui::window::tests::uncached_lock_skips_confirm", || {
+        use gtk::prelude::*;
+
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+        let window = gtk::Window::builder().child(&overlay).build();
+        window.present();
+        let locked = Rc::new(Cell::new(false));
+        let cancelled = Rc::new(Cell::new(false));
+        continue_encrypted_lock(
+            overlay.upcast_ref(),
+            "STRATA-537",
+            false,
+            {
+                let locked = locked.clone();
+                move || locked.set(true)
+            },
+            {
+                let cancelled = cancelled.clone();
+                move || cancelled.set(true)
+            },
+        );
+        assert!(
+            locked.get(),
+            "lock should proceed when no password is cached"
+        );
+        assert!(
+            !cancelled.get(),
+            "cancel should stay unused without a prompt"
+        );
+        assert!(
+            button_with_label(overlay.upcast_ref(), "Forget and lock").is_none(),
+            "uncached lock should not open a confirmation"
+        );
+        window.destroy();
+    });
+}
+
+#[test]
+fn forget_password_confirm_locks() {
+    gtk_test("ui::window::tests::forget_password_confirm_locks", || {
+        use gtk::prelude::*;
+
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+        let window = gtk::Window::builder().child(&overlay).build();
+        window.present();
+        let locked = Rc::new(Cell::new(false));
+        let cancelled = Rc::new(Cell::new(false));
+        confirm_forget_cached_password(
+            overlay.upcast_ref(),
+            "STRATA-537",
+            {
+                let locked = locked.clone();
+                move || locked.set(true)
+            },
+            {
+                let cancelled = cancelled.clone();
+                move || cancelled.set(true)
+            },
+        );
+        let confirm = button_with_label(overlay.upcast_ref(), "Forget and lock")
+            .expect("confirmation should offer Forget and lock");
+        confirm.emit_clicked();
+        assert!(
+            locked.get(),
+            "confirming should lock and forget the password"
+        );
+        assert!(!cancelled.get(), "confirm should not run the cancel path");
+        window.destroy();
+    });
+}
+
+#[test]
+fn forget_password_cancel_skips_lock() {
+    gtk_test(
+        "ui::window::tests::forget_password_cancel_skips_lock",
+        || {
+            use gtk::prelude::*;
+
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let locked = Rc::new(Cell::new(false));
+            let cancelled = Rc::new(Cell::new(false));
+            confirm_forget_cached_password(
+                overlay.upcast_ref(),
+                "STRATA-537",
+                {
+                    let locked = locked.clone();
+                    move || locked.set(true)
+                },
+                {
+                    let cancelled = cancelled.clone();
+                    move || cancelled.set(true)
+                },
+            );
+            let cancel = button_with_label(overlay.upcast_ref(), "Cancel")
+                .expect("confirmation should offer Cancel");
+            cancel.emit_clicked();
+            assert!(!locked.get(), "cancel should leave the volume unlocked");
+            assert!(cancelled.get(), "cancel should abort the lock");
+            window.destroy();
+        },
+    );
+}
+
+fn button_with_label(root: &gtk::Widget, label: &str) -> Option<gtk::Button> {
+    use gtk::prelude::*;
+
+    if let Ok(button) = root.clone().downcast::<gtk::Button>()
+        && button.label().as_deref() == Some(label)
+    {
+        return Some(button);
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if let Some(button) = button_with_label(&widget, label) {
+            return Some(button);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+#[test]
+fn emblemed_padlock_icon_names_include_emblem() {
+    gtk_test(
+        "ui::window::tests::emblemed_padlock_icon_names_include_emblem",
+        || {
+            use gtk::gio;
+            use gtk::prelude::*;
+            let base = gio::ThemedIcon::new("drive-harddisk-usb");
+            let padlock = gio::ThemedIcon::new("changes-prevent");
+            let emblem = gio::Emblem::new(&padlock);
+            let emblemed = gio::EmblemedIcon::new(&base, Some(&emblem));
+            let names = super::gio_icon_names(emblemed.upcast_ref());
+            assert!(
+                names.iter().any(|name| name == "drive-harddisk-usb"),
+                "base drive icon should remain"
+            );
+            assert!(
+                names.iter().any(|name| name == "changes-prevent"),
+                "GVfs padlock emblem should be collected"
+            );
+        },
+    );
+}
+
+#[test]
+fn locked_volume_keeps_lock_and_eject_on_one_row() {
+    gtk_test(
+        "ui::window::tests::locked_volume_keeps_lock_and_eject_on_one_row",
+        || {
+            use std::time::Duration;
+
+            use gtk::prelude::*;
+
+            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "115 MB Encrypted");
+            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, || {});
+            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, || {});
+            let shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
+            let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            sidebar.set_width_request(SIDEBAR_WIDTH);
+            sidebar.append(&shell);
+            let window = gtk::Window::builder()
+                .default_width(SIDEBAR_WIDTH)
+                .default_height(80)
+                .child(&sidebar)
+                .build();
+            window.present();
+            let main_loop = glib::MainLoop::new(None, false);
+            let stop = main_loop.clone();
+            glib::timeout_add_local_once(Duration::from_millis(100), move || stop.quit());
+            main_loop.run();
+
+            let lock_bounds = lock.compute_bounds(&shell).expect("lock bounds");
+            let eject_bounds = eject.compute_bounds(&shell).expect("eject bounds");
+            let row_bounds = row.compute_bounds(&shell).expect("row bounds");
+            assert!(
+                (lock_bounds.y() - eject_bounds.y()).abs() <= 1.0,
+                "lock and eject should share a row: lock={lock_bounds:?} eject={eject_bounds:?}"
+            );
+            assert!(
+                eject_bounds.x() >= lock_bounds.x() + lock_bounds.width() - 1.0,
+                "eject should sit after lock: lock={lock_bounds:?} eject={eject_bounds:?}"
+            );
+            assert!(
+                lock_bounds.x() >= row_bounds.x() + row_bounds.width() - 1.0,
+                "actions should sit after the device name: row={row_bounds:?} lock={lock_bounds:?}"
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn device_selection_marks_the_full_row_shell() {
+    gtk_test(
+        "ui::window::tests::device_selection_marks_the_full_row_shell",
+        || {
+            use gtk::prelude::*;
+
+            let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            let home = super::sidebar_button(crate::assets::icons::HOME, "Home");
+            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "STRATA-537");
+            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, || {});
+            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, || {});
+            let shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
+            sidebar.append(&home);
+            sidebar.append(&shell);
+
+            super::select_sidebar_row(&sidebar, &row);
+            assert!(row.has_css_class("active"));
+            assert!(shell.has_css_class("active"));
+            assert!(!home.has_css_class("active"));
+
+            super::select_sidebar_row(&sidebar, &home);
+            assert!(home.has_css_class("active"));
+            assert!(!row.has_css_class("active"));
+            assert!(!shell.has_css_class("active"));
+        },
+    );
+}
+
+#[test]
+fn device_focus_marks_the_full_row_shell() {
+    gtk_test(
+        "ui::window::tests::device_focus_marks_the_full_row_shell",
+        || {
+            use std::time::Duration;
+
+            use gtk::prelude::*;
+
+            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "STRATA-537");
+            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, || {});
+            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, || {});
+            let shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
+            let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            sidebar.append(&shell);
+            let window = gtk::Window::builder()
+                .default_width(SIDEBAR_WIDTH)
+                .default_height(80)
+                .child(&sidebar)
+                .build();
+            window.present();
+            let main_loop = glib::MainLoop::new(None, false);
+            let stop = main_loop.clone();
+            glib::timeout_add_local_once(Duration::from_millis(100), move || stop.quit());
+            main_loop.run();
+
+            assert!(row.grab_focus(), "device name should take focus");
+            assert!(
+                shell.has_css_class("focused"),
+                "focus outline should use the full device shell"
+            );
+
+            assert!(lock.grab_focus(), "lock action should take focus");
+            assert!(
+                !shell.has_css_class("focused"),
+                "lock focus should not outline the full device row"
+            );
+
+            window.destroy();
+        },
+    );
 }
 
 #[test]

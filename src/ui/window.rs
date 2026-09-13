@@ -8,7 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gtk::{gio, gio::prelude::EmblemedIconExt as _, glib, prelude::*};
 
 use crate::{
     adapters::{LocalFileSource, LocalOperationProvider, RevealRequest, location_for_file},
@@ -24,6 +24,8 @@ use super::{
         show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
+    controls::{ModalTone, message_dialog_description, message_dialog_layout},
+    modal::{ModalHost, dismiss_modal_layer, modal_layer},
     motion::{animations_enabled, emphasized_deceleration},
     theme::ThemeManager,
 };
@@ -33,6 +35,7 @@ mod devices;
 mod keyboard;
 mod open_argument;
 mod sidebar;
+mod volume_password;
 
 pub use open_argument::present_open;
 
@@ -910,6 +913,9 @@ pub(super) struct SidebarState {
     trash_probe_running: Cell<bool>,
     trash_probe_pending: Cell<bool>,
     local_only: bool,
+    pending_scroll: Cell<Option<f64>>,
+    rebuild_queued: Cell<bool>,
+    scroll_restore_queued: Cell<bool>,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -989,7 +995,23 @@ impl SidebarView {
 }
 
 impl SidebarState {
+    fn queue_rebuild(self: &Rc<Self>) {
+        // Mount, volume, and drive signals often arrive together; rebuild once.
+        self.capture_scroll();
+        if self.rebuild_queued.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        glib::idle_add_local_once(move || {
+            if let Some(state) = weak.upgrade() {
+                state.rebuild_queued.set(false);
+                state.rebuild();
+            }
+        });
+    }
+
     fn rebuild(self: &Rc<Self>) {
+        self.capture_scroll();
         while let Some(child) = self.widget.first_child() {
             self.widget.remove(&child);
         }
@@ -998,6 +1020,54 @@ impl SidebarState {
         self.append_static_places();
         self.append_devices();
         self.sync_active_place();
+        self.schedule_scroll_restore();
+    }
+
+    fn sidebar_scroller(&self) -> Option<gtk::ScrolledWindow> {
+        self.widget
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast()
+    }
+
+    fn capture_scroll(&self) {
+        // Emptying the places box clamps the adjustment to 0. Remember the first
+        // non-zero offset so a burst of device signals cannot look like a scroll
+        // to the top.
+        if self.pending_scroll.get().is_some() {
+            return;
+        }
+        let value = self
+            .sidebar_scroller()
+            .map(|scroller| scroller.vadjustment().value())
+            .unwrap_or(0.0);
+        if value > 0.0 {
+            self.pending_scroll.set(Some(value));
+        }
+    }
+
+    fn schedule_scroll_restore(self: &Rc<Self>) {
+        if self.pending_scroll.get().is_none() || self.scroll_restore_queued.replace(true) {
+            return;
+        }
+        let Some(scroller) = self.sidebar_scroller() else {
+            self.scroll_restore_queued.set(false);
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        scroller.add_tick_callback(move |_, _| {
+            let weak = weak.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade() {
+                    if let Some(position) = state.pending_scroll.take()
+                        && let Some(scroller) = state.sidebar_scroller()
+                    {
+                        scroller.vadjustment().set_value(position);
+                    }
+                    state.scroll_restore_queued.set(false);
+                }
+            });
+            glib::ControlFlow::Break
+        });
     }
 
     fn append_static_places(self: &Rc<Self>) {
@@ -1060,13 +1130,18 @@ impl SidebarState {
     fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
         let mounts = self.mounts_without_volumes(&volumes);
-        if volumes.is_empty() && mounts.is_empty() {
+        let password_drives =
+            orphaned_password_drives(&volumes, &self.volume_monitor.connected_drives());
+        if volumes.is_empty() && mounts.is_empty() && password_drives.is_empty() {
             return;
         }
         self.append_separator();
         self.append_heading("DEVICES");
         for volume in volumes {
             self.append_volume(volume);
+        }
+        for drive in password_drives {
+            self.append_password_drive(drive);
         }
         for (name, location, mount) in mounts {
             self.append_mount(&name, location, mount);
@@ -1102,23 +1177,48 @@ impl SidebarState {
             self.append_smb_mount(name, location, mount);
             return;
         }
-        let action = mount_release_action(mount.can_eject(), mount.can_unmount());
-        let release = action.map(|action| {
+        let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
+        row.set_tooltip_text(Some(&location.display_path()));
+        self.bind_place_row(&row, location, PlaceNavigation::Validate);
+        let encrypted = gio_mount_is_encrypted(&mount);
+        let actions = device_row_actions(
+            encrypted,
+            true,
+            false,
+            mount.can_eject(),
+            mount.can_unmount(),
+        );
+        let in_flight = Rc::new(Cell::new(false));
+        let on_release = actions.release.map(|action| {
+            let release_mount = mount.clone();
             let release_browser = self.browser.clone();
             let release_parent = self.view.widget();
-            let release_in_flight = Rc::new(Cell::new(false));
-            let on_release: Rc<dyn Fn()> = Rc::new(move || {
+            let release_in_flight = in_flight.clone();
+            Rc::new(move || {
                 release_device_mount(
-                    &mount,
+                    &release_mount,
                     action,
                     &release_parent,
                     &release_browser,
                     &release_in_flight,
                 );
-            });
-            (action, on_release)
+            }) as Rc<dyn Fn()>
         });
-        self.append_device_place(crate::assets::icons::HARD_DRIVE, name, location, release);
+        let on_crypto = actions.encrypted.map(|_| {
+            let crypto_mount = mount.clone();
+            let crypto_parent = self.view.widget();
+            let crypto_browser = self.browser.clone();
+            let crypto_in_flight = in_flight.clone();
+            Rc::new(move || {
+                lock_encrypted_mount(
+                    &crypto_mount,
+                    &crypto_parent,
+                    &crypto_browser,
+                    &crypto_in_flight,
+                );
+            }) as Rc<dyn Fn()>
+        });
+        self.append_device_chrome(&row, actions, on_crypto, on_release);
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
@@ -1182,11 +1282,7 @@ impl SidebarState {
                     .position(|(location, _)| active.as_ref() == Some(location))
             });
         for (index, (_, row)) in rows.iter().enumerate() {
-            if selected == Some(index) {
-                row.add_css_class("active");
-            } else {
-                row.remove_css_class("active");
-            }
+            set_sidebar_row_active(row, selected == Some(index));
         }
     }
 
@@ -1458,7 +1554,7 @@ impl SidebarState {
         self.widget.append(&heading);
     }
 
-    fn append_volume(&self, volume: gio::Volume) {
+    fn append_volume(self: &Rc<Self>, volume: gio::Volume) {
         let name = volume.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
         row.set_tooltip_text(Some(&name));
@@ -1492,32 +1588,77 @@ impl SidebarState {
             .get_mount()
             .map(|mount| (mount.can_eject(), mount.can_unmount()))
             .unwrap_or((false, false));
-        match volume_release_action(volume.can_eject(), mount_can_eject, mount_can_unmount) {
-            Some(action) => {
-                let release_volume = volume.clone();
-                let release_browser = self.browser.clone();
-                let release_parent = self.view.widget();
-                let release_in_flight = Rc::new(Cell::new(false));
-                let on_release: Rc<dyn Fn()> = Rc::new(move || {
-                    release_device_volume(
-                        &release_volume,
-                        action,
-                        &release_parent,
-                        &release_browser,
-                        &release_in_flight,
-                    );
-                });
-                let eject = sidebar_eject_button(action, {
-                    let on_release = on_release.clone();
-                    move || on_release()
-                });
-                attach_device_release_menu(&row, action, on_release);
-                self.widget.append(&sidebar_device_row(&row, &eject));
-            }
-            None => {
-                self.widget.append(&row);
-            }
-        }
+        let encrypted = gio_volume_is_encrypted(&volume);
+        let mounted = !gio_volume_is_locked(&volume);
+        let actions = device_row_actions(
+            encrypted,
+            mounted,
+            volume.can_eject(),
+            mount_can_eject,
+            mount_can_unmount,
+        );
+        let in_flight = Rc::new(Cell::new(false));
+        let on_release = actions.release.map(|action| {
+            let release_volume = volume.clone();
+            let release_browser = self.browser.clone();
+            let release_parent = self.view.widget();
+            let release_in_flight = in_flight.clone();
+            Rc::new(move || {
+                release_device_volume(
+                    &release_volume,
+                    action,
+                    &release_parent,
+                    &release_browser,
+                    &release_in_flight,
+                );
+            }) as Rc<dyn Fn()>
+        });
+        let on_crypto = actions.encrypted.map(|action| {
+            let crypto_volume = volume.clone();
+            let crypto_view = self.view.clone();
+            let crypto_parent = self.view.widget();
+            let crypto_browser = self.browser.clone();
+            let crypto_in_flight = in_flight.clone();
+            Rc::new(move || match action {
+                EncryptedMediaAction::Unlock => crypto_view.unlock_volume(crypto_volume.clone()),
+                EncryptedMediaAction::Lock => lock_encrypted_volume(
+                    &crypto_volume,
+                    &crypto_parent,
+                    &crypto_browser,
+                    &crypto_in_flight,
+                ),
+            }) as Rc<dyn Fn()>
+        });
+        self.append_device_chrome(&row, actions, on_crypto, on_release);
+    }
+
+    fn append_password_drive(&self, drive: gio::Drive) {
+        let name = drive.name().to_string();
+        let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
+        row.set_tooltip_text(Some(&name));
+        let sidebar = self.widget.clone();
+        let selected_row = row.clone();
+        let clicked_drive = drive.clone();
+        let mount_view = self.view.clone();
+        row.connect_clicked(move |_| {
+            select_sidebar_row(&sidebar, &selected_row);
+            mount_view.start_password_drive(clicked_drive.clone(), true);
+        });
+        let actions = device_row_actions(true, false, drive.can_eject(), false, false);
+        let on_crypto = Some({
+            let drive = drive.clone();
+            let view = self.view.clone();
+            Rc::new(move || view.start_password_drive(drive.clone(), true)) as Rc<dyn Fn()>
+        });
+        let on_release = actions.release.map(|action| {
+            let release_drive = drive.clone();
+            let release_parent = self.view.widget();
+            let release_in_flight = Rc::new(Cell::new(false));
+            Rc::new(move || {
+                eject_password_drive(&release_drive, action, &release_parent, &release_in_flight);
+            }) as Rc<dyn Fn()>
+        });
+        self.append_device_chrome(&row, actions, on_crypto, on_release);
     }
 
     fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
@@ -1678,14 +1819,47 @@ impl SidebarState {
                     let on_release = on_release.clone();
                     move || on_release()
                 });
-                attach_device_release_menu(&row, action, on_release);
-                self.widget.append(&sidebar_device_row(&row, &eject));
+                attach_device_actions_menu(
+                    &row,
+                    DeviceRowActions {
+                        encrypted: None,
+                        release: Some(action),
+                    },
+                    None,
+                    Some(on_release),
+                );
+                self.widget
+                    .append(&sidebar_device_row(&row, None, Some(&eject)));
             }
             None => {
                 self.widget.append(&row);
             }
         }
         row
+    }
+
+    fn append_device_chrome(
+        &self,
+        row: &gtk::Button,
+        actions: DeviceRowActions,
+        on_crypto: Option<Rc<dyn Fn()>>,
+        on_release: Option<Rc<dyn Fn()>>,
+    ) {
+        let lock = actions
+            .encrypted
+            .zip(on_crypto.clone())
+            .map(|(action, on_crypto)| sidebar_lock_button(action, move || on_crypto()));
+        let eject = actions
+            .release
+            .zip(on_release.clone())
+            .map(|(action, on_release)| sidebar_eject_button(action, move || on_release()));
+        if actions.encrypted.is_some() || actions.release.is_some() {
+            attach_device_actions_menu(row, actions, on_crypto, on_release);
+            self.widget
+                .append(&sidebar_device_row(row, lock.as_ref(), eject.as_ref()));
+        } else {
+            self.widget.append(row);
+        }
     }
 }
 
@@ -1774,11 +1948,32 @@ fn select_sidebar_row(sidebar: &gtk::Box, selected: &gtk::Button) {
     let mut child = sidebar.first_child();
     while let Some(widget) = child {
         if let Some(row) = sidebar_row_button(&widget) {
-            row.remove_css_class("active");
+            set_sidebar_row_active(&row, false);
         }
         child = widget.next_sibling();
     }
-    selected.add_css_class("active");
+    set_sidebar_row_active(selected, true);
+}
+
+fn set_sidebar_row_active(row: &gtk::Button, active: bool) {
+    if active {
+        row.add_css_class("active");
+    } else {
+        row.remove_css_class("active");
+    }
+    if let Some(shell) = sidebar_device_shell(row) {
+        if active {
+            shell.add_css_class("active");
+        } else {
+            shell.remove_css_class("active");
+        }
+    }
+}
+
+fn sidebar_device_shell(row: &gtk::Button) -> Option<gtk::Box> {
+    row.parent()
+        .and_then(|parent| parent.downcast::<gtk::Box>().ok())
+        .filter(|parent| parent.has_css_class("sidebar-device"))
 }
 
 /// Resolves the navigable row button for a sidebar child. Device rows wrap
@@ -1870,6 +2065,52 @@ enum MediaRelease {
     UnmountMount,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EncryptedMediaAction {
+    Unlock,
+    Lock,
+}
+
+impl EncryptedMediaAction {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Unlock => "Unlock",
+            Self::Lock => "Lock",
+        }
+    }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Self::Unlock => crate::assets::icons::LOCK,
+            Self::Lock => crate::assets::icons::LOCK_OPEN,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DeviceRowActions {
+    encrypted: Option<EncryptedMediaAction>,
+    release: Option<MediaRelease>,
+}
+
+fn device_row_actions(
+    encrypted: bool,
+    mounted: bool,
+    can_eject_volume: bool,
+    mount_can_eject: bool,
+    mount_can_unmount: bool,
+) -> DeviceRowActions {
+    DeviceRowActions {
+        encrypted: encrypted.then_some(if mounted {
+            EncryptedMediaAction::Lock
+        } else {
+            EncryptedMediaAction::Unlock
+        }),
+        release: volume_release_action(can_eject_volume, mount_can_eject, mount_can_unmount)
+            .or(encrypted.then_some(MediaRelease::EjectVolume)),
+    }
+}
+
 fn volume_release_action(
     can_eject_volume: bool,
     mount_can_eject: bool,
@@ -1880,16 +2121,6 @@ fn volume_release_action(
     } else if mount_can_eject {
         Some(MediaRelease::EjectMount)
     } else if mount_can_unmount {
-        Some(MediaRelease::UnmountMount)
-    } else {
-        None
-    }
-}
-
-fn mount_release_action(can_eject: bool, can_unmount: bool) -> Option<MediaRelease> {
-    if can_eject {
-        Some(MediaRelease::EjectMount)
-    } else if can_unmount {
         Some(MediaRelease::UnmountMount)
     } else {
         None
@@ -2032,6 +2263,441 @@ fn release_device_mount(
     });
 }
 
+fn lock_encrypted_volume(
+    volume: &gio::Volume,
+    parent: &gtk::Widget,
+    browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    request_encrypted_lock(
+        parent,
+        &volume.name(),
+        crypto_password_uuid_for_volume(volume),
+        volume.get_mount(),
+        password_stop_drive(volume.drive()),
+        browser,
+        in_flight,
+    );
+}
+
+fn lock_encrypted_mount(
+    mount: &gio::Mount,
+    parent: &gtk::Widget,
+    browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    request_encrypted_lock(
+        parent,
+        &mount.name(),
+        crypto_password_uuid_for_mount(mount),
+        Some(mount.clone()),
+        password_stop_drive(mount.drive()),
+        browser,
+        in_flight,
+    );
+}
+
+fn crypto_password_uuid_for_volume(volume: &gio::Volume) -> Option<String> {
+    let unix = gio_volume_unix_device(volume);
+    let hint = unix
+        .as_deref()
+        .map(devices::probe_block_crypto)
+        .unwrap_or_default();
+    devices::crypto_password_uuid(
+        volume.uuid().as_deref(),
+        unix.as_deref(),
+        hint.as_ref(),
+        gio_volume_is_locked(volume),
+    )
+}
+
+fn crypto_password_uuid_for_mount(mount: &gio::Mount) -> Option<String> {
+    if let Some(volume) = mount.volume() {
+        return crypto_password_uuid_for_volume(&volume);
+    }
+    let unix = mount
+        .drive()
+        .and_then(|drive| drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()));
+    let hint = unix
+        .as_deref()
+        .map(devices::probe_block_crypto)
+        .unwrap_or_default();
+    devices::crypto_password_uuid(None, unix.as_deref(), hint.as_ref(), false)
+}
+
+fn request_encrypted_lock(
+    parent: &gtk::Widget,
+    volume_name: &str,
+    luks_uuid: Option<String>,
+    mount: Option<gio::Mount>,
+    drive: Option<gio::Drive>,
+    browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    if !begin_media_release(in_flight) {
+        return;
+    }
+    let parent = parent.clone();
+    let volume_name = volume_name.to_owned();
+    let browser = browser.clone();
+    let in_flight = in_flight.clone();
+    glib::MainContext::default().spawn_local(async move {
+        let cached = if let Some(uuid) = luks_uuid.clone() {
+            gio::spawn_blocking(move || volume_password::volume_password_is_cached(&uuid))
+                .await
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        let parent_for_lock = parent.clone();
+        let browser_for_lock = browser.clone();
+        let in_flight_for_lock = in_flight.clone();
+        let start_lock = move || {
+            lock_cleartext_then_stop(
+                mount,
+                drive,
+                &parent_for_lock,
+                &browser_for_lock,
+                &in_flight_for_lock,
+            );
+        };
+        continue_encrypted_lock(
+            &parent,
+            &volume_name,
+            cached,
+            move || {
+                glib::MainContext::default().spawn_local(async move {
+                    if cached && let Some(uuid) = luks_uuid {
+                        let _ = gio::spawn_blocking(move || {
+                            volume_password::forget_cached_volume_password(&uuid)
+                        })
+                        .await;
+                    }
+                    start_lock();
+                });
+            },
+            move || in_flight.set(false),
+        );
+    });
+}
+
+fn continue_encrypted_lock(
+    parent: &gtk::Widget,
+    volume_name: &str,
+    password_cached: bool,
+    on_lock: impl FnOnce() + 'static,
+    on_cancel: impl FnOnce() + 'static,
+) {
+    if password_cached {
+        confirm_forget_cached_password(parent, volume_name, on_lock, on_cancel);
+    } else {
+        on_lock();
+    }
+}
+
+fn confirm_forget_cached_password(
+    parent: &gtk::Widget,
+    volume_name: &str,
+    on_confirm: impl FnOnce() + 'static,
+    on_cancel: impl FnOnce() + 'static,
+) {
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(parent)
+    else {
+        on_cancel();
+        return;
+    };
+
+    let layout = message_dialog_layout(
+        crate::assets::icons::KEY,
+        "Forget saved password?",
+        volume_name,
+        "Forget and lock",
+        ModalTone::Danger,
+    );
+    layout.body.append(&message_dialog_description(
+        "This volume’s password is saved. Locking will forget it, and you’ll need to enter it again to unlock.",
+    ));
+    let content = layout.content;
+    let close = layout.close;
+    let cancel = layout.cancel;
+    let confirm = layout.confirm;
+
+    let layer = modal_layer(
+        &content,
+        &window_overlay,
+        blurred_root.clone(),
+        Some(Rc::new(|| true)),
+    );
+    window_overlay.add_overlay(&layer);
+
+    let dismissed = Rc::new(Cell::new(false));
+    let on_confirm = Rc::new(RefCell::new(Some(on_confirm)));
+    let on_cancel = Rc::new(RefCell::new(Some(on_cancel)));
+    let dismiss = Rc::new({
+        let layer = layer.clone();
+        let overlay = window_overlay.clone();
+        let root = blurred_root.clone();
+        let dismissed = dismissed.clone();
+        move || {
+            if dismissed.replace(true) {
+                return false;
+            }
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            true
+        }
+    });
+
+    let cancel_dismiss = dismiss.clone();
+    let cancel_handler = on_cancel.clone();
+    cancel.connect_clicked(move |_| {
+        if cancel_dismiss()
+            && let Some(on_cancel) = cancel_handler.borrow_mut().take()
+        {
+            on_cancel();
+        }
+    });
+    let close_dismiss = dismiss.clone();
+    let close_handler = on_cancel.clone();
+    close.connect_clicked(move |_| {
+        if close_dismiss()
+            && let Some(on_cancel) = close_handler.borrow_mut().take()
+        {
+            on_cancel();
+        }
+    });
+    let confirm_dismiss = dismiss.clone();
+    let confirm_handler = on_confirm;
+    confirm.connect_clicked(move |_| {
+        if confirm_dismiss()
+            && let Some(on_confirm) = confirm_handler.borrow_mut().take()
+        {
+            on_confirm();
+        }
+    });
+    let escape = gtk::EventControllerKey::new();
+    let escape_dismiss = dismiss;
+    let escape_handler = on_cancel;
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key != gtk::gdk::Key::Escape {
+            return glib::Propagation::Proceed;
+        }
+        if escape_dismiss()
+            && let Some(on_cancel) = escape_handler.borrow_mut().take()
+        {
+            on_cancel();
+        }
+        glib::Propagation::Stop
+    });
+    layer.add_controller(escape);
+    cancel.grab_focus();
+}
+
+fn password_stop_drive(drive: Option<gio::Drive>) -> Option<gio::Drive> {
+    drive.filter(|drive| {
+        drive.start_stop_type() == gio::DriveStartStopType::Password && drive.can_stop()
+    })
+}
+
+fn lock_cleartext_then_stop(
+    mount: Option<gio::Mount>,
+    drive: Option<gio::Drive>,
+    parent: &gtk::Widget,
+    browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    let away_root = mount.as_ref().map(gio::Mount::root);
+    let window = parent.root().and_downcast::<gtk::Window>();
+    let unmount_operation = gtk::MountOperation::new(window.as_ref());
+    let stop_operation = gtk::MountOperation::new(window.as_ref());
+    let error_parent = parent.clone();
+    let browser = browser.clone();
+    let in_flight = in_flight.clone();
+    glib::MainContext::default().spawn_local(async move {
+        let unmount_result = match mount {
+            Some(mount) => {
+                mount
+                    .unmount_with_operation_future(
+                        gio::MountUnmountFlags::NONE,
+                        Some(&unmount_operation),
+                    )
+                    .await
+            }
+            None => Ok(()),
+        };
+        let result = match unmount_result {
+            Ok(()) => {
+                if let Some(root) = away_root {
+                    navigate_home_if_within(&browser, &root);
+                }
+                match drive {
+                    Some(drive) => {
+                        drive
+                            .stop_future(gio::MountUnmountFlags::NONE, Some(&stop_operation))
+                            .await
+                    }
+                    None => Ok(()),
+                }
+            }
+            Err(error) => Err(error),
+        };
+        in_flight.set(false);
+        if let Err(error) = result
+            && !error.matches(gio::IOErrorEnum::Cancelled)
+        {
+            show_error_dialog(&error_parent, "Unable to lock device", &error.to_string());
+        }
+    });
+}
+
+fn eject_password_drive(
+    drive: &gio::Drive,
+    action: MediaRelease,
+    parent: &gtk::Widget,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    if !matches!(action, MediaRelease::EjectVolume | MediaRelease::EjectMount) {
+        return;
+    }
+    if !begin_media_release(in_flight) {
+        return;
+    }
+    let window = parent.root().and_downcast::<gtk::Window>();
+    let operation = gtk::MountOperation::new(window.as_ref());
+    let error_parent = parent.clone();
+    let drive = drive.clone();
+    let in_flight = in_flight.clone();
+    glib::MainContext::default().spawn_local(async move {
+        let result = drive
+            .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+            .await;
+        in_flight.set(false);
+        match result {
+            Ok(()) => {}
+            Err(error) if error.matches(gio::IOErrorEnum::Cancelled) => {}
+            Err(error) => show_error_dialog(
+                &error_parent,
+                media_release_error_title(action),
+                &error.to_string(),
+            ),
+        }
+    });
+}
+
+fn gio_icon_names(icon: &gio::Icon) -> Vec<String> {
+    let mut names = Vec::new();
+    collect_gio_icon_names(icon, &mut names);
+    names
+}
+
+fn collect_gio_icon_names(icon: &gio::Icon, names: &mut Vec<String>) {
+    if let Ok(themed) = icon.clone().downcast::<gio::ThemedIcon>() {
+        names.extend(themed.names().iter().map(|name| name.to_string()));
+        return;
+    }
+    if let Ok(emblemed) = icon.clone().downcast::<gio::EmblemedIcon>() {
+        collect_gio_icon_names(&emblemed.icon(), names);
+        for emblem in emblemed.emblems() {
+            collect_gio_icon_names(&emblem.icon(), names);
+        }
+    }
+}
+
+fn gio_icons_are_encrypted(
+    icon: &gio::Icon,
+    symbolic: &gio::Icon,
+    start_stop: Option<gio::DriveStartStopType>,
+    unix_device: Option<&str>,
+) -> bool {
+    let mut names = gio_icon_names(symbolic);
+    names.extend(gio_icon_names(icon));
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    let hint = unix_device
+        .map(devices::probe_block_crypto)
+        .unwrap_or_default();
+    devices::is_encrypted_device(&names, start_stop, hint.as_ref())
+}
+
+fn gio_volume_unix_device(volume: &gio::Volume) -> Option<glib::GString> {
+    volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
+}
+
+fn gio_volume_is_encrypted(volume: &gio::Volume) -> bool {
+    gio_icons_are_encrypted(
+        &volume.icon(),
+        &volume.symbolic_icon(),
+        volume.drive().map(|drive| drive.start_stop_type()),
+        gio_volume_unix_device(volume).as_deref(),
+    )
+}
+
+fn gio_volume_is_locked(volume: &gio::Volume) -> bool {
+    let mut names = gio_icon_names(&volume.symbolic_icon());
+    names.extend(gio_icon_names(&volume.icon()));
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    devices::encrypted_device_is_locked(&names, volume.get_mount().is_some())
+}
+
+fn gio_mount_is_encrypted(mount: &gio::Mount) -> bool {
+    if let Some(volume) = mount.volume() {
+        return gio_volume_is_encrypted(&volume);
+    }
+    gio_icons_are_encrypted(
+        &mount.icon(),
+        &mount.symbolic_icon(),
+        mount.drive().map(|drive| drive.start_stop_type()),
+        mount
+            .drive()
+            .and_then(|drive| drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
+            .as_deref(),
+    )
+}
+
+fn gio_volume_identity(volume: &gio::Volume) -> Option<String> {
+    devices::device_identity(
+        volume
+            .identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
+            .as_deref(),
+        volume.uuid().as_deref(),
+        volume
+            .drive()
+            .and_then(|drive| gio_drive_identity(&drive))
+            .as_deref(),
+    )
+}
+
+fn gio_drive_identity(drive: &gio::Drive) -> Option<String> {
+    devices::device_identity(
+        drive
+            .identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
+            .as_deref(),
+        drive
+            .identifier(gio::VOLUME_IDENTIFIER_KIND_UUID.as_str())
+            .as_deref(),
+        None,
+    )
+}
+
+fn orphaned_password_drives(volumes: &[gio::Volume], drives: &[gio::Drive]) -> Vec<gio::Drive> {
+    let identities: Vec<_> = volumes.iter().filter_map(gio_volume_identity).collect();
+    drives
+        .iter()
+        .filter(|drive| {
+            let identity = gio_drive_identity(drive);
+            let covered = identity
+                .as_ref()
+                .is_some_and(|identity| identities.contains(identity))
+                || volumes
+                    .iter()
+                    .any(|volume| volume.drive().as_ref() == Some(*drive));
+            devices::should_list_orphaned_password_drive(drive.start_stop_type(), covered)
+        })
+        .cloned()
+        .collect()
+}
+
 fn is_standard_place_location(location: &Location) -> bool {
     let Some(path) = location.native_path() else {
         return false;
@@ -2168,31 +2834,81 @@ fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -
         14,
     )));
     button.add_css_class("sidebar-eject");
+    button.add_css_class("sidebar-device-action");
     button.set_cursor_from_name(Some("pointer"));
     button.set_has_frame(false);
+    button.set_hexpand(false);
     button.set_valign(gtk::Align::Center);
+    button.set_width_request(24);
     button.connect_clicked(move |_| on_release());
     button
 }
 
-fn sidebar_device_row(row: &gtk::Button, eject: &gtk::Button) -> gtk::Box {
+fn sidebar_lock_button(action: EncryptedMediaAction, on_click: impl Fn() + 'static) -> gtk::Button {
+    let button = gtk::Button::builder().tooltip_text(action.label()).build();
+    button.set_child(Some(&crate::assets::primary_icon(action.icon(), 14)));
+    button.add_css_class("sidebar-eject");
+    button.add_css_class("sidebar-device-action");
+    button.set_cursor_from_name(Some("pointer"));
+    button.set_has_frame(false);
+    button.set_hexpand(false);
+    button.set_valign(gtk::Align::Center);
+    button.set_width_request(24);
+    button.connect_clicked(move |_| on_click());
+    button
+}
+
+fn sidebar_device_row(
+    row: &gtk::Button,
+    lock: Option<&gtk::Button>,
+    eject: Option<&gtk::Button>,
+) -> gtk::Box {
     let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     shell.add_css_class("sidebar-device");
+    shell.set_hexpand(true);
     row.set_hexpand(true);
+    row.set_halign(gtk::Align::Fill);
+    row.connect_has_focus_notify(|row| {
+        let Some(shell) = sidebar_device_shell(row) else {
+            return;
+        };
+        if row.has_focus() {
+            shell.add_css_class("focused");
+        } else {
+            shell.remove_css_class("focused");
+        }
+    });
     shell.append(row);
-    shell.append(eject);
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    actions.add_css_class("sidebar-device-actions");
+    actions.set_hexpand(false);
+    actions.set_halign(gtk::Align::End);
+    actions.set_valign(gtk::Align::Center);
+    if let Some(lock) = lock {
+        lock.set_hexpand(false);
+        actions.append(lock);
+    }
+    if let Some(eject) = eject {
+        eject.set_hexpand(false);
+        actions.append(eject);
+    }
+    if actions.first_child().is_some() {
+        shell.append(&actions);
+    }
     shell
 }
 
-fn attach_device_release_menu(row: &gtk::Button, action: MediaRelease, on_release: Rc<dyn Fn()>) {
+fn attach_device_actions_menu(
+    row: &gtk::Button,
+    actions: DeviceRowActions,
+    on_crypto: Option<Rc<dyn Fn()>>,
+    on_release: Option<Rc<dyn Fn()>>,
+) {
+    if actions.encrypted.is_none() && actions.release.is_none() {
+        return;
+    }
     let menu = super::accessibility::menu_box();
     menu.add_css_class("folder-context-menu");
-    let release = sidebar_context_option(
-        crate::assets::icons::EJECT,
-        media_release_label(action),
-        false,
-    );
-    menu.append(&release);
     let popover = gtk::Popover::builder()
         .child(&menu)
         .autohide(true)
@@ -2200,13 +2916,32 @@ fn attach_device_release_menu(row: &gtk::Button, action: MediaRelease, on_releas
         .build();
     popover.add_css_class("folder-context-popover");
     popover.set_parent(row);
-    let release_popover = popover.downgrade();
-    release.connect_clicked(move |_| {
-        if let Some(popover) = release_popover.upgrade() {
-            popover.popdown();
-        }
-        on_release();
-    });
+    if let (Some(action), Some(on_crypto)) = (actions.encrypted, on_crypto) {
+        let option = sidebar_context_option(action.icon(), action.label(), false);
+        menu.append(&option);
+        let crypto_popover = popover.downgrade();
+        option.connect_clicked(move |_| {
+            if let Some(popover) = crypto_popover.upgrade() {
+                popover.popdown();
+            }
+            on_crypto();
+        });
+    }
+    if let (Some(action), Some(on_release)) = (actions.release, on_release) {
+        let option = sidebar_context_option(
+            crate::assets::icons::EJECT,
+            media_release_label(action),
+            false,
+        );
+        menu.append(&option);
+        let release_popover = popover.downgrade();
+        option.connect_clicked(move |_| {
+            if let Some(popover) = release_popover.upgrade() {
+                popover.popdown();
+            }
+            on_release();
+        });
+    }
     let context = gtk::GestureClick::new();
     context.set_button(3);
     let weak_popover = popover.downgrade();

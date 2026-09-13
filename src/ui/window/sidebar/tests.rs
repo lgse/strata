@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{browser_for_window, home_directory, save_pinned_places, sidebar_button};
+use std::time::{Duration, Instant};
+
+use super::super::{
+    browser_for_window, home_directory, load_styles, save_pinned_places, sidebar_button,
+};
 use super::*;
 use crate::{
     services::{DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError},
@@ -205,7 +209,7 @@ fn device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly() {
         "ui::window::sidebar::tests::device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly",
         || {
             let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
-            assert_eq!(sidebar.handlers.borrow().len(), 6);
+            assert_eq!(sidebar.handlers.borrow().len(), 9);
             let callback = rebuild_on_change::<()>(&sidebar.state);
             let monitor = sidebar.state.volume_monitor.clone();
             let initial = sidebar
@@ -214,12 +218,14 @@ fn device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly() {
                 .first_child()
                 .expect("initial Home row");
             callback(&monitor, &());
+            drain_main_context();
             let before = sidebar.state.widget.first_child().expect("Home row");
             assert_ne!(initial, before);
             sidebar
                 .state
                 .mount_monitor
                 .emit_by_name::<()>("mounts-changed", &[]);
+            drain_main_context();
             let rebuilt = sidebar
                 .state
                 .widget
@@ -242,4 +248,125 @@ fn device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly() {
             callback(&monitor, &());
         },
     );
+}
+
+#[test]
+fn rebuild_preserves_scrolled_offset() {
+    gtk_test(
+        "ui::window::sidebar::tests::rebuild_preserves_scrolled_offset",
+        || {
+            let pins = (0..30)
+                .map(|index| {
+                    (
+                        Location::local(home_directory().join(format!("pin-{index}"))),
+                        format!("Pin {index}"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            save_pinned_places(&pins).expect("seed bookmarks");
+            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), false);
+            let window = gtk::Window::builder()
+                .child(&sidebar.widget)
+                .default_width(240)
+                .default_height(140)
+                .build();
+            window.present();
+            let scroller = sidebar_scroller(&sidebar);
+            wait_until(|| {
+                let adjustment = scroller.vadjustment();
+                adjustment.upper() > adjustment.page_size() + 80.0
+            });
+            let requested = 80.0;
+            scroller.vadjustment().set_value(requested);
+            settle_mapped(&window);
+            assert!(
+                (scroller.vadjustment().value() - requested).abs() < 1.0,
+                "seeded scroll offset"
+            );
+            let callback = rebuild_on_change::<()>(&sidebar.state);
+            let monitor = sidebar.state.volume_monitor.clone();
+            callback(&monitor, &());
+            callback(&monitor, &());
+            settle_mapped(&window);
+            assert!(
+                (scroller.vadjustment().value() - requested).abs() < 1.0,
+                "kept scroll offset after device rebuild, got {}",
+                scroller.vadjustment().value()
+            );
+            sidebar.disconnect();
+            sidebar.state.browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn separators_measure_non_negative_width() {
+    gtk_test(
+        "ui::window::sidebar::tests::separators_measure_non_negative_width",
+        || {
+            load_styles();
+            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), false);
+            let window = gtk::Window::builder()
+                .child(&sidebar.widget)
+                .default_width(240)
+                .default_height(400)
+                .build();
+            window.present();
+            settle_mapped(&window);
+            let mut measured = 0;
+            let mut child = sidebar.state.widget.first_child();
+            while let Some(widget) = child {
+                if widget.has_css_class("sidebar-separator") {
+                    let (min, _, _, _) = widget.measure(gtk::Orientation::Horizontal, -1);
+                    assert!(min >= 0, "separator min width {min}");
+                    measured += 1;
+                }
+                child = widget.next_sibling();
+            }
+            assert!(measured > 0, "sidebar separators");
+            let update = sidebar.update_area.first_child().expect("update separator");
+            let (min, _, _, _) = update.measure(gtk::Orientation::Horizontal, -1);
+            assert!(min >= 0, "update separator min width {min}");
+            sidebar.disconnect();
+            sidebar.state.browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+fn sidebar_scroller(sidebar: &SidebarView) -> gtk::ScrolledWindow {
+    sidebar
+        .widget
+        .first_child()
+        .and_downcast()
+        .expect("sidebar scroller")
+}
+
+fn drain_main_context() {
+    while glib::MainContext::default().iteration(false) {}
+}
+
+fn settle_mapped(window: &gtk::Window) {
+    let frames = Rc::new(Cell::new(0));
+    let observed = frames.clone();
+    window.add_tick_callback(move |_, _| {
+        observed.set(observed.get() + 1);
+        if observed.get() >= 3 {
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+    wait_until(|| frames.get() >= 3);
+    drain_main_context();
+}
+
+fn wait_until(condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !condition() {
+        assert!(Instant::now() < deadline, "sidebar layout timed out");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
 }

@@ -3,6 +3,7 @@
 use super::*;
 use crate::model::Location;
 use gtk::{gio, glib};
+use std::time::{Duration, Instant};
 
 #[test]
 fn password_storage_selection_maps_to_gio_values() {
@@ -101,6 +102,294 @@ fn volume_cancellation_is_quiet_and_terminal_errors_are_preserved() {
         "Error unlocking: No key available with this passphrase.",
     );
     assert!(volume_error_is_authentication_failure(&error));
+}
+
+#[test]
+fn pending_or_busy_volume_mount_is_not_a_terminal_error() {
+    let pending = glib::Error::new(
+        gio::IOErrorEnum::Pending,
+        "A mount operation is already in progress",
+    );
+    let busy = glib::Error::new(gio::IOErrorEnum::Busy, "Volume is busy");
+    let unlocking = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Error unlocking /dev/loop0: Already unlocking",
+    );
+    let unsupported = glib::Error::new(
+        gio::IOErrorEnum::NotSupported,
+        "Failed to activate device: Operation not supported",
+    );
+    let rejected = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Error unlocking: No key available with this passphrase.",
+    );
+
+    for error in [&pending, &busy, &unlocking] {
+        assert!(volume_error_is_in_flight_mount(error));
+        assert!(!volume_error_is_authentication_failure(error));
+        assert!(!mount_error_is_cancelled(error));
+    }
+    assert!(!volume_error_is_in_flight_mount(&unsupported));
+    assert!(!volume_error_is_authentication_failure(&unsupported));
+    assert!(!volume_error_is_in_flight_mount(&rejected));
+    assert!(volume_error_is_authentication_failure(&rejected));
+}
+
+#[test]
+fn external_volume_mount_completion_is_success() {
+    let already_mounted = Err(glib::Error::new(
+        gio::IOErrorEnum::AlreadyMounted,
+        "Volume is already mounted",
+    ));
+    let failed = Err(glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Error unlocking /dev/loop0: Failed to activate device",
+    ));
+    let pending = Err(glib::Error::new(
+        gio::IOErrorEnum::Pending,
+        "A mount operation is already in progress",
+    ));
+
+    assert!(device_volume_mount_is_ready(&Ok(()), false));
+    assert!(device_volume_mount_is_ready(&already_mounted, false));
+    assert!(device_volume_mount_is_ready(&failed, true));
+    assert!(!device_volume_mount_is_ready(&failed, false));
+    assert!(!device_volume_mount_is_ready(&pending, false));
+    assert!(device_volume_mount_is_ready(&pending, true));
+
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::Mounted,
+            false,
+            VolumeSuccessorKind::Absent
+        ),
+        ForeignVolumeWaitFollowUp::Navigate
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::Mounted,
+            true,
+            VolumeSuccessorKind::Absent
+        ),
+        ForeignVolumeWaitFollowUp::Navigate
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::StillLocked,
+            false,
+            VolumeSuccessorKind::Locked
+        ),
+        ForeignVolumeWaitFollowUp::StartOwnedMount
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::StillLocked,
+            true,
+            VolumeSuccessorKind::Locked
+        ),
+        ForeignVolumeWaitFollowUp::Quiet
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::Gone,
+            false,
+            VolumeSuccessorKind::Absent
+        ),
+        ForeignVolumeWaitFollowUp::Quiet
+    );
+}
+
+#[test]
+fn successor_identity_matches_across_crypto_replacement() {
+    let locked = DeviceKeys::from_identifiers([
+        Some("/dev/loop0".into()),
+        Some("luks-uuid".into()),
+        Some("/dev/loop0".into()),
+    ]);
+    let unlocked = DeviceKeys::from_identifiers([
+        Some("/dev/dm-0".into()),
+        Some("fs-uuid".into()),
+        Some("/dev/loop0".into()),
+    ]);
+    let password_drive = DeviceKeys::from_identifiers([Some("/dev/loop0".into())]);
+    let other = DeviceKeys::from_identifiers([
+        Some("/dev/sdb1".into()),
+        Some("other-uuid".into()),
+        Some("/dev/sdb".into()),
+    ]);
+    assert!(locked.overlaps(&unlocked));
+    assert!(password_drive.overlaps(&unlocked));
+    assert!(!locked.overlaps(&other));
+    assert!(!password_drive.overlaps(&other));
+}
+
+#[test]
+fn gone_volume_follows_a_successor_identity() {
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::Gone,
+            false,
+            VolumeSuccessorKind::Mounted
+        ),
+        ForeignVolumeWaitFollowUp::Navigate
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::Gone,
+            false,
+            VolumeSuccessorKind::Locked
+        ),
+        ForeignVolumeWaitFollowUp::StartOwnedMount
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::Gone,
+            true,
+            VolumeSuccessorKind::Absent
+        ),
+        ForeignVolumeWaitFollowUp::Quiet
+    );
+}
+
+#[test]
+fn unlock_reloads_the_current_folder_without_stealing_another() {
+    let mount = Location::local("/run/media/me/USB");
+    let nested = Location::local("/run/media/me/USB/docs");
+    let home = Location::local("/home/me");
+    assert_eq!(
+        unlock_view_follow_up(Some(&mount), &mount, true, false),
+        UnlockViewFollowUp::Reload
+    );
+    assert_eq!(
+        unlock_view_follow_up(Some(&nested), &mount, false, false),
+        UnlockViewFollowUp::Reload
+    );
+    assert_eq!(
+        unlock_view_follow_up(Some(&home), &mount, true, false),
+        UnlockViewFollowUp::Navigate
+    );
+    assert_eq!(
+        unlock_view_follow_up(Some(&home), &mount, false, false),
+        UnlockViewFollowUp::None
+    );
+    assert_eq!(
+        unlock_view_follow_up(None, &mount, true, false),
+        UnlockViewFollowUp::Navigate
+    );
+    assert_eq!(
+        unlock_view_follow_up(Some(&home), &mount, true, true),
+        UnlockViewFollowUp::None
+    );
+    assert_eq!(
+        unlock_view_follow_up(Some(&mount), &mount, true, true),
+        UnlockViewFollowUp::Reload
+    );
+}
+
+/// Unlock progress can be hidden, closed, or escaped without aborting; the
+/// layer unparents and a later dismiss is a no-op.
+#[test]
+fn unlock_progress_dismiss_routes() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::unlock_progress_dismiss_routes",
+        || {
+            for route in ["Hide", "Close", "Escape"] {
+                let (view, window, overlay) = hosted_browser();
+                view.state.present_unlock_progress("USB Backup");
+                let layer = modal_layer_on(&overlay).expect("unlock progress modal");
+                assert!(
+                    descendants(&layer.clone().upcast()).iter().any(|widget| {
+                        widget
+                            .clone()
+                            .downcast::<gtk::Label>()
+                            .is_ok_and(|label| label.text() == "Unlocking volume")
+                    }),
+                    "{route} should present the unlocking modal"
+                );
+                match route {
+                    "Hide" => descendants(&layer.clone().upcast())
+                        .iter()
+                        .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                        .find(|button| button.label().as_deref() == Some("Hide"))
+                        .expect("Hide")
+                        .emit_clicked(),
+                    "Close" => descendants(&layer.clone().upcast())
+                        .iter()
+                        .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                        .find(|button| button.tooltip_text().as_deref() == Some("Close dialog"))
+                        .expect("Close")
+                        .emit_clicked(),
+                    "Escape" => {
+                        let controllers = layer.observe_controllers();
+                        let escape = (0..controllers.n_items())
+                            .find_map(|index| {
+                                controllers
+                                    .item(index)
+                                    .and_downcast::<gtk::EventControllerKey>()
+                            })
+                            .expect("Escape controller");
+                        assert!(escape.emit_by_name::<bool>(
+                            "key-pressed",
+                            &[
+                                &gtk::gdk::Key::Escape,
+                                &0u32,
+                                &gtk::gdk::ModifierType::empty()
+                            ],
+                        ));
+                    }
+                    _ => unreachable!("dismiss route"),
+                }
+                assert!(view.state.unlock_progress.borrow().is_none());
+                assert!(
+                    view.state.unlock_progress_dismissed.get(),
+                    "{route} should keep unlock from jumping to the volume"
+                );
+                wait_until(
+                    || layer.parent().is_none(),
+                    "unlock progress modal did not dismiss",
+                );
+                view.state.present_unlock_progress("USB Backup");
+                assert!(
+                    modal_layer_on(&overlay).is_none(),
+                    "{route} should not bring the unlocking modal back"
+                );
+                view.state.dismiss_unlock_progress();
+                window.destroy();
+                view.browser().clear_observer();
+            }
+        },
+    );
+}
+
+/// Cancelling the delayed progress timer must not pop a modal after unlock
+/// already finished.
+#[test]
+fn unlock_progress_schedule_cancelled_before_delay() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::unlock_progress_schedule_cancelled_before_delay",
+        || {
+            let (view, window, overlay) = hosted_browser();
+            view.state.begin_unlock_progress();
+            view.state.schedule_unlock_progress("USB Backup");
+            assert!(modal_layer_on(&overlay).is_none());
+            view.state.dismiss_unlock_progress();
+            assert!(
+                !view.state.unlock_progress_dismissed.get(),
+                "finishing unlock before the modal appears is not a user dismiss"
+            );
+            let deadline = Instant::now() + UNLOCK_PROGRESS_DELAY + Duration::from_millis(150);
+            while Instant::now() < deadline {
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert!(
+                modal_layer_on(&overlay).is_none(),
+                "cancelled unlock progress should not appear after the delay"
+            );
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
 }
 
 #[test]
@@ -263,4 +552,36 @@ fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
         child = current.next_sibling();
     }
     widgets
+}
+
+fn hosted_browser() -> (BrowserView, gtk::Window, gtk::Overlay) {
+    let view = BrowserView::new(
+        Rc::new(crate::adapters::LocalFileSource),
+        crate::ui::browser::PeekBehavior::default(),
+    );
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&view.widget()));
+    let window = gtk::Window::builder().child(&overlay).build();
+    window.present();
+    (view, window, overlay)
+}
+
+fn modal_layer_on(overlay: &gtk::Overlay) -> Option<gtk::Box> {
+    let mut child = overlay.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if widget.is_visible() && widget.has_css_class("app-modal-layer") {
+            return widget.downcast().ok();
+        }
+    }
+    None
+}
+
+fn wait_until(condition: impl Fn() -> bool, message: &str) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !condition() {
+        assert!(Instant::now() < deadline, "{message}");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
 }
