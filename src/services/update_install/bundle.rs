@@ -286,15 +286,18 @@ pub(super) fn install_archive(
     }
 
     let migrate_launcher = validate_stable_launcher(bin_dir, current_exe)?;
-    let current_missing = fs::symlink_metadata(root.join("current"))
-        .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
-    if migrate_launcher && current_missing {
+    if migrate_launcher {
+        // A legacy updater may have replaced the flat launcher since current was recorded.
         let legacy = preserve_legacy(&versions, current_exe)?;
         activate(&root, &legacy)?;
     }
-    activate(&root, archive_hash)?;
-    if migrate_launcher {
-        install_stable_launcher(bin_dir)?;
+    if destination.join("bundle.json").is_file() {
+        activate(&root, archive_hash)?;
+        if migrate_launcher {
+            install_stable_launcher(bin_dir)?;
+        }
+    } else {
+        install_legacy_launcher(bin_dir, &root, archive_hash, &destination.join("strata"))?;
     }
     Ok(destination)
 }
@@ -361,6 +364,11 @@ fn preserve_legacy(versions: &Path, current_exe: &Path) -> Result<String, String
 }
 
 fn activate(root: &Path, id: &str) -> Result<(), String> {
+    let staging = prepare_activation(root, id)?;
+    commit_activation(root, &staging)
+}
+
+fn prepare_activation(root: &Path, id: &str) -> Result<tempfile::TempDir, String> {
     if !safe_storage_id(id) {
         return Err("The bundle activation identifier is invalid".to_owned());
     }
@@ -375,14 +383,25 @@ fn activate(root: &Path, id: &str) -> Result<(), String> {
         }
         let old_target = fs::read_link(&current)
             .map_err(|error| format!("Could not inspect bundle activation: {error}"))?;
-        if old_target == target {
-            return Ok(());
-        }
         validate_pointer_target(&old_target)?;
-        replace_symlink(root, "previous", &old_target)?;
+        if old_target != target {
+            replace_symlink(root, "previous", &old_target)?;
+        }
     }
+    let staging = tempfile::Builder::new()
+        .prefix(".activation-")
+        .tempdir_in(root)
+        .map_err(|error| format!("Could not stage bundle activation: {error}"))?;
+    symlink(&target, staging.path().join("current"))
+        .map_err(|error| format!("Could not stage bundle activation: {error}"))?;
+    sync_directory(staging.path())?;
     sync_directory(root)?;
-    replace_symlink(root, "current", &target)?;
+    Ok(staging)
+}
+
+fn commit_activation(root: &Path, staging: &tempfile::TempDir) -> Result<(), String> {
+    fs::rename(staging.path().join("current"), root.join("current"))
+        .map_err(|error| format!("Could not activate the bundle: {error}"))?;
     if let Err(error) = sync_directory(root) {
         tracing::warn!(%error, "bundle activation committed but its parent directory could not be synced");
     }
@@ -452,14 +471,40 @@ fn install_stable_launcher(bin_dir: &Path) -> Result<(), String> {
     let temporary = staging.path().join("strata");
     symlink(".strata-bundles/current/strata", &temporary)
         .map_err(|error| format!("Could not stage the Strata launcher: {error}"))?;
-    sync_directory(staging.path())?;
-    if let Err(error) = sync_directory(bin_dir) {
-        tracing::warn!(%error, "could not pre-sync the stable launcher's parent directory");
+    commit_launcher(bin_dir, &staging)
+}
+
+fn install_legacy_launcher(
+    bin_dir: &Path,
+    root: &Path,
+    id: &str,
+    source: &Path,
+) -> Result<(), String> {
+    let staging = tempfile::Builder::new()
+        .prefix(".launcher-")
+        .tempdir_in(bin_dir)
+        .map_err(|error| format!("Could not stage the legacy launcher: {error}"))?;
+    let temporary = staging.path().join("strata");
+    fs::copy(source, &temporary)
+        .map_err(|error| format!("Could not copy the legacy launcher: {error}"))?;
+    set_executable(&temporary)?;
+    let activation = prepare_activation(root, id)?;
+    // Break the launcher symlink before switching current: old updaters must never
+    // execute from (and then replace files inside) the immutable rollback cache.
+    commit_launcher(bin_dir, &staging)?;
+    if let Err(error) = commit_activation(root, &activation) {
+        tracing::warn!(%error, "legacy launcher activated but its bundle pointer could not be refreshed");
     }
-    fs::rename(&temporary, bin_dir.join("strata"))
+    Ok(())
+}
+
+fn commit_launcher(bin_dir: &Path, staging: &tempfile::TempDir) -> Result<(), String> {
+    sync_directory(staging.path())?;
+    sync_directory(bin_dir)?;
+    fs::rename(staging.path().join("strata"), bin_dir.join("strata"))
         .map_err(|error| format!("Could not activate the Strata launcher: {error}"))?;
     if let Err(error) = sync_directory(bin_dir) {
-        tracing::warn!(%error, "stable launcher committed but its parent directory could not be synced");
+        tracing::warn!(%error, "launcher committed but its parent directory could not be synced");
     }
     Ok(())
 }

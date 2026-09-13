@@ -179,6 +179,30 @@ class BundleInstallerTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(launcher.resolve(), old)
 
+    def test_legacy_rollback_activation_failure_preserves_the_running_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            launcher = root / "bin/strata"
+            current = bundle_archive(root)
+            legacy = bundle_archive(root, "0.16.0", defect="legacy")
+            result = self.install(current, launcher)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            active = launcher.resolve()
+            storage = launcher.parent / ".strata-bundles"
+            (storage / "previous").mkdir()
+            result = self.install(legacy, launcher, "0.16.0")
+            self.assertNotEqual(result.returncode, 0)
+            self.assertTrue(launcher.is_symlink())
+            self.assertEqual(launcher.resolve(), active)
+            self.assertTrue(active.with_name("strata-media-helper").is_file())
+            (storage / "previous").rmdir()
+            result = self.install(legacy, launcher, "0.16.0")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(launcher.is_symlink())
+            self.assertEqual(launcher.read_bytes(), (pathlib.Path(result.stdout.strip()) / "strata").read_bytes())
+            self.assertTrue(active.is_file())
+            self.assertTrue(active.with_name("strata-media-helper").is_file())
+
     def test_foreign_writable_ancestors_and_competing_installer_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

@@ -599,17 +599,42 @@ try:
         info = (legacy / "strata").lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022 or digest(legacy / "strata") != legacy.name.removeprefix("legacy-"):
             raise ValueError("Stored legacy backup is damaged")
-        if not (root / "current").is_symlink():
-            pointer(root, "current", pathlib.Path("versions") / legacy.name)
+        # The old updater may have replaced this flat executable since current was recorded.
+        pointer(root, "current", pathlib.Path("versions") / legacy.name)
+    if (root / "current").exists() and not (root / "current").is_symlink():
+        raise ValueError("The current bundle pointer is not a symlink")
     if (root / "current").is_symlink():
         old = (root / "current").readlink()
         if len(old.parts) != 2 or old.parts[0] != "versions" or not re.fullmatch("[a-zA-Z0-9-]+", old.parts[1]):
             raise ValueError("Unsafe current bundle pointer")
         if old != pathlib.Path("versions") / identity:
             pointer(root, "previous", old)
-    pointer(root, "current", pathlib.Path("versions") / identity, committed=launcher.is_symlink())
-    if not launcher.is_symlink():
-        pointer(launcher.parent, launcher.name, expected_launcher, committed=True)
+    if binaries == ("strata",):
+        with tempfile.TemporaryDirectory(prefix=".launcher-", dir=launcher.parent) as temporary:
+            temporary = pathlib.Path(temporary)
+            staged = temporary / "strata"
+            shutil.copyfile(destination / "strata", staged)
+            staged.chmod(0o755)
+            with staged.open("rb") as stream:
+                os.fsync(stream.fileno())
+            pending = temporary / "current"
+            pending.symlink_to(pathlib.Path("versions") / identity)
+            sync_dir(temporary)
+            sync_dir(root)
+            sync_dir(launcher.parent)
+            # Old updaters replace current_exe(): switch to a flat copy before current
+            # can expose the cached legacy executable through the former symlink.
+            os.replace(staged, launcher)
+            try:
+                os.replace(pending, root / "current")
+                sync_dir(root)
+                sync_dir(launcher.parent)
+            except OSError:
+                print("Legacy launcher activated; bundle pointer or directory durability could not be confirmed. Keep the previous bundle.", file=sys.stderr)
+    else:
+        pointer(root, "current", pathlib.Path("versions") / identity, committed=launcher.is_symlink())
+        if not launcher.is_symlink():
+            pointer(launcher.parent, launcher.name, expected_launcher, committed=True)
     print(destination)
 except (OSError, ValueError, KeyError, TypeError, tarfile.TarError, zlib.error) as error:
     print(f"Bundle installation failed: {error}", file=sys.stderr)

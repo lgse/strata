@@ -106,6 +106,21 @@ fn portal_activation_follows_bundle_updates_and_rollback() {
         .expect("refresh activated bundle");
         assert!(refreshed.get());
     }
+    let pending = fixture.path().join("legacy-launcher");
+    fs::write(&pending, b"legacy").expect("stage legacy launcher");
+    fs::set_permissions(&pending, fs::Permissions::from_mode(0o755)).expect("legacy permissions");
+    fs::rename(pending, &launcher).expect("activate flat legacy launcher");
+    let old_window_launch =
+        crate::installation::launch_path(&running).expect("restart after rollback");
+    refresh_configured_portal_at(&context, &old_window_launch, || {
+        assert_eq!(activation_path(&context), launcher);
+        assert_eq!(
+            fs::read(activation_path(&context)).expect("legacy portal activation"),
+            b"legacy"
+        );
+        ""
+    })
+    .expect("refresh portal after legacy rollback");
 }
 
 #[test]

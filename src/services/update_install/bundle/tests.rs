@@ -240,9 +240,11 @@ fn rollback_to_audited_binary_only_releases_preserves_bundles_and_rechecks_cache
     ))
     .expect("audited URL");
     let legacy_archive = dir.path().join("legacy.tar.gz");
+    let mut legacy_binary = elf(host_machine());
+    legacy_binary.extend_from_slice(b"legacy");
     fs::write(
         &legacy_archive,
-        archive(&[("strata", elf(host_machine()))], &legacy, None),
+        archive(&[("strata", legacy_binary.clone())], &legacy, None),
     )
     .expect("legacy archive");
     let legacy_hash = sha256_file(&legacy_archive).expect("legacy digest");
@@ -254,20 +256,56 @@ fn rollback_to_audited_binary_only_releases_preserves_bundles_and_rechecks_cache
         &installed.join("strata"),
     )
     .expect("legacy rollback");
+    assert!(!launcher.is_symlink());
     assert_eq!(
-        fs::canonicalize(&launcher).expect("old activated"),
-        rolled_back.join("strata")
+        fs::read(&launcher).expect("flat legacy launcher"),
+        legacy_binary
     );
     assert!(installed.join("strata-media-helper").is_file());
     assert!(!rolled_back.join("strata-media-helper").exists());
-    install_archive(
-        &archive_path,
-        &modern_hash,
-        &modern,
+    assert_eq!(
+        crate::installation::launch_path(&installed.join("strata")).expect("old window restart"),
+        launcher
+    );
+
+    // Published updaters atomically replace current_exe(), not the bundle pointer.
+    let current_exe = fs::canonicalize(&launcher).expect("legacy current_exe");
+    let replacement = bin.join(".legacy-update");
+    fs::copy(installed.join("strata"), &replacement).expect("old updater stages only the UI");
+    fs::rename(&replacement, &current_exe).expect("old updater replaces its executable");
+    assert_eq!(
+        fs::read(rolled_back.join("strata")).expect("cached legacy"),
+        legacy_binary
+    );
+    assert!(!bin.join("strata-media-helper").exists());
+    assert_eq!(
+        super::installation_bin_dir(&current_exe).expect("new UI locates installation"),
+        bin
+    );
+    install_archive(&archive_path, &modern_hash, &modern, &bin, &current_exe)
+        .expect("restore pair after the old updater");
+    let previous =
+        fs::read_link(bin.join(".strata-bundles/previous")).expect("previous executable");
+    assert_eq!(
+        fs::read(bin.join(".strata-bundles").join(previous).join("strata"))
+            .expect("preserved flat UI"),
+        fs::read(installed.join("strata")).expect("new UI")
+    );
+    let second_rollback = install_archive(
+        &legacy_archive,
+        &legacy_hash,
+        &legacy,
         &bin,
-        &rolled_back.join("strata"),
+        &installed.join("strata"),
     )
-    .expect("restore pair");
+    .expect("repeat legacy rollback after its own updater ran");
+    assert_eq!(second_rollback, rolled_back);
+    assert_eq!(
+        fs::read(&launcher).expect("second legacy launch"),
+        legacy_binary
+    );
+    install_archive(&archive_path, &modern_hash, &modern, &bin, &launcher)
+        .expect("return to the complete bundle");
     let mut damaged = elf(host_machine());
     damaged[119] = 1;
     fs::write(rolled_back.join("strata"), damaged).expect("corrupt retained release");

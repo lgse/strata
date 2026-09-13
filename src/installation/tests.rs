@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 use super::*;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt, symlink};
 
 #[test]
 fn restart_and_integration_paths_follow_activation_but_old_helper_paths_remain_usable() {
@@ -40,7 +40,23 @@ fn restart_and_integration_paths_follow_activation_but_old_helper_paths_remain_u
         fs::read(running.with_file_name("strata-media-helper")).expect("old instance helper"),
         b"old"
     );
-    fs::remove_file(bin.join("strata")).expect("damaged launcher");
+    let launcher = bin.join("strata");
+    fs::remove_file(&launcher).expect("switch to legacy flat launcher");
+    fs::write(&launcher, b"legacy").expect("legacy executable");
+    for (mode, valid) in [(0o755, true), (0o777, false), (0o644, false)] {
+        fs::set_permissions(&launcher, fs::Permissions::from_mode(mode))
+            .expect("launcher permissions");
+        if valid {
+            assert_eq!(
+                launch_path(&running).expect("old window restarts legacy"),
+                launcher
+            );
+            assert_eq!(fs::read(&launcher).expect("active legacy"), b"legacy");
+        } else {
+            assert!(launch_path(&running).is_err());
+        }
+    }
+    fs::remove_file(&launcher).expect("damaged launcher");
     assert!(launch_path(&running).is_err());
 }
 

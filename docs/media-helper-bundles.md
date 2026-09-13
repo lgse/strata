@@ -66,8 +66,9 @@ libraries do not invalidate a correctly staged installation.
 Staging and activation occur on the destination filesystem under a shared
 cross-process `flock`. Parent directories must have trusted ownership and safe
 permissions; unsafe ancestry is rejected before staging. The complete version is
-synced before one pointer is atomically replaced. A legacy regular launcher is
-preserved before conversion. Verification/locking/pre-activation failures leave
+synced before one pointer is atomically replaced. A regular launcher is preserved
+before conversion, including a UI replaced by a legacy updater while an older
+`current` pointer still exists. Verification/locking/pre-activation failures leave
 the current installation usable. A post-activation directory-sync failure is
 reported as a durability warning, not a false assertion that activation never
 happened. Desktop/icon refresh is best-effort after activation; saved user opt-ins
@@ -121,6 +122,23 @@ Both installers enforce this compatibility set; unknown/new tags require a
 complete manifest and helper. A cached legacy archive is re-extracted and compared
 before reuse, since those releases have no per-member manifest. Do not expand this
 list automatically when publishing new releases.
+
+Legacy releases run from a separate **regular `<bin>/strata` file**, not from the
+cached version directory. Their published updaters replace `current_exe()` and
+would otherwise overwrite the immutable rollback copy. Rollback atomically
+replaces the launcher with a verified flat copy **before** recording the legacy
+`current` pointer. That pointer records the selected archive; while the launcher
+is regular, the launcher itself is authoritative and may be replaced by an old
+updater. A post-commit pointer/durability failure is reported as a warning, not as
+an uncommitted installation.
+
+An old client can then upgrade normally, recovering the exact embedded helper
+offline. Its next complete-bundle update preserves the actual flat executable and
+restores the modern symlink layout. Desktop/portal entry points remain
+`<bin>/strata`, and older modern windows can restart through either launcher
+form. Cached legacy archives stay untouched, allowing another rollback after
+**new → old → old updater → new**. Do not manually launch or activate a cached
+legacy executable through `current`: that bypasses this compatibility boundary.
 
 No version is automatically garbage-collected: there is no reliable proof that
 another application/portal process stopped using it. Eight retained versions

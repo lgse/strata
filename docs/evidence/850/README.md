@@ -53,6 +53,14 @@ through the same producer as the release workflow, then checks:
   retain text previews, and recover without restarting after restoration. An
   absent audio server has a separate unavailable-capability case.
 
+The ordinary `legacy_updaters_round_trip_without_mutating_cached_releases`
+regression runs both frozen updater families through the shell installer's
+modern → legacy → old-updater → modern → legacy path. It uses the test runner's
+ELF as an inert archive payload, not as a real Strata release, and never executes
+that payload. The adjacent Rust bundle regression covers the in-app installer's
+flat-launcher restoration and cache integrity; portal/restart regressions cover
+old windows following a flat rollback launcher.
+
 The two native-archive Rust tests are explicitly ignored in ordinary unit runs
 because they need freshly produced archives. The optional diagnostic tool selects
 and runs both; an ordinary suite's ignore count is not evidence that they passed.
