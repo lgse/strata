@@ -3809,7 +3809,6 @@ fn reconnect_pane_model(pane: &Pane) {
     }
     for section in pane.all_sections() {
         section.selection.set_model(Some(&section.view_model));
-        section.syncing.set(false);
     }
 }
 

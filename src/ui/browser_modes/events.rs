@@ -164,7 +164,10 @@ impl ModeViews {
             }
             BrowserEvent::ColumnReloaded { depth } => self.update_panes(*depth, Pane::reload_rows),
             BrowserEvent::LoadFinished { depth, truncated } => {
-                self.update_panes(*depth, |pane| pane.finish_loading(*truncated, defer_empty));
+                let positions = self.browser.selected_positions(*depth);
+                self.update_panes(*depth, |pane| {
+                    pane.finish_loading(*truncated, defer_empty, &positions)
+                });
                 if self.mode == BrowserMode::List
                     && let Some(pane) = self.list_pane.as_ref().filter(|pane| pane.depth == *depth)
                 {
@@ -329,8 +332,12 @@ impl Pane {
         self.loading.start();
     }
 
-    fn finish_loading(&self, truncated: bool, defer_empty: bool) {
+    fn finish_loading(&self, truncated: bool, defer_empty: bool, positions: &[usize]) {
         reconnect_pane_model(self);
+        set_selections(self, positions);
+        for section in self.all_sections() {
+            section.syncing.set(false);
+        }
         self.hide_spinner();
         self.truncated_hint.set_visible(truncated);
         self.show_count_after_update(defer_empty);
@@ -338,6 +345,9 @@ impl Pane {
 
     fn fail_loading(&self, message: &str) {
         reconnect_pane_model(self);
+        for section in self.all_sections() {
+            section.syncing.set(false);
+        }
         self.spinner.stop();
         self.status
             .set_label(&format!("Unable to read this directory\n{message}"));

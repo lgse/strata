@@ -40,6 +40,7 @@ pub struct ColumnState {
     selected_locations: HashSet<Location>,
     selection_anchor: Option<Location>,
     selection_target: Option<Location>,
+    pending_selection: HashSet<Location>,
     pub load_state: LoadState,
     pub truncated: bool,
     /// Whether entries here can be moved to Trash, resolved from a listed entry
@@ -180,6 +181,7 @@ impl NavigationState {
                 selected_locations: HashSet::new(),
                 selection_anchor: None,
                 selection_target: None,
+                pending_selection: HashSet::new(),
                 load_state: LoadState::Loading,
                 truncated: false,
                 can_trash: None,
@@ -251,6 +253,7 @@ impl NavigationState {
             selected_locations: HashSet::new(),
             selection_anchor: None,
             selection_target: None,
+            pending_selection: HashSet::new(),
             load_state: LoadState::Loading,
             truncated: false,
             can_trash: None,
@@ -293,7 +296,9 @@ impl NavigationState {
                 column.selection_target = None;
             }
         }
+        column.restore_pending_selection();
         if column.select_first_on_load && !column.entries.is_empty() {
+            column.pending_selection.clear();
             let first_visible = column
                 .entries
                 .iter()
@@ -328,7 +333,9 @@ impl NavigationState {
                 column.selection_target = None;
             }
         }
+        column.restore_pending_selection();
         if column.select_first_on_load && !column.entries.is_empty() {
+            column.pending_selection.clear();
             let first_visible = column
                 .entries
                 .iter()
@@ -501,6 +508,10 @@ impl NavigationState {
             .and_then(|position| column.entries.get(position))
             .map(|entry| entry.location.clone())
             .or_else(|| column.selection_target.clone());
+        column.pending_selection = column.selected_locations.clone();
+        if let Some(target) = &column.selection_target {
+            column.pending_selection.insert(target.clone());
+        }
         column.entries.clear();
         column.selected = None;
         column.load_state = LoadState::Loading;
@@ -518,6 +529,11 @@ impl NavigationState {
         let column = &mut self.columns[depth];
         column.selected_locations = column
             .selected_locations
+            .iter()
+            .filter_map(|selected| selected.rebase(&previous, &location))
+            .collect();
+        column.pending_selection = column
+            .pending_selection
             .iter()
             .filter_map(|selected| selected.rebase(&previous, &location))
             .collect();
@@ -649,6 +665,7 @@ impl NavigationState {
     ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.select_first_on_load = false;
+        column.pending_selection.clear();
         column.truncated = truncated;
         column.can_trash = can_trash;
         column.can_delete = can_delete;
@@ -1189,6 +1206,35 @@ fn focus_only(column: &mut ColumnState, position: usize) {
     adopt_selected_locations(column, HashSet::from([location.clone()]), true);
     column.selected = Some(position);
     column.selection_anchor = Some(location);
+}
+
+impl ColumnState {
+    fn restore_pending_selection(&mut self) {
+        if self.pending_selection.is_empty() {
+            return;
+        }
+        let restored: HashSet<_> = self
+            .pending_selection
+            .iter()
+            .filter(|location| {
+                self.entries
+                    .iter()
+                    .any(|entry| &entry.location == *location)
+            })
+            .cloned()
+            .collect();
+        if restored.is_empty() {
+            return;
+        }
+        self.selected_locations = restored;
+        if self.selected.is_none() {
+            self.selected = self.selected_locations.iter().find_map(|location| {
+                self.entries
+                    .iter()
+                    .position(|entry| &entry.location == location)
+            });
+        }
+    }
 }
 
 fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {

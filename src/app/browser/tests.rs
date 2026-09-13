@@ -1953,6 +1953,26 @@ fn selecting_entries_by_name_preserves_the_full_matching_selection() {
         .collect();
     assert_eq!(selected_names, ["large", "small"]);
 }
+
+#[test]
+fn reload_active_preserves_a_multi_selection() {
+    let browser = Browser::new(Rc::new(RestoredSortingSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.set_selection(0, &[0, 1], Some(1));
+    assert_eq!(browser.selected_positions(0), [0, 1]);
+
+    browser.reload_active();
+
+    assert_eq!(browser.selected_positions(0), [0, 1]);
+    assert_eq!(
+        browser
+            .column_snapshot(0)
+            .expect("reloaded column")
+            .selected_positions,
+        vec![0, 1]
+    );
+}
+
 #[test]
 fn filesystem_notifications_update_the_affected_column_incrementally() {
     let notify = Rc::new(RefCell::new(None::<WatchCallback>));

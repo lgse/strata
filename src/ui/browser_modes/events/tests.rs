@@ -203,6 +203,43 @@ fn reload_retains_views_until_terminal_reconnects_models() {
 }
 
 #[test]
+fn reload_reconnects_with_the_restored_multi_selection() {
+    gtk_test(
+        "ui::browser_modes::events::tests::reload_reconnects_with_the_restored_multi_selection",
+        || {
+            for (mode, grouped) in presentations() {
+                if grouped {
+                    continue;
+                }
+                let mut fixture = Fixture::new(mode, grouped);
+                fixture.browser.set_selection(0, &[0, 2], Some(2));
+                let pane = fixture.pane();
+                fixture
+                    .views
+                    .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+                fixture
+                    .views
+                    .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 3 });
+                fixture.views.handle(&BrowserEvent::LoadFinished {
+                    depth: 0,
+                    truncated: false,
+                });
+                assert_attached(&pane, true);
+                let selected: Vec<u32> = pane
+                    .item_sections()
+                    .into_iter()
+                    .flat_map(|section| {
+                        (0..section.selection.n_items())
+                            .filter(move |&position| section.selection.is_selected(position))
+                    })
+                    .collect();
+                assert_eq!(selected, vec![0, 2], "{mode:?} grouped={grouped}");
+            }
+        },
+    );
+}
+
+#[test]
 fn busy_insertions_and_splices_preserve_distinct_presentation_rules() {
     gtk_test(
         "ui::browser_modes::events::tests::busy_insertions_and_splices_preserve_distinct_presentation_rules",

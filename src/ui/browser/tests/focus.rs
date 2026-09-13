@@ -56,6 +56,72 @@ fn background_splices_preserve_column_multiselection_and_pending_properties() {
 }
 
 #[test]
+fn refresh_preserves_pointer_multi_selection_in_every_mode() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::refresh_preserves_pointer_multi_selection_in_every_mode",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            for name in ["readme.md", "todo.txt", "notes.txt"] {
+                std::fs::write(fixture.path().join(name), name).expect("fixture file");
+            }
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|snapshot| !snapshot.loading)
+            });
+
+            for mode in [
+                crate::ui::browser_modes::BrowserMode::Columns,
+                crate::ui::browser_modes::BrowserMode::Icons,
+                crate::ui::browser_modes::BrowserMode::List,
+            ] {
+                view.set_view_mode(mode);
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                });
+                browser.set_selection(0, &[0, 1], Some(1));
+                assert_eq!(
+                    browser.selected_positions(0),
+                    vec![0, 1],
+                    "{mode:?} before refresh"
+                );
+                browser.reload_active();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                });
+                assert_eq!(
+                    browser.selected_positions(0),
+                    vec![0, 1],
+                    "{mode:?} after refresh"
+                );
+                if mode == crate::ui::browser_modes::BrowserMode::Columns {
+                    let columns = view.state.columns.borrow();
+                    assert!(
+                        columns[0].selection.is_selected(0),
+                        "Columns GTK should keep the first selected row"
+                    );
+                    assert!(
+                        columns[0].selection.is_selected(1),
+                        "Columns GTK should keep the second selected row"
+                    );
+                }
+            }
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
 fn replacement_column_rows_are_visible_without_waiting_for_idle() {
     crate::test_support::gtk_test(
         "ui::browser::tests::focus::replacement_column_rows_are_visible_without_waiting_for_idle",
