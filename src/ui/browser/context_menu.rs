@@ -568,6 +568,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     restore.set_visible(in_trash);
     let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
     let copy = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
+    let duplicate = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
     let copy_path = item_context_option(crate::assets::icons::COPY, "Copy path", "Y");
     let copy_name = item_context_option(crate::assets::icons::COPY, "Copy name", "");
     let move_to = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
@@ -609,6 +610,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     single.append(&pin);
     single.append(&cut);
     single.append(&copy);
+    single.append(&duplicate);
     single.append(&copy_path);
     single.append(&copy_name);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -634,6 +636,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let restore_multiple = item_context_option(crate::assets::icons::FOLDER, "Restore items", "");
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
+    let duplicate_multiple = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
     let copy_paths = item_context_option(crate::assets::icons::COPY, "Copy paths", "Y");
     let copy_names_button = item_context_option(crate::assets::icons::COPY, "Copy names", "");
     let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
@@ -659,6 +662,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&restore_multiple);
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
+    multiple.append(&duplicate_multiple);
     multiple.append(&copy_paths);
     multiple.append(&copy_names_button);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -944,6 +948,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     for button in [&copy, &copy_multiple] {
         connect_selection_action(button, &popover, state, &target, |state, entries| {
             state.copy_entries(&entries);
+        });
+    }
+    for button in [&duplicate, &duplicate_multiple] {
+        connect_selection_action(button, &popover, state, &target, |state, entries| {
+            state.duplicate_entries(&entries);
         });
     }
     for (button, permanent) in [

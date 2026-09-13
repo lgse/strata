@@ -257,6 +257,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         &[
                             "Open",
                             "Copy",
+                            "Duplicate",
                             "Copy path",
                             "Copy to…",
                             "Quick preview",
@@ -298,7 +299,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     capture_menu(&menu, &format!("{mode:?}-{place}-multiple"));
                     assert_actions(
                         &menu,
-                        &["Copy", "Copy paths", "Copy to…"],
+                        &["Copy", "Duplicate", "Copy paths", "Copy to…"],
                         &["Rename", "Print"],
                     );
                     if in_trash {

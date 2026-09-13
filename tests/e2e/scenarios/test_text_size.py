@@ -156,6 +156,27 @@ def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, re
     )
     if request.config.getoption("--keep-artifacts"):
         strata.screenshot(ArtifactCollector(test_name=f"text-size-{mode}").directory / "before.png")
+    strata.open_appearance_menu()
+    for name, pixels in [
+        ("Increase text size (Ctrl++)", "14"),
+        ("Decrease text size (Ctrl+−)", "13"),
+        ("Decrease text size (Ctrl+−)", "12"),
+        ("12 px", "13"),
+    ]:
+        button = strata.wait(
+            lambda: strata.window.find(role="button", name=name),
+            f"appearance text-size control {name}",
+        )
+        strata.pointer.click(button)
+        strata.wait(
+            lambda: strata.environment.read_preferences().get("text_size") == pixels,
+            f"appearance text-size control to persist {pixels}px",
+        )
+    if request.config.getoption("--keep-artifacts"):
+        strata.screenshot(
+            ArtifactCollector(test_name=f"text-size-{mode}").directory / "appearance.png"
+        )
+    strata.keyboard.press("Escape")
     strata.keyboard.press("F2")
     rename = strata.wait(
         lambda: strata.window.find(role="text", name="Rename"), "inline rename editor"

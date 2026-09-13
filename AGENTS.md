@@ -144,7 +144,10 @@ pass before merge.
 - Use the bug report form for defects, the feature request form for enhancements, and a blank issue only when neither form fits.
 - Bug reports must include the Strata version, installation method, environment, reproduction steps, expected behavior, and any available sanitized logs. Never ask reporters to upload a core dump because it may contain secrets or private document contents.
 - Keep pull request descriptions concise: explain what changed and why, provide manual steps to exercise the feature or reproduce the fixed bug, state the expected result, and link the issue. Do not list automated checks that CI already runs.
-- Attach before/after screenshots or a short video for user-visible changes. Write `N/A` with a brief reason for non-visual changes.
+- Include before/after screenshots or a short video on every PR with user-visible changes. Upload sanitized captures through GitHub's PR description/comment editor and embed the resulting GitHub-hosted attachment URLs in the PR's Visual evidence section. Write `N/A` with a brief reason only for non-visual changes.
+- Never commit PR evidence, screenshots, recordings, one-off capture scripts, logs, review reports, or PR-specific test plans to the source tree. Keep captures in session-owned scratch or ignored `target/` paths. Maintained README media and executable visual-regression baselines are exceptions, not places to stash review captures.
+- `gh pr create` and `gh pr edit` can embed existing attachment URLs but do not upload local image/video attachments. If no supported authenticated upload route is available, retain the local captures, provide their exact paths and captions, and ask the owner to upload them through the GitHub editor. Explicitly mark visual evidence as pending; do not claim it is attached, substitute local file links, or commit files as a workaround. CI artifacts may supplement review but expire and are not a replacement for inline PR visuals.
+- Keep lasting behavior and test guidance in maintained documentation; put task checklists, test results, and review history in the issue or PR instead.
 - Pull request titles must pass `.github/workflows/pr-title.yml`; do not bypass or weaken the Conventional Commit title check.
 
 ## Test organization
@@ -171,8 +174,9 @@ pass before merge.
   assertion. Do not add unused axes that merely run identical cases again.
 - Keep one-off screenshot generators outside the test suite. When consolidating
   tests, preserve meaningful assertions and document the retained coverage owner;
-  fewer functions alone is not an improvement. See the
-  [test-suite coverage audit](docs/test-suite-audit.md) for examples.
+  fewer functions alone is not an improvement. Similar names, shared fixtures,
+  or expensive execution do not establish redundant coverage. Preserve separate
+  input-routing, lifecycle, filesystem-safety, and live-preference regressions.
 
 ## Saved preferences
 

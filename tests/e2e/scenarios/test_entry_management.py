@@ -185,8 +185,10 @@ def test_delete_moves_the_entry_to_trash(strata):
     )
 
 
-def test_permanent_delete_requires_confirmation_and_can_be_cancelled(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_permanent_delete_requires_confirmation_and_can_be_cancelled(strata, mode):
     fixture = strata.fixture
+    assert strata.view_mode() == mode
 
     strata.select_entry("todo.txt")
     strata.keyboard.press("shift+Delete")

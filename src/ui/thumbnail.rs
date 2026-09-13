@@ -1018,7 +1018,6 @@ fn known_metadata<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
 
 fn apply_thumbnail(image: &ThumbnailSlot, texture: &gdk::Texture, path: &Path) {
     image.set_texture(texture);
-    image.set_opacity(1.0);
     register_displayed_thumbnail(image, path);
 }
 

@@ -94,3 +94,78 @@ fn rendering_inset_preserves_measurement_and_texture_aspect_ratio() {
         },
     );
 }
+
+fn rendered_texture(node: &gtk::gsk::RenderNode) -> Option<gdk::Texture> {
+    if let Some(texture) = node.downcast_ref::<gtk::gsk::TextureNode>() {
+        return Some(texture.texture());
+    }
+    if let Some(transform) = node.downcast_ref::<gtk::gsk::TransformNode>() {
+        return rendered_texture(&transform.child());
+    }
+    None
+}
+
+#[test]
+fn cut_replaces_thumbnail_and_hidden_controls_its_opacity() {
+    gtk_test(
+        "ui::thumbnail::slot::tests::cut_replaces_thumbnail_and_hidden_controls_its_opacity",
+        || {
+            crate::ui::prepare_portal_ui();
+            let slot = ThumbnailSlot::new(64);
+            slot.allocate(64, 64, -1, None);
+            slot.set_base_opacity(0.72);
+
+            let pixels = glib::Bytes::from_owned(vec![255_u8; 32 * 32 * 4]);
+            let thumbnail =
+                gdk::MemoryTexture::new(32, 32, gdk::MemoryFormat::R8g8b8a8, &pixels, 32 * 4);
+            slot.set_texture(thumbnail.upcast_ref());
+
+            slot.set_cut(true);
+            assert_eq!(slot.opacity(), 1.0);
+            let snapshot = gtk::Snapshot::new();
+            slot.imp().snapshot(&snapshot);
+            let rendered = rendered_texture(&snapshot.to_node().expect("cut node"))
+                .expect("rendered scissors");
+            let scissors = crate::assets::primary_icon_paintable(crate::assets::icons::SCISSORS)
+                .expect("scissors icon");
+            assert_eq!(rendered, scissors);
+
+            slot.set_hidden(true);
+            assert!((slot.opacity() - 0.65).abs() < 0.01);
+
+            slot.set_cut(false);
+            assert!((slot.opacity() - 0.65).abs() < 0.01);
+            let snapshot = gtk::Snapshot::new();
+            slot.imp().snapshot(&snapshot);
+            let rendered = rendered_texture(&snapshot.to_node().expect("thumbnail node"))
+                .expect("rendered thumbnail");
+            assert_eq!(rendered, thumbnail.upcast::<gdk::Texture>());
+
+            slot.set_hidden(false);
+            assert_eq!(slot.opacity(), 1.0);
+        },
+    );
+}
+
+#[test]
+fn fallback_restores_base_opacity_after_thumbnail() {
+    gtk_test(
+        "ui::thumbnail::slot::tests::fallback_restores_base_opacity_after_thumbnail",
+        || {
+            crate::ui::prepare_portal_ui();
+            let slot = ThumbnailSlot::new(64);
+            slot.set_base_opacity(0.72);
+
+            let pixels = glib::Bytes::from_owned(vec![255_u8; 32 * 32 * 4]);
+            let thumbnail =
+                gdk::MemoryTexture::new(32, 32, gdk::MemoryFormat::R8g8b8a8, &pixels, 32 * 4);
+            slot.set_texture(thumbnail.upcast_ref());
+            assert_eq!(slot.opacity(), 1.0);
+
+            let fallback = crate::assets::primary_icon_paintable(crate::assets::icons::DOCUMENTS)
+                .expect("document icon");
+            slot.set_fallback(crate::assets::icons::DOCUMENTS, Some(&fallback));
+            assert!((slot.opacity() - 0.72).abs() < 0.01);
+        },
+    );
+}
