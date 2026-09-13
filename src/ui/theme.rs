@@ -140,6 +140,8 @@ struct Preferences {
     #[serde(default = "default_full_volume")]
     preview_volume: f64,
     #[serde(default)]
+    preview_text_wrap: bool,
+    #[serde(default)]
     auto_refresh_interval: u32,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
@@ -184,6 +186,7 @@ impl Default for Preferences {
             check_for_updates: true,
             preview_muted: false,
             preview_volume: default_full_volume(),
+            preview_text_wrap: false,
             auto_refresh_interval: 0,
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             release_channel: default_release_channel(),
@@ -580,6 +583,15 @@ impl ThemeManager {
 
     pub fn set_preview_volume(&self, volume: f64) {
         self.preferences.borrow_mut().preview_volume = normalized_volume(volume);
+        self.save_preferences();
+    }
+
+    pub fn preview_text_wrap(&self) -> bool {
+        self.preferences.borrow().preview_text_wrap
+    }
+
+    pub fn set_preview_text_wrap(&self, wrapped: bool) {
+        self.preferences.borrow_mut().preview_text_wrap = wrapped;
         self.save_preferences();
     }
 

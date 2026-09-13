@@ -2041,6 +2041,11 @@ paned > separator {
   color: @theme_accent;
 }
 
+.preview-header-action:checked {
+  background: alpha(@theme_accent, 0.22);
+  color: @theme_accent;
+}
+
 .preview-header-action:active {
   background: alpha(@theme_accent, 0.22);
   border-color: @theme_accent;

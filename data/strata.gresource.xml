@@ -67,6 +67,7 @@
     <file>icons/scalable/actions/strata-video.svg</file>
     <file>icons/scalable/actions/strata-volume-2.svg</file>
     <file>icons/scalable/actions/strata-volume-x.svg</file>
+    <file>icons/scalable/actions/strata-wrap-text.svg</file>
     <file>icons/scalable/actions/strata-x.svg</file>
     <file>icons/scalable/apps/io.github.lgse.Strata.svg</file>
   </gresource>

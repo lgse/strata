@@ -87,6 +87,9 @@ struct PreviewState {
     metadata: gtk::Box,
     open: gtk::Button,
     print: gtk::Button,
+    wrap: gtk::ToggleButton,
+    text_view: RefCell<Option<sourceview5::View>>,
+    text_scroll: RefCell<Option<gtk::ScrolledWindow>>,
     media: RefCell<Option<gtk::MediaStream>>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
@@ -151,6 +154,15 @@ impl PreviewDrawer {
         )));
         print.add_css_class("preview-header-action");
         print.set_visible(false);
+        let wrap = gtk::ToggleButton::builder()
+            .tooltip_text("Toggle word wrap")
+            .valign(gtk::Align::Center)
+            .build();
+        wrap.set_child(Some(&crate::assets::chrome_icon(
+            crate::assets::icons::WRAP_TEXT,
+        )));
+        wrap.add_css_class("preview-header-action");
+        wrap.set_visible(false);
         let close = gtk::Button::builder()
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
@@ -168,6 +180,7 @@ impl PreviewDrawer {
         header.append(&header_handle);
         header.append(&open);
         header.append(&print);
+        header.append(&wrap);
         header.append(&close);
         pane.append(&header);
 
@@ -216,6 +229,9 @@ impl PreviewDrawer {
             metadata,
             open: open.clone(),
             print: print.clone(),
+            wrap: wrap.clone(),
+            text_view: RefCell::new(None),
+            text_scroll: RefCell::new(None),
             media: RefCell::new(None),
             media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
@@ -289,6 +305,23 @@ impl PreviewDrawer {
                     stream.set_playing(false);
                 }
                 state.print();
+            }
+        });
+        let preferences = super::theme::ThemeManager::shared();
+        let weak = Rc::downgrade(&state);
+        preferences.bind_preference(
+            &wrap,
+            super::theme::ThemeManager::preview_text_wrap,
+            move |_, wrapped| {
+                if let Some(state) = weak.upgrade() {
+                    state.apply_text_wrap(wrapped);
+                    state.wrap.set_active(wrapped);
+                }
+            },
+        );
+        wrap.connect_toggled(move |button| {
+            if preferences.preview_text_wrap() != button.is_active() {
+                preferences.set_preview_text_wrap(button.is_active());
             }
         });
         let weak = Rc::downgrade(&state);
@@ -839,6 +872,7 @@ impl PreviewState {
         match preview.content {
             PreviewContent::Text { content, truncated } => {
                 self.print.set_visible(true);
+                self.wrap.set_visible(true);
                 let buffer = sourceview5::Buffer::new(None);
                 let languages = sourceview5::LanguageManager::default();
                 let language = languages.guess_language(
@@ -849,6 +883,7 @@ impl PreviewState {
                 super::theme::register_source_buffer(&buffer);
                 buffer.set_highlight_syntax(true);
                 buffer.set_text(&content);
+                let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
                 let view = sourceview5::View::builder()
                     .buffer(&buffer)
                     .cursor_visible(false)
@@ -860,17 +895,20 @@ impl PreviewState {
                     .bottom_margin(12)
                     .monospace(true)
                     .show_line_numbers(true)
-                    .wrap_mode(gtk::WrapMode::None)
+                    .wrap_mode(text_wrap_mode(wrapped))
                     .build();
                 view.add_css_class("preview-text");
                 let scroll = gtk::ScrolledWindow::builder()
                     .child(&view)
-                    .hscrollbar_policy(gtk::PolicyType::Automatic)
+                    .hscrollbar_policy(text_hscroll_policy(wrapped))
                     .vscrollbar_policy(gtk::PolicyType::Automatic)
                     .hexpand(true)
                     .vexpand(true)
                     .build();
+                self.text_view.replace(Some(view.clone()));
+                self.text_scroll.replace(Some(scroll.clone()));
                 self.content.append(&scroll);
+                self.wrap.set_active(wrapped);
                 if truncated {
                     let notice = gtk::Label::new(Some("Preview limited to the first 1 MB"));
                     notice.add_css_class("preview-note");
@@ -1515,7 +1553,19 @@ impl PreviewState {
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
         self.print.set_visible(false);
+        self.wrap.set_visible(false);
+        self.text_view.take();
+        self.text_scroll.take();
         clear_box(&self.content);
+    }
+
+    fn apply_text_wrap(&self, wrapped: bool) {
+        if let Some(view) = self.text_view.borrow().as_ref() {
+            view.set_wrap_mode(text_wrap_mode(wrapped));
+        }
+        if let Some(scroll) = self.text_scroll.borrow().as_ref() {
+            scroll.set_hscrollbar_policy(text_hscroll_policy(wrapped));
+        }
     }
 
     fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
@@ -1869,6 +1919,22 @@ fn set_pdf_page_texture(
     };
     picture.set_paintable(Some(&texture));
     resize_pdf_page(overlay, picture, target_width);
+}
+
+fn text_wrap_mode(wrapped: bool) -> gtk::WrapMode {
+    if wrapped {
+        gtk::WrapMode::Word
+    } else {
+        gtk::WrapMode::None
+    }
+}
+
+fn text_hscroll_policy(wrapped: bool) -> gtk::PolicyType {
+    if wrapped {
+        gtk::PolicyType::Never
+    } else {
+        gtk::PolicyType::Automatic
+    }
 }
 
 fn pdf_zoom_after_scroll(current: f64, dy: f64) -> f64 {
