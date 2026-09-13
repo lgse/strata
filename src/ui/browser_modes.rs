@@ -2328,7 +2328,7 @@ fn list_headings(
         let button_overlay = gtk::Overlay::new();
         button_overlay.set_child(Some(&button));
         button_overlay.set_hexpand(true);
-        button_overlay.add_overlay(&column_resize_handle(columns.clone(), index, width));
+        button_overlay.add_overlay(&column_resize_handle(columns.clone(), index, width, &cell));
         cell.append(&button_overlay);
         headings.append(&cell);
     }
@@ -2380,7 +2380,12 @@ fn set_list_column_width(columns: &ListColumnLayout, index: usize, width: i32) {
     });
 }
 
-fn column_resize_handle(columns: ListColumnLayout, index: usize, initial_width: i32) -> gtk::Box {
+fn column_resize_handle(
+    columns: ListColumnLayout,
+    index: usize,
+    initial_width: i32,
+    heading: &gtk::Box,
+) -> gtk::Box {
     let handle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     handle.add_css_class("list-column-resize-handle");
     handle.set_width_request(7);
@@ -2395,7 +2400,7 @@ fn column_resize_handle(columns: ListColumnLayout, index: usize, initial_width: 
     let starting_for_begin = starting_width.clone();
     let pointer_for_begin = pointer_start.clone();
     let last_press_for_begin = last_press.clone();
-    let columns_for_begin = columns.clone();
+    let heading = heading.downgrade();
     let columns_for_autofit = columns.clone();
     resize.connect_drag_begin(move |gesture, _, _| {
         let now = glib::monotonic_time() as u64;
@@ -2417,11 +2422,11 @@ fn column_resize_handle(columns: ListColumnLayout, index: usize, initial_width: 
             gesture.set_state(gtk::EventSequenceState::Denied);
             return;
         }
-        let width = columns_for_begin.cells[index]
-            .borrow()
-            .iter()
-            .find_map(glib::WeakRef::upgrade)
-            .map_or(initial_width, |widget| widget.width());
+        // Registered cells also include unmapped loading placeholders with stale allocations.
+        let width = heading
+            .upgrade()
+            .and_then(|widget| widget.compute_bounds(&widget))
+            .map_or(initial_width, |bounds| bounds.width().round() as i32);
         starting_for_begin.set(list_column_width(index, width));
         pointer_for_begin.set(
             gesture

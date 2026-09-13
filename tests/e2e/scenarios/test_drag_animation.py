@@ -7,6 +7,7 @@ import pytest
 
 from harness.environment import TestEnvironment as IsolatedEnvironment
 from harness.interaction import MODIFIER_KEYSYMS, keysym
+from harness.modes import ALL_MODES
 
 
 @pytest.fixture
@@ -33,6 +34,41 @@ def text_position(image, bounds):
     contrast = sum(weights)
     assert contrast > 0, "the source label disappeared"
     return sum(y * weight for y, weight in enumerate(weights)) / contrast, contrast
+
+
+@pytest.mark.preferences(reduce_motion=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_delete_keeps_survivors_in_place_until_dissolve_finishes(strata, mode):
+    assert strata.view_mode() == mode
+    strata.fixture.path("zz-survivor.txt").write_text("survivor")
+    survivor = strata.entry("zz-survivor.txt")
+    strata.select_entry("todo.txt")
+    strata.settle(survivor)
+    label = survivor.find(role="label", name="zz-survivor.txt")
+    assert label is not None
+    bounds = label.screen_bounds()
+    grab = lambda: ImageGrab.grab(xdisplay=strata.display.display)
+    original_y, _ = text_position(grab(), bounds)
+
+    strata.keyboard.press("shift+Delete")
+    strata.wait_for_dialog()
+    strata.pointer.click(strata.dialog_button("Permanently delete 1 item"))
+    strata.wait(
+        lambda: not strata.fixture.path("todo.txt").exists(),
+        "the file to be deleted",
+    )
+    strata.wait(lambda: strata.dialog() is None, "the delete dialog to disappear")
+    frozen = grab()
+    animated_y, _ = text_position(frozen, bounds)
+    assert abs(animated_y - original_y) < 1, "surviving text moved before the dissolve finished"
+    region = (bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height)
+    frozen_pixels = frozen.crop(region).tobytes()
+    strata.wait(
+        lambda: grab().crop(region).tobytes() != frozen_pixels,
+        "the updated layout to replace the frozen presentation",
+    )
+    final_label = strata.entry("zz-survivor.txt").find(role="label", name="zz-survivor.txt")
+    assert final_label is not None and final_label.screen_bounds() != bounds
 
 
 @pytest.mark.preferences(browser_mode="columns", reduce_motion=False)

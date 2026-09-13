@@ -4274,11 +4274,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   min-width: 7px;
 }
 
-.list-column-resize-handle:hover,
-.list-column-resize-handle:active {
-  background: alpha(@theme_accent, 0.5);
-}
-
 .list-navigation {
   margin-right: 4px;
 }

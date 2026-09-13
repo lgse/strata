@@ -2,6 +2,109 @@
 
 use super::*;
 
+fn wait_until(condition: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !condition() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "animation fixture timed out"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn survivors_remain_at_original_positions_until_dissolve_cleanup() {
+    crate::test_support::gtk_test(
+        "ui::browser::dissolve_delete::tests::survivors_remain_at_original_positions_until_dissolve_cleanup",
+        || {
+            gtk::Settings::default()
+                .expect("GTK settings")
+                .set_gtk_enable_animations(true);
+            for completion in ["animated", "cancelled", "reduced-motion"] {
+                crate::ui::motion::set_reduce_motion(false);
+                let source = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                source.set_valign(gtk::Align::Start);
+                let deleted = gtk::Label::new(Some("deleted.txt"));
+                deleted.add_css_class("file-row");
+                let survivor = gtk::Label::new(Some("survivor.txt"));
+                source.append(&deleted);
+                source.append(&survivor);
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&source));
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
+                let entry = FileEntry {
+                    location: crate::model::Location::local("/deleted.txt"),
+                    native_name: "deleted.txt".into(),
+                    thumbnail_path: None,
+                    display_name: "deleted.txt".into(),
+                    kind: crate::model::EntryKind::File,
+                    size: crate::model::MetadataValue::Unknown,
+                    modified_unix_seconds: crate::model::MetadataValue::Unknown,
+                    is_hidden: false,
+                    mode: crate::model::MetadataValue::Unknown,
+                };
+                let prepared = RefCell::new(None);
+                wait_until(|| {
+                    if prepared.borrow().is_none() {
+                        prepared.replace(prepare_dissolve(
+                            source.upcast_ref(),
+                            std::slice::from_ref(&entry),
+                        ));
+                    }
+                    prepared.borrow().is_some()
+                });
+                let prepared = prepared.into_inner().expect("prepared dissolve");
+                let original = bounds_in_overlay(survivor.upcast_ref(), &overlay)
+                    .expect("original survivor bounds");
+                let backdrop = prepared
+                    .canvas
+                    .imp()
+                    .backdrop
+                    .borrow()
+                    .clone()
+                    .expect("frozen survivor snapshot");
+                assert!(backdrop.bounds().y() >= original.y());
+                assert!(backdrop.bounds().y() < original.y() + original.height());
+                source.remove(&deleted);
+                wait_until(|| {
+                    bounds_in_overlay(survivor.upcast_ref(), &overlay)
+                        .expect("updated survivor bounds")
+                        .y()
+                        < original.y()
+                });
+                // The live layout has collapsed, but only the original-position snapshot is visible.
+                assert_eq!(source.opacity(), 0.0);
+                assert!(prepared.canvas.is_mapped());
+                assert!(backdrop.bounds().y() >= original.y());
+                let canvas = prepared.canvas.clone();
+                assert_eq!(
+                    overlay.pick(
+                        f64::from(original.x() + original.width() / 2.0),
+                        f64::from(original.y() + original.height() / 2.0),
+                        gtk::PickFlags::DEFAULT,
+                    ),
+                    Some(canvas.clone().upcast()),
+                    "the frozen presentation must shield rebound rows from pointer input"
+                );
+                if completion == "cancelled" {
+                    drop(prepared);
+                } else {
+                    crate::ui::motion::set_reduce_motion(completion == "reduced-motion");
+                    prepared.play(|| {});
+                    wait_until(|| canvas.parent().is_none());
+                }
+                assert_eq!(source.opacity(), 1.0);
+                assert!(canvas.parent().is_none());
+                window.destroy();
+            }
+            crate::ui::motion::set_reduce_motion(false);
+        },
+    );
+}
+
 #[test]
 fn fragment_budget_is_bounded_for_large_batches() {
     assert_eq!(fragment_budget(1), MIN_FRAGMENT_BUDGET);
