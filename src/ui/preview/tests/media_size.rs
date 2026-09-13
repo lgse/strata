@@ -210,10 +210,16 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                 let section = drawer.state.content.first_child().expect("media section");
                 let video = section.first_child().expect("video overlay");
                 let controls = section.last_child().expect("playback controls");
-                wait_until(|| video.width() > 0 && controls.width() > 0);
-                assert!(video.width() <= decoded.intrinsic_width() * 2);
-                assert!(video.height() <= decoded.intrinsic_height() * 2);
-                assert!(controls.width() <= 1280);
+                // The first decoded frame queues a resize; preparation does not mean
+                // GTK has allocated the new intrinsic dimensions yet.
+                wait_until(|| {
+                    video.width() > 0
+                        && video.height() > 0
+                        && controls.width() > 0
+                        && video.width() <= decoded.intrinsic_width() * 2
+                        && video.height() <= decoded.intrinsic_height() * 2
+                        && controls.width() <= 1280
+                });
                 let play = controls
                     .first_child()
                     .expect("play button")
