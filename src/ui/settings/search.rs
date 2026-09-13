@@ -96,6 +96,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance font typography pixels zoom scaling",
     },
     Target {
+        id: "glow",
+        page: "theme",
+        title: "Element glow",
+        aliases: "appearance effects dialogs menus shadows accent",
+    },
+    Target {
         id: "motion",
         page: "theme",
         title: "Reduce motion",

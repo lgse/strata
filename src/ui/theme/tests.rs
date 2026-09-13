@@ -259,6 +259,7 @@ fn assert_preference_defaults(preferences: &Preferences) {
     assert!(preferences.type_to_search);
     assert!(preferences.show_keybinding_hints);
     assert!(!preferences.reduce_motion);
+    assert!(preferences.element_glow);
     assert_eq!(preferences.browser_mode, "columns");
     assert_eq!(preferences.browser_density, "compact");
     assert_eq!(preferences.columns_file_clicks, 2);

@@ -95,6 +95,19 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
         |widget, following| widget.set_sensitive(!following),
     );
     append_text_size_option(&content, &manager);
+    let effects = super::settings_group(&content, "EFFECTS");
+    let (row, toggle) = super::settings_option(
+        "Element glow",
+        "Show accent glow around dialogs, menus, and other elements.",
+        manager.element_glow(),
+    );
+    bind_switch(
+        &manager,
+        &toggle,
+        ThemeManager::element_glow,
+        ThemeManager::set_element_glow,
+    );
+    effects.append(&row);
     let motion = super::settings_group(&content, "MOTION");
     let (row, toggle) = super::settings_option(
         "Reduce motion",
