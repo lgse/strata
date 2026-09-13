@@ -340,67 +340,19 @@ pub(super) fn should_list_orphaned_password_drive(
     start_stop == gio::DriveStartStopType::Password && !volume_covers_identity
 }
 
-#[cfg(test)]
-#[derive(Clone, Copy, Debug)]
-pub(super) struct VolumeListFact<'a> {
-    pub identity: Option<&'a str>,
-    pub icon_names: &'a [&'a str],
-    pub start_stop: Option<gio::DriveStartStopType>,
-    pub has_mount: bool,
-    pub crypto: BlockCryptoRef<'a>,
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug)]
-pub(super) struct DriveListFact<'a> {
-    pub identity: Option<&'a str>,
-    pub start_stop: gio::DriveStartStopType,
-}
-
-#[cfg(test)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ListedDeviceRow {
-    pub identity: String,
-    pub encrypted: bool,
-    pub locked: bool,
-}
-
-#[cfg(test)]
-pub(super) fn listed_device_rows(
-    volumes: &[VolumeListFact<'_>],
-    drives: &[DriveListFact<'_>],
-) -> Vec<ListedDeviceRow> {
-    let mut rows = Vec::new();
-    let mut covered = Vec::new();
-    for volume in volumes {
-        let Some(identity) = volume.identity.filter(|identity| !identity.is_empty()) else {
-            continue;
-        };
-        let encrypted = is_encrypted_device(volume.icon_names, volume.start_stop, volume.crypto);
-        rows.push(ListedDeviceRow {
-            identity: identity.to_owned(),
-            encrypted,
-            locked: encrypted && encrypted_device_is_locked(volume.icon_names, volume.has_mount),
+pub(super) fn password_drive_is_orphaned(
+    start_stop: gio::DriveStartStopType,
+    drive_identity: Option<&str>,
+    volume_identities: &[String],
+    volume_claims_drive: bool,
+) -> bool {
+    let covered = volume_claims_drive
+        || drive_identity.is_some_and(|identity| {
+            volume_identities
+                .iter()
+                .any(|volume_identity| volume_identity == identity)
         });
-        covered.push(identity);
-    }
-    for drive in drives {
-        let volume_covers_identity = drive
-            .identity
-            .is_some_and(|identity| covered.contains(&identity));
-        if !should_list_orphaned_password_drive(drive.start_stop, volume_covers_identity) {
-            continue;
-        }
-        let Some(identity) = drive.identity.filter(|identity| !identity.is_empty()) else {
-            continue;
-        };
-        rows.push(ListedDeviceRow {
-            identity: identity.to_owned(),
-            encrypted: true,
-            locked: true,
-        });
-    }
-    rows
+    should_list_orphaned_password_drive(start_stop, covered)
 }
 
 pub(super) fn global_search_roots() -> Vec<PathBuf> {

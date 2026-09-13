@@ -153,26 +153,170 @@ fn external_volume_mount_completion_is_success() {
 
 #[test]
 fn successor_identity_matches_across_crypto_replacement() {
-    let locked = DeviceKeys::from_identifiers([
-        Some("/dev/loop0".into()),
-        Some("luks-uuid".into()),
-        Some("/dev/loop0".into()),
-    ]);
-    let unlocked = DeviceKeys::from_identifiers([
-        Some("/dev/dm-0".into()),
-        Some("fs-uuid".into()),
-        Some("/dev/loop0".into()),
-    ]);
-    let password_drive = DeviceKeys::from_identifiers([Some("/dev/loop0".into())]);
-    let other = DeviceKeys::from_identifiers([
-        Some("/dev/sdb1".into()),
-        Some("other-uuid".into()),
-        Some("/dev/sdb".into()),
-    ]);
-    assert!(locked.overlaps(&unlocked));
-    assert!(password_drive.overlaps(&unlocked));
-    assert!(!locked.overlaps(&other));
-    assert!(!password_drive.overlaps(&other));
+    let locked = DeviceKeys::new(
+        [Some("/dev/loop0".into()), Some("luks-uuid".into())],
+        [Some("/dev/loop0".into())],
+    );
+    let unlocked = DeviceKeys::new(
+        [Some("/dev/dm-0".into()), Some("fs-uuid".into())],
+        [Some("/dev/loop0".into())],
+    );
+    let password_drive = DeviceKeys::new([], [Some("/dev/loop0".into())]);
+    let other = DeviceKeys::new(
+        [Some("/dev/sdb1".into()), Some("other-uuid".into())],
+        [Some("/dev/sdb".into())],
+    );
+    assert!(identity_matches_mount(&locked, &unlocked, false));
+    assert!(identity_matches_mount(&password_drive, &unlocked, false));
+    assert!(!identity_matches_mount(&locked, &other, false));
+    assert!(!identity_matches_mount(&password_drive, &other, false));
+}
+
+#[test]
+fn sibling_partition_is_not_this_volume() {
+    let luks = DeviceKeys::new(
+        [Some("/dev/sdb2".into()), Some("luks-uuid".into())],
+        [Some("/dev/sdb".into())],
+    );
+    let efi = DeviceKeys::new(
+        [Some("/dev/sdb1".into()), Some("efi-uuid".into())],
+        [Some("/dev/sdb".into())],
+    );
+    let nvme_luks = DeviceKeys::new(
+        [Some("/dev/nvme0n1p3".into())],
+        [Some("/dev/nvme0n1".into())],
+    );
+    let nvme_efi = DeviceKeys::new(
+        [Some("/dev/nvme0n1p1".into())],
+        [Some("/dev/nvme0n1".into())],
+    );
+    let password_drive = DeviceKeys::new([], [Some("/dev/sdb".into())]);
+    let mapper = DeviceKeys::new(
+        [Some("/dev/dm-0".into()), Some("fs-uuid".into())],
+        [Some("/dev/sdb".into())],
+    );
+    assert!(
+        !identity_matches_mount(&luks, &efi, true),
+        "EFI sibling should not count as the LUKS volume being mounted"
+    );
+    assert!(
+        !identity_matches_mount(&luks, &efi, false),
+        "EFI sibling is not the LUKS successor after the locked volume is gone"
+    );
+    assert!(!identity_matches_volume(&luks, &efi));
+    assert!(!device_volume_mount_is_ready(
+        &Err(glib::Error::new(
+            gio::IOErrorEnum::Failed,
+            "Error unlocking /dev/sdb2: Failed to activate device",
+        )),
+        identity_matches_mount(&luks, &efi, true),
+    ));
+    assert!(!identity_matches_mount(&nvme_luks, &nvme_efi, true));
+    assert!(!identity_matches_mount(&nvme_luks, &nvme_efi, false));
+    assert!(
+        identity_matches_mount(&luks, &mapper, false),
+        "crypto replacement on the same drive should still match"
+    );
+    assert!(
+        !identity_matches_mount(&password_drive, &efi, false),
+        "an already-mounted EFI partition is not the password-drive unlock"
+    );
+    assert!(identity_matches_mount(
+        &password_drive,
+        &DeviceKeys::new([Some("/dev/dm-0".into())], [Some("/dev/sdb".into())]),
+        false
+    ));
+}
+
+#[test]
+fn foreign_changed_without_mount_does_not_complete_wait() {
+    assert!(!foreign_wait_changed_is_complete(false));
+    assert!(foreign_wait_changed_is_complete(true));
+    assert!(!foreign_drive_wait_changed_is_complete(
+        VolumeSuccessorKind::Locked
+    ));
+    assert!(!foreign_drive_wait_changed_is_complete(
+        VolumeSuccessorKind::Absent
+    ));
+    assert!(foreign_drive_wait_changed_is_complete(
+        VolumeSuccessorKind::Mounted
+    ));
+    assert_eq!(
+        foreign_volume_wait_follow_up(
+            ForeignVolumeWaitOutcome::StillLocked,
+            false,
+            VolumeSuccessorKind::Locked,
+        ),
+        ForeignVolumeWaitFollowUp::StartOwnedMount
+    );
+}
+
+#[test]
+fn unlock_chrome_is_only_for_encrypted_targets() {
+    assert_eq!(unlock_chrome_for_device(false), UnlockChrome::Connecting);
+    assert_eq!(unlock_chrome_for_device(true), UnlockChrome::Unlocking);
+}
+
+#[test]
+fn same_device_unlock_is_rejected_while_in_flight() {
+    let mut slots = Vec::new();
+    let luks = DeviceKeys::new(
+        [Some("/dev/sdb2".into()), Some("luks-uuid".into())],
+        [Some("/dev/sdb".into())],
+    );
+    let same_row = DeviceKeys::new([Some("/dev/sdb2".into())], [Some("/dev/sdb".into())]);
+    let other = DeviceKeys::new([Some("/dev/sdc1".into())], [Some("/dev/sdc".into())]);
+    assert!(begin_unlock_slot(&mut slots, &luks));
+    assert!(!begin_unlock_slot(&mut slots, &luks));
+    assert!(
+        !begin_unlock_slot(&mut slots, &same_row),
+        "row and padlock of the same volume should share in-flight"
+    );
+    assert!(begin_unlock_slot(&mut slots, &other));
+    assert!(!unlock_progress_dismissed_for(&slots, &luks));
+    slots
+        .iter_mut()
+        .find(|slot| unlock_target_matches(&slot.keys, &luks))
+        .expect("should keep a slot for the hidden volume")
+        .dismissed = true;
+    assert!(unlock_progress_dismissed_for(&slots, &luks));
+    assert!(!unlock_progress_dismissed_for(&slots, &other));
+}
+
+#[test]
+fn unlock_retry_cancel_releases_in_flight() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::unlock_retry_cancel_releases_in_flight",
+        || {
+            let (view, window, overlay) = hosted_browser();
+            let keys = DeviceKeys::new([Some("/dev/sdb2".into())], [Some("/dev/sdb".into())]);
+            assert!(view.state.begin_unlock_progress(&keys));
+            assert!(!view.state.begin_unlock_progress(&keys));
+            view.state.show_unlock_retry_prompt(
+                keys.clone(),
+                None,
+                MountPromptDetails {
+                    message: "Enter a passphrase to unlock USB Backup".into(),
+                    default_user: String::new(),
+                    default_domain: String::new(),
+                    flags: gio::AskPasswordFlags::NEED_PASSWORD,
+                },
+                |_| {},
+            );
+            descendants(&overlay.clone().upcast())
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                .find(|button| button.label().as_deref() == Some("Cancel"))
+                .expect("retry Cancel")
+                .emit_clicked();
+            assert!(
+                view.state.begin_unlock_progress(&keys),
+                "cancelling an incorrect-passphrase retry should allow another unlock"
+            );
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
 }
 
 #[test]
@@ -272,7 +416,9 @@ fn unlock_progress_dismiss_skips_navigation() {
         "ui::browser::location::tests::unlock_progress_dismiss_skips_navigation",
         || {
             let (view, window, overlay) = hosted_browser();
-            view.state.present_unlock_progress("USB Backup");
+            let keys = DeviceKeys::new([Some("/dev/sdb1".into())], [Some("/dev/sdb".into())]);
+            assert!(view.state.begin_unlock_progress(&keys));
+            view.state.present_unlock_progress(&keys, "USB Backup");
             let layer = modal_layer_on(&overlay).expect("unlock progress modal");
             descendants(&layer.clone().upcast())
                 .iter()
@@ -280,21 +426,28 @@ fn unlock_progress_dismiss_skips_navigation() {
                 .find(|button| button.label().as_deref() == Some("Hide"))
                 .expect("Hide")
                 .emit_clicked();
-            assert!(view.state.unlock_progress.borrow().is_none());
             assert!(
-                view.state.unlock_progress_dismissed.get(),
+                view.state
+                    .unlock_slots
+                    .borrow()
+                    .iter()
+                    .find(|slot| unlock_target_matches(&slot.keys, &keys))
+                    .is_some_and(|slot| slot.view.is_none()),
+            );
+            assert!(
+                unlock_progress_dismissed_for(&view.state.unlock_slots.borrow(), &keys),
                 "Hide should keep unlock from jumping to the volume"
             );
             wait_until(
                 || layer.parent().is_none(),
                 "unlock progress modal did not dismiss",
             );
-            view.state.present_unlock_progress("USB Backup");
+            view.state.present_unlock_progress(&keys, "USB Backup");
             assert!(
                 modal_layer_on(&overlay).is_none(),
                 "a dismissed unlock should not bring the unlocking modal back"
             );
-            view.state.dismiss_unlock_progress();
+            view.state.dismiss_unlock_progress(&keys);
             window.destroy();
             view.browser().clear_observer();
         },
@@ -309,12 +462,13 @@ fn unlock_progress_schedule_cancelled_before_delay() {
         "ui::browser::location::tests::unlock_progress_schedule_cancelled_before_delay",
         || {
             let (view, window, overlay) = hosted_browser();
-            view.state.begin_unlock_progress();
-            view.state.schedule_unlock_progress("USB Backup");
+            let keys = DeviceKeys::new([Some("/dev/sdb1".into())], [Some("/dev/sdb".into())]);
+            assert!(view.state.begin_unlock_progress(&keys));
+            view.state.schedule_unlock_progress(&keys, "USB Backup");
             assert!(modal_layer_on(&overlay).is_none());
-            view.state.dismiss_unlock_progress();
+            view.state.dismiss_unlock_progress(&keys);
             assert!(
-                !view.state.unlock_progress_dismissed.get(),
+                !unlock_progress_dismissed_for(&view.state.unlock_slots.borrow(), &keys),
                 "finishing unlock before the modal appears is not a user dismiss"
             );
             let deadline = Instant::now() + UNLOCK_PROGRESS_DELAY + Duration::from_millis(150);
@@ -326,6 +480,113 @@ fn unlock_progress_schedule_cancelled_before_delay() {
                 modal_layer_on(&overlay).is_none(),
                 "cancelled unlock progress should not appear after the delay"
             );
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn unlock_progress_hide_is_isolated_per_device() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::unlock_progress_hide_is_isolated_per_device",
+        || {
+            let (view, window, overlay) = hosted_browser();
+            let keys_a = DeviceKeys::new([Some("/dev/sdb2".into())], [Some("/dev/sdb".into())]);
+            let keys_b = DeviceKeys::new([Some("/dev/sdc1".into())], [Some("/dev/sdc".into())]);
+            assert!(view.state.begin_unlock_progress(&keys_a));
+            view.state.present_unlock_progress(&keys_a, "Volume A");
+            let layer_a = modal_layer_on(&overlay).expect("A unlocking modal");
+            descendants(&layer_a.clone().upcast())
+                .iter()
+                .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                .find(|button| button.label().as_deref() == Some("Hide"))
+                .expect("Hide")
+                .emit_clicked();
+            wait_until(
+                || layer_a.parent().is_none(),
+                "A unlocking modal did not hide",
+            );
+            assert!(unlock_progress_dismissed_for(
+                &view.state.unlock_slots.borrow(),
+                &keys_a
+            ));
+            assert!(view.state.begin_unlock_progress(&keys_b));
+            view.state.present_unlock_progress(&keys_b, "Volume B");
+            let layer_b = modal_layer_on(&overlay).expect("B unlocking modal");
+            assert!(
+                descendants(&layer_b.clone().upcast()).iter().any(|widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.text().as_str().contains("Volume B"))
+                }),
+                "B should own the visible unlocking modal"
+            );
+            view.state.finish_unlock_slot(&keys_a);
+            assert!(
+                modal_layer_on(&overlay).is_some(),
+                "finishing hidden A must not dismiss B's modal"
+            );
+            assert!(!unlock_progress_dismissed_for(
+                &view.state.unlock_slots.borrow(),
+                &keys_b
+            ));
+            view.state.finish_unlock_slot(&keys_b);
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn plain_volume_remount_does_not_present_unlock_chrome() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::plain_volume_remount_does_not_present_unlock_chrome",
+        || {
+            let (view, window, overlay) = hosted_browser();
+            let keys = DeviceKeys::new([Some("/dev/sdb1".into())], [Some("/dev/sdb".into())]);
+            assert!(view.state.begin_unlock_progress(&keys));
+            view.state
+                .schedule_device_mount_chrome(&keys, "USB Backup", false);
+            let deadline = Instant::now() + UNLOCK_PROGRESS_DELAY + Duration::from_millis(150);
+            while Instant::now() < deadline {
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert!(
+                modal_layer_on(&overlay).is_none(),
+                "a plain USB remount should stay on Connecting, not Unlocking volume"
+            );
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn encrypted_volume_presents_unlocking_chrome() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::encrypted_volume_presents_unlocking_chrome",
+        || {
+            let (view, window, overlay) = hosted_browser();
+            let keys = DeviceKeys::new([Some("/dev/sdb2".into())], [Some("/dev/sdb".into())]);
+            assert!(view.state.begin_unlock_progress(&keys));
+            view.state
+                .schedule_device_mount_chrome(&keys, "LUKS Backup", true);
+            wait_until(
+                || modal_layer_on(&overlay).is_some(),
+                "encrypted unlock should present after the delay",
+            );
+            let layer = modal_layer_on(&overlay).expect("unlocking modal");
+            assert!(
+                descendants(&layer.upcast()).iter().any(|widget| {
+                    widget
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.text().as_str() == "Unlocking volume")
+                }),
+                "encrypted unlock chrome should use the lock-icon unlocking title"
+            );
+            view.state.finish_unlock_slot(&keys);
             window.destroy();
             view.browser().clear_observer();
         },

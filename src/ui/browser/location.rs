@@ -15,6 +15,7 @@ use crate::ui::controls::{
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
 };
+use crate::ui::window::gio_volume_is_encrypted;
 use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -29,6 +30,14 @@ pub(super) struct UnlockProgressView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
     blurred_root: Option<BlurBin>,
+}
+
+pub(super) struct UnlockProgressSlot {
+    keys: DeviceKeys,
+    view: Option<UnlockProgressView>,
+    pending: Option<glib::SourceId>,
+    dismissed: bool,
+    in_flight: bool,
 }
 
 pub(super) fn is_breadcrumb_button_target(mut target: gtk::Widget) -> bool {
@@ -526,46 +535,168 @@ fn foreign_volume_wait_follow_up(
     }
 }
 
-#[derive(Clone, Debug)]
-struct DeviceKeys {
-    tokens: Vec<String>,
+fn foreign_wait_changed_is_complete(mount_present: bool) -> bool {
+    mount_present
+}
+
+fn foreign_drive_wait_changed_is_complete(successor: VolumeSuccessorKind) -> bool {
+    successor == VolumeSuccessorKind::Mounted
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UnlockChrome {
+    Unlocking,
+    Connecting,
+}
+
+fn unlock_chrome_for_device(encrypted: bool) -> UnlockChrome {
+    if encrypted {
+        UnlockChrome::Unlocking
+    } else {
+        UnlockChrome::Connecting
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DeviceKeys {
+    volume_tokens: Vec<String>,
+    drive_tokens: Vec<String>,
 }
 
 impl DeviceKeys {
-    fn from_identifiers(parts: impl IntoIterator<Item = Option<String>>) -> Self {
+    fn new(
+        volume: impl IntoIterator<Item = Option<String>>,
+        drive: impl IntoIterator<Item = Option<String>>,
+    ) -> Self {
         Self {
-            tokens: parts
-                .into_iter()
-                .filter_map(|value| {
-                    let value = value?.trim().to_owned();
-                    (!value.is_empty()).then_some(value)
-                })
-                .collect(),
+            volume_tokens: collect_device_tokens(volume),
+            drive_tokens: collect_device_tokens(drive),
         }
     }
 
-    fn overlaps(&self, other: &Self) -> bool {
-        self.tokens.iter().any(|token| other.tokens.contains(token))
+    fn is_empty(&self) -> bool {
+        self.volume_tokens.is_empty() && self.drive_tokens.is_empty()
     }
+}
+
+fn collect_device_tokens(parts: impl IntoIterator<Item = Option<String>>) -> Vec<String> {
+    parts
+        .into_iter()
+        .filter_map(|value| {
+            let value = value?.trim().to_owned();
+            (!value.is_empty()).then_some(value)
+        })
+        .collect()
+}
+
+fn tokens_overlap(left: &[String], right: &[String]) -> bool {
+    left.iter().any(|token| right.contains(token))
+}
+
+fn unlock_target_matches(left: &DeviceKeys, right: &DeviceKeys) -> bool {
+    if !left.volume_tokens.is_empty() && !right.volume_tokens.is_empty() {
+        return tokens_overlap(&left.volume_tokens, &right.volume_tokens);
+    }
+    tokens_overlap(&left.volume_tokens, &right.volume_tokens)
+        || tokens_overlap(&left.drive_tokens, &right.drive_tokens)
+}
+
+fn unix_device_is_partition_of(volume_unix: &str, drive_unix: &str) -> bool {
+    let Some(rest) = volume_unix.strip_prefix(drive_unix) else {
+        return false;
+    };
+    if rest.is_empty() {
+        return false;
+    }
+    rest.starts_with(|ch: char| ch.is_ascii_digit())
+        || rest
+            .strip_prefix('p')
+            .is_some_and(|digits| digits.starts_with(|ch: char| ch.is_ascii_digit()))
+}
+
+fn unix_device_is_sibling_partition(waited: &DeviceKeys, candidate: &DeviceKeys) -> bool {
+    candidate.volume_tokens.iter().any(|volume_unix| {
+        waited
+            .drive_tokens
+            .iter()
+            .any(|drive_unix| unix_device_is_partition_of(volume_unix, drive_unix))
+    })
+}
+
+fn identity_matches_mount(
+    waited: &DeviceKeys,
+    candidate: &DeviceKeys,
+    waited_volume_present: bool,
+) -> bool {
+    if tokens_overlap(&waited.volume_tokens, &candidate.volume_tokens) {
+        return true;
+    }
+    if !tokens_overlap(&waited.drive_tokens, &candidate.drive_tokens) {
+        return false;
+    }
+    if unix_device_is_sibling_partition(waited, candidate) {
+        return false;
+    }
+    waited.volume_tokens.is_empty() || !waited_volume_present
+}
+
+fn identity_matches_volume(waited: &DeviceKeys, candidate: &DeviceKeys) -> bool {
+    tokens_overlap(&waited.volume_tokens, &candidate.volume_tokens)
+        || (waited.volume_tokens.is_empty()
+            && tokens_overlap(&waited.drive_tokens, &candidate.drive_tokens)
+            && !unix_device_is_sibling_partition(waited, candidate))
+}
+
+fn begin_unlock_slot(slots: &mut Vec<UnlockProgressSlot>, keys: &DeviceKeys) -> bool {
+    if let Some(slot) = slots
+        .iter_mut()
+        .find(|slot| unlock_target_matches(&slot.keys, keys))
+    {
+        if slot.in_flight {
+            return false;
+        }
+        slot.in_flight = true;
+        slot.dismissed = false;
+        return true;
+    }
+    slots.push(UnlockProgressSlot {
+        keys: keys.clone(),
+        view: None,
+        pending: None,
+        dismissed: false,
+        in_flight: true,
+    });
+    true
+}
+
+fn unlock_progress_dismissed_for(slots: &[UnlockProgressSlot], keys: &DeviceKeys) -> bool {
+    slots
+        .iter()
+        .find(|slot| unlock_target_matches(&slot.keys, keys))
+        .is_some_and(|slot| slot.dismissed)
 }
 
 fn gio_identifier(value: Option<glib::GString>) -> Option<String> {
     value.map(|value| value.to_string())
 }
 
-fn volume_and_drive_keys(volume: Option<&gio::Volume>, drive: Option<&gio::Drive>) -> DeviceKeys {
-    DeviceKeys::from_identifiers([
-        volume.and_then(|volume| {
-            gio_identifier(volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
-        }),
-        volume.and_then(|volume| gio_identifier(volume.uuid())),
-        drive.and_then(|drive| {
-            gio_identifier(drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
-        }),
-        drive.and_then(|drive| {
-            gio_identifier(drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UUID.as_str()))
-        }),
-    ])
+fn device_keys(volume: Option<&gio::Volume>, drive: Option<&gio::Drive>) -> DeviceKeys {
+    DeviceKeys::new(
+        [
+            volume.and_then(|volume| {
+                gio_identifier(volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
+            }),
+            volume.and_then(|volume| gio_identifier(volume.uuid())),
+        ],
+        [
+            drive.and_then(|drive| {
+                gio_identifier(drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
+            }),
+            drive.and_then(|drive| {
+                gio_identifier(drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UUID.as_str()))
+            }),
+        ],
+    )
 }
 
 #[derive(Clone)]
@@ -578,20 +709,20 @@ impl DeviceMatch {
     fn from_volume(volume: &gio::Volume) -> Self {
         let drive = volume.drive();
         Self {
-            keys: volume_and_drive_keys(Some(volume), drive.as_ref()),
+            keys: device_keys(Some(volume), drive.as_ref()),
             drive,
         }
     }
 
     fn from_drive(drive: &gio::Drive) -> Self {
         Self {
-            keys: volume_and_drive_keys(None, Some(drive)),
+            keys: device_keys(None, Some(drive)),
             drive: Some(drive.clone()),
         }
     }
 
     fn is_absent(&self) -> bool {
-        self.keys.tokens.is_empty() && self.drive.is_none()
+        self.keys.is_empty() && self.drive.is_none()
     }
 
     fn same_drive(&self, other: Option<&gio::Drive>) -> bool {
@@ -601,29 +732,39 @@ impl DeviceMatch {
         }
     }
 
-    fn matches_mount(&self, mount: &gio::Mount) -> bool {
-        self.same_drive(mount.drive().as_ref())
-            || self.keys.overlaps(&volume_and_drive_keys(
-                mount.volume().as_ref(),
-                mount.drive().as_ref(),
-            ))
+    fn matches_mount(&self, mount: &gio::Mount, waited_volume_present: bool) -> bool {
+        identity_matches_mount(
+            &self.keys,
+            &device_keys(mount.volume().as_ref(), mount.drive().as_ref()),
+            waited_volume_present,
+        )
     }
 
     fn matches_volume(&self, volume: &gio::Volume) -> bool {
-        self.same_drive(volume.drive().as_ref())
-            || self.keys.overlaps(&volume_and_drive_keys(
-                Some(volume),
-                volume.drive().as_ref(),
-            ))
+        identity_matches_volume(
+            &self.keys,
+            &device_keys(Some(volume), volume.drive().as_ref()),
+        )
     }
 
     fn matches_password_drive(&self, drive: &gio::Drive) -> bool {
         drive.start_stop_type() == gio::DriveStartStopType::Password
             && (self.same_drive(Some(drive))
-                || self
-                    .keys
-                    .overlaps(&volume_and_drive_keys(None, Some(drive))))
+                || tokens_overlap(
+                    &self.keys.drive_tokens,
+                    &device_keys(None, Some(drive)).drive_tokens,
+                ))
     }
+}
+
+fn waited_volume_is_present(waited: &DeviceMatch, volumes: &[gio::Volume]) -> bool {
+    !waited.keys.volume_tokens.is_empty()
+        && volumes.iter().any(|volume| {
+            tokens_overlap(
+                &waited.keys.volume_tokens,
+                &device_keys(Some(volume), volume.drive().as_ref()).volume_tokens,
+            )
+        })
 }
 
 fn successor_kind(waited: &DeviceMatch) -> VolumeSuccessorKind {
@@ -631,18 +772,16 @@ fn successor_kind(waited: &DeviceMatch) -> VolumeSuccessorKind {
         return VolumeSuccessorKind::Absent;
     }
     let monitor = gio::VolumeMonitor::get();
+    let volumes = monitor.volumes();
+    let waited_volume_present = waited_volume_is_present(waited, &volumes);
     if monitor
         .mounts()
         .iter()
-        .any(|mount| waited.matches_mount(mount))
+        .any(|mount| waited.matches_mount(mount, waited_volume_present))
     {
         return VolumeSuccessorKind::Mounted;
     }
-    if monitor
-        .volumes()
-        .iter()
-        .any(|volume| waited.matches_volume(volume))
-    {
+    if volumes.iter().any(|volume| waited.matches_volume(volume)) {
         return VolumeSuccessorKind::Locked;
     }
     if monitor
@@ -656,10 +795,12 @@ fn successor_kind(waited: &DeviceMatch) -> VolumeSuccessorKind {
 }
 
 fn successor_mount_location(waited: &DeviceMatch) -> Option<Location> {
-    gio::VolumeMonitor::get()
+    let monitor = gio::VolumeMonitor::get();
+    let waited_volume_present = waited_volume_is_present(waited, &monitor.volumes());
+    monitor
         .mounts()
         .into_iter()
-        .find(|mount| waited.matches_mount(mount))
+        .find(|mount| waited.matches_mount(mount, waited_volume_present))
         .and_then(|mount| crate::adapters::location_for_file(&mount.root()))
 }
 
@@ -697,7 +838,12 @@ async fn wait_for_foreign_volume_mount(volume: &gio::Volume) -> ForeignVolumeWai
     let removed = Rc::new(Cell::new(false));
 
     let changed_complete = complete.clone();
-    let changed_id = volume.connect_changed(move |_| changed_complete());
+    let changed_volume = volume.clone();
+    let changed_id = volume.connect_changed(move |_| {
+        if foreign_wait_changed_is_complete(changed_volume.get_mount().is_some()) {
+            changed_complete();
+        }
+    });
     let removed_flag = removed.clone();
     let removed_complete = complete.clone();
     let removed_id = volume.connect_removed(move |_| {
@@ -755,7 +901,12 @@ async fn wait_for_foreign_drive_start(
     let removed = Rc::new(Cell::new(false));
 
     let changed_complete = complete.clone();
-    let changed_id = drive.connect_changed(move |_| changed_complete());
+    let changed_waited = waited.clone();
+    let changed_id = drive.connect_changed(move |_| {
+        if foreign_drive_wait_changed_is_complete(successor_kind(&changed_waited)) {
+            changed_complete();
+        }
+    });
     let removed_flag = removed.clone();
     let removed_complete = complete.clone();
     let disconnected_id = drive.connect_disconnected(move |_| {
@@ -794,29 +945,31 @@ async fn wait_for_foreign_drive_start(
 
 impl BrowserView {
     pub(crate) fn mount_volume(&self, volume: gio::Volume) {
-        self.state.begin_unlock_progress();
         self.state.mount_device_volume(volume, None, false, true);
     }
 
     pub(crate) fn unlock_volume(&self, volume: gio::Volume) {
-        self.state.begin_unlock_progress();
         self.state.mount_device_volume(volume, None, false, true);
     }
 
     pub(crate) fn start_password_drive(&self, drive: gio::Drive, user_asked_to_open: bool) {
-        self.state.begin_unlock_progress();
         self.state
             .start_password_drive(drive, None, false, user_asked_to_open);
     }
 }
 
 impl ViewState {
-    fn apply_unlock_view_follow_up(&self, mount_location: &Location, user_asked_to_open: bool) {
+    fn apply_unlock_view_follow_up(
+        &self,
+        keys: &DeviceKeys,
+        mount_location: &Location,
+        user_asked_to_open: bool,
+    ) {
         match unlock_view_follow_up(
             self.browser.active_location().as_ref(),
             mount_location,
             user_asked_to_open,
-            self.unlock_progress_dismissed.get(),
+            unlock_progress_dismissed_for(&self.unlock_slots.borrow(), keys),
         ) {
             UnlockViewFollowUp::Reload => self.browser.reload_active(),
             UnlockViewFollowUp::Navigate => self.browser.navigate(mount_location.clone()),
@@ -835,8 +988,9 @@ impl ViewState {
             .and_then(|mount| crate::adapters::location_for_file(&mount.root()))
             .or_else(|| successor_mount_location(waited));
         if let Some(location) = location {
-            self.apply_unlock_view_follow_up(&location, user_asked_to_open);
+            self.apply_unlock_view_follow_up(&waited.keys, &location, user_asked_to_open);
         }
+        self.finish_unlock_slot(&waited.keys);
     }
 
     fn start_owned_successor(self: &Rc<Self>, waited: &DeviceMatch, user_asked_to_open: bool) {
@@ -860,6 +1014,9 @@ impl ViewState {
         user_asked_to_open: bool,
     ) {
         let waited = DeviceMatch::from_volume(&volume);
+        if credentials.is_none() && !already_waited && !self.begin_unlock_progress(&waited.keys) {
+            return;
+        }
         self.mount_target(
             MountTarget::Volume(volume.clone()),
             credentials,
@@ -869,7 +1026,7 @@ impl ViewState {
                     .err()
                     .is_some_and(volume_error_is_in_flight_mount)
                 {
-                    state.dismiss_unlock_progress();
+                    state.dismiss_unlock_progress(&waited.keys);
                 }
                 if device_volume_mount_is_ready(&result, volume.get_mount().is_some()) {
                     state.open_unlocked_identity(Some(&volume), &waited, user_asked_to_open);
@@ -879,7 +1036,8 @@ impl ViewState {
                     {
                         let weak = Rc::downgrade(state);
                         let retry_volume = volume.clone();
-                        state.show_mount_retry_prompt(
+                        state.show_unlock_retry_prompt(
+                            waited.keys.clone(),
                             attempted,
                             details,
                             move |credentials| {
@@ -892,7 +1050,6 @@ impl ViewState {
                                     );
                                 }
                             },
-                            || {},
                         );
                     } else if volume_error_is_in_flight_mount(&error) {
                         // Listing never automounts. Pending/busy here is a
@@ -926,7 +1083,6 @@ impl ViewState {
                             match foreign_volume_wait_follow_up(outcome, already_waited, successor)
                             {
                                 ForeignVolumeWaitFollowUp::Navigate => {
-                                    state.dismiss_unlock_progress();
                                     state.open_unlocked_identity(
                                         Some(&wait_volume),
                                         &wait_match,
@@ -936,6 +1092,7 @@ impl ViewState {
                                 ForeignVolumeWaitFollowUp::StartOwnedMount
                                     if outcome == ForeignVolumeWaitOutcome::Gone =>
                                 {
+                                    state.finish_unlock_slot(&wait_match.keys);
                                     state.start_owned_successor(&wait_match, user_asked_to_open);
                                 }
                                 ForeignVolumeWaitFollowUp::StartOwnedMount => {
@@ -947,16 +1104,19 @@ impl ViewState {
                                     );
                                 }
                                 ForeignVolumeWaitFollowUp::Quiet => {
-                                    state.dismiss_unlock_progress();
+                                    state.finish_unlock_slot(&wait_match.keys);
                                 }
                             }
                         });
-                    } else if !mount_error_is_cancelled(&error) {
-                        show_error_dialog(
-                            &state.overlay,
-                            "Unable to mount volume",
-                            &error.to_string(),
-                        );
+                    } else {
+                        state.finish_unlock_slot(&waited.keys);
+                        if !mount_error_is_cancelled(&error) {
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to mount volume",
+                                &error.to_string(),
+                            );
+                        }
                     }
                 }
             },
@@ -971,6 +1131,9 @@ impl ViewState {
         user_asked_to_open: bool,
     ) {
         let waited = DeviceMatch::from_drive(&drive);
+        if credentials.is_none() && !already_waited && !self.begin_unlock_progress(&waited.keys) {
+            return;
+        }
         self.mount_target(
             MountTarget::Drive(drive.clone()),
             credentials,
@@ -980,11 +1143,10 @@ impl ViewState {
                     .err()
                     .is_some_and(volume_error_is_in_flight_mount)
                 {
-                    state.dismiss_unlock_progress();
+                    state.dismiss_unlock_progress(&waited.keys);
                 }
-                let successor = successor_kind(&waited);
-                if device_volume_mount_is_ready(&result, successor == VolumeSuccessorKind::Mounted)
-                {
+                let this_mounted = successor_kind(&waited) == VolumeSuccessorKind::Mounted;
+                if device_volume_mount_is_ready(&result, this_mounted) {
                     state.open_unlocked_identity(None, &waited, user_asked_to_open);
                 } else if let Err(error) = result {
                     if volume_error_is_authentication_failure(&error)
@@ -992,7 +1154,8 @@ impl ViewState {
                     {
                         let weak = Rc::downgrade(state);
                         let retry_drive = drive.clone();
-                        state.show_mount_retry_prompt(
+                        state.show_unlock_retry_prompt(
+                            waited.keys.clone(),
                             attempted,
                             details,
                             move |credentials| {
@@ -1005,7 +1168,6 @@ impl ViewState {
                                     );
                                 }
                             },
-                            || {},
                         );
                     } else if volume_error_is_in_flight_mount(&error) {
                         tracing::debug!(
@@ -1037,7 +1199,6 @@ impl ViewState {
                             match foreign_volume_wait_follow_up(outcome, already_waited, successor)
                             {
                                 ForeignVolumeWaitFollowUp::Navigate => {
-                                    state.dismiss_unlock_progress();
                                     state.open_unlocked_identity(
                                         None,
                                         &wait_match,
@@ -1047,6 +1208,7 @@ impl ViewState {
                                 ForeignVolumeWaitFollowUp::StartOwnedMount
                                     if outcome == ForeignVolumeWaitOutcome::Gone =>
                                 {
+                                    state.finish_unlock_slot(&wait_match.keys);
                                     state.start_owned_successor(&wait_match, user_asked_to_open);
                                 }
                                 ForeignVolumeWaitFollowUp::StartOwnedMount => {
@@ -1058,16 +1220,19 @@ impl ViewState {
                                     );
                                 }
                                 ForeignVolumeWaitFollowUp::Quiet => {
-                                    state.dismiss_unlock_progress();
+                                    state.finish_unlock_slot(&wait_match.keys);
                                 }
                             }
                         });
-                    } else if !mount_error_is_cancelled(&error) {
-                        show_error_dialog(
-                            &state.overlay,
-                            "Unable to mount volume",
-                            &error.to_string(),
-                        );
+                    } else {
+                        state.finish_unlock_slot(&waited.keys);
+                        if !mount_error_is_cancelled(&error) {
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to mount volume",
+                                &error.to_string(),
+                            );
+                        }
                     }
                 }
             },
@@ -1287,6 +1452,21 @@ impl ViewState {
         );
     }
 
+    fn show_unlock_retry_prompt(
+        self: &Rc<Self>,
+        keys: DeviceKeys,
+        previous_credentials: Option<MountCredentials>,
+        details: MountPromptDetails,
+        retry: impl Fn(MountCredentials) + 'static,
+    ) {
+        let weak = Rc::downgrade(self);
+        self.show_mount_retry_prompt(previous_credentials, details, retry, move || {
+            if let Some(state) = weak.upgrade() {
+                state.finish_unlock_slot(&keys);
+            }
+        });
+    }
+
     fn show_mount_retry_prompt(
         &self,
         previous_credentials: Option<MountCredentials>,
@@ -1338,29 +1518,65 @@ impl ViewState {
         );
     }
 
-    fn begin_unlock_progress(&self) {
-        self.unlock_progress_dismissed.set(false);
+    fn begin_unlock_progress(&self, keys: &DeviceKeys) -> bool {
+        begin_unlock_slot(&mut self.unlock_slots.borrow_mut(), keys)
     }
 
-    fn schedule_unlock_progress(self: &Rc<Self>, volume_name: &str) {
-        self.dismiss_unlock_progress();
-        if self.unlock_progress_dismissed.get() {
+    fn schedule_device_mount_chrome(
+        self: &Rc<Self>,
+        keys: &DeviceKeys,
+        volume_name: &str,
+        encrypted: bool,
+    ) {
+        if unlock_chrome_for_device(encrypted) != UnlockChrome::Unlocking {
+            return;
+        }
+        self.schedule_unlock_progress(keys, volume_name);
+    }
+
+    fn schedule_unlock_progress(self: &Rc<Self>, keys: &DeviceKeys, volume_name: &str) {
+        self.dismiss_unlock_progress(keys);
+        if unlock_progress_dismissed_for(&self.unlock_slots.borrow(), keys) {
             return;
         }
         let weak = Rc::downgrade(self);
         let volume_name = volume_name.to_owned();
-        let source = glib::timeout_add_local_once(UNLOCK_PROGRESS_DELAY, move || {
-            if let Some(state) = weak.upgrade() {
-                state.pending_unlock_progress.take();
-                state.present_unlock_progress(&volume_name);
+        let keys = keys.clone();
+        let source = glib::timeout_add_local_once(UNLOCK_PROGRESS_DELAY, {
+            let keys = keys.clone();
+            move || {
+                if let Some(state) = weak.upgrade() {
+                    if let Some(slot) = state
+                        .unlock_slots
+                        .borrow_mut()
+                        .iter_mut()
+                        .find(|slot| unlock_target_matches(&slot.keys, &keys))
+                    {
+                        slot.pending = None;
+                    }
+                    state.present_unlock_progress(&keys, &volume_name);
+                }
             }
         });
-        self.pending_unlock_progress.replace(Some(source));
+        if let Some(slot) = self
+            .unlock_slots
+            .borrow_mut()
+            .iter_mut()
+            .find(|slot| unlock_target_matches(&slot.keys, &keys))
+        {
+            if let Some(previous) = slot.pending.take() {
+                previous.remove();
+            }
+            slot.pending = Some(source);
+        } else {
+            source.remove();
+        }
     }
 
-    fn present_unlock_progress(self: &Rc<Self>, volume_name: &str) {
-        self.dismiss_unlock_progress();
-        if self.unlock_progress_dismissed.get() {
+    fn present_unlock_progress(self: &Rc<Self>, keys: &DeviceKeys, volume_name: &str) {
+        self.dismiss_other_unlock_views(keys);
+        self.dismiss_unlock_progress(keys);
+        if unlock_progress_dismissed_for(&self.unlock_slots.borrow(), keys) {
             return;
         }
         let Some(ModalHost {
@@ -1394,59 +1610,110 @@ impl ViewState {
             Some(Rc::new(|| true)),
         );
         window_overlay.add_overlay(&layer);
-        self.unlock_progress.replace(Some(UnlockProgressView {
+        let view = UnlockProgressView {
             layer,
             overlay: window_overlay,
             blurred_root,
-        }));
+        };
 
         let weak = Rc::downgrade(self);
+        let hide_keys = keys.clone();
         hide.connect_clicked({
             let weak = weak.clone();
+            let hide_keys = hide_keys.clone();
             move |_| {
                 if let Some(state) = weak.upgrade() {
-                    state.hide_unlock_progress();
+                    state.hide_unlock_progress(&hide_keys);
                 }
             }
         });
         close.connect_clicked({
             let weak = weak.clone();
+            let hide_keys = hide_keys.clone();
             move |_| {
                 if let Some(state) = weak.upgrade() {
-                    state.hide_unlock_progress();
+                    state.hide_unlock_progress(&hide_keys);
                 }
             }
         });
         let escape = gtk::EventControllerKey::new();
-        escape.connect_key_pressed(move |_, key, _, _| {
-            if key == gtk::gdk::Key::Escape {
-                if let Some(state) = weak.upgrade() {
-                    state.hide_unlock_progress();
+        escape.connect_key_pressed({
+            let hide_keys = hide_keys.clone();
+            move |_, key, _, _| {
+                if key == gtk::gdk::Key::Escape {
+                    if let Some(state) = weak.upgrade() {
+                        state.hide_unlock_progress(&hide_keys);
+                    }
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
                 }
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
             }
         });
-        if let Some(progress) = self.unlock_progress.borrow().as_ref() {
-            progress.layer.add_controller(escape);
-        }
+        view.layer.add_controller(escape);
         hide.grab_focus();
-    }
-
-    fn hide_unlock_progress(&self) {
-        self.unlock_progress_dismissed.set(true);
-        self.dismiss_unlock_progress();
-    }
-
-    fn dismiss_unlock_progress(&self) {
-        if let Some(source) = self.pending_unlock_progress.take() {
-            source.remove();
+        if let Some(slot) = self
+            .unlock_slots
+            .borrow_mut()
+            .iter_mut()
+            .find(|slot| unlock_target_matches(&slot.keys, keys))
+        {
+            slot.view = Some(view);
+        } else {
+            dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
         }
-        let Some(view) = self.unlock_progress.take() else {
+    }
+
+    fn hide_unlock_progress(&self, keys: &DeviceKeys) {
+        if let Some(slot) = self
+            .unlock_slots
+            .borrow_mut()
+            .iter_mut()
+            .find(|slot| unlock_target_matches(&slot.keys, keys))
+        {
+            slot.dismissed = true;
+        }
+        self.dismiss_unlock_progress(keys);
+    }
+
+    fn dismiss_other_unlock_views(&self, keys: &DeviceKeys) {
+        let others: Vec<DeviceKeys> = self
+            .unlock_slots
+            .borrow()
+            .iter()
+            .filter(|slot| !unlock_target_matches(&slot.keys, keys))
+            .map(|slot| slot.keys.clone())
+            .collect();
+        for other in others {
+            self.dismiss_unlock_progress(&other);
+        }
+    }
+
+    fn dismiss_unlock_progress(&self, keys: &DeviceKeys) {
+        let view = {
+            let mut slots = self.unlock_slots.borrow_mut();
+            let Some(slot) = slots
+                .iter_mut()
+                .find(|slot| unlock_target_matches(&slot.keys, keys))
+            else {
+                return;
+            };
+            if let Some(source) = slot.pending.take() {
+                source.remove();
+            }
+            slot.view.take()
+        };
+        let Some(view) = view else {
             return;
         };
         dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+    }
+
+    fn finish_unlock_slot(&self, keys: &DeviceKeys) {
+        self.dismiss_unlock_progress(keys);
+        self.unlock_slots
+            .borrow_mut()
+            .retain(|slot| !unlock_target_matches(&slot.keys, keys));
     }
 
     fn mount_target(
@@ -1463,13 +1730,21 @@ impl ViewState {
         let Some(window) = self.overlay.root().and_downcast::<gtk::Window>() else {
             return;
         };
-        let unlock_name = match &target {
-            MountTarget::Volume(volume) => Some(volume.name().to_string()),
-            MountTarget::Drive(drive) => Some(drive.name().to_string()),
-            MountTarget::Location(_, _) => None,
+        let (unlock_name, unlock_keys, encrypted) = match &target {
+            MountTarget::Volume(volume) => (
+                Some(volume.name().to_string()),
+                DeviceMatch::from_volume(volume).keys,
+                gio_volume_is_encrypted(volume),
+            ),
+            MountTarget::Drive(drive) => (
+                Some(drive.name().to_string()),
+                DeviceMatch::from_drive(drive).keys,
+                true,
+            ),
+            MountTarget::Location(_, _) => (None, DeviceKeys::new([], []), false),
         };
         if let Some(name) = unlock_name.as_deref() {
-            self.schedule_unlock_progress(name);
+            self.schedule_device_mount_chrome(&unlock_keys, name, encrypted);
         }
         let activity = BrowserView {
             state: self.clone(),
@@ -1493,6 +1768,8 @@ impl ViewState {
         let already_prompted = Cell::new(credentials_for_signal.borrow().is_some());
         let progress_state = Rc::downgrade(self);
         let progress_name = unlock_name;
+        let progress_keys = unlock_keys;
+        let progress_encrypted = encrypted;
         operation.connect_ask_password(
             move |operation, message, default_user, default_domain, flags| {
                 // Suppress GtkMountOperation's own native password dialog: we
@@ -1513,7 +1790,7 @@ impl ViewState {
                     return;
                 }
                 if let Some(state) = progress_state.upgrade() {
-                    state.dismiss_unlock_progress();
+                    state.dismiss_unlock_progress(&progress_keys);
                 }
                 if let Some(previous) = prompt_for_signal.borrow_mut().take() {
                     dismiss_authentication_prompt(&prompt_overlay, &previous);
@@ -1531,12 +1808,15 @@ impl ViewState {
                             let attempts_for_signal = attempts_for_signal.clone();
                             let progress_state = progress_state.clone();
                             let progress_name = progress_name.clone();
+                            let progress_keys = progress_keys.clone();
                             move |credentials| {
                                 attempts_for_signal.replace(Some(credentials));
                                 if let (Some(state), Some(name)) =
                                     (progress_state.upgrade(), progress_name.as_ref())
                                 {
-                                    state.present_unlock_progress(name);
+                                    if progress_encrypted {
+                                        state.present_unlock_progress(&progress_keys, name);
+                                    }
                                 }
                             }
                         })),

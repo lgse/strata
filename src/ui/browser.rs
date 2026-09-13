@@ -13,7 +13,7 @@ use crate::ui::browser::columns::ColumnView;
 use crate::ui::browser::desktop::selected_terminal_location;
 use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
 use crate::ui::browser::location::{
-    MountCredentials, UnlockProgressView, is_breadcrumb_button_target,
+    MountCredentials, UnlockProgressSlot, is_breadcrumb_button_target,
 };
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
@@ -200,9 +200,7 @@ pub(super) struct ViewState {
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
-    unlock_progress: RefCell<Option<UnlockProgressView>>,
-    pending_unlock_progress: RefCell<Option<glib::SourceId>>,
-    unlock_progress_dismissed: Cell<bool>,
+    unlock_slots: RefCell<Vec<UnlockProgressSlot>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
     trash_button: RefCell<Option<gtk::Button>>,
     browser: Rc<Browser>,
@@ -515,9 +513,7 @@ impl BrowserView {
             pending_trash_lookup: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
-            unlock_progress: RefCell::new(None),
-            pending_unlock_progress: RefCell::new(None),
-            unlock_progress_dismissed: Cell::new(false),
+            unlock_slots: RefCell::new(Vec::new()),
             auto_refresh: RefCell::new(None),
             trash_button: RefCell::new(None),
             browser,

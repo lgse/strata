@@ -2350,8 +2350,10 @@ fn request_encrypted_lock(
             false
         };
         let parent_for_lock = parent.clone();
+        let parent_for_forget = parent.clone();
         let browser_for_lock = browser.clone();
         let in_flight_for_lock = in_flight.clone();
+        let in_flight_for_forget = in_flight.clone();
         let start_lock = move || {
             lock_cleartext_then_stop(
                 mount,
@@ -2368,12 +2370,32 @@ fn request_encrypted_lock(
             move || {
                 glib::MainContext::default().spawn_local(async move {
                     if cached && let Some(uuid) = luks_uuid {
-                        let _ = gio::spawn_blocking(move || {
+                        let forget = gio::spawn_blocking(move || {
                             volume_password::forget_cached_volume_password(&uuid)
                         })
                         .await;
+                        match forget {
+                            Ok(Ok(())) => start_lock(),
+                            Ok(Err(error)) => {
+                                show_error_dialog(
+                                    &parent_for_forget,
+                                    "Couldn't forget the saved password",
+                                    &error.to_string(),
+                                );
+                                in_flight_for_forget.set(false);
+                            }
+                            Err(_) => {
+                                show_error_dialog(
+                                    &parent_for_forget,
+                                    "Couldn't forget the saved password",
+                                    "The saved password could not be deleted.",
+                                );
+                                in_flight_for_forget.set(false);
+                            }
+                        }
+                    } else {
+                        start_lock();
                     }
-                    start_lock();
                 });
             },
             move || in_flight.set(false),
@@ -2624,7 +2646,7 @@ fn gio_volume_unix_device(volume: &gio::Volume) -> Option<glib::GString> {
     volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str())
 }
 
-fn gio_volume_is_encrypted(volume: &gio::Volume) -> bool {
+pub(crate) fn gio_volume_is_encrypted(volume: &gio::Volume) -> bool {
     gio_icons_are_encrypted(
         &volume.icon(),
         &volume.symbolic_icon(),
@@ -2685,14 +2707,14 @@ fn orphaned_password_drives(volumes: &[gio::Volume], drives: &[gio::Drive]) -> V
     drives
         .iter()
         .filter(|drive| {
-            let identity = gio_drive_identity(drive);
-            let covered = identity
-                .as_ref()
-                .is_some_and(|identity| identities.contains(identity))
-                || volumes
+            devices::password_drive_is_orphaned(
+                drive.start_stop_type(),
+                gio_drive_identity(drive).as_deref(),
+                &identities,
+                volumes
                     .iter()
-                    .any(|volume| volume.drive().as_ref() == Some(*drive));
-            devices::should_list_orphaned_password_drive(drive.start_stop_type(), covered)
+                    .any(|volume| volume.drive().as_ref() == Some(*drive)),
+            )
         })
         .cloned()
         .collect()

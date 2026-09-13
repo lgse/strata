@@ -166,54 +166,28 @@ fn crypto_password_uuid_prefers_mapper_over_filesystem() {
 }
 
 #[test]
-fn encrypted_listing_keeps_a_locked_identity() {
-    let encrypted_locked = VolumeListFact {
-        identity: Some("/dev/loop0"),
-        icon_names: &["drive-harddisk-encrypted-symbolic"],
-        start_stop: None,
-        has_mount: false,
-        crypto: BlockCryptoRef::default(),
-    };
-    let password_drive = DriveListFact {
-        identity: Some("/dev/loop0"),
-        start_stop: DriveStartStopType::Password,
-    };
-    let locked_row = [ListedDeviceRow {
-        identity: "/dev/loop0".into(),
-        encrypted: true,
-        locked: true,
-    }];
-    assert_eq!(listed_device_rows(&[encrypted_locked], &[]), locked_row);
-    assert_eq!(listed_device_rows(&[], &[password_drive]), locked_row);
-    assert_eq!(
-        listed_device_rows(&[encrypted_locked], &[password_drive]),
-        locked_row
+fn orphaned_password_drive_listing_uses_production_filter() {
+    let covered = vec!["/dev/loop0".to_owned()];
+    assert!(
+        password_drive_is_orphaned(DriveStartStopType::Password, Some("/dev/sdb"), &[], false),
+        "uncovered password drive should stay in the listing"
     );
     assert!(
-        listed_device_rows(
-            &[],
-            &[DriveListFact {
-                identity: Some("/dev/sr0"),
-                start_stop: DriveStartStopType::Shutdown,
-            }]
-        )
-        .is_empty()
+        !password_drive_is_orphaned(
+            DriveStartStopType::Password,
+            Some("/dev/loop0"),
+            &covered,
+            false
+        ),
+        "a volume with the same identity should omit the password drive"
     );
-
-    let usb = VolumeListFact {
-        identity: Some("/dev/sdc1"),
-        icon_names: &["drive-harddisk-usb"],
-        start_stop: Some(DriveStartStopType::Shutdown),
-        has_mount: true,
-        crypto: BlockCryptoRef::default(),
-    };
-    assert_eq!(
-        listed_device_rows(&[usb], &[]),
-        [ListedDeviceRow {
-            identity: "/dev/sdc1".into(),
-            encrypted: false,
-            locked: false,
-        }]
+    assert!(
+        !password_drive_is_orphaned(DriveStartStopType::Password, Some("/dev/sdb"), &[], true),
+        "a volume that claims the drive should omit the password drive"
+    );
+    assert!(
+        !password_drive_is_orphaned(DriveStartStopType::Shutdown, Some("/dev/sr0"), &[], false),
+        "non-password drives are not listed as orphaned unlock targets"
     );
 }
 

@@ -2,6 +2,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    fmt,
     time::Duration,
 };
 
@@ -10,6 +11,55 @@ use zbus::zvariant::OwnedObjectPath;
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ForgetCachedPasswordError {
+    NeedsConfirmation,
+    ItemLocked,
+    Failed(String),
+}
+
+impl fmt::Display for ForgetCachedPasswordError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NeedsConfirmation => f.write_str(
+                "The password manager asked to confirm deleting it. Unlock the keyring and try again.",
+            ),
+            Self::ItemLocked => f.write_str(
+                "The saved password is locked in the password manager. Unlock the keyring and try again.",
+            ),
+            Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
+pub(super) fn forget_delete_prompt_is_complete(prompt_path: &str) -> bool {
+    prompt_path == "/"
+}
+
+pub(super) fn forget_failure_from_delete_prompt(
+    prompt_path: &str,
+) -> Result<(), ForgetCachedPasswordError> {
+    if forget_delete_prompt_is_complete(prompt_path) {
+        Ok(())
+    } else {
+        Err(ForgetCachedPasswordError::NeedsConfirmation)
+    }
+}
+
+pub(super) fn forget_failure_from_search(
+    locked_item_count: usize,
+) -> Result<(), ForgetCachedPasswordError> {
+    if locked_item_count == 0 {
+        Ok(())
+    } else {
+        Err(ForgetCachedPasswordError::ItemLocked)
+    }
+}
+
+pub(super) fn delete_error_is_item_locked(name: &str) -> bool {
+    name == "org.freedesktop.Secret.Error.IsLocked"
+}
 
 /// GVfs stores LUKS passphrases under `gvfs-luks-uuid`; GNOME Disks uses
 /// `gvfs.crypto.luks.uuid`. Search both, and both hyphenated and compact UUID forms.
@@ -30,10 +80,8 @@ pub(super) fn volume_password_is_cached(uuid: &str) -> bool {
     }
 }
 
-pub(super) fn forget_cached_volume_password(uuid: &str) {
-    if let Err(error) = async_io::block_on(delete_cached_luks_items(uuid)) {
-        tracing::warn!(%error, "unable to forget cached volume password");
-    }
+pub(super) fn forget_cached_volume_password(uuid: &str) -> Result<(), ForgetCachedPasswordError> {
+    async_io::block_on(delete_cached_luks_items(uuid))
 }
 
 pub(super) fn luks_password_lookups(uuid: &str) -> Vec<(&'static str, String)> {
@@ -82,23 +130,61 @@ async fn search_cached_luks_items_on(
     Ok(items)
 }
 
-async fn delete_cached_luks_items(uuid: &str) -> zbus::Result<()> {
-    let connection = secret_connection().await?;
-    for path in search_cached_luks_items_on(&connection, uuid).await? {
+fn forget_failure_from_zbus(error: zbus::Error) -> ForgetCachedPasswordError {
+    if delete_error_is_item_locked(zbus_error_name(&error)) {
+        ForgetCachedPasswordError::ItemLocked
+    } else {
+        ForgetCachedPasswordError::Failed(error.to_string())
+    }
+}
+
+fn zbus_error_name(error: &zbus::Error) -> &str {
+    match error {
+        zbus::Error::MethodError(name, _, _) => name.as_str(),
+        _ => "",
+    }
+}
+
+async fn delete_cached_luks_items(uuid: &str) -> Result<(), ForgetCachedPasswordError> {
+    let connection = secret_connection()
+        .await
+        .map_err(forget_failure_from_zbus)?;
+    let lookups = luks_password_lookups(uuid);
+    if lookups.is_empty() {
+        return Ok(());
+    }
+    let proxy = secret_service_proxy(&connection)
+        .await
+        .map_err(forget_failure_from_zbus)?;
+    let mut unlocked = Vec::new();
+    let mut locked = Vec::new();
+    for (key, value) in lookups {
+        let mut attributes = HashMap::new();
+        attributes.insert(key, value.as_str());
+        let (found_unlocked, found_locked): (Vec<OwnedObjectPath>, Vec<OwnedObjectPath>) = proxy
+            .call("SearchItems", &(attributes,))
+            .await
+            .map_err(forget_failure_from_zbus)?;
+        unlocked.extend(found_unlocked);
+        locked.extend(found_locked);
+    }
+    forget_failure_from_search(locked.len())?;
+    let mut seen = HashSet::new();
+    unlocked.retain(|path| seen.insert(path.as_str().to_owned()));
+    for path in unlocked {
         let item = zbus::Proxy::new(
             &connection,
             SECRET_SERVICE,
             path.as_str(),
             SECRET_ITEM_INTERFACE,
         )
-        .await?;
-        let prompt: OwnedObjectPath = item.call("Delete", &()).await?;
-        if prompt.as_str() != "/" {
-            tracing::debug!(
-                prompt = %prompt,
-                "secret service asked to confirm deleting a cached volume password"
-            );
-        }
+        .await
+        .map_err(forget_failure_from_zbus)?;
+        let prompt: OwnedObjectPath = item
+            .call("Delete", &())
+            .await
+            .map_err(forget_failure_from_zbus)?;
+        forget_failure_from_delete_prompt(prompt.as_str())?;
     }
     Ok(())
 }
