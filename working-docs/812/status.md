@@ -5,19 +5,20 @@
 - staging_branch: fix/812-x11-wm-class
 - folder: working-docs/812
 - round: 1
-- stage: round 1 code complete
-- review_verdict: n/a
+- stage: round 1 review complete
+- review_verdict: approve-with-comments
 - qa_verdict: n/a
-- head_sha: 77be0a30ea1976a781f5d3c55904ba118ef9aae1
-- agent_id: bc-1d72a758-95b9-586c-99da-6499ca2fc811
+- head_sha: 9553be04e418a0ecefff17cff44600b3305bfde6
+- agent_id: bc-009b4098-4ea7-534b-b4d5-fbb908e67c94
 - recommended_branch: fix/812-x11-wm-class
-- notes: round 1 code on `fix/812-x11-wm-class`. File-manager prgname and X11 program class are `io.github.lgse.Strata`. Portal FileChooser identity unchanged. E2E `APPLICATION_NAME` follows prgname. Left draft. Did not squash, undraft, drop working-docs, merge, or post a cleanup comment. Did not send anything to Origin. `ManagePullRequest` cannot update lgse#957 from this fork checkout.
+- notes: round 1 review complete on `fix/812-x11-wm-class`. Verdict `approve-with-comments` (nits: stale PR body; code-complete status listed `77be0a30`). No blockers. File-manager prgname and X11 program class are `io.github.lgse.Strata`. Portal FileChooser identity unchanged. E2E `APPLICATION_NAME` follows prgname. Left draft. Did not squash, undraft, drop working-docs, merge, or post a GitHub PR comment. Did not send anything to Origin.
 
 ## History
 
 - plan: complete (bc-d2f12994-d476-5779-b4ec-fcd89b474ffb, 2026-09-13)
 - staging PR: opened https://github.com/lgse/strata/pull/957 (draft) (bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26, 2026-09-13)
 - round 1 code: complete (bc-1d72a758-95b9-586c-99da-6499ca2fc811, 2026-09-13)
+- round 1 review: approve-with-comments (bc-009b4098-4ea7-534b-b4d5-fbb908e67c94, 2026-09-13)
 
 ## Pick rationale
 
