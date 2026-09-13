@@ -8,7 +8,7 @@
 - stage: plan complete; ready for code
 - review_verdict: n/a
 - qa_verdict: n/a
-- head_sha: n/a
+- head_sha: 9737471da73a4f4b52640dfcc9e73ab03dd6b0bc
 - agent_id: bc-fcac889a-01d8-5d06-9c6a-c9638c2cfc26
 - recommended_branch: fix/812-x11-wm-class
 - notes: staging PR https://github.com/lgse/strata/pull/957 (draft) on `fix/812-x11-wm-class` from latest `lgse/strata` `main`. Working-docs only; no product/runtime code. Closed fork PR wmfeht/strata#31. Did not assign the issue or change P-band labels. Did not send anything to Origin.
