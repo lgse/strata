@@ -89,6 +89,24 @@ def test_switching_preserves_directory_selection_and_sort(strata):
     strata.wait_for_focused_entry("diagram.txt")
 
 
+def test_list_column_resize_tracks_the_pointer_without_an_initial_jump(strata):
+    strata.switch_view("List")
+    for label in ["Name", "Mode", "Size", "Type", "Modified"]:
+        heading = strata.wait(
+            lambda: strata.pane().find(role="button", name=label),
+            f"the {label} heading to appear",
+        )
+        cell = heading.parent
+        assert cell is not None
+        before = cell.screen_bounds()
+        start = (before.x + before.width - 3, before.y + before.height // 2)
+        strata.pointer.drag_points(start, (start[0] - 12, start[1]))
+        strata.wait(
+            lambda: abs(cell.screen_bounds().width - (before.width - 12)) <= 2,
+            f"the {label} column to shrink by the pointer's 12-pixel movement",
+        )
+
+
 def _has_check_mark(option) -> bool:
     """A chosen appearance option shows a trailing check image."""
 
