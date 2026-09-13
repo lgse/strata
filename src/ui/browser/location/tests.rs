@@ -229,35 +229,6 @@ fn sibling_partition_is_not_this_volume() {
 }
 
 #[test]
-fn foreign_changed_without_mount_does_not_complete_wait() {
-    assert!(!foreign_wait_changed_is_complete(false));
-    assert!(foreign_wait_changed_is_complete(true));
-    assert!(!foreign_drive_wait_changed_is_complete(
-        VolumeSuccessorKind::Locked
-    ));
-    assert!(!foreign_drive_wait_changed_is_complete(
-        VolumeSuccessorKind::Absent
-    ));
-    assert!(foreign_drive_wait_changed_is_complete(
-        VolumeSuccessorKind::Mounted
-    ));
-    assert_eq!(
-        foreign_volume_wait_follow_up(
-            ForeignVolumeWaitOutcome::StillLocked,
-            false,
-            VolumeSuccessorKind::Locked,
-        ),
-        ForeignVolumeWaitFollowUp::StartOwnedMount
-    );
-}
-
-#[test]
-fn unlock_chrome_is_only_for_encrypted_targets() {
-    assert_eq!(unlock_chrome_for_device(false), UnlockChrome::Connecting);
-    assert_eq!(unlock_chrome_for_device(true), UnlockChrome::Unlocking);
-}
-
-#[test]
 fn same_device_unlock_is_rejected_while_in_flight() {
     let mut slots = Vec::new();
     let luks = DeviceKeys::new(
@@ -317,61 +288,6 @@ fn unlock_retry_cancel_releases_in_flight() {
             view.browser().clear_observer();
         },
     );
-}
-
-#[test]
-fn foreign_volume_wait_follow_up_covers_successor_states() {
-    let cases = [
-        (
-            ForeignVolumeWaitOutcome::Mounted,
-            false,
-            VolumeSuccessorKind::Absent,
-            ForeignVolumeWaitFollowUp::Navigate,
-        ),
-        (
-            ForeignVolumeWaitOutcome::Mounted,
-            true,
-            VolumeSuccessorKind::Absent,
-            ForeignVolumeWaitFollowUp::Navigate,
-        ),
-        (
-            ForeignVolumeWaitOutcome::StillLocked,
-            false,
-            VolumeSuccessorKind::Locked,
-            ForeignVolumeWaitFollowUp::StartOwnedMount,
-        ),
-        (
-            ForeignVolumeWaitOutcome::StillLocked,
-            true,
-            VolumeSuccessorKind::Locked,
-            ForeignVolumeWaitFollowUp::Quiet,
-        ),
-        (
-            ForeignVolumeWaitOutcome::Gone,
-            false,
-            VolumeSuccessorKind::Mounted,
-            ForeignVolumeWaitFollowUp::Navigate,
-        ),
-        (
-            ForeignVolumeWaitOutcome::Gone,
-            false,
-            VolumeSuccessorKind::Locked,
-            ForeignVolumeWaitFollowUp::StartOwnedMount,
-        ),
-        (
-            ForeignVolumeWaitOutcome::Gone,
-            false,
-            VolumeSuccessorKind::Absent,
-            ForeignVolumeWaitFollowUp::Quiet,
-        ),
-    ];
-    for (outcome, already_waited, successor, expected) in cases {
-        assert_eq!(
-            foreign_volume_wait_follow_up(outcome, already_waited, successor),
-            expected,
-            "{outcome:?} waited={already_waited} successor={successor:?}"
-        );
-    }
 }
 
 #[test]

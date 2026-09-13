@@ -535,28 +535,6 @@ fn foreign_volume_wait_follow_up(
     }
 }
 
-fn foreign_wait_changed_is_complete(mount_present: bool) -> bool {
-    mount_present
-}
-
-fn foreign_drive_wait_changed_is_complete(successor: VolumeSuccessorKind) -> bool {
-    successor == VolumeSuccessorKind::Mounted
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UnlockChrome {
-    Unlocking,
-    Connecting,
-}
-
-fn unlock_chrome_for_device(encrypted: bool) -> UnlockChrome {
-    if encrypted {
-        UnlockChrome::Unlocking
-    } else {
-        UnlockChrome::Connecting
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DeviceKeys {
     volume_tokens: Vec<String>,
@@ -840,7 +818,7 @@ async fn wait_for_foreign_volume_mount(volume: &gio::Volume) -> ForeignVolumeWai
     let changed_complete = complete.clone();
     let changed_volume = volume.clone();
     let changed_id = volume.connect_changed(move |_| {
-        if foreign_wait_changed_is_complete(changed_volume.get_mount().is_some()) {
+        if changed_volume.get_mount().is_some() {
             changed_complete();
         }
     });
@@ -903,7 +881,7 @@ async fn wait_for_foreign_drive_start(
     let changed_complete = complete.clone();
     let changed_waited = waited.clone();
     let changed_id = drive.connect_changed(move |_| {
-        if foreign_drive_wait_changed_is_complete(successor_kind(&changed_waited)) {
+        if successor_kind(&changed_waited) == VolumeSuccessorKind::Mounted {
             changed_complete();
         }
     });
@@ -1528,7 +1506,7 @@ impl ViewState {
         volume_name: &str,
         encrypted: bool,
     ) {
-        if unlock_chrome_for_device(encrypted) != UnlockChrome::Unlocking {
+        if !encrypted {
             return;
         }
         self.schedule_unlock_progress(keys, volume_name);
@@ -1813,10 +1791,9 @@ impl ViewState {
                                 attempts_for_signal.replace(Some(credentials));
                                 if let (Some(state), Some(name)) =
                                     (progress_state.upgrade(), progress_name.as_ref())
+                                    && progress_encrypted
                                 {
-                                    if progress_encrypted {
-                                        state.present_unlock_progress(&progress_keys, name);
-                                    }
+                                    state.present_unlock_progress(&progress_keys, name);
                                 }
                             }
                         })),

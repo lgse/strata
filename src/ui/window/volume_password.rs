@@ -33,13 +33,11 @@ impl fmt::Display for ForgetCachedPasswordError {
     }
 }
 
-pub(super) fn forget_delete_prompt_is_complete(prompt_path: &str) -> bool {
+fn forget_delete_prompt_is_complete(prompt_path: &str) -> bool {
     prompt_path == "/"
 }
 
-pub(super) fn forget_failure_from_delete_prompt(
-    prompt_path: &str,
-) -> Result<(), ForgetCachedPasswordError> {
+fn forget_failure_from_delete_prompt(prompt_path: &str) -> Result<(), ForgetCachedPasswordError> {
     if forget_delete_prompt_is_complete(prompt_path) {
         Ok(())
     } else {
@@ -47,9 +45,7 @@ pub(super) fn forget_failure_from_delete_prompt(
     }
 }
 
-pub(super) fn forget_failure_from_search(
-    locked_item_count: usize,
-) -> Result<(), ForgetCachedPasswordError> {
+fn forget_failure_from_search(locked_item_count: usize) -> Result<(), ForgetCachedPasswordError> {
     if locked_item_count == 0 {
         Ok(())
     } else {
@@ -57,7 +53,7 @@ pub(super) fn forget_failure_from_search(
     }
 }
 
-pub(super) fn delete_error_is_item_locked(name: &str) -> bool {
+fn delete_error_is_item_locked(name: &str) -> bool {
     name == "org.freedesktop.Secret.Error.IsLocked"
 }
 

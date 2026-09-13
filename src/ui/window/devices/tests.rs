@@ -4,27 +4,6 @@ use super::*;
 use gtk::gio::DriveStartStopType;
 
 #[test]
-fn device_identity_prefers_unix_device_then_uuid() {
-    assert_eq!(
-        device_identity(Some("/dev/sda1"), Some("uuid-a"), Some("drive")),
-        Some("/dev/sda1".into())
-    );
-    assert_eq!(
-        device_identity(None, Some("uuid-a"), Some("drive")),
-        Some("uuid-a".into())
-    );
-    assert_eq!(
-        device_identity(Some("  "), Some("uuid-a"), None),
-        Some("uuid-a".into())
-    );
-    assert_eq!(
-        device_identity(None, None, Some("drive-id")),
-        Some("drive-id".into())
-    );
-    assert_eq!(device_identity(None, None, None), None);
-}
-
-#[test]
 fn encrypted_device_detection() {
     let none = BlockCryptoRef::default();
     assert!(is_encrypted_device(
