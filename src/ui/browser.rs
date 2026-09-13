@@ -144,6 +144,7 @@ pub(super) struct ViewState {
     breadcrumbs: gtk::Box,
     breadcrumb_scroller: gtk::ScrolledWindow,
     location_entry: gtk::Entry,
+    path_completion: Rc<location::completion::PathCompletion>,
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
     mode_views: RefCell<ModeViews>,
@@ -271,8 +272,8 @@ impl BrowserView {
 
         let location_entry = gtk::Entry::builder()
             .hexpand(true)
-            .width_chars(48)
-            .placeholder_text("Enter an absolute path")
+            .width_chars(36)
+            .placeholder_text("Enter a path or URI…")
             .tooltip_text("Location (Ctrl+L)")
             .build();
         location_entry.add_css_class("location-entry");
@@ -297,6 +298,7 @@ impl BrowserView {
         entry_row.append(&confirm_location);
         entry_row.append(&cancel_location);
         let entry_control = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        entry_control.set_hexpand(true);
         entry_control.append(&entry_row);
 
         let breadcrumbs = gtk::Box::new(gtk::Orientation::Horizontal, 2);
@@ -454,6 +456,24 @@ impl BrowserView {
         let multiple_selection = Rc::new(Cell::new(multiple));
         let mode_views = ModeViews::new(&scroller, browser.clone(), multiple_selection.clone());
         overlay.set_child(Some(&mode_views.widget()));
+        let pending_submit = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
+        let pending_submit_cb = pending_submit.clone();
+        let location_stack_for_completion = location_stack.clone();
+        let path_completion = location::completion::PathCompletion::attach(
+            &location_entry,
+            browser.clone(),
+            move || {
+                location_stack_for_completion
+                    .visible_child_name()
+                    .as_deref()
+                    == Some("entry")
+            },
+            move || {
+                if let Some(submit) = pending_submit_cb.borrow().as_ref() {
+                    submit();
+                }
+            },
+        );
         let state = Rc::new(ViewState {
             overlay,
             location_control,
@@ -463,6 +483,7 @@ impl BrowserView {
             breadcrumbs,
             breadcrumb_scroller: breadcrumb_scroller.clone(),
             location_entry,
+            path_completion,
             columns_widget,
             scroller,
             mode_views: RefCell::new(mode_views),
@@ -514,6 +535,13 @@ impl BrowserView {
             trash_button: RefCell::new(None),
             browser,
         });
+
+        let weak_state = Rc::downgrade(&state);
+        *pending_submit.borrow_mut() = Some(Rc::new(move || {
+            if let Some(state) = weak_state.upgrade() {
+                state.submit_location();
+            }
+        }));
 
         // Columns are laid out from the start edge, so the blank strip beside the last
         // one is the natural place to begin a marquee that runs into it.

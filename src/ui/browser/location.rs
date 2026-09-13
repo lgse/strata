@@ -21,6 +21,8 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
 
+pub(super) mod completion;
+
 pub(super) fn is_breadcrumb_button_target(mut target: gtk::Widget) -> bool {
     loop {
         if target.is::<gtk::Button>() {
@@ -498,15 +500,19 @@ impl ViewState {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
         self.location_entry.select_region(0, -1);
+        self.path_completion
+            .refresh(&self.location_entry, &self.browser);
     }
 
     pub(super) fn cancel_location_edit(&self) {
+        self.path_completion.dismiss();
         self.restore_location_text();
         self.location_stack.set_visible_child_name("breadcrumbs");
         self.browser.focus_active();
     }
 
     pub(super) fn submit_location(self: &Rc<Self>) {
+        self.path_completion.dismiss();
         let input = self.location_entry.text();
         let (input, credentials) = match credentials_from_location_input(input.as_str()) {
             Ok(parsed) => parsed,
