@@ -186,31 +186,44 @@ archive's signed GitHub Actions provenance before extracting it:
 gh attestation verify "$archive" --repo lgse/strata
 ```
 
-Every verification you run must succeed. Extract the archive, install the binary,
-and confirm it starts:
+Every verification you run must succeed. For a **fresh** installation of a media-helper
+release, keep the complete matching bundle and activate it only after copying.
+Do not use these fresh-install commands to overwrite an existing installation:
 
 ```bash
 tar -xzf "$archive"
-install -Dm755 "${archive%.tar.gz}/strata" "$HOME/.local/bin/strata"
-command -v strata
-strata
+package=${archive%.tar.gz}
+test -x "$package/strata" && test -x "$package/strata-media-helper" && test -r "$package/bundle.json" || exit 1
+bin="$HOME/.local/bin"
+root="$bin/.strata-bundles"
+id=$(sha256sum "$archive" | cut -d' ' -f1)
+test ! -e "$bin/strata" && test ! -L "$bin/strata" || exit 1
+test ! -e "$root/current" && test ! -L "$root/current" || exit 1
+test ! -e "$root/versions/$id" || exit 1
+install -d -m 700 "$root" "$root/versions"
+cp -a "$package" "$root/versions/$id"
+ln -s "versions/$id" "$root/current"
+ln -s .strata-bundles/current/strata "$bin/strata"
+"$bin/strata"
 ```
 
 If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every archive contains `SOURCE_COMMIT`, identifying the exact source revision used by GitHub Actions.
 
 #### Debug a release crash
 
-Download the matching `strata-<version>-<target>.debug` asset from the same release and place it beside the installed `strata` binary, keeping its filename unchanged. Then run `coredumpctl debug strata`; GDB will load its Rust function names and source lines.
+Download the matching `strata-<version>-<target>.debug` asset from the same release and place it beside the resolved installed `strata` binary, keeping its filename unchanged. The helper has a separate `strata-media-helper-<version>-<target>.debug` artifact. For an available local dump, `coredumpctl debug strata` loads its symbols. Do not upload core dumps: they may contain private file contents.
 
 #### 3. Update or uninstall
 
-For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
+For a manual installation, use **Settings → Updates** or the interactive installer for verified transactional updates. Never replace only one executable or overwrite an active version directory. [Bundle layout, offline legacy recovery, rollback and retention](docs/media-helper-bundles.md) explain how old running windows keep their matching helper. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation, first remove any opted-in file chooser integration (`strata --uninstall-portal`) and close all Strata/portal instances. Then:
 
 ```bash
 rm -f ~/.local/bin/strata \
   ~/.local/share/applications/io.github.lgse.Strata.desktop \
   ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service \
   ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
+rm -rf -- "$HOME/.local/bin/.strata-bundles"
+rm -rf -- "${XDG_CACHE_HOME:-$HOME/.cache}/strata-media-recovery"
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
 gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
 ```
@@ -376,7 +389,7 @@ The deliberate tradeoff: this is fast **filename and path** search, not file-con
 
 Files shown while browsing are untrusted. Image, camera RAW, PDF, thumbnail, and media parsing therefore runs out of process through **Bubblewrap**, not inside the main Strata process. Each short-lived helper receives namespace isolation, a minimal read-only runtime, exactly one canonicalized input file, private output and temporary directories, no network, and no capabilities. Memory, CPU/wall time, input, file, and parent-side output limits bound the work.
 
-Only media helpers may receive allowlisted GPU render devices, and only for accelerated decoding; image, PDF, and thumbnail helpers receive no device mounts. Images are normalized to bounded PNG images. Media arrives incrementally as validated raw RGBA frames and fixed-format PCM: GTK presents textures and GStreamer outputs raw audio, without opening the original file or decoding a compressed clip. Four media sessions per process, bounded queues, and paused-worker cleanup limit concurrent work. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
+Only media helpers may receive allowlisted GPU render devices, and only for accelerated decoding; image, PDF, and thumbnail helpers receive no device mounts. Images are normalized to bounded PNG images. Media arrives incrementally as validated raw RGBA frames and fixed-format PCM: GTK presents textures and a separate, narrowly sandboxed PCM helper outputs raw audio through GStreamer, without opening the original file or decoding a compressed clip. Four media sessions per process, bounded queues, and paused-worker cleanup limit concurrent work. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
 
 Plain-text and source previews are different: they stay in process because they do not invoke a native format parser, and reads are capped at 1 MiB. See [Preview sandbox](docs/preview-sandbox.md) for provider ordering, exact mounts, formats, and resource budgets.
 
@@ -386,7 +399,7 @@ Plain-text and source previews are different: they stay in process because they 
 | --- | --- |
 | Platform | 64-bit Linux with glibc 2.39+; designed for Omarchy and Wayland. GTK may use another backend supplied by the host, but Wayland is the primary display stack. |
 | Release architectures | `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` |
-| UI and runtime | Rust 2024, GTK 4.12+, GIO/GLib, Cairo, GtkSourceView 5, Poppler GLib, GDK Pixbuf, GStreamer, and Fontconfig |
+| UI and runtime | Rust 2024, GTK 4.12+, GIO/GLib, Cairo, GtkSourceView 5 and Fontconfig; separate media helper with Poppler GLib, GDK Pixbuf and GStreamer |
 | Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
 | Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
 | Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick, classic `dcraw`, and LibRaw `simple_dcraw` expand camera RAW support |
@@ -411,6 +424,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dee
 
 - [Architecture principles](docs/architecture.md)
 - [Preview sandbox](docs/preview-sandbox.md)
+- [Media helper bundles and legacy recovery](docs/media-helper-bundles.md)
 - [Performance baseline](docs/performance-baseline.md)
 - [Themes and Omarchy integration](docs/themes.md)
 - [Unsafe code policy](docs/unsafe-code.md)

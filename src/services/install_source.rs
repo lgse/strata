@@ -184,7 +184,11 @@ fn on_path(program: &str) -> bool {
 }
 
 fn marker_path_for_executable(executable: &Path) -> Option<PathBuf> {
-    Some(executable.parent()?.parent()?.join(MARKER_RELATIVE_PATH))
+    Some(
+        crate::installation::bin_dir(executable)?
+            .parent()?
+            .join(MARKER_RELATIVE_PATH),
+    )
 }
 
 pub(crate) fn ensure_self_managed(source: &InstallSource) -> Result<(), String> {

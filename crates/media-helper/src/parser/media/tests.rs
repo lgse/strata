@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::media::{Decoder, Packet};
 use std::{io::Cursor, os::unix::net::UnixStream, thread};
+use strata_media_protocol::{Decoder, Packet};
 
 fn success(command: &mut Command) -> Vec<u8> {
     let output = bounded_output_with_timeout(command, 32 * 1024 * 1024, Duration::from_secs(30))

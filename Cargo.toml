@@ -9,7 +9,13 @@ repository = "https://github.com/LGSE/strata"
 keywords = ["file-manager", "gtk4", "linux", "wayland"]
 categories = ["filesystem", "gui"]
 
+[workspace]
+members = ["crates/media-protocol", "crates/media-helper"]
+default-members = [".", "crates/media-protocol", "crates/media-helper"]
+resolver = "3"
+
 [dependencies]
+strata-media-protocol = { version = "=0.1.0", path = "crates/media-protocol" }
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
 async-io = "2.6.0"
 cairo-rs = { version = "0.22.9", features = ["pdf", "png"] }
@@ -22,16 +28,14 @@ gdk4-wayland = { version = "0.11.4", features = ["v4_12"] }
 gio = { version = "0.22.9", features = ["v2_72"] }
 gio-unix = "0.22.8"
 glib = "0.22.9"
-gstreamer = { version = "0.25.3", features = ["v1_20"] }
-gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 ignore = "0.4.23"
 pangocairo = "0.22.0"
-poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
 rustix = { version = "1.1.4", features = ["fs", "process", "event"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+sha2 = "0.11.0"
 sevenz-rust2 = "0.22.2"
 sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
 tar = "0.4.46"
@@ -49,6 +53,8 @@ unrar_sys = "0.5.8"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"
+flate2 = "1.1.10"
+sha2 = "0.11.0"
 
 [profile.release]
 # Whole-program optimization for the hot listing/sort/insert paths. Build
@@ -57,13 +63,16 @@ glib-build-tools = "0.22.8"
 lto = true
 codegen-units = 1
 
-[lints.rust]
+[lints]
+workspace = true
+
+[workspace.lints.rust]
 unsafe_code = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 unused_must_use = "deny"
 unused_unsafe = "deny"
 
-[lints.clippy]
+[workspace.lints.clippy]
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
 dbg_macro = "deny"

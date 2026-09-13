@@ -22,8 +22,8 @@ const PDF_PREVIEW: super::ParseOperation = super::ParseOperation::PreviewPdf(Pdf
 
 use super::{
     Cancellation, MAX_RASTER_INPUT_BYTES, MediaPreviewBackend, ParseOperation, PdfRenderSize,
-    PrivateOutput, gpu_devices, parse, polaris_gpu_available_at, resolve_renderer_executable,
-    sandbox_command, sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
+    PrivateOutput, gpu_devices, parse, polaris_gpu_available_at, sandbox_command,
+    sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
 };
 
 #[test]
@@ -432,7 +432,7 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
 }
 
 #[test]
-fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
+fn video_thumbnails_use_the_versioned_helper_inside_the_bounded_sandbox() {
     let command = sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
@@ -454,11 +454,8 @@ fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
     assert!(joined.contains("--as=2147483648"));
     assert!(joined.contains("--cpu=10"));
     assert!(joined.contains("--fsize=33554432"));
-    assert!(
-        joined
-            .contains("/usr/bin/ffmpegthumbnailer -i /input.mkv -o /output/result.png -s 128 -q 8")
-    );
-    assert!(!joined.contains("/app/strata"));
+    assert!(joined.contains("thumbnail-video /input.mkv /output/result.png 128 software"));
+    assert!(joined.contains("/app/strata-media-helper --decode-v1"));
     assert!(!joined.contains("--preview-helper"));
     assert!(!joined.contains("--share-net"));
 }
@@ -481,40 +478,6 @@ fn accepts_only_bounded_png_outputs_and_never_compressed_media() {
     assert!(!valid_output(MEDIA_PREVIEW, b"\0\0\0\x18ftypisom"));
     assert!(!valid_output(MEDIA_PREVIEW, b""));
     assert!(!valid_output(MEDIA_PREVIEW, b"unrelated data"));
-}
-
-#[test]
-fn renderer_uses_a_private_snapshot_after_the_original_executable_is_replaced() {
-    let directory = PrivateOutput::create().expect("create private output");
-    let running = directory.path().join("running-strata");
-    fs::write(&running, b"running executable").expect("write running executable");
-    let replaced = directory.path().join("replaced-strata");
-
-    let executable = resolve_renderer_executable(&replaced, &running, directory.path())
-        .expect("snapshot running executable");
-
-    assert_eq!(executable, directory.path().join("strata-preview-helper"));
-    assert_eq!(
-        fs::read(executable).expect("read snapshot"),
-        b"running executable"
-    );
-}
-
-#[test]
-fn renderer_uses_the_original_executable_while_it_is_available() {
-    let directory = PrivateOutput::create().expect("create private output");
-    let current = directory.path().join("strata");
-    fs::write(&current, b"current executable").expect("write current executable");
-
-    let executable = resolve_renderer_executable(
-        &current,
-        &directory.path().join("unused-running-strata"),
-        directory.path(),
-    )
-    .expect("resolve current executable");
-
-    assert_eq!(executable, current);
-    assert!(!directory.path().join("strata-preview-helper").exists());
 }
 
 #[test]

@@ -8,9 +8,9 @@ use std::rc::Rc;
 use gtk::{glib, prelude::*};
 
 use super::{
-    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
-    format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_target, print_fit, print_page_starts, print_progress_for_page,
+    PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size, format_media_time,
+    media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries, preview_target, print_fit,
+    print_page_starts, print_progress_for_page,
 };
 use crate::app::{Browser, BrowserEvent, EntrySplice};
 use crate::model::Location;
@@ -151,12 +151,13 @@ fn preview_file_sizes_use_decimal_units_and_promote_rounded_overflow() {
 }
 
 #[test]
-fn media_errors_explain_missing_runtime_plugins() {
-    let (title, detail, command) =
-        media_error_feedback("Your GStreamer installation is missing a plug-in.");
-    assert_eq!(title, "Additional media support required");
-    assert!(detail.contains("GStreamer plugins"));
-    assert_eq!(command, Some(MEDIA_PLUGIN_INSTALL_COMMAND));
+fn media_errors_preserve_capability_guidance_without_guessing_package_commands() {
+    let message =
+        "Media helper runtime libraries are missing. Install GStreamer core/base, then retry.";
+    let (title, detail, command) = media_error_feedback(message);
+    assert_eq!(title, "Preview unavailable");
+    assert!(detail.contains(message));
+    assert_eq!(command, None);
 
     let (title, detail, command) = media_error_feedback("The media data is corrupt");
     assert_eq!(title, "Preview unavailable");

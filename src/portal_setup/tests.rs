@@ -37,10 +37,11 @@ fn chooser_preference_preserves_explicit_fallbacks() {
 fn update_refreshes_an_opted_in_portal() {
     let fixture = fixture();
     let context = context(fixture.path());
-    install_at(&context, &executable(fixture.path())).expect("install portal");
+    let executable = executable(fixture.path());
+    install_at(&context, &executable).expect("install portal");
     let refreshed = Cell::new(false);
 
-    refresh_configured_portal_at(&context, || {
+    refresh_configured_portal_at(&context, &executable, || {
         refreshed.set(true);
         ""
     })
@@ -55,7 +56,7 @@ fn update_leaves_an_unconfigured_portal_alone() {
     let context = context(fixture.path());
     let refreshed = Cell::new(false);
 
-    refresh_configured_portal_at(&context, || {
+    refresh_configured_portal_at(&context, &fixture.path().join("missing-strata"), || {
         refreshed.set(true);
         ""
     })
@@ -68,12 +69,142 @@ fn update_leaves_an_unconfigured_portal_alone() {
 fn update_reports_a_configured_portal_refresh_failure() {
     let fixture = fixture();
     let context = context(fixture.path());
-    install_at(&context, &executable(fixture.path())).expect("install portal");
+    let executable = executable(fixture.path());
+    install_at(&context, &executable).expect("install portal");
 
-    let error = refresh_configured_portal_at(&context, || "\nportal restart failed")
+    let error = refresh_configured_portal_at(&context, &executable, || "\nportal restart failed")
         .expect_err("report refresh failure");
 
     assert_eq!(error, "portal restart failed");
+}
+
+#[test]
+fn portal_activation_follows_bundle_updates_and_rollback() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let (running, next, launcher) = bundle(fixture.path());
+    let launch_path = crate::installation::launch_path(&running).expect("running bundle launcher");
+    install_at(&context, &launch_path).expect("install versioned portal");
+    assert_eq!(activation_path(&context), launcher);
+    assert_eq!(
+        fs::read(activation_path(&context)).expect("initial activation"),
+        b"old"
+    );
+
+    for active in [&next, &running] {
+        activate_bundle(&launcher, active);
+        let refreshed = Cell::new(false);
+        refresh_configured_portal_at(&context, &launch_path, || {
+            refreshed.set(true);
+            assert_eq!(activation_path(&context), launcher);
+            assert_eq!(
+                fs::read(activation_path(&context)).expect("activated executable"),
+                fs::read(active).expect("selected bundle")
+            );
+            ""
+        })
+        .expect("refresh activated bundle");
+        assert!(refreshed.get());
+    }
+    let pending = fixture.path().join("legacy-launcher");
+    fs::write(&pending, b"legacy").expect("stage legacy launcher");
+    fs::set_permissions(&pending, fs::Permissions::from_mode(0o755)).expect("legacy permissions");
+    fs::rename(pending, &launcher).expect("activate flat legacy launcher");
+    let old_window_launch =
+        crate::installation::launch_path(&running).expect("restart after rollback");
+    refresh_configured_portal_at(&context, &old_window_launch, || {
+        assert_eq!(activation_path(&context), launcher);
+        assert_eq!(
+            fs::read(activation_path(&context)).expect("legacy portal activation"),
+            b"legacy"
+        );
+        ""
+    })
+    .expect("refresh portal after legacy rollback");
+}
+
+#[test]
+fn update_and_startup_repair_version_specific_portal_activation() {
+    for startup in [false, true] {
+        let fixture = fixture();
+        let context = context(fixture.path());
+        let (running, next, launcher) = bundle(fixture.path());
+        let config = install_at(&context, &launcher).expect("install portal");
+        let config_before = fs::read(&config).expect("chooser preferences");
+        let service = context
+            .data_home
+            .join("dbus-1/services")
+            .join(super::SERVICE_FILE);
+        let contents = fs::read_to_string(&service)
+            .expect("activation service")
+            .replace(
+                &format!("Exec={} --portal", launcher.display()),
+                &format!("Exec={} --portal", running.display()),
+            );
+        fs::write(
+            &service,
+            format!("{contents}\n# local setting\nX-Strata-Test=preserved\n"),
+        )
+        .expect("persist pre-fix activation");
+        activate_bundle(&launcher, &next);
+        let refreshed = Cell::new(false);
+        let refresh = || {
+            refreshed.set(true);
+            assert_eq!(activation_path(&context), launcher);
+            assert_eq!(
+                fs::read(activation_path(&context)).expect("next activation"),
+                b"new"
+            );
+            ""
+        };
+        let launch_path = crate::installation::launch_path(&running).expect("old window launcher");
+        if startup {
+            let proc_root = fixture.path().join("proc");
+            portal_process(&proc_root, 123, &running, &running);
+            let error = refresh_stale_portal_at(
+                &context,
+                &launch_path,
+                &proc_root,
+                || "\nportal restart failed",
+            )
+            .expect_err("report failed restart after repairing the service");
+            assert_eq!(error, "portal restart failed");
+            assert_eq!(activation_path(&context), launcher);
+            refresh_stale_portal_at(&context, &launch_path, &proc_root, refresh)
+                .expect("retry the old version-specific process after repairing its service");
+        } else {
+            refresh_configured_portal_at(&context, &launch_path, refresh)
+                .expect("repair activation after update");
+        }
+        assert!(refreshed.get());
+        assert_eq!(
+            fs::read(config).expect("unchanged chooser preferences"),
+            config_before
+        );
+        let contents = fs::read_to_string(service).expect("refreshed service");
+        assert!(contents.contains("# local setting"));
+        assert!(contents.contains("X-Strata-Test=preserved"));
+    }
+}
+
+#[test]
+fn startup_preserves_a_portal_installed_from_another_build() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let chosen = executable(&fixture.path().join("chosen"));
+    let other = executable(&fixture.path().join("other"));
+    install_at(&context, &chosen).expect("install chosen build");
+    refresh_stale_portal_at(
+        &context,
+        &other,
+        &fixture.path().join("no-processes"),
+        || panic!("a different build must not restart the chosen portal"),
+    )
+    .expect("preserve another installation");
+    assert_eq!(
+        activation_path(&context),
+        chosen.canonicalize().expect("chosen path")
+    );
 }
 
 #[test]
@@ -249,6 +380,30 @@ fn portal_activation_rejects_replaceable_executables() {
 }
 
 #[test]
+fn portal_activation_does_not_persist_a_replaceable_alias() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let executable = executable(fixture.path());
+    let public = fixture.path().join("public");
+    fs::create_dir(&public).expect("alias directory");
+    fs::set_permissions(&public, fs::Permissions::from_mode(0o777))
+        .expect("replaceable alias directory");
+    let alias = public.join("strata");
+    std::os::unix::fs::symlink(&executable, &alias).expect("indirect executable");
+    install_at(&context, &alias).expect("install trusted canonical executable");
+    fs::remove_file(&alias).expect("replace alias");
+    fs::write(&alias, b"replacement").expect("substituted alias");
+    assert_eq!(
+        activation_path(&context),
+        executable.canonicalize().expect("trusted target")
+    );
+    assert_eq!(
+        fs::read(activation_path(&context)).expect("activation target"),
+        b"binary"
+    );
+}
+
+#[test]
 fn portal_activation_accepts_only_the_effective_user_or_root_as_owners() {
     assert!(trusted_owner(0, 1_000));
     assert!(trusted_owner(1_000, 1_000));
@@ -372,6 +527,57 @@ fn executable(root: &std::path::Path) -> PathBuf {
     fs::write(&path, b"binary").expect("executable file");
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("executable permissions");
     path
+}
+
+fn bundle(root: &Path) -> (PathBuf, PathBuf, PathBuf) {
+    let bin = root.canonicalize().expect("fixture root").join("bin");
+    let versions = bin.join(".strata-bundles/versions");
+    let first = versions.join("a".repeat(64)).join("strata");
+    let second = versions.join("b".repeat(64)).join("strata");
+    for (path, contents) in [(&first, b"old"), (&second, b"new")] {
+        fs::create_dir_all(path.parent().expect("version directory")).expect("version storage");
+        fs::write(path, contents).expect("versioned executable");
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+            .expect("executable permissions");
+    }
+    let launcher = bin.join("strata");
+    std::os::unix::fs::symlink(".strata-bundles/current/strata", &launcher)
+        .expect("stable launcher");
+    activate_bundle(&launcher, &first);
+    (first, second, launcher)
+}
+
+fn activate_bundle(launcher: &Path, executable: &Path) {
+    let storage = launcher
+        .parent()
+        .expect("bin directory")
+        .join(".strata-bundles");
+    let version = executable
+        .parent()
+        .expect("version directory")
+        .file_name()
+        .expect("version ID");
+    let pending = storage.join("pending");
+    std::os::unix::fs::symlink(Path::new("versions").join(version), &pending)
+        .expect("next pointer");
+    fs::rename(pending, storage.join("current")).expect("activate version");
+}
+
+fn activation_path(context: &SetupContext) -> PathBuf {
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(super::SERVICE_FILE);
+    let contents = fs::read_to_string(service).expect("activation service");
+    PathBuf::from(
+        contents
+            .lines()
+            .find_map(|line| {
+                line.strip_prefix("Exec=")
+                    .and_then(|value| value.strip_suffix(" --portal"))
+            })
+            .expect("portal Exec path"),
+    )
 }
 
 fn fixture() -> tempfile::TempDir {

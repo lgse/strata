@@ -11,6 +11,22 @@ They declare `provides=("strata=${pkgver}")` and conflict with each other, reser
 
 Strata's third channel, nightly, is deliberately not packaged. Every nightly has its own release tag in the download URL, and `makepkg` fetches `source` before `pkgver()` runs, so no package can discover the newest nightly and download it in one build. Pinning each nightly instead would mean an AUR push per nightly. Nightly users install manually and update in-app, which already supports the channel. Both install the prebuilt release archive rather than compiling: `options=('!strip')` keeps the binary byte-identical to the published artifact, so `gh attestation verify` still matches the file pacman installed.
 
+## Matching media executables
+
+For helper-format releases both packages install `/usr/bin/strata` and
+`/usr/bin/strata-media-helper`, with `bundle.json` under `/usr/share/strata`.
+Conditionals retain support for the older single-binary archives currently pinned
+by the generated packages. Packaging CI compares **both** binaries against their
+published bytes for stable and RC packages; do not strip either one again.
+
+The common helper links GStreamer core/app/base and Poppler at startup. The good
+plugins are required for its fixed PulseAudio-compatible sink, not merely an
+optional assumption about another Omarchy package. Codec plugins remain legacy
+recommendations; FFmpeg performs current compressed-media decoding. See the
+[capability table and migration contract](media-helper-bundles.md). Package-owned
+files remain package-manager-owned; standalone versioned updates must not replace
+them. Running UIs pin their original helper inode across package replacements.
+
 ## Layout
 
 ```

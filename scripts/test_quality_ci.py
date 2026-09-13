@@ -43,6 +43,8 @@ class QualityCiTests(unittest.TestCase):
             tests=["a", "b", "c", "d", "ignored"], ignored=["ignored"],
             shards=[["a"], ["b", "ignored"], ["c"], ["d"]],
         )])
+        (self.bundle / "strata-media-helper").write_bytes(b"test helper")
+        self.plan["helper_sha256"] = quality.digest(self.bundle / "strata-media-helper")
         self.plan_path = self.bundle / "plan.json"
         self.save_plan()
         for name, value in (("ROOT", self.root), ("BUNDLE", self.bundle), ("REPORTS", self.reports)):
@@ -210,6 +212,9 @@ class QualityCiTests(unittest.TestCase):
                        executable=str(artifact), target=dict(name="unit"))
         real_run = subprocess.run
         commands = []
+        helper = self.root / "target/debug/strata-media-helper"
+        helper.parent.mkdir(parents=True)
+        helper.write_bytes(b"compiled media helper")
 
         def run(command, **kwargs):
             if command[0] == "cargo":
@@ -219,8 +224,9 @@ class QualityCiTests(unittest.TestCase):
 
         with patch.object(quality.subprocess, "run", side_effect=run):
             quality.build()
-        self.assertEqual(len(commands), 1)
-        self.assertTrue({"--locked", "--all-targets", "--all-features", "--no-run"} <= set(commands[0]))
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(commands[0], ["cargo", "build", "--locked", "-p", "strata-media-helper"])
+        self.assertTrue({"--locked", "--all-targets", "--all-features", "--no-run"} <= set(commands[1]))
         plan = json.loads(self.plan_path.read_text())
         self.assertEqual(plan["binaries"][0]["tests"], self.plan["binaries"][0]["tests"])
         self.assertEqual(plan["binaries"][0]["ignored"], ["ignored"])

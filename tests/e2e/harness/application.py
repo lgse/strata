@@ -54,7 +54,7 @@ def build_binary() -> Path:
     if os.environ.get("STRATA_BINARY"):
         return binary_path()
     subprocess.run(
-        ["cargo", "build", "--bin", "strata"],
+        ["cargo", "build", "--workspace", "--bins"],
         cwd=repository_root(),
         check=True,
     )

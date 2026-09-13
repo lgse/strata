@@ -13,26 +13,7 @@ use super::LoadHandle;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PreviewRequestId(pub u64);
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct MediaPreviewSize {
-    pub width: i32,
-    pub height: i32,
-}
-
-impl MediaPreviewSize {
-    pub const MAX_EDGE: i32 = 1280;
-
-    pub fn new(width: i32, height: i32) -> Self {
-        Self {
-            width: width.clamp(16, Self::MAX_EDGE),
-            height: height.clamp(16, Self::MAX_EDGE),
-        }
-    }
-
-    pub fn for_viewport(width: i32, height: i32, scale: i32) -> Self {
-        Self::new(width.saturating_mul(scale), height.saturating_mul(scale))
-    }
-}
+pub use strata_media_protocol::MediaPreviewSize;
 
 #[derive(Clone, Debug)]
 pub struct PreviewRequest {

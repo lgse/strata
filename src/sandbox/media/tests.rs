@@ -48,6 +48,10 @@ pub(crate) fn stream_to(header: Header, end: u64) -> Result<Session, String> {
     })
 }
 
+pub(crate) fn active_sessions() -> usize {
+    ACTIVE_WORKERS.load(Ordering::Acquire)
+}
+
 fn wait_for(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(2);
     while !condition() {
@@ -119,6 +123,14 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
         start_tick: 0,
     };
     let mut bytes = Vec::new();
+    crate::media::ipc::hello(
+        &mut bytes,
+        crate::media::ipc::PARSER,
+        1,
+        crate::build_info::RELEASE_TAG,
+        crate::build_info::COMMIT,
+    )
+    .expect("helper handshake");
     h.write(&mut bytes).expect("header");
     Frame {
         tick: 0,
@@ -139,7 +151,7 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
         )
         .expect("worker");
         let (sender, receiver) = mpsc::sync_channel(8);
-        assert!(consume(&mut child, &source, 0, &Cancellation::default(), &sender).is_err());
+        assert!(consume(&mut child, &source, 0, 1, &Cancellation::default(), &sender).is_err());
         assert!(
             !receiver
                 .try_iter()

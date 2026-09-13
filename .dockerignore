@@ -4,6 +4,8 @@
 !build.rs
 !src/
 !src/**
+!crates/
+!crates/**
 !data/
 !data/**
 !tests/

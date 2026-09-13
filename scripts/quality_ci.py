@@ -72,6 +72,9 @@ def test_source_key(repository):
 
 def build():
     BUNDLE.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["cargo", "build", "--locked", "-p", "strata-media-helper"], cwd=ROOT, check=True)
+    helper = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "debug/strata-media-helper"
+    shutil.copy2(helper, BUNDLE / "strata-media-helper")
     result = subprocess.run(
         ["cargo", "test", "--locked", "--all-targets", "--all-features", "--no-run",
          "--message-format=json"], cwd=ROOT, text=True, stdout=subprocess.PIPE,
@@ -98,7 +101,8 @@ def build():
         binaries.append(dict(file=destination.name, target=target, sha256=digest(destination),
                              tests=tests, ignored=ignored, shards=partition(tests, durations)))
     plan = dict(version=1, commit=os.environ["STRATA_QUALITY_COMMIT"],
-                source_key=test_source_key(ROOT), image_key=image_key(ROOT), binaries=binaries)
+                source_key=test_source_key(ROOT), image_key=image_key(ROOT), binaries=binaries,
+                helper_sha256=digest(BUNDLE / "strata-media-helper"))
     validate_plan(plan)
     (BUNDLE / "plan.json").write_text(json.dumps(plan, indent=2) + "\n")
 
@@ -142,6 +146,9 @@ def run(shard):
     if (plan["commit"] != os.environ["STRATA_QUALITY_COMMIT"]
             or plan["source_key"] != test_source_key(ROOT) or plan["image_key"] != image_key(ROOT)):
         raise ValueError("Bundle checkout or environment mismatch")
+    if digest(BUNDLE / "strata-media-helper") != plan["helper_sha256"]:
+        raise ValueError("Media helper checksum mismatch")
+    (BUNDLE / "strata-media-helper").chmod(0o755)
     started = time.monotonic()
     report = dict(plan_sha256=digest(plan_path), shard=shard, binaries=[])
     for binary in plan["binaries"]:

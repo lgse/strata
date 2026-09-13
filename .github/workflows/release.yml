@@ -36,7 +36,7 @@ permissions:
   contents: read
 
 env:
-  RELEASE_RUST_VERSION: 1.98.0
+  RELEASE_RUST_VERSION: 1.98.1
 
 jobs:
   prepare:
@@ -225,34 +225,12 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
-      - name: Build release binary
-        env:
-          CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
-        run: cargo build --release --locked --target "${{ matrix.target }}"
-
-      - name: Package binary
+      - name: Build and package the matching release executables
         env:
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           TARGET: ${{ matrix.target }}
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          package="strata-${VERSION}-${TARGET}"
-          mkdir -p "dist/$package"
-          install -m 755 "target/$TARGET/release/strata" "dist/$package/strata"
-          objcopy --only-keep-debug --compress-debug-sections=zlib "dist/$package/strata" "dist/$package.debug"
-          strip --strip-unneeded "dist/$package/strata"
-          objcopy --add-gnu-debuglink="dist/$package.debug" "dist/$package/strata"
-          printf '%s\n' "$SOURCE_SHA" > "dist/$package/SOURCE_COMMIT"
-          cp README.md LICENSE THIRD_PARTY_LICENSES.md data/licenses/UnRAR.txt "dist/$package/"
-          mkdir -p "dist/$package/docs" "dist/$package/portal"
-          cp docs/portal-file-chooser.md "dist/$package/docs/"
-          cp data/portal/* "dist/$package/portal/"
-          install -m 644 data/io.github.lgse.Strata.desktop "dist/$package/"
-          install -m 644 data/io.github.lgse.Strata.FileManager1.service "dist/$package/"
-          install -m 644 data/icons/scalable/apps/io.github.lgse.Strata.svg "dist/$package/"
-          tar -C dist -czf "dist/$package.tar.gz" "$package"
-          (cd dist && sha256sum "$package.tar.gz" > "$package.tar.gz.sha256")
-          (cd dist && sha256sum "$package.debug" > "$package.debug.sha256")
+        run: ./scripts/build-release-bundle.sh
 
       - name: Upload release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -3,7 +3,7 @@
 use std::{
     fs,
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
     process::Command,
     sync::mpsc::{self, Receiver, Sender},
     time::Duration,
@@ -16,7 +16,10 @@ use crate::services::{InstallSource, ensure_self_managed};
 
 use super::release_channel::Version;
 
+mod bundle;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+const UPDATE_ARCHIVE_LIMIT: u64 = 512 * 1024 * 1024;
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
 const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
 const AUR_RPC: &str = "https://aur.archlinux.org/rpc/v5/info";
@@ -50,17 +53,8 @@ pub enum UpdateInstall {
     Failed(String),
 }
 
-/// What to install: the archive to download.
-///
-/// Earlier versions of this type also carried the expected `version`
-/// string, but nothing ever read it: `install_update` only uses
-/// `download_url`, and the rollback caller (which was documented as
-/// needing it to flip the persisted channel afterwards) sets
-/// `Channel::Stable` unconditionally instead. Removed rather than wired up
-/// -- verifying the extracted binary against an expected version would
-/// mean executing an untrusted downloaded binary before replacing the
-/// installed one, which is a bigger change than this field's one dead
-/// reader justified.
+/// The trusted release URL supplies the expected version and architecture.
+/// Bundle identity and executable integrity are checked without running downloads.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallRequest {
     pub download_url: String,
@@ -361,10 +355,9 @@ fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Resu
         }
     }
 
+    let expected = bundle::expected_bundle_from_url(download_url)?;
     let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
-    let exe_dir = current_exe
-        .parent()
-        .ok_or_else(|| "Could not determine the install directory".to_owned())?;
+    let exe_dir = bundle::installation_bin_dir(&current_exe)?;
 
     // A unique-per-install directory, not the old process-scoped
     // `.strata-update-{pid}`: with three independent install drivers (the
@@ -375,12 +368,13 @@ fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Resu
     // install from starting at all, but a unique path is kept as its own
     // layer of defense -- e.g. against a leftover directory from a
     // hard-killed previous process.
-    let workdir = stage_workdir(exe_dir)?;
+    let workdir = stage_workdir(&exe_dir)?;
     try_install(
         download_url,
         workdir.path(),
-        exe_dir,
+        &exe_dir,
         &current_exe,
+        &expected,
         progress,
     )
     // `workdir` removes its directory on drop here, on both the success and
@@ -390,20 +384,13 @@ fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Resu
 /// Creates a fresh, uniquely-named staging directory for one install inside
 /// `exe_dir`. See `perform_install` for why uniqueness matters.
 fn stage_workdir(exe_dir: &Path) -> Result<tempfile::TempDir, String> {
+    use std::os::unix::fs::PermissionsExt;
+    let exe_dir = crate::media_helper::trusted_directory(exe_dir)?;
     tempfile::Builder::new()
         .prefix(".strata-update-")
+        .permissions(fs::Permissions::from_mode(0o700))
         .tempdir_in(exe_dir)
         .map_err(|error| format!("Could not stage the update: {error}"))
-}
-
-/// Creates a fresh, uniquely-named path for the staged replacement binary
-/// inside `exe_dir`, for the same reason as `stage_workdir`.
-fn stage_binary_path(exe_dir: &Path) -> Result<tempfile::NamedTempFile, String> {
-    tempfile::Builder::new()
-        .prefix(".strata-update-")
-        .suffix(".tmp")
-        .tempfile_in(exe_dir)
-        .map_err(|error| format!("Could not stage the new binary: {error}"))
 }
 
 fn try_install(
@@ -411,37 +398,22 @@ fn try_install(
     workdir: &Path,
     exe_dir: &Path,
     current_exe: &Path,
+    expected: &bundle::ExpectedBundle,
     progress: &Sender<UpdateInstall>,
 ) -> Result<(), String> {
     let archive_path = workdir.join("strata.tar.gz");
     download_to_file(download_url, &archive_path, progress)?;
     let _sent = progress.send(UpdateInstall::Verifying);
-    verify_checksum(download_url, &archive_path)?;
+    let archive_hash = verify_checksum(download_url, &archive_path)?;
     let _sent = progress.send(UpdateInstall::Installing);
+    let package_dir =
+        bundle::install_archive(&archive_path, &archive_hash, expected, exe_dir, current_exe)?;
 
-    let extract_dir = workdir.join("extracted");
-    fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
-    run(Command::new("tar")
-        .arg("-xzf")
-        .arg(&archive_path)
-        .arg("-C")
-        .arg(&extract_dir))?;
-
-    let binary_paths = find_binaries(&extract_dir, &["strata"])?;
-    let binary_path = binary_paths
-        .first()
-        .ok_or_else(|| "Could not find the strata binary in the downloaded archive".to_owned())?;
-    let staged = stage_binary_path(exe_dir)?;
-    fs::copy(binary_path, staged.path())
-        .map_err(|error| format!("Could not stage the new binary: {error}"))?;
-    set_executable(staged.path())?;
-    staged
-        .persist(current_exe)
-        .map_err(|error| format!("Could not replace the installed binary: {error}"))?;
-
-    if let Some(package_dir) = binary_path.parent() {
-        refresh_desktop_metadata(package_dir, current_exe, &glib::user_data_dir());
-    }
+    refresh_desktop_metadata(
+        &package_dir,
+        &exe_dir.join("strata"),
+        &glib::user_data_dir(),
+    );
     if let Err(error) = crate::portal_setup::refresh_after_in_place_update() {
         tracing::warn!(%error, "could not refresh the configured Strata portal after updating");
     }
@@ -465,7 +437,7 @@ fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &P
     }
     match write_application_icon(package_dir, data_home) {
         Ok(()) => {
-            if let Err(error) = run(Command::new("gtk-update-icon-cache")
+            if let Err(error) = run(Command::new("/usr/bin/gtk-update-icon-cache")
                 .arg("-qtf")
                 .arg(data_home.join("icons/hicolor")))
             {
@@ -476,7 +448,7 @@ fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &P
     }
 
     let _refreshed =
-        run(Command::new("update-desktop-database").arg(data_home.join("applications")));
+        run(Command::new("/usr/bin/update-desktop-database").arg(data_home.join("applications")));
 }
 
 fn write_desktop_entry(
@@ -562,6 +534,7 @@ fn download_to_file(
     progress: &Sender<UpdateInstall>,
 ) -> Result<(), String> {
     let config = ureq::Agent::config_builder()
+        .https_only(true)
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build();
     let agent: ureq::Agent = config.into();
@@ -575,6 +548,9 @@ fn download_to_file(
         .get("content-length")
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse().ok());
+    if total.is_some_and(|size| size > UPDATE_ARCHIVE_LIMIT) {
+        return Err("The downloaded update exceeds the size limit".to_owned());
+    }
     let mut reader = response.body_mut().as_reader();
     let mut file = fs::File::create(destination)
         .map_err(|error| format!("Could not save the update: {error}"))?;
@@ -591,13 +567,17 @@ fn download_to_file(
         file.write_all(&buffer[..count])
             .map_err(|error| format!("Could not save the update: {error}"))?;
         downloaded = downloaded.saturating_add(count as u64);
+        if downloaded > UPDATE_ARCHIVE_LIMIT {
+            return Err("The downloaded update exceeds the size limit".to_owned());
+        }
         let _sent = progress.send(UpdateInstall::Downloading { downloaded, total });
     }
     Ok(())
 }
 
-fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String> {
+fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<String, String> {
     let config = ureq::Agent::config_builder()
+        .https_only(true)
         .timeout_global(Some(REQUEST_TIMEOUT))
         .build();
     let agent: ureq::Agent = config.into();
@@ -611,12 +591,13 @@ fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String
     let expected_hash =
         first_hash_token(&expected).ok_or_else(|| "The published checksum was empty".to_owned())?;
 
-    let output = run(Command::new("sha256sum").arg(archive_path))?;
-    let actual_hash =
-        first_hash_token(&output).ok_or_else(|| "sha256sum produced no output".to_owned())?;
+    let actual_hash = bundle::sha256_file(archive_path)?;
 
-    if actual_hash == expected_hash {
-        Ok(())
+    if actual_hash == expected_hash
+        && expected_hash.len() == 64
+        && expected_hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        Ok(actual_hash)
     } else {
         Err("Downloaded update failed checksum verification".to_owned())
     }
@@ -624,38 +605,6 @@ fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String
 
 fn first_hash_token(text: &str) -> Option<String> {
     text.split_whitespace().next().map(str::to_ascii_lowercase)
-}
-
-/// Locates each of `names` as a nested file within `extract_dir` (searching one
-/// level down, matching the layout of the release archives). Returns their paths
-/// in the same order as `names`, or an error naming the first one not found.
-///
-/// This is the seam issue #59 would need if it ever ships a second executable:
-/// today it is always called with a single name, and no caller performs a
-/// multi-file transactional install.
-fn find_binaries(extract_dir: &Path, names: &[&str]) -> Result<Vec<PathBuf>, String> {
-    let entries: Vec<_> = fs::read_dir(extract_dir)
-        .map_err(|error| error.to_string())?
-        .flatten()
-        .collect();
-    names
-        .iter()
-        .map(|name| {
-            entries
-                .iter()
-                .map(|entry| entry.path().join(name))
-                .find(|candidate| candidate.is_file())
-                .ok_or_else(|| {
-                    format!("Could not find the {name} binary in the downloaded archive")
-                })
-        })
-        .collect()
-}
-
-fn set_executable(path: &Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755))
-        .map_err(|error| format!("Could not mark the update executable: {error}"))
 }
 
 fn run(command: &mut Command) -> Result<String, String> {

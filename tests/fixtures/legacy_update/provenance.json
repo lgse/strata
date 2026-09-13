@@ -1,0 +1,29 @@
+[
+  {
+    "tag": "v0.4.0",
+    "commit": "57a5e3291763c6d16020447579f5f932d10dd07a",
+    "source": "src/services/update_install.rs",
+    "functions": [
+      "try_install",
+      "find_binary",
+      "set_executable",
+      "run"
+    ],
+    "fixture": "v0_4_0.rs",
+    "sha256": "06f72f65aa35988142ca16f727eba0b9ddbd6895d1eb092b069bf119456a89c0"
+  },
+  {
+    "tag": "v0.16.0",
+    "commit": "964d262ca5e1fe52c879a7a1287de6feff8b73d2",
+    "source": "src/services/update_install.rs",
+    "functions": [
+      "stage_binary_path",
+      "try_install",
+      "find_binaries",
+      "set_executable",
+      "run"
+    ],
+    "fixture": "v0_16_0.rs",
+    "sha256": "da353d38f92c5265cb31d0492a49cd10931e84381717380d5d2903cd89108d1f"
+  }
+]

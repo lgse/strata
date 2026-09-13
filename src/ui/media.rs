@@ -380,7 +380,15 @@ impl DecodedMedia {
                 Some(Event::Prepared(header)) => {
                     let audio = header
                         .audio
-                        .then(|| PcmOutput::new(self.is_muted(), self.volume()))
+                        .then(|| {
+                            let lease = imp
+                                .session
+                                .borrow()
+                                .as_ref()
+                                .ok_or("Missing media session")?
+                                .lease();
+                            PcmOutput::new(self.is_muted(), self.volume(), lease)
+                        })
                         .transpose()?;
                     imp.audio.replace(audio);
                     imp.header.set(Some(header));

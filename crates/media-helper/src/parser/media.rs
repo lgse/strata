@@ -8,10 +8,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{
-    media::{self, AUDIO_BYTES, FRAME_TIMEOUT, Frame, Header, TimedReader},
-    sandbox::{Cancellation, MediaPreviewBackend, gpu_devices, numbered_name},
-    services::MediaPreviewSize,
+use strata_media_protocol::{
+    self as media, AUDIO_BYTES, Cancellation, FRAME_TIMEOUT, Frame, Header, MediaPreviewBackend,
+    MediaPreviewSize, TimedReader,
+    devices::{gpu_devices, numbered_name},
 };
 
 use super::{bounded_output_with_timeout, media_preview_size, stop_child};

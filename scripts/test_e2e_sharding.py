@@ -173,12 +173,13 @@ class BundleTests(unittest.TestCase):
             bundle = root / "bundle"
             bundle.mkdir()
             (bundle / "strata").write_bytes(b"binary")
+            (bundle / "strata-media-helper").write_bytes(b"helper")
             (bundle / "plan.json").write_text("{}")
             create(bundle, "revision", root)
             verify(bundle, "revision", root)
             with self.assertRaisesRegex(ValueError, "revision"):
                 verify(bundle, "another", root)
-            for name in ("strata", "plan.json"):
+            for name in ("strata", "strata-media-helper", "plan.json"):
                 original = (bundle / name).read_bytes()
                 (bundle / name).write_bytes(b"changed")
                 with self.assertRaisesRegex(ValueError, "checksum"):

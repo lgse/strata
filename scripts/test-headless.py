@@ -33,9 +33,15 @@ def main() -> int:
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
         }
-        for name in ("STRATA_DELETE_BENCH_FILES", "STRATA_DELETE_BENCH_ROOT"):
+        for name in ("CARGO_TARGET_DIR", "CARGO_BUILD_TARGET", "CARGO_PROFILE_RELEASE_DEBUG", "CARGO_INCREMENTAL",
+                     "STRATA_LEGACY_UI", "STRATA_LEGACY_PREVIOUS", "STRATA_RUST_OUTPUT",
+                     "STRATA_DELETE_BENCH_FILES", "STRATA_DELETE_BENCH_ROOT"):
             if name in os.environ:
                 environment[name] = os.environ[name]
+        child = subprocess.Popen(["cargo", "build", "--locked", "-p", "strata-media-helper"], cwd=REPOSITORY, env=environment, start_new_session=True)
+        result = child.wait()
+        if result:
+            return result
         child = subprocess.Popen(
             ["cargo", "test", "--all-targets", "--all-features", *sys.argv[1:]],
             cwd=REPOSITORY,

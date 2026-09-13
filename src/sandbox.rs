@@ -7,7 +7,7 @@ use std::{
     process::{Child, Command, ExitStatus, Stdio},
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
     },
     thread,
     time::{Duration, Instant},
@@ -17,6 +17,7 @@ use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::services::MediaPreviewSize;
 
+pub(crate) mod libraries;
 pub(crate) mod media;
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
@@ -26,69 +27,23 @@ const TEMPORARY_STORAGE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_RASTER_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+static RASTER_WORKERS: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum MediaPreviewBackend {
-    Automatic,
-    VaApi,
-    Vulkan,
-    Software,
-}
-
-impl MediaPreviewBackend {
-    pub(crate) fn argument(self) -> &'static str {
-        match self {
-            Self::Automatic => "automatic",
-            Self::VaApi => "vaapi",
-            Self::Vulkan => "vulkan",
-            Self::Software => "software",
-        }
+struct RasterSlot;
+impl RasterSlot {
+    fn acquire() -> Result<Self, String> {
+        RASTER_WORKERS.fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| (count < 4).then_some(count + 1))
+            .map(|_| Self).map_err(|_| "Image previews are busy (four active workers); retry after another preview finishes.".to_owned())
     }
-
-    pub(crate) fn from_argument(value: &str) -> Option<Self> {
-        match value {
-            "automatic" => Some(Self::Automatic),
-            "vaapi" => Some(Self::VaApi),
-            "vulkan" => Some(Self::Vulkan),
-            "software" => Some(Self::Software),
-            _ => None,
-        }
+}
+impl Drop for RasterSlot {
+    fn drop(&mut self) {
+        RASTER_WORKERS.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) struct PdfRenderSize {
-    pub(crate) width: i32,
-    pub(crate) height: i32,
-}
-
-impl PdfRenderSize {
-    const MAX_WIDTH: i32 = 1_400;
-    const MAX_HEIGHT: i32 = 1_800;
-    const MAX_PIXELS: u64 = 2_500_000;
-
-    pub(crate) fn new(width: i32, height: i32) -> Self {
-        Self {
-            width: width.clamp(16, Self::MAX_WIDTH),
-            height: height.clamp(16, Self::MAX_HEIGHT),
-        }
-    }
-
-    pub(crate) fn for_viewport_width(width: i32) -> Self {
-        Self::new(width, Self::MAX_HEIGHT)
-    }
-
-    pub(crate) fn image_limits(self) -> (u32, u32, u64) {
-        let size = Self::new(self.width, self.height);
-        let width = size.width as u32;
-        let height = size.height as u32;
-        (
-            width,
-            height,
-            (u64::from(width) * u64::from(height)).min(Self::MAX_PIXELS),
-        )
-    }
-}
+pub(crate) use strata_media_protocol::devices::{gpu_devices, numbered_name};
+pub(crate) use strata_media_protocol::{Cancellation, MediaPreviewBackend, PdfRenderSize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
@@ -150,19 +105,6 @@ impl ParseOperation {
     }
 }
 
-#[derive(Clone, Default)]
-pub(crate) struct Cancellation(Arc<AtomicBool>);
-
-impl Cancellation {
-    pub(crate) fn cancel(&self) {
-        self.0.store(true, Ordering::Release);
-    }
-
-    pub(crate) fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::Acquire)
-    }
-}
-
 pub(crate) struct ParseOutput {
     pub(crate) data: Vec<u8>,
     pub(crate) page: i32,
@@ -197,12 +139,9 @@ pub(crate) fn parse(
         return Err("Preview input exceeds the supported size limit".to_owned());
     }
 
+    let _slot = RasterSlot::acquire()?;
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
-    let current_executable = std::env::current_exe()
-        .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
-    let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
-    let executable =
-        resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
+    let executable = crate::media_helper::snapshot(output.path())?;
     let devices = Vec::new();
     let mut command = sandbox_command(
         &executable,
@@ -213,13 +152,55 @@ pub(crate) fn parse(
         media_backend,
         &devices,
     );
-    command.stderr(Stdio::null());
-    command.stdout(Stdio::null());
-    let mut child = spawn_renderer(&mut command)
-        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
-    let status = wait_for_renderer(&mut child, cancellation, WALL_TIME_LIMIT)?;
-    if !status.success() {
-        return Err("The sandboxed preview renderer failed".to_owned());
+    let job = crate::media_helper::job();
+    command
+        .arg(job.to_string())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = spawn_renderer(&mut command).map_err(crate::media_helper::spawn_error)?;
+    let started = Instant::now();
+    let handshake = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Missing helper pipe".to_owned())
+        .and_then(|stdout| {
+            let mut reader = crate::media::TimedReader {
+                fd: &stdout,
+                deadline: started + WALL_TIME_LIMIT,
+                cancellation,
+            };
+            crate::media::ipc::check_hello(
+                &mut reader,
+                crate::media::ipc::PARSER,
+                job,
+                crate::build_info::RELEASE_TAG,
+                crate::build_info::COMMIT,
+            )
+            .map_err(|e| e.to_string())?;
+            if reader.read(&mut [0]).map_err(|e| e.to_string())? != 0 {
+                return Err("Unexpected parser output".into());
+            }
+            Ok(())
+        });
+    let result = handshake
+        .and_then(|()| {
+            wait_for_renderer(
+                &mut child,
+                cancellation,
+                WALL_TIME_LIMIT.saturating_sub(started.elapsed()),
+            )
+        })
+        .and_then(|status| {
+            if status.success() {
+                Ok(())
+            } else {
+                Err("The sandboxed preview renderer failed".to_owned())
+            }
+        });
+    if let Err(error) = result {
+        terminate(&mut child);
+        return Err(crate::media_helper::failure(&mut child, error));
     }
 
     let result_path = output.path().join(operation.output_name());
@@ -231,22 +212,7 @@ pub(crate) fn parse(
     Ok(ParseOutput { data, page, pages })
 }
 
-fn resolve_renderer_executable(
-    current: &Path,
-    running: &Path,
-    private_output: &Path,
-) -> Result<PathBuf, String> {
-    if current.is_file() {
-        return Ok(current.to_path_buf());
-    }
-
-    let snapshot = private_output.join("strata-preview-helper");
-    fs::copy(running, &snapshot)
-        .map_err(|error| format!("Unable to preserve the running Strata executable: {error}"))?;
-    Ok(snapshot)
-}
-
-fn spawn_renderer(command: &mut Command) -> io::Result<Child> {
+pub(crate) fn spawn_renderer(command: &mut Command) -> io::Result<Child> {
     use std::os::unix::process::CommandExt;
 
     command.process_group(0).spawn()
@@ -315,7 +281,8 @@ fn sandbox_command(
     media_backend: MediaPreviewBackend,
     devices: &[PathBuf],
 ) -> Command {
-    let mut command = Command::new("bwrap");
+    let mut command = Command::new("/usr/bin/bwrap");
+    command.env_clear().env("PATH", "/usr/bin").env("LANG", "C");
     command.args([
         "--unshare-all",
         "--die-with-parent",
@@ -364,10 +331,12 @@ fn sandbox_command(
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
+    libraries::bind_aliases(&mut command);
     let sandbox_input = sandbox_input_path(input);
-    if operation != ParseOperation::ThumbnailVideo {
-        command.arg("--ro-bind").arg(executable).arg("/app/strata");
-    }
+    command
+        .arg("--ro-bind")
+        .arg(executable)
+        .arg("/app/strata-media-helper");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
     if !operation.is_media() {
         command.arg("--bind").arg(output).arg("/output");
@@ -389,6 +358,7 @@ fn sandbox_command(
             .arg("/usr/bin/prlimit")
             .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
             .arg("--cpu=10")
+            .arg("--core=0")
             .arg(format!(
                 "--fsize={}",
                 if operation == ParseOperation::ThumbnailVideo {
@@ -399,18 +369,11 @@ fn sandbox_command(
             ))
             .arg("--");
     }
-    if operation == ParseOperation::ThumbnailVideo {
-        command
-            .args(["/usr/bin/ffmpegthumbnailer", "-i", &sandbox_input, "-o"])
-            .arg(format!("/output/{}", operation.output_name()))
-            .arg("-s")
-            .arg(value.to_string())
-            .args(["-q", "8"]);
-        return command;
-    }
     command.args([
-        "/app/strata",
-        "--preview-helper",
+        "/app/strata-media-helper",
+        "--decode-v1",
+        crate::build_info::RELEASE_TAG,
+        crate::build_info::COMMIT,
         operation.argument(),
         &sandbox_input,
     ]);
@@ -445,32 +408,6 @@ fn sandbox_input_path(input: &Path) -> String {
     }
 }
 
-pub(crate) fn gpu_devices(dev: &Path, media_backend: MediaPreviewBackend) -> Vec<PathBuf> {
-    if media_backend == MediaPreviewBackend::Software {
-        return Vec::new();
-    }
-    let mut devices = Vec::new();
-    if let Ok(entries) = fs::read_dir(dev.join("dri")) {
-        for entry in entries.flatten() {
-            if numbered_name(&entry.file_name(), "renderD") {
-                devices.push(entry.path());
-            }
-        }
-    }
-    if media_backend != MediaPreviewBackend::VaApi
-        && let Ok(entries) = fs::read_dir(dev)
-    {
-        for entry in entries.flatten() {
-            let name = entry.file_name();
-            if name == "nvidiactl" || numbered_name(&name, "nvidia") {
-                devices.push(entry.path());
-            }
-        }
-    }
-    devices.sort();
-    devices
-}
-
 pub(crate) fn polaris_gpu_available() -> bool {
     polaris_gpu_available_at(Path::new("/dev"), Path::new("/sys/class/drm"))
 }
@@ -500,14 +437,6 @@ fn polaris_render_node(device: &Path, drm: &Path) -> bool {
 fn pci_id(path: &Path) -> Option<u16> {
     let value = fs::read_to_string(path).ok()?;
     u16::from_str_radix(value.trim().strip_prefix("0x").unwrap_or(value.trim()), 16).ok()
-}
-
-pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
-    name.to_str()
-        .and_then(|name| name.strip_prefix(prefix))
-        .is_some_and(|suffix| {
-            !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
-        })
 }
 
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
@@ -540,7 +469,7 @@ fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
     (width > 0 && height > 0).then_some((width, height))
 }
 
-fn terminate(child: &mut Child) {
+pub(crate) fn terminate(child: &mut Child) {
     if let Ok(raw_pid) = i32::try_from(child.id())
         && let Some(process_group) = Pid::from_raw(raw_pid)
     {
@@ -601,7 +530,9 @@ impl PrivateOutput {
     fn create() -> io::Result<Self> {
         use std::os::unix::fs::DirBuilderExt;
 
-        let path = std::env::temp_dir().join(format!(
+        let root = crate::media_helper::trusted_directory(&std::env::temp_dir())
+            .map_err(io::Error::other)?;
+        let path = root.join(format!(
             "strata-preview-{}-{}",
             std::process::id(),
             NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)

@@ -28,6 +28,7 @@ const PORTAL_BACKEND_UNIT: &str = "dbus-:*-org.freedesktop.impl.portal.desktop.s
 pub(crate) fn install() -> Result<String, String> {
     let executable = env::current_exe()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::installation::launch_path(&executable)?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
     dismiss_prompt_at(&context)?;
@@ -66,13 +67,17 @@ pub(crate) fn status() -> Result<PortalStatus, String> {
 
 pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
     let context = SetupContext::from_environment()?;
-    refresh_configured_portal_at(&context, refresh_portals)
+    let executable = env::current_exe()
+        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::installation::launch_path(&executable)?;
+    refresh_configured_portal_at(&context, &executable, refresh_portals)
 }
 
 pub(crate) fn refresh_stale_portal() -> Result<(), String> {
     let context = SetupContext::from_environment()?;
     let executable = env::current_exe()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let executable = crate::installation::launch_path(&executable)?;
     refresh_stale_portal_at(&context, &executable, Path::new("/proc"), || {
         refresh_portals()
     })
@@ -84,23 +89,58 @@ fn refresh_stale_portal_at(
     proc_root: &Path,
     refresh: impl FnOnce() -> &'static str,
 ) -> Result<(), String> {
-    if !portal_backend_is_stale_at(context, executable, proc_root)? {
+    if !status_at(context)?.configured {
         return Ok(());
     }
-    refresh_configured_portal_at(context, refresh)
+    let activation_changed = refresh_portal_service_at(context, executable)?;
+    if !activation_changed && !portal_backend_is_stale_at(context, executable, proc_root)? {
+        return Ok(());
+    }
+    refresh_configured_portal_at(context, executable, refresh)
 }
 
 fn refresh_configured_portal_at(
     context: &SetupContext,
+    executable: &Path,
     refresh: impl FnOnce() -> &'static str,
 ) -> Result<(), String> {
     if !status_at(context)?.configured {
         return Ok(());
     }
+    refresh_portal_service_at(context, executable)?;
     match refresh() {
         "" => Ok(()),
         warning => Err(warning.trim().to_owned()),
     }
+}
+
+fn refresh_portal_service_at(context: &SetupContext, executable: &Path) -> Result<bool, String> {
+    let executable = activation_executable(executable)?;
+    let path = context.data_home.join("dbus-1/services").join(SERVICE_FILE);
+    let service = KeyFile::new();
+    service
+        .load_from_data(&read_utf8(&path)?, KeyFileFlags::KEEP_COMMENTS)
+        .map_err(|error| format!("Could not parse portal activation: {error}"))?;
+    let Ok(installed) = service.value("D-BUS Service", "Exec") else {
+        return Ok(false);
+    };
+    let Some(installed_executable) = installed.strip_suffix(" --portal") else {
+        return Ok(false);
+    };
+    if crate::installation::launch_path(Path::new(installed_executable))
+        .ok()
+        .as_deref()
+        != Some(Path::new(&executable))
+    {
+        return Ok(false);
+    }
+    let expected = format!("{executable} --portal");
+    if installed == expected {
+        return Ok(false);
+    }
+    service.set_value("D-BUS Service", "Exec", &expected);
+    write_public(&path, service.to_data().as_bytes())?;
+    Ok(true)
 }
 
 fn portal_backend_is_stale_at(
@@ -137,8 +177,14 @@ fn portal_backend_is_stale_at(
             continue;
         };
         let mut arguments = arguments.split(|byte| *byte == 0);
-        if arguments.next() != Some(executable.as_os_str().as_bytes())
-            || arguments.next() != Some(b"--portal")
+        let Some(command) = arguments.next() else {
+            continue;
+        };
+        if arguments.next() != Some(b"--portal")
+            || crate::installation::launch_path(Path::new(std::ffi::OsStr::from_bytes(command)))
+                .ok()
+                .as_deref()
+                != Some(executable)
         {
             continue;
         }
@@ -311,20 +357,7 @@ fn portal_config_name(desktop: &str) -> Option<String> {
 }
 
 fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, String> {
-    let executable = secure_executable(executable)?;
-    let executable = executable
-        .to_str()
-        .ok_or_else(|| "Strata must be installed at a UTF-8 path".to_owned())?;
-    if executable
-        .chars()
-        .any(|character| character.is_whitespace() || matches!(character, '\\' | '\'' | '"'))
-    {
-        return Err(
-            "The Strata executable path contains characters unsupported by D-Bus activation"
-                .to_owned(),
-        );
-    }
-
+    let executable = activation_executable(executable)?;
     let config_directory = context.portal_directory();
     let state_directory = context.state_directory();
     let (target, state, installed) = if let Some(state) = read_state(&state_directory)? {
@@ -383,7 +416,7 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
     )?;
     let service =
         include_str!("../data/portal/org.freedesktop.impl.portal.desktop.strata.service.in")
-            .replace("@STRATA_EXECUTABLE@", executable);
+            .replace("@STRATA_EXECUTABLE@", &executable);
     write_public(&service_directory.join(SERVICE_FILE), service.as_bytes())?;
     if let Some(state) = state {
         write_state(&state_directory, &state)?;
@@ -392,8 +425,26 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
     Ok(target)
 }
 
+fn activation_executable(path: &Path) -> Result<String, String> {
+    let executable = secure_executable(path)?;
+    let executable = executable
+        .to_str()
+        .ok_or_else(|| "Strata must be installed at a UTF-8 path".to_owned())?;
+    if executable
+        .chars()
+        .any(|character| character.is_whitespace() || matches!(character, '\\' | '\'' | '"'))
+    {
+        return Err(
+            "The Strata executable path contains characters unsupported by D-Bus activation"
+                .to_owned(),
+        );
+    }
+    Ok(executable.to_owned())
+}
+
 fn secure_executable(path: &Path) -> Result<PathBuf, String> {
-    secure_executable_for_user(path, rustix::process::geteuid().as_raw())
+    let canonical = secure_executable_for_user(path, rustix::process::geteuid().as_raw())?;
+    crate::installation::launch_path(&canonical)
 }
 
 fn secure_executable_for_user(path: &Path, effective_user: u32) -> Result<PathBuf, String> {

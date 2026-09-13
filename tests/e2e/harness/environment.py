@@ -198,6 +198,8 @@ class TestEnvironment:
             "GIO_USE_VFS": "local",
             "GIO_USE_VOLUME_MONITOR": "unix",
             "GSETTINGS_BACKEND": "memory",
+            # Debug-only PCM sink; no host audio sockets are available to GUI automation.
+            "STRATA_MEDIA_TEST_SINK": "1",
             "RUST_BACKTRACE": "1",
         }
 

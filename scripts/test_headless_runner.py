@@ -46,7 +46,10 @@ class HeadlessRunnerTests(unittest.TestCase):
         home = Mock(variables=lambda: {"HOME": "/private/home"})
         child = Mock(wait=lambda: 0)
         with (
-            patch.dict(os.environ, {"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-1", "GTK_MODULES": "private"}),
+            patch.dict(os.environ, {"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-1", "GTK_MODULES": "private",
+                                    "STRATA_LEGACY_UI": "/fixture/strata", "STRATA_LEGACY_PREVIOUS": "/old/strata",
+                                    "STRATA_RUST_OUTPUT": "/fixture/installed", "CARGO_TARGET_DIR": "/private/build",
+                                    "CARGO_PROFILE_RELEASE_DEBUG": "line-tables-only"}),
             patch.object(RUNNER, "HeadlessDisplay", return_value=display),
             patch.object(RUNNER, "TestEnvironment", return_value=home),
             patch.object(RUNNER.subprocess, "Popen", return_value=child) as spawn,
@@ -57,6 +60,11 @@ class HeadlessRunnerTests(unittest.TestCase):
         environment = spawn.call_args.kwargs["env"]
         self.assertEqual(environment["DISPLAY"], ":99")
         self.assertEqual(environment["HOME"], "/private/home")
+        self.assertEqual(environment["STRATA_LEGACY_UI"], "/fixture/strata")
+        self.assertEqual(environment["STRATA_LEGACY_PREVIOUS"], "/old/strata")
+        self.assertEqual(environment["STRATA_RUST_OUTPUT"], "/fixture/installed")
+        self.assertEqual(environment["CARGO_TARGET_DIR"], "/private/build")
+        self.assertEqual(environment["CARGO_PROFILE_RELEASE_DEBUG"], "line-tables-only")
         self.assertNotIn("WAYLAND_DISPLAY", environment)
         self.assertNotIn("GTK_MODULES", environment)
         self.assertEqual(environment["STRATA_REQUIRE_GTK_TESTS"], "1")

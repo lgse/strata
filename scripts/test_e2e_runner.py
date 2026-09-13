@@ -76,7 +76,7 @@ class ContainerRunnerTests(unittest.TestCase):
         self.assertIn(f"type=bind,source={REPOSITORY},target=/workspace", run)
         self.assertIn("STRATA_E2E_UPDATE_BASELINES=1", run)
         self.assertIn("CARGO_TARGET_DIR=/workspace/target/e2e-container/build", run)
-        self.assertIn("cargo build --locked --bin strata", " ".join(run))
+        self.assertIn("cargo build --locked --workspace --bins", " ".join(run))
         self.assertNotIn("--userns=keep-id", run)
         for call in calls:
             self.assertIsNone(call["display"])
@@ -162,6 +162,7 @@ class ContainerRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=REPOSITORY) as directory:
             bundle = Path(directory)
             (bundle / "strata").write_bytes(b"container binary")
+            (bundle / "strata-media-helper").write_bytes(b"container helper")
             (bundle / "plan.json").write_text("{}")
             # Bundle verification only needs a stable identity; this harness test
             # must also work from CI's archive checkout, which has no .git tree.

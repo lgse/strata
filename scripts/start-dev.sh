@@ -60,7 +60,9 @@ fi
 # cargo-watch restarts running commands by default when a change is detected.
 exec cargo watch \
   --watch src \
+  --watch crates \
   --watch data \
   --watch Cargo.toml \
   --watch build.rs \
+  --exec 'build -p strata-media-helper' \
   --exec run
