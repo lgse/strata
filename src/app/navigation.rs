@@ -509,9 +509,6 @@ impl NavigationState {
             .map(|entry| entry.location.clone())
             .or_else(|| column.selection_target.clone());
         column.pending_selection = column.selected_locations.clone();
-        if let Some(target) = &column.selection_target {
-            column.pending_selection.insert(target.clone());
-        }
         column.entries.clear();
         column.selected = None;
         column.load_state = LoadState::Loading;
@@ -1214,25 +1211,20 @@ impl ColumnState {
             return;
         }
         let restored: HashSet<_> = self
-            .pending_selection
+            .entries
             .iter()
-            .filter(|location| {
-                self.entries
-                    .iter()
-                    .any(|entry| &entry.location == *location)
-            })
-            .cloned()
+            .filter(|entry| self.pending_selection.contains(&entry.location))
+            .map(|entry| entry.location.clone())
             .collect();
         if restored.is_empty() {
             return;
         }
         self.selected_locations = restored;
         if self.selected.is_none() {
-            self.selected = self.selected_locations.iter().find_map(|location| {
-                self.entries
-                    .iter()
-                    .position(|entry| &entry.location == location)
-            });
+            self.selected = self
+                .entries
+                .iter()
+                .position(|entry| self.selected_locations.contains(&entry.location));
         }
     }
 }
