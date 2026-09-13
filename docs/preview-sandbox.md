@@ -34,9 +34,10 @@ packet crosses into an unsandboxed media parser.
 
 A media worker uses separate FFmpeg video and audio processes when both tracks
 exist. Each decodes only its selected track. This avoids cross-output pipe
-deadlocks with sparse/VFR video or attached cover art. Both processes remain in
-one sandbox, with access to the same single input. Cover art is decoded once in
-software and retained alongside audio; audio-only inputs need no video decoder.
+deadlocks with sparse/VFR video. Both processes remain in one sandbox, with
+access to the same single input. Attached pictures and cover art do not count as
+preview video; those files follow the audio-only path. Audio-only inputs need no
+video decoder.
 Video timing is normalized **inside the sandbox** to 30 fps, including holding
 VFR/GIF frames. Audio is 48 kHz, stereo, interleaved signed 16-bit little-endian
 PCM. Resampling preserves gaps/offsets relative to the common source timeline.

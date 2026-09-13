@@ -12,6 +12,73 @@ fn success(command: &mut Command) -> Vec<u8> {
     output.stdout
 }
 
+fn still_image(path: &Path, codec: &str) {
+    success(
+        Command::new("ffmpeg")
+            .args([
+                "-nostdin",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:size=64x48",
+                "-frames:v",
+                "1",
+                "-threads",
+                "1",
+                "-c:v",
+            ])
+            .arg(codec)
+            .arg(path),
+    );
+}
+
+fn attach_cover(audio: &Path, cover: &Path, output: &Path, encode: &[&str]) {
+    let mut command = Command::new("ffmpeg");
+    command
+        .args(["-v", "error", "-i"])
+        .arg(audio)
+        .arg("-i")
+        .arg(cover)
+        .args(["-map", "0:a", "-map", "1:v"])
+        .args(encode)
+        .args(["-disposition:v", "attached_pic"])
+        .arg(output);
+    success(&mut command);
+}
+
+fn probe_stream_indexes(path: &Path, specifier: &str) -> String {
+    String::from_utf8(success(
+        Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                specifier,
+                "-show_entries",
+                "stream=index",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(path),
+    ))
+    .expect("ffprobe stream indexes")
+    .trim()
+    .to_owned()
+}
+
+fn assert_probe_lists_cover_only(path: &Path) {
+    assert!(
+        !probe_stream_indexes(path, "v").is_empty(),
+        "{path:?} should list an attached picture under v"
+    );
+    assert!(
+        probe_stream_indexes(path, "V").is_empty(),
+        "{path:?} should list no motion video under V"
+    );
+}
+
 fn fixture(path: &Path, size: &str, rate: u32, duration: u32, audio: bool) {
     let mut command = Command::new("ffmpeg");
     command
@@ -152,51 +219,107 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
         assert!(h.audio);
         assert_eq!(h.width, 0);
     }
-    let cover = directory.path().join("cover.jpg");
+    let png = directory.path().join("cover.png");
+    still_image(&png, "png");
+    let jpeg = directory.path().join("cover.jpg");
+    still_image(&jpeg, "mjpeg");
+    let flac = directory.path().join("cover.flac");
+    attach_cover(&audio, &png, &flac, &["-c", "copy"]);
+    let jpeg_flac = directory.path().join("cover-jpeg.flac");
+    attach_cover(&audio, &jpeg, &jpeg_flac, &["-c", "copy"]);
+    let m4a = directory.path().join("cover.m4a");
+    attach_cover(&audio, &png, &m4a, &["-c:a", "aac", "-c:v", "png"]);
+    for attached in [&flac, &jpeg_flac, &m4a] {
+        assert_probe_lists_cover_only(attached);
+        let info = probe(attached, MediaPreviewSize::new(520, 800), 0).expect("cover metadata");
+        assert!(info.video.is_none());
+        assert!(!info.cover);
+        assert_eq!(info.audio, Some(0));
+        for policy in [
+            MediaPreviewBackend::Automatic,
+            MediaPreviewBackend::VaApi,
+            MediaPreviewBackend::Vulkan,
+            MediaPreviewBackend::Software,
+        ] {
+            let mut bytes = Vec::new();
+            stream(attached, "520x800", policy, 0, &mut bytes).expect("cover-art audio");
+            let header = Header::read(&mut Cursor::new(bytes), MediaPreviewSize::new(520, 800), 0)
+                .expect("cover-art header");
+            assert!(header.audio);
+            assert_eq!((header.width, header.height), (0, 0));
+        }
+        let audio_command = command_for_audio(&info);
+        assert!(audio_command.contains("-map 0:0"));
+        assert!(audio_command.contains("-vn"));
+        assert!(!audio_command.contains("-hwaccel"));
+        assert!(!audio_command.contains("0:v"));
+        assert!(!audio_command.contains("h264_vaapi"));
+    }
+}
+
+#[test]
+fn movie_with_attached_cover_keeps_the_motion_video_stream() {
+    let directory = tempfile::tempdir().expect("fixtures");
+    let clip = directory.path().join("clip.mkv");
+    fixture(&clip, "64x48", 1, 1, true);
+    let png = directory.path().join("cover.png");
+    still_image(&png, "png");
+    let movie = directory.path().join("movie.mp4");
     success(
         Command::new("ffmpeg")
-            .args([
-                "-nostdin",
-                "-v",
-                "error",
-                "-f",
-                "lavfi",
-                "-i",
-                "color=c=blue:size=64x48",
-                "-frames:v",
-                "1",
-                "-threads",
-                "1",
-            ])
-            .arg(&cover),
-    );
-    let attached = directory.path().join("cover.flac");
-    success(
-        Command::new("ffmpeg")
-            .arg("-v")
-            .arg("error")
+            .args(["-v", "error", "-i"])
+            .arg(&clip)
             .arg("-i")
-            .arg(&audio)
-            .arg("-i")
-            .arg(&cover)
+            .arg(&png)
             .args([
+                "-map",
+                "0:v",
                 "-map",
                 "0:a",
                 "-map",
                 "1:v",
-                "-c",
-                "copy",
-                "-disposition:v",
+                "-c:v:0",
+                "libx264",
+                "-threads",
+                "1",
+                "-c:a",
+                "aac",
+                "-c:v:1",
+                "png",
+                "-disposition:v:1",
                 "attached_pic",
             ])
-            .arg(&attached),
+            .arg(&movie),
     );
-    let info = probe(&attached, MediaPreviewSize::new(520, 800), 0).expect("cover metadata");
-    assert!(info.cover);
-    let (header, frames, _) = decoded(&attached, "520x800", 0);
+    let listed_v = probe_stream_indexes(&movie, "v");
+    let listed_V = probe_stream_indexes(&movie, "V");
+    assert!(
+        listed_v.contains('0') && listed_v.contains('2'),
+        "{listed_v}"
+    );
+    assert_eq!(listed_V, "0");
+    let info = probe(&movie, MediaPreviewSize::new(520, 800), 0).expect("movie metadata");
+    assert_eq!(info.video, Some(0));
+    assert_eq!(info.audio, Some(1));
+    assert!(!info.cover);
+    let video = command(Path::new("/input"), &info, &Backend::Software, Track::Video);
+    let args = video
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(args.contains("-map 0:0"));
+    assert!(!args.contains("-map 0:2"));
+    assert!(!args.contains("0:v:0"));
+    let (header, frames, _) = decoded(&movie, "520x800", 0);
     assert!(header.audio);
     assert_eq!((header.width, header.height), (64, 48));
-    assert_eq!(frames.len(), 30);
+    assert!(!frames.is_empty());
+    assert!(
+        frames
+            .iter()
+            .any(|frame| !frame.pixels.iter().all(|byte| *byte == 0))
+    );
 }
 
 #[test]
@@ -446,4 +569,27 @@ fn metadata_and_size_parsing_fail_closed_on_bad_sources_and_protocol_values() {
     assert_eq!(unknown.header.start_tick, 960);
     assert_eq!(unknown.header.duration_us, media::MAX_DURATION_US);
     assert!(probe(Path::new("/nonexistent-strata-media"), size, 0).is_err());
+    let cover_only = metadata(
+        br#"{"streams":[{"index":0,"codec_type":"audio"},{"index":1,"codec_type":"video","width":64,"height":48,"disposition":{"attached_pic":1}}],"format":{"duration":"1.0"}}"#,
+        size,
+        0,
+    )
+    .expect("attached pictures are not preview video");
+    assert!(cover_only.video.is_none());
+    assert!(!cover_only.cover);
+    assert_eq!(cover_only.audio, Some(0));
+    assert_eq!((cover_only.header.width, cover_only.header.height), (0, 0));
+    let movie_and_cover = metadata(
+        br#"{"streams":[{"index":0,"codec_type":"video","width":64,"height":48},{"index":1,"codec_type":"audio"},{"index":2,"codec_type":"video","width":32,"height":32,"disposition":{"attached_pic":1}}],"format":{"duration":"1.0"}}"#,
+        size,
+        0,
+    )
+    .expect("motion video keeps the video pipeline");
+    assert_eq!(movie_and_cover.video, Some(0));
+    assert_eq!(movie_and_cover.audio, Some(1));
+    assert!(!movie_and_cover.cover);
+    assert_eq!(
+        (movie_and_cover.header.width, movie_and_cover.header.height),
+        (64, 48)
+    );
 }

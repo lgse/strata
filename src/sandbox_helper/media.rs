@@ -123,12 +123,7 @@ fn metadata(bytes: &[u8], size: MediaPreviewSize, start_tick: u32) -> io::Result
         |stream: &serde_json::Value| stream["disposition"]["attached_pic"].as_u64() == Some(1);
     let video = streams
         .iter()
-        .find(|stream| stream["codec_type"] == "video" && !is_cover(stream))
-        .or_else(|| {
-            streams
-                .iter()
-                .find(|stream| stream["codec_type"] == "video")
-        });
+        .find(|stream| stream["codec_type"] == "video" && !is_cover(stream));
     let audio = streams
         .iter()
         .find(|stream| stream["codec_type"] == "audio");
