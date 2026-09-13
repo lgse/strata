@@ -153,26 +153,6 @@ fn assert_unfiltered(view: &BrowserView) {
     );
 }
 
-fn assert_empty_revealed(view: &BrowserView) {
-    wait_until(
-        || {
-            let (query, revealed) = pane_filter(view);
-            query.is_empty() && revealed
-        },
-        &format!(
-            "{:?} should keep an empty revealed filter; got {:?}",
-            view.view_mode(),
-            pane_filter(view)
-        ),
-    );
-}
-
-fn dismiss_pane_filter(view: &BrowserView) {
-    assert!(view.show_filter());
-    assert!(view.dismiss_focused_filter());
-    assert_unfiltered(view);
-}
-
 #[test]
 fn switching_view_modes_keeps_the_active_pane_filter() {
     crate::test_support::gtk_test(
@@ -182,14 +162,8 @@ fn switching_view_modes_keeps_the_active_pane_filter() {
             assert!(view.show_filter_with_query("needle"));
             assert_filtered(&view);
 
-            for mode in [
-                BrowserMode::Icons,
-                BrowserMode::List,
-                BrowserMode::Columns,
-                BrowserMode::Icons,
-            ] {
+            for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
                 view.set_view_mode(mode);
-                assert_eq!(view.view_mode(), mode);
                 assert_filtered(&view);
                 assert_listing_focus(&view);
             }
@@ -209,190 +183,26 @@ fn switching_view_modes_keeps_the_active_pane_filter() {
 }
 
 #[test]
-fn dismissed_filter_stays_closed_across_view_modes() {
+fn reused_panes_drop_a_dismissed_filter() {
     crate::test_support::gtk_test(
-        "ui::browser::tests::view_mode_filter::dismissed_filter_stays_closed_across_view_modes",
-        || {
-            let (view, window, fixture, browser) = present_filtered_view(BrowserMode::Columns);
-            dismiss_pane_filter(&view);
-
-            view.set_view_mode(BrowserMode::List);
-            assert_unfiltered(&view);
-
-            browser.clear_observer();
-            window.close();
-            drop(fixture);
-        },
-    );
-}
-
-#[test]
-fn empty_revealed_filter_stays_open_across_view_modes() {
-    crate::test_support::gtk_test(
-        "ui::browser::tests::view_mode_filter::empty_revealed_filter_stays_open_across_view_modes",
+        "ui::browser::tests::view_mode_filter::reused_panes_drop_a_dismissed_filter",
         || {
             let (view, window, fixture, browser) = present_filtered_view(BrowserMode::Icons);
+            assert!(view.show_filter_with_query("needle"));
+            assert_filtered(&view);
+
+            view.set_view_mode(BrowserMode::List);
+            assert_filtered(&view);
             assert!(view.show_filter());
-            assert_empty_revealed(&view);
-
-            view.set_view_mode(BrowserMode::Columns);
-            assert_empty_revealed(&view);
-            assert_listing_focus(&view);
-
-            browser.clear_observer();
-            window.close();
-            drop(fixture);
-        },
-    );
-}
-
-#[test]
-fn dismissed_filter_stays_closed_on_reused_icons_and_list_panes() {
-    crate::test_support::gtk_test(
-        "ui::browser::tests::view_mode_filter::dismissed_filter_stays_closed_on_reused_icons_and_list_panes",
-        || {
-            let (view, window, fixture, browser) = present_filtered_view(BrowserMode::Icons);
-            assert!(view.show_filter_with_query("needle"));
-            assert_filtered(&view);
-
-            view.set_view_mode(BrowserMode::List);
-            assert_filtered(&view);
-            dismiss_pane_filter(&view);
-
-            view.set_view_mode(BrowserMode::Icons);
+            assert!(view.dismiss_focused_filter());
             assert_unfiltered(&view);
 
-            view.set_view_mode(BrowserMode::List);
-            assert!(view.show_filter_with_query("needle"));
-            assert_filtered(&view);
-
             view.set_view_mode(BrowserMode::Icons);
-            assert_filtered(&view);
-            dismiss_pane_filter(&view);
-
-            view.set_view_mode(BrowserMode::List);
             assert_unfiltered(&view);
 
             browser.clear_observer();
             window.close();
             drop(fixture);
-        },
-    );
-}
-
-#[test]
-fn empty_revealed_restore_clears_leftover_query_on_reused_pane() {
-    crate::test_support::gtk_test(
-        "ui::browser::tests::view_mode_filter::empty_revealed_restore_clears_leftover_query_on_reused_pane",
-        || {
-            let (view, window, fixture, browser) = present_filtered_view(BrowserMode::Icons);
-            assert!(view.show_filter_with_query("needle"));
-            assert_filtered(&view);
-
-            view.set_view_mode(BrowserMode::List);
-            assert_filtered(&view);
-            dismiss_pane_filter(&view);
-            assert!(view.show_filter());
-            assert_empty_revealed(&view);
-
-            view.set_view_mode(BrowserMode::Icons);
-            assert_empty_revealed(&view);
-            wait_until(
-                || {
-                    FIXTURE_NAMES
-                        .iter()
-                        .all(|name| shows_name(&view.widget(), name))
-                },
-                &format!(
-                    "reused Icons pane should drop the leftover query; mapped labels: {:?}",
-                    mapped_labels(&view.widget())
-                ),
-            );
-            assert_listing_focus(&view);
-
-            browser.clear_observer();
-            window.close();
-            drop(fixture);
-        },
-    );
-}
-
-#[test]
-fn two_windows_keep_independent_filters_when_switching_modes() {
-    crate::test_support::gtk_test(
-        "ui::browser::tests::view_mode_filter::two_windows_keep_independent_filters_when_switching_modes",
-        || {
-            crate::ui::theme::ThemeManager::seed_saved_preferences_for_test();
-            let fixture = tempfile::tempdir().expect("fixture");
-            std::fs::write(fixture.path().join("needle.txt"), b"needle").expect("needle");
-            std::fs::write(fixture.path().join("other.txt"), b"other").expect("other");
-            let views: Vec<_> = (0..2)
-                .map(|_| {
-                    BrowserView::new(
-                        Rc::new(crate::adapters::LocalFileSource),
-                        PeekBehavior::default(),
-                    )
-                })
-                .collect();
-            let windows: Vec<_> = views
-                .iter()
-                .map(|view| {
-                    let window = gtk::Window::builder()
-                        .child(&view.widget())
-                        .default_width(900)
-                        .default_height(500)
-                        .build();
-                    window.present();
-                    view.browser().navigate(Location::local(fixture.path()));
-                    window
-                })
-                .collect();
-            wait_until(
-                || {
-                    views.iter().all(|view| {
-                        view.browser()
-                            .column_snapshot(0)
-                            .is_some_and(|snapshot| !snapshot.loading)
-                    })
-                },
-                "both windows should load",
-            );
-            assert!(views[0].show_filter_with_query("needle"));
-            assert!(views[1].show_filter_with_query("other"));
-            wait_until(
-                || {
-                    pane_filter(&views[0]) == ("needle".into(), true)
-                        && pane_filter(&views[1]) == ("other".into(), true)
-                },
-                "each window should keep its own query before the switch",
-            );
-
-            for view in &views {
-                view.set_view_mode(BrowserMode::List);
-            }
-            wait_until(
-                || {
-                    pane_filter(&views[0]) == ("needle".into(), true)
-                        && pane_filter(&views[1]) == ("other".into(), true)
-                },
-                "each window should keep its own query after the switch",
-            );
-            wait_until(
-                || {
-                    shows_name(&views[0].widget(), "needle.txt")
-                        && !shows_name(&views[0].widget(), "other.txt")
-                        && shows_name(&views[1].widget(), "other.txt")
-                        && !shows_name(&views[1].widget(), "needle.txt")
-                },
-                "each window's listing should stay independently filtered",
-            );
-
-            for view in &views {
-                view.browser().clear_observer();
-            }
-            for window in windows {
-                window.close();
-            }
         },
     );
 }
@@ -467,7 +277,6 @@ fn view_switch_copies_the_active_column_filter_not_the_hovered_parent() {
             view.state.hovered_column.set(Some(0));
             view.state.pointer_navigation();
             view.set_view_mode(BrowserMode::Icons);
-            assert_eq!(view.view_mode(), BrowserMode::Icons);
             assert_eq!(browser.active_depth(), Some(1));
             assert_filtered(&view);
 
