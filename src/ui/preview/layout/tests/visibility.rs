@@ -72,6 +72,53 @@ fn closing_preserves_column_positions_without_locking_horizontal_scrolling() {
 }
 
 #[test]
+fn reopening_a_fitting_preview_never_flashes_a_horizontal_scrollbar() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::reopening_a_fitting_preview_never_flashes_a_horizontal_scrollbar",
+        || {
+            let preferences = ThemeManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            preferences.set_reduce_motion(false);
+            for chooser in [false, true] {
+                let fixture = Fixture::new(chooser);
+                let scroller = find(&fixture.browser.widget(), "columns-scroll")
+                    .expect("column scroller")
+                    .downcast::<gtk::ScrolledWindow>()
+                    .expect("scroller");
+                for width in [1200, 900] {
+                    fixture.resize(width);
+                    for _ in 0..2 {
+                        let shown = Rc::new(Cell::new(false));
+                        let paints = Rc::new(Cell::new(0));
+                        let observed = shown.clone();
+                        let painted = paints.clone();
+                        let scrollbar = scroller.hscrollbar();
+                        let clock = fixture.split.frame_clock().expect("frame clock");
+                        let handler = clock.connect_after_paint(move |_| {
+                            painted.set(painted.get() + 1);
+                            observed.set(observed.get() || scrollbar.is_mapped());
+                        });
+                        fixture.preview.show(entry("notes.txt"), None);
+                        fixture.wait_adjacent();
+                        wait_until(|| !fixture.preview.state.animating.get());
+                        fixture.settle();
+                        clock.disconnect(handler);
+                        assert!(paints.get() > 0);
+                        assert!(
+                            !shown.get(),
+                            "a fitting column must not flash a scrollbar during preview opening"
+                        );
+                        fixture.preview.close();
+                        fixture.settle();
+                    }
+                }
+                fixture.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle",

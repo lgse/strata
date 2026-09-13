@@ -235,6 +235,12 @@ impl PreviewState {
     }
 
     pub(super) fn show_panel(&self) {
+        // Closing-only scroll padding must not participate in the opening animation.
+        if let Some(binding) = self.sizing.binding.borrow().as_ref()
+            && let Some(browser) = binding.browser.upgrade()
+        {
+            browser.clear_preview_scroll_space();
+        }
         self.revealer.set_transition_duration(0);
         self.pane.set_width_request(0);
         self.revealer.set_visible(true);
@@ -316,11 +322,6 @@ impl PreviewState {
         if self.pane.width_request() != minimum || split.position() != position {
             self.pane.set_width_request(minimum);
             split.set_position(position);
-        }
-        if let Some(binding) = self.sizing.binding.borrow().as_ref()
-            && let Some(browser) = binding.browser.upgrade()
-        {
-            browser.clear_preview_scroll_space();
         }
         if restored {
             if self.sizing.reload_on_resume.replace(false) {
