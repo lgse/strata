@@ -307,11 +307,21 @@ impl PreviewDrawer {
                 state.print();
             }
         });
-        wrap.set_active(super::theme::ThemeManager::shared().preview_text_wrap());
+        let preferences = super::theme::ThemeManager::shared();
         let weak = Rc::downgrade(&state);
+        preferences.bind_preference(
+            &wrap,
+            super::theme::ThemeManager::preview_text_wrap,
+            move |_, wrapped| {
+                if let Some(state) = weak.upgrade() {
+                    state.apply_text_wrap(wrapped);
+                    state.wrap.set_active(wrapped);
+                }
+            },
+        );
         wrap.connect_toggled(move |button| {
-            if let Some(state) = weak.upgrade() {
-                state.set_text_wrap(button.is_active());
+            if preferences.preview_text_wrap() != button.is_active() {
+                preferences.set_preview_text_wrap(button.is_active());
             }
         });
         let weak = Rc::downgrade(&state);
@@ -1547,11 +1557,6 @@ impl PreviewState {
         self.text_view.take();
         self.text_scroll.take();
         clear_box(&self.content);
-    }
-
-    fn set_text_wrap(&self, wrapped: bool) {
-        super::theme::ThemeManager::shared().set_preview_text_wrap(wrapped);
-        self.apply_text_wrap(wrapped);
     }
 
     fn apply_text_wrap(&self, wrapped: bool) {
