@@ -252,7 +252,9 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -2px;
 }
 
-.column-peek-target {
+.column-peek-target,
+.column-peek-target:hover,
+.column-peek-target:active {
   background: transparent;
   background-image: none;
   color: @theme_accent;
@@ -262,14 +264,6 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 0;
   min-width: 0;
   min-height: 0;
-}
-
-.column-peek-target:hover {
-  background: alpha(@theme_accent, 0.12);
-}
-
-.column-peek-target:active {
-  background: alpha(@theme_accent, 0.22);
 }
 
 .column-peek-target:focus-visible {

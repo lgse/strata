@@ -164,6 +164,20 @@ Media playback also now reaches the full source duration rather than stopping at
 Buffer and cancellation limits remain unchanged; see the current
 [media sandbox contract](../../preview-sandbox.md).
 
+## Transparent clipped-column reveal targets
+
+Reveal-only targets stay transparent on hover and press, even when scrolling
+leaves almost an entire column visible. They retain their pointer cursor and
+reveal/focus behavior without tinting the column body or activating covered rows.
+
+| Before | After |
+| --- | --- |
+| ![Hovered reveal target tints most of a column](review/peek-before.png) | ![Hovered reveal target leaves the column background unchanged](review/peek-after.png) |
+
+The private-display fixture positions the horizontal scrollbar so the final
+column is only slightly clipped, then hovers that target. Existing peek-click
+coverage still checks row/toolbar non-activation and focused-column visibility.
+
 ## Tuning and scope
 
 - `MIN_COLUMN_MULTIPLIER` in [`preview/layout.rs`](../../../src/ui/preview/layout.rs)
