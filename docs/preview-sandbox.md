@@ -107,7 +107,7 @@ Image renders preserve small source dimensions so the UI can enforce its 2×
 upscaling limit. Image previews do not use normalized shared-thumbnail
 placeholders, which can already be enlarged and lack reliable native dimensions;
 they request the bounded full render immediately. PDFs likewise wait for a bounded
-page render with verified page count. File-list thumbnail storage/reuse is unchanged. See [preview sizing](evidence/885/README.md).
+page render with verified page count. File-list thumbnail storage/reuse is unchanged.
 
 ## Scheduling and deadlines
 
@@ -131,7 +131,7 @@ have separate limits, not a machine-global scheduler.
 
 The old batch-conversion wall timeout does not govern a paused real-time player.
 The limits do not promise instant startup, zero-latency seeking, or a total RAM
-plateau for every toolkit/driver. See [measurements and manual checks](evidence/824/README.md).
+plateau for every toolkit/driver.
 
 ## Isolation and hardware policy
 
