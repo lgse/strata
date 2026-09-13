@@ -8,6 +8,25 @@ use gtk::glib;
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 #[test]
+fn pane_filter_restore_skips_dismissed_empty_fields() {
+    assert!(!ActivePaneFilter::default().should_restore());
+    assert!(
+        ActivePaneFilter {
+            query: "needle".into(),
+            revealed: false,
+        }
+        .should_restore()
+    );
+    assert!(
+        ActivePaneFilter {
+            query: String::new(),
+            revealed: true,
+        }
+        .should_restore()
+    );
+}
+
+#[test]
 fn recursive_search_arrows_select_and_clamp_results() {
     assert_eq!(search_result_navigation_position(None, 3, 1), Some(0));
     assert_eq!(search_result_navigation_position(None, 3, -1), Some(2));

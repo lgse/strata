@@ -546,7 +546,8 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
                 view.state.pointer_navigation();
                 assert_column_header_actions(&view, hovered.unwrap_or(2));
             }
-            view.state.rebuild_columns();
+            view.state.rebuild_columns_from(0);
+            view.state.focus_rebuilt_active_column();
             assert_column_header_actions(&view, 2);
             let adjustment = view.state.scroller.hadjustment();
             wait_until(|| adjustment.value() > 100.0);

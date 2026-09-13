@@ -5,10 +5,10 @@ use crate::services::fold_for_search;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
-    ViewMap, activate_recursive_search_result, apply_filter_query, apply_selection_plan,
-    bind_filter_query, bitset_positions, cancel_source, deactivate_recursive_search,
-    detach_collection_view, recursive_search_activation_key, scroll_collection_when_allocated,
-    search_result_navigation_position,
+    ActivePaneFilter, ViewMap, activate_recursive_search_result, apply_filter_query,
+    apply_selection_plan, bind_filter_query, bitset_positions, cancel_source,
+    deactivate_recursive_search, detach_collection_view, recursive_search_activation_key,
+    restore_filter_controls, scroll_collection_when_allocated, search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
@@ -449,9 +449,29 @@ impl ViewState {
         self.refresh_destination_style();
     }
 
-    pub(super) fn rebuild_columns(self: &Rc<Self>) {
-        self.rebuild_columns_from(0);
-        self.focus_rebuilt_active_column();
+    pub(super) fn capture_active_column_filter(&self) -> ActivePaneFilter {
+        let Some(depth) = self.browser.active_depth() else {
+            return ActivePaneFilter::default();
+        };
+        let columns = self.columns.borrow();
+        let Some(column) = columns.get(depth) else {
+            return ActivePaneFilter::default();
+        };
+        ActivePaneFilter {
+            query: column.filter_entry.text().to_string(),
+            revealed: column.filter_button.is_active(),
+        }
+    }
+
+    pub(super) fn restore_active_column_filter(&self, filter: &ActivePaneFilter) {
+        let Some(depth) = self.browser.active_depth() else {
+            return;
+        };
+        let columns = self.columns.borrow();
+        let Some(column) = columns.get(depth) else {
+            return;
+        };
+        restore_filter_controls(&column.filter_button, &column.filter_entry, filter);
     }
 
     pub(super) fn rebuild_columns_from(self: &Rc<Self>, from_depth: usize) {
@@ -497,7 +517,7 @@ impl ViewState {
         }
     }
 
-    fn focus_rebuilt_active_column(&self) {
+    pub(super) fn focus_rebuilt_active_column(&self) {
         let Some(depth) = self.browser.active_depth() else {
             return;
         };

@@ -244,6 +244,7 @@ struct Pane {
     empty_trash_button: Option<gtk::Button>,
     show_hidden: Rc<Cell<bool>>,
     filter: gtk::CustomFilter,
+    filter_query: Rc<RefCell<String>>,
     folder_context_trigger: Rc<dyn Fn(f64, f64)>,
 }
 
@@ -768,9 +769,10 @@ impl ModeViews {
 
     pub fn filter_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
+        // Previous-mode panes stay in the tree unmapped; a just-revealed field
+        // can have focus before GTK maps it.
+        self.visible_panes()
+            .into_iter()
             .filter_map(|pane| pane.filter_entry.as_ref())
             .any(|entry| widget_has_focus(entry, focused.as_ref()))
     }
@@ -804,9 +806,8 @@ impl ModeViews {
 
     pub fn empty_filter_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
+        self.visible_panes()
+            .into_iter()
             .filter_map(|pane| pane.filter_entry.as_ref())
             .any(|entry| entry.text().is_empty() && widget_has_focus(entry, focused.as_ref()))
     }
@@ -827,6 +828,44 @@ impl ModeViews {
         button.set_active(true);
         super::browser::focus_filter_entry(entry, query);
         true
+    }
+
+    pub(crate) fn capture_active_filter(&self) -> super::browser::ActivePaneFilter {
+        let Some(depth) = self.browser.active_depth() else {
+            return super::browser::ActivePaneFilter::default();
+        };
+        let Some(pane) = self.panes_at(depth).into_iter().next() else {
+            return super::browser::ActivePaneFilter::default();
+        };
+        super::browser::ActivePaneFilter {
+            query: pane
+                .filter_entry
+                .as_ref()
+                .map(|entry| entry.text().to_string())
+                .unwrap_or_default(),
+            revealed: pane
+                .filter_button
+                .as_ref()
+                .is_some_and(|button| button.is_active()),
+        }
+    }
+
+    pub(crate) fn restore_active_filter(&self, filter: &super::browser::ActivePaneFilter) {
+        let Some(depth) = self.browser.active_depth() else {
+            return;
+        };
+        let Some(pane) = self.panes_at(depth).into_iter().next() else {
+            return;
+        };
+        let (Some(entry), Some(button)) = (pane.filter_entry.as_ref(), pane.filter_button.as_ref())
+        else {
+            return;
+        };
+        super::browser::restore_filter_controls(button, entry, filter);
+        super::browser::notify_filter_query(&pane.filter, &pane.filter_query, filter.query.clone());
+        if filter.query.trim().is_empty() {
+            pane.search.show_directory_listing();
+        }
     }
 
     pub fn dismiss_focused_filter(&self) -> bool {
@@ -1883,6 +1922,7 @@ fn build_icons_pane(
         empty_trash_button: controls.empty_trash_button,
         show_hidden,
         filter: filter_for_pane,
+        filter_query,
         folder_context_trigger: Rc::new(|_, _| {}),
     };
     refresh_marquee_targets(&pane);
@@ -2739,6 +2779,7 @@ fn build_list_pane(
         empty_trash_button: is_trash.then_some(empty_trash),
         show_hidden,
         filter: filter_for_pane,
+        filter_query,
         folder_context_trigger: Rc::new(|_, _| {}),
     };
     refresh_marquee_targets(&pane);
