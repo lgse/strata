@@ -96,14 +96,23 @@ fn executable_without_handler(path: Option<&Path>, error: &glib::Error) -> bool 
     error.matches(gio::IOErrorEnum::NotSupported) && path.is_some_and(is_regular_executable)
 }
 
-fn is_regular_executable(path: &Path) -> bool {
+pub(super) fn is_regular_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
         .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
 }
 
-fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Widget>) {
+pub(super) fn entry_is_regular_executable(entry: &FileEntry) -> bool {
+    entry.location.native_path().is_some()
+        && matches!(
+            entry.kind,
+            crate::model::EntryKind::File | crate::model::EntryKind::FileSymbolicLink
+        )
+        && matches!(entry.mode, crate::model::MetadataValue::Known(mode) if mode & 0o111 != 0)
+}
+
+pub(super) fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Widget>) {
     let Some(ModalHost {
         overlay: window_overlay,
         blurred_root,

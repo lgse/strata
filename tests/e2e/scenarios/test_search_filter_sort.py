@@ -287,7 +287,19 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
         "all navigation results to be indexed",
     )
 
-    for _ in range(3):
+    results = [
+        node
+        for node in strata.window.find_all(role="list item")
+        if any(node.name.endswith(f"/{name}") for name in names)
+    ]
+    assert len(results) == len(names)
+    assert results[0].has_state("selected")
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: results[1].has_state("selected"),
+        "the first Down press to advance past the preselected result",
+    )
+    for _ in range(2):
         strata.keyboard.press("Down")
     strata.keyboard.type_text("igation-final")
     strata.wait(

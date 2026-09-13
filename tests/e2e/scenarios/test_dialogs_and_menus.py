@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import shlex
 import shutil
 
 import pytest
@@ -16,6 +17,15 @@ ENTRY_MENU_ITEMS = {"Open", "Cut", "Copy", "Rename", "Move to Trash", "Propertie
 def executable_file(fixture_tree):
     program = fixture_tree.path("run-me")
     shutil.copy2(shutil.which("true"), program)
+    return program
+
+
+@pytest.fixture
+def observable_executable_file(fixture_tree):
+    program = fixture_tree.path("run-me")
+    marker = fixture_tree.path("run-me.executed")
+    program.write_text(f"#!/bin/sh\nprintf executed > {shlex.quote(str(marker))}\n")
+    program.chmod(0o755)
     return program
 
 
@@ -170,6 +180,25 @@ def test_executable_without_handler_requires_confirmation(executable_file, strat
     strata.double_click_entry(executable_file.name)
     strata.pointer.click(strata.dialog_button("Run"))
     strata.wait(lambda: strata.dialog() is None, "the confirmed program to launch")
+
+
+def test_executable_context_menu_offers_confirmed_run(observable_executable_file, strata):
+    marker = observable_executable_file.with_name("run-me.executed")
+    strata.open_context_menu(observable_executable_file.name)
+    assert {"Open", "Open With…", "Run"} <= set(strata.menu_items())
+    strata.choose_menu_item("Run")
+
+    dialog = strata.wait_for_dialog()
+    assert "Run this program?" in dialog.dump()
+    strata.pointer.click(strata.dialog_button("Cancel"))
+    strata.wait(lambda: strata.dialog() is None, "the cancelled run dialog to close")
+    assert not marker.exists(), "Cancel must not launch the program"
+
+    strata.open_context_menu(observable_executable_file.name)
+    strata.choose_menu_item("Run")
+    strata.pointer.click(strata.dialog_button("Run"))
+    strata.wait(lambda: strata.dialog() is None, "the confirmed program to launch")
+    strata.wait(marker.exists, "the confirmed program to create its marker")
 
 
 def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):

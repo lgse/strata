@@ -58,11 +58,12 @@ pub(super) fn build_index(
                 }
             };
             let path = entry.path();
+            let kind = native_kind(file_type, &path);
             let is_directory = matches!(
-                native_kind(file_type, &path),
+                kind,
                 EntryKind::Directory | EntryKind::DirectorySymbolicLink
             );
-            pending.push(SearchItem::new(path, &root, is_directory));
+            pending.push(SearchItem::from_native(path, &root, is_directory, kind));
             count += 1;
             if pending.len() >= 256 {
                 append_index_items(index, &mut pending, true, coverage);

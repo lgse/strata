@@ -560,6 +560,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let single = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let open = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "↵");
     let open_with = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
+    let run = item_context_option(crate::assets::icons::PLAY, "Run", "");
     let open_terminal =
         item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
@@ -600,6 +601,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
     single.append(&open);
     single.append(&open_with);
+    single.append(&run);
     single.append(&open_terminal);
     single.append(&preview);
     single.append(&print);
@@ -712,6 +714,24 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             } else {
                 state.browser.open_location(entry.location);
             }
+        }
+    });
+    let run_target = target.clone();
+    let run_state = Rc::downgrade(state);
+    let run_popover = popover.downgrade();
+    run.connect_clicked(move |_| {
+        if let Some(popover) = run_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some(state) = run_state.upgrade() else {
+            return;
+        };
+        let entries = context_entries(&state, &run_target);
+        let [entry] = entries.as_slice() else {
+            return;
+        };
+        if super::desktop::entry_is_regular_executable(entry) {
+            super::desktop::confirm_run_program(&entry.location, &state.overlay);
         }
     });
     let open_multiple_target = target.clone();
@@ -1065,6 +1085,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         focus_context_entry(&state, depth, position, &entry);
         target.replace(Some((position, entry.clone())));
         let entries = context_entries(&state, &target);
+        run.set_visible(
+            !in_trash && entries.len() == 1 && super::desktop::entry_is_regular_executable(&entry),
+        );
         let open_with_entries = entries.clone();
         open_with.set_visible(open_with_entries.len() == 1);
         open_with_multiple.set_visible(open_with_entries.len() > 1);

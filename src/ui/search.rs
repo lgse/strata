@@ -659,12 +659,11 @@ fn move_selection(state: &SearchState, direction: i32) {
         return;
     }
 
-    let current = state.list.selected_row().map_or(0, |row| row.index());
-    let next = if state.navigation_started.replace(true) {
-        (current + direction).clamp(0, count - 1)
-    } else {
-        current.clamp(0, count - 1)
-    };
+    state.navigation_started.set(true);
+    let next = state
+        .list
+        .selected_row()
+        .map_or(0, |row| (row.index() + direction).clamp(0, count - 1));
     if let Some(row) = state.list.row_at_index(next) {
         state.list.select_row(Some(&row));
         scroll_row_into_view(state, &row);
