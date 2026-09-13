@@ -57,9 +57,11 @@ pub(super) fn entry_supports_printing(entry: &FileEntry) -> bool {
         return false;
     }
 
-    let (content_type, _) =
+    let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+    // An uncertain name guess defers to the loader, which resolves the file's content type.
     matches!(content_family(&content_type), PreviewContent::Text { .. })
+        || (uncertain && matches!(content_family(&content_type), PreviewContent::Unsupported))
         || (entry.location.native_path().is_some()
             && matches!(
                 content_family(&content_type),
