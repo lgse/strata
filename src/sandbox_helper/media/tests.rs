@@ -291,13 +291,13 @@ fn movie_with_attached_cover_keeps_the_motion_video_stream() {
             ])
             .arg(&movie),
     );
-    let listed_v = probe_stream_indexes(&movie, "v");
-    let listed_V = probe_stream_indexes(&movie, "V");
+    let all_video = probe_stream_indexes(&movie, "v");
+    let motion_video = probe_stream_indexes(&movie, "V");
     assert!(
-        listed_v.contains('0') && listed_v.contains('2'),
-        "{listed_v}"
+        all_video.contains('0') && all_video.contains('2'),
+        "{all_video}"
     );
-    assert_eq!(listed_V, "0");
+    assert_eq!(motion_video, "0");
     let info = probe(&movie, MediaPreviewSize::new(520, 800), 0).expect("movie metadata");
     assert_eq!(info.video, Some(0));
     assert_eq!(info.audio, Some(1));
