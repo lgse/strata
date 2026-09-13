@@ -191,6 +191,22 @@ The private-display fixture positions the horizontal scrollbar so the final
 column is only slightly clipped, then hovers that target. Existing peek-click
 coverage still checks row/toolbar non-activation and focused-column visibility.
 
+## Space opens folder columns
+
+In Columns mode, plain Space on a selected folder now follows Enter's directory
+activation path. Files still toggle quick preview, and Icons/List keep their
+existing Space behavior. The shared browser/chooser action also follows Enter
+for selected recursive-search folders without submitting an Open/Save chooser.
+
+| Before pressing Space | After pressing Space |
+| --- | --- |
+| ![Alpha selected by keyboard](review/space-folder-before.png) | ![Space opens Alpha in a child column](review/space-folder-after.png) |
+
+These private-display screenshots show the same synthetic fixture. Existing
+keyboard, filtered-chooser, and preview-session cases cover folder activation,
+file preview, and unchanged non-column modes. The footer and F1 reference expose
+the Columns-specific shortcut.
+
 ## Tuning and scope
 
 - `MIN_COLUMN_MULTIPLIER` in [`preview/layout.rs`](../../../src/ui/preview/layout.rs)

@@ -52,7 +52,8 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
         || {
             crate::ui::prepare_portal_ui();
             let root = tempfile::tempdir().expect("fixture");
-            std::fs::create_dir(root.path().join("folder")).expect("nested directory");
+            std::fs::create_dir_all(root.path().join("folder/matched"))
+                .expect("nested directories");
             std::fs::write(root.path().join("stale.txt"), "Wrong preview").expect("stale file");
             std::fs::write(root.path().join("folder/nested.txt"), "Nested preview")
                 .expect("nested file");
@@ -231,6 +232,79 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                             });
                             capture("after");
                         }
+                    }
+                    for recursive in [true, false] {
+                        state.view.dismiss_focused_filter();
+                        browser.navigate(Location::local(root.path()));
+                        wait_until(|| {
+                            browser
+                                .column_snapshot(0)
+                                .is_some_and(|column| !column.loading)
+                        });
+                        if recursive {
+                            assert!(state.view.show_filter_with_query("matched"));
+                            wait_until(|| {
+                                find(state.window.upcast_ref(), &|widget| {
+                                    widget.is_mapped()
+                                        && widget
+                                            .downcast_ref::<gtk::Label>()
+                                            .is_some_and(|label| label.text() == "matched")
+                                })
+                                .is_some()
+                            });
+                            let field = gtk::prelude::RootExt::focus(&state.window)
+                                .expect("filter focus")
+                                .ancestor(gtk::Entry::static_type())
+                                .and_downcast::<gtk::Entry>()
+                                .expect("filter entry");
+                            press(
+                                &keys(&field),
+                                gtk::gdk::Key::Down,
+                                gtk::gdk::ModifierType::empty(),
+                            );
+                            wait_until(|| {
+                                state
+                                    .view
+                                    .selected_search_result()
+                                    .is_some_and(|entry| entry.is_directory())
+                            });
+                        } else {
+                            browser.select(0, 0);
+                            browser.focus_active();
+                            wait_until(|| state.view.item_view_has_focus());
+                            assert_eq!(
+                                browser.focused_entry().expect("folder").display_name,
+                                "folder"
+                            );
+                        }
+                        assert!(press(
+                            &window_keys,
+                            gtk::gdk::Key::space,
+                            gtk::gdk::ModifierType::empty()
+                        ));
+                        if mode == BrowserMode::Columns {
+                            let path = root.path().join(if recursive {
+                                "folder/matched"
+                            } else {
+                                "folder"
+                            });
+                            wait_until(|| {
+                                browser.active_location() == Some(Location::local(&path))
+                            });
+                            if !recursive {
+                                assert_eq!(
+                                    browser.location_at(0),
+                                    Some(Location::local(root.path()))
+                                );
+                            }
+                        } else {
+                            assert_eq!(
+                                browser.active_location(),
+                                Some(Location::local(root.path())),
+                                "Space must not navigate: {mode:?}, recursive={recursive}"
+                            );
+                        }
+                        assert!(state.completion.borrow().is_some());
                     }
                     state.cancel();
                 }

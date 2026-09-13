@@ -81,6 +81,9 @@ impl Dispatcher {
             )
             && let Some(entry) = self.view.selected_search_result()
         {
+            if self.view.activate_directory_column() {
+                return Some(Propagation::Stop);
+            }
             self.preview.toggle(
                 crate::ui::preview::preview_target(Some(entry)),
                 self.view.browser().active_depth(),

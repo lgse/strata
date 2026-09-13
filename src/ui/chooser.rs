@@ -1453,6 +1453,9 @@ fn install_shortcuts(
             )
             && let Some(entry) = state.view.selected_search_result()
         {
+            if state.view.activate_directory_column() {
+                return glib::Propagation::Stop;
+            }
             preview.toggle(
                 preview_target(Some(entry)),
                 state.view.browser().active_depth(),
@@ -1663,6 +1666,12 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !control && !alt {
+            if !modifiers
+                .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
+                && state.view.activate_directory_column()
+            {
+                return glib::Propagation::Stop;
+            }
             preview.toggle(
                 preview_target(browser.focused_entry()),
                 browser.active_depth(),

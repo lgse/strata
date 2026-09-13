@@ -865,6 +865,27 @@ impl BrowserView {
         }
     }
 
+    pub(in crate::ui) fn activate_directory_column(&self) -> bool {
+        if self.view_mode() != BrowserMode::Columns {
+            return false;
+        }
+        if let Some(entry) = self.selected_search_result() {
+            if entry.is_directory() {
+                self.state.browser.navigate(entry.location);
+                return true;
+            }
+        } else if self
+            .state
+            .browser
+            .focused_entry()
+            .is_some_and(|entry| entry.is_directory())
+        {
+            self.activate_focused();
+            return true;
+        }
+        false
+    }
+
     pub fn commit_selection(&self) {
         self.state.browser.commit_selection();
     }

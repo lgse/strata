@@ -13,7 +13,7 @@ type Shortcut = (&'static str, &'static str);
 
 const FILES: &[Shortcut] = &[
     ("Enter", "Open the current item"),
-    ("Space", "Toggle quick preview"),
+    ("Space", "Toggle file preview"),
     ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
     ("Ctrl+V", "Paste into the indicated directory"),
     ("Ctrl+D", "Duplicate selected items"),
@@ -423,7 +423,14 @@ fn summary_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
     shortcuts.extend_from_slice(&[
         ("↑ at top", "Header"),
         ("Enter", "Open"),
-        ("Space", "Preview"),
+        (
+            "Space",
+            if mode == BrowserMode::Columns {
+                "Open / preview"
+            } else {
+                "Preview"
+            },
+        ),
         ("Ctrl+F", "Filter"),
         ("Ctrl+C / X", "Copy / cut"),
         ("Del", "Trash"),
@@ -436,6 +443,7 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
         BrowserMode::Columns => vec![
             ("↑ / ↓", "Move between items"),
             ("← / →", "Parent pane / enter folder"),
+            ("Space", "Open folder column"),
             ("← at first pane", "Focus the visible sidebar"),
             (
                 "Backspace",
