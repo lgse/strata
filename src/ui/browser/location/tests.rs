@@ -104,6 +104,81 @@ fn volume_cancellation_is_quiet_and_terminal_errors_are_preserved() {
 }
 
 #[test]
+fn pending_or_busy_volume_mount_is_not_a_terminal_error() {
+    let pending = glib::Error::new(
+        gio::IOErrorEnum::Pending,
+        "A mount operation is already in progress",
+    );
+    let busy = glib::Error::new(gio::IOErrorEnum::Busy, "Volume is busy");
+    let unlocking = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Error unlocking /dev/loop0: Already unlocking",
+    );
+    let unsupported = glib::Error::new(
+        gio::IOErrorEnum::NotSupported,
+        "Failed to activate device: Operation not supported",
+    );
+    let rejected = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Error unlocking: No key available with this passphrase.",
+    );
+
+    for error in [&pending, &busy, &unlocking] {
+        assert!(volume_error_is_in_flight_mount(error));
+        assert!(!volume_error_is_authentication_failure(error));
+        assert!(!mount_error_is_cancelled(error));
+    }
+    assert!(!volume_error_is_in_flight_mount(&unsupported));
+    assert!(!volume_error_is_authentication_failure(&unsupported));
+    assert!(!volume_error_is_in_flight_mount(&rejected));
+    assert!(volume_error_is_authentication_failure(&rejected));
+}
+
+#[test]
+fn external_volume_mount_completion_is_success() {
+    let already_mounted = Err(glib::Error::new(
+        gio::IOErrorEnum::AlreadyMounted,
+        "Volume is already mounted",
+    ));
+    let failed = Err(glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Error unlocking /dev/loop0: Failed to activate device",
+    ));
+    let pending = Err(glib::Error::new(
+        gio::IOErrorEnum::Pending,
+        "A mount operation is already in progress",
+    ));
+
+    assert!(device_volume_mount_is_ready(&Ok(()), false));
+    assert!(device_volume_mount_is_ready(&already_mounted, false));
+    assert!(device_volume_mount_is_ready(&failed, true));
+    assert!(!device_volume_mount_is_ready(&failed, false));
+    assert!(!device_volume_mount_is_ready(&pending, false));
+    assert!(device_volume_mount_is_ready(&pending, true));
+
+    assert_eq!(
+        foreign_volume_wait_follow_up(ForeignVolumeWaitOutcome::Mounted, false),
+        ForeignVolumeWaitFollowUp::Navigate
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(ForeignVolumeWaitOutcome::Mounted, true),
+        ForeignVolumeWaitFollowUp::Navigate
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(ForeignVolumeWaitOutcome::StillLocked, false),
+        ForeignVolumeWaitFollowUp::StartOwnedMount
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(ForeignVolumeWaitOutcome::StillLocked, true),
+        ForeignVolumeWaitFollowUp::Quiet
+    );
+    assert_eq!(
+        foreign_volume_wait_follow_up(ForeignVolumeWaitOutcome::Gone, false),
+        ForeignVolumeWaitFollowUp::Quiet
+    );
+}
+
+#[test]
 fn password_only_volume_prompt_submits_and_cancels_the_original_operation() {
     crate::test_support::gtk_test(
         "ui::browser::location::tests::password_only_volume_prompt_submits_and_cancels_the_original_operation",

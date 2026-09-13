@@ -14,6 +14,7 @@ use crate::ui::controls::{
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
 };
+use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -441,28 +442,130 @@ fn volume_error_is_authentication_failure(error: &glib::Error) -> bool {
     .any(|reason| message.contains(reason))
 }
 
+fn device_volume_mount_is_ready(result: &Result<(), glib::Error>, mount_present: bool) -> bool {
+    mount_present || mount_result_is_ok(result)
+}
+
+fn volume_error_is_in_flight_mount(error: &glib::Error) -> bool {
+    if error.matches(gio::IOErrorEnum::Pending) || error.matches(gio::IOErrorEnum::Busy) {
+        return true;
+    }
+    let message = error.message().to_ascii_lowercase();
+    ["already unlocking", "already in progress"]
+        .iter()
+        .any(|reason| message.contains(reason))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ForeignVolumeWaitOutcome {
+    Mounted,
+    StillLocked,
+    Gone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ForeignVolumeWaitFollowUp {
+    Navigate,
+    StartOwnedMount,
+    Quiet,
+}
+
+fn foreign_volume_wait_follow_up(
+    outcome: ForeignVolumeWaitOutcome,
+    already_waited: bool,
+) -> ForeignVolumeWaitFollowUp {
+    match outcome {
+        ForeignVolumeWaitOutcome::Mounted => ForeignVolumeWaitFollowUp::Navigate,
+        ForeignVolumeWaitOutcome::Gone => ForeignVolumeWaitFollowUp::Quiet,
+        ForeignVolumeWaitOutcome::StillLocked if already_waited => ForeignVolumeWaitFollowUp::Quiet,
+        ForeignVolumeWaitOutcome::StillLocked => ForeignVolumeWaitFollowUp::StartOwnedMount,
+    }
+}
+
+const FOREIGN_VOLUME_MOUNT_WAIT: Duration = Duration::from_secs(8);
+
+async fn wait_for_foreign_volume_mount(volume: &gio::Volume) -> ForeignVolumeWaitOutcome {
+    if volume.get_mount().is_some() {
+        return ForeignVolumeWaitOutcome::Mounted;
+    }
+
+    let (tx, rx) = oneshot::channel();
+    let tx = Rc::new(RefCell::new(Some(tx)));
+    let complete = Rc::new({
+        let tx = tx.clone();
+        move || {
+            if let Some(tx) = tx.borrow_mut().take() {
+                let _ = tx.send(());
+            }
+        }
+    });
+    let removed = Rc::new(Cell::new(false));
+
+    let changed_complete = complete.clone();
+    let changed_id = volume.connect_changed(move |_| changed_complete());
+    let removed_flag = removed.clone();
+    let removed_complete = complete.clone();
+    let removed_id = volume.connect_removed(move |_| {
+        removed_flag.set(true);
+        removed_complete();
+    });
+    let poll_volume = volume.clone();
+    let poll_complete = complete.clone();
+    let poll_id = glib::timeout_add_local(Duration::from_millis(200), move || {
+        if poll_volume.get_mount().is_some() {
+            poll_complete();
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+    let timeout_complete = complete;
+    let timeout_id = glib::timeout_add_local_once(FOREIGN_VOLUME_MOUNT_WAIT, move || {
+        timeout_complete();
+    });
+
+    let _ = rx.await;
+    volume.disconnect(changed_id);
+    volume.disconnect(removed_id);
+    poll_id.remove();
+    timeout_id.remove();
+
+    if volume.get_mount().is_some() {
+        ForeignVolumeWaitOutcome::Mounted
+    } else if removed.get() {
+        ForeignVolumeWaitOutcome::Gone
+    } else {
+        ForeignVolumeWaitOutcome::StillLocked
+    }
+}
+
 impl BrowserView {
     pub(crate) fn mount_volume(&self, volume: gio::Volume) {
-        self.state.mount_device_volume(volume, None);
+        self.state.mount_device_volume(volume, None, false);
     }
 }
 
 impl ViewState {
+    fn navigate_mounted_volume(&self, volume: &gio::Volume) {
+        if let Some(mount) = volume.get_mount()
+            && let Some(location) = crate::adapters::location_for_file(&mount.root())
+        {
+            self.browser.navigate(location);
+        }
+    }
+
     fn mount_device_volume(
         self: &Rc<Self>,
         volume: gio::Volume,
         credentials: Option<MountCredentials>,
+        already_waited: bool,
     ) {
         self.mount_target(
             MountTarget::Volume(volume.clone()),
             credentials,
             move |state, result, attempted, details| {
-                if mount_result_is_ok(&result) {
-                    if let Some(mount) = volume.get_mount()
-                        && let Some(location) = crate::adapters::location_for_file(&mount.root())
-                    {
-                        state.browser.navigate(location);
-                    }
+                if device_volume_mount_is_ready(&result, volume.get_mount().is_some()) {
+                    state.navigate_mounted_volume(&volume);
                 } else if let Err(error) = result {
                     if volume_error_is_authentication_failure(&error)
                         && let Some(details) = details
@@ -477,11 +580,43 @@ impl ViewState {
                                     state.mount_device_volume(
                                         retry_volume.clone(),
                                         Some(credentials),
+                                        false,
                                     );
                                 }
                             },
                             || {},
                         );
+                    } else if volume_error_is_in_flight_mount(&error) {
+                        // Listing never automounts. Pending/busy here is a
+                        // session automounter job; wait for it, then navigate
+                        // or start a Strata-owned mount. Do not cancel it.
+                        tracing::debug!(
+                            volume = %volume.name(),
+                            already_waited,
+                            "waiting for in-flight volume mount"
+                        );
+                        let weak = Rc::downgrade(state);
+                        let wait_volume = volume.clone();
+                        glib::MainContext::default().spawn_local(async move {
+                            let Some(state) = weak.upgrade() else {
+                                return;
+                            };
+                            let _activity = BrowserView {
+                                state: state.clone(),
+                            }
+                            .begin_global_activity("Connecting…");
+                            let outcome = wait_for_foreign_volume_mount(&wait_volume).await;
+                            drop(_activity);
+                            match foreign_volume_wait_follow_up(outcome, already_waited) {
+                                ForeignVolumeWaitFollowUp::Navigate => {
+                                    state.navigate_mounted_volume(&wait_volume);
+                                }
+                                ForeignVolumeWaitFollowUp::StartOwnedMount => {
+                                    state.mount_device_volume(wait_volume, None, true);
+                                }
+                                ForeignVolumeWaitFollowUp::Quiet => {}
+                            }
+                        });
                     } else if !mount_error_is_cancelled(&error) {
                         show_error_dialog(
                             &state.overlay,
