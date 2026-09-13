@@ -206,6 +206,7 @@ const DIALOG_MARGIN: i32 = 24;
 const COMPACT_NAVIGATION_BREAKPOINT: i32 = 900;
 // Reflow the content before collapsing navigation: desktop toolbars need more room.
 const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
+const STACK_TEXT_SIZE_BREAKPOINT: i32 = 600;
 
 mod responsive_bin {
     use super::*;
@@ -326,7 +327,11 @@ mod responsive_bin {
                     }
                 }
             }
-            reflow_settings(&child, compact_content);
+            reflow_settings(
+                &child,
+                compact_content,
+                logical_width < f64::from(STACK_TEXT_SIZE_BREAKPOINT),
+            );
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
             let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
@@ -405,7 +410,7 @@ impl ResponsiveBin {
     }
 }
 
-fn reflow_settings(widget: &gtk::Widget, compact: bool) {
+fn reflow_settings(widget: &gtk::Widget, compact: bool, stack_text_size: bool) {
     if widget.has_css_class("settings-dialog") {
         if compact {
             widget.add_css_class("compact");
@@ -429,7 +434,13 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
         let switch_row = row
             .last_child()
             .is_some_and(|child| child.is::<gtk::Switch>());
-        let orientation = if compact && !switch_row {
+        // Short numeric controls can stay beside wrapping copy after other rows stack.
+        let stack_row = if row.has_css_class("settings-text-size-row") {
+            stack_text_size
+        } else {
+            compact
+        };
+        let orientation = if stack_row && !switch_row {
             gtk::Orientation::Vertical
         } else {
             gtk::Orientation::Horizontal
@@ -488,7 +499,7 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
     let mut child = widget.first_child();
     while let Some(next) = child {
         child = next.next_sibling();
-        reflow_settings(&next, compact);
+        reflow_settings(&next, compact, stack_text_size);
     }
 }
 
@@ -2543,7 +2554,17 @@ fn control_row(title: &str, description: &str, control: &impl IsA<gtk::Widget>) 
 fn indent_row(row: &gtk::Box) {
     let arrow = crate::assets::primary_icon(icons::CORNER_DOWN_RIGHT, 18);
     arrow.add_css_class("settings-indent");
-    row.prepend(&arrow);
+    arrow.set_valign(gtk::Align::Center);
+    // Keep the dependency marker with its heading when the control stacks below.
+    if let Some(copy) = row.first_child().and_downcast::<gtk::Box>()
+        && let Some(title) = copy.first_child()
+    {
+        copy.remove(&title);
+        let heading = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        heading.append(&arrow);
+        heading.append(&title);
+        copy.prepend(&heading);
+    }
     row.add_css_class("settings-dependent");
 }
 
