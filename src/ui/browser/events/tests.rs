@@ -59,7 +59,7 @@ fn has_dissolve_canvas(overlay: &gtk::Overlay) -> bool {
     let mut child = overlay.first_child();
     while let Some(widget) = child {
         child = widget.next_sibling();
-        if widget.type_().name() == "StrataDissolveCanvas" {
+        if widget.has_css_class("delete-dissolving") {
             return true;
         }
     }
@@ -161,6 +161,7 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 Rc::new(|| {}),
             );
             let layer = progress_layer(&overlay);
+            assert_eq!(state.overlay.opacity(), 0.0);
             let column = state.columns.borrow()[0].clone();
             state.handle(&BrowserEvent::EntriesSpliced {
                 depth: 0,
@@ -195,6 +196,7 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 || !has_dissolve_canvas(&overlay),
                 "dissolve animation did not finish",
             );
+            assert_eq!(state.overlay.opacity(), 1.0);
             assert_eq!(
                 column.presentation.stack.visible_child_name().as_deref(),
                 Some("feedback")
