@@ -3303,6 +3303,23 @@ impl Browser {
         depth: usize,
         matches: impl Fn(&FileEntry) -> bool,
     ) -> bool {
+        // A caller selecting a specific entry (e.g. FileManager1's ShowItems) means
+        // to reveal it; a hidden match must actually become visible, not just
+        // "selected" in a list the current filter still hides it from.
+        let has_hidden_match = self
+            .state
+            .borrow()
+            .columns
+            .get(depth)
+            .is_some_and(|column| {
+                column
+                    .entries
+                    .iter()
+                    .any(|entry| matches(entry) && entry.is_hidden)
+            });
+        if has_hidden_match && !self.preferences.get().show_hidden {
+            self.toggle_hidden();
+        }
         let state = self.state.borrow();
         let Some(column) = state.columns.get(depth) else {
             return false;
