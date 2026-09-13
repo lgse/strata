@@ -106,10 +106,6 @@ It is enabled by default and saved as `element_glow = true`. Changes apply
 immediately across windows. Focus outlines, ordinary depth shadows, and animation
 movement are unchanged; use **Reduce motion** to disable nonessential animations.
 
-| Glow enabled (default) | Glow disabled |
-| --- | --- |
-| ![Element glow enabled](images/element-glow-on.png) | ![Element glow disabled](images/element-glow-off.png) |
-
 ## Filter scope
 
 In **Settings → General → Search & filtering**, **Include subfolders** is
@@ -117,14 +113,6 @@ on by default. Turn it off to match only immediate files and folders, without
 redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
-
-Default recursive results:
-
-![Filtering with subfolders included](images/filter-scope-recursive.png)
-
-The same query with subfolders excluded:
-
-![Filtering only the current directory](images/filter-scope-directory.png)
 
 ## Adding a preference
 
