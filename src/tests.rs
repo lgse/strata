@@ -3,9 +3,9 @@
 use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
 use super::{
-    GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
-    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, run_preview_helper,
-    version_line,
+    APPLICATION_ID, GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
+    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, install_application_identity,
+    install_x11_program_class, launch_mode, run_preview_helper, version_line,
 };
 
 #[test]
@@ -156,4 +156,40 @@ fn gvfs_fallback_covers_files_and_volumes() {
         GIO_FALLBACK_BACKENDS,
         [("GIO_USE_VFS", "local"), ("GIO_USE_VOLUME_MONITOR", "unix"),]
     );
+}
+
+#[test]
+fn desktop_startup_wmclass_matches_application_id() {
+    let desktop = include_str!("../data/io.github.lgse.Strata.desktop");
+    let expected = format!("StartupWMClass={APPLICATION_ID}");
+    assert!(
+        desktop.lines().any(|line| line == expected),
+        "desktop file should advertise StartupWMClass={APPLICATION_ID}"
+    );
+    assert_ne!(crate::portal::CHOOSER_APPLICATION_ID, APPLICATION_ID);
+}
+
+#[test]
+fn application_identity_sets_file_manager_prgname() {
+    crate::test_support::gtk_test(
+        "tests::application_identity_sets_file_manager_prgname",
+        || {
+            install_application_identity();
+            assert_eq!(glib::prgname().as_deref(), Some(APPLICATION_ID));
+            assert_eq!(glib::application_name().as_deref(), Some("Strata"));
+        },
+    );
+}
+
+#[test]
+fn x11_program_class_matches_application_id() {
+    crate::test_support::gtk_test("tests::x11_program_class_matches_application_id", || {
+        install_application_identity();
+        let display = gtk::gdk::Display::default().expect("GTK display");
+        assert!(
+            display.downcast_ref::<gdk4_x11::X11Display>().is_some(),
+            "GTK tests require an X11 display"
+        );
+        install_x11_program_class();
+    });
 }
