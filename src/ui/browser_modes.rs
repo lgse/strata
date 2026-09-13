@@ -3745,6 +3745,15 @@ fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {
     } else {
         widget.remove_css_class("cut");
     }
+    if let Some((icon, _)) = super::icons_cell::parts(widget) {
+        icon.set_cut(cut);
+    } else if let Some((icon, ..)) = widget
+        .upcast_ref()
+        .downcast_ref::<gtk::Box>()
+        .and_then(list_row_parts)
+    {
+        icon.set_cut(cut);
+    }
 }
 
 fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
@@ -3943,6 +3952,9 @@ fn apply_icons_entry(
             super::browser::entry_icon(entry),
             thumbnail_size,
         );
+        icon.set_hidden(entry.is_hidden);
+        icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+        label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
     } else {
         super::thumbnail::set_thumbnail_or_icon(
             &icon,
@@ -3971,8 +3983,11 @@ fn refresh_icons_card_chrome(
     if let Some(item) = item {
         super::accessibility::describe_entry(item, &entry.display_name, Some(entry));
     }
-    set_mode_cut_style(card, cuts.contains(&entry.location));
-    icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+    let is_cut = cuts.contains(&entry.location);
+    set_mode_cut_style(card, is_cut);
+    icon.set_hidden(entry.is_hidden);
+    icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+    label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
 }
 
 fn refresh_icons_section(

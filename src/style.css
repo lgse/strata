@@ -3396,10 +3396,6 @@ colorchooser colorswatch overlay {
   margin-top: 4px;
 }
 
-.file-row.cut {
-  opacity: 0.45;
-}
-
 .file-row.dragging {
   opacity: 0.48;
 }
@@ -4189,11 +4185,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .icons-card.dragging {
   opacity: 0.52;
-}
-
-.icons-card.cut,
-.list-row.cut {
-  opacity: 0.46;
 }
 
 .file-icons > child:selected .icons-card-label,

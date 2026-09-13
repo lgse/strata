@@ -16,6 +16,9 @@ mod imp {
         pub texture: RefCell<Option<gdk::Texture>>,
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
+        pub cut: Cell<bool>,
+        pub hidden: Cell<bool>,
+        pub base_opacity: Cell<f64>,
         #[cfg(test)]
         pub resize_calls: Cell<u32>,
     }
@@ -50,22 +53,33 @@ mod imp {
             if width <= 0.0 || height <= 0.0 {
                 return;
             }
-            let texture = self
-                .texture
-                .borrow()
-                .clone()
-                .or_else(|| self.fallback.borrow().clone());
+            let is_cut = self.cut.get();
+
+            let texture = if is_cut {
+                crate::assets::primary_icon_paintable(crate::assets::icons::SCISSORS)
+                    .or_else(|| self.texture.borrow().clone())
+                    .or_else(|| self.fallback.borrow().clone())
+            } else {
+                self.texture
+                    .borrow()
+                    .clone()
+                    .or_else(|| self.fallback.borrow().clone())
+            };
+
             let Some(texture) = texture else {
                 return;
             };
-            let scale = if self.texture.borrow().is_none() {
-                self.fallback_scale.get()
-            } else {
+
+            let scale = if self.texture.borrow().is_some() || is_cut {
                 1.0
+            } else {
+                self.fallback_scale.get()
             };
+
             let inset = f64::from(self.content_inset.get())
                 .min((width - 1.0) / 2.0)
                 .min((height - 1.0) / 2.0);
+
             snapshot.save();
             let draw_width = (width - 2.0 * inset) * scale;
             let draw_height = (height - 2.0 * inset) * scale;
@@ -133,6 +147,7 @@ impl ThumbnailSlot {
         let widget: Self = glib::Object::new();
         widget.set_overflow(gtk::Overflow::Hidden);
         widget.imp().fallback_scale.set(1.0);
+        widget.imp().base_opacity.set(1.0);
         widget.set_slot(slot);
         widget
     }
@@ -170,6 +185,7 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().texture.replace(Some(texture.clone()));
+        self.update_state_opacity();
         self.queue_draw();
     }
 
@@ -190,11 +206,45 @@ impl ThumbnailSlot {
         self.imp().fallback_scale.set(scale);
         self.imp().fallback_icon.replace(Some(icon.to_owned()));
         self.imp().fallback.replace(texture.cloned());
+        self.update_state_opacity();
         self.queue_draw();
     }
 
     pub(crate) fn texture(&self) -> Option<gdk::Texture> {
         self.imp().texture.borrow().clone()
+    }
+
+    pub(crate) fn set_cut(&self, cut: bool) {
+        if self.imp().cut.replace(cut) != cut {
+            self.update_state_opacity();
+            self.queue_draw();
+        }
+    }
+
+    pub(crate) fn set_hidden(&self, hidden: bool) {
+        if self.imp().hidden.replace(hidden) != hidden {
+            self.update_state_opacity();
+        }
+    }
+
+    pub(crate) fn set_base_opacity(&self, opacity: f64) {
+        let opacity = opacity.clamp(0.0, 1.0);
+        let current = self.imp().base_opacity.get();
+        if (current - opacity).abs() > 1e-4 {
+            self.imp().base_opacity.set(opacity);
+            self.update_state_opacity();
+        }
+    }
+
+    fn update_state_opacity(&self) {
+        let opacity = if self.imp().hidden.get() {
+            0.65
+        } else if self.imp().cut.get() || self.imp().texture.borrow().is_some() {
+            1.0
+        } else {
+            self.imp().base_opacity.get()
+        };
+        self.set_opacity(opacity);
     }
 
     #[cfg(test)]

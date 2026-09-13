@@ -136,12 +136,12 @@ impl ListFactory {
         if self.scrolling.get() {
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
-            set_mode_cut_style(
-                &row.widget,
-                self.cuts.borrow().contains(&binding.entry.location),
-            );
+            let is_cut = self.cuts.borrow().contains(&binding.entry.location);
+            set_mode_cut_style(&row.widget, is_cut);
             binding.refresh_details(&row);
         }
+        row.icon.set_hidden(binding.entry.is_hidden);
+        row.icon.set_base_opacity(1.0);
     }
 }
 
@@ -193,6 +193,8 @@ impl ListRow {
         self.name.set_visible(true);
         self.field.set_visible(false);
         set_label_if_changed(&self.name, pending_name.unwrap_or(&entry.display_name));
+        self.name
+            .set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
         set_label_if_changed(&self.mode, &entry_mode(entry));
         set_label_if_changed(&self.size, &entry_size(entry));
         set_label_if_changed(&self.kind, entry_type(entry));
@@ -204,9 +206,12 @@ impl ListRow {
     }
 
     fn clear(&self) {
-        self.widget.remove_css_class("cut-item");
+        set_mode_cut_style(&self.widget, false);
         thumbnail::show_fallback_icon(&self.icon, crate::assets::icons::DOCUMENTS, 18);
+        self.icon.set_hidden(false);
+        self.icon.set_base_opacity(1.0);
         self.name.set_label("");
+        self.name.set_opacity(1.0);
         self.name.set_visible(true);
         self.field.set_visible(false);
         self.mode.set_label("");
@@ -267,7 +272,10 @@ pub(super) fn refresh_list_section(
         let Some(entry) = browser.entry_at(depth, position) else {
             return;
         };
-        set_mode_cut_style(&row.widget, cuts.contains(&entry.location));
+        let is_cut = cuts.contains(&entry.location);
+        let is_hidden = entry.is_hidden;
+        set_mode_cut_style(&row.widget, is_cut);
+        row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
         ListBinding {
             browser: browser.clone(),
             depth,
@@ -275,6 +283,8 @@ pub(super) fn refresh_list_section(
             entry,
         }
         .refresh_details(&row);
+        row.icon.set_hidden(is_hidden);
+        row.icon.set_base_opacity(1.0);
     });
 }
 
