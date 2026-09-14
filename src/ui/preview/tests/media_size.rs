@@ -69,7 +69,6 @@ fn images_stay_centered_and_bounded_while_text_and_pdf_use_the_full_pane() {
     crate::test_support::gtk_test(
         "ui::preview::tests::media_size::images_stay_centered_and_bounded_while_text_and_pdf_use_the_full_pane",
         || {
-            let preferences = ThemeManager::shared();
             let drawer = PreviewDrawer::new(
                 Rc::new(RecordingProvider(Rc::new(RefCell::new(Vec::new())))),
                 true,
@@ -95,35 +94,22 @@ fn images_stay_centered_and_bounded_while_text_and_pdf_use_the_full_pane() {
                 });
                 let section = drawer.state.content.first_child().expect("media section");
                 let picture = section.first_child().expect("image");
-                for text_size in [
-                    crate::ui::theme::TextSize::new(11),
-                    crate::ui::theme::TextSize::new(15),
-                ] {
-                    preferences.set_text_size(text_size);
-                    let allocated = Rc::new(Cell::new(false));
-                    let ready = allocated.clone();
-                    picture.add_tick_callback(move |_, _| {
-                        ready.set(true);
-                        glib::ControlFlow::Break
-                    });
-                    wait_until(|| allocated.get() && picture.width() > 0);
-                    let bounds = picture
-                        .compute_bounds(&drawer.state.content)
-                        .expect("image bounds");
-                    assert!(bounds.width() <= 1280.0);
-                    assert!(bounds.width() <= (width * 2) as f32);
-                    assert!(bounds.height() <= (height * 2) as f32);
-                    assert!(
-                        (bounds.width() / bounds.height() - width as f32 / height as f32).abs()
-                            < 0.02
-                    );
-                    assert!(
-                        (bounds.x() + bounds.width() / 2.0
-                            - drawer.state.content.width() as f32 / 2.0)
-                            .abs()
-                            <= 1.0
-                    );
-                }
+                let allocated = Rc::new(Cell::new(false));
+                let ready = allocated.clone();
+                picture.add_tick_callback(move |_, _| {
+                    ready.set(true);
+                    glib::ControlFlow::Break
+                });
+                wait_until(|| allocated.get() && picture.width() > 0);
+                let bounds = picture
+                    .compute_bounds(&drawer.state.content)
+                    .expect("image bounds");
+                assert!(bounds.width() <= 1280.0);
+                assert!(bounds.width() <= (width * 2) as f32);
+                assert!(bounds.height() <= (height * 2) as f32);
+                assert!(
+                    (bounds.width() / bounds.height() - width as f32 / height as f32).abs() < 0.02
+                );
             }
             for content in [
                 PreviewContent::Text {
@@ -166,6 +152,7 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                     path: "/synthetic-video.mp4".into(),
                     size: MediaPreviewSize::new(320, 180),
                     backend: crate::sandbox::MediaPreviewBackend::Software,
+                    input_owner: None,
                 };
                 let drawer = PreviewDrawer::new(
                     Rc::new(RecordingProvider(Rc::new(RefCell::new(Vec::new())))),
@@ -210,10 +197,14 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                 let section = drawer.state.content.first_child().expect("media section");
                 let video = section.first_child().expect("video overlay");
                 let controls = section.last_child().expect("playback controls");
-                wait_until(|| video.width() > 0 && controls.width() > 0);
-                assert!(video.width() <= decoded.intrinsic_width() * 2);
-                assert!(video.height() <= decoded.intrinsic_height() * 2);
-                assert!(controls.width() <= 1280);
+                // Preparation can precede GTK's allocation for the decoded dimensions.
+                wait_until(|| {
+                    video.width() > 0
+                        && controls.width() > 0
+                        && video.width() <= decoded.intrinsic_width() * 2
+                        && video.height() <= decoded.intrinsic_height() * 2
+                        && controls.width() <= 1280
+                });
                 let play = controls
                     .first_child()
                     .expect("play button")

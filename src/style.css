@@ -234,6 +234,69 @@ headerbar menubutton.header-action > button:focus-visible {
   opacity: 0.42;
 }
 
+.appearance-text-size {
+  margin: 2px 8px;
+}
+
+.appearance-text-stepper {
+  background: alpha(@theme_text, 0.04);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 6px;
+  color: @theme_text;
+}
+
+.appearance-text-sample {
+  color: @theme_accent;
+  min-width: 17px;
+  font-weight: 700;
+}
+
+.appearance-text-stepper button {
+  background: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: @theme_text;
+  font-size: inherit;
+  font-weight: 400;
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0;
+  margin: 0;
+}
+
+.appearance-text-stepper button:first-child {
+  border-radius: 5px 0 0 5px;
+}
+
+.appearance-text-stepper button:last-child {
+  border-radius: 0 5px 5px 0;
+}
+
+.appearance-text-stepper button.appearance-text-value {
+  padding: 0 7px;
+  border-left: 1px solid alpha(@theme_border, 0.6);
+  border-right: 1px solid alpha(@theme_border, 0.6);
+}
+
+.appearance-text-stepper button:hover {
+  background: alpha(@theme_accent, 0.15);
+}
+
+.appearance-text-stepper button:active {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.appearance-text-stepper button:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.appearance-text-stepper button:disabled {
+  color: @theme_dim_text;
+}
+
 .preview-panel-option:checked {
   background: alpha(@theme_accent, 0.10);
   color: @theme_text;
@@ -1803,9 +1866,10 @@ scrollbar slider:active {
   min-width: 22px;
 }
 
+/* Reserve the overlay scrollbar's width so it cannot cover device controls. */
 .sidebar {
   background: @theme_surface;
-  padding: 8px 7px;
+  padding: 8px 14px 8px 7px;
 }
 
 .sidebar-update {
@@ -1872,6 +1936,7 @@ scrollbar slider:active {
   box-shadow: none;
   color: @theme_text;
   min-height: 30px;
+  min-width: 0;
   outline: 1px solid transparent;
   outline-offset: -1px;
   padding: 3px 8px;
@@ -1887,13 +1952,26 @@ scrollbar slider:active {
 }
 
 .sidebar-row.active,
-.sidebar-row.active:hover {
+.sidebar-row.active:hover,
+.sidebar-device.active,
+.sidebar-device.active:hover {
   background: alpha(@theme_accent, 0.18);
   color: @theme_text;
 }
 
-.sidebar-row.active image {
+.sidebar-row.active image,
+.sidebar-device.active .sidebar-row image {
   color: @theme_accent;
+}
+
+.sidebar-device:hover {
+  background: alpha(@theme_accent, 0.15);
+}
+
+.sidebar-device:hover > .sidebar-row,
+.sidebar-device.active > .sidebar-row,
+.sidebar-device.active > .sidebar-row:hover {
+  background: transparent;
 }
 
 .sidebar-row.reorderable.dragging {
@@ -1912,15 +1990,34 @@ scrollbar slider:active {
   outline-offset: -1px;
 }
 
+.sidebar-device > .sidebar-row:focus,
+.sidebar-device > .sidebar-row:focus-visible {
+  outline-color: transparent;
+}
+
 .sidebar-row image {
   color: @theme_border;
 }
 
 .sidebar-device {
+  border-radius: 6px;
+  min-width: 0;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
   padding-right: 2px;
+  transition: background 220ms ease-out, outline-color 220ms ease-out;
 }
 
-.sidebar-eject {
+.sidebar-device.focused {
+  outline-color: @theme_accent;
+}
+
+.sidebar-device-actions {
+  min-width: 24px;
+}
+
+.sidebar-eject,
+.sidebar-device-action {
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -1932,12 +2029,14 @@ scrollbar slider:active {
   padding: 2px;
 }
 
-.sidebar-eject:hover {
+.sidebar-eject:hover,
+.sidebar-device-action:hover {
   background: alpha(@theme_accent, 0.15);
   opacity: 1;
 }
 
-.sidebar-eject:focus {
+.sidebar-eject:focus,
+.sidebar-device-action:focus {
   opacity: 1;
   outline: 1px solid @theme_accent;
   outline-offset: -1px;
@@ -1945,8 +2044,12 @@ scrollbar slider:active {
 
 .sidebar-separator {
   background: alpha(@theme_border, 0.24);
-  margin: 6px 4px;
+  background-image: none;
+  border: none;
+  /* Offset sidebar padding; min-width keeps measurement nonnegative. */
+  margin: 6px -14px 6px -7px;
   min-height: 1px;
+  min-width: 21px;
 }
 
 .sidebar-update-separator {
@@ -1969,11 +2072,6 @@ paned > separator {
   border-right: none;
 }
 
-/* The resize handle supplies four surface pixels of the trailing inset. */
-.sidebar-split .sidebar {
-  padding-right: 3px;
-}
-
 .sidebar-split .sidebar-update {
   margin-left: 4px;
   padding-left: 9px;
@@ -1985,10 +2083,10 @@ paned > separator {
 }
 
 .sidebar-split > separator {
-  padding: 0 2px;
+  padding: 0 2px 0 0;
   border: none;
   background: @theme_surface;
-  box-shadow: inset -1px 0 alpha(@theme_border, 0.6);
+  box-shadow: inset 1px 0 alpha(@theme_border, 0.6);
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */
@@ -2217,11 +2315,21 @@ paned > separator {
   font-variant-numeric: tabular-nums;
 }
 
+.preview-media-seek,
+.preview-media-volume {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
 .preview-media-seek trough,
 .preview-media-volume trough {
   background: alpha(@theme_border, 0.42);
+  border: none;
   border-radius: 3px;
   min-height: 4px;
+  outline: none;
+  box-shadow: none;
 }
 
 .preview-media-seek highlight,
@@ -2246,6 +2354,31 @@ paned > separator {
   min-height: 12px;
   min-width: 12px;
   margin: -5px;
+}
+
+.preview-media-seek:focus-visible,
+.preview-media-volume:focus-visible,
+.preview-media-seek:focus,
+.preview-media-volume:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.preview-media-seek:focus-visible trough,
+.preview-media-volume:focus-visible trough,
+.preview-media-seek:focus trough,
+.preview-media-volume:focus trough {
+  outline: none;
+  box-shadow: none;
+}
+
+.preview-media-seek:focus-visible slider,
+.preview-media-volume:focus-visible slider,
+.preview-media-seek:focus slider,
+.preview-media-volume:focus slider {
+  outline: none;
+  box-shadow: none;
+  border: none;
 }
 
 .preview-pdf-list,
@@ -2773,6 +2906,31 @@ menubutton.column-header-action > button:active {
 
 .properties-content .action-dialog-body {
   padding: 0;
+}
+
+.media-details-scroll scrollbar,
+.media-details-scroll scrollbar range,
+.media-details-scroll scrollbar trough {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.media-details-scroll scrollbar slider {
+  background: alpha(@theme_border, 0.62);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  min-width: 6px;
+  min-height: 32px;
+}
+
+.media-details-scroll scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.media-details-scroll scrollbar slider:active,
+.media-details-scroll scrollbar slider:focus {
+  background: @theme_accent;
 }
 
 .properties-row-label,
@@ -3394,10 +3552,6 @@ colorchooser colorswatch overlay {
 .file-row > * {
   margin-bottom: 4px;
   margin-top: 4px;
-}
-
-.file-row.cut {
-  opacity: 0.45;
 }
 
 .file-row.dragging {
@@ -4189,11 +4343,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .icons-card.dragging {
   opacity: 0.52;
-}
-
-.icons-card.cut,
-.list-row.cut {
-  opacity: 0.46;
 }
 
 .file-icons > child:selected .icons-card-label,

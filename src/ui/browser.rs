@@ -12,7 +12,9 @@ pub(super) use crate::ui::browser::columns::COLUMN_WIDTH;
 use crate::ui::browser::columns::ColumnView;
 use crate::ui::browser::desktop::selected_terminal_location;
 use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
-use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
+use crate::ui::browser::location::{
+    MountCredentials, UnlockProgressSlot, is_breadcrumb_button_target,
+};
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
 use crate::ui::browser::progress::FileProgressView;
@@ -198,6 +200,7 @@ pub(super) struct ViewState {
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
+    unlock_slots: RefCell<Vec<UnlockProgressSlot>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
     trash_button: RefCell<Option<gtk::Button>>,
     browser: Rc<Browser>,
@@ -510,6 +513,7 @@ impl BrowserView {
             pending_trash_lookup: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
+            unlock_slots: RefCell::new(Vec::new()),
             auto_refresh: RefCell::new(None),
             trash_button: RefCell::new(None),
             browser,
@@ -1320,7 +1324,9 @@ impl BrowserView {
 
     pub fn confirm_delete(&self, permanent: bool) -> bool {
         self.state.sync_mode_selection();
-        let entries = if self.view_mode() == BrowserMode::Columns {
+        let entries = if let Some(entries) = self.selected_search_results() {
+            entries
+        } else if self.view_mode() == BrowserMode::Columns {
             self.state.browser.selected_entries()
         } else {
             self.state.browser.deletion_entries()

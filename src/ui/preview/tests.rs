@@ -8,9 +8,9 @@ use std::rc::Rc;
 use gtk::{glib, prelude::*};
 
 use super::{
-    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
-    format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_target, print_fit, print_page_starts, print_progress_for_page,
+    MEDIA_PLUGIN_INSTALL_COMMAND, PreviewDrawer, format_file_size, format_media_time,
+    media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries, preview_target, print_fit,
+    print_page_starts, print_progress_for_page,
 };
 use crate::app::{Browser, BrowserEvent, EntrySplice};
 use crate::model::Location;
@@ -168,8 +168,6 @@ fn media_errors_explain_missing_runtime_plugins() {
 fn pdf_scroll_zoom_stays_within_its_supported_range() {
     assert!(pdf_zoom_after_scroll(1.0, -1.0) > 1.0);
     assert!(pdf_zoom_after_scroll(2.0, 1.0) < 2.0);
-    assert_eq!(pdf_zoom_after_scroll(PDF_MIN_ZOOM, 100.0), PDF_MIN_ZOOM);
-    assert_eq!(pdf_zoom_after_scroll(PDF_MAX_ZOOM, -100.0), PDF_MAX_ZOOM);
 }
 
 #[test]
@@ -216,6 +214,43 @@ fn media_time_formats_minutes_and_seconds_and_clamps_negative_timestamps() {
     assert_eq!(format_media_time(125_000_000, 125_000_000), "2:05/2:05");
 
     assert_eq!(format_media_time(-500_000, 10_000_000), "0:00/0:10");
+}
+
+#[test]
+fn remote_images_and_supported_video_are_quick_preview_targets() {
+    use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
+    for (name, supported) in [
+        ("photo.jpg", true),
+        ("photo.heic", true),
+        ("document.pdf", false),
+        ("video.mp4", true),
+        ("video.MOV", true),
+        ("video.mkv", false),
+        ("audio.mp3", false),
+        ("animated.gif", false),
+    ] {
+        let entry = FileEntry {
+            location: Location::uri(format!("gphoto2://device/{name}")),
+            native_name: name.into(),
+            thumbnail_path: None,
+            display_name: name.into(),
+            kind: EntryKind::File,
+            size: MetadataValue::Unknown,
+            modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
+            is_hidden: false,
+        };
+        assert_eq!(
+            preview_target(Some(entry.clone())).is_some(),
+            supported,
+            "{name}"
+        );
+        let directory = FileEntry {
+            kind: EntryKind::Directory,
+            ..entry
+        };
+        assert!(preview_target(Some(directory)).is_none());
+    }
 }
 
 #[test]

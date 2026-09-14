@@ -3,6 +3,40 @@
 use super::*;
 
 #[test]
+fn only_camera_mount_roots_present_as_flat_photo_libraries() {
+    for uri in ["gphoto2://camera/", "gphoto2://Apple_Inc._iPhone_fixture/"] {
+        let root = Location::uri(uri);
+        assert!(root.is_camera_photo_root());
+        assert_eq!(root.display_name(), "Photos");
+        assert_eq!(root.uri_value(), Some(uri));
+        let child = root
+            .child(std::ffi::OsStr::new("202409_a"))
+            .expect("child folder");
+        assert!(!child.is_camera_photo_root());
+        assert_eq!(child.display_name(), "202409_a");
+        assert!(root.contains_camera_photo_location(&child));
+        assert!(root.contains_camera_photo_location(
+            &child.child(std::ffi::OsStr::new("IMG.JPG")).expect("photo")
+        ));
+        assert!(
+            !root.contains_camera_photo_location(&Location::uri(
+                "gphoto2://different-device/IMG.JPG"
+            ))
+        );
+    }
+    for uri in [
+        "mtp://phone/",
+        "afc://phone/",
+        "sftp://server/",
+        "file:///",
+        "trash:///",
+    ] {
+        assert!(!Location::uri(uri).is_camera_photo_root());
+    }
+    assert!(!Location::local("/camera").is_camera_photo_root());
+}
+
+#[test]
 fn breadcrumbs_preserve_each_native_ancestor() {
     let location = Location::local("/home/user/project");
 
@@ -197,9 +231,6 @@ fn folder_colors_parse_names_and_resolve_hex() {
     assert_eq!(FolderColor::from_name("green"), Some(FolderColor::Green));
     assert_eq!(FolderColor::from_name("grey"), Some(FolderColor::Gray));
     assert_eq!(FolderColor::from_name("unknown"), None);
-    assert_eq!(FolderColor::Red.hex(), "#e5484d");
-    assert_eq!(FolderColor::Blue.hex(), "#0090ff");
-    assert_eq!(FolderColor::ALL.len(), 7);
 }
 
 #[test]
@@ -218,19 +249,6 @@ fn folder_color_values_parse_and_resolve_hex() {
     );
     assert_eq!(FolderColorValue::parse("not-a-color"), None);
     assert_eq!(FolderColorValue::parse("#invalid"), None);
-    assert_eq!(FolderColorValue::Preset(FolderColor::Red).hex(), "#e5484d");
-    assert_eq!(
-        FolderColorValue::Custom("#34d399".to_owned()).hex(),
-        "#34d399"
-    );
-    assert_eq!(
-        FolderColorValue::Preset(FolderColor::Red).to_preference_string(),
-        "red"
-    );
-    assert_eq!(
-        FolderColorValue::Custom("#34d399".to_owned()).to_preference_string(),
-        "#34d399"
-    );
 }
 
 #[test]

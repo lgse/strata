@@ -127,7 +127,7 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
                     .is_some_and(|column| !column.loading)
             });
 
-            state.view.show_filter_with_query("nested");
+            state.view.show_filter_with_query("nested*.TXT");
             wait_until(|| {
                 search_results_list(&state.view.widget())
                     .is_some_and(|list| list.row_at_index(1).is_some())
@@ -368,7 +368,13 @@ fn columns_recursive_multi_selection_accepts_every_selected_file() {
                     .is_some_and(|column| !column.loading)
             });
 
+            // Startup's deferred focus restoration must precede simulated filter input.
+            let initialized = Rc::new(Cell::new(false));
+            let initialized_at_idle = initialized.clone();
+            glib::idle_add_local_once(move || initialized_at_idle.set(true));
+            wait_until(|| initialized.get());
             state.view.show_filter_with_query("nested");
+            wait_until(|| state.view.selected_search_results().is_some());
             wait_until(|| {
                 select_first_two_file_list_items(&state.view.widget());
                 state
@@ -748,6 +754,74 @@ fn save_file_with_selected_file_saves_to_active_folder() {
                 selected.uris()[0].to_string(),
                 gio::File::for_path(root.path().join("new_file.txt")).uri()
             );
+        },
+    );
+}
+
+fn key_controller(window: &gtk::Window) -> gtk::EventControllerKey {
+    let controllers = window.observe_controllers();
+    for index in 0..controllers.n_items() {
+        if let Some(controller) = controllers
+            .item(index)
+            .and_downcast::<gtk::EventControllerKey>()
+        {
+            return controller;
+        }
+    }
+    panic!("no EventControllerKey on the chooser window");
+}
+
+fn press(window: &gtk::Window, key: gtk::gdk::Key) -> bool {
+    key_controller(window).emit_by_name::<bool>(
+        "key-pressed",
+        &[&key, &0u32, &gtk::gdk::ModifierType::empty()],
+    )
+}
+
+#[test]
+fn arrow_scope_keeps_left_in_the_chooser_file_view() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::arrow_scope_keeps_left_in_the_chooser_file_view",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_arrow_navigation_scoped(true);
+            let root = tempfile::tempdir().expect("fixture");
+            for name in ["a.txt", "b.txt", "c.txt"] {
+                std::fs::write(root.path().join(name), "text").expect("fixture file");
+            }
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                ThemeManager::shared().set_browser_mode(mode);
+                let state = build_chooser(
+                    request(root.path().to_path_buf()),
+                    Arc::new(AtomicBool::new(false)),
+                    |_| {},
+                )
+                .expect("chooser");
+                state.view.set_view_mode(mode);
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 3)
+                });
+                for scoped in [true, false, true] {
+                    ThemeManager::shared().set_arrow_navigation_scoped(scoped);
+                    for key in [gtk::gdk::Key::Left, gtk::gdk::Key::Up] {
+                        browser.select(0, 0);
+                        browser.focus_active();
+                        wait_until(|| {
+                            state.view.item_view_has_focus() && state.view.item_at_sidebar_edge()
+                        });
+                        press(&state.window, key);
+                        assert_eq!(
+                            state.view.item_view_has_focus(),
+                            scoped,
+                            "{mode:?}: {key:?} with arrow scope {scoped}"
+                        );
+                    }
+                }
+                state.window.close();
+            }
         },
     );
 }

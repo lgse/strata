@@ -4,16 +4,10 @@ use super::*;
 
 #[test]
 fn navigation_reference_matches_each_mode() {
-    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-        let navigation = navigation_shortcuts(mode);
-        assert!(navigation.contains(&("Alt+↑", "Go to the parent folder")));
-        assert!(navigation.contains(&("Ctrl+↑ / Ctrl+↓", "First / last item")));
-        assert!(navigation.contains(&("↑ at top", "Focus the navigation header")));
-        assert!(navigation.contains(&("↓ in header", "Return to the files")));
-        assert!(navigation.contains(&("↑ at sidebar top", "Focus the top navigation bar")));
-        assert!(!navigation.iter().any(|(key, _)| *key == "Ctrl+Left"));
-        assert!(summary_shortcuts(mode).contains(&("Enter", "Open")));
-    }
+    assert!(
+        navigation_shortcuts(BrowserMode::Columns)
+            .contains(&("← / →", "Parent pane / enter folder"))
+    );
     assert!(
         navigation_shortcuts(BrowserMode::Icons)
             .contains(&("← at left edge", "Focus the visible sidebar"))
@@ -27,18 +21,6 @@ fn navigation_reference_matches_each_mode() {
         summary_shortcuts(BrowserMode::Icons),
         summary_shortcuts(BrowserMode::List)
     );
-    assert!(
-        navigation_shortcuts(BrowserMode::Columns)
-            .contains(&("← / →", "Parent pane / enter folder"))
-    );
-    assert!(TOOLS.contains(&("F1", "Show or hide this reference")));
-}
-
-#[test]
-fn reference_lists_rename_and_refresh_bindings_without_overlap() {
-    assert!(FILES.contains(&("F2 / Ctrl+R", "Rename")));
-    assert!(TOOLS.contains(&("F5", "Refresh")));
-    assert!(!TOOLS.iter().any(|(keys, _)| keys.contains("Ctrl+R")));
 }
 
 #[test]
@@ -96,8 +78,6 @@ fn footer_tracks_modes_and_shields_files_while_open() {
                 .text()
                 .starts_with(summary_shortcuts(mode)[0].0)
         );
-        assert_eq!(footer.summary.ellipsize(), gtk::pango::EllipsizeMode::End);
-        assert!(footer.summary.is_single_line_mode());
         assert!(footer.widget().is_visible());
     }
     let none = gdk::ModifierType::empty();

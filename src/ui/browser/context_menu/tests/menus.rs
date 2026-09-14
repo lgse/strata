@@ -21,6 +21,7 @@ impl FileSource for MenuSource {
             let entries = [
                 "notes.txt",
                 "other.txt",
+                "run-me",
                 "picture.png",
                 "archive.zip",
                 "archive.rar",
@@ -40,7 +41,11 @@ impl FileSource for MenuSource {
                 },
                 size: MetadataValue::Known(5),
                 modified_unix_seconds: MetadataValue::Known(0),
-                mode: MetadataValue::Known(0o644),
+                mode: MetadataValue::Known(if matches!(name, "run-me" | "folder") {
+                    0o755
+                } else {
+                    0o644
+                }),
                 is_hidden: false,
             })
             .collect();
@@ -57,6 +62,97 @@ impl FileSource for MenuSource {
         });
         LoadHandle::new(move || task.abort())
     }
+}
+
+#[test]
+fn run_is_only_offered_for_one_regular_executable_file() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::run_is_only_offered_for_one_regular_executable_file",
+        || {
+            let fixture = tempfile::tempdir().expect("normal directory fixture");
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+                view.set_view_mode(mode);
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(850)
+                    .build();
+                window.present();
+                view.browser().navigate(Location::local(fixture.path()));
+                wait_until(|| label(&view.widget(), "run-me").is_some());
+
+                let menu = open_menu(&view, Some("run-me"));
+                assert_actions(&menu, &["Open", "Open With…", "Run"], &[]);
+                button_with_label(menu.upcast_ref(), "Run").emit_clicked();
+                wait_until(|| label(&view.widget(), "Run this program?").is_some());
+                button_with_label(&view.widget(), "Cancel").emit_clicked();
+                wait_until(|| label(&view.widget(), "Run this program?").is_none());
+
+                let menu = open_menu(&view, Some("notes.txt"));
+                assert_actions(&menu, &[], &["Run"]);
+                menu.popdown();
+                wait_until(|| menu.parent().is_none());
+
+                let menu = open_menu(&view, Some("folder"));
+                assert_actions(&menu, &[], &["Run"]);
+                menu.popdown();
+                wait_until(|| menu.parent().is_none());
+
+                view.select_all();
+                let menu = open_menu(&view, Some("run-me"));
+                assert_actions(&menu, &[], &["Run"]);
+                menu.popdown();
+                wait_until(|| menu.parent().is_none());
+            }
+        },
+    );
+}
+
+#[test]
+fn run_is_offered_for_an_executable_inline_search_result() {
+    use std::os::unix::fs::PermissionsExt;
+
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::run_is_offered_for_an_executable_inline_search_result",
+        || {
+            let fixture = tempfile::tempdir().expect("search fixture");
+            let program = fixture.path().join("run-search-result");
+            std::fs::write(&program, b"#!/bin/sh\n").expect("program fixture");
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+                .expect("executable permissions");
+
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    PeekBehavior::default(),
+                );
+                view.set_view_mode(mode);
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(850)
+                    .build();
+                window.present();
+                view.browser().navigate(Location::local(fixture.path()));
+                wait_until(|| label(&view.widget(), "run-search-result").is_some());
+                assert!(view.show_filter_with_query("run-search-result"));
+                wait_until(|| {
+                    descendants(&view.widget())
+                        .iter()
+                        .any(|widget| widget.is_mapped() && widget.has_css_class("filter-result"))
+                });
+                wait_until(|| label(&view.widget(), "run-search-result").is_some());
+
+                let menu = open_menu(&view, Some("run-search-result"));
+                assert_actions(&menu, &["Run"], &[]);
+                menu.popdown();
+                wait_until(|| menu.parent().is_none());
+                view.browser().clear_observer();
+                window.destroy();
+            }
+        },
+    );
 }
 
 pub(super) fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
@@ -169,6 +265,20 @@ fn menu_labels(popover: &gtk::Popover) -> Vec<String> {
         .collect()
 }
 
+fn button_with_label(widget: &gtk::Widget, text: &str) -> gtk::Button {
+    descendants(widget)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| {
+            descendants(button.upcast_ref()).iter().any(|widget| {
+                widget
+                    .downcast_ref::<gtk::Label>()
+                    .is_some_and(|label| label.text() == text)
+            })
+        })
+        .unwrap_or_else(|| panic!("missing {text} button"))
+}
+
 fn assert_actions(popover: &gtk::Popover, present: &[&str], absent: &[&str]) {
     let labels = menu_labels(popover);
     for name in present {
@@ -257,6 +367,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         &[
                             "Open",
                             "Copy",
+                            "Duplicate",
                             "Copy path",
                             "Copy to…",
                             "Quick preview",
@@ -298,7 +409,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     capture_menu(&menu, &format!("{mode:?}-{place}-multiple"));
                     assert_actions(
                         &menu,
-                        &["Copy", "Copy paths", "Copy to…"],
+                        &["Copy", "Duplicate", "Copy paths", "Copy to…"],
                         &["Rename", "Print"],
                     );
                     if in_trash {
@@ -322,7 +433,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     view.browser().select(0, 0);
                     let menu = open_menu(&view, Some("picture.png"));
                     if in_trash {
-                        assert_actions(&menu, &[], &["Print", "Quick preview"]);
+                        assert_actions(&menu, &["Quick preview"], &["Print"]);
                     } else {
                         assert_actions(&menu, &["Print", "Quick preview"], &[]);
                     }

@@ -63,6 +63,24 @@ including spaces around a nonblank name, hidden-file prefixes, and Unicode.
 Name conflicts, filesystem-specific limits, and permission errors retain the
 original item and report an error.
 
+## Filename patterns while filtering
+
+Use **Ctrl+F** to filter a pane. Plain text keeps its existing matching behavior.
+Add `*` to match a whole filename, ignoring case:
+
+- `*.MOV` matches `clip.MOV`, but not `clip.MOV.bak`.
+- `IMG*` matches names beginning with `IMG`.
+- `IMG*.MOV` combines a prefix and an extension.
+- `*holiday*` matches names containing `holiday`; `*` matches any name.
+
+Each `*` stands for zero or more characters. Other punctuation (including `?`,
+`[]`, and regex syntax) is literal. Patterns match file and folder names, not
+parent paths, in Columns, Icons, List, and the file chooser. Hidden-file visibility
+and [Include subfolders](preferences.md#filter-scope) still control the scope;
+a wildcard does not enable recursive search. Existing result limits still apply.
+Clear the input or press Escape to restore the directory listing. **Ctrl+K**
+global fuzzy search is unchanged.
+
 ## Preview while filtering
 
 In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
@@ -93,6 +111,8 @@ In Icons and List, plain arrows move interface focus rather than changing direct
 Up from the first Icons row or first List item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
 From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
+
+**Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
 

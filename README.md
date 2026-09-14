@@ -49,7 +49,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
 - **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
-- **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
+- **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. File Properties shows available media resolution, duration, bitrate, codecs, and audio/video rates.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
@@ -99,6 +99,9 @@ your current chooser and dismiss the one-time in-app offer. Neither folder
 association nor an unattended install enables the chooser automatically.
 Non-interactive package installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
+Phone backends are not installed by the script. For optional iPhone/iPad or Android
+access, follow [Connecting phones](#connecting-phones) after installation.
+
 ### AI-assisted installation
 
 Use this option to have a coding agent install and verify the latest release archive.
@@ -119,6 +122,10 @@ Then:
 - Install the required GTK4, GtkSourceView 5, Poppler GLib, Fontconfig, Bubblewrap,
   FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
   package manager. Add gvfs-smb only if I want SMB support.
+- Ask whether I want phone access. On Arch/Omarchy, add gvfs-afc and usbmuxd for
+  iPhone/iPad app documents, gvfs-gphoto2 for camera/PTP photo access, or gvfs-mtp
+  for Android file transfers, only if requested. Other distributions need their
+  equivalent GVfs backends.
 - Download the archive and its matching .sha256 file from the latest GitHub release.
 - Verify the checksum with sha256sum --check. If GitHub CLI is installed and
   authenticated, also verify GitHub Actions provenance with
@@ -167,7 +174,8 @@ GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-base
 
 Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
 Fedora; `gvfs-daemons` on Debian/Ubuntu). Without that backend, removable drives
-may be absent from Devices. SMB support remains optional.
+may be absent from Devices. SMB support remains optional. Phones need additional
+backends; see [Connecting phones](#connecting-phones).
 
 #### 2. Download and verify
 
@@ -323,6 +331,112 @@ omarchy menu keybindings --print | grep -i "file manager"
 ```
 
 `hyprctl configerrors` should produce no errors. These user overrides survive Omarchy updates; do not edit files under `/usr/share/omarchy/`.
+
+### Connecting phones
+
+Strata discovers and mounts phones through GIO/GVfs. The required phone backends
+are optional and are not installed by `install.sh`. On Arch Linux or Omarchy,
+install only the support you need:
+
+```bash
+# iPhone or iPad app documents (AFC):
+sudo pacman -S --needed gvfs-afc usbmuxd
+# Camera/PTP photo access, including compatible iPhones:
+sudo pacman -S --needed gvfs-gphoto2
+# Android (MTP):
+sudo pacman -S --needed gvfs-mtp
+```
+
+Other distributions need equivalent GVfs AFC, gphoto2/PTP, or MTP backends;
+package names vary.
+
+- **iPhone/iPad:** unlock the device, connect it with a USB data cable, and accept
+  **Trust This Computer** (enter the device passcode if requested). AFC can expose
+  an app document-sharing view containing folders named after apps; this is not
+  the photo library. For photos, install the gphoto2 backend and look for a
+  separate camera/device entry with **DCIM**, if exposed by the phone. Accept any
+  photo-access prompt. Photos stored only in iCloud may not be available over USB.
+  Access depends on the iOS version and backend support; iOS does not expose
+  unrestricted internal storage.
+- **Android:** unlock the device, connect it with a USB data cable, and select
+  **File transfer / Android Auto** or **MTP** in its USB preferences rather than
+  charging-only mode. Accept any file-access prompt. Only storage exposed by the
+  phone is available, not protected system files or private app data.
+
+After installing a backend, fully quit Strata (all windows) and reopen it.
+Reconnect the unlocked phone if necessary, then click its entry under **Devices**.
+The camera/PTP entry opens a single **Photos** view: files appear progressively
+from storage/date folders, prioritizing newer date-folder names, without requiring
+you to open each folder. The backend may finish a folder's metadata before
+returning its first batch. This is
+a virtual listing of JPEG, HEIC/HEIF, MOV, MP4, and recognized camera RAW files,
+not a reorganization of the phone. Sidecars such as `.AAE` and other formats are
+hidden only from this Photos view; their originals remain untouched and visible
+in normal folder browsing. Duplicate filenames remain
+separate files with their original locations; use **Copy path** or **Properties**
+to distinguish their sources. Preview, copy, and delete act on those originals.
+This is the USB-exposed collection, not iOS's Albums hierarchy. The current
+backend does not provide album membership for a reliable Albums/Camera Roll split.
+
+Camera batches yield to interface input and redraws. In List view, file-type
+grouping is applied after discovery finishes; the saved grouping setting is
+preserved while the live listing stays ungrouped.
+
+Discovery reads metadata, not every photo's contents. It skips symlinks, avoids
+revisiting discovered directories, and preserves hidden-file filtering. Photos
+keeps loading in batches until the whole exposed library is indexed, you navigate
+away or refresh, or the device reports an error. There is no overall scan
+deadline or fixed file, folder, or nesting limit. Refresh to rescan after a
+phone-side change; not every device supports live change notifications.
+
+Android MTP and iPhone app-document/AFC entries retain normal folder browsing.
+For Android, open **Internal storage** (the label varies by device).
+
+Still photos (including HEIC) and MOV/MP4 videos can use the preview pane or
+<kbd>Space</kbd> quick preview directly from the phone, without a manual copy.
+Strata first downloads a private temporary input for sandboxed decoding: up to
+64 MiB in 30 seconds for images or 256 MiB in 60 seconds for videos, with at most
+four staged inputs per process. Video playback waits for that download, then
+reuses it for seeking and resizing. Closing or changing the preview cancels the
+request; temporary files are removed after the player and its workers release
+them. Remote PDFs, animated GIFs, audio, and other video formats still need a
+local copy for preview. HEIC decoding requires an installed HEIC-capable image
+decoder, such as ImageMagick with libheif. Camera/PTP thumbnails use small previews
+provided by the camera, with bounded retrieval and sandboxed decoding; if the
+camera cannot supply a thumbnail, Strata keeps the file icon instead of downloading
+the original. Camera thumbnails are cached only in memory. See
+[Remote previews](docs/preview-sandbox.md#remote-still-image-previews)
+for cleanup, caching, and sandbox details.
+
+If the phone is missing, check the backend package, try another data cable or USB
+port, and confirm the trust/file-transfer setting. On Arch/Omarchy, `lsusb` (from
+`usbutils`) can confirm USB detection, but detection alone does not establish file
+access. For iPhone/iPad, also check `systemctl status usbmuxd.service` while the
+phone is connected. If the newly installed backend still is not discovered after
+restarting Strata, log out and back in to refresh the desktop's GVfs services.
+
+#### iPhone appears but photo storage is empty
+
+Some recent iPhones can expose an empty camera/PTP store with libgphoto2 2.5.34,
+even when unlocked, trusted, and holding locally stored photos. This is a known
+[upstream libgphoto2 issue](https://github.com/gphoto/libgphoto2/issues/1254), not
+necessarily an empty photo library or a Strata display problem. The backend
+mishandles the folder-parent information returned by these devices.
+
+A read-only test with an iPhone reporting iOS 26.6.1 reproduced the problem:
+unmodified libgphoto2 2.5.34 listed **0 folders**, while the same version with
+[upstream fix `9f5d4f9`](https://github.com/gphoto/libgphoto2/commit/9f5d4f9ca0a7f58bac7987180a48154ea07c090f)
+listed **117 folders**. Both builds were temporary, with their actual library
+loading verified; no photos were downloaded or modified. This confirms folder
+listing with the fix on that device, not complete transfer or Strata GUI coverage.
+
+Use a distribution libgphoto2 update or backport containing that fix when
+available. Merely reinstalling `gvfs-gphoto2` or restarting Strata will not fix an
+affected libgphoto2 build. Strata's GVfs camera backend must load the corrected
+library; setting library paths only for Strata may not affect the separately
+launched GVfs process. This documentation change does **not** bundle or install
+the fix. Avoid replacing system libraries manually; any locally built workaround
+should be isolated and reversible.
 
 ### Network shares
 

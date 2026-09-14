@@ -130,9 +130,9 @@ fn refined_queries_select_the_new_best_result_without_rebuilding_it() {
 }
 
 #[test]
-fn arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start() {
+fn arrow_keys_advance_from_preselection_and_keep_entry_focus() {
     crate::test_support::gtk_test(
-        "ui::search::tests::arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start",
+        "ui::search::tests::arrow_keys_advance_from_preselection_and_keep_entry_focus",
         || {
             let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
             dialog.state.field.set_text("navigation");
@@ -147,11 +147,6 @@ fn arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start() {
             dialog.state.field.select_region(2, 6);
             let selection = dialog.state.field.selection_bounds();
 
-            assert!(emit_key(
-                &dialog,
-                gtk::gdk::Key::Down,
-                gtk::gdk::ModifierType::empty()
-            ));
             assert_selected(&dialog, 0);
             assert!(emit_key(
                 &dialog,
@@ -265,7 +260,7 @@ fn arrow_navigation_reveals_offscreen_results_without_moving_focus() {
             );
             drain_main_context();
             assert!(dialog.state.field.grab_focus_without_selecting());
-            for _ in 0..26 {
+            for _ in 0..25 {
                 assert!(emit_key(
                     &dialog,
                     gtk::gdk::Key::Down,
@@ -311,7 +306,7 @@ fn result_reorders_reveal_keyboard_selection_after_layout_and_user_scroll_wins()
             settle_layout();
             assert!(dialog.state.field.grab_focus_without_selecting());
             dialog.state.reconciling_results.set(true);
-            for _ in 0..21 {
+            for _ in 0..20 {
                 assert!(emit_key(
                     &dialog,
                     gtk::gdk::Key::Down,
@@ -399,11 +394,7 @@ fn partial_updates_preserve_selected_path_entry_focus_and_navigation_progress() 
             );
             assert!(dialog.state.field.grab_focus_without_selecting());
             dialog.state.field.set_position(3);
-            assert!(emit_key(
-                &dialog,
-                gtk::gdk::Key::Down,
-                gtk::gdk::ModifierType::empty()
-            ));
+            assert_selected(&dialog, 0);
             assert!(emit_key(
                 &dialog,
                 gtk::gdk::Key::Down,

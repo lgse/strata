@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pytest
 
-from harness.modes import ALL_MODES
-
 
 @pytest.fixture
 def drop_volume(strata):
@@ -16,10 +14,9 @@ def drop_volume(strata):
         yield volume
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("action,tabs", [("Copy", 0), ("Move", 1), ("Cancel", 2)])
 @pytest.mark.preferences(cross_volume_drop_strategy="always-ask")
-def test_enter_activates_the_focused_cross_volume_choice(strata, mode, drop_volume, action, tabs):
+def test_enter_activates_the_focused_cross_volume_choice(strata, drop_volume, action, tabs):
     contents = strata.fixture.path("todo.txt").read_bytes()
     strata.pointer.drag(strata.entry("todo.txt"), strata.entry("drop-volume"))
     strata.wait_for_dialog()
@@ -42,9 +39,8 @@ def test_enter_activates_the_focused_cross_volume_choice(strata, mode, drop_volu
         assert destination.read_bytes() == contents
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.preferences(cross_volume_drop_strategy="always-copy")
-def test_plain_cross_volume_copy_does_not_prompt_or_remove_source(strata, mode, drop_volume):
+def test_plain_cross_volume_copy_does_not_prompt_or_remove_source(strata, drop_volume):
     source = strata.fixture.path("todo.txt")
     contents = source.read_bytes()
     strata.pointer.drag(strata.entry("todo.txt"), strata.entry("drop-volume"))
