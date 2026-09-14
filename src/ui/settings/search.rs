@@ -12,6 +12,12 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "default-directory",
+        page: "general",
+        title: "Default directory",
+        aliases: "startup launch home folder reset",
+    },
+    Target {
         id: "peeking",
         page: "general",
         title: "Folder peeking",

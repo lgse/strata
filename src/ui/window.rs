@@ -159,7 +159,7 @@ pub(super) fn present_target(
     window.present();
     crate::metrics::mark_window_presented();
     if auto_navigate {
-        let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
+        let pending_location = location.unwrap_or_else(|| startup_location(&theme_manager));
         if !selection.is_empty() {
             browser.select_after_load(selection, properties);
         }
@@ -3086,6 +3086,19 @@ pub(crate) fn home_directory() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+fn startup_location(manager: &ThemeManager) -> Location {
+    let saved = manager.default_directory();
+    if let Some(path) = &saved
+        && path.is_dir()
+    {
+        return Location::local(path);
+    }
+    if saved.is_some() {
+        manager.set_default_directory(None);
+    }
+    Location::local(home_directory())
 }
 
 #[cfg(test)]
