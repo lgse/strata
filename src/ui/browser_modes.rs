@@ -1536,6 +1536,7 @@ struct IconsControls {
 pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
         .placeholder_text("Filter items…")
+        .tooltip_text("Filter by name. Use * for any characters: *.png, IMG*, or IMG*.png.")
         .has_frame(false)
         .hexpand(true)
         .build();

@@ -293,7 +293,10 @@ pub(crate) fn bind_filter_query(
 }
 
 pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterChange {
-    if settled.starts_with(previous) && settled.len() > previous.len() {
+    // Adding/removing a star can broaden or re-anchor the match, not just narrow it.
+    if previous.contains('*') || settled.contains('*') {
+        gtk::FilterChange::Different
+    } else if settled.starts_with(previous) && settled.len() > previous.len() {
         gtk::FilterChange::MoreStrict
     } else if previous.starts_with(settled) && previous.len() > settled.len() {
         gtk::FilterChange::LessStrict

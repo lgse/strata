@@ -127,7 +127,7 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
                     .is_some_and(|column| !column.loading)
             });
 
-            state.view.show_filter_with_query("nested");
+            state.view.show_filter_with_query("nested*.TXT");
             wait_until(|| {
                 search_results_list(&state.view.widget())
                     .is_some_and(|list| list.row_at_index(1).is_some())
@@ -368,7 +368,13 @@ fn columns_recursive_multi_selection_accepts_every_selected_file() {
                     .is_some_and(|column| !column.loading)
             });
 
+            // Startup's deferred focus restoration must precede simulated filter input.
+            let initialized = Rc::new(Cell::new(false));
+            let initialized_at_idle = initialized.clone();
+            glib::idle_add_local_once(move || initialized_at_idle.set(true));
+            wait_until(|| initialized.get());
             state.view.show_filter_with_query("nested");
+            wait_until(|| state.view.selected_search_results().is_some());
             wait_until(|| {
                 select_first_two_file_list_items(&state.view.widget());
                 state

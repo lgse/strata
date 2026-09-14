@@ -2255,7 +2255,7 @@ impl Browser {
             return;
         };
         if entry.is_directory() {
-            self.navigate_with_selection(entry.location, select_first);
+            self.navigate_location(entry.location, select_first);
         } else if self.should_extract_on_activate(&entry) {
             self.emit(BrowserEvent::ExtractRequested { entry });
         } else {

@@ -27,6 +27,12 @@ fn entry_matching_uses_the_display_name_and_hidden_flag() {
         ),
         ("plain name", false, "name", true),
         ("fv\tAlpha.txt", true, "beta", false),
+        ("fv\tAlpha.txt", false, "*.TXT", true),
+        ("fv\tAlpha.txt.bak", false, "*.txt", false),
+        ("fh\t.secret.txt", false, "*", false),
+        ("fh\t.secret.txt", true, "*.txt", true),
+        ("dv\tPhotos", false, "Photo*", true),
+        ("fv\tAlpha.txt", false, "fv*", false),
     ] {
         assert_eq!(
             entry_matches(value, show_hidden, &fold(query)),
