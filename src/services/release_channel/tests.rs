@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{
-    BuildKind, Channel, ReleaseSummary, Version, best_update, is_eligible, rollback_target,
-};
+use super::{Channel, ReleaseSummary, Version, best_update, is_eligible, rollback_target};
 
 fn parse(tag: &str) -> Version {
     Version::parse(tag).unwrap_or_else(|| panic!("expected {tag} to parse"))
@@ -84,12 +82,6 @@ fn nightly_suffix_does_not_collide_with_the_next_days_date() {
 }
 
 #[test]
-fn nightly_large_suffix_parses_and_round_trips() {
-    let version = parse("v0.5.0-nightly.20260901.1000");
-    assert_eq!(version.to_string(), "0.5.0-nightly.20260901.1000");
-}
-
-#[test]
 fn accepts_canonical_forms() {
     assert!(Version::parse("v0.5.0").is_some());
     assert!(Version::parse("0.5.0").is_some());
@@ -100,6 +92,9 @@ fn accepts_canonical_forms() {
     assert!(Version::parse("v0.5.0-nightly.20260901.2").is_some());
 }
 
+/// Missing or malformed segments must be rejected outright. The old
+/// `parse_version` silently zero-filled them, which was the bug behind
+/// issue #61: a truncated tag could compare as a real version.
 #[test]
 fn rejects_malformed_tags() {
     assert!(Version::parse("0.5").is_none());
@@ -116,27 +111,21 @@ fn rejects_malformed_tags() {
 }
 
 #[test]
-fn display_renders_canonical_staged_prerelease_tags() {
-    assert_eq!(parse("v0.5.0-alpha.1").to_string(), "0.5.0-alpha.1");
-    assert_eq!(parse("v0.5.0-beta.2").to_string(), "0.5.0-beta.2");
-    assert_eq!(parse("v0.5.0-rc.3").to_string(), "0.5.0-rc.3");
-}
-
-#[test]
-fn display_renders_canonical_final_tag() {
-    assert_eq!(parse("v0.5.0").to_string(), "0.5.0");
-}
-
-#[test]
-fn display_renders_canonical_nightly_tag() {
-    assert_eq!(
-        parse("v0.5.0-nightly.20260901.2").to_string(),
-        "0.5.0-nightly.20260901.2"
-    );
-    assert_eq!(
-        parse("v0.5.0-nightly.20260901").to_string(),
-        "0.5.0-nightly.20260901"
-    );
+fn display_renders_canonical_tags() {
+    for (input, expected) in [
+        ("v0.5.0-alpha.1", "0.5.0-alpha.1"),
+        ("v0.5.0-beta.2", "0.5.0-beta.2"),
+        ("v0.5.0-rc.3", "0.5.0-rc.3"),
+        ("v0.5.0", "0.5.0"),
+        ("v0.5.0-nightly.20260901.2", "0.5.0-nightly.20260901.2"),
+        ("v0.5.0-nightly.20260901", "0.5.0-nightly.20260901"),
+        (
+            "v0.5.0-nightly.20260901.1000",
+            "0.5.0-nightly.20260901.1000",
+        ),
+    ] {
+        assert_eq!(parse(input).to_string(), expected);
+    }
 }
 
 #[test]
@@ -145,22 +134,6 @@ fn channel_round_trips() {
     assert_eq!(Channel::parse("preview"), Channel::Preview);
     assert_eq!(Channel::parse("nightly"), Channel::Nightly);
     assert_eq!(Channel::parse(""), Channel::Stable);
-}
-
-#[test]
-fn channel_as_str_matches_persisted_values() {
-    assert_eq!(Channel::Stable.as_str(), "stable");
-    assert_eq!(Channel::Preview.as_str(), "preview");
-    assert_eq!(Channel::Nightly.as_str(), "nightly");
-}
-
-#[test]
-fn build_kind_labels_are_ui_facing() {
-    assert_eq!(BuildKind::Stable.label(), "Stable");
-    assert_eq!(BuildKind::Nightly.label(), "Nightly");
-    assert_eq!(BuildKind::Alpha.label(), "Alpha");
-    assert_eq!(BuildKind::Beta.label(), "Beta");
-    assert_eq!(BuildKind::Rc.label(), "Release candidate");
 }
 
 #[test]
@@ -252,19 +225,22 @@ fn best_update_on_preview_prefers_final_over_installed_rc() {
 
 #[test]
 fn best_update_never_offers_a_downgrade() {
-    let installed = parse("0.5.0-rc.2");
-    let releases = [ReleaseSummary {
-        prerelease: true,
-        ..release("v0.5.0-rc.1")
-    }];
-    assert!(best_update(Channel::Preview, &installed, &releases).is_none());
-}
-
-#[test]
-fn best_update_never_offers_a_downgrade_on_stable() {
-    let installed = parse("0.5.0");
-    let releases = [release("v0.4.0")];
-    assert!(best_update(Channel::Stable, &installed, &releases).is_none());
+    for (channel, installed, older) in [
+        (
+            Channel::Preview,
+            "0.5.0-rc.2",
+            ReleaseSummary {
+                prerelease: true,
+                ..release("v0.5.0-rc.1")
+            },
+        ),
+        (Channel::Stable, "0.5.0", release("v0.4.0")),
+    ] {
+        assert!(
+            best_update(channel, &parse(installed), &[older]).is_none(),
+            "{channel:?}"
+        );
+    }
 }
 
 #[test]

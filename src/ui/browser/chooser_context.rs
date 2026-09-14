@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::{glib, prelude::*};
 
@@ -9,10 +12,12 @@ use crate::model::Location;
 use super::{
     ViewState,
     context_menu::{
-        ContextResolver, bind_column_context_owner, context_menu_option, context_menu_popover,
-        focus_context_column, focus_context_entry, preview_context_entry, rename_context_entry,
-        show_context_popover,
+        ContextResolver, bind_column_context_owner, context_menu_danger_option,
+        context_menu_option, context_menu_popover, focus_context_column, focus_context_entry,
+        move_to_trash_is_visible, permanently_delete_is_visible, preview_context_entry,
+        rename_context_entry, show_context_popover,
     },
+    paths::is_trash_location,
 };
 
 #[derive(Clone, Copy)]
@@ -20,11 +25,13 @@ enum Action {
     Rename,
     Preview,
     Properties,
+    Trash,
+    PermanentDelete,
     NewFolder,
 }
 
 fn menu(
-    options: &[(Action, &str, &str, &str, bool)],
+    options: &[(Action, &str, &str, &str, bool, bool)],
     run: impl Fn(Action) + 'static,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
     let content = super::super::accessibility::menu_box();
@@ -33,8 +40,12 @@ fn menu(
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
     let pending = Rc::new(Cell::new(None));
-    for &(action, icon, label, shortcut, enabled) in options {
-        let button = context_menu_option(icon, label, shortcut);
+    for &(action, icon, label, shortcut, enabled, danger) in options {
+        let button = if danger {
+            context_menu_danger_option(icon, label, shortcut)
+        } else {
+            context_menu_option(icon, label, shortcut)
+        };
         button.set_sensitive(enabled);
         let pending = pending.clone();
         let weak = popover.downgrade();
@@ -85,6 +96,7 @@ pub(super) fn install_folder(
                     "New Folder",
                     "Ctrl+Shift+N",
                     true,
+                    false,
                 )],
                 move |_| {
                     if let Some(state) = weak.upgrade() {
@@ -141,12 +153,27 @@ pub(super) fn install_item(
         };
         focus_context_entry(&state, depth, source, &entry);
         let single = source.is_none() || state.browser.selected_entries().len() == 1;
+        let in_trash = state
+            .browser
+            .location_at(depth)
+            .as_ref()
+            .is_some_and(is_trash_location);
+        let can_trash = state.browser.can_trash_at(depth);
+        let can_delete = state.browser.can_delete_at(depth);
+        let trash_visible = move_to_trash_is_visible(in_trash, can_trash);
+        let permanent_visible = permanently_delete_is_visible(in_trash, can_delete);
+        let delete_label = if in_trash {
+            "Permanently delete"
+        } else {
+            "Move to Trash"
+        };
         let mut options = vec![(
             Action::Rename,
             crate::assets::icons::PENCIL,
             "Rename",
             "F2 / Ctrl+R",
             single,
+            false,
         )];
         if single && super::super::preview::entry_supports_quick_preview(&entry) {
             options.push((
@@ -155,6 +182,7 @@ pub(super) fn install_item(
                 "Quick preview",
                 "Space",
                 true,
+                false,
             ));
         }
         options.push((
@@ -163,8 +191,34 @@ pub(super) fn install_item(
             "Properties",
             "Alt+Enter",
             true,
+            false,
         ));
+        if trash_visible {
+            options.push((
+                if in_trash {
+                    Action::PermanentDelete
+                } else {
+                    Action::Trash
+                },
+                crate::assets::icons::TRASH,
+                delete_label,
+                "Del",
+                true,
+                in_trash,
+            ));
+        }
+        if permanent_visible {
+            options.push((
+                Action::PermanentDelete,
+                crate::assets::icons::TRASH,
+                "Permanently delete",
+                "Shift+Del",
+                true,
+                true,
+            ));
+        }
         let weak = weak.clone();
+        let target = Rc::new(RefCell::new(Some((source, entry.clone()))));
         let (popover, scroll) = menu(&options, move |action| {
             let Some(state) = weak.upgrade() else {
                 return;
@@ -175,6 +229,11 @@ pub(super) fn install_item(
                 }
                 Action::Preview => preview_context_entry(&state, depth, source, entry.clone()),
                 Action::Properties => state.show_entry_properties(entry.clone()),
+                Action::Trash | Action::PermanentDelete => {
+                    let entries = super::context_menu::context_entries(&state, &target);
+                    let permanent = matches!(action, Action::PermanentDelete);
+                    state.request_delete(entries, permanent);
+                }
                 Action::NewFolder => unreachable!(),
             }
         });

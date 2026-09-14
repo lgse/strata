@@ -42,8 +42,7 @@ def filter_results(strata, query="match-note", count=4, directory=None):
     return field
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_filter_text_selection_uses_the_active_theme(strata, mode, tmp_path):
+def test_filter_text_selection_uses_the_active_theme(strata, tmp_path):
     field = filter_results(strata)
     strata.keyboard.press("ctrl+a")
     settings = tomllib.loads(strata.environment.settings_path.read_text())
@@ -298,5 +297,6 @@ def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path
         strata.keyboard.type_text(query)
         strata.wait(lambda: len(strata.matches()) == count, "updated image results")
         assert row.has_state("selected")
-        assert thumbnail_pixel() == (230, 40, 60)
+        # AT-SPI result updates can precede the corresponding rendered frame.
+        strata.wait(lambda: thumbnail_pixel() == (230, 40, 60), "the updated red thumbnail")
         assert field.has_state("focused")

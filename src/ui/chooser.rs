@@ -1548,6 +1548,15 @@ fn install_shortcuts(
             browser.toggle_hidden();
             return glib::Propagation::Stop;
         }
+        if key == gtk::gdk::Key::Delete
+            && !control
+            && !alt
+            && state.view.item_view_has_focus()
+            && !state.view.filter_has_focus()
+            && state.view.confirm_delete(shift)
+        {
+            return glib::Propagation::Stop;
+        }
         if control
             && !shift
             && !alt

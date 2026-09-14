@@ -35,6 +35,16 @@ pub(super) fn general_page(
 
     let transfers = super::settings_group(&preferences, "FILE TRANSFERS");
     append_cross_volume_drop_option(&transfers, &manager);
+    append_preference_switch(
+        &transfers,
+        &manager,
+        PreferenceSwitch {
+            title: "Open folder after dropping files",
+            description: "Show the destination folder after a successful drag and drop.",
+            read: ThemeManager::open_folder_after_drop,
+            write: ThemeManager::set_open_folder_after_drop,
+        },
+    );
 
     let performance = super::settings_group(&preferences, "PERFORMANCE");
     append_auto_refresh_option(&performance, &manager);

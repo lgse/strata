@@ -1018,7 +1018,6 @@ fn known_metadata<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
 
 fn apply_thumbnail(image: &ThumbnailSlot, texture: &gdk::Texture, path: &Path) {
     image.set_texture(texture);
-    image.set_opacity(1.0);
     register_displayed_thumbnail(image, path);
 }
 
@@ -1328,9 +1327,8 @@ fn cancel_thumbnail(image_id: usize) {
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
-        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" => {
-            Some(ThumbnailKind::Image)
-        }
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" | "heic"
+        | "heif" | "avif" | "jxl" => Some(ThumbnailKind::Image),
         "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
         | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
         | "x3f" => Some(ThumbnailKind::RawImage),

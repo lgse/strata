@@ -248,13 +248,22 @@ class Node:
         except Exception:
             return False
 
+    def _visible_window_bounds(
+        self, states: frozenset[str] | None = None
+    ) -> Bounds | None:
+        """Window extents when the node is showing, visible, and finite."""
+
+        if not {"showing", "visible"} <= (self.states if states is None else states):
+            return None
+        bounds = self.window_bounds()
+        if 0 < bounds.width < 100_000 and 0 < bounds.height < 100_000:
+            return bounds
+        return None
+
     def is_rendered(self) -> bool:
         """Whether the node occupies a sane, visible box."""
 
-        if not {"showing", "visible"} <= self.states:
-            return False
-        bounds = self.window_bounds()
-        return 0 < bounds.width < 100_000 and 0 < bounds.height < 100_000
+        return self._visible_window_bounds() is not None
 
     def walk(self, depth: int = 0) -> Iterator[tuple[int, "Node"]]:
         yield depth, self
@@ -275,34 +284,24 @@ class Node:
         rendered: bool = True,
         predicate: Callable[["Node"], bool] | None = None,
     ) -> list["Node"]:
-        wanted = frozenset(states)
-        unwanted = frozenset(without_states)
-        pattern = re.compile(name_matches) if name_matches else None
-        found = []
-        for _, node in self.walk():
-            if role is not None and node.role != role:
-                continue
-            if name is not None and node.name != name:
-                continue
-            if pattern is not None and not pattern.search(node.name):
-                continue
-            if description is not None and node.description != description:
-                continue
-            node_states = node.states
-            if not wanted <= node_states:
-                continue
-            if unwanted & node_states:
-                continue
-            if rendered and not node.is_rendered():
-                continue
-            if predicate is not None and not predicate(node):
-                continue
-            found.append(node)
-        return found
+        matches = _matcher(
+            role=role,
+            name=name,
+            name_matches=name_matches,
+            description=description,
+            states=states,
+            without_states=without_states,
+            rendered=rendered,
+            predicate=predicate,
+        )
+        return [node for _, node in self.walk() if matches(node)]
 
     def find(self, **criteria) -> "Node | None":
-        found = self.find_all(**criteria)
-        return found[0] if found else None
+        matches = _matcher(**criteria)
+        for _, node in self.walk():
+            if matches(node):
+                return node
+        return None
 
     def dump(self, limit: int = 4000) -> str:
         """A readable snapshot of the subtree, used in failure reports."""
@@ -340,6 +339,46 @@ REPORTED_STATES = frozenset(
         "visible",
     }
 )
+
+
+def _matcher(
+    *,
+    role: str | None = None,
+    name: str | None = None,
+    name_matches: str | None = None,
+    description: str | None = None,
+    states: Iterable[str] = (),
+    without_states: Iterable[str] = (),
+    rendered: bool = True,
+    predicate: Callable[["Node"], bool] | None = None,
+) -> Callable[["Node"], bool]:
+    wanted = frozenset(states)
+    unwanted = frozenset(without_states)
+    pattern = re.compile(name_matches) if name_matches else None
+    needs_states = rendered or bool(wanted) or bool(unwanted)
+
+    def matches(node: Node) -> bool:
+        if role is not None and node.role != role:
+            return False
+        if name is not None and node.name != name:
+            return False
+        if pattern is not None and not pattern.search(node.name):
+            return False
+        if description is not None and node.description != description:
+            return False
+        if needs_states:
+            node_states = node.states
+            if not wanted <= node_states:
+                return False
+            if unwanted & node_states:
+                return False
+            if rendered and node._visible_window_bounds(node_states) is None:
+                return False
+        if predicate is not None and not predicate(node):
+            return False
+        return True
+
+    return matches
 
 
 def wait_until(

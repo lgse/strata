@@ -54,6 +54,12 @@ const TARGETS: &[Target] = &[
         aliases: "file transfers copy move ask drive share cross volume",
     },
     Target {
+        id: "open-after-drop",
+        page: "general",
+        title: "Open folder after dropping files",
+        aliases: "file transfers drag drop destination navigate reveal copy move",
+    },
+    Target {
         id: "refresh",
         page: "general",
         title: "Auto-refresh folder",

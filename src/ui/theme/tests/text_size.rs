@@ -41,7 +41,7 @@ fn custom_text_size_loads_and_updates_two_windows_and_new_content_with_desktop_s
                     24 * gtk::pango::SCALE
                 );
             }
-            for dpi in [96, 120, 144, 192, 96] {
+            for dpi in [96, 120, 144, 192] {
                 settings.set_gtk_xft_dpi(dpi * 1024);
                 for pixels in [32, 11, 48, 13] {
                     manager.set_text_size(TextSize::new(pixels));

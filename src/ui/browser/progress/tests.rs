@@ -63,6 +63,55 @@ fn small_operations_delay_progress_while_large_or_unbounded_operations_show_it_i
 }
 
 #[test]
+fn archive_preparation_and_member_encoding_keep_activity_visible() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::archive_preparation_and_member_encoding_keep_activity_visible",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let state = &view.state;
+            state.handle(&crate::app::BrowserEvent::ArchiveStarted { total: 0 });
+            assert!(state.pending_file_progress.borrow().is_none());
+            let (status, activity, progress) = {
+                let current = state.file_progress_view.borrow();
+                let current = current.as_ref().expect("immediate archive feedback");
+                (
+                    current.status.clone(),
+                    current.archive_activity.clone(),
+                    current.progress.clone(),
+                )
+            };
+            assert_eq!(status.text(), "Preparing…");
+            assert!(activity.is_visible() && activity.is_spinning());
+            for (completed, total, expected) in [
+                (0, 8, "Preparing…"),
+                (1, 8, "1 / 8 files"),
+                (1, 8, "1 / 8 files"),
+                (8, 8, "8 / 8 files"),
+            ] {
+                state.handle(&crate::app::BrowserEvent::ArchiveProgress { completed, total });
+                assert_eq!(status.text(), expected);
+                assert!(activity.is_visible() && activity.is_spinning());
+                if completed > 0 {
+                    assert_eq!(progress.fraction(), completed as f64 / total as f64);
+                }
+            }
+            state.dismiss_file_operation_progress();
+            assert!(!activity.is_spinning());
+            assert!(state.file_progress_view.borrow().is_none());
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
 fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
     crate::test_support::gtk_test(
         "ui::browser::progress::tests::backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal",
