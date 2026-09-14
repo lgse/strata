@@ -1420,17 +1420,26 @@ impl BrowserView {
         if self.view_mode() != BrowserMode::Columns {
             return self.state.mode_views.borrow().selected_search_results();
         }
-        let depth = self.state.destination_depth()?;
         let columns = self.state.columns.borrow();
-        let column = columns.get(depth)?;
-        column.search_handle.borrow().as_ref()?;
+        let depth = self.state.destination_depth();
+        let column = depth
+            .and_then(|depth| columns.get(depth))
+            .filter(|column| column.search_handle.borrow().is_some())
+            .or_else(|| {
+                columns.iter().find(|column| {
+                    column.search_handle.borrow().is_some()
+                        && !column.selection.selection().is_empty()
+                })
+            })?;
         let results = column.search_results.borrow();
-        Some(
-            collection::bitset_positions(&column.selection.selection())
-                .into_iter()
-                .filter_map(|position| results.get(position as usize).map(search_result_entry))
-                .collect(),
-        )
+        let entries: Vec<FileEntry> = collection::bitset_positions(&column.selection.selection())
+            .into_iter()
+            .filter_map(|position| results.get(position as usize).map(search_result_entry))
+            .collect();
+        if entries.is_empty() {
+            return None;
+        }
+        Some(entries)
     }
 
     pub fn item_view_has_focus(&self) -> bool {
