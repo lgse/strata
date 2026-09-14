@@ -429,7 +429,7 @@
   "tests/e2e/scenarios/test_selection.py::test_sidebar_navigation_initializes_the_range_anchor[columns]": 1.138,
   "tests/e2e/scenarios/test_selection.py::test_sidebar_navigation_initializes_the_range_anchor[icons]": 1.329,
   "tests/e2e/scenarios/test_selection.py::test_sidebar_navigation_initializes_the_range_anchor[list]": 1.201,
-  "tests/e2e/scenarios/test_terminal.py::test_a_missing_terminal_launcher_is_named_in_the_error": 0.874,
+  "tests/e2e/scenarios/test_terminal.py::test_opening_a_terminal_without_an_emulator_reports_no_terminal_found": 0.874,
   "tests/e2e/scenarios/test_view_switching.py::test_appearance_menu_switches_presentation[Icons]": 1.442,
   "tests/e2e/scenarios/test_view_switching.py::test_appearance_menu_switches_presentation[List]": 1.459,
   "tests/e2e/scenarios/test_view_switching.py::test_switching_preserves_directory_selection_and_sort": 2.959,

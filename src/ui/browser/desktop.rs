@@ -8,7 +8,6 @@ use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_d
 use crate::ui::terminal;
 use gtk::gio;
 use gtk::prelude::*;
-use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -203,12 +202,6 @@ pub(super) fn selected_terminal_location(entries: &[FileEntry]) -> Option<Locati
     entry.is_directory().then(|| entry.location.clone())
 }
 
-fn terminal_directory_argument(path: &Path) -> OsString {
-    let mut argument = OsString::from("--dir=");
-    argument.push(path);
-    argument
-}
-
 pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk::Widget>) {
     let Some(path) = location.native_path() else {
         show_error_dialog(
@@ -231,15 +224,22 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         location = %location.diagnostic_path(),
         "opening terminal"
     );
-    let result = terminal::command()
-        .arg(terminal_directory_argument(&path))
-        .spawn();
-    if let Err(error) = result {
-        tracing::warn!(%error, launcher = terminal::LAUNCHER, "unable to launch terminal");
+    let Some(terminal) = terminal::Terminal::resolve() else {
+        tracing::warn!("no terminal emulator found on PATH");
         show_error_dialog(
             parent,
             "Unable to open terminal",
-            &terminal::launch_failure(&error),
+            &terminal::no_terminal_message(),
+        );
+        return;
+    };
+    let program = terminal.program().to_string_lossy().into_owned();
+    if let Err(error) = terminal.directory_command(&path).spawn() {
+        tracing::warn!(%error, %program, "unable to launch terminal");
+        show_error_dialog(
+            parent,
+            "Unable to open terminal",
+            &terminal.launch_failure(&error),
         );
     }
 }

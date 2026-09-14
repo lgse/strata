@@ -277,7 +277,12 @@ fn package_managed_status_identifies_omarchy() {
 
 #[test]
 fn aur_updates_open_in_the_configured_terminal() {
-    let command = aur_update_command("paru", "strata-bin");
+    let terminal = super::terminal::Terminal::resolve_with(
+        None,
+        Some(std::ffi::OsStr::new("xdg-terminal-exec")),
+    )
+    .expect("explicit terminal resolves");
+    let command = aur_update_command(&terminal, "paru", "strata-bin");
 
     assert_eq!(command.get_program(), "xdg-terminal-exec");
     assert_eq!(
@@ -288,7 +293,12 @@ fn aur_updates_open_in_the_configured_terminal() {
 
 #[test]
 fn omarchy_updates_open_in_the_configured_terminal() {
-    let command = omarchy_update_command();
+    let terminal = super::terminal::Terminal::resolve_with(
+        None,
+        Some(std::ffi::OsStr::new("xdg-terminal-exec")),
+    )
+    .expect("explicit terminal resolves");
+    let command = omarchy_update_command(&terminal);
 
     assert_eq!(command.get_program(), "xdg-terminal-exec");
     assert_eq!(
