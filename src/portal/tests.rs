@@ -115,7 +115,7 @@ fn current_file_rejects_directories_and_missing_parents() {
     ] {
         let suggestion =
             run_async(save_file_suggestion(Some(file), None, None)).expect("save suggestion");
-        assert_eq!(suggestion, (crate::ui::home_directory(), None));
+        assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
     }
 }
 
@@ -128,7 +128,7 @@ fn invalid_current_file_falls_back_without_using_lower_priority_suggestions() {
         Some("ignored.txt".to_owned()),
     ))
     .expect("save suggestion");
-    assert_eq!(suggestion, (crate::ui::home_directory(), None));
+    assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
 }
 
 #[test]

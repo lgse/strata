@@ -2327,6 +2327,14 @@ pub(crate) fn home_directory() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
+/// Default starting folder for portal save/open dialogs when the caller omits
+/// one: the XDG Downloads directory, falling back to home if it is undefined.
+pub(crate) fn default_save_folder() -> PathBuf {
+    glib::user_special_dir(glib::UserDirectory::Downloads)
+        .map(PathBuf::from)
+        .unwrap_or_else(home_directory)
+}
+
 #[cfg(test)]
 mod tests;
 
