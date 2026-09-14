@@ -8,7 +8,7 @@ fn header() -> Header {
         width: 16,
         height: 16,
         audio: true,
-        duration_us: LIMIT_US,
+        duration_us: 30_000_000,
         start_tick: 0,
     }
 }
@@ -38,7 +38,7 @@ fn headers_reject_unknown_formats_dimensions_strides_flags_and_timeline() {
         bad[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
         assert!(parse(&bad).is_err(), "offset {offset}, value {value}");
     }
-    for duration in [0_u64, LIMIT_US + 1, u64::MAX] {
+    for duration in [0_u64, MAX_DURATION_US + 1, u64::MAX] {
         let mut bad = bytes();
         bad[24..32].copy_from_slice(&duration.to_le_bytes());
         assert!(parse(&bad).is_err());
@@ -99,40 +99,58 @@ fn frames_are_length_checked_before_allocation_and_must_be_contiguous() {
 }
 
 #[test]
-fn seeking_and_total_frame_audio_budgets_never_extend_past_thirty_seconds() {
-    for requested in [LIMIT_US, u64::MAX, 3_600_000_000] {
-        assert_eq!(seek_tick(requested, LIMIT_US), 899);
+fn full_length_seeks_and_frames_stop_at_the_source_end_without_tick_overflow() {
+    for duration in [31_000_000, 3_600_000_000, MAX_DURATION_US] {
+        let ticks = (duration * u64::from(FPS)).div_ceil(1_000_000) as u32;
+        for requested in [duration, u64::MAX] {
+            assert_eq!(seek_tick(requested, duration), ticks - 1);
+        }
+        let h = Header {
+            duration_us: duration,
+            start_tick: ticks - 1,
+            ..header()
+        };
+        let mut encoded = Vec::new();
+        h.write(&mut encoded).expect("header");
+        let h = Header::read(
+            &mut Cursor::new(encoded),
+            MediaPreviewSize::new(640, 480),
+            ticks - 1,
+        )
+        .expect("long timeline");
+        let mut decoder = Decoder::new(h);
+        let mut bytes = Vec::new();
+        Frame {
+            tick: ticks - 1,
+            pixels: vec![0; h.video_bytes()],
+            samples: vec![0; AUDIO_BYTES],
+        }
+        .write(&mut bytes)
+        .expect("last frame");
+        assert!(matches!(
+            decoder.read(&mut Cursor::new(bytes)),
+            Ok(Packet::Frame(_))
+        ));
+        let mut bytes = Vec::new();
+        Frame {
+            tick: ticks,
+            pixels: vec![0; h.video_bytes()],
+            samples: vec![0; AUDIO_BYTES],
+        }
+        .write(&mut bytes)
+        .expect("extra frame");
+        assert!(decoder.read(&mut Cursor::new(bytes)).is_err());
+        let mut bytes = Vec::new();
+        write_end(&mut bytes, ticks, duration + 1).expect("invalid end");
+        assert!(decoder.read(&mut Cursor::new(bytes)).is_err());
+        let mut bytes = Vec::new();
+        write_end(&mut bytes, ticks, duration).expect("source end");
+        assert!(
+            matches!(decoder.read(&mut Cursor::new(bytes)), Ok(Packet::End(end)) if end == duration)
+        );
     }
-    let h = Header {
-        start_tick: 899,
-        ..header()
-    };
-    let mut decoder = Decoder::new(h);
-    let mut bytes = Vec::new();
-    Frame {
-        tick: 899,
-        pixels: vec![0; h.video_bytes()],
-        samples: vec![0; AUDIO_BYTES],
-    }
-    .write(&mut bytes)
-    .expect("last frame");
-    assert!(matches!(
-        decoder.read(&mut Cursor::new(bytes)),
-        Ok(Packet::Frame(_))
-    ));
-    let mut bytes = Vec::new();
-    Frame {
-        tick: 900,
-        pixels: vec![0; h.video_bytes()],
-        samples: vec![0; AUDIO_BYTES],
-    }
-    .write(&mut bytes)
-    .expect("extra frame");
-    assert!(decoder.read(&mut Cursor::new(bytes)).is_err());
-    let mut bytes = Vec::new();
-    write_end(&mut bytes, 900, LIMIT_US + 1).expect("invalid end");
-    assert!(decoder.read(&mut Cursor::new(bytes)).is_err());
-    assert_eq!(MAX_TICKS as usize * AUDIO_BYTES, 5_760_000);
+    assert_eq!(seek_tick(32_000_000, 3_600_000_000), 960);
+    assert_eq!(seek_tick(u64::MAX, u64::MAX), u32::MAX - 1);
 }
 
 #[test]

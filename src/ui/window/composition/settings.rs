@@ -18,6 +18,9 @@ use super::{
     WindowContent,
 };
 
+#[cfg(test)]
+mod tests;
+
 type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, String, UpdateMethod)>>>;
 
 pub(super) fn install(
@@ -85,6 +88,13 @@ impl SettingsLauncher {
     }
 
     fn show(&self) {
+        let mut child = self.overlay.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if widget.is_visible() && widget.has_css_class("app-modal-layer") {
+                return;
+            }
+        }
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.set_visible(true);

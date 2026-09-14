@@ -48,6 +48,15 @@ impl MountTable {
         self.fs_type_for(path).is_some_and(is_remote_fs_type)
     }
 
+    pub(super) fn query_may_block(&self, path: &Path) -> bool {
+        // Prefix probes can trigger autofs even when a nested mount is local.
+        self.is_remote_path(path)
+            || self
+                .entries
+                .iter()
+                .any(|(mount_point, fs_type)| fs_type == "autofs" && path.starts_with(mount_point))
+    }
+
     pub(super) fn is_mount_point(&self, path: &Path) -> bool {
         self.entries
             .iter()

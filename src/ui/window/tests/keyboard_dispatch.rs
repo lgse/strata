@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod media_keys;
+
 use gtk::gdk::{Key, ModifierType};
 
 use super::super::*;
@@ -19,6 +21,10 @@ struct KeyboardFixture {
 
 impl KeyboardFixture {
     fn new() -> Self {
+        Self::with_provider(Rc::new(super::type_to_search::TextPreview))
+    }
+
+    fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
         ThemeManager::seed_saved_preferences_for_test();
         let preferences = ThemeManager::shared();
         let directory = tempfile::tempdir().expect("fixture");
@@ -32,7 +38,7 @@ impl KeyboardFixture {
         let toggle = gtk::ToggleButton::builder().active(true).build();
         header.append(&toggle);
         let top_bar = TopBarNavigation::new(&header, &sidebar.widget, &toggle);
-        let preview = PreviewDrawer::new(Rc::new(super::type_to_search::TextPreview), false);
+        let preview = PreviewDrawer::new(provider, false);
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         row.append(&sidebar.widget);
         row.append(&view.widget());

@@ -6,8 +6,8 @@ use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
     ViewMap, activate_recursive_search_result, apply_filter_query, apply_selection_plan,
-    bind_filter_query, bitset_positions, deactivate_recursive_search, detach_collection_view,
-    recursive_search_activation_key, scroll_collection_when_allocated,
+    bind_filter_query, bitset_positions, cancel_source, deactivate_recursive_search,
+    detach_collection_view, recursive_search_activation_key, scroll_collection_when_allocated,
     search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
@@ -28,7 +28,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-pub(super) const COLUMN_WIDTH: i32 = 300;
+pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
 const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 
@@ -69,6 +69,7 @@ impl PendingPointerActivation {
 #[derive(Clone)]
 pub(super) struct ColumnView {
     pub(super) shell: gtk::Box,
+    pub(super) reveal_button: gtk::Button,
     pub(super) destination_hint: gtk::Label,
     pub(super) animation_generation: Rc<Cell<u64>>,
     pub(super) presentation: LoadPresentation,
@@ -86,6 +87,8 @@ pub(super) struct ColumnView {
     pub(super) listing_scroll: gtk::ScrolledWindow,
     pub(super) marquee: crate::ui::marquee::Marquee,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
+    pub(super) folder_context_trigger: Rc<dyn Fn(f64, f64)>,
+    pub(super) item_context_trigger: Rc<dyn Fn(f64, f64)>,
     pub(super) entry_count: Rc<Cell<usize>>,
     pub(super) spinner: gtk::Spinner,
     pub(super) spinner_delay: Rc<RefCell<Option<glib::SourceId>>>,
@@ -97,6 +100,42 @@ pub(super) struct ColumnView {
     pub(super) search_handle: Rc<RefCell<Option<crate::services::SearchHandle>>>,
     pub(super) search_generation: Rc<Cell<u64>>,
     pub(super) search_model: gtk::StringList,
+}
+
+impl ColumnView {
+    pub(super) fn context_menu_target(
+        &self,
+        position: Option<usize>,
+    ) -> Option<crate::ui::browser::ContextMenuTarget> {
+        let position = if self.search_handle.borrow().is_some() {
+            bitset_positions(&self.selection.selection())
+                .last()
+                .copied()
+        } else {
+            position.and_then(|position| self.map.view_position(position))
+        };
+        if let Some(position) = position {
+            let row = self.bound_rows.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == position).then(|| bound.row.upgrade())?
+            })?;
+            let bounds = row.compute_bounds(&self.list)?;
+            return Some((
+                self.item_context_trigger.clone(),
+                f64::from(bounds.center().x()),
+                f64::from(bounds.center().y()),
+            ));
+        }
+        let width = f64::from(self.presentation.stack.width());
+        let height = f64::from(self.presentation.stack.height());
+        (width > 0.0 && height > 0.0).then(|| {
+            (
+                self.folder_context_trigger.clone(),
+                width / 2.0,
+                height / 2.0,
+            )
+        })
+    }
 }
 
 pub(super) fn column_size_text(entry: Option<&FileEntry>) -> String {
@@ -317,6 +356,12 @@ pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     } else {
         row.remove_css_class("cut");
     }
+    if let Some(icon) = row
+        .first_child()
+        .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+    {
+        icon.set_cut(cut);
+    }
 }
 
 fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {
@@ -357,25 +402,6 @@ pub(in crate::ui) fn max_child_natural_width(widget: &gtk::Widget) -> i32 {
         child = c.next_sibling();
     }
     max_natural
-}
-
-fn horizontal_reveal_target(
-    current: f64,
-    page_size: f64,
-    lower: f64,
-    upper: f64,
-    item_left: f64,
-    item_right: f64,
-) -> f64 {
-    let viewport_right = current + page_size;
-    let target = if item_right > viewport_right {
-        item_right - page_size
-    } else if item_left < current {
-        item_left
-    } else {
-        current
-    };
-    target.clamp(lower, (upper - page_size).max(lower))
 }
 
 fn animate_horizontal_scroll(
@@ -591,46 +617,19 @@ impl ViewState {
         header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
-        let filter_entry = gtk::Entry::builder()
-            .placeholder_text("Filter 0 items…")
-            .has_frame(false)
-            .hexpand(true)
-            .build();
-        filter_entry.add_css_class("column-filter-entry");
-        let filter_icon = crate::assets::chrome_icon(crate::assets::icons::FUNNEL);
-        let filter_control = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-        filter_control.add_css_class("column-filter");
-        filter_control.append(&filter_icon);
-        filter_control.append(&filter_entry);
-        let filter_revealer = gtk::Revealer::builder()
-            .transition_type(gtk::RevealerTransitionType::SlideDown)
-            .child(&filter_control)
-            .build();
-        let filter_button = gtk::ToggleButton::builder()
-            .tooltip_text("Filter this pane (Ctrl+F)")
-            .build();
-        filter_button.set_child(Some(&crate::assets::chrome_icon(
-            crate::assets::icons::FUNNEL,
-        )));
-        crate::ui::controls::pane_header_action(&filter_button);
-        let shown_filter = filter_revealer.clone();
-        let focused_filter = filter_entry.clone();
-        let weak_for_filter_toggle = Rc::downgrade(self);
+        let (filter_entry, filter_revealer, filter_button) =
+            crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
+        filter_entry.set_placeholder_text(Some("Filter 0 items…"));
+        let weak_self = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
-            shown_filter.set_reveal_child(button.is_active());
-            if button.is_active() {
-                focused_filter.grab_focus();
-                // At most one column filter is open at a time; dismissing the
-                // others also clears their query, via their own toggle handler.
-                if let Some(state) = weak_for_filter_toggle.upgrade() {
-                    for other in state.columns.borrow().iter() {
-                        if other.filter_button != *button {
-                            other.filter_button.set_active(false);
-                        }
+            if button.is_active()
+                && let Some(state) = weak_self.upgrade()
+            {
+                for (other_depth, other) in state.columns.borrow().iter().enumerate() {
+                    if other_depth != depth && other.filter_button.is_active() {
+                        other.filter_button.set_active(false);
                     }
                 }
-            } else {
-                focused_filter.set_text("");
             }
         });
         header_actions.append(&filter_button);
@@ -900,6 +899,7 @@ impl ViewState {
         let list_for_navigation = list.clone();
         let browser_for_navigation = Rc::downgrade(&self.browser);
         let results_for_navigation = search_results.clone();
+        let navigation_state = Rc::downgrade(self);
         search_navigation.connect_key_pressed(move |_, key, _, modifiers| {
             if !search_active_for_navigation.get()
                 || modifiers.intersects(
@@ -927,25 +927,69 @@ impl ViewState {
                     glib::Propagation::Proceed
                 };
             }
-            let direction = match key {
-                gtk::gdk::Key::Down => 1,
-                gtk::gdk::Key::Up => -1,
+            match key {
+                gtk::gdk::Key::Down => {}
+                gtk::gdk::Key::Up => return glib::Propagation::Stop,
                 _ => return glib::Propagation::Proceed,
-            };
-            let Some(next) = search_result_navigation_position(
-                current,
-                selection_for_navigation.n_items(),
-                direction,
-            ) else {
+            }
+            let Some(next) = current.or_else(|| {
+                search_result_navigation_position(None, selection_for_navigation.n_items(), 1)
+            }) else {
                 return glib::Propagation::Stop;
             };
             syncing_for_navigation.set(true);
+            list_for_navigation.grab_focus();
             selection_for_navigation.select_item(next, true);
             syncing_for_navigation.set(false);
-            list_for_navigation.scroll_to(next, gtk::ListScrollFlags::empty(), None);
+            list_for_navigation.scroll_to(next, gtk::ListScrollFlags::FOCUS, None);
+            if let Some(state) = navigation_state.upgrade() {
+                super::BrowserView { state }.keyboard_navigation();
+            }
             glib::Propagation::Stop
         });
         filter_entry.add_controller(search_navigation);
+
+        let return_to_filter = gtk::EventControllerKey::new();
+        return_to_filter.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let search_active = recursive_search_active.clone();
+        let result_selection = selection.clone();
+        let query = filter_entry.downgrade();
+        let navigation_state = Rc::downgrade(self);
+        return_to_filter.connect_key_pressed(move |controller, key, _, modifiers| {
+            if !search_active.get()
+                || !matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
+                || modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK
+                        | gtk::gdk::ModifierType::SHIFT_MASK
+                        | gtk::gdk::ModifierType::ALT_MASK
+                        | gtk::gdk::ModifierType::SUPER_MASK,
+                )
+            {
+                return glib::Propagation::Proceed;
+            }
+            if controller
+                .widget()
+                .and_then(|widget| widget.root())
+                .and_then(|root| root.focus())
+                .and_then(|focus| focus.ancestor(gtk::Popover::static_type()))
+                .is_some()
+            {
+                return glib::Propagation::Proceed;
+            }
+            if let Some(state) = navigation_state.upgrade() {
+                super::BrowserView { state }.keyboard_navigation();
+            }
+            if key != gtk::gdk::Key::Up
+                || bitset_positions(&result_selection.selection()).as_slice() != [0]
+            {
+                return glib::Propagation::Proceed;
+            }
+            query
+                .upgrade()
+                .filter(|entry| entry.grab_focus_without_selecting())
+                .map_or(glib::Propagation::Proceed, |_| glib::Propagation::Stop)
+        });
+        list.add_controller(return_to_filter);
 
         let selection_keys = gtk::EventControllerKey::new();
         selection_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -1070,7 +1114,7 @@ impl ViewState {
         if self.interactive {
             install_directory_drop_target(self, &presentation.stack, location.clone());
         }
-        install_folder_context_menu(
+        let folder_context_trigger = install_folder_context_menu(
             self,
             presentation.stack.upcast_ref(),
             {
@@ -1094,7 +1138,7 @@ impl ViewState {
                 (row == picked).then_some(item.position())
             })
         });
-        {
+        let item_context_trigger = {
             let map_for_context = map.clone();
             let source_position =
                 Rc::new(move |position| map_for_context.source_position(position));
@@ -1106,8 +1150,8 @@ impl ViewState {
                 source_position,
                 Rc::new(|| {}),
                 depth,
-            );
-        }
+            )
+        };
         column.append(&presentation.stack);
         let destination_hint = gtk::Label::new(None);
         destination_hint.add_css_class("column-destination-hint");
@@ -1224,6 +1268,25 @@ impl ViewState {
         resize_handle.set_halign(gtk::Align::End);
         resize_handle.set_valign(gtk::Align::Fill);
         column_overlay.add_overlay(&resize_handle);
+        let reveal_button = gtk::Button::new();
+        reveal_button.add_css_class("column-peek-target");
+        reveal_button.set_focusable(false);
+        reveal_button.set_focus_on_click(false);
+        reveal_button.set_cursor_from_name(Some("pointer"));
+        reveal_button.set_visible(false);
+        crate::ui::accessibility::set_label(
+            &reveal_button,
+            &format!("Reveal {} column", location.display_name()),
+        );
+        reveal_button.set_tooltip_text(Some(&format!("Reveal {}", location.display_path())));
+        let weak = Rc::downgrade(self);
+        let revealed_location = location.clone();
+        reveal_button.connect_clicked(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.reveal_column_only(depth, &revealed_location);
+            }
+        });
+        column_overlay.add_overlay(&reveal_button);
         let animation_generation = Rc::new(Cell::new(0));
         let previous = depth
             .checked_sub(1)
@@ -1233,6 +1296,7 @@ impl ViewState {
             .insert_child_after(&shell, previous.as_ref());
         self.columns.borrow_mut().push(ColumnView {
             shell: shell.clone(),
+            reveal_button,
             destination_hint,
             animation_generation: animation_generation.clone(),
             presentation,
@@ -1250,6 +1314,8 @@ impl ViewState {
             listing_scroll: scroll,
             marquee,
             bound_rows,
+            folder_context_trigger,
+            item_context_trigger,
             entry_count,
             spinner,
             spinner_delay: Rc::new(RefCell::new(None)),
@@ -1351,16 +1417,19 @@ impl ViewState {
             if measured_shell.width() <= 0 || adjustment.page_size() <= 0.0 {
                 return glib::ControlFlow::Continue;
             }
-            let Some(bounds) = measured_shell.compute_bounds(&state.columns_widget) else {
-                return glib::ControlFlow::Continue;
+            let depth = state
+                .columns
+                .borrow()
+                .iter()
+                .position(|column| column.shell == measured_shell);
+            let Some(span) = depth.and_then(|depth| state.column_span(depth)) else {
+                return glib::ControlFlow::Break;
             };
-            let target = horizontal_reveal_target(
+            let target = span.reveal_target(
                 adjustment.value(),
                 adjustment.page_size(),
                 adjustment.lower(),
                 adjustment.upper(),
-                f64::from(bounds.x()),
-                f64::from(bounds.x() + bounds.width()),
             );
             animate_horizontal_scroll(
                 &state.scroller,
@@ -1374,6 +1443,9 @@ impl ViewState {
     }
 
     pub(super) fn truncate(self: &Rc<Self>, len: usize) {
+        self.columns_widget.set_margin_end(0);
+        cancel_source(&self.pending_peek);
+        self.peek_anchor.take();
         self.close_peek_visual();
         if self.hovered_column.get().is_some_and(|depth| depth >= len) {
             self.hovered_column.set(None);
@@ -1414,8 +1486,11 @@ impl ViewState {
     }
 }
 
+mod reveal;
 mod rows;
 mod search;
+
+pub(super) use reveal::ColumnSpan;
 
 #[cfg(test)]
 mod tests;

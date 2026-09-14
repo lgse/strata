@@ -33,6 +33,9 @@ def main() -> int:
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
         }
+        for name in ("STRATA_DELETE_BENCH_FILES", "STRATA_DELETE_BENCH_ROOT"):
+            if name in os.environ:
+                environment[name] = os.environ[name]
         child = subprocess.Popen(
             ["cargo", "test", "--all-targets", "--all-features", *sys.argv[1:]],
             cwd=REPOSITORY,

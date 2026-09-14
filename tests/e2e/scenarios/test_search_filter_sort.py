@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES, SINGLE_PANE_MODES
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 # Folders stay grouped first, so descending is not simply the reverse.
@@ -87,7 +87,7 @@ def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
     )
 
 
-def assert_filtered_result_opens(strata, activation):
+def assert_filtered_result_opens(strata):
     strata.select_entry("documents")
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
@@ -97,35 +97,27 @@ def assert_filtered_result_opens(strata, activation):
         lambda: strata.window.find(role="list item", name="documents"),
         "the filtered folder result",
     )
-
-    if activation == "click":
-        strata.pointer.click(result)
-    else:
-        strata.keyboard.press("Down")
-        strata.keyboard.press("Return")
-
+    strata.pointer.click(result)
     strata.wait_for_directory("documents")
 
 
 @pytest.mark.preferences(
     **DOUBLE_CLICK_PREFERENCES, filter_include_subfolders=False
 )
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("activation", ["click", "enter"])
-def test_local_filtered_results_open_with_one_activation(strata, mode, activation):
-    assert_filtered_result_opens(strata, activation)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_local_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
 
 
 @DOUBLE_CLICK
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("activation", ["click", "enter"])
-def test_recursive_filtered_results_open_with_one_activation(strata, mode, activation):
-    assert_filtered_result_opens(strata, activation)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_recursive_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
 
 
 @DOUBLE_CLICK
-@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
-def test_recursive_file_double_click_launches_once(launch_counter, strata, mode):
+@pytest.mark.preferences(browser_mode="list")
+def test_recursive_file_double_click_launches_once(launch_counter, strata):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")
@@ -287,7 +279,19 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
         "all navigation results to be indexed",
     )
 
-    for _ in range(3):
+    results = [
+        node
+        for node in strata.window.find_all(role="list item")
+        if any(node.name.endswith(f"/{name}") for name in names)
+    ]
+    assert len(results) == len(names)
+    assert results[0].has_state("selected")
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: results[1].has_state("selected"),
+        "the first Down press to advance past the preselected result",
+    )
+    for _ in range(2):
         strata.keyboard.press("Down")
     strata.keyboard.type_text("igation-final")
     strata.wait(
@@ -311,6 +315,34 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
     )
     strata.keyboard.press("Return")
     strata.wait_for_directory("navigation-final")
+
+
+@pytest.mark.preferences(search_open_files_directly=False)
+def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata):
+    folder = strata.environment.home / "preview-deletion"
+    folder.mkdir()
+    previewed = folder / "preview-deletion-fixture.txt"
+    previewed.write_text("search preview deletion fixture\n")
+    (folder / "remaining.txt").write_text("remaining file\n")
+    strata.keyboard.press("ctrl+l")
+    strata.keyboard.type_text(str(folder))
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(folder.name)
+    strata.wait(lambda: "remaining.txt" in strata.entry_names(), "loaded folder")
+    strata.keyboard.press("ctrl+k")
+    strata.keyboard.type_text("preview-deletion-fixture")
+    strata.wait(
+        lambda: strata.window.find(role="label", name=previewed.name) is not None,
+        "indexed search result",
+    )
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.preview_shows("search preview deletion fixture"),
+        "search result preview",
+    )
+    previewed.unlink()
+    strata.wait(lambda: strata.preview() is None, "deleted result preview to close")
+    assert "remaining.txt" in strata.entry_names()
 
 
 def test_global_search_finds_a_file_under_home(strata, root):

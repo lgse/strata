@@ -15,9 +15,9 @@ use crate::{
         browser::BrowserView,
         window::{
             apply_browser_mode, browser_mode_for_digit, is_browser_navigation_key,
-            is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut,
-            is_sidebar_focus_shortcut, is_toggle_hidden_shortcut, is_undo_shortcut,
-            type_to_search_query,
+            is_context_menu_shortcut, is_open_terminal_shortcut, is_refresh_shortcut,
+            is_rename_shortcut, is_sidebar_focus_shortcut, is_toggle_hidden_shortcut,
+            is_undo_shortcut, type_to_search_query,
         },
     },
 };
@@ -81,8 +81,13 @@ impl Dispatcher {
             )
             && let Some(entry) = self.view.selected_search_result()
         {
-            self.preview
-                .toggle(crate::ui::preview::preview_target(Some(entry)));
+            if self.view.activate_directory_column() {
+                return Some(Propagation::Stop);
+            }
+            self.preview.toggle(
+                crate::ui::preview::preview_target(Some(entry)),
+                self.view.browser().active_depth(),
+            );
             return Some(Propagation::Stop);
         }
         if event.key == Key::Escape && self.view.dismiss_focused_filter() {
@@ -103,19 +108,11 @@ impl Dispatcher {
     }
 
     pub(super) fn video_controls(&self, event: &KeyEvent) -> KeyResult {
-        if !matches!(
-            event.key,
-            Key::space | Key::Up | Key::Down | Key::Left | Key::Right | Key::m | Key::M
-        ) {
-            return None;
-        }
-        if self.preview.has_video()
-            && !self.sidebar.contains(&event.focused)
+        if !self.sidebar.contains(&event.focused)
             && !self.top_bar.has_focus()
             && !event.text_has_focus()
-            && event.without(Modifiers::ALT_MASK | Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
+            && self.preview.handle_video_key(event.key, event.modifiers)
         {
-            self.preview.handle_video_key(event.key);
             return Some(Propagation::Stop);
         }
         None
@@ -210,6 +207,16 @@ impl Dispatcher {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)
+    }
+
+    pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
+        if is_context_menu_shortcut(event.key, event.modifiers)
+            && !event.text_has_focus()
+            && self.view.open_focused_context_menu()
+        {
+            return Some(Propagation::Stop);
+        }
+        None
     }
 
     fn browser_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {

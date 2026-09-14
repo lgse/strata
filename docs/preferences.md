@@ -48,14 +48,17 @@ control that might be midway through synchronization.
 | --- | --- |
 | Folder peeking, single-click previews, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. The chooser explicitly disallows folder peeking regardless of the saved value. |
 | Hidden files | Shared across existing browsers and new columns. |
+| Open folder after dropping files | Drop dispatch reads the saved choice (off by default), including confirmation of cross-device drops. Successful drops reveal the destination only when enabled and the user is still at the transfer origin. Paste and Move/Copy to remain unchanged. |
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Sorting a column updates the persisted defaults. |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
 | Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
+| Element glow | Shared semantic glow color is applied by the manager before Settings opens and updated live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
 | Theme, Omarchy following, text size | Shared CSS is applied by the manager; controls and theme-card selections bind to preferences. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
 | Keybinding hints | Footers and settings controls bind immediately and live. |
 | Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
+| Preview text wrap | Every text preview and header toggle binds to the saved wrap choice, including newly loaded files. Off by default. |
 | Preview mute/volume | Every player's controls and media stream bind to the saved audio state. Slider changes publish/persist together, without a delayed stale save overwriting another window or being discarded when closing a preview. |
 | Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. |
 | Sidebar order | Existing sidebars bind to the shared order. |
@@ -96,6 +99,23 @@ position remain independent of interface text size. At extreme sizes on small
 logical displays, scrolling or resizing panes may be necessary. Physical
 mixed-DPI monitor transitions still need compositor-specific manual testing.
 
+## Element glow
+
+In **Settings → Appearance → Effects**, turn off **Element glow** to remove
+accent-colored glow from dialogs, menus, controls, and animated feedback.
+It is enabled by default and saved as `element_glow = true`. Changes apply
+immediately across windows. Focus outlines, ordinary depth shadows, and animation
+movement are unchanged; use **Reduce motion** to disable nonessential animations.
+
+## Drag-and-drop destination
+
+In **Settings → General → File transfers**, enable **Open folder after dropping
+files** to show the destination after a successful drop: a child column in
+Columns, or navigation in Icons and List. It is off by default and saved as
+`open_folder_after_drop = false`. Changes apply to subsequent drops across
+windows without restarting. Navigating away during a transfer is respected.
+Paste and **Move/Copy to…** continue to reveal their destination independently.
+
 ## Filter scope
 
 In **Settings → General → Search & filtering**, **Include subfolders** is
@@ -103,14 +123,6 @@ on by default. Turn it off to match only immediate files and folders, without
 redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
-
-Default recursive results:
-
-![Filtering with subfolders included](images/filter-scope-recursive.png)
-
-The same query with subfolders excluded:
-
-![Filtering only the current directory](images/filter-scope-directory.png)
 
 ## Adding a preference
 

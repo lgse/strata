@@ -9,9 +9,9 @@ import math
 
 SCHEMA = 1
 UNKNOWN_SECONDS = 5.0
-TARGET_SECONDS = 90.0
+TARGET_SECONDS = 180.0
 WORKERS = 2
-MAX_SHARDS = 8
+MAX_SHARDS = 3
 
 
 def inventory_digest(tests: list[dict]) -> str:

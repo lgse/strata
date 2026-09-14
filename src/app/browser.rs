@@ -185,7 +185,9 @@ pub enum BrowserEvent {
         completed: usize,
         total: usize,
     },
-    DeletionFinished,
+    DeletionFinished {
+        succeeded: bool,
+    },
     RestorationStarted {
         total: usize,
     },
@@ -521,6 +523,10 @@ pub struct Browser {
     restoration_operation: Cell<bool>,
     archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
+    /// Whether a completed transfer should navigate to/reveal its destination.
+    /// A drop onto a folder row moves or copies the file without leaving the
+    /// source listing; a paste or explicit "move to" still shows where it landed.
+    transfer_reveal: Cell<bool>,
     created_locations: RefCell<Vec<Location>>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
@@ -571,6 +577,7 @@ impl Browser {
             restoration_operation: Cell::new(false),
             archive_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
+            transfer_reveal: Cell::new(true),
             created_locations: RefCell::new(Vec::new()),
             undo_claim: RefCell::new(None),
             next_request: Cell::new(1),
@@ -1274,17 +1281,28 @@ impl Browser {
     }
 
     pub fn select_all(&self, depth: usize) {
-        let count = self
+        let show_hidden = self
+            .column_preferences(depth)
+            .unwrap_or_else(|| self.preferences())
+            .show_hidden;
+        let positions: Vec<usize> = self
             .state
             .borrow()
             .columns
             .get(depth)
-            .map_or(0, |column| column.entries.len());
-        if count == 0 {
+            .map(|column| {
+                column
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+                    .map(|(position, _)| position)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let Some(&focused) = positions.last() else {
             return;
-        }
-        let positions: Vec<_> = (0..count).collect();
-        let focused = count - 1;
+        };
         self.commit_selection();
         if self
             .state
@@ -1433,6 +1451,7 @@ impl Browser {
         destination: Location,
         items: Vec<PasteItem>,
         move_sources: bool,
+        reveal: bool,
     ) {
         if items.is_empty() {
             return;
@@ -1446,6 +1465,7 @@ impl Browser {
         let request_id = self.begin_operation();
         self.transfer_operation.set(Some(move_sources));
         self.transfer_destination.replace(Some(destination.clone()));
+        self.transfer_reveal.set(reveal);
         self.emit(BrowserEvent::TransferStarted {
             total: items.len(),
             moving: move_sources,
@@ -1888,6 +1908,7 @@ impl Browser {
             let restoring = browser.restoration_operation.replace(false);
             let archiving = browser.archive_operation.replace(false);
             let destination = browser.transfer_destination.replace(None);
+            let reveal = browser.transfer_reveal.replace(true);
             let deferred_file_operation_changes = if deleting || restoring {
                 browser.deferred_file_operation_changes.take()
             } else {
@@ -1906,7 +1927,6 @@ impl Browser {
                 _ => 0,
             };
             let file_operation_refreshed = (deleting || restoring)
-                && !matches!(&event, OperationEvent::Cancelled { .. })
                 && browser.flush_deferred_file_operation_changes(
                     deferred_file_operation_changes,
                     completed_changes > MAX_INCREMENTAL_OPERATION_UPDATES,
@@ -2005,7 +2025,9 @@ impl Browser {
                 });
             }
             if deleting {
-                browser.emit(BrowserEvent::DeletionFinished);
+                browser.emit(BrowserEvent::DeletionFinished {
+                    succeeded: matches!(&event, OperationEvent::Deleted { .. }),
+                });
             }
             if restoring {
                 browser.emit(BrowserEvent::RestorationFinished);
@@ -2067,8 +2089,13 @@ impl Browser {
                     if rename {
                         browser.emit(BrowserEvent::RenameAbandoned { request_id });
                     }
-                    let mut affected_locations = refresh_locations.clone();
-                    affected_locations.extend(result.affected_locations);
+                    let affected_locations = if file_operation_refreshed {
+                        HashSet::new()
+                    } else {
+                        let mut locations = refresh_locations.clone();
+                        locations.extend(result.affected_locations);
+                        locations
+                    };
                     if archiving {
                         browser.emit(BrowserEvent::ArchiveCompleted {
                             select_name: String::new(),
@@ -2106,7 +2133,8 @@ impl Browser {
                             browser.refresh_columns_at(location);
                         }
                     }
-                    if undoing.is_none()
+                    if reveal
+                        && undoing.is_none()
                         && browser.validation_generation.get() == navigation_generation
                         && browser.active_location() == origin
                         && !reveal_locations.is_empty()

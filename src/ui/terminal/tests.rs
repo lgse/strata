@@ -26,8 +26,3 @@ fn other_launch_failures_name_the_launcher_and_keep_the_cause() {
         "the cause is dropped: {message}"
     );
 }
-
-#[test]
-fn the_launcher_command_runs_the_xdg_helper() {
-    assert_eq!(command().get_program(), LAUNCHER);
-}

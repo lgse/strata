@@ -701,6 +701,72 @@ fn reload_clears_the_resolved_delete_capability() {
 }
 
 #[test]
+fn reload_restores_a_multi_selection_after_snapshot() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+
+    state.reload_column(0, RequestId(2));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+                named_entry("/fixture/charlie", "charlie"),
+            ],
+        ),
+        Some(0)
+    );
+
+    assert_eq!(state.selected_positions(0), [0, 2]);
+    assert_eq!(state.active_focus(), Some((0, Some(2))));
+}
+
+#[test]
+fn reload_does_not_select_an_unselected_focus() {
+    for positions in [vec![], vec![0, 1]] {
+        let mut state = NavigationState::default();
+        listing_without_a_load_cursor(&mut state);
+        assert!(state.set_selection(0, &positions, Some(2)));
+        state.reload_column(0, RequestId(2));
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+                named_entry("/fixture/charlie", "charlie"),
+            ],
+        );
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(state.active_focus(), Some((0, Some(2))));
+    }
+}
+
+#[test]
+fn reload_drops_selection_members_that_left_the_listing() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+
+    state.reload_column(0, RequestId(2));
+    assert_eq!(
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+            ],
+        ),
+        Some(0)
+    );
+
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.active_focus(), Some((0, Some(0))));
+}
+
+#[test]
 fn navigation_availability_tracks_history_and_parent() {
     let mut state = NavigationState::default();
     assert!(!state.can_go_back());
@@ -1069,6 +1135,34 @@ fn names_that_differ_only_by_case_have_a_deterministic_order() {
         compare_display_names("Straße", "STRASSE"),
         Ordering::Greater
     );
+}
+
+#[test]
+fn numeric_suffixes_sort_naturally() {
+    for (left, right) in [
+        ("File 1", "File 2"),
+        ("File 2", "File 10"),
+        ("File 1", "File 10"),
+        ("File 99999999999999999999", "File 100000000000000000000"),
+        ("File 0002", "File 10"),
+        ("File 02", "File 2"),
+        ("File 0", "File 00"),
+        ("file 2 part 9", "File 2 part 10"),
+        ("Straße 2", "STRASSE 10"),
+        ("File 2", "File 2a"),
+    ] {
+        assert_eq!(
+            compare_display_names(left, right),
+            Ordering::Less,
+            "{left} < {right}"
+        );
+        assert_eq!(
+            compare_display_names(right, left),
+            Ordering::Greater,
+            "{right} > {left}"
+        );
+        assert_eq!(compare_display_names(left, left), Ordering::Equal);
+    }
 }
 
 #[test]

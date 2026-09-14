@@ -294,34 +294,40 @@ fn native_path_and_file_uri_of_the_same_directory_share_an_identity() {
     );
 }
 
-fn mounts_treating_as_nfs(path: &Path) -> MountTable {
+fn mounts_treating_as(path: &Path, fs_type: &str) -> MountTable {
+    let mount_point = path
+        .to_str()
+        .expect("UTF-8 fixture path")
+        .replace('\\', "\\134")
+        .replace(' ', "\\040")
+        .replace('\t', "\\011")
+        .replace('\n', "\\012");
     MountTable::parse(format!(
-        "1 0 0:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / {} rw - nfs4 server:/export rw\n",
-        path.display()
+        "1 0 0:1 / / rw - ext4 /dev/root rw\n\
+         2 1 0:2 / {mount_point} rw - {fs_type} fixture rw\n",
     ))
 }
 
 #[test]
-fn native_path_on_a_remote_mount_is_looked_up_asynchronously() {
+fn native_path_on_a_blocking_mount_is_looked_up_asynchronously() {
     let root = tempfile::tempdir().expect("tempdir");
     let dest = root.path().join("dest");
     let file = root.path().join("file");
     fs::create_dir(&dest).expect("dest");
     fs::write(&file, b"x").expect("file");
     let query = DropVolumeQuery::new(&Location::local(&dest), &[Location::local(&file)]);
-    let mounts = mounts_treating_as_nfs(root.path());
-    let (lookup, was_pending) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
-    assert!(
-        was_pending,
-        "a remote-mounted native path must not stat on the caller"
-    );
-    let lookup = lookup.expect("remote native lookup should resolve");
-    assert_eq!(lookup.relation, VolumeRelation::Same);
-    assert!(
-        lookup
-            .dest
-            .is_some_and(|identity| identity.backend == "file")
-    );
+    for fs_type in ["nfs4", "autofs"] {
+        let mounts = mounts_treating_as(root.path(), fs_type);
+        let (lookup, was_pending) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
+        assert!(was_pending, "{fs_type} must not stat on the caller");
+        let lookup = lookup.expect("asynchronous native lookup should resolve");
+        assert_eq!(lookup.relation, VolumeRelation::Same, "{fs_type}");
+        assert!(
+            lookup
+                .dest
+                .is_some_and(|identity| identity.backend == "file")
+        );
+    }
 }
 
 #[test]
@@ -337,7 +343,7 @@ fn network_mount_aliases_preserve_identity_and_plain_drop_move_policy() {
     fs::create_dir(nas.join("b")).expect("destination directory");
     fs::write(nas.join("a/file"), b"x").expect("source file");
     std::os::unix::fs::symlink(&nas, &alias).expect("mount alias");
-    let mounts = mounts_treating_as_nfs(&nas);
+    let mounts = mounts_treating_as(&nas, "nfs4");
 
     for (source_root, dest_root) in [(&nas, &alias), (&alias, &nas)] {
         let query = DropVolumeQuery::with_mounts(
@@ -384,14 +390,22 @@ fn mount_classification_does_not_override_native_filesystem_identity() {
     fs::create_dir(&remote).expect("remote");
     fs::create_dir(&local).expect("local");
     fs::write(local.join("file"), b"x").expect("file");
-    let query = DropVolumeQuery::new(
-        &Location::local(&remote),
-        &[Location::local(local.join("file"))],
-    );
-    let mounts = mounts_treating_as_nfs(&remote);
-    let (lookup, _) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
-    let lookup = lookup.expect("mixed lookup should resolve");
-    assert_eq!(lookup.relation, VolumeRelation::Same);
+    fs::write(remote.join("file"), b"x").expect("file");
+    for fs_type in ["nfs4", "autofs"] {
+        let mounts = mounts_treating_as(&remote, fs_type);
+        for (dest, source) in [(&remote, &local), (&local, &remote)] {
+            let query = DropVolumeQuery::with_mounts(
+                &Location::local(dest),
+                &[Location::local(source.join("file"))],
+                &mounts,
+            );
+            let (lookup, was_pending) =
+                resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
+            assert!(was_pending, "{fs_type} destination or source must be async");
+            let lookup = lookup.expect("mixed lookup should resolve");
+            assert_eq!(lookup.relation, VolumeRelation::Same, "{fs_type}");
+        }
+    }
 }
 
 fn local_only_mounts() -> MountTable {

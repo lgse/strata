@@ -147,7 +147,16 @@ See [the performance baseline](docs/performance-baseline.md) for recorded result
 - Follow the [unsafe code policy](docs/unsafe-code.md); never use `#[allow(unsafe_code)]`.
 - Preserve licensing and attribution for every new asset and dependency.
 
-See the [architecture principles](docs/architecture.md) and [work breakdown](docs/todo.md) before making structural changes.
+See the [architecture principles](docs/architecture.md) before making structural changes.
+Track planned work in GitHub issues rather than committed task checklists.
+
+For user-visible PRs, upload sanitized before/after screenshots or a short video
+through GitHub's description/comment editor and include the generated attachment
+links in the Visual evidence section. Keep review captures and reports out of Git;
+use local scratch or ignored `target/` paths while preparing them. The GitHub CLI
+can embed existing URLs, but `gh pr create`/`gh pr edit` do not upload local media.
+If an owner must complete the upload, explicitly mark the evidence as pending.
+Maintained README media and visual-regression test baselines remain versioned.
 
 ## Asset policy
 

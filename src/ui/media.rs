@@ -219,7 +219,12 @@ impl DecodedMedia {
 
     fn restart_at(&self, position: u64) {
         let imp = self.imp();
-        let tick = media::seek_tick(position, self.duration().max(1) as u64);
+        let duration = if self.duration() > 0 {
+            self.duration() as u64
+        } else {
+            imp.header.get().map_or(1, |header| header.duration_us)
+        };
+        let tick = media::seek_tick(position, duration);
         if let Some(session) = imp.session.borrow().as_ref() {
             session.cancel();
         }
@@ -385,11 +390,16 @@ impl DecodedMedia {
                         imp.resized.set(Some(Instant::now()));
                     }
                     if !self.is_prepared() {
+                        let known_duration = header.duration_us != media::MAX_DURATION_US;
                         self.stream_prepared(
                             header.audio,
                             header.width > 0,
-                            true,
-                            header.duration_us as i64,
+                            known_duration,
+                            if known_duration {
+                                header.duration_us as i64
+                            } else {
+                                0
+                            },
                         );
                     }
                 }
@@ -401,7 +411,7 @@ impl DecodedMedia {
                             / 1_000_000;
                         frame
                             .samples
-                            .truncate((samples_left as usize * 4).min(media::AUDIO_BYTES));
+                            .truncate(samples_left.min(media::AUDIO_BYTES as u64 / 4) as usize * 4);
                         if !frame.samples.is_empty() {
                             audio.push(
                                 std::mem::take(&mut frame.samples),

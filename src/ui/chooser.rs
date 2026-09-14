@@ -422,7 +422,22 @@ impl ChooserState {
         }
     }
 
+    fn selected_folder(&self) -> Option<PathBuf> {
+        let entries = self
+            .view
+            .selected_search_results()
+            .unwrap_or_else(|| self.view.browser().selected_entries());
+        if entries.len() == 1 && entries[0].is_directory() {
+            entries[0].location.native_path().map(Path::to_path_buf)
+        } else {
+            None
+        }
+    }
+
     fn active_folder(&self) -> Result<PathBuf, &'static str> {
+        if let Some(folder) = self.selected_folder() {
+            return Ok(folder);
+        }
         self.view
             .browser()
             .active_location()
@@ -823,7 +838,7 @@ fn build_chooser(
     sidebar_toggle.set_cursor_from_name(Some("pointer"));
     let location = view.location_widget();
     location.set_hexpand(true);
-    let appearance = build_appearance_menu(&view, &browser, theme.clone());
+    let appearance = build_appearance_menu(&view, &browser, theme.clone(), &preview);
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_content.set_hexpand(true);
     header_content.set_valign(gtk::Align::Center);
@@ -874,12 +889,7 @@ fn build_chooser(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    let measured_content = content.clone();
-    let measured_view = view.clone();
-    preview.attach_split(
-        &preview_split,
-        Rc::new(move || measured_content.position() + measured_view.preview_occupied_width()),
-    );
+    preview.attach_split(&preview_split, &content, &view);
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
     details.add_css_class("chooser-details");
@@ -1302,6 +1312,44 @@ fn install_shortcuts(
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focused = gtk::prelude::RootExt::focus(&state.window);
+        if focused
+            .as_ref()
+            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
+            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        {
+            return glib::Propagation::Proceed;
+        }
+        if super::window::is_context_menu_shortcut(key, modifiers)
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+            && state.view.open_focused_context_menu()
+        {
+            return glib::Propagation::Stop;
+        }
+        if state.view.item_view_has_focus()
+            && !state.view.new_entry_is_active()
+            && !state.view.rename_is_active()
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+            && preview.handle_video_key(key, modifiers)
+        {
+            return glib::Propagation::Stop;
+        }
+        // Filtered rows own navigation, not the hidden directory selection.
+        if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
+            && state.view.selected_search_results().is_some()
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+        {
+            state.window.set_focus_visible(true);
+            return glib::Propagation::Proceed;
+        }
         let original_key = key;
         let key = super::focus_navigation::navigation_key(
             key,
@@ -1365,7 +1413,7 @@ fn install_shortcuts(
                 state.view.cancel_location_edit();
                 return glib::Propagation::Stop;
             }
-            if preview.is_open() {
+            if preview.is_enabled() {
                 preview.close();
                 return glib::Propagation::Stop;
             }
@@ -1405,7 +1453,13 @@ fn install_shortcuts(
             )
             && let Some(entry) = state.view.selected_search_result()
         {
-            preview.toggle(preview_target(Some(entry)));
+            if state.view.activate_directory_column() {
+                return glib::Propagation::Stop;
+            }
+            preview.toggle(
+                preview_target(Some(entry)),
+                state.view.browser().active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if control
@@ -1494,6 +1548,23 @@ fn install_shortcuts(
             browser.toggle_hidden();
             return glib::Propagation::Stop;
         }
+        if key == gtk::gdk::Key::Delete
+            && !control
+            && !alt
+            && state.view.item_view_has_focus()
+            && !state.view.filter_has_focus()
+            && state.view.confirm_delete(shift)
+        {
+            return glib::Propagation::Stop;
+        }
+        if control
+            && !shift
+            && !alt
+            && let Some(mode) = super::window::browser_mode_for_digit(key)
+        {
+            super::window::apply_browser_mode(&state.view, &ThemeManager::shared(), mode);
+            return glib::Propagation::Stop;
+        }
         if control {
             return glib::Propagation::Proceed;
         }
@@ -1523,25 +1594,6 @@ fn install_shortcuts(
             if super::focus_navigation::editable(focused) {
                 return glib::Propagation::Proceed;
             }
-        }
-        if preview.has_video()
-            && state.view.item_view_has_focus()
-            && !alt
-            && !control
-            && !shift
-            && matches!(
-                key,
-                gtk::gdk::Key::space
-                    | gtk::gdk::Key::Up
-                    | gtk::gdk::Key::Down
-                    | gtk::gdk::Key::Left
-                    | gtk::gdk::Key::Right
-                    | gtk::gdk::Key::m
-                    | gtk::gdk::Key::M
-            )
-        {
-            preview.handle_video_key(key);
-            return glib::Propagation::Stop;
         }
         let mut header_left_boundary = false;
         if state.view.header_actions_have_focus() && !control && !alt {
@@ -1623,7 +1675,16 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !control && !alt {
-            preview.toggle(preview_target(browser.focused_entry()));
+            if !modifiers
+                .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
+                && state.view.activate_directory_column()
+            {
+                return glib::Propagation::Stop;
+            }
+            preview.toggle(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {

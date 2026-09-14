@@ -30,7 +30,7 @@ impl WindowContent {
     pub(super) fn new(window: &gtk::ApplicationWindow, preferences: &Rc<ThemeManager>) -> Self {
         let browser = super::browser_for_window();
         let preview = layout::preview(&browser, preferences);
-        let header = layout::Header::new(window, &browser, preferences);
+        let header = layout::Header::new(window, &browser, &preview, preferences);
         let sidebar = super::build_sidebar(browser.clone(), preferences.clone(), false);
         let root = layout::browser_layout(&browser, &preview, &sidebar, &header);
         let footer = layout::FooterBinding::new(window, &root, &browser, preferences);
@@ -59,6 +59,18 @@ impl WindowContent {
         install_browser_actions(window, &self.browser);
         let notice = settings::install(window, self, preferences);
         window.set_child(Some(&self.overlay));
+        let click_browser = self.browser.clone();
+        let click_window = window.clone();
+        let click = gtk::GestureClick::new();
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        click.connect_pressed(move |_, _, x, y| {
+            click_browser.dismiss_filter_on_outside_click(
+                click_window.upcast_ref::<gtk::Widget>(),
+                x,
+                y,
+            );
+        });
+        window.add_controller(click);
         input::install_edit_cancellation(window, &self.browser);
         super::install_modal_focus_trap(window);
         let top_bar = crate::ui::top_bar_navigation::TopBarNavigation::new(

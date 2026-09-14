@@ -170,7 +170,6 @@ pub(super) fn present_target(
             );
         });
     }
-    super::portal_preferences::schedule_offer(&window);
     schedule_due_update_check(&theme_manager, &update_notice);
     browser
 }
@@ -458,6 +457,24 @@ pub(super) fn is_sidebar_focus_shortcut(
         && matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
 }
 
+pub(super) fn is_context_menu_shortcut(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> bool {
+    let modifiers = modifiers
+        & (gtk::gdk::ModifierType::SHIFT_MASK
+            | gtk::gdk::ModifierType::CONTROL_MASK
+            | gtk::gdk::ModifierType::ALT_MASK
+            | gtk::gdk::ModifierType::SUPER_MASK
+            | gtk::gdk::ModifierType::HYPER_MASK
+            | gtk::gdk::ModifierType::META_MASK);
+    match key {
+        gtk::gdk::Key::Menu => modifiers.is_empty(),
+        gtk::gdk::Key::F10 => modifiers == gtk::gdk::ModifierType::SHIFT_MASK,
+        _ => false,
+    }
+}
+
 fn sidebar_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     match key {
         gtk::gdk::Key::Left => Some(gtk::DirectionType::Left),
@@ -526,6 +543,7 @@ pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
     preferences: Rc<super::theme::ThemeManager>,
+    preview: &super::preview::PreviewDrawer,
 ) -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("appearance-menu");
@@ -622,6 +640,35 @@ pub(super) fn build_appearance_menu(
     content.append(&columns);
     content.append(&icons);
     content.append(&list);
+    let (row, check, _) = appearance_row(
+        crate::assets::icons::EYE,
+        "Preview panel",
+        "Space",
+        preview.is_enabled(),
+    );
+    let preview_toggle = gtk::ToggleButton::builder()
+        .child(&row)
+        .has_frame(false)
+        .build();
+    preview_toggle.add_css_class("appearance-option");
+    preview_toggle.add_css_class("preview-panel-option");
+    super::accessibility::set_label(&preview_toggle, "Preview panel");
+    preview_toggle.set_tooltip_text(Some("Toggle preview panel while browsing (Space)"));
+    let actions = gio::SimpleActionGroup::new();
+    actions.add_action(&preview.action());
+    preview_toggle.insert_action_group("preview", Some(&actions));
+    preview_toggle.set_action_name(Some("preview.preview-panel"));
+    preview_toggle
+        .bind_property("active", &check, "visible")
+        .sync_create()
+        .build();
+    let closing = popover_weak.clone();
+    preview_toggle.connect_clicked(move |_| {
+        if let Some(popover) = closing.upgrade() {
+            popover.popdown();
+        }
+    });
+    content.append(&preview_toggle);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "DENSITY");
@@ -674,21 +721,37 @@ pub(super) fn build_appearance_menu(
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "TEXT SIZE");
-    let text_controls = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    for (label, tooltip, delta) in [
-        ("−", "Decrease text size (Ctrl+−)", -1),
-        ("+", "Increase text size (Ctrl++)", 1),
+    let text_controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    text_controls.add_css_class("appearance-text-size");
+    let sample = gtk::Label::new(Some("Aa"));
+    sample.add_css_class("appearance-text-sample");
+    text_controls.append(&sample);
+    let stepper = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    stepper.add_css_class("appearance-text-stepper");
+    stepper.set_hexpand(true);
+    stepper.set_halign(gtk::Align::End);
+    text_controls.append(&stepper);
+    for (icon, tooltip, delta) in [
+        (
+            crate::assets::icons::MINUS,
+            "Decrease text size (Ctrl+−)",
+            -1,
+        ),
+        (crate::assets::icons::PLUS, "Increase text size (Ctrl++)", 1),
     ] {
-        let button = gtk::Button::with_label(label);
-        button.add_css_class("appearance-option");
+        let image = crate::assets::primary_icon(icon, 16);
+        image.set_halign(gtk::Align::Center);
+        image.set_valign(gtk::Align::Center);
+        let button = gtk::Button::builder().child(&image).build();
+        button.add_css_class("appearance-text-step");
         button.set_tooltip_text(Some(tooltip));
         super::accessibility::set_label(&button, tooltip);
         let manager = preferences.clone();
         button.connect_clicked(move |_| manager.set_text_size(manager.text_size().stepped(delta)));
-        text_controls.append(&button);
+        stepper.append(&button);
     }
     let reset_size = gtk::Button::new();
-    reset_size.add_css_class("appearance-option");
+    reset_size.add_css_class("appearance-text-value");
     reset_size.set_hexpand(true);
     reset_size.set_tooltip_text(Some("Reset text size (Ctrl+0)"));
     preferences.bind_preference(&reset_size, ThemeManager::text_size, |widget, size| {
@@ -699,7 +762,7 @@ pub(super) fn build_appearance_menu(
     });
     let manager = preferences.clone();
     reset_size.connect_clicked(move |_| manager.set_text_size(super::theme::TextSize::default()));
-    text_controls.append(&reset_size);
+    stepper.insert_child_after(&reset_size, stepper.first_child().as_ref());
     content.append(&text_controls);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -789,6 +852,22 @@ fn appearance_option_with_shortcut(
     checked: bool,
     sensitive: bool,
 ) -> (gtk::Button, gtk::Image, gtk::Image) {
+    let (row, check, option) = appearance_row(icon, label, shortcut, checked);
+    let button = gtk::Button::builder()
+        .child(&row)
+        .sensitive(sensitive)
+        .build();
+    button.add_css_class("appearance-option");
+    button.set_has_frame(false);
+    (button, check, option)
+}
+
+fn appearance_row(
+    icon: &str,
+    label: &str,
+    shortcut: &str,
+    checked: bool,
+) -> (gtk::Box, gtk::Image, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(checked);
@@ -804,13 +883,7 @@ fn appearance_option_with_shortcut(
         row.append(&shortcut);
     }
     row.append(&check);
-    let button = gtk::Button::builder()
-        .child(&row)
-        .sensitive(sensitive)
-        .build();
-    button.add_css_class("appearance-option");
-    button.set_has_frame(false);
-    (button, check, option)
+    (row, check, option)
 }
 
 fn append_menu_heading(container: &gtk::Box, text: &str) {
@@ -885,7 +958,7 @@ fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents 
 fn event_changes_trash_contents(event: &BrowserEvent) -> bool {
     matches!(
         event,
-        BrowserEvent::DeletionFinished
+        BrowserEvent::DeletionFinished { .. }
             | BrowserEvent::RestorationFinished
             | BrowserEvent::TransferFinished { .. }
             | BrowserEvent::OperationCompletedWithErrors { .. }

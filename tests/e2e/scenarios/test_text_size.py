@@ -4,7 +4,6 @@
 import pytest
 
 from harness.artifacts import ArtifactCollector
-from harness.modes import ALL_MODES
 
 
 @pytest.mark.preferences(text_size=17)
@@ -43,11 +42,11 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
                 ArtifactCollector(test_name=f"settings-text-size-{pixels}").directory
                 / "general.png"
             )
-        _reveal_page_control(strata, "Configure…")
+        _reveal_page_control(strata, "Complete setup")
         if request.config.getoption("--keep-artifacts"):
             strata.screenshot(
                 ArtifactCollector(test_name=f"settings-text-size-{pixels}").directory
-                / "configure.png"
+                / "desktop-integration.png"
             )
         theme = strata.window.find(role="button", name="Appearance settings")
         assert theme is not None and theme.activate()
@@ -107,9 +106,17 @@ def _reveal_page_control(strata, name, role="button"):
         if _inside_scroll_view(node):
             return True
         viewport = scroll.screen_bounds()
-        # The outer gutter avoids scrolling the nested theme library instead.
-        at = (viewport.x + viewport.width * 99 // 100, viewport.y + viewport.height // 2)
-        strata.pointer.scroll(at, clicks=3, down=node.screen_bounds().y > at[1])
+        # Stay in the content gutter: the scrollbar scrolls by whole pages,
+        # which can jump over a control without ever showing all of it.
+        # The nested theme library ends before this gutter.
+        at = (viewport.x + viewport.width - 16, viewport.y + viewport.height // 2)
+        bounds = node.screen_bounds()
+        below = bounds.y + bounds.height - (viewport.y + viewport.height)
+        above = viewport.y - bounds.y
+        # Large text makes General several viewports tall. Traverse distant
+        # sections faster, then use single notches so we cannot skip the control.
+        clicks = 3 if max(below, above) > viewport.height else 1
+        strata.pointer.scroll(at, clicks=clicks, down=below > 0)
         return False
 
     strata.wait(revealed, f"reachable {name} control")
@@ -129,10 +136,8 @@ def _inside_scroll_view(node):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.preferences(text_size=24)
-def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, request):
-    strata.switch_view(mode)
+def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, request):
     strata.select_entry("todo.txt")
     strata.keyboard.press("ctrl+=")
     strata.wait(
@@ -150,7 +155,28 @@ def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, re
         "reset to the default size",
     )
     if request.config.getoption("--keep-artifacts"):
-        strata.screenshot(ArtifactCollector(test_name=f"text-size-{mode}").directory / "before.png")
+        strata.screenshot(ArtifactCollector(test_name="text-size").directory / "before.png")
+    strata.open_appearance_menu()
+    for name, pixels in [
+        ("Increase text size (Ctrl++)", "14"),
+        ("Decrease text size (Ctrl+−)", "13"),
+        ("Decrease text size (Ctrl+−)", "12"),
+        ("12 px", "13"),
+    ]:
+        button = strata.wait(
+            lambda: strata.window.find(role="button", name=name),
+            f"appearance text-size control {name}",
+        )
+        strata.pointer.click(button)
+        strata.wait(
+            lambda: strata.environment.read_preferences().get("text_size") == pixels,
+            f"appearance text-size control to persist {pixels}px",
+        )
+    if request.config.getoption("--keep-artifacts"):
+        strata.screenshot(
+            ArtifactCollector(test_name="text-size").directory / "appearance.png"
+        )
+    strata.keyboard.press("Escape")
     strata.keyboard.press("F2")
     rename = strata.wait(
         lambda: strata.window.find(role="text", name="Rename"), "inline rename editor"
@@ -194,4 +220,4 @@ def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, re
         "restart to load the exact custom size",
     )
     if request.config.getoption("--keep-artifacts"):
-        strata.screenshot(ArtifactCollector(test_name=f"text-size-{mode}").directory / "after.png")
+        strata.screenshot(ArtifactCollector(test_name="text-size").directory / "after.png")

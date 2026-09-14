@@ -34,6 +34,7 @@ KEYSYMS: dict[str, int] = {
     "F1": 0xFFBE,
     "F2": 0xFFBF,
     "F5": 0xFFC2,
+    "F10": 0xFFC7,
     "Menu": 0xFF67,
 }
 MODIFIER_KEYSYMS: dict[str, int] = {

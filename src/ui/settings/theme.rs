@@ -95,6 +95,19 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
         |widget, following| widget.set_sensitive(!following),
     );
     append_text_size_option(&content, &manager);
+    let effects = super::settings_group(&content, "EFFECTS");
+    let (row, toggle) = super::settings_option(
+        "Element glow",
+        "Show accent glow around dialogs, menus, and other elements.",
+        manager.element_glow(),
+    );
+    bind_switch(
+        &manager,
+        &toggle,
+        ThemeManager::element_glow,
+        ThemeManager::set_element_glow,
+    );
+    effects.append(&row);
     let motion = super::settings_group(&content, "MOTION");
     let (row, toggle) = super::settings_option(
         "Reduce motion",
@@ -257,6 +270,7 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     controls.append(&text_size_control);
     let text_size_row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     text_size_row.add_css_class("settings-option");
+    text_size_row.add_css_class("settings-text-size-row");
     super::search::tag(&text_size_row, "Text size");
     let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text_size_copy.set_hexpand(true);
@@ -268,12 +282,12 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     ));
     text_size_description.set_xalign(0.0);
     text_size_description.set_wrap(true);
+    text_size_description.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     text_size_description.add_css_class("settings-option-description");
-    let description = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    description.add_css_class("settings-inline-description");
+    let description = gtk::Box::new(gtk::Orientation::Vertical, 8);
     description.append(&text_size_description);
     let keys = super::wrap::WrapRow::new(6);
-    keys.add_css_class("settings-inline-keys");
+    keys.set_halign(gtk::Align::Start);
     keys.set_hexpand(false);
     keys.set_valign(gtk::Align::Center);
     for key in ["Ctrl", "+", "/", "−", "/", "0"] {
