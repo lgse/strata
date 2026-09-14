@@ -1081,6 +1081,39 @@ fn native_viewport_metadata_streams_multiple_chunks() -> Result<(), Box<dyn Erro
 }
 
 #[test]
+fn icon_details_cache_bounds_revisit_history_and_preserves_lru() {
+    let mut cache = IconDetailsCache::default();
+    let fingerprint = IconDetailsFingerprint {
+        size: 1,
+        modified_seconds: 1,
+        modified_nanoseconds: 0,
+        changed_seconds: 1,
+        changed_nanoseconds: 0,
+    };
+    let details = IconDetails {
+        image_dimensions: MetadataValue::Known((1, 1)),
+        child_count: MetadataValue::Unavailable,
+        duration_seconds: MetadataValue::Unavailable,
+    };
+    for index in 0..MAX_ICON_DETAILS_CACHE_ENTRIES {
+        cache.insert(
+            PathBuf::from(index.to_string()),
+            fingerprint,
+            details.clone(),
+        );
+    }
+    let revisited = Path::new("0");
+    for _ in 0..MAX_ICON_DETAILS_CACHE_ENTRIES * 5 {
+        assert!(cache.get(revisited, fingerprint).is_some());
+    }
+    assert!(cache.recent.len() <= MAX_ICON_DETAILS_CACHE_ENTRIES * 4);
+    cache.insert(PathBuf::from("new"), fingerprint, details);
+    assert!(cache.get(revisited, fingerprint).is_some());
+    assert!(cache.get(Path::new("1"), fingerprint).is_none());
+    assert_eq!(cache.entries.len(), MAX_ICON_DETAILS_CACHE_ENTRIES);
+}
+
+#[test]
 fn fill_image_file_extracts_dimensions() -> Result<(), Box<dyn Error>> {
     let root = unique_fixture_root("fill-image-dimensions");
     fs::create_dir_all(&root).expect("the fixture directory should be created");

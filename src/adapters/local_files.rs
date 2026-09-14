@@ -114,7 +114,9 @@ impl IconDetailsCache {
         self.generation = self.generation.saturating_add(1);
         cached.generation = self.generation;
         self.recent.push_back((path.to_path_buf(), self.generation));
-        Some(cached.details.clone())
+        let details = cached.details.clone();
+        self.compact_recent();
+        Some(details)
     }
 
     fn insert(&mut self, path: PathBuf, fingerprint: IconDetailsFingerprint, details: IconDetails) {
@@ -141,6 +143,10 @@ impl IconDetailsCache {
                 self.entries.remove(&oldest_path);
             }
         }
+        self.compact_recent();
+    }
+
+    fn compact_recent(&mut self) {
         if self.recent.len() > MAX_ICON_DETAILS_CACHE_ENTRIES * 4 {
             self.recent.retain(|(path, generation)| {
                 self.entries
