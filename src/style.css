@@ -3758,8 +3758,8 @@ colorchooser colorswatch overlay {
 .keyboard-navigation .file-list row:hover:not(:selected),
 .keyboard-navigation .file-list-mode row:hover:not(:selected),
 .keyboard-navigation .file-icons > child:hover:not(:selected),
-.keyboard-navigation .file-icons > child .icons-card.content-hover .icons-card-icon-frame,
-.keyboard-navigation .file-icons > child .icons-card.content-hover .icons-card-label {
+.keyboard-navigation .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-icon-frame,
+.keyboard-navigation .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-label {
   background: transparent;
   color: @theme_text;
 }
