@@ -683,10 +683,6 @@ fn escaped_restore_error() -> RestoreTargetError {
     )
 }
 
-/// The item's own parent no longer names the directory it was deleted from --
-/// something replaced it with a symlink, possibly to redirect the restore
-/// elsewhere on the same volume where the plain volume/mount checks below
-/// would not otherwise notice.
 fn symlinked_parent_error() -> RestoreTargetError {
     RestoreTargetError::new("The original location's parent is a symlink and cannot be restored.")
 }
