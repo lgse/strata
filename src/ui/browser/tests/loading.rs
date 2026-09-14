@@ -145,6 +145,10 @@ fn camera_first_batch_is_visible_before_discovery_finishes_in_every_view() {
                     settle();
                     assert_page(&panes, "content");
                     assert!(browser.column_snapshot(0).expect("camera root").loading);
+                    crate::ui::thumbnail::tests::complete_pending_thumbnail(std::path::Path::new(
+                        "gphoto2://camera/202606/IMG_0001.JPG",
+                    ));
+                    assert!(browser.column_snapshot(0).expect("camera root").loading);
                     let alternate = match mode {
                         BrowserMode::Columns => BrowserMode::List,
                         BrowserMode::List => BrowserMode::Icons,

@@ -28,6 +28,32 @@ use crate::{
 };
 use gtk::prelude::*;
 
+pub(crate) fn complete_pending_thumbnail(path: &Path) {
+    let (key, id) = PENDING_THUMBNAILS.with(|pending| {
+        pending
+            .borrow()
+            .iter()
+            .find(|(key, _)| key.path == path)
+            .map(|(key, pending)| (key.clone(), pending.id))
+            .expect("thumbnail admitted while indexing")
+    });
+    let targets = take_pending_targets(&key, id).expect("pending thumbnail targets");
+    let images = targets
+        .iter()
+        .filter_map(|target| target.image.upgrade())
+        .collect::<Vec<_>>();
+    assert!(!images.is_empty());
+    let pixels = glib::Bytes::from_owned(vec![255u8; 4]);
+    let texture = gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &pixels, 4).upcast();
+    THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().cancel(&key));
+    finish_thumbnail_targets(targets, Some(&texture), path);
+    assert!(
+        images
+            .iter()
+            .all(|image| super::displayed_thumbnail_matches(image, path))
+    );
+}
+
 fn key(index: usize) -> ThumbnailKey {
     ThumbnailKey {
         path: PathBuf::from(format!("image-{index}.png")),

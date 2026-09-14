@@ -128,6 +128,9 @@ impl Library {
                         request_id: request.id,
                         entries,
                     });
+                    if request.time_budget == Duration::MAX {
+                        crate::services::camera_preview::yield_after_batch(&request.location).await;
+                    }
                 }
                 if self.truncated && self.files == request.max_entries {
                     break;

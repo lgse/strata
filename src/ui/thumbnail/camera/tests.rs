@@ -75,6 +75,118 @@ fn camera_thumbnail_bindings_keep_duplicate_names_distinct_and_discard_stale_res
 }
 
 #[test]
+fn camera_previews_are_admitted_while_batch_updates_keep_rearming_the_viewport() {
+    crate::test_support::gtk_test(
+        "ui::thumbnail::camera::tests::camera_previews_are_admitted_while_batch_updates_keep_rearming_the_viewport",
+        || {
+            clear_thumbnail_runtime();
+            hold_thumbnail_workers();
+            let image = ThumbnailSlot::new(64);
+            let path = Path::new("gphoto2://camera/DCIM/admission.jpg");
+            set_thumbnail_for_path(ThumbnailRequest {
+                image: &image,
+                path,
+                kind: Some(ThumbnailKind::Camera),
+                modified: None,
+                file_size: None,
+                fallback_icon: crate::assets::icons::PICTURES,
+                icon_size: 32,
+                thumbnail_size: 64,
+                wait_for_metadata: false,
+            });
+            glib::MainContext::default()
+                .block_on(glib::future_with_timeout(
+                    Duration::from_millis(250),
+                    async {
+                        while !has_pending_thumbnail(path) {
+                            request_group_fire(0);
+                            glib::timeout_future(Duration::from_millis(10)).await;
+                        }
+                    },
+                ))
+                .expect("camera previews must not wait for indexing to stop updating the viewport");
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn camera_jobs_follow_visible_reading_order_instead_of_bind_order_and_reprioritize_on_scroll() {
+    crate::test_support::gtk_test(
+        "ui::thumbnail::camera::tests::camera_jobs_follow_visible_reading_order_instead_of_bind_order_and_reprioritize_on_scroll",
+        || {
+            clear_thumbnail_runtime();
+            hold_thumbnail_workers();
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let images = (0..8).map(|_| ThumbnailSlot::new(96)).collect::<Vec<_>>();
+            for image in &images {
+                content.append(image);
+            }
+            let viewport = gtk::ScrolledWindow::builder().child(&content).build();
+            let window = gtk::Window::builder()
+                .child(&viewport)
+                .default_width(300)
+                .default_height(300)
+                .build();
+            window.present();
+            glib::MainContext::default().block_on(glib::timeout_future(Duration::from_millis(100)));
+            let paths = (0..images.len())
+                .map(|index| PathBuf::from(format!("gphoto2://camera/DCIM/photo-{index}.jpg")))
+                .collect::<Vec<_>>();
+            for (image, path) in images.iter().zip(&paths).rev() {
+                set_thumbnail_for_path(ThumbnailRequest {
+                    image,
+                    path,
+                    kind: Some(ThumbnailKind::Camera),
+                    modified: None,
+                    file_size: None,
+                    fallback_icon: crate::assets::icons::PICTURES,
+                    icon_size: 32,
+                    thumbnail_size: 96,
+                    wait_for_metadata: false,
+                });
+            }
+            glib::MainContext::default().block_on(glib::timeout_future(Duration::from_millis(250)));
+            let order = || {
+                THUMBNAIL_QUEUE.with(|queue| {
+                    queue
+                        .borrow()
+                        .queued
+                        .iter()
+                        .map(|key| key.path.clone())
+                        .collect::<Vec<_>>()
+                })
+            };
+            assert_eq!(
+                order(),
+                paths,
+                "initial admission must prioritize the top, not reverse bind order"
+            );
+            let adjustment = viewport.vadjustment();
+            adjustment.set_value(adjustment.upper() - adjustment.page_size());
+            glib::MainContext::default().block_on(glib::timeout_future(Duration::from_millis(100)));
+            THUMBNAIL_QUEUE.with(|queue| prioritize_queue(&mut queue.borrow_mut().queued));
+            let reordered = order();
+            assert!(
+                reordered
+                    .iter()
+                    .position(|path| path == paths.last().expect("last photo"))
+                    .expect("last photo queued")
+                    < reordered
+                        .iter()
+                        .position(|path| path == &paths[0])
+                        .expect("first photo queued"),
+                "scrolling must move newly visible work ahead of offscreen work"
+            );
+            cancel_thumbnails_in(content.upcast_ref());
+            assert!(THUMBNAIL_QUEUE.with(|queue| queue.borrow().queued.is_empty()));
+            window.destroy();
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
 #[expect(
     unsafe_code,
     reason = "Verify the null content-type fixture through the underlying GIO contract"

@@ -560,7 +560,11 @@ fn park_thumbnail(
     if let Some(viewport) = viewport {
         hook_viewport(group, &viewport);
     }
-    fire_view_group(group);
+    if kind == ThumbnailKind::Camera {
+        request_group_fire(group);
+    } else {
+        fire_view_group(group);
+    }
 }
 
 #[cfg(test)]
@@ -591,6 +595,15 @@ fn request_group_fire(group: usize) {
         if settle.pending.is_empty() {
             return;
         }
+        let camera = settle
+            .pending
+            .iter()
+            .any(|park| park.kind == ThumbnailKind::Camera);
+        // New camera batches must not debounce previews until the scan's I/O
+        // pause expires. Collect one frame's binds, then admit the visible wave.
+        if camera && settle.timer.is_some() {
+            return;
+        }
         let overdue = settle
             .first_park
             .is_some_and(|first| first.elapsed() >= MAX_SETTLE_WAIT);
@@ -599,6 +612,8 @@ fn request_group_fire(group: usize) {
         }
         let delay = if overdue {
             Duration::ZERO
+        } else if camera {
+            Duration::from_millis(16)
         } else {
             THUMBNAIL_SETTLE_DELAY
         };
@@ -709,7 +724,13 @@ fn apply_live_thumbnail(target: PendingTarget, texture: gdk::Texture, path: Path
     crate::metrics::mark_thumbnail_applied();
 }
 
-fn fire_parks(drained: Vec<SettledPark>, viewport: Option<&gtk::ScrolledWindow>) {
+fn fire_parks(mut drained: Vec<SettledPark>, viewport: Option<&gtk::ScrolledWindow>) {
+    if drained
+        .iter()
+        .any(|park| park.kind == ThumbnailKind::Camera)
+    {
+        drained.sort_by_cached_key(|park| camera::priority(park.kind, &park.target));
+    }
     let mut eligible = 0;
     let mut started = false;
     for park in drained {
@@ -873,7 +894,13 @@ fn schedule_thumbnail(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTar
 }
 
 fn start_thumbnail_jobs() {
-    while let Some(key) = THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().begin_next()) {
+    while let Some(key) = THUMBNAIL_QUEUE.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        if queue.running < MAX_THUMBNAIL_WORKERS {
+            camera::prioritize_queue(&mut queue.queued);
+        }
+        queue.begin_next()
+    }) {
         let job = PENDING_THUMBNAILS.with(|pending| {
             pending.borrow().get(&key).map(|pending| ThumbnailJob {
                 id: pending.id,
@@ -892,6 +919,8 @@ fn start_thumbnail_jobs() {
 }
 
 async fn run_thumbnail_job(job: ThumbnailJob) {
+    let preview_turn = (job.kind == ThumbnailKind::Camera)
+        .then(|| crate::services::camera_preview::begin(&job.key.path.to_string_lossy()));
     let job_id = job.id;
     let key = job.key.clone();
     let path = key.path.clone();
@@ -943,6 +972,7 @@ async fn run_thumbnail_job(job: ThumbnailJob) {
             }
         }
     }
+    drop(preview_turn);
     start_thumbnail_jobs();
     retry_deferred_thumbnails();
     let counts = crate::metrics::thumbnail_counts();
@@ -964,7 +994,16 @@ fn retry_deferred_thumbnails() {
                         (*image_id, active.id, active.image.clone(), deferred.clone())
                     })
                 })
-                .min_by_key(|(_, request, _, _)| *request)
+                .min_by_key(|(image_id, request, image, deferred)| {
+                    camera::priority(
+                        deferred.kind,
+                        &PendingTarget {
+                            image_id: *image_id,
+                            request: *request,
+                            image: image.clone(),
+                        },
+                    )
+                })
         });
         let Some((image_id, request, image, deferred)) = deferred else {
             break;
@@ -1351,7 +1390,7 @@ fn cancel_thumbnail(image_id: usize) {
             queue.cancel(&key);
         }
     });
-    retry_deferred_thumbnails();
+    camera::retry_after_cancel();
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
@@ -1426,4 +1465,4 @@ pub(super) fn clear_thumbnail_runtime() {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
