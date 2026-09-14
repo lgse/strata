@@ -15,11 +15,15 @@ const MEDIA_PREVIEW: super::ParseOperation =
         width: 640,
         height: 800,
     });
+const PDF_PREVIEW: super::ParseOperation = super::ParseOperation::PreviewPdf(PdfRenderSize {
+    width: 640,
+    height: 800,
+});
 
 use super::{
-    Cancellation, MAX_RASTER_INPUT_BYTES, MediaPreviewBackend, ParseOperation, PrivateOutput,
-    gpu_devices, parse, polaris_gpu_available_at, resolve_renderer_executable, sandbox_command,
-    sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
+    Cancellation, MAX_RASTER_INPUT_BYTES, MediaPreviewBackend, ParseOperation, PdfRenderSize,
+    PrivateOutput, gpu_devices, parse, polaris_gpu_available_at, resolve_renderer_executable,
+    sandbox_command, sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
 };
 
 #[test]
@@ -146,7 +150,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Downloads/untrusted.pdf"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewPdf,
+        PDF_PREVIEW,
         2,
         MediaPreviewBackend::Software,
         &[],
@@ -166,11 +170,49 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
     assert!(joined.contains("--fsize=536870912"));
     assert!(joined.contains("--setenv MALLOC_ARENA_MAX 1"));
     assert!(joined.contains("--size 536870912 --tmpfs /tmp"));
+    assert!(joined.contains("preview-pdf /input.pdf /output/result.png 2:640x800 software"));
     // RLIMIT_NPROC counts every process owned by the host user, not just the
     // sandbox, and can prevent legitimate media decoders from starting.
     assert!(!joined.contains("--nproc"));
     assert!(!joined.contains("--ro-bind /home /home"));
     assert!(!joined.contains("--share-net"));
+}
+
+#[test]
+fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
+    let command = sandbox_command(
+        Path::new("/tmp/strata"),
+        Path::new("/home/alice/Videos/untrusted.mkv"),
+        Path::new("/tmp/private-output"),
+        ParseOperation::MediaMetadata,
+        0,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let arguments: Vec<_> = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect();
+    let joined = arguments.join(" ");
+    assert!(joined.contains("--unshare-all --die-with-parent --new-session --clearenv"));
+    assert!(joined.contains("--ro-bind /home/alice/Videos/untrusted.mkv /input.mkv"));
+    assert!(joined.contains("--as=2147483648 --cpu=10"));
+    assert!(joined.contains("media-metadata /input.mkv /output/result.json 0 software"));
+    assert!(!joined.contains("--dev-bind"));
+    assert!(!joined.contains("--share-net"));
+    assert!(
+        !arguments
+            .iter()
+            .any(|argument| argument == "/etc/alternatives"
+                || argument == "/home"
+                || argument == "/sys")
+    );
+    for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
+        for library in ["libblas.so.3", "liblapack.so.3"] {
+            let path = format!("/etc/alternatives/{library}-{architecture}");
+            assert!(joined.contains(&format!("--ro-bind-try {path} {path}")));
+        }
+    }
 }
 
 #[test]
@@ -464,12 +506,10 @@ fn accepts_only_bounded_png_outputs_and_never_compressed_media() {
     assert!(!valid_output(ParseOperation::ThumbnailImage, &png(257, 1)));
     assert!(valid_output(ParseOperation::PreviewImage, &png(800, 800)));
     assert!(!valid_output(ParseOperation::PreviewImage, &png(801, 1)));
-    assert!(valid_output(ParseOperation::PreviewPdf, &png(1_400, 1_785)));
-    assert!(!valid_output(
-        ParseOperation::PreviewPdf,
-        &png(1_400, 1_800)
-    ));
-    assert!(!valid_output(ParseOperation::PreviewPdf, &png(0, 100)));
+    assert!(valid_output(PDF_PREVIEW, &png(640, 800)));
+    assert!(!valid_output(PDF_PREVIEW, &png(641, 799)));
+    assert!(!valid_output(PDF_PREVIEW, &png(640, 801)));
+    assert!(!valid_output(PDF_PREVIEW, &png(0, 100)));
     assert!(!valid_output(
         ParseOperation::PreviewImage,
         b"\x89PNG\r\n\x1a\n"

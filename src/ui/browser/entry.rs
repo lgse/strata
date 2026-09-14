@@ -2,7 +2,7 @@
 
 use crate::model::{EntryKind, FileEntry};
 use crate::services::{
-    PreviewContent, content_family, fold_for_search, has_plain_text_extension,
+    PreviewContent, content_family, filter_name_matches, fold_for_search, has_plain_text_extension,
     is_extensionless_dotfile,
 };
 use gtk::gio;
@@ -57,9 +57,11 @@ pub(super) fn entry_supports_printing(entry: &FileEntry) -> bool {
         return false;
     }
 
-    let (content_type, _) =
+    let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+    // An uncertain name guess defers to the loader, which resolves the file's content type.
     matches!(content_family(&content_type), PreviewContent::Text { .. })
+        || (uncertain && matches!(content_family(&content_type), PreviewContent::Unsupported))
         || (entry.location.native_path().is_some()
             && matches!(
                 content_family(&content_type),
@@ -191,7 +193,8 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
 /// `query` must already be folded through `fold_for_search` by the caller.
 pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool {
     (show_hidden || !model_is_hidden(value))
-        && (query.is_empty() || fold_for_search(model_display_name(value)).contains(query))
+        && (query.is_empty()
+            || filter_name_matches(&fold_for_search(model_display_name(value)), query))
 }
 
 pub(super) fn icon_for_name(name: &str) -> &'static str {
@@ -201,10 +204,10 @@ pub(super) fn icon_for_name(name: &str) -> &'static str {
     match extension.as_deref() {
         Some("sh" | "bash" | "zsh" | "fish") => crate::assets::icons::TERMINAL,
         Some(
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "tif" | "tiff"
-            | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
-            | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
-            | "x3f",
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "heic" | "heif"
+            | "jxl" | "tif" | "tiff" | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf"
+            | "kdc" | "mef" | "mos" | "mrw" | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2"
+            | "rwl" | "sr2" | "srf" | "srw" | "x3f",
         ) => crate::assets::icons::PICTURES,
         Some("mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v") => crate::assets::icons::VIDEOS,
         Some("zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst") => {

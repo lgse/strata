@@ -296,7 +296,7 @@ fn chooser_context_menus_and_rename_work_in_every_view() {
                 "newly selected item keeps menu focus"
             );
             let buttons = menu_buttons(&state);
-            assert_eq!(buttons.len(), 2);
+            assert_eq!(buttons.len(), 4);
             buttons[1].emit_clicked();
             wait_until(|| visible_modal_layer(&state.window).is_some());
             key("Escape");
@@ -357,7 +357,7 @@ fn chooser_context_menus_and_rename_work_in_every_view() {
             assert!(!state.view.rename_is_active());
             right_click(&state, false);
             let buttons = menu_buttons(&state);
-            assert_eq!(buttons.len(), 2);
+            assert_eq!(buttons.len(), 4);
             assert!(!buttons[0].is_sensitive());
             buttons[1].emit_clicked();
             wait_until(|| visible_modal_layer(&state.window).is_some());

@@ -130,6 +130,9 @@ impl SidebarState {
             trash_probe_running: Cell::new(false),
             trash_probe_pending: Cell::new(false),
             local_only,
+            pending_scroll: Cell::new(None),
+            rebuild_queued: Cell::new(false),
+            scroll_restore_queued: Cell::new(false),
         })
     }
 
@@ -222,11 +225,14 @@ fn connect_device_changes(
         monitor.connect_volume_added(rebuild_on_change(state)),
         monitor.connect_volume_removed(rebuild_on_change(state)),
         monitor.connect_volume_changed(rebuild_on_change(state)),
+        monitor.connect_drive_connected(rebuild_on_change(state)),
+        monitor.connect_drive_disconnected(rebuild_on_change(state)),
+        monitor.connect_drive_changed(rebuild_on_change(state)),
     ];
     let weak = Rc::downgrade(state);
     let mount_handler = state.mount_monitor.connect_mounts_changed(move |_| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.queue_rebuild();
         }
     });
     (handlers, mount_handler)
@@ -238,7 +244,7 @@ fn rebuild_on_change<T: 'static>(
     let weak = Rc::downgrade(state);
     move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.queue_rebuild();
         }
     }
 }

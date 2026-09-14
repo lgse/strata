@@ -90,6 +90,74 @@ fn filter_queries_keep_matches_near_the_end() {
 }
 
 #[test]
+fn wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync() {
+    crate::test_support::gtk_test(
+        "ui::browser::collection::tests::wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync",
+        || {
+            let source = mapped_source(&[
+                "fv\tclip.MOV.bak",
+                "fv\tclip.MOV",
+                "fh\t.hidden.MOV",
+                "fv\tclip.MOV.backup",
+                "fv\tIMG_001.jpg",
+            ]);
+            let query = Rc::new(RefCell::new(String::new()));
+            let show_hidden = Rc::new(Cell::new(false));
+            let filter = super::super::entry::entry_filter(show_hidden.clone(), query.clone());
+            let model = gtk::FilterListModel::new(Some(source.clone()), Some(filter.clone()));
+            let map = ViewMap::new(
+                query.clone(),
+                show_hidden,
+                Rc::new(Cell::new(1)),
+                source.clone(),
+                model.clone(),
+                None,
+            );
+            // Appending a star broadens an anchored suffix; deleting the first star
+            // changes to substring matching and can both add and remove rows.
+            for (text, expected) in [
+                ("*.MOV", vec![1]),
+                ("*.MOV.b", vec![]),
+                ("*.MOV.b*", vec![0, 3]),
+                ("*.MOV.b", vec![]),
+                (".MOV.b", vec![0, 3]),
+                ("*", vec![0, 1, 3, 4]),
+                ("", vec![0, 1, 3, 4]),
+            ] {
+                notify_filter_query(&filter, &query, text.into());
+                assert_eq!(model.n_items() as usize, expected.len(), "{text}");
+                for (visible, source_position) in expected.iter().enumerate() {
+                    let visible = visible as u32;
+                    assert_eq!(
+                        map.source_position(visible),
+                        Some(*source_position),
+                        "{text}"
+                    );
+                    assert_eq!(map.view_position(*source_position), Some(visible), "{text}");
+                    assert_eq!(
+                        model
+                            .item(visible)
+                            .and_downcast::<gtk::StringObject>()
+                            .expect("visible filename")
+                            .string()
+                            .as_str(),
+                        source
+                            .value(*source_position as u32)
+                            .expect("source filename"),
+                        "{text}",
+                    );
+                }
+                for position in 0..source.n_items() as usize {
+                    if !expected.contains(&position) {
+                        assert_eq!(map.view_position(position), None, "{text}");
+                    }
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn filter_change_for_classifies_tightening_and_loosening() {
     assert_eq!(filter_change_for("", "a"), gtk::FilterChange::MoreStrict);
     assert_eq!(filter_change_for("a", "ab"), gtk::FilterChange::MoreStrict);

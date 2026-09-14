@@ -192,7 +192,8 @@ size itself, so that match is the control that stops a ZIP member lying about it
 The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
 output for non-directory entries, including links. It is not a complete archive-entry model;
 native names and entry-type semantics belong in the decoder compatibility evaluation. Format
-libraries and compression behavior remain unchanged. Archive unit tests sit in each module's
+libraries remain behind the adapter boundary. See [archive creation](archives.md) for
+container-specific encoding, classification and cancellation behavior. Archive unit tests sit in each module's
 adjacent `tests.rs`; provider-level tests remain in `archive/tests.rs`, with shared test-only builders
 in `fixtures.rs`.
 

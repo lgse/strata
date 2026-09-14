@@ -62,7 +62,7 @@ fn four_slots_backpressure_cancellation_and_repeated_teardown_are_bounded() {
         width: 16,
         height: 16,
         audio: true,
-        duration_us: crate::media::LIMIT_US,
+        duration_us: 60_000_000,
         start_tick: 0,
     };
     for _ in 0..30 {
@@ -110,6 +110,7 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
         path: "/unused".into(),
         size: crate::services::MediaPreviewSize::new(16, 16),
         backend: MediaPreviewBackend::Software,
+        input_owner: None,
     };
     let h = Header {
         width: 1,

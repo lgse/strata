@@ -33,6 +33,7 @@ impl Header {
     pub(super) fn new(
         window: &gtk::ApplicationWindow,
         browser: &BrowserView,
+        preview: &PreviewDrawer,
         preferences: &Rc<ThemeManager>,
     ) -> Self {
         let widget = gtk::HeaderBar::new();
@@ -47,7 +48,8 @@ impl Header {
         let location = browser.location_widget();
         location.set_hexpand(true);
         let search = header_action(icons::SEARCH, "Search (Ctrl+K)");
-        let appearance = build_appearance_menu(browser, &browser.browser(), preferences.clone());
+        let appearance =
+            build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
         let close = header_action(icons::X, "Close window");
         let closing_window = window.clone();
@@ -118,11 +120,7 @@ pub(super) fn browser_layout(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    let measured_browser = browser.clone();
-    preview.attach_split(
-        &preview_split,
-        Rc::new(move || content.position() + measured_browser.preview_occupied_width()),
-    );
+    preview.attach_split(&preview_split, &content, browser);
     root.append(&preview_split);
     root
 }

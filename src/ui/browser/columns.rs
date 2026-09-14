@@ -28,7 +28,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-pub(super) const COLUMN_WIDTH: i32 = 300;
+pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
 const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 
@@ -69,6 +69,7 @@ impl PendingPointerActivation {
 #[derive(Clone)]
 pub(super) struct ColumnView {
     pub(super) shell: gtk::Box,
+    pub(super) reveal_button: gtk::Button,
     pub(super) destination_hint: gtk::Label,
     pub(super) animation_generation: Rc<Cell<u64>>,
     pub(super) presentation: LoadPresentation,
@@ -355,6 +356,12 @@ pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     } else {
         row.remove_css_class("cut");
     }
+    if let Some(icon) = row
+        .first_child()
+        .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+    {
+        icon.set_cut(cut);
+    }
 }
 
 fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {
@@ -395,25 +402,6 @@ pub(in crate::ui) fn max_child_natural_width(widget: &gtk::Widget) -> i32 {
         child = c.next_sibling();
     }
     max_natural
-}
-
-fn horizontal_reveal_target(
-    current: f64,
-    page_size: f64,
-    lower: f64,
-    upper: f64,
-    item_left: f64,
-    item_right: f64,
-) -> f64 {
-    let viewport_right = current + page_size;
-    let target = if item_right > viewport_right {
-        item_right - page_size
-    } else if item_left < current {
-        item_left
-    } else {
-        current
-    };
-    target.clamp(lower, (upper - page_size).max(lower))
 }
 
 fn animate_horizontal_scroll(
@@ -498,7 +486,12 @@ impl ViewState {
                 cancel_column_spinner(column);
                 column.spinner.set_visible(true);
                 column.spinner.start();
-                column.presentation.show_loading();
+                if snapshot.count > 0 && snapshot.location.is_camera_photo_root() {
+                    column.presentation.show_content();
+                    set_column_busy(column, false);
+                } else {
+                    column.presentation.show_loading();
+                }
             } else {
                 // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
                 stop_column_spinner(column);
@@ -1174,6 +1167,43 @@ impl ViewState {
         column.append(&destination_hint);
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+
+        // Focus may be unset during transfer; inspect its destination at idle.
+        let filter_button_for_blur = filter_button.clone();
+        let shell_for_blur = shell.downgrade();
+        let filter_focus = gtk::EventControllerFocus::new();
+        filter_focus.connect_leave(move |controller| {
+            let Some(widget) = controller.widget() else {
+                return;
+            };
+            let shell_for_blur = shell_for_blur.clone();
+            let filter_button_for_blur = filter_button_for_blur.clone();
+            glib::idle_add_local_once(move || {
+                let Some(shell) = shell_for_blur.upgrade() else {
+                    return;
+                };
+                let Some(root) = widget.root() else {
+                    return;
+                };
+                // Result dialogs must retain the query for restoration after dismissal.
+                if root
+                    .downcast_ref::<gtk::Window>()
+                    .is_some_and(|window| crate::ui::window::visible_modal_layer(window).is_some())
+                {
+                    return;
+                }
+                let left_column = root.focus().is_some_and(|focused| {
+                    !focused.is_ancestor(&shell)
+                        && focused != shell.clone().upcast::<gtk::Widget>()
+                        && focused.ancestor(gtk::Popover::static_type()).is_none()
+                });
+                if left_column {
+                    filter_button_for_blur.set_active(false);
+                }
+            });
+        });
+        shell.add_controller(filter_focus);
+
         shell.set_size_request(COLUMN_WIDTH, -1);
         let previous_scale = Cell::new(1.0);
         crate::ui::theme::ThemeManager::shared().bind_interface_scale(
@@ -1251,6 +1281,25 @@ impl ViewState {
         resize_handle.set_halign(gtk::Align::End);
         resize_handle.set_valign(gtk::Align::Fill);
         column_overlay.add_overlay(&resize_handle);
+        let reveal_button = gtk::Button::new();
+        reveal_button.add_css_class("column-peek-target");
+        reveal_button.set_focusable(false);
+        reveal_button.set_focus_on_click(false);
+        reveal_button.set_cursor_from_name(Some("pointer"));
+        reveal_button.set_visible(false);
+        crate::ui::accessibility::set_label(
+            &reveal_button,
+            &format!("Reveal {} column", location.display_name()),
+        );
+        reveal_button.set_tooltip_text(Some(&format!("Reveal {}", location.display_path())));
+        let weak = Rc::downgrade(self);
+        let revealed_location = location.clone();
+        reveal_button.connect_clicked(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.reveal_column_only(depth, &revealed_location);
+            }
+        });
+        column_overlay.add_overlay(&reveal_button);
         let animation_generation = Rc::new(Cell::new(0));
         let previous = depth
             .checked_sub(1)
@@ -1260,6 +1309,7 @@ impl ViewState {
             .insert_child_after(&shell, previous.as_ref());
         self.columns.borrow_mut().push(ColumnView {
             shell: shell.clone(),
+            reveal_button,
             destination_hint,
             animation_generation: animation_generation.clone(),
             presentation,
@@ -1380,16 +1430,19 @@ impl ViewState {
             if measured_shell.width() <= 0 || adjustment.page_size() <= 0.0 {
                 return glib::ControlFlow::Continue;
             }
-            let Some(bounds) = measured_shell.compute_bounds(&state.columns_widget) else {
-                return glib::ControlFlow::Continue;
+            let depth = state
+                .columns
+                .borrow()
+                .iter()
+                .position(|column| column.shell == measured_shell);
+            let Some(span) = depth.and_then(|depth| state.column_span(depth)) else {
+                return glib::ControlFlow::Break;
             };
-            let target = horizontal_reveal_target(
+            let target = span.reveal_target(
                 adjustment.value(),
                 adjustment.page_size(),
                 adjustment.lower(),
                 adjustment.upper(),
-                f64::from(bounds.x()),
-                f64::from(bounds.x() + bounds.width()),
             );
             animate_horizontal_scroll(
                 &state.scroller,
@@ -1403,6 +1456,7 @@ impl ViewState {
     }
 
     pub(super) fn truncate(self: &Rc<Self>, len: usize) {
+        self.columns_widget.set_margin_end(0);
         cancel_source(&self.pending_peek);
         self.peek_anchor.take();
         self.close_peek_visual();
@@ -1445,8 +1499,11 @@ impl ViewState {
     }
 }
 
+mod reveal;
 mod rows;
 mod search;
+
+pub(super) use reveal::ColumnSpan;
 
 #[cfg(test)]
 mod tests;

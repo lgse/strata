@@ -701,6 +701,72 @@ fn reload_clears_the_resolved_delete_capability() {
 }
 
 #[test]
+fn reload_restores_a_multi_selection_after_snapshot() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+
+    state.reload_column(0, RequestId(2));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+                named_entry("/fixture/charlie", "charlie"),
+            ],
+        ),
+        Some(0)
+    );
+
+    assert_eq!(state.selected_positions(0), [0, 2]);
+    assert_eq!(state.active_focus(), Some((0, Some(2))));
+}
+
+#[test]
+fn reload_does_not_select_an_unselected_focus() {
+    for positions in [vec![], vec![0, 1]] {
+        let mut state = NavigationState::default();
+        listing_without_a_load_cursor(&mut state);
+        assert!(state.set_selection(0, &positions, Some(2)));
+        state.reload_column(0, RequestId(2));
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+                named_entry("/fixture/charlie", "charlie"),
+            ],
+        );
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(state.active_focus(), Some((0, Some(2))));
+    }
+}
+
+#[test]
+fn reload_drops_selection_members_that_left_the_listing() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.set_selection(0, &[0, 2], Some(2)));
+
+    state.reload_column(0, RequestId(2));
+    assert_eq!(
+        state.install_snapshot(
+            RequestId(2),
+            vec![
+                named_entry("/fixture/alpha", "alpha"),
+                named_entry("/fixture/bravo", "bravo"),
+            ],
+        ),
+        Some(0)
+    );
+
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.active_focus(), Some((0, Some(0))));
+}
+
+#[test]
 fn navigation_availability_tracks_history_and_parent() {
     let mut state = NavigationState::default();
     assert!(!state.can_go_back());

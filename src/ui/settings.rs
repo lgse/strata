@@ -206,6 +206,7 @@ const DIALOG_MARGIN: i32 = 24;
 const COMPACT_NAVIGATION_BREAKPOINT: i32 = 900;
 // Reflow the content before collapsing navigation: desktop toolbars need more room.
 const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
+const STACK_TEXT_SIZE_BREAKPOINT: i32 = 600;
 
 mod responsive_bin {
     use super::*;
@@ -326,7 +327,11 @@ mod responsive_bin {
                     }
                 }
             }
-            reflow_settings(&child, compact_content);
+            reflow_settings(
+                &child,
+                compact_content,
+                logical_width < f64::from(STACK_TEXT_SIZE_BREAKPOINT),
+            );
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
             let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
@@ -405,7 +410,7 @@ impl ResponsiveBin {
     }
 }
 
-fn reflow_settings(widget: &gtk::Widget, compact: bool) {
+fn reflow_settings(widget: &gtk::Widget, compact: bool, stack_text_size: bool) {
     if widget.has_css_class("settings-dialog") {
         if compact {
             widget.add_css_class("compact");
@@ -429,7 +434,13 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
         let switch_row = row
             .last_child()
             .is_some_and(|child| child.is::<gtk::Switch>());
-        let orientation = if compact && !switch_row {
+        // Short numeric controls can stay beside wrapping copy after other rows stack.
+        let stack_row = if row.has_css_class("settings-text-size-row") {
+            stack_text_size
+        } else {
+            compact
+        };
+        let orientation = if stack_row && !switch_row {
             gtk::Orientation::Vertical
         } else {
             gtk::Orientation::Horizontal
@@ -444,7 +455,18 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
     {
         row.set_end_align(!compact);
     }
-    if widget.has_css_class("theme-appearance-filter") {
+    if widget.has_css_class("settings-integration-actions")
+        && let Some(actions) = widget.downcast_ref::<gtk::Box>()
+    {
+        actions.set_orientation(if compact {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
+    }
+    if widget.has_css_class("theme-appearance-filter")
+        || widget.has_css_class("settings-integration-actions")
+    {
         widget.set_halign(if compact {
             gtk::Align::Fill
         } else {
@@ -488,7 +510,7 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
     let mut child = widget.first_child();
     while let Some(next) = child {
         child = next.next_sibling();
-        reflow_settings(&next, compact);
+        reflow_settings(&next, compact, stack_text_size);
     }
 }
 
@@ -2185,10 +2207,8 @@ fn aur_update_action_label() -> &'static str {
     }
 }
 
-fn aur_update_command(helper: &str, package: &str) -> Command {
-    let mut command = terminal::command();
-    command.args(["--", helper, "-Syu", package]);
-    command
+fn aur_update_command(terminal: &terminal::Terminal, helper: &str, package: &str) -> Command {
+    terminal.exec_command(&[helper, "-Syu", package])
 }
 
 fn launch_aur_update() -> Result<&'static str, String> {
@@ -2196,10 +2216,13 @@ fn launch_aur_update() -> Result<&'static str, String> {
         .managed()
         .ok_or_else(|| "missing package metadata".to_owned())?;
     if let Some((helper, package)) = managed.aur_update_target() {
-        return aur_update_command(helper, package)
+        let Some(terminal) = terminal::Terminal::resolve() else {
+            return Err(terminal::no_terminal_message());
+        };
+        return aur_update_command(&terminal, helper, package)
             .spawn()
             .map(|_child| "AUR update opened in your terminal.")
-            .map_err(|error| terminal::launch_failure(&error));
+            .map_err(|error| terminal.launch_failure(&error));
     }
     let package = managed
         .package()
@@ -2210,17 +2233,18 @@ fn launch_aur_update() -> Result<&'static str, String> {
         .map_err(|error| error.to_string())
 }
 
-fn omarchy_update_command() -> Command {
-    let mut command = terminal::command();
-    command.args(["--", "omarchy", "update"]);
-    command
+fn omarchy_update_command(terminal: &terminal::Terminal) -> Command {
+    terminal.exec_command(&["omarchy", "update"])
 }
 
 fn launch_omarchy_update() -> Result<(), String> {
-    omarchy_update_command()
+    let Some(terminal) = terminal::Terminal::resolve() else {
+        return Err(terminal::no_terminal_message());
+    };
+    omarchy_update_command(&terminal)
         .spawn()
         .map(|_child| ())
-        .map_err(|error| terminal::launch_failure(&error))
+        .map_err(|error| terminal.launch_failure(&error))
 }
 
 fn or_unknown(value: Option<String>) -> String {
@@ -2543,7 +2567,17 @@ fn control_row(title: &str, description: &str, control: &impl IsA<gtk::Widget>) 
 fn indent_row(row: &gtk::Box) {
     let arrow = crate::assets::primary_icon(icons::CORNER_DOWN_RIGHT, 18);
     arrow.add_css_class("settings-indent");
-    row.prepend(&arrow);
+    arrow.set_valign(gtk::Align::Center);
+    // Keep the dependency marker with its heading when the control stacks below.
+    if let Some(copy) = row.first_child().and_downcast::<gtk::Box>()
+        && let Some(title) = copy.first_child()
+    {
+        copy.remove(&title);
+        let heading = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        heading.append(&arrow);
+        heading.append(&title);
+        copy.prepend(&heading);
+    }
     row.add_css_class("settings-dependent");
 }
 

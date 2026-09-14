@@ -6,10 +6,18 @@ use std::{
     error::Error,
     ffi::{OsStr, OsString},
     fs,
-    os::unix::{ffi::OsStringExt, fs::PermissionsExt},
+    future::Future,
+    io,
+    os::{
+        fd::OwnedFd,
+        unix::{ffi::OsStringExt, fs::PermissionsExt},
+    },
     path::{Path, PathBuf},
+    pin::Pin,
     rc::Rc,
-    time::{Duration, SystemTime},
+    sync::{Arc, atomic::AtomicBool},
+    thread,
+    time::{Duration, Instant, SystemTime},
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -83,6 +91,14 @@ fn deletion_error_summaries_are_bounded_and_report_the_failure_count() {
         operation_error_summary(&errors[..1], "restored")
             .starts_with("1 item could not be restored")
     );
+}
+
+#[test]
+fn rotational_deletes_cap_parallelism_without_disabling_it() {
+    assert_eq!(super::bounded_local_delete_worker_count(0, false), 1);
+    assert_eq!(super::bounded_local_delete_worker_count(1, true), 1);
+    assert_eq!(super::bounded_local_delete_worker_count(8, true), 1);
+    assert_eq!(super::bounded_local_delete_worker_count(8, false), 2);
 }
 
 #[test]
@@ -1572,47 +1588,7 @@ fn copying_and_replacing_symlinks_accepts_an_aliased_destination() -> Result<(),
 }
 
 #[test]
-fn permanent_delete_stops_if_an_open_directory_is_moved() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let target = root.path().join("target");
-    let moved = root.path().join("moved");
-    fs::create_dir(&target)?;
-    for index in 0..64 {
-        fs::write(target.join(format!("item-{index}.txt")), b"keep")?;
-    }
-
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let emitted = events.clone();
-    let _operation = LocalOperationProvider.delete(
-        DeleteRequest {
-            id: OperationRequestId(23),
-            entries: vec![directory_entry(&target)],
-            permanent: true,
-        },
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
-    );
-    let context = glib::MainContext::default();
-    while fs::read_dir(&target)?.count() == 64 {
-        context.iteration(true);
-    }
-    fs::rename(&target, &moved)?;
-    while !events
-        .borrow()
-        .iter()
-        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
-    {
-        context.iteration(true);
-    }
-
-    assert!(fs::read_dir(&moved)?.next().is_some());
-    Ok(())
-}
-
-#[test]
-fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(), Box<dyn Error>> {
+fn an_already_cancelled_recursive_delete_preserves_the_root() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -1622,49 +1598,24 @@ fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(
     let root = std::env::temp_dir().join(format!("strata-recursive-delete-cancel-test-{unique}"));
     let nested = root.join("nested");
     fs::create_dir_all(&nested)?;
-    for index in 0..4 {
+    for index in 0..64 {
         fs::write(nested.join(format!("item-{index}.txt")), b"contents")?;
     }
 
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let emitted = events.clone();
-    let operation = LocalOperationProvider.delete(
-        DeleteRequest {
-            id: OperationRequestId(10),
-            entries: vec![directory_entry(&root)],
-            permanent: true,
-        },
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
-    );
+    let cancellable = gio::Cancellable::new();
+    cancellable.cancel();
+    let parent = super::open_local_parent_directory(root.parent().ok_or("no parent")?)?;
+    let delete_root = super::LocalDeleteRoot {
+        parent: Arc::new(parent),
+        name: root.file_name().ok_or("no name")?.to_owned(),
+        expected: None,
+    };
     let context = glib::MainContext::default();
-    while fs::read_dir(&nested)?.count() == 4 {
-        context.iteration(true);
-    }
-    drop(operation);
-    while !events
-        .borrow()
-        .iter()
-        .any(|event| matches!(event, OperationEvent::Cancelled { .. }))
-    {
-        context.iteration(true);
-    }
-    settle_cancelled_io(&context);
+    let error = context
+        .block_on(super::parallel_delete_local(vec![delete_root], cancellable))
+        .expect_err("cancelled delete must return error");
 
-    let result = events
-        .borrow()
-        .iter()
-        .find_map(|event| match event {
-            OperationEvent::Cancelled { result, .. } => Some(result.clone()),
-            _ => None,
-        })
-        .expect("terminal cancellation result");
-    assert!(result.failed == [Location::local(&root)]);
-    assert!(result.affected_locations.contains(&Location::local(&root)));
-    assert!(
-        !result
-            .affected_locations
-            .contains(&Location::local(&nested))
-    );
+    assert!(super::was_cancelled(&error));
     assert!(root.exists());
     fs::remove_dir_all(root)?;
     Ok(())
@@ -1874,7 +1825,11 @@ fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refresh
         format!("[Trash Info]\nPath={encoded}\nDeletionDate=2026-09-03T16:05:39\n"),
     )?;
 
-    let entries = home_trash_entries_at(&trash, &HashSet::from([original.clone()]));
+    let entries = home_trash_entries_at(
+        &trash,
+        &HashSet::from([original.clone()]),
+        &gio::Cancellable::new(),
+    );
 
     let entry = entries.get(&original).expect("fallback entry");
     assert_eq!(
@@ -1886,6 +1841,11 @@ fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refresh
         entry.trash_info.as_deref(),
         Some(trash.join("info/report.txt.trashinfo").as_path())
     );
+    let cancellable = gio::Cancellable::new();
+    cancellable.cancel();
+    assert!(home_trash_entries_at(&trash, &HashSet::from([original]), &cancellable).is_empty());
+    assert!(fs::symlink_metadata(trash.join("files/report.txt")).is_ok());
+    assert!(trash.join("info/report.txt.trashinfo").exists());
     fs::remove_dir_all(fixture)?;
     Ok(())
 }
@@ -1895,32 +1855,44 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let emitted = events.clone();
-    let entries = vec![RestoreTrashItem {
-        entry: file_entry(std::path::Path::new("/fixture/trashed.txt")),
-        destination: PathBuf::from("/fixture/trashed.txt"),
-    }];
-    let operation = LocalOperationProvider.restore(
-        RestoreRequest {
-            id: OperationRequestId(9),
-            source: RestoreSource::TrashEntries(entries.clone()),
-        },
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
-    );
+    let location = Location::local("/fixture/trashed.txt");
+    for (source, expected) in [
+        (
+            RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry: file_entry(Path::new("/fixture/trashed.txt")),
+                destination: PathBuf::from("/fixture/trashed.txt"),
+            }]),
+            vec![location.clone()],
+        ),
+        (
+            RestoreSource::OriginalLocations(vec![location.clone()]),
+            vec![location],
+        ),
+        (RestoreSource::OriginalLocations(Vec::new()), Vec::new()),
+    ] {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let emitted = events.clone();
+        let operation = LocalOperationProvider.restore(
+            RestoreRequest {
+                id: OperationRequestId(9),
+                source,
+            },
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+        );
 
-    drop(operation);
-    while events.borrow().is_empty() {
-        glib::MainContext::default().iteration(true);
+        drop(operation);
+        while events.borrow().is_empty() {
+            glib::MainContext::default().iteration(true);
+        }
+
+        assert!(matches!(
+            events.borrow().as_slice(),
+            [OperationEvent::Cancelled { result, .. }]
+                if result.completed.is_empty()
+                    && result.failed.is_empty()
+                    && result.not_attempted == expected
+        ));
     }
-
-    assert!(matches!(
-        events.borrow().as_slice(),
-        [OperationEvent::Cancelled { result, .. }]
-            if result.completed.is_empty()
-                && result.failed.is_empty()
-                && result.not_attempted == [entries[0].entry.location.clone()]
-    ));
     Ok(())
 }
 
@@ -2136,55 +2108,46 @@ fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(
 
 #[test]
 fn copy_suffix_parsing_and_candidate_naming() {
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name")),
-        (OsStr::new("name"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (1)")),
-        (OsStr::new("name"), Some(1))
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (2)")),
-        (OsStr::new("name"), Some(2))
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (42)")),
-        (OsStr::new("name"), Some(42))
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (foo)")),
-        (OsStr::new("name (foo)"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (0)")),
-        (OsStr::new("name (0)"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (2")),
-        (OsStr::new("name (2"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (18446744073709551615)")),
-        (OsStr::new("name (18446744073709551615)"), None)
-    );
+    for (input, stem, suffix) in [
+        ("name", "name", None),
+        ("name (1)", "name", Some(1u64)),
+        ("name (2)", "name", Some(2)),
+        ("name (42)", "name", Some(42)),
+        ("name (foo)", "name (foo)", None),
+        ("name (0)", "name (0)", None),
+        ("name (2", "name (2", None),
+        (
+            "name (18446744073709551615)",
+            "name (18446744073709551615)",
+            None,
+        ),
+        (".gitignore", ".gitignore", None),
+        (".gitignore (1)", ".gitignore", Some(1)),
+        ("archive", "archive", None),
+        ("archive (1)", "archive", Some(1)),
+    ] {
+        assert_eq!(
+            parse_copy_suffix(OsStr::new(input)),
+            (OsStr::new(stem), suffix)
+        );
+    }
 
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 1),
-        OsString::from("name (1).ext")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 2),
-        OsString::from("name (2).ext")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), None, 1),
-        OsString::from("name (1)")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), None, 2),
-        OsString::from("name (2)")
-    );
+    for (stem, extension, number, expected) in [
+        ("name", Some("ext"), 1u64, "name (1).ext"),
+        ("name", Some("ext"), 2, "name (2).ext"),
+        ("name", None, 1, "name (1)"),
+        ("name", None, 2, "name (2)"),
+        (".gitignore", None, 1, ".gitignore (1)"),
+        (".config", None, 2, ".config (2)"),
+        ("archive", Some("tar.gz"), 1, "archive (1).tar.gz"),
+        ("archive", Some("tar.gz"), 3, "archive (3).tar.gz"),
+        ("backup.tar", Some("gz"), 1, "backup.tar (1).gz"),
+    ] {
+        assert_eq!(
+            duplicate_candidate_name(OsStr::new(stem), extension.map(OsStr::new), number),
+            OsString::from(expected)
+        );
+    }
 }
 
 #[test]
@@ -2924,50 +2887,6 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
 }
 
 #[test]
-fn hidden_file_copy_suffix_parsing_preserves_dot_prefix() {
-    assert_eq!(
-        parse_copy_suffix(OsStr::new(".gitignore")),
-        (OsStr::new(".gitignore"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new(".gitignore (1)")),
-        (OsStr::new(".gitignore"), Some(1))
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new(".gitignore"), None, 1),
-        OsString::from(".gitignore (1)")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new(".config"), None, 2),
-        OsString::from(".config (2)")
-    );
-}
-
-#[test]
-fn multi_extension_copy_suffix_parsing_preserves_full_extension() {
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("archive")),
-        (OsStr::new("archive"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("archive (1)")),
-        (OsStr::new("archive"), Some(1))
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("archive"), Some(OsStr::new("tar.gz")), 1),
-        OsString::from("archive (1).tar.gz")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("archive"), Some(OsStr::new("tar.gz")), 3),
-        OsString::from("archive (3).tar.gz")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("backup.tar"), Some(OsStr::new("gz")), 1),
-        OsString::from("backup.tar (1).gz")
-    );
-}
-
-#[test]
 fn duplicating_hidden_file_generates_correct_numbered_name() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -3145,5 +3064,246 @@ fn pasting_onto_itself_with_keep_both_creates_numbered_copy() -> Result<(), Box<
     Ok(())
 }
 
+fn sequential_delete_local(
+    parent: OwnedFd,
+    name: OsString,
+) -> Pin<Box<dyn Future<Output = Result<(), String>>>> {
+    Box::pin(async move {
+        let step_parent = parent.try_clone().map_err(|error| error.to_string())?;
+        let step_name = name.clone();
+        let step = super::run_local_delete_step(move || {
+            super::open_local_delete_target(&step_parent, &step_name, None)
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+        let super::LocalDeleteStep::Directory { handle, children } = step else {
+            return Ok(());
+        };
+        for child in children {
+            let checked_parent = parent.try_clone().map_err(|error| error.to_string())?;
+            let checked_handle = handle.try_clone().map_err(|error| error.to_string())?;
+            let checked_name = name.clone();
+            super::run_local_delete_step(move || {
+                super::ensure_local_delete_target_unchanged(
+                    &checked_parent,
+                    &checked_name,
+                    &checked_handle,
+                )
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+            sequential_delete_local(
+                handle.try_clone().map_err(|error| error.to_string())?,
+                child,
+            )
+            .await?;
+        }
+        super::run_local_delete_step(move || {
+            super::ensure_local_delete_target_unchanged(&parent, &name, &handle)?;
+            rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::REMOVEDIR)
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+    })
+}
+
+fn sync_delete_benchmark_filesystem(root: &Path) -> Result<(), Box<dyn Error>> {
+    let handle = rustix::fs::open(
+        root,
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )?;
+    rustix::fs::syncfs(handle)?;
+    Ok(())
+}
+
+fn create_delete_benchmark_tree(root: &Path, count: usize) -> io::Result<()> {
+    const DIRECTORIES: usize = 256;
+    fs::create_dir(root)?;
+    for directory in 0..DIRECTORIES.min(count.max(1)) {
+        fs::create_dir(root.join(format!("dir-{directory}")))?;
+    }
+    for index in 0..count {
+        fs::File::create(
+            root.join(format!("dir-{}", index % DIRECTORIES))
+                .join(format!("item-{index}")),
+        )?;
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "manual performance benchmark; run scripts/benchmark-delete.sh"]
+fn benchmark_delete_large_directory() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let count = std::env::var("STRATA_DELETE_BENCH_FILES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(100_000);
+    let benchmark_root = std::env::var_os("STRATA_DELETE_BENCH_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or(std::env::current_dir()?.join("target/delete-benchmark"));
+    fs::create_dir_all(&benchmark_root)?;
+    let serial_root = benchmark_root.join(format!("serial-{unique}"));
+    let available_workers = thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1)
+        .max(1);
+    let mut worker_counts = vec![1, 2, 4, available_workers];
+    worker_counts.sort_unstable();
+    worker_counts.dedup();
+    worker_counts.retain(|workers| *workers <= available_workers);
+    let worker_roots = worker_counts
+        .iter()
+        .map(|workers| {
+            (
+                *workers,
+                benchmark_root.join(format!("workers-{workers}-{unique}")),
+            )
+        })
+        .collect::<Vec<_>>();
+    create_delete_benchmark_tree(&serial_root, count)?;
+    for (_, root) in &worker_roots {
+        create_delete_benchmark_tree(root, count)?;
+    }
+    sync_delete_benchmark_filesystem(&benchmark_root)?;
+    let context = glib::MainContext::default();
+
+    let serial_parent = super::open_local_parent_directory(
+        serial_root.parent().ok_or("benchmark root has no parent")?,
+    )?;
+    let serial_name = serial_root
+        .file_name()
+        .ok_or("benchmark root has no name")?
+        .to_owned();
+    let serial_started = Instant::now();
+    context
+        .block_on(sequential_delete_local(serial_parent, serial_name))
+        .map_err(io::Error::other)?;
+    let serial_elapsed = serial_started.elapsed();
+    sync_delete_benchmark_filesystem(&benchmark_root)?;
+
+    let mut measurements = Vec::new();
+    let mut detected_workers = None;
+    for (workers, root) in &worker_roots {
+        let parent = super::open_local_parent_directory(
+            root.parent().ok_or("benchmark root has no parent")?,
+        )?;
+        let name = root
+            .file_name()
+            .ok_or("benchmark root has no name")?
+            .to_owned();
+        let target_root = super::LocalDeleteRoot {
+            parent: Arc::new(parent),
+            name,
+            expected: None,
+        };
+        detected_workers = Some(super::local_delete_worker_count(std::slice::from_ref(
+            &target_root,
+        )));
+        let parallel_started = Instant::now();
+        super::parallel_delete_local_blocking_with_workers(
+            vec![target_root],
+            Arc::new(AtomicBool::new(false)),
+            *workers,
+        )
+        .map_err(io::Error::other)?;
+        let parallel_elapsed = parallel_started.elapsed();
+        measurements.push((*workers, parallel_elapsed));
+        sync_delete_benchmark_filesystem(&benchmark_root)?;
+    }
+    let production_workers = detected_workers.unwrap_or(1);
+    let (_, production_elapsed) = measurements
+        .iter()
+        .find(|measurement| measurement.0 == production_workers)
+        .copied()
+        .ok_or("missing production worker measurement")?;
+    let single_elapsed = measurements
+        .iter()
+        .find(|measurement| measurement.0 == 1)
+        .map(|measurement| measurement.1)
+        .ok_or("missing single-worker measurement")?;
+
+    println!("files: {count}; production workers: {production_workers}");
+    println!(
+        "legacy sequential: {:.3}s ({:.0} files/s)",
+        serial_elapsed.as_secs_f64(),
+        count as f64 / serial_elapsed.as_secs_f64().max(f64::EPSILON)
+    );
+    for (workers, elapsed) in &measurements {
+        println!(
+            "workers={workers}: elapsed={:.3}s ({:.0} files/s)",
+            elapsed.as_secs_f64(),
+            count as f64 / elapsed.as_secs_f64().max(f64::EPSILON)
+        );
+    }
+    println!(
+        "production parallel speedup: {:.2}x; end-to-end speedup: {:.2}x",
+        single_elapsed.as_secs_f64() / production_elapsed.as_secs_f64().max(f64::EPSILON),
+        serial_elapsed.as_secs_f64() / production_elapsed.as_secs_f64().max(f64::EPSILON)
+    );
+    assert!(!serial_root.exists());
+    assert!(worker_roots.iter().all(|(_, root)| !root.exists()));
+    Ok(())
+}
+
+#[test]
+#[ignore = "manual scale benchmark; run STRATA_DELETE_BENCH_SCALE=1 scripts/benchmark-delete.sh"]
+fn benchmark_parallel_delete_scale() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let count = std::env::var("STRATA_DELETE_BENCH_FILES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1_000_000);
+    let benchmark_root = std::env::var_os("STRATA_DELETE_BENCH_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or(std::env::current_dir()?.join("target/delete-benchmark"));
+    fs::create_dir_all(&benchmark_root)?;
+    let root = benchmark_root.join(format!("scale-{unique}"));
+    create_delete_benchmark_tree(&root, count)?;
+    sync_delete_benchmark_filesystem(&benchmark_root)?;
+
+    let parent =
+        super::open_local_parent_directory(root.parent().ok_or("benchmark root has no parent")?)?;
+    let name = root
+        .file_name()
+        .ok_or("benchmark root has no name")?
+        .to_owned();
+    let target_root = super::LocalDeleteRoot {
+        parent: Arc::new(parent),
+        name,
+        expected: None,
+    };
+    let workers = super::local_delete_worker_count(std::slice::from_ref(&target_root));
+    let cleanup_started = Instant::now();
+    super::parallel_delete_local_blocking_with_workers(
+        vec![target_root],
+        Arc::new(AtomicBool::new(false)),
+        workers,
+    )
+    .map_err(io::Error::other)?;
+    let cleanup_elapsed = cleanup_started.elapsed();
+
+    println!(
+        "files={count} workers={workers} elapsed={:.3}s ({:.0} files/s)",
+        cleanup_elapsed.as_secs_f64(),
+        count as f64 / cleanup_elapsed.as_secs_f64().max(f64::EPSILON)
+    );
+    assert!(!root.exists());
+    Ok(())
+}
+
 mod create_entry;
+mod deletion;
 mod trash_capabilities;

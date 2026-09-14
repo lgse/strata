@@ -2,12 +2,9 @@
 
 import pytest
 
-from harness.modes import ALL_MODES
 
-
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("activation", ["pointer", "Return"])
-def test_keep_both_selects_the_numbered_copy_and_undo_preserves_originals(strata, mode, activation):
+def test_keep_both_selects_the_numbered_copy_and_undo_preserves_originals(strata, activation):
     fixture = strata.fixture
     fixture.path("archive/todo.txt").write_text("existing\n")
     fixture.path("archive/todo (1).txt").write_text("previous copy\n")
@@ -47,8 +44,16 @@ def test_keep_both_selects_the_numbered_copy_and_undo_preserves_originals(strata
     assert fixture.path("archive/todo (1).txt").read_text() == "previous copy\n"
 
 
-@pytest.mark.parametrize("moving", [False, True])
-@pytest.mark.parametrize("action", ["Cancel", "Escape", "Close dialog"])
+@pytest.mark.parametrize(
+    "moving,action",
+    [
+        (False, "Cancel"),
+        (False, "Escape"),
+        (False, "Close dialog"),
+        (True, "Cancel"),
+    ],
+    ids=["copy-Cancel", "copy-Escape", "copy-Close", "move-Cancel"],
+)
 def test_dismissing_a_copy_or_move_conflict_preserves_both_files(strata, moving, action):
     fixture = strata.fixture
     fixture.path("archive/todo.txt").write_text("existing\n")

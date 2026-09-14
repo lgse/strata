@@ -883,6 +883,12 @@ impl ModeViews {
         self.rebuild_icons();
     }
 
+    fn grouping_for_snapshot(&self, snapshot: &BrowserColumnSnapshot) -> bool {
+        // GTK 4.22 can abort in gtk_list_item_manager_ensure_items when a
+        // sectioned list receives interleaved camera batches while scrolling.
+        self.group_by_type && !(snapshot.loading && snapshot.location.is_camera_photo_root())
+    }
+
     fn prepare_list(&mut self) {
         let Some(depth) = self.browser.active_depth() else {
             self.clear_list();
@@ -894,7 +900,7 @@ impl ModeViews {
         if let Some(pane) = self.list_pane.as_ref()
             && pane.depth == depth
             && pane.location.as_ref() == Some(&snapshot.location)
-            && pane.group_by_type == self.group_by_type
+            && pane.group_by_type == self.grouping_for_snapshot(&snapshot)
             && pane.sorting.as_ref().map(|sorting| sorting.get())
                 == self
                     .browser
@@ -1396,7 +1402,7 @@ impl ModeViews {
             ListOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
-                group_by_type: self.group_by_type,
+                group_by_type: self.grouping_for_snapshot(&snapshot),
             },
             depth,
             &snapshot.location.display_name(),
@@ -1530,6 +1536,7 @@ struct IconsControls {
 pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
         .placeholder_text("Filter items…")
+        .tooltip_text("Filter by name. Use * for any characters: *.png, IMG*, or IMG*.png.")
         .has_frame(false)
         .hexpand(true)
         .build();
@@ -2328,7 +2335,7 @@ fn list_headings(
         let button_overlay = gtk::Overlay::new();
         button_overlay.set_child(Some(&button));
         button_overlay.set_hexpand(true);
-        button_overlay.add_overlay(&column_resize_handle(columns.clone(), index, width));
+        button_overlay.add_overlay(&column_resize_handle(columns.clone(), index, width, &cell));
         cell.append(&button_overlay);
         headings.append(&cell);
     }
@@ -2380,7 +2387,12 @@ fn set_list_column_width(columns: &ListColumnLayout, index: usize, width: i32) {
     });
 }
 
-fn column_resize_handle(columns: ListColumnLayout, index: usize, initial_width: i32) -> gtk::Box {
+fn column_resize_handle(
+    columns: ListColumnLayout,
+    index: usize,
+    initial_width: i32,
+    heading: &gtk::Box,
+) -> gtk::Box {
     let handle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     handle.add_css_class("list-column-resize-handle");
     handle.set_width_request(7);
@@ -2395,7 +2407,7 @@ fn column_resize_handle(columns: ListColumnLayout, index: usize, initial_width: 
     let starting_for_begin = starting_width.clone();
     let pointer_for_begin = pointer_start.clone();
     let last_press_for_begin = last_press.clone();
-    let columns_for_begin = columns.clone();
+    let heading = heading.downgrade();
     let columns_for_autofit = columns.clone();
     resize.connect_drag_begin(move |gesture, _, _| {
         let now = glib::monotonic_time() as u64;
@@ -2417,11 +2429,11 @@ fn column_resize_handle(columns: ListColumnLayout, index: usize, initial_width: 
             gesture.set_state(gtk::EventSequenceState::Denied);
             return;
         }
-        let width = columns_for_begin.cells[index]
-            .borrow()
-            .iter()
-            .find_map(glib::WeakRef::upgrade)
-            .map_or(initial_width, |widget| widget.width());
+        // Registered cells also include unmapped loading placeholders with stale allocations.
+        let width = heading
+            .upgrade()
+            .and_then(|widget| widget.compute_bounds(&widget))
+            .map_or(initial_width, |bounds| bounds.width().round() as i32);
         starting_for_begin.set(list_column_width(index, width));
         pointer_for_begin.set(
             gesture
@@ -3745,6 +3757,15 @@ fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {
     } else {
         widget.remove_css_class("cut");
     }
+    if let Some((icon, _)) = super::icons_cell::parts(widget) {
+        icon.set_cut(cut);
+    } else if let Some((icon, ..)) = widget
+        .upcast_ref()
+        .downcast_ref::<gtk::Box>()
+        .and_then(list_row_parts)
+    {
+        icon.set_cut(cut);
+    }
 }
 
 fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
@@ -3775,7 +3796,6 @@ fn replace_entries(pane: &Pane, browser: &Browser, count: usize) {
         })
         .unwrap_or_default();
     pane.splice_values(0, pane.model.n_items(), &values);
-    show_count(pane);
 }
 
 fn detach_pane_models(pane: &Pane) {
@@ -3810,7 +3830,6 @@ fn reconnect_pane_model(pane: &Pane) {
     }
     for section in pane.all_sections() {
         section.selection.set_model(Some(&section.view_model));
-        section.syncing.set(false);
     }
 }
 
@@ -3830,6 +3849,7 @@ fn show_count(pane: &Pane) {
 
 fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Browser) {
     replace_entries(pane, browser, snapshot.count);
+    show_count(pane);
     set_selections(pane, &snapshot.selected_positions);
     if let Some(&focused) = snapshot.selected_positions.last() {
         scroll_pane_to_source(pane, focused);
@@ -3837,7 +3857,9 @@ fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Brows
     pane.truncated_hint.set_visible(snapshot.truncated);
     if snapshot.loading {
         pane.spinner.start();
-        pane.loading.start();
+        if snapshot.count == 0 || !snapshot.location.is_camera_photo_root() {
+            pane.loading.start();
+        }
     } else {
         pane.spinner.stop();
         if let Some(message) = snapshot.error.as_deref() {
@@ -3944,6 +3966,9 @@ fn apply_icons_entry(
             super::browser::entry_icon(entry),
             thumbnail_size,
         );
+        icon.set_hidden(entry.is_hidden);
+        icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+        label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
     } else {
         super::thumbnail::set_thumbnail_or_icon(
             &icon,
@@ -3972,8 +3997,11 @@ fn refresh_icons_card_chrome(
     if let Some(item) = item {
         super::accessibility::describe_entry(item, &entry.display_name, Some(entry));
     }
-    set_mode_cut_style(card, cuts.contains(&entry.location));
-    icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+    let is_cut = cuts.contains(&entry.location);
+    set_mode_cut_style(card, is_cut);
+    icon.set_hidden(entry.is_hidden);
+    icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+    label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
 }
 
 fn refresh_icons_section(

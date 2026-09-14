@@ -24,6 +24,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing quick preview selecting supported files",
     },
     Target {
+        id: "arrow-scope",
+        page: "general",
+        title: "Keep arrows in file list",
+        aliases: "browsing keyboard navigation focus sidebar toolbar",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",
@@ -52,6 +58,12 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Drag & drop to another device",
         aliases: "file transfers copy move ask drive share cross volume",
+    },
+    Target {
+        id: "open-after-drop",
+        page: "general",
+        title: "Open folder after dropping files",
+        aliases: "file transfers drag drop destination navigate reveal copy move",
     },
     Target {
         id: "refresh",
@@ -94,6 +106,12 @@ const TARGETS: &[Target] = &[
         page: "theme",
         title: "Text size",
         aliases: "appearance font typography pixels zoom scaling",
+    },
+    Target {
+        id: "glow",
+        page: "theme",
+        title: "Element glow",
+        aliases: "appearance effects dialogs menus shadows accent",
     },
     Target {
         id: "motion",

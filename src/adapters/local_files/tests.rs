@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod browse;
 mod trash;
 
 use std::{
@@ -194,19 +195,6 @@ fn missing_optional_attributes_use_safe_defaults() {
 
     info.set_attribute_uint32(gio::FILE_ATTRIBUTE_UNIX_MODE, 0);
     assert_eq!(info_mode(&info), MetadataValue::Known(0));
-}
-
-#[test]
-fn unmounted_network_shares_are_treated_as_directories() {
-    let info = gio::FileInfo::new();
-    info.set_file_type(gio::FileType::Mountable);
-    info.set_name("share");
-    info.set_display_name("share");
-
-    let entry = entry_from_info(Location::uri("smb://host/share"), info);
-
-    assert_eq!(entry.kind, EntryKind::Directory);
-    assert!(entry.is_directory());
 }
 
 #[test]

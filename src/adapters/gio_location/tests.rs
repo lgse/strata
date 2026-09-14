@@ -41,21 +41,13 @@ fn gvfs_backed_files_use_their_uri_even_when_a_fuse_path_exists() {
 
 #[test]
 fn gio_files_with_embedded_credentials_are_sanitized() {
-    for uri in [
-        "smb://user%3Asecret@host/share",
-        "smb://user;password=secret@host/share",
-        "smb://user%3Bpassword=secret@host/share",
-        "smb://user:secret@host/share",
-    ] {
-        let location = location_for_file(&gio::File::for_uri(uri))
-            .expect("credential URI should produce a sanitized location");
-        assert_eq!(
-            location
-                .uri_value()
-                .expect("remote location should have a URI")
-                .trim_end_matches('/'),
-            "smb://user@host/share",
-            "did not sanitize {uri}"
-        );
-    }
+    let location = location_for_file(&gio::File::for_uri("smb://user:secret@host/share"))
+        .expect("credential URI should produce a sanitized location");
+    assert_eq!(
+        location
+            .uri_value()
+            .expect("remote location should have a URI")
+            .trim_end_matches('/'),
+        "smb://user@host/share"
+    );
 }

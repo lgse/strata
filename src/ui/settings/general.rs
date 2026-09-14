@@ -35,6 +35,16 @@ pub(super) fn general_page(
 
     let transfers = super::settings_group(&preferences, "FILE TRANSFERS");
     append_cross_volume_drop_option(&transfers, &manager);
+    append_preference_switch(
+        &transfers,
+        &manager,
+        PreferenceSwitch {
+            title: "Open folder after dropping files",
+            description: "Show the destination folder after a successful drag and drop.",
+            read: ThemeManager::open_folder_after_drop,
+            write: ThemeManager::set_open_folder_after_drop,
+        },
+    );
 
     let performance = super::settings_group(&preferences, "PERFORMANCE");
     append_auto_refresh_option(&performance, &manager);
@@ -74,6 +84,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             description: "Show a quick preview when selecting a supported file.",
             read: ThemeManager::single_click_previews,
             write: ThemeManager::set_single_click_previews,
+        },
+        PreferenceSwitch {
+            title: "Keep arrows in file list",
+            description: "Stop arrow keys from leaving the file list. Use Ctrl + Shift + B to focus the sidebar, or use the mouse.",
+            read: ThemeManager::arrow_navigation_scoped,
+            write: ThemeManager::set_arrow_navigation_scoped,
         },
     ] {
         append_preference_switch(&browsing, manager, switch);

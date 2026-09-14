@@ -5,12 +5,13 @@ use std::{
     collections::HashMap,
     ffi::CString,
     fs, io,
-    io::Cursor,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
-use gtk::{gdk, gdk::prelude::GdkCairoContextExt, gio, glib, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
+
+mod vector;
 
 pub mod icons {
     pub const ARROW_DOWN: &str = "strata-arrow-down";
@@ -50,6 +51,8 @@ pub mod icons {
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
     pub const LIST_CHECKS: &str = "strata-list-checks";
+    pub const LOCK: &str = "strata-lock";
+    pub const LOCK_OPEN: &str = "strata-lock-open";
     pub const KEY: &str = "strata-key";
     pub const KEYBOARD: &str = "strata-keyboard";
     pub const MONITOR: &str = "strata-monitor";
@@ -60,6 +63,7 @@ pub mod icons {
     pub const PENCIL: &str = "strata-pencil";
     pub const PIN: &str = "strata-pin";
     pub const PLAY: &str = "strata-play";
+    pub const MINUS: &str = "strata-minus";
     pub const PLUS: &str = "strata-plus";
     pub const PRINTER: &str = "strata-printer";
     pub const PICTURES: &str = "strata-image";
@@ -77,6 +81,7 @@ pub mod icons {
     pub const VIDEOS: &str = "strata-video";
     pub const VOLUME_2: &str = "strata-volume-2";
     pub const VOLUME_X: &str = "strata-volume-x";
+    pub const WRAP_TEXT: &str = "strata-wrap-text";
     pub const X: &str = "strata-x";
 
     pub const CUSTOMIZATION_CHOICES: [(&str, &str); 16] = [
@@ -437,8 +442,7 @@ fn folder_emoji_texture(folder_source: &str, emoji: &str, color: &str) -> Option
     if let Some(texture) = cached_icon_texture(&key) {
         return Some(texture);
     }
-    let folder =
-        gdk_pixbuf::Pixbuf::from_read(Cursor::new(folder_source.as_bytes().to_vec())).ok()?;
+    let folder = vector::surface(folder_source, ICON_TEXTURE_PX)?;
     render_emoji_texture(key, emoji, 52.0, (44.0, 44.0), (48.0, 56.0), Some(&folder))
 }
 
@@ -460,12 +464,12 @@ fn render_emoji_texture(
     preferred_size: f64,
     bounds: (f64, f64),
     center: (f64, f64),
-    background: Option<&gdk_pixbuf::Pixbuf>,
+    background: Option<&cairo::ImageSurface>,
 ) -> Option<gdk::Texture> {
     let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 96, 96).ok()?;
     let context = cairo::Context::new(&surface).ok()?;
     if let Some(background) = background {
-        context.set_source_pixbuf(background, 0.0, 0.0);
+        context.set_source_surface(background, 0.0, 0.0).ok()?;
         context.paint().ok()?;
     }
 
@@ -477,10 +481,7 @@ fn render_emoji_texture(
     );
     pangocairo::functions::show_layout(&context, &layout);
 
-    let mut png = Vec::new();
-    surface.write_to_png(&mut png).ok()?;
-    let pixbuf = gdk_pixbuf::Pixbuf::from_read(Cursor::new(png)).ok()?;
-    Some(cache_icon_texture(key, gdk::Texture::for_pixbuf(&pixbuf)))
+    Some(cache_icon_texture(key, texture_from_surface(&surface)?))
 }
 
 fn fitted_emoji_layout(
@@ -551,8 +552,30 @@ fn texture_from_svg(
     if let Some(texture) = cached_icon_texture(&key) {
         return Some(texture);
     }
-    let pixbuf = gdk_pixbuf::Pixbuf::from_read(Cursor::new(source.into_bytes())).ok()?;
-    Some(cache_icon_texture(key, gdk::Texture::for_pixbuf(&pixbuf)))
+    let surface = vector::surface(&source, texture_px)?;
+    Some(cache_icon_texture(key, texture_from_surface(&surface)?))
+}
+
+fn texture_from_surface(surface: &cairo::ImageSurface) -> Option<gdk::Texture> {
+    let mut bytes = None;
+    surface
+        .with_data(|data| bytes = Some(glib::Bytes::from_owned(data.to_vec())))
+        .ok()?;
+    let format = if cfg!(target_endian = "little") {
+        gdk::MemoryFormat::B8g8r8a8Premultiplied
+    } else {
+        gdk::MemoryFormat::A8r8g8b8Premultiplied
+    };
+    Some(
+        gdk::MemoryTexture::new(
+            surface.width(),
+            surface.height(),
+            format,
+            &bytes?,
+            surface.stride() as usize,
+        )
+        .upcast(),
+    )
 }
 
 fn cached_icon_texture(key: &(String, String, i32)) -> Option<gdk::Texture> {

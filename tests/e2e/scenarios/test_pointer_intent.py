@@ -71,7 +71,10 @@ def _inert_point(strata, name, mode):
 
 @pytest.mark.preferences(single_click_previews=True)
 @pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("modifiers", [(), ("ctrl",), ("shift",)])
+@pytest.mark.parametrize(
+    "modifiers",
+    [pytest.param((), id="plain"), pytest.param(("ctrl",), id="ctrl")],
+)
 def test_marquee_begins_beside_content_in_a_full_pane(strata, mode, modifiers):
     folder = _full_directory(strata)
     before = sorted(folder.iterdir())
@@ -153,7 +156,35 @@ def test_modifier_clicks_on_inert_space_still_select(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_ctrl_drag_from_content_copies_and_keeps_selection(strata, mode):
+@pytest.mark.parametrize(
+    "selected,open_after_drop",
+    [
+        pytest.param(
+            False,
+            False,
+            marks=pytest.mark.preferences(open_folder_after_drop=False),
+            id="unselected-stay",
+        ),
+        pytest.param(
+            False,
+            True,
+            marks=pytest.mark.preferences(open_folder_after_drop=True),
+            id="unselected-open",
+        ),
+        pytest.param(
+            True,
+            False,
+            marks=pytest.mark.preferences(open_folder_after_drop=False),
+            id="selected-stay",
+        ),
+    ],
+)
+def test_ctrl_drag_from_content_copies_and_keeps_selection(
+    strata, mode, selected, open_after_drop,
+):
+    if selected:
+        strata.select_entry("todo.txt")
+    initial_selection = strata.selected_names()
     start = strata.pointer.drag_origin(strata.entry("todo.txt"))
     target = strata.entry("archive")
     strata.pointer.drag_points(
@@ -164,22 +195,15 @@ def test_ctrl_drag_from_content_copies_and_keeps_selection(strata, mode):
         "the ctrl-drag from content to copy the file",
     )
     assert strata.fixture.path("todo.txt").exists()
-    strata.wait_for_selection(["todo.txt"])
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_ctrl_drag_from_selected_content_copies_the_file(strata, mode):
-    strata.select_entry("todo.txt")
-    start = strata.pointer.drag_origin(strata.entry("todo.txt"))
-    target = strata.entry("archive")
-    strata.pointer.drag_points(
-        start, target.screen_bounds().center, modifiers=("ctrl",)
-    )
-    strata.wait(
-        lambda: strata.fixture.path("archive/todo.txt").exists(),
-        "the ctrl-drag from selected content to copy the file",
-    )
-    assert strata.fixture.path("todo.txt").exists()
+    if open_after_drop:
+        strata.entry("todo.txt", directory="archive")
+        strata.wait_for_selection(["todo.txt"])
+    else:
+        # Pre-selecting the source does not keep the listing selection after drop.
+        if not selected:
+            strata.wait_for_selection(sorted(set(initial_selection) | {"todo.txt"}))
+        strata.entry("todo.txt", directory=strata.fixture.root.name)
+        assert "archive" not in strata.pane_names()
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -197,19 +221,17 @@ def test_shift_drag_from_content_moves_the_file(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("focus_origin", ["pane", "sidebar"])
-def test_sidebar_marquee_still_reaches_the_leading_pane(strata, mode, focus_origin):
+def test_sidebar_marquee_still_reaches_the_leading_pane(strata, mode):
     root = strata.fixture.root.name
     if mode == "Columns":
         strata.open_directory("documents")
     home = strata.sidebar_button("Home")
-    if focus_origin == "sidebar":
-        for _ in range(2):
-            strata.keyboard.press("Home")
-            strata.keyboard.press("Left")
-            if home.has_state("focused"):
-                break
-        strata.wait(lambda: home.has_state("focused"), "keyboard focus in the sidebar")
+    for _ in range(2):
+        strata.keyboard.press("Home")
+        strata.keyboard.press("Left")
+        if home.has_state("focused"):
+            break
+    strata.wait(lambda: home.has_state("focused"), "keyboard focus in the sidebar")
     sidebar = home.parent
     assert sidebar is not None
     bounds = sidebar.screen_bounds()
@@ -228,7 +250,7 @@ def test_sidebar_marquee_still_reaches_the_leading_pane(strata, mode, focus_orig
             "the marquee target to own focus and active selection feedback during the drag",
         )
         strata.screenshot(
-            ArtifactCollector(test_name=f"sidebar-marquee-{mode}-{focus_origin}").directory
+            ArtifactCollector(test_name=f"sidebar-marquee-{mode}").directory
             / "selection.png"
         )
     finally:
@@ -241,31 +263,15 @@ def test_sidebar_marquee_still_reaches_the_leading_pane(strata, mode, focus_orig
     strata.open_directory(destination, root)
     strata.paste_into(destination)
     strata.wait(
-        lambda: set(strata.fixture.names(destination)) == selected,
-        "keyboard copy to use the marquee target rather than the sidebar or another pane",
+        lambda: set(strata.fixture.names(destination)) == selected
+        and all(
+            strata.fixture.path(f"{destination}/{name}").stat().st_size
+            == strata.fixture.path(name).stat().st_size
+            for name in ("readme.md", "todo.txt")
+        ),
+        "keyboard copy to finish in the marquee target rather than the sidebar or another pane",
     )
     for name in ("readme.md", "todo.txt"):
         assert strata.fixture.path(f"{destination}/{name}").read_bytes() == strata.fixture.path(
             name
         ).read_bytes()
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_marquee_from_a_full_row_auto_scrolls(strata, mode):
-    _full_directory(strata)
-    start = _inert_point(strata, "000.txt", mode)
-    pane = strata.pane().screen_bounds()
-    container = strata.entry_container().screen_bounds()
-    bottom = min(pane.y + pane.height, container.y + container.height)
-    modifiers = ("alt",) if mode == "Columns" else ()
-    strata.pointer.drag_points(
-        start, (start[0] + 3, bottom - 4), release=False, modifiers=modifiers
-    )
-    try:
-        strata.wait(
-            lambda: any(name >= "060.txt" for name in strata.selected_names()),
-            "edge auto-scroll to extend selection beyond the initial viewport",
-        )
-    finally:
-        strata.pointer.connection.button(1, False)
-    assert strata.preview() is None

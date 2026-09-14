@@ -73,7 +73,7 @@ fn activate_result(
 ) {
     let location = Location::local(item.path.clone());
     if item.is_directory {
-        preview.close();
+        preview.clear_target();
         controller.navigate(location);
         return;
     }

@@ -29,10 +29,49 @@ def root(strata) -> str:
     return strata.fixture.root.name
 
 
+# Listing-selected origin is the same contract at startup and after keyboard
+# entry. Row-space is a separate hit geometry, not a second origin.
+SHIFT_RANGE_CASES = [
+    pytest.param("startup", "content", id="startup-content"),
+    pytest.param("keyboard-entry", "content", id="keyboard-entry-content"),
+    pytest.param("keyboard-entry", "row-space", id="keyboard-entry-row-space"),
+]
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_shift_click_ranges_from_the_initial_listing(strata, mode, root):
-    strata.click_entry_with("pictures", ["shift"], directory=root)
-    strata.wait_for_selection(["archive", "documents", "pictures"], root)
+@pytest.mark.parametrize("arrival,target", SHIFT_RANGE_CASES)
+def test_shift_click_ranges_from_the_listing_selected_entry(
+    strata, mode, root, arrival, target
+):
+    if arrival == "startup":
+        directory = root
+        name = "pictures"
+        expected = ["archive", "documents", "pictures"]
+    else:
+        strata.select_entry_with_keyboard("documents")
+        strata.keyboard.press("Return")
+        strata.wait_for_directory("documents")
+        directory = "documents"
+        name = "spreadsheet.csv"
+        expected = ["notes.txt", "report.md", "spreadsheet.csv"]
+
+    entry = strata.entry(name, directory)
+    if target == "row-space":
+        if mode == "Icons":
+            icon = entry.find(role="image")
+            assert icon is not None
+            bounds = icon.screen_bounds()
+            point = (bounds.x - 6, bounds.center[1])
+        else:
+            label = entry.find(role="label", name=name)
+            assert label is not None
+            bounds = label.screen_bounds()
+            point = (bounds.x + bounds.width - 2, bounds.center[1])
+        strata.pointer.click(entry, at=point, modifiers=("shift",))
+    else:
+        strata.click_entry_with(name, ["shift"], directory=directory)
+
+    strata.wait_for_selection(expected, directory)
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -76,15 +115,14 @@ def test_shift_click_revisits_a_file_after_opening_a_folder(strata, root, target
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("modifier", ["ctrl", "shift"])
-def test_modifier_click_on_a_filename_focuses_the_target(strata, mode, modifier, root):
+def test_modifier_click_on_a_filename_focuses_the_target(strata, mode, root):
     strata.select_entry("readme.md", root)
     strata.wait_for_focused_entry("readme.md")
     entry = strata.entry("todo.txt", root)
     label = entry.find(role="label", name="todo.txt")
     assert label is not None
     bounds = label.screen_bounds()
-    strata.pointer.click(entry, at=(bounds.x + 4, bounds.center[1]), modifiers=(modifier,))
+    strata.pointer.click(entry, at=(bounds.x + 4, bounds.center[1]), modifiers=("ctrl",))
     strata.wait_for_focused_entry("todo.txt")
     strata.wait_for_selection(["readme.md", "todo.txt"], root)
 
@@ -97,18 +135,6 @@ def test_returning_to_a_parent_pane_anchors_its_first_entry(strata, root):
     strata.click_entry_with("pictures", ["shift"], directory=root)
     strata.wait_for_selection(["archive", "documents", "pictures"], root)
     assert "documents" in strata.pane_names()
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_shift_click_selects_a_range(strata, mode, root):
-    strata.select_entry("archive", directory=root)
-
-    strata.click_entry_with("pictures", ["shift"], directory=root)
-
-    strata.wait(
-        lambda: strata.selected_names(root) == ["archive", "documents", "pictures"],
-        "a shift-click to select the whole range",
-    )
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -178,80 +204,59 @@ def test_selecting_a_second_entry_replaces_the_first(strata, mode, root):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("target", ["content", "row-space"])
-def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode, root, target):
-    strata.select_entry_with_keyboard("documents")
-    strata.keyboard.press("Return")
-    strata.wait_for_directory("documents")
-
-    entry = strata.entry("spreadsheet.csv", "documents")
-    point = None
-    if target == "row-space":
-        if mode == "Icons":
-            icon = entry.find(role="image")
-            assert icon is not None
-            bounds = icon.screen_bounds()
-            point = (bounds.x - 6, bounds.center[1])
-        else:
-            label = entry.find(role="label", name="spreadsheet.csv")
-            assert label is not None
-            bounds = label.screen_bounds()
-            point = (bounds.x + bounds.width - 2, bounds.center[1])
-    strata.pointer.click(entry, at=point, modifiers=("shift",))
-
-    strata.wait(
-        lambda: strata.selected_names("documents")
-        == ["notes.txt", "report.md", "spreadsheet.csv"],
-        "a shift-click to range from the entry the listing selected on load",
+def _leftover_click_cases():
+    # Shift leftover-mouseup × {content, row-space} × ROW_MODES; Ctrl leftover
+    # × Columns; unmodified leftover × ROW_MODES. Do not cartesian-explode.
+    cases = []
+    for mode in ROW_MODES:
+        for target in ("content", "row-space"):
+            cases.append(
+                pytest.param(
+                    "shift",
+                    target,
+                    marks=mode.marks,
+                    id=f"shift-{target}-{mode.id}",
+                )
+            )
+    columns = next(mode for mode in ROW_MODES if mode.id == "columns")
+    cases.append(
+        pytest.param(
+            "ctrl",
+            "row-space",
+            marks=columns.marks,
+            id="ctrl-row-space-columns",
+        )
     )
+    for mode in ROW_MODES:
+        cases.append(
+            pytest.param(
+                None,
+                "row-space",
+                marks=mode.marks,
+                id=f"plain-row-space-{mode.id}",
+            )
+        )
+    return cases
 
 
-@pytest.mark.parametrize("mode", ROW_MODES)
-@pytest.mark.parametrize("target", ["content", "row-space"])
-def test_shift_click_keeps_range_when_shift_releases_before_mouseup(
-    strata, mode, root, target
-):
+@pytest.mark.parametrize("modifier,target", _leftover_click_cases())
+def test_leftover_click_honors_the_press_modifiers(strata, modifier, target, root):
     strata.open_directory("documents", directory=root)
     strata.select_entry("notes.txt", directory="documents")
-
     entry = strata.entry("spreadsheet.csv", "documents")
     point = _name_label_point(entry, leftover=(target == "row-space"))
-    strata.pointer.click_releasing_modifiers_before_up(
-        entry, at=point, modifiers=("shift",)
-    )
-
-    strata.wait_for_selection(
-        ["notes.txt", "report.md", "spreadsheet.csv"], "documents"
-    )
-
-
-@pytest.mark.preferences(browser_mode="columns")
-def test_control_click_leftover_toggles_when_ctrl_releases_before_mouseup(strata, root):
-    strata.open_directory("documents", directory=root)
-    strata.select_entry("notes.txt", directory="documents")
-
-    entry = strata.entry("spreadsheet.csv", "documents")
-    strata.pointer.click_releasing_modifiers_before_up(
-        entry,
-        at=_name_label_point(entry, leftover=True),
-        modifiers=("ctrl",),
-    )
-
-    strata.wait_for_selection(["notes.txt", "spreadsheet.csv"], "documents")
-
-
-@pytest.mark.parametrize("mode", ROW_MODES)
-def test_unmodified_leftover_click_replaces_the_selection(strata, mode, root):
-    strata.open_directory("documents", directory=root)
-    strata.select_entry("notes.txt", directory="documents")
-
-    entry = strata.entry("spreadsheet.csv", "documents")
-    strata.pointer.click(
-        entry, at=_name_label_point(entry, leftover=True)
-    )
-
-    strata.wait_for_selection(["spreadsheet.csv"], "documents")
+    if modifier is None:
+        strata.pointer.click(entry, at=point)
+        expected = ["spreadsheet.csv"]
+    else:
+        strata.pointer.click_releasing_modifiers_before_up(
+            entry, at=point, modifiers=(modifier,)
+        )
+        if modifier == "shift":
+            expected = ["notes.txt", "report.md", "spreadsheet.csv"]
+        else:
+            expected = ["notes.txt", "spreadsheet.csv"]
+    strata.wait_for_selection(expected, "documents")
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

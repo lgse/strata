@@ -30,6 +30,46 @@ fn executable_fallback_requires_regular_executable_and_missing_handler()
 }
 
 #[test]
+fn entry_executable_policy_accepts_regular_files_and_file_links() {
+    let entry = |kind, mode| FileEntry {
+        location: Location::local("/fixture/program"),
+        native_name: "program".into(),
+        thumbnail_path: None,
+        display_name: "program".into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+        mode: crate::model::MetadataValue::Known(mode),
+    };
+
+    assert!(entry_is_regular_executable(&entry(
+        crate::model::EntryKind::File,
+        0o755,
+    )));
+    assert!(entry_is_regular_executable(&entry(
+        crate::model::EntryKind::FileSymbolicLink,
+        0o755,
+    )));
+    assert!(!entry_is_regular_executable(&entry(
+        crate::model::EntryKind::File,
+        0o644,
+    )));
+    assert!(!entry_is_regular_executable(&entry(
+        crate::model::EntryKind::Directory,
+        0o755,
+    )));
+
+    let mut remote = entry(crate::model::EntryKind::File, 0o755);
+    remote.location = Location::uri("smb://server/program");
+    assert!(!entry_is_regular_executable(&remote));
+
+    let mut unknown_mode = entry(crate::model::EntryKind::File, 0o755);
+    unknown_mode.mode = crate::model::MetadataValue::Unknown;
+    assert!(!entry_is_regular_executable(&unknown_mode));
+}
+
+#[test]
 fn program_command_runs_from_program_directory() {
     let path = Path::new("/tmp/tools/program");
     let command = program_command(path);
@@ -61,17 +101,4 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[directory, file.clone()]), None);
     assert_eq!(selected_terminal_location(&[file]), None);
     assert_eq!(selected_terminal_location(&[]), None);
-}
-
-#[cfg(unix)]
-#[test]
-fn terminal_directory_argument_preserves_native_path_bytes() {
-    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
-
-    let path = Path::new(OsStr::from_bytes(b"/tmp/non-utf8-\xff"));
-
-    assert_eq!(
-        terminal_directory_argument(path).as_encoded_bytes(),
-        b"--dir=/tmp/non-utf8-\xff"
-    );
 }

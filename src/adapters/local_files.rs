@@ -23,7 +23,9 @@ use crate::{
     },
 };
 
-const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash,access::can-delete";
+mod camera_photos;
+
+const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::target-uri,access::can-trash,access::can-delete";
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
@@ -121,16 +123,25 @@ pub(crate) async fn query_file_entry(location: Location) -> Result<FileEntry, gl
 }
 
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
+    let location = if matches!(
+        info.file_type(),
+        gio::FileType::Shortcut | gio::FileType::Mountable
+    ) {
+        info.attribute_string(gio::FILE_ATTRIBUTE_STANDARD_TARGET_URI)
+            .and_then(|uri| location_for_file(&gio::File::for_uri(&uri)))
+            .unwrap_or(location)
+    } else {
+        location
+    };
     let native_name = info.name().into_os_string();
     let kind = match (info.file_type(), info_is_symlink(&info)) {
         (gio::FileType::Directory, true) => EntryKind::DirectorySymbolicLink,
         (gio::FileType::Regular, true) => EntryKind::FileSymbolicLink,
-        // GVfs reports unmounted browsable children (an smb:// host's shares, a
-        // "Connect to Server" bookmark, ...) as `Mountable` rather than
-        // `Directory`. Treat them as directories so activation descends into
-        // them (and can trigger the mount-and-retry flow) instead of asking
-        // the desktop to "open" the location in a new application instance.
-        (gio::FileType::Directory | gio::FileType::Mountable, false) => EntryKind::Directory,
+        // GVfs browse entries must use directory navigation, including mount-and-retry,
+        // rather than launching the desktop's URI handler.
+        (gio::FileType::Directory | gio::FileType::Shortcut | gio::FileType::Mountable, false) => {
+            EntryKind::Directory
+        }
         (gio::FileType::Regular, false) => EntryKind::File,
         (gio::FileType::SymbolicLink, _) => EntryKind::SymbolicLink,
         _ => EntryKind::Other,
@@ -471,6 +482,9 @@ impl FileSource for LocalFileSource {
         if let Some(path) = location.native_path() {
             return enumerate_native(request, emit, started, path.to_path_buf());
         }
+        if location.is_camera_photo_root() {
+            return camera_photos::enumerate(request, emit);
+        }
 
         let task = glib::MainContext::default().spawn_local(async move {
             let directory = gio_file_for_location(&location);
@@ -779,6 +793,11 @@ impl FileSource for LocalFileSource {
                     Some(PendingMonitorChange::Rescan)
                 }
                 _ => Some(PendingMonitorChange::Rescan),
+            };
+            let change = if watched.is_camera_photo_root() {
+                Some(PendingMonitorChange::Rescan)
+            } else {
+                change
             };
             let Some(change) = change else {
                 return;

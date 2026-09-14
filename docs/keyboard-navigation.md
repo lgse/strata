@@ -8,8 +8,6 @@ Columns have three independent signals:
 
 The destination column has an accent rule across its header and a **Keyboard · Paste here** or **Pointer · Paste here** footer. The indication remains useful in an empty directory, where there is no row to highlight. When panes overflow, the horizontal scrollbar gets its own track below these labels rather than covering them. No track is reserved when the panes fit.
 
-[Before: scrollbar overlap](screenshots/291/destination-scrollbar-before.png) · [After: separate scrollbar track](screenshots/291/destination-scrollbar-after.png)
-
 ## Input precedence
 
 The last navigation input determines the destination of Ctrl+V:
@@ -41,8 +39,6 @@ not their previous row numbers; deleted entries are not selected accidentally.
 This is temporary browsing state, not a saved preference. New input in the list
 cancels an in-progress restoration.
 
-[Before](screenshots/868/before.png) · [After](screenshots/868/after.png)
-
 ## Creating files and folders
 
 In Columns, List, and Icons, **Ctrl+Shift+N** or background menu → **New Folder**
@@ -67,12 +63,23 @@ including spaces around a nonblank name, hidden-file prefixes, and Unicode.
 Name conflicts, filesystem-specific limits, and permission errors retain the
 original item and report an error.
 
-Click-away results: Columns ([file](screenshots/566/columns-new-file-rename.png),
-[folder](screenshots/566/columns-new-folder-rename.png)),
-List ([file](screenshots/566/list-new-file-rename.png),
-[folder](screenshots/566/list-new-folder-rename.png)), and
-Icons ([file](screenshots/566/icons-new-file-rename.png),
-[folder](screenshots/566/icons-new-folder-rename.png)).
+## Filename patterns while filtering
+
+Use **Ctrl+F** to filter a pane. Plain text keeps its existing matching behavior.
+Add `*` to match a whole filename, ignoring case:
+
+- `*.MOV` matches `clip.MOV`, but not `clip.MOV.bak`.
+- `IMG*` matches names beginning with `IMG`.
+- `IMG*.MOV` combines a prefix and an extension.
+- `*holiday*` matches names containing `holiday`; `*` matches any name.
+
+Each `*` stands for zero or more characters. Other punctuation (including `?`,
+`[]`, and regex syntax) is literal. Patterns match file and folder names, not
+parent paths, in Columns, Icons, List, and the file chooser. Hidden-file visibility
+and [Include subfolders](preferences.md#filter-scope) still control the scope;
+a wildcard does not enable recursive search. Existing result limits still apply.
+Clear the input or press Escape to restore the directory listing. **Ctrl+K**
+global fuzzy search is unchanged.
 
 ## Preview while filtering
 
@@ -82,19 +89,13 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Folders and unsupported files do not open a preview.
 
-[Filtered selection](screenshots/472/before.png) · [Preview with the query intact](screenshots/472/after.png)
-
 ## Shortcut footer
 
 Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. **Settings → Keybindings → Show keybinding hints** controls its visibility (on by default). The preference is saved and updates all open windows immediately. F1 still opens the reference with hints disabled; closing it hides the footer again. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.
 
 After copying or cutting files, a highlighted **Ctrl+V · Paste available** hint appears beside the reference button. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. With hints disabled, the paste shortcut still works, but the footer stays hidden.
 
-[Keybindings setting](screenshots/291/hints-settings.png) · [Paste available](screenshots/291/paste-available.png) · [Hints disabled](screenshots/291/hints-hidden.png)
-
 The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
-
-[Columns footer](screenshots/291/footer-columns.png) · [Icons header focus](screenshots/291/footer-grid-header.png) · [List header, light theme](screenshots/291/footer-explorer-header.png) · [Narrow window](screenshots/291/footer-narrow.png) · [Shortcut reference](screenshots/291/shortcut-reference.png)
 
 ## Arrows, the header, and the sidebar
 
@@ -111,11 +112,9 @@ Up from the first Icons row or first List item focuses the navigation header, in
 
 From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
 
-[Before: sidebar Home](screenshots/291/sidebar-top-bar-before.png) · [After Up: top navigation bar](screenshots/291/sidebar-top-bar.png)
+**Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
-
-[Right-arrow demo: files stay selected; folders open in a child column](screenshots/291/right-folder-only.mp4).
 
 ## Opening and navigating the context menu
 

@@ -14,6 +14,96 @@ parsing and decoding run inside bubblewrap, never in the application.
 - Plain text stays in-process, invokes no native format parser, and is capped at
   1 MiB.
 
+## Bundled interface icons
+
+Strata's bundled Lucide SVGs are trusted application resources, not browser files.
+They render directly to bounded in-memory pixels with `resvg`, avoiding synchronous
+GdkPixbuf/Glycin loader startup on the GTK thread during row binding and live theme
+changes. External and embedded image references are disabled; icon inputs and
+output dimensions are bounded. SVG text, system-font lookup, and raster-image
+features of this renderer are disabled. Emoji icons retain Pango/Cairo rendering
+but pass raw pixels to GTK instead of encoding and decoding an intermediate PNG.
+
+This renderer is not used for user SVGs, phone photos, or thumbnails of originals;
+those keep their existing sandbox boundary. No toolkit libraries or private media
+runtime patches are updated by this change.
+
+## Remote still-image previews
+
+Still images on GIO/GVfs locations (including phone camera, AFC, and MTP storage)
+can use the preview pane and Space quick preview. The application streams the
+selected original to a randomly named mode-0600 temporary file before invoking
+the same image sandbox as local files. Only a short alphanumeric extension is
+preserved; remote names never choose a local path. The displayed entry and its
+actions retain the original URI.
+
+Still-image transfers have a 64-MiB byte limit and a 30-second total deadline. Known
+oversized files are rejected before opening; the stream limit also applies when
+size metadata is missing or inaccurate. At most four transfers/staged originals
+can be active per process, including ones waiting for cancellation or decoding.
+A busy request fails with an explanatory message rather than starting another
+unbounded transfer. Downloads run off the GTK thread.
+
+Changing selection or closing the preview cancels GIO. A backend that is slow to
+acknowledge cancellation retains its slot until its worker exits. Partial files
+are removed on transfer failure; successful inputs remain owned by the decoder
+worker and are removed when it exits, even if the UI has already cancelled the
+request. Normal cleanup does not guarantee removal after a process crash or
+forced termination. Remote previews do not populate the persistent thumbnail
+cache or the in-memory rendered-preview cache, and originals are never modified.
+
+MOV and MP4 previews use the same staging boundary, with a 256-MiB byte limit
+and 60-second deadline, and share the four-input admission limit with images.
+Playback starts only after download completes. The sandboxed media descriptor
+retains the temporary file and its admission permit across player clones,
+seeks, resizing, and paused-worker restart. The final player/worker owner removes
+the input, including cancellation and decoder-error paths; no compressed input
+is handed to an in-process media parser.
+
+Remote PDFs, animated GIFs, audio, and other video formats remain unsupported:
+copy them locally first. In particular, remote PDF rendering/printing needs a shared document
+snapshot before it can safely request multiple pages without repeated downloads.
+Supported still-image formats continue to depend on installed sandbox decoder tools;
+HEIC/HEIF can use ImageMagick with libheif inside the image sandbox.
+
+### Camera file-list thumbnails
+
+Camera/PTP rows use the backend's `preview::icon` / `GLoadableIcon` interface.
+GVfs's gphoto2 implementation requests `GP_FILE_TYPE_PREVIEW`, not the original.
+Missing or failed previews leave the ordinary file icon; Strata does not fall
+back to downloading full photos for thumbnails.
+
+Retrieval is asynchronous, limited to 1 MiB and 15 seconds. These jobs share the
+existing four-worker, 64-waiting-job thumbnail queue and row-binding cancellation.
+The compressed preview is written to a random mode-0600 temporary file, decoded
+by the existing image-thumbnail sandbox, and removed after the decoder exits.
+Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded
+in-memory cache, never the persistent thumbnail cache. AFC and MTP file-list
+thumbnails are not enabled by this path.
+
+## Media metadata
+
+File Properties shows available source-media details: image
+resolution; audio/video duration and overall bitrate; video codec and frame rate;
+and audio codec, sample rate, and channel count. These describe the original file,
+not the preview's scaled frames or resampled audio. Attached album artwork is not
+reported as a video track, and still images do not show synthetic video timing.
+Missing individual fields are omitted; an unsuccessful inspection shows
+`Media: Unavailable` without blocking the other file information.
+
+Properties uses an asynchronous inspector. Only regular files with a
+local source are inspected; remote files are not downloaded for metadata. The
+inspector runs `ffprobe` inside the existing software-only bubblewrap sandbox,
+with a four-second probe timeout and a 64 KiB JSON limit. Image information can
+fall back to GDK Pixbuf inside that same sandbox. The enclosing helper retains
+the existing memory, CPU, and wall-time limits and receives no GPU access. Media
+sandboxes expose only the optional BLAS/LAPACK runtime alternatives for supported
+x86-64 and ARM64 Debian-family installations, not all of `/etc/alternatives`. Only
+validated numeric fields and bounded codec identifiers reach the UI, not arbitrary
+embedded tags. Closing Properties cancels its work and prevents stale results
+from appearing. The preview pane retains only its normal size, modified date,
+and type information; it does not run this metadata inspector.
+
 ## Incremental media playback
 
 ```text
@@ -41,13 +131,19 @@ Video timing is normalized **inside the sandbox** to 30 fps, including holding
 VFR/GIF frames. Audio is 48 kHz, stereo, interleaved signed 16-bit little-endian
 PCM. Resampling preserves gaps/offsets relative to the common source timeline.
 
-The preview interval is always **the original file's first 30 seconds**, including
-hour-long sources. Seeking never opens a fresh 30-second interval at the seek
-point. It restarts the sandbox at a bounded position rounded down to the 30-fps
+Previews play **the entire source**, without a 30-second playback cap. Seeking
+restarts the sandbox at the requested source position, rounded down to the 30-fps
 grid. Video retains decoder preroll so a seek into a VFR gap can show the frame
-covering that point. Short GIFs loop inside a single 30-second generation, with
-seeks mapped to their original animation phase, avoiding a process restart every
-animation cycle. Longer GIFs repeat only their first 30 seconds.
+covering that point. Short GIFs still batch loops into a 30-second generation,
+with seeks mapped to their animation phase to avoid restarting a process every
+cycle; this does not truncate the animation. Longer GIFs play their complete
+animation before looping.
+
+Files without a reported duration play until decoded EOF. Their timeline remains
+unknown and seeking is disabled until the actual end is established; pause/idle
+resume still retains the playback position. The wire's representable terminal
+tick (about 4.5 years at 30 fps) is an arithmetic ceiling and unknown-duration
+sentinel, not a practical preview-length policy.
 
 The decode rectangle follows the pane's logical size times display scale, capped
 at 1280 pixels on either axis. Frames preserve display aspect ratio, including
@@ -69,9 +165,10 @@ those payloads; an explicit end record has no payload. EOF alone is not success.
 The parent independently checks:
 
 - version/reserved fields, flags, requested dimensions, stride, and arithmetic;
-- duration `0 < duration <= 30,000,000 us` and the requested start tick;
-- strictly consecutive ticks, exact `floor(tick * 1,000,000 / 30)` timestamps,
-  and at most 900 ticks, regardless of helper claims;
+- positive duration within the `u32` terminal-tick range and the requested start
+  tick; the maximum representable duration denotes an unknown source duration;
+- strictly consecutive ticks below the declared duration, exact
+  `floor(tick * 1,000,000 / 30)` timestamps, and an end tick that cannot overflow;
 - video length exactly `width * height * 4`, at most 6,553,600 bytes;
 - PCM length exactly 6,400 bytes per tick (1,600 stereo samples), with the last
   block truncated to the advertised content duration before audio output;
@@ -88,12 +185,19 @@ square size), plus small audio buffers and bounded kernel pipes. FFmpeg's input
 and output packet queues are limited to two packets each. GStreamer's appsrc
 queue is capped at 38,400 bytes / 200 ms; no unbounded queue element is inserted.
 GTK/driver rendering caches and codec working memory are additional, not part of
-that application-buffer claim. A full maximum-size generation transfers at most
-900 frames (5,898,240,000 video bytes) and 5,760,000 PCM bytes, incrementally—not
-stored as a complete clip. Seeking/looping begins a new bounded generation.
+that application-buffer claim. Total decoded bytes scale with playback duration,
+but queued memory does not: no complete clip is accumulated. Audio timestamp
+conversion uses wide intermediates and rejects values outside GStreamer's clock
+range rather than overflowing for long playback. Seeking/looping begins a new
+memory-bounded generation.
 
 There is **no whole-clip media cache**. Closing or revisiting a file requires a new
 decode. The existing byte/entry-bounded image/PDF preview cache is unchanged.
+Image renders preserve small source dimensions so the UI can enforce its 2×
+upscaling limit. Image previews do not use normalized shared-thumbnail
+placeholders, which can already be enlarged and lack reliable native dimensions;
+they request the bounded full render immediately. PDFs likewise wait for a bounded
+page render with verified page count. File-list thumbnail storage/reuse is unchanged.
 
 ## Scheduling and deadlines
 
@@ -117,7 +221,7 @@ have separate limits, not a machine-global scheduler.
 
 The old batch-conversion wall timeout does not govern a paused real-time player.
 The limits do not promise instant startup, zero-latency seeking, or a total RAM
-plateau for every toolkit/driver. See [measurements and manual checks](evidence/824/README.md).
+plateau for every toolkit/driver.
 
 ## Isolation and hardware policy
 
@@ -133,8 +237,8 @@ Bubblewrap retains the existing namespace/mount policy:
 
 Image/PDF parsing has a 512-MiB input cap, 2-GiB address-space cap, 512-MiB file
 cap, 32-MiB parent output cap, 12-second wall limit and 10-second CPU limit.
-Media has no input-file size cap or cumulative CPU limit; decoded output and
-progress deadlines bound each preview generation. Each software FFmpeg process has a 2-GiB
+Media has no input-file size cap, playback-duration policy cap, or cumulative CPU
+limit; per-record sizes, queue limits, and progress deadlines bound active work. Each software FFmpeg process has a 2-GiB
 address-space limit; all decoding processes disable core dumps and cap files and
 individual media allocations at 512 MiB and source frames at 50 million pixels.
 Accelerated decoders retain the existing exemption from the address-space limit
@@ -168,8 +272,11 @@ Toolkit versions and the opt-in patches in
 The new player does not use the two patched `GtkGstSink`/`GstPlay` paths, but this
 change neither applies nor retires that patch kit or claims to fix all RAM growth.
 
-By explicit owner decision, the Ubuntu runtime-library alias problem
-[#806](https://github.com/lgse/strata/issues/806) remains outside this change.
-No additional filesystem mounts have been added to work around it. Affected
-installations still fail closed at sandbox startup, before this playback path can
-run; direct helper/GTK tests are not proof that this platform problem is fixed.
+The Ubuntu runtime-library alias problem tracked in
+[#806](https://github.com/lgse/strata/issues/806) was initially deferred. The sandbox
+now includes optional read-only binds of the BLAS/LAPACK alternatives used by
+media helpers on x86-64 and ARM64 Debian-family installations. This resolves their
+runtime links without exposing the whole `/etc/alternatives` directory or the
+rest of `/etc`. Canonical pinned-container HEIC, MOV,
+and MP4 preview tests exercise actual sandbox startup and decoding; installed
+systems still depend on their available codec libraries.

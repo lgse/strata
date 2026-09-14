@@ -8,8 +8,8 @@ use std::{
 use gdk_pixbuf::prelude::*;
 
 use super::{
-    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, read_limited,
-    render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
+    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, pdf_render_request,
+    read_limited, render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
     scale_embedded_thumbnail,
 };
 
@@ -40,6 +40,22 @@ fn timed_bounded_commands_stop_and_report_failure_at_their_deadline() {
         Duration::from_secs(1),
     );
     assert!(oversized.is_err());
+}
+
+#[test]
+fn pdf_preview_requests_carry_a_bounded_page_and_viewport() {
+    assert_eq!(
+        pdf_render_request("12:640x800"),
+        Ok((12, crate::sandbox::PdfRenderSize::new(640, 800)))
+    );
+    assert_eq!(
+        pdf_render_request("0:99999x1"),
+        Ok((0, crate::sandbox::PdfRenderSize::new(99999, 1)))
+    );
+    assert!(pdf_render_request("12").is_err());
+    assert!(pdf_render_request("12:0").is_err());
+    assert!(pdf_render_request("page:640x800").is_err());
+    assert!(pdf_render_request("12:wide").is_err());
 }
 
 #[test]
@@ -107,6 +123,24 @@ fn embedded_thumbnails_scale_to_the_requested_size() {
     let scaled = loader.pixbuf().expect("decode scaled png");
 
     assert_eq!((scaled.width(), scaled.height()), (32, 24));
+}
+
+#[test]
+fn image_previews_preserve_small_sources_and_bound_large_decodes() {
+    let directory = tempfile::tempdir().expect("image fixture");
+    let path = directory.path().join("image.png");
+    for (width, height, expected) in [(80, 40, (80, 40)), (1200, 600, (800, 400))] {
+        let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, width, height)
+            .expect("source image");
+        source.fill(0x3366_99ff);
+        source.savev(&path, "png", &[]).expect("save source");
+        let png = render_raw(&path, 800).expect("render image preview");
+        let loader = gdk_pixbuf::PixbufLoader::new();
+        loader.write(&png).expect("load preview");
+        loader.close().expect("finish preview");
+        let preview = loader.pixbuf().expect("decoded preview");
+        assert_eq!((preview.width(), preview.height()), expected);
+    }
 }
 
 #[test]
