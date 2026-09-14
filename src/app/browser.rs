@@ -5,7 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     rc::{Rc, Weak},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -16,8 +16,9 @@ use crate::{
         DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict, UndoCopyRequest,
-        UndoMoveItem, UndoMoveRequest, validate_basename, validate_uri_credentials,
+        RestoreRequest, RestoreSource, RestoreTrashItem, SearchEvent, SearchHandle,
+        SearchIndexLease, TransferConflict, UndoCopyRequest, UndoMoveItem, UndoMoveRequest,
+        validate_basename, validate_uri_credentials,
     },
 };
 
@@ -34,6 +35,7 @@ use remote::RemoteState;
 /// merge cost grows enough that browsing stops feeling responsive.
 const MAX_DIRECTORY_ENTRIES: usize = 100_000;
 const DIRECTORY_LOAD_TIME_BUDGET: Duration = Duration::from_secs(10);
+const SMART_SEARCH_INDEX_TTL: Duration = Duration::from_secs(5 * 60);
 
 /// Larger GIO batches cut per-batch merge, selection scan, and GTK splice
 /// cost on large listings; remote locations keep small batches for fast first paint.
@@ -492,6 +494,13 @@ struct SortingLoad {
     deltas: Vec<(Location, DirectoryChange)>,
 }
 
+struct SmartSearchIndex {
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    retained_at: Instant,
+    _lease: SearchIndexLease,
+}
+
 #[derive(Clone, Copy)]
 struct SortPlan {
     ordering_preferences: ViewPreferences,
@@ -524,6 +533,7 @@ pub struct Browser {
     peek_load: RefCell<Option<LoadHandle>>,
     validation_load: RefCell<Option<LoadHandle>>,
     validation_generation: Cell<u64>,
+    smart_search_index: RefCell<Option<SmartSearchIndex>>,
     navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
@@ -578,6 +588,7 @@ impl Browser {
             peek_load: RefCell::new(None),
             validation_load: RefCell::new(None),
             validation_generation: Cell::new(0),
+            smart_search_index: RefCell::new(None),
             navigation_cleanup: RefCell::new(None),
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
@@ -792,6 +803,7 @@ impl Browser {
         roots: Vec<PathBuf>,
         show_hidden: bool,
     ) {
+        let reuse_index = roots.is_empty();
         let roots = resolve_smart_folder_roots(roots, crate::ui::global_search_roots);
         self.bump_navigation_generation();
         if self.active_location().is_some() {
@@ -815,7 +827,7 @@ impl Browser {
             depth: 0,
             position: None,
         });
-        self.start_smart_folder_load(request_id, query, rules, roots, show_hidden);
+        self.start_smart_folder_load(request_id, query, rules, roots, show_hidden, reuse_index);
     }
 
     pub(crate) fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
@@ -1947,6 +1959,7 @@ impl Browser {
                 return;
             }
             browser.current_operation.set(None);
+            browser.smart_search_index.borrow_mut().take();
             if rename && browser.rename_operation.get() == Some(request_id) {
                 browser.rename_operation.set(None);
             }
@@ -2531,8 +2544,16 @@ impl Browser {
                             show_hidden: false,
                         })
                 });
+            let reuse_index = def.roots.is_empty();
             let roots = resolve_smart_folder_roots(def.roots, crate::ui::global_search_roots);
-            self.start_smart_folder_load(request_id, def.query, def.rules, roots, def.show_hidden);
+            self.start_smart_folder_load(
+                request_id,
+                def.query,
+                def.rules,
+                roots,
+                def.show_hidden,
+                reuse_index,
+            );
             return;
         }
         let handle = self.request_directory(depth, location.clone(), request_id);
@@ -2542,6 +2563,82 @@ impl Browser {
         self.monitors.borrow_mut().push(monitor);
     }
 
+    pub(crate) fn retain_global_search_index(&self, roots: Vec<PathBuf>, show_hidden: bool) {
+        let reusable = self
+            .smart_search_index
+            .borrow()
+            .as_ref()
+            .is_some_and(|index| {
+                index.roots == roots
+                    && index.show_hidden == show_hidden
+                    && index.retained_at.elapsed() < SMART_SEARCH_INDEX_TTL
+            });
+        if reusable {
+            return;
+        }
+        let lease = crate::services::retain_index_trees(roots.clone(), show_hidden);
+        self.smart_search_index.replace(Some(SmartSearchIndex {
+            roots,
+            show_hidden,
+            retained_at: Instant::now(),
+            _lease: lease,
+        }));
+    }
+
+    fn smart_search_session(
+        &self,
+        roots: Vec<PathBuf>,
+        show_hidden: bool,
+        reuse_index: bool,
+    ) -> (SearchHandle, std::sync::mpsc::Receiver<SearchEvent>) {
+        if reuse_index {
+            self.retain_global_search_index(roots.clone(), show_hidden);
+        }
+        crate::services::index_trees(roots, show_hidden)
+    }
+
+    fn publish_smart_folder_entries(
+        &self,
+        request_id: RequestId,
+        entries: Vec<FileEntry>,
+        indexing: bool,
+        truncated: bool,
+    ) {
+        if indexing && entries.is_empty() {
+            return;
+        }
+        let (depth, preferences) = {
+            let state = self.state.borrow();
+            let Some(depth) = state.depth_for_request(request_id) else {
+                return;
+            };
+            let preferences = state
+                .column_preferences(depth)
+                .unwrap_or_else(|| self.preferences.get());
+            (depth, preferences)
+        };
+        let entries = sort_entries(entries, preferences);
+        let count = entries.len();
+        if self
+            .state
+            .borrow_mut()
+            .install_snapshot(request_id, entries)
+            .is_none()
+        {
+            return;
+        }
+        self.emit(BrowserEvent::EntriesReplaced { depth, count });
+        if !indexing
+            && self
+                .state
+                .borrow_mut()
+                .finish(request_id, truncated, Some(true), Some(true))
+                .is_some()
+        {
+            self.emit(BrowserEvent::LoadFinished { depth, truncated });
+        }
+    }
+
     fn start_smart_folder_load(
         self: &Rc<Self>,
         request_id: RequestId,
@@ -2549,8 +2646,9 @@ impl Browser {
         rules: Vec<crate::model::SmartQueryRule>,
         roots: Vec<PathBuf>,
         show_hidden: bool,
+        reuse_index: bool,
     ) {
-        let (handle, receiver) = crate::services::index_trees(roots, show_hidden);
+        let (handle, receiver) = self.smart_search_session(roots, show_hidden, reuse_index);
         handle.smart_query(&query, rules);
         let browser = Rc::downgrade(self);
         let cancelled = Rc::new(Cell::new(false));
@@ -2568,28 +2666,20 @@ impl Browser {
                     .borrow()
                     .recv_timeout(std::time::Duration::from_millis(0))
                 {
-                    Ok(crate::services::SearchEvent::Results {
-                        items, indexing, ..
+                    Ok(SearchEvent::Results {
+                        items,
+                        indexing,
+                        coverage,
+                        ..
                     }) => {
-                        // Search updates are cumulative; install only the terminal snapshot so
-                        // the directory loader does not append the same matches repeatedly.
+                        let entries = items.iter().map(crate::ui::search_result_entry).collect();
+                        browser.publish_smart_folder_entries(
+                            request_id,
+                            entries,
+                            indexing,
+                            coverage.is_partial(),
+                        );
                         if !indexing {
-                            let entries: Vec<FileEntry> =
-                                items.iter().map(crate::ui::search_result_entry).collect();
-                            browser.handle_directory_event(
-                                crate::services::DirectoryEvent::Batch {
-                                    request_id,
-                                    entries,
-                                },
-                            );
-                            browser.handle_directory_event(
-                                crate::services::DirectoryEvent::Finished {
-                                    request_id,
-                                    truncated: false,
-                                    can_trash: Some(true),
-                                    can_delete: Some(true),
-                                },
-                            );
                             return glib::ControlFlow::Break;
                         }
                     }
@@ -3398,9 +3488,14 @@ impl Browser {
             return;
         };
         self.emit(BrowserEvent::ColumnReloaded { depth });
-        let handle = self.request_directory(depth, location, request_id);
-        if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
-            *load = handle;
+        let is_smart_folder = location.smart_folder_id().is_some();
+        let handle =
+            (!is_smart_folder).then(|| self.request_directory(depth, location.clone(), request_id));
+        if is_smart_folder {
+            self.loads.borrow_mut().truncate(depth);
+            self.smart_search_index.borrow_mut().take();
+        } else if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
+            *load = handle.expect("normal directory refresh has a load handle");
         }
         self.metadata_loads.borrow_mut().remove(&depth);
         self.metadata_pending.borrow_mut().remove(&depth);
@@ -3413,6 +3508,9 @@ impl Browser {
         self.fill_tokens.borrow_mut().retain(|_, fill| {
             self.state.borrow().request_id_for_depth(fill.depth) == Some(fill.directory_request)
         });
+        if is_smart_folder {
+            self.start_load(depth, location, request_id);
+        }
     }
 
     pub fn reload_active(self: &Rc<Self>) {

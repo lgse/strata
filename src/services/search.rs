@@ -330,6 +330,16 @@ pub struct SearchHandle {
     subscriber_id: usize,
 }
 
+pub(crate) struct SearchIndexLease {
+    index: Arc<SharedIndex>,
+}
+
+impl Drop for SearchIndexLease {
+    fn drop(&mut self) {
+        self.index.release();
+    }
+}
+
 impl SearchHandle {
     pub fn query(&self, query: &str) {
         let _sent = self
@@ -342,6 +352,11 @@ impl SearchHandle {
             query: query.trim().to_owned(),
             rules,
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_index_with(&self, lease: &SearchIndexLease) -> bool {
+        Arc::ptr_eq(&self.index, &lease.index)
     }
 }
 
@@ -380,12 +395,24 @@ pub fn index_trees(
     index_scoped(roots, show_hidden, true, fuzzy_score_normalized)
 }
 
+/// Keeps a completed or in-progress tree index reusable without starting a query session.
+pub(crate) fn retain_index_trees(roots: Vec<PathBuf>, show_hidden: bool) -> SearchIndexLease {
+    SearchIndexLease {
+        index: acquire_index(roots, show_hidden, true),
+    }
+}
+
 fn index_scoped(
     roots: Vec<PathBuf>,
     show_hidden: bool,
     recursive: bool,
     scorer: SearchScorer,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
+    let index = acquire_index(roots, show_hidden, recursive);
+    start_search_session(index, scorer)
+}
+
+fn acquire_index(roots: Vec<PathBuf>, show_hidden: bool, recursive: bool) -> Arc<SharedIndex> {
     let mut seen = HashSet::new();
     let roots: Vec<_> = roots
         .into_iter()
@@ -418,7 +445,7 @@ fn index_scoped(
         index
     };
     drop(registry);
-    start_search_session(index, scorer)
+    index
 }
 
 #[cfg(test)]

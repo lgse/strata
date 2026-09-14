@@ -60,17 +60,15 @@ fn toggle_handler(
             return;
         }
         let roots = super::super::devices::global_search_roots();
+        let show_hidden = preferences.sort_preferences().show_hidden;
+        browser.retain_global_search_index(roots.clone(), show_hidden);
         let current_folder = browser.active_location().and_then(|location| {
             let path = location.native_path()?.to_path_buf();
             Some((path, crate::ui::location_display_name(&location)))
         });
         button.add_css_class("active");
         root.set_blurred(true);
-        dialog.show(
-            roots,
-            current_folder,
-            preferences.sort_preferences().show_hidden,
-        );
+        dialog.show(roots, current_folder, show_hidden);
     })
 }
 
