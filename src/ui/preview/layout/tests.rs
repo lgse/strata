@@ -335,3 +335,46 @@ fn manual_width_overrides_auto_sizing_until_the_window_session_ends() {
         },
     );
 }
+
+#[test]
+fn opening_preview_with_motion_reveals_last_column() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::opening_preview_with_motion_reveals_last_column",
+        || {
+            let preferences = ThemeManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            preferences.set_reduce_motion(false);
+            let fixture = Fixture::new(false);
+            fixture.preview.observe_browser(&fixture.browser.browser());
+            std::fs::write(
+                fixture.root.path().join("child/grandchild/nested.png"),
+                b"data",
+            )
+            .expect("nested file");
+            fixture.content.set_position(180);
+            fixture.enter_children();
+            wait_until(|| {
+                fixture
+                    .browser
+                    .browser()
+                    .column_snapshot(2)
+                    .is_some_and(|s| s.count == 1)
+            });
+            fixture.preview.close();
+            fixture.resize(1100);
+            fixture.settle();
+            fixture.adjustment().set_value(0.0);
+            fixture.settle();
+            assert_eq!(fixture.adjustment().value(), 0.0);
+
+            fixture.browser.browser().preview(2, 0);
+            fixture.wait_adjacent();
+            assert!(
+                fixture.adjustment().value() > 0.0,
+                "Expected horizontal scroll offset > 0, but was {}",
+                fixture.adjustment().value()
+            );
+            fixture.close();
+        },
+    );
+}

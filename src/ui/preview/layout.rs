@@ -372,6 +372,11 @@ impl PreviewState {
         if !super::super::motion::animations_enabled() || start <= 0 {
             self.animating.set(false);
             self.sync_split(split);
+            if let Some(binding) = self.sizing.binding.borrow().as_ref()
+                && let Some(browser) = binding.browser.upgrade()
+            {
+                browser.reveal_focused_column();
+            }
             return;
         }
 
@@ -395,6 +400,11 @@ impl PreviewState {
             if progress >= 1.0 {
                 state.animating.set(false);
                 state.sync_split(split);
+                if let Some(binding) = state.sizing.binding.borrow().as_ref()
+                    && let Some(browser) = binding.browser.upgrade()
+                {
+                    browser.reveal_focused_column();
+                }
                 glib::ControlFlow::Break
             } else {
                 glib::ControlFlow::Continue
@@ -447,6 +457,11 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
             | gtk::gdk::EventType::TouchCancel
             | gtk::gdk::EventType::GrabBroken => {
                 state.sizing.resizing.set(false);
+                if let Some(binding) = state.sizing.binding.borrow().as_ref()
+                    && let Some(browser) = binding.browser.upgrade()
+                {
+                    browser.reveal_focused_column();
+                }
             }
             _ => {}
         }

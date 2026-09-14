@@ -38,6 +38,23 @@ fn column_width(column: &ColumnView) -> i32 {
 }
 
 impl BrowserView {
+    pub(in crate::ui) fn reveal_focused_column(&self) {
+        if self.view_mode() != BrowserMode::Columns {
+            return;
+        }
+        let columns = self.state.columns.borrow();
+        let count = columns.len();
+        let depth = self
+            .state
+            .browser
+            .active_depth()
+            .filter(|depth| *depth < count)
+            .or_else(|| count.checked_sub(1));
+        if let Some(column) = depth.and_then(|depth| columns.get(depth)) {
+            self.state.reveal_column(column.shell.clone());
+        }
+    }
+
     pub(in crate::ui) fn preview_occupied_width(&self, available: i32) -> i32 {
         if self.view_mode() != BrowserMode::Columns {
             return single_pane_preview_reservation(available);
