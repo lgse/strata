@@ -98,8 +98,7 @@ pub(super) struct BlockCryptoRef<'a> {
     pub crypto_uuid: Option<&'a str>,
 }
 
-/// GVfs does not put `encrypted` in LUKS ThemedIcon names. Locked/unlocked crypto
-/// volumes use a `changes-prevent` / `changes-allow` emblem on a normal drive icon.
+// GVfs marks crypto volumes with changes-prevent/changes-allow emblems, not encrypted icon names.
 pub(super) fn is_encrypted_device(
     icon_names: &[&str],
     start_stop: Option<gio::DriveStartStopType>,
@@ -164,8 +163,7 @@ pub(super) fn probe_block_crypto(unix_device: &str) -> BlockCryptoHint {
     }
 }
 
-/// LUKS UUID used to look up a saved passphrase. Unlocked filesystem volumes
-/// expose the ext4 UUID, so prefer mapper / sysfs crypto identity there.
+// An unlocked volume exposes the filesystem UUID, not the saved passphrase's LUKS UUID.
 pub(super) fn crypto_password_uuid(
     volume_uuid: Option<&str>,
     unix_device: Option<&str>,

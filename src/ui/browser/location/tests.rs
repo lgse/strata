@@ -152,13 +152,81 @@ fn external_volume_mount_completion_is_success() {
 }
 
 #[test]
+fn foreign_mount_wait_finishes_on_signal_poll_or_timeout() {
+    let context = glib::MainContext::new();
+    context.block_on(async {
+        let (send, receive) = oneshot::channel();
+        let signal = async {
+            glib::timeout_future(Duration::from_millis(1)).await;
+            send.send(()).expect("mount wait is still listening");
+        };
+        let wait = wait_for_mount_change(receive, || false, Duration::from_secs(1));
+        futures_lite::future::zip(signal, wait).await;
+
+        let (_send, receive) = oneshot::channel();
+        let polls = Cell::new(0);
+        wait_for_mount_change(
+            receive,
+            || {
+                polls.set(polls.get() + 1);
+                polls.get() == 2
+            },
+            Duration::from_secs(1),
+        )
+        .await;
+        assert_eq!(polls.get(), 2);
+
+        let (_send, receive) = oneshot::channel();
+        let start = Instant::now();
+        wait_for_mount_change(receive, || false, Duration::from_millis(5)).await;
+        assert!(start.elapsed() >= Duration::from_millis(5));
+    });
+}
+
+#[test]
+fn identifierless_devices_keep_exact_object_identity() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::identifierless_devices_keep_exact_object_identity",
+        || {
+            let (view, window, _) = hosted_browser();
+            let drive = glib::Object::new::<glib::Object>();
+            let mut keys = DeviceKeys::new([], []);
+            keys.drive_object = Some(drive.clone());
+            let mut successor = DeviceKeys::new([], []);
+            successor.volume_object = Some(glib::Object::new::<glib::Object>());
+            successor.drive_object = Some(drive);
+            let mut unrelated = successor.clone();
+            unrelated.drive_object = Some(glib::Object::new::<glib::Object>());
+            assert!(!keys.is_empty());
+            assert!(identity_matches_volume(&keys, &successor));
+            assert!(!identity_matches_volume(&keys, &unrelated));
+            assert!(view.state.begin_unlock_progress(&keys));
+            assert!(!view.state.begin_unlock_progress(&keys));
+            assert!(!view.state.begin_unlock_progress(&successor));
+            view.state.finish_unlock_slot(&keys);
+            assert!(view.state.unlock_slots.borrow().is_empty());
+            assert!(view.state.begin_unlock_progress(&successor));
+            assert!(!view.state.begin_unlock_progress(&successor));
+            view.state.finish_unlock_slot(&successor);
+            assert!(view.state.unlock_slots.borrow().is_empty());
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
 fn successor_identity_matches_across_crypto_replacement() {
     let locked = DeviceKeys::new(
         [Some("/dev/loop0".into()), Some("luks-uuid".into())],
         [Some("/dev/loop0".into())],
     );
     let unlocked = DeviceKeys::new(
-        [Some("/dev/dm-0".into()), Some("fs-uuid".into())],
+        [
+            Some("/dev/dm-0".into()),
+            Some("fs-uuid".into()),
+            Some("luks-uuid".into()),
+        ],
         [Some("/dev/loop0".into())],
     );
     let password_drive = DeviceKeys::new([], [Some("/dev/loop0".into())]);
@@ -166,10 +234,18 @@ fn successor_identity_matches_across_crypto_replacement() {
         [Some("/dev/sdb1".into()), Some("other-uuid".into())],
         [Some("/dev/sdb".into())],
     );
-    assert!(identity_matches_mount(&locked, &unlocked, false));
-    assert!(identity_matches_mount(&password_drive, &unlocked, false));
-    assert!(!identity_matches_mount(&locked, &other, false));
-    assert!(!identity_matches_mount(&password_drive, &other, false));
+    assert!(identity_matches_volume(&locked, &unlocked));
+    assert!(identity_matches_volume(&password_drive, &unlocked));
+    assert!(!identity_matches_volume(&locked, &other));
+    assert!(!identity_matches_volume(&password_drive, &other));
+    let other_encrypted_partition = DeviceKeys::new(
+        [Some("/dev/dm-1".into()), Some("other-luks-uuid".into())],
+        [Some("/dev/loop0".into())],
+    );
+    assert!(!identity_matches_volume(
+        &locked,
+        &other_encrypted_partition
+    ));
 }
 
 #[test]
@@ -192,16 +268,8 @@ fn sibling_partition_is_not_this_volume() {
     );
     let password_drive = DeviceKeys::new([], [Some("/dev/sdb".into())]);
     let mapper = DeviceKeys::new(
-        [Some("/dev/dm-0".into()), Some("fs-uuid".into())],
+        [Some("/dev/dm-0".into()), Some("luks-uuid".into())],
         [Some("/dev/sdb".into())],
-    );
-    assert!(
-        !identity_matches_mount(&luks, &efi, true),
-        "EFI sibling should not count as the LUKS volume being mounted"
-    );
-    assert!(
-        !identity_matches_mount(&luks, &efi, false),
-        "EFI sibling is not the LUKS successor after the locked volume is gone"
     );
     assert!(!identity_matches_volume(&luks, &efi));
     assert!(!device_volume_mount_is_ready(
@@ -209,22 +277,20 @@ fn sibling_partition_is_not_this_volume() {
             gio::IOErrorEnum::Failed,
             "Error unlocking /dev/sdb2: Failed to activate device",
         )),
-        identity_matches_mount(&luks, &efi, true),
+        identity_matches_volume(&luks, &efi),
     ));
-    assert!(!identity_matches_mount(&nvme_luks, &nvme_efi, true));
-    assert!(!identity_matches_mount(&nvme_luks, &nvme_efi, false));
+    assert!(!identity_matches_volume(&nvme_luks, &nvme_efi));
     assert!(
-        identity_matches_mount(&luks, &mapper, false),
-        "crypto replacement on the same drive should still match"
+        identity_matches_volume(&luks, &mapper),
+        "crypto replacement retains the LUKS identity"
     );
     assert!(
-        !identity_matches_mount(&password_drive, &efi, false),
+        !identity_matches_volume(&password_drive, &efi),
         "an already-mounted EFI partition is not the password-drive unlock"
     );
-    assert!(identity_matches_mount(
+    assert!(identity_matches_volume(
         &password_drive,
         &DeviceKeys::new([Some("/dev/dm-0".into())], [Some("/dev/sdb".into())]),
-        false
     ));
 }
 
@@ -325,7 +391,6 @@ fn unlock_reloads_the_current_folder_without_stealing_another() {
     );
 }
 
-/// Hide dismisses the unlocking modal without aborting; a later present is a no-op.
 #[test]
 fn unlock_progress_dismiss_skips_navigation() {
     crate::test_support::gtk_test(
@@ -370,8 +435,6 @@ fn unlock_progress_dismiss_skips_navigation() {
     );
 }
 
-/// Cancelling the delayed progress timer must not pop a modal after unlock
-/// already finished.
 #[test]
 fn unlock_progress_schedule_cancelled_before_delay() {
     crate::test_support::gtk_test(

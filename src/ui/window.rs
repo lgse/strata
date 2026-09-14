@@ -996,7 +996,6 @@ impl SidebarView {
 
 impl SidebarState {
     fn queue_rebuild(self: &Rc<Self>) {
-        // Mount, volume, and drive signals often arrive together; rebuild once.
         self.capture_scroll();
         if self.rebuild_queued.replace(true) {
             return;
@@ -1030,9 +1029,7 @@ impl SidebarState {
     }
 
     fn capture_scroll(&self) {
-        // Emptying the places box clamps the adjustment to 0. Remember the first
-        // non-zero offset so a burst of device signals cannot look like a scroll
-        // to the top.
+        // Removing all rows temporarily clamps the adjustment to zero.
         if self.pending_scroll.get().is_some() {
             return;
         }
@@ -2106,8 +2103,7 @@ fn device_row_actions(
         } else {
             EncryptedMediaAction::Unlock
         }),
-        release: volume_release_action(can_eject_volume, mount_can_eject, mount_can_unmount)
-            .or(encrypted.then_some(MediaRelease::EjectVolume)),
+        release: volume_release_action(can_eject_volume, mount_can_eject, mount_can_unmount),
     }
 }
 
@@ -2297,7 +2293,7 @@ fn lock_encrypted_mount(
     );
 }
 
-fn crypto_password_uuid_for_volume(volume: &gio::Volume) -> Option<String> {
+pub(crate) fn crypto_password_uuid_for_volume(volume: &gio::Volume) -> Option<String> {
     let unix = gio_volume_unix_device(volume);
     let hint = unix
         .as_deref()
@@ -2334,6 +2330,14 @@ fn request_encrypted_lock(
     browser: &Rc<Browser>,
     in_flight: &Rc<Cell<bool>>,
 ) {
+    if mount.is_none() && drive.is_none() {
+        show_error_dialog(
+            parent,
+            "Unable to lock device",
+            "This volume has no supported lock operation while unmounted. Mount it in Strata, then try Lock again.",
+        );
+        return;
+    }
     if !begin_media_release(in_flight) {
         return;
     }

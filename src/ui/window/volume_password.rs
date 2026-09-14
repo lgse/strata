@@ -23,7 +23,7 @@ impl fmt::Display for ForgetCachedPasswordError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NeedsConfirmation => f.write_str(
-                "The password manager asked to confirm deleting it. Unlock the keyring and try again.",
+                "Strata cannot display the password manager's deletion confirmation. Remove this volume's saved password in your password manager, then try Lock again.",
             ),
             Self::ItemLocked => f.write_str(
                 "The saved password is locked in the password manager. Unlock the keyring and try again.",
@@ -57,8 +57,7 @@ fn delete_error_is_item_locked(name: &str) -> bool {
     name == "org.freedesktop.Secret.Error.IsLocked"
 }
 
-/// GVfs stores LUKS passphrases under `gvfs-luks-uuid`; GNOME Disks uses
-/// `gvfs.crypto.luks.uuid`. Search both, and both hyphenated and compact UUID forms.
+// GVfs and GNOME Disks use different Secret Service attribute names.
 const LUKS_PASSWORD_ATTRIBUTES: [&str; 2] = ["gvfs-luks-uuid", "gvfs.crypto.luks.uuid"];
 const SECRET_SERVICE: &str = "org.freedesktop.secrets";
 const SECRET_SERVICE_PATH: &str = "/org/freedesktop/secrets";

@@ -1866,8 +1866,7 @@ scrollbar slider:active {
   min-width: 22px;
 }
 
-/* 14px trailing inset matches `.fixed-scrollbar scrollbar.vertical` so the
-   overlay slider cannot cover device lock/eject controls. */
+/* Reserve the overlay scrollbar's width so it cannot cover device controls. */
 .sidebar {
   background: @theme_surface;
   padding: 8px 14px 8px 7px;
@@ -2047,8 +2046,7 @@ scrollbar slider:active {
   background: alpha(@theme_border, 0.24);
   background-image: none;
   border: none;
-  /* Cancel `.sidebar` padding so the rule reaches the pane and scrollbar gutter.
-     min-width offsets those negative horizontal margins so GTK measure stays ≥ 0. */
+  /* Offset sidebar padding; min-width keeps measurement nonnegative. */
   margin: 6px -14px 6px -7px;
   min-height: 1px;
   min-width: 21px;

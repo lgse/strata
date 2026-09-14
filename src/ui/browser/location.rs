@@ -15,14 +15,14 @@ use crate::ui::controls::{
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
 };
-use crate::ui::window::gio_volume_is_encrypted;
+use crate::ui::window::{crypto_password_uuid_for_volume, gio_volume_is_encrypted};
 use futures_channel::oneshot;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const UNLOCK_PROGRESS_DELAY: Duration = Duration::from_millis(350);
 
@@ -539,6 +539,8 @@ fn foreign_volume_wait_follow_up(
 pub(super) struct DeviceKeys {
     volume_tokens: Vec<String>,
     drive_tokens: Vec<String>,
+    volume_object: Option<glib::Object>,
+    drive_object: Option<glib::Object>,
 }
 
 impl DeviceKeys {
@@ -549,11 +551,17 @@ impl DeviceKeys {
         Self {
             volume_tokens: collect_device_tokens(volume),
             drive_tokens: collect_device_tokens(drive),
+            volume_object: None,
+            drive_object: None,
         }
     }
 
+    fn has_volume_identity(&self) -> bool {
+        !self.volume_tokens.is_empty() || self.volume_object.is_some()
+    }
+
     fn is_empty(&self) -> bool {
-        self.volume_tokens.is_empty() && self.drive_tokens.is_empty()
+        !self.has_volume_identity() && self.drive_tokens.is_empty() && self.drive_object.is_none()
     }
 }
 
@@ -571,12 +579,28 @@ fn tokens_overlap(left: &[String], right: &[String]) -> bool {
     left.iter().any(|token| right.contains(token))
 }
 
-fn unlock_target_matches(left: &DeviceKeys, right: &DeviceKeys) -> bool {
-    if !left.volume_tokens.is_empty() && !right.volume_tokens.is_empty() {
-        return tokens_overlap(&left.volume_tokens, &right.volume_tokens);
-    }
+fn same_volume(left: &DeviceKeys, right: &DeviceKeys) -> bool {
     tokens_overlap(&left.volume_tokens, &right.volume_tokens)
-        || tokens_overlap(&left.drive_tokens, &right.drive_tokens)
+        || left
+            .volume_object
+            .as_ref()
+            .is_some_and(|object| Some(object) == right.volume_object.as_ref())
+}
+
+fn same_drive(left: &DeviceKeys, right: &DeviceKeys) -> bool {
+    tokens_overlap(&left.drive_tokens, &right.drive_tokens)
+        || left
+            .drive_object
+            .as_ref()
+            .is_some_and(|object| Some(object) == right.drive_object.as_ref())
+}
+
+fn unlock_target_matches(left: &DeviceKeys, right: &DeviceKeys) -> bool {
+    if left.has_volume_identity() && right.has_volume_identity() {
+        same_volume(left, right)
+    } else {
+        same_drive(left, right)
+    }
 }
 
 fn unix_device_is_partition_of(volume_unix: &str, drive_unix: &str) -> bool {
@@ -601,27 +625,10 @@ fn unix_device_is_sibling_partition(waited: &DeviceKeys, candidate: &DeviceKeys)
     })
 }
 
-fn identity_matches_mount(
-    waited: &DeviceKeys,
-    candidate: &DeviceKeys,
-    waited_volume_present: bool,
-) -> bool {
-    if tokens_overlap(&waited.volume_tokens, &candidate.volume_tokens) {
-        return true;
-    }
-    if !tokens_overlap(&waited.drive_tokens, &candidate.drive_tokens) {
-        return false;
-    }
-    if unix_device_is_sibling_partition(waited, candidate) {
-        return false;
-    }
-    waited.volume_tokens.is_empty() || !waited_volume_present
-}
-
 fn identity_matches_volume(waited: &DeviceKeys, candidate: &DeviceKeys) -> bool {
-    tokens_overlap(&waited.volume_tokens, &candidate.volume_tokens)
-        || (waited.volume_tokens.is_empty()
-            && tokens_overlap(&waited.drive_tokens, &candidate.drive_tokens)
+    same_volume(waited, candidate)
+        || (!waited.has_volume_identity()
+            && same_drive(waited, candidate)
             && !unix_device_is_sibling_partition(waited, candidate))
 }
 
@@ -659,12 +666,13 @@ fn gio_identifier(value: Option<glib::GString>) -> Option<String> {
 }
 
 fn device_keys(volume: Option<&gio::Volume>, drive: Option<&gio::Drive>) -> DeviceKeys {
-    DeviceKeys::new(
+    let mut keys = DeviceKeys::new(
         [
             volume.and_then(|volume| {
                 gio_identifier(volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()))
             }),
             volume.and_then(|volume| gio_identifier(volume.uuid())),
+            volume.and_then(crypto_password_uuid_for_volume),
         ],
         [
             drive.and_then(|drive| {
@@ -674,13 +682,15 @@ fn device_keys(volume: Option<&gio::Volume>, drive: Option<&gio::Drive>) -> Devi
                 gio_identifier(drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UUID.as_str()))
             }),
         ],
-    )
+    );
+    keys.volume_object = volume.map(|volume| volume.clone().upcast());
+    keys.drive_object = drive.map(|drive| drive.clone().upcast());
+    keys
 }
 
 #[derive(Clone)]
 struct DeviceMatch {
     keys: DeviceKeys,
-    drive: Option<gio::Drive>,
 }
 
 impl DeviceMatch {
@@ -688,33 +698,23 @@ impl DeviceMatch {
         let drive = volume.drive();
         Self {
             keys: device_keys(Some(volume), drive.as_ref()),
-            drive,
         }
     }
 
     fn from_drive(drive: &gio::Drive) -> Self {
         Self {
             keys: device_keys(None, Some(drive)),
-            drive: Some(drive.clone()),
         }
     }
 
     fn is_absent(&self) -> bool {
-        self.keys.is_empty() && self.drive.is_none()
+        self.keys.is_empty()
     }
 
-    fn same_drive(&self, other: Option<&gio::Drive>) -> bool {
-        match (&self.drive, other) {
-            (Some(waited), Some(candidate)) => waited == candidate,
-            _ => false,
-        }
-    }
-
-    fn matches_mount(&self, mount: &gio::Mount, waited_volume_present: bool) -> bool {
-        identity_matches_mount(
+    fn matches_mount(&self, mount: &gio::Mount) -> bool {
+        identity_matches_volume(
             &self.keys,
             &device_keys(mount.volume().as_ref(), mount.drive().as_ref()),
-            waited_volume_present,
         )
     }
 
@@ -727,22 +727,8 @@ impl DeviceMatch {
 
     fn matches_password_drive(&self, drive: &gio::Drive) -> bool {
         drive.start_stop_type() == gio::DriveStartStopType::Password
-            && (self.same_drive(Some(drive))
-                || tokens_overlap(
-                    &self.keys.drive_tokens,
-                    &device_keys(None, Some(drive)).drive_tokens,
-                ))
+            && same_drive(&self.keys, &device_keys(None, Some(drive)))
     }
-}
-
-fn waited_volume_is_present(waited: &DeviceMatch, volumes: &[gio::Volume]) -> bool {
-    !waited.keys.volume_tokens.is_empty()
-        && volumes.iter().any(|volume| {
-            tokens_overlap(
-                &waited.keys.volume_tokens,
-                &device_keys(Some(volume), volume.drive().as_ref()).volume_tokens,
-            )
-        })
 }
 
 fn successor_kind(waited: &DeviceMatch) -> VolumeSuccessorKind {
@@ -751,11 +737,10 @@ fn successor_kind(waited: &DeviceMatch) -> VolumeSuccessorKind {
     }
     let monitor = gio::VolumeMonitor::get();
     let volumes = monitor.volumes();
-    let waited_volume_present = waited_volume_is_present(waited, &volumes);
     if monitor
         .mounts()
         .iter()
-        .any(|mount| waited.matches_mount(mount, waited_volume_present))
+        .any(|mount| waited.matches_mount(mount))
     {
         return VolumeSuccessorKind::Mounted;
     }
@@ -774,11 +759,10 @@ fn successor_kind(waited: &DeviceMatch) -> VolumeSuccessorKind {
 
 fn successor_mount_location(waited: &DeviceMatch) -> Option<Location> {
     let monitor = gio::VolumeMonitor::get();
-    let waited_volume_present = waited_volume_is_present(waited, &monitor.volumes());
     monitor
         .mounts()
         .into_iter()
-        .find(|mount| waited.matches_mount(mount, waited_volume_present))
+        .find(|mount| waited.matches_mount(mount))
         .and_then(|mount| crate::adapters::location_for_file(&mount.root()))
 }
 
@@ -797,6 +781,29 @@ fn successor_password_drive(waited: &DeviceMatch) -> Option<gio::Drive> {
 }
 
 const FOREIGN_VOLUME_MOUNT_WAIT: Duration = Duration::from_secs(8);
+
+async fn wait_for_mount_change(
+    signal: oneshot::Receiver<()>,
+    mounted: impl Fn() -> bool,
+    timeout: Duration,
+) {
+    futures_lite::future::race(
+        async {
+            let _ = signal.await;
+        },
+        async {
+            let deadline = Instant::now() + timeout;
+            loop {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() || mounted() {
+                    break;
+                }
+                glib::timeout_future(remaining.min(Duration::from_millis(200))).await;
+            }
+        },
+    )
+    .await;
+}
 
 async fn wait_for_foreign_volume_mount(volume: &gio::Volume) -> ForeignVolumeWaitOutcome {
     if volume.get_mount().is_some() {
@@ -828,26 +835,14 @@ async fn wait_for_foreign_volume_mount(volume: &gio::Volume) -> ForeignVolumeWai
         removed_flag.set(true);
         removed_complete();
     });
-    let poll_volume = volume.clone();
-    let poll_complete = complete.clone();
-    let poll_id = glib::timeout_add_local(Duration::from_millis(200), move || {
-        if poll_volume.get_mount().is_some() {
-            poll_complete();
-            glib::ControlFlow::Break
-        } else {
-            glib::ControlFlow::Continue
-        }
-    });
-    let timeout_complete = complete;
-    let timeout_id = glib::timeout_add_local_once(FOREIGN_VOLUME_MOUNT_WAIT, move || {
-        timeout_complete();
-    });
-
-    let _ = rx.await;
+    wait_for_mount_change(
+        rx,
+        || volume.get_mount().is_some(),
+        FOREIGN_VOLUME_MOUNT_WAIT,
+    )
+    .await;
     volume.disconnect(changed_id);
     volume.disconnect(removed_id);
-    poll_id.remove();
-    timeout_id.remove();
 
     if volume.get_mount().is_some() {
         ForeignVolumeWaitOutcome::Mounted
@@ -891,26 +886,14 @@ async fn wait_for_foreign_drive_start(
         removed_flag.set(true);
         removed_complete();
     });
-    let poll_waited = waited.clone();
-    let poll_complete = complete.clone();
-    let poll_id = glib::timeout_add_local(Duration::from_millis(200), move || {
-        if successor_kind(&poll_waited) == VolumeSuccessorKind::Mounted {
-            poll_complete();
-            glib::ControlFlow::Break
-        } else {
-            glib::ControlFlow::Continue
-        }
-    });
-    let timeout_complete = complete;
-    let timeout_id = glib::timeout_add_local_once(FOREIGN_VOLUME_MOUNT_WAIT, move || {
-        timeout_complete();
-    });
-
-    let _ = rx.await;
+    wait_for_mount_change(
+        rx,
+        || successor_kind(waited) == VolumeSuccessorKind::Mounted,
+        FOREIGN_VOLUME_MOUNT_WAIT,
+    )
+    .await;
     drive.disconnect(changed_id);
     drive.disconnect(disconnected_id);
-    poll_id.remove();
-    timeout_id.remove();
 
     if successor_kind(waited) == VolumeSuccessorKind::Mounted {
         ForeignVolumeWaitOutcome::Mounted
@@ -972,6 +955,9 @@ impl ViewState {
     }
 
     fn start_owned_successor(self: &Rc<Self>, waited: &DeviceMatch, user_asked_to_open: bool) {
+        let user_asked_to_open = user_asked_to_open
+            && !unlock_progress_dismissed_for(&self.unlock_slots.borrow(), &waited.keys);
+        self.finish_unlock_slot(&waited.keys);
         if waited.is_absent() {
             return;
         }
@@ -1030,9 +1016,7 @@ impl ViewState {
                             },
                         );
                     } else if volume_error_is_in_flight_mount(&error) {
-                        // Listing never automounts. Pending/busy here is a
-                        // session automounter job; wait for it, then navigate
-                        // or start a Strata-owned mount. Do not cancel it.
+                        // A competing automounter may own this job; do not cancel it.
                         tracing::debug!(
                             volume = %volume.name(),
                             already_waited,
@@ -1070,7 +1054,6 @@ impl ViewState {
                                 ForeignVolumeWaitFollowUp::StartOwnedMount
                                     if outcome == ForeignVolumeWaitOutcome::Gone =>
                                 {
-                                    state.finish_unlock_slot(&wait_match.keys);
                                     state.start_owned_successor(&wait_match, user_asked_to_open);
                                 }
                                 ForeignVolumeWaitFollowUp::StartOwnedMount => {
@@ -1124,8 +1107,38 @@ impl ViewState {
                     state.dismiss_unlock_progress(&waited.keys);
                 }
                 let this_mounted = successor_kind(&waited) == VolumeSuccessorKind::Mounted;
-                if device_volume_mount_is_ready(&result, this_mounted) {
+                if this_mounted {
                     state.open_unlocked_identity(None, &waited, user_asked_to_open);
+                } else if mount_result_is_ok(&result) {
+                    let weak = Rc::downgrade(state);
+                    let waited = waited.clone();
+                    glib::MainContext::default().spawn_local(async move {
+                        let (_send, receive) = oneshot::channel();
+                        wait_for_mount_change(
+                            receive,
+                            || {
+                                successor_volume(&waited).is_some()
+                                    || successor_mount_location(&waited).is_some()
+                            },
+                            FOREIGN_VOLUME_MOUNT_WAIT,
+                        )
+                        .await;
+                        let Some(state) = weak.upgrade() else {
+                            return;
+                        };
+                        if successor_mount_location(&waited).is_some() {
+                            state.open_unlocked_identity(None, &waited, user_asked_to_open);
+                        } else if successor_volume(&waited).is_some() {
+                            state.start_owned_successor(&waited, user_asked_to_open);
+                        } else {
+                            state.finish_unlock_slot(&waited.keys);
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to mount volume",
+                                "The device started, but no mountable volume appeared.",
+                            );
+                        }
+                    });
                 } else if let Err(error) = result {
                     if volume_error_is_authentication_failure(&error)
                         && let Some(details) = details
@@ -1186,7 +1199,6 @@ impl ViewState {
                                 ForeignVolumeWaitFollowUp::StartOwnedMount
                                     if outcome == ForeignVolumeWaitOutcome::Gone =>
                                 {
-                                    state.finish_unlock_slot(&wait_match.keys);
                                     state.start_owned_successor(&wait_match, user_asked_to_open);
                                 }
                                 ForeignVolumeWaitFollowUp::StartOwnedMount => {

@@ -796,7 +796,11 @@ fn volume_release_prefers_eject_and_hides_fixed_disks() {
 fn encrypted_device_actions_share_lock_and_release() {
     let locked = device_row_actions(true, false, false, false, false);
     assert_eq!(locked.encrypted, Some(EncryptedMediaAction::Unlock));
-    assert_eq!(locked.release, Some(MediaRelease::EjectVolume));
+    assert_eq!(locked.release, None);
+    assert_eq!(
+        device_row_actions(true, false, true, false, false).release,
+        Some(MediaRelease::EjectVolume)
+    );
 
     let unlocked = device_row_actions(true, true, false, false, true);
     assert_eq!(unlocked.encrypted, Some(EncryptedMediaAction::Lock));
@@ -921,48 +925,68 @@ fn emblemed_padlock_icon_names_include_emblem() {
 }
 
 #[test]
-fn locked_volume_keeps_lock_and_eject_on_one_row() {
+fn device_controls_dispatch_independently() {
     gtk_test(
-        "ui::window::tests::locked_volume_keeps_lock_and_eject_on_one_row",
+        "ui::window::tests::device_controls_dispatch_independently",
         || {
-            use std::time::Duration;
-
             use gtk::prelude::*;
 
-            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "115 MB Encrypted");
-            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, || {});
-            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, || {});
-            let shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
-            let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 2);
-            sidebar.set_width_request(SIDEBAR_WIDTH);
-            sidebar.append(&shell);
-            let window = gtk::Window::builder()
-                .default_width(SIDEBAR_WIDTH)
-                .default_height(80)
-                .child(&sidebar)
-                .build();
-            window.present();
-            let main_loop = glib::MainLoop::new(None, false);
-            let stop = main_loop.clone();
-            glib::timeout_add_local_once(Duration::from_millis(100), move || stop.quit());
-            main_loop.run();
+            let opened = Rc::new(Cell::new(0));
+            let unlocked = Rc::new(Cell::new(0));
+            let ejected = Rc::new(Cell::new(0));
+            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "USB Backup");
+            row.connect_clicked({
+                let opened = opened.clone();
+                move |_| opened.set(opened.get() + 1)
+            });
+            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, {
+                let unlocked = unlocked.clone();
+                move || unlocked.set(unlocked.get() + 1)
+            });
+            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, {
+                let ejected = ejected.clone();
+                move || ejected.set(ejected.get() + 1)
+            });
+            let _shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
+            lock.emit_clicked();
+            assert_eq!((opened.get(), unlocked.get(), ejected.get()), (0, 1, 0));
+            eject.emit_clicked();
+            assert_eq!((opened.get(), unlocked.get(), ejected.get()), (0, 1, 1));
+            row.emit_clicked();
+            assert_eq!((opened.get(), unlocked.get(), ejected.get()), (1, 1, 1));
+        },
+    );
+}
 
-            let lock_bounds = lock.compute_bounds(&shell).expect("lock bounds");
-            let eject_bounds = eject.compute_bounds(&shell).expect("eject bounds");
-            let row_bounds = row.compute_bounds(&shell).expect("row bounds");
-            assert!(
-                (lock_bounds.y() - eject_bounds.y()).abs() <= 1.0,
-                "lock and eject should share a row: lock={lock_bounds:?} eject={eject_bounds:?}"
+#[test]
+fn unsupported_unmounted_lock_fails_before_password_lookup() {
+    gtk_test(
+        "ui::window::tests::unsupported_unmounted_lock_fails_before_password_lookup",
+        || {
+            use gtk::prelude::*;
+
+            let view = browser_for_window();
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let in_flight = Rc::new(Cell::new(false));
+            super::request_encrypted_lock(
+                overlay.upcast_ref(),
+                "USB Backup",
+                Some("6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7".into()),
+                None,
+                None,
+                &view.browser(),
+                &in_flight,
             );
-            assert!(
-                eject_bounds.x() >= lock_bounds.x() + lock_bounds.width() - 1.0,
-                "eject should sit after lock: lock={lock_bounds:?} eject={eject_bounds:?}"
-            );
-            assert!(
-                lock_bounds.x() >= row_bounds.x() + row_bounds.width() - 1.0,
-                "actions should sit after the device name: row={row_bounds:?} lock={lock_bounds:?}"
-            );
+            assert!(!in_flight.get());
+            assert!(button_with_label(overlay.upcast_ref(), "Forget and lock").is_none());
+            button_with_label(overlay.upcast_ref(), "Close")
+                .expect("unsupported lock reports an error immediately")
+                .emit_clicked();
             window.destroy();
+            view.browser().clear_observer();
         },
     );
 }
