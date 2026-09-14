@@ -5,7 +5,9 @@ use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
 use crate::ui::{
-    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+    preview::{PreviewDrawer, PreviewPopup},
+    shortcut_footer::ShortcutFooter,
+    top_bar_navigation::TopBarNavigation,
 };
 
 pub(super) struct TextPreview;
@@ -60,6 +62,8 @@ fn exercise_type_to_search() {
         .default_width(1000)
         .default_height(600)
         .build();
+    let quick_look = PreviewPopup::new(Rc::new(TextPreview), &window);
+    quick_look.observe_browser(&browser);
     let type_to_search = TypeToSearch {
         view: view.clone(),
         preferences: preferences.clone(),
@@ -71,6 +75,7 @@ fn exercise_type_to_search() {
             view: view.clone(),
             top_bar,
             preview: preview.clone(),
+            quick_look: quick_look.clone(),
             type_to_search,
             shortcuts: ShortcutFooter::new(BrowserMode::Columns),
         },
@@ -105,17 +110,17 @@ fn exercise_type_to_search() {
         browser.focus_active();
         wait_until(|| view.item_view_has_focus());
         press(&keys, gtk::gdk::Key::space);
-        assert!(preview.is_open(), "Space opens preview: {mode:?}");
+        assert!(quick_look.is_open(), "Space opens preview: {mode:?}");
         assert!(!view.filter_has_focus());
         press(&keys, gtk::gdk::Key::space);
-        assert!(!preview.is_open(), "Space closes preview: {mode:?}");
+        assert!(!quick_look.is_open(), "Space closes preview: {mode:?}");
         for name in ["folder", "archive.zip"] {
             select_entry(&browser, name);
             browser.focus_active();
             wait_until(|| view.item_view_has_focus());
             press(&keys, gtk::gdk::Key::space);
             assert!(
-                !preview.is_open(),
+                !quick_look.is_open(),
                 "Space must not preview {name}: {mode:?}"
             );
             assert!(!view.filter_has_focus());
@@ -146,7 +151,8 @@ fn exercise_type_to_search() {
                     "Space must not navigate: {mode:?}, {name}"
                 );
             }
-            preview.close();
+                preview.close();
+                quick_look.close();
         }
     }
 
@@ -221,6 +227,7 @@ fn exercise_type_to_search() {
         "filename typing still starts filtering"
     );
     assert!(!preview.is_open());
+    assert!(!quick_look.is_open());
     assert!(
         !press(&keys, gtk::gdk::Key::space),
         "Space in the filter must reach the text entry"
@@ -232,6 +239,7 @@ fn exercise_type_to_search() {
     focused.emit_by_name::<()>("insert-at-cursor", &[&" "]);
     assert_eq!(focused.text(), "n ");
     browser.clear_observer();
+    quick_look.close();
     sidebar.disconnect();
     window.destroy();
 }

@@ -11,7 +11,9 @@ use crate::{
     adapters::LocalPreviewProvider,
     assets::{self, icons},
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
+        browser::BrowserView,
+        preview::{PreviewDrawer, PreviewPopup},
+        shortcut_footer::ShortcutFooter,
         theme::ThemeManager,
     },
 };
@@ -85,16 +87,20 @@ fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
     button
 }
 
-pub(super) fn preview(browser: &BrowserView, preferences: &Rc<ThemeManager>) -> PreviewDrawer {
+pub(super) fn preview(
+    window: &gtk::ApplicationWindow,
+    browser: &BrowserView,
+    preferences: &Rc<ThemeManager>,
+) -> (PreviewDrawer, PreviewPopup) {
     let preferences = preferences.clone();
-    let preview = PreviewDrawer::new(
-        Rc::new(LocalPreviewProvider::new(Rc::new(move || {
-            preferences.media_preview_backend()
-        }))),
-        true,
-    );
+    let provider = Rc::new(LocalPreviewProvider::new(Rc::new(move || {
+        preferences.media_preview_backend()
+    })));
+    let preview = PreviewDrawer::new(provider.clone(), true);
     preview.observe_browser(&browser.browser());
-    preview
+    let quick_look = PreviewPopup::new(provider, window);
+    quick_look.observe_browser(&browser.browser());
+    (preview, quick_look)
 }
 
 pub(super) fn browser_layout(

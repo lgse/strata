@@ -6,7 +6,9 @@ use gtk::gdk::{Key, ModifierType};
 
 use super::super::*;
 use crate::ui::{
-    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+    preview::{PreviewDrawer, PreviewPopup},
+    shortcut_footer::ShortcutFooter,
+    top_bar_navigation::TopBarNavigation,
 };
 
 struct KeyboardFixture {
@@ -14,7 +16,7 @@ struct KeyboardFixture {
     overlay: gtk::Overlay,
     view: BrowserView,
     sidebar: SidebarView,
-    preview: PreviewDrawer,
+    quick_look: PreviewPopup,
     keys: gtk::EventControllerKey,
     _directory: tempfile::TempDir,
 }
@@ -39,7 +41,7 @@ impl KeyboardFixture {
         header.append(&toggle);
         header.append(&view.location_widget());
         let top_bar = TopBarNavigation::new(&header, &sidebar.widget, &toggle);
-        let preview = PreviewDrawer::new(provider, false);
+        let preview = PreviewDrawer::new(provider.clone(), false);
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         row.append(&sidebar.widget);
         row.append(&view.widget());
@@ -53,6 +55,8 @@ impl KeyboardFixture {
             .default_width(1000)
             .default_height(600)
             .build();
+        let quick_look = PreviewPopup::new(provider, &window);
+        quick_look.observe_browser(&view.browser());
         keyboard::install(
             &window,
             &sidebar,
@@ -60,6 +64,7 @@ impl KeyboardFixture {
                 view: view.clone(),
                 top_bar,
                 preview: preview.clone(),
+                quick_look: quick_look.clone(),
                 type_to_search: TypeToSearch {
                     view: view.clone(),
                     preferences,
@@ -87,7 +92,7 @@ impl KeyboardFixture {
             overlay,
             view,
             sidebar,
-            preview,
+            quick_look,
             keys,
             _directory: directory,
         }
@@ -105,6 +110,7 @@ impl KeyboardFixture {
 
 impl Drop for KeyboardFixture {
     fn drop(&mut self) {
+        self.quick_look.close();
         self.view.browser().clear_observer();
         self.sidebar.disconnect();
         self.window.destroy();
@@ -306,20 +312,22 @@ fn clipboard_and_delete_shortcuts_proceed_inside_preview_text() {
             let fixture = KeyboardFixture::new();
             assert!(fixture.press(Key::space, ModifierType::empty()));
             wait_until(|| {
-                fixture.preview.is_open() && text_view_in(&fixture.preview.widget()).is_some()
+                fixture.quick_look.is_open()
+                    && text_view_in(&fixture.quick_look.widget()).is_some()
             });
-            let text = text_view_in(&fixture.preview.widget()).expect("preview text");
+            let text = text_view_in(&fixture.quick_look.widget()).expect("preview text");
             text.grab_focus();
             wait_until(|| text.has_focus());
 
+            let popup: gtk::Widget = fixture.quick_look.window().upcast();
             for key in [Key::a, Key::c, Key::d, Key::v, Key::x] {
                 assert!(
-                    !fixture.press(key, ModifierType::CONTROL_MASK),
+                    !press_on(&popup, key, ModifierType::CONTROL_MASK),
                     "{key:?} should reach the text view"
                 );
             }
-            assert!(!fixture.press(Key::Delete, ModifierType::empty()));
-            assert!(!fixture.press(Key::Delete, ModifierType::SHIFT_MASK));
+            assert!(!press_on(&popup, Key::Delete, ModifierType::empty()));
+            assert!(!press_on(&popup, Key::Delete, ModifierType::SHIFT_MASK));
             assert_eq!(fixture.selected(), [0]);
         },
     );
@@ -336,7 +344,7 @@ fn filter_clipboard_proceeds_and_escape_dismisses_one_surface_at_a_time() {
                 fixture.view.browser().select(0, 0);
                 fixture.view.browser().focus_active();
                 assert!(fixture.press(Key::space, ModifierType::empty()));
-                assert!(fixture.preview.is_open());
+                assert!(fixture.quick_look.is_open());
                 assert!(fixture.press(Key::f, ModifierType::CONTROL_MASK));
                 assert!(fixture.view.filter_has_focus());
                 for key in [Key::a, Key::c, Key::d, Key::v, Key::x] {
@@ -347,10 +355,10 @@ fn filter_clipboard_proceeds_and_escape_dismisses_one_surface_at_a_time() {
                 }
                 assert!(fixture.press(Key::Escape, ModifierType::empty()));
                 assert!(!fixture.view.filter_has_focus());
-                assert!(fixture.preview.is_open());
+                assert!(fixture.quick_look.is_open());
                 assert_eq!(fixture.selected(), [0]);
                 assert!(fixture.press(Key::Escape, ModifierType::empty()));
-                assert!(!fixture.preview.is_open());
+                assert!(!fixture.quick_look.is_open());
                 assert_eq!(fixture.selected(), [0]);
                 assert!(fixture.press(Key::Escape, ModifierType::empty()));
                 assert!(fixture.selected().is_empty());

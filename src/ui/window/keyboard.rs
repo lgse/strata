@@ -11,7 +11,9 @@ use gtk::{
 use crate::{
     app::Browser,
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
+        browser::BrowserView,
+        preview::{PreviewDrawer, PreviewPopup},
+        shortcut_footer::ShortcutFooter,
         top_bar_navigation::TopBarNavigation,
     },
 };
@@ -29,6 +31,7 @@ pub(super) struct Bindings {
     pub view: BrowserView,
     pub top_bar: TopBarNavigation,
     pub preview: PreviewDrawer,
+    pub quick_look: PreviewPopup,
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
 }
@@ -42,6 +45,7 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         view: bindings.view,
         top_bar: bindings.top_bar,
         preview: bindings.preview,
+        quick_look: bindings.quick_look,
         type_to_search: bindings.type_to_search,
         shortcuts: bindings.shortcuts,
         sidebar: SidebarFocus {
@@ -65,6 +69,7 @@ struct Dispatcher {
     sidebar: SidebarFocus,
     top_bar: TopBarNavigation,
     preview: PreviewDrawer,
+    quick_look: PreviewPopup,
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
 }

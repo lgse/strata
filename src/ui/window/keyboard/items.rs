@@ -47,6 +47,10 @@ impl Dispatcher {
     }
 
     fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
+        if self.quick_look.is_open() {
+            self.quick_look.close();
+            return Some(Propagation::Stop);
+        }
         if self.preview.is_enabled() {
             self.preview.close();
             return Some(Propagation::Stop);
@@ -142,9 +146,22 @@ impl Dispatcher {
             }
             Key::p | Key::P => self.view.pin_focused(),
             Key::space
+                if event.alt()
+                    && event.without(
+                        Modifiers::CONTROL_MASK
+                            | Modifiers::SHIFT_MASK
+                            | Modifiers::SUPER_MASK,
+                    ) =>
+            {
+                self.quick_look.open_fullscreen(
+                    preview_target(browser.focused_entry()),
+                    browser.active_depth(),
+                );
+            }
+            Key::space
                 if event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
                     && self.view.activate_directory_column() => {}
-            Key::space => self.preview.toggle(
+            Key::space => self.quick_look.toggle(
                 preview_target(browser.focused_entry()),
                 browser.active_depth(),
             ),

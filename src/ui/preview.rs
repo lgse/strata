@@ -24,7 +24,10 @@ use super::{blur::BlurBin, controls::modal_layout};
 
 mod layout;
 mod media_layout;
+mod popup;
 mod session;
+
+pub(crate) use popup::PreviewPopup;
 
 const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 560;

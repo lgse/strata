@@ -5,8 +5,9 @@ use std::rc::Rc;
 use gtk::{gio, prelude::*};
 
 use crate::ui::{
-    blur::BlurBin, browser::BrowserView, preview::PreviewDrawer, settings::UpdateNoticeHandler,
-    theme::ThemeManager,
+    blur::BlurBin, browser::BrowserView,
+    preview::{PreviewDrawer, PreviewPopup},
+    settings::UpdateNoticeHandler, theme::ThemeManager,
 };
 
 use super::{SidebarView, TypeToSearch, keyboard};
@@ -20,6 +21,7 @@ pub(super) struct WindowContent {
     pub(super) browser: BrowserView,
     pub(super) sidebar: SidebarView,
     preview: PreviewDrawer,
+    quick_look: PreviewPopup,
     header: layout::Header,
     overlay: gtk::Overlay,
     blurred_root: BlurBin,
@@ -29,7 +31,7 @@ pub(super) struct WindowContent {
 impl WindowContent {
     pub(super) fn new(window: &gtk::ApplicationWindow, preferences: &Rc<ThemeManager>) -> Self {
         let browser = super::browser_for_window();
-        let preview = layout::preview(&browser, preferences);
+        let (preview, quick_look) = layout::preview(window, &browser, preferences);
         let header = layout::Header::new(window, &browser, &preview, preferences);
         let sidebar = super::build_sidebar(browser.clone(), preferences.clone(), false);
         let root = layout::browser_layout(&browser, &preview, &sidebar, &header);
@@ -43,6 +45,7 @@ impl WindowContent {
             browser,
             sidebar,
             preview,
+            quick_look,
             header,
             overlay,
             blurred_root,
@@ -85,6 +88,7 @@ impl WindowContent {
                 view: self.browser.clone(),
                 top_bar,
                 preview: self.preview.clone(),
+                quick_look: self.quick_look.clone(),
                 type_to_search: TypeToSearch {
                     view: self.browser.clone(),
                     preferences: preferences.clone(),

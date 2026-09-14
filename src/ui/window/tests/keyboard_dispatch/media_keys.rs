@@ -55,7 +55,7 @@ fn media_modifiers_leave_plain_arrows_and_space_to_the_browser() {
                 fixture.view.browser().focus_active();
                 wait_until(|| fixture.view.item_view_has_focus());
                 assert!(fixture.press(Key::space, ModifierType::empty()));
-                let media = player(&fixture.preview.widget()).expect("preview player");
+                let media = player(&fixture.quick_look.widget()).expect("preview player");
                 crate::ui::media::tests::use_test_decoder(&media, false, 20_000_000);
                 wait_until(|| media.is_prepared());
                 let manager = ThemeManager::shared();
@@ -86,7 +86,7 @@ fn media_modifiers_leave_plain_arrows_and_space_to_the_browser() {
                 }
                 assert!((manager.preview_volume() - 0.4).abs() < 0.001);
                 assert!(fixture.press(Key::space, ModifierType::empty()));
-                assert!(!fixture.preview.is_enabled());
+                assert!(!fixture.quick_look.is_open());
             }
         },
     );

@@ -76,6 +76,22 @@ impl Dispatcher {
 
     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
         if event.key == Key::space
+            && event.alt()
+            && event.without(
+                Modifiers::CONTROL_MASK | Modifiers::SUPER_MASK | Modifiers::SHIFT_MASK,
+            )
+            && let Some(entry) = self.view.selected_search_result()
+        {
+            if self.view.activate_directory_column() {
+                return Some(Propagation::Stop);
+            }
+            self.quick_look.open_fullscreen(
+                crate::ui::preview::preview_target(Some(entry)),
+                self.view.browser().active_depth(),
+            );
+            return Some(Propagation::Stop);
+        }
+        if event.key == Key::space
             && event.without(
                 Modifiers::CONTROL_MASK
                     | Modifiers::ALT_MASK
@@ -87,7 +103,7 @@ impl Dispatcher {
             if self.view.activate_directory_column() {
                 return Some(Propagation::Stop);
             }
-            self.preview.toggle(
+            self.quick_look.toggle(
                 crate::ui::preview::preview_target(Some(entry)),
                 self.view.browser().active_depth(),
             );
@@ -114,7 +130,8 @@ impl Dispatcher {
         if !self.sidebar.contains(&event.focused)
             && !self.top_bar.has_focus()
             && !event.text_has_focus()
-            && self.preview.handle_video_key(event.key, event.modifiers)
+            && (self.preview.handle_video_key(event.key, event.modifiers)
+                || self.quick_look.handle_video_key(event.key, event.modifiers))
         {
             return Some(Propagation::Stop);
         }
