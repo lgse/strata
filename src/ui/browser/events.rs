@@ -736,10 +736,11 @@ impl ViewState {
                 self.show_file_operation_progress(
                     *total,
                     crate::assets::icons::FILE_ARCHIVE,
-                    "Working",
+                    "Processing archive…",
                     "Cancelling will not undo completed changes",
                     Rc::new(move || browser.cancel_file_operation()),
                 );
+                self.update_archive_progress(0, *total);
             }
             BrowserEvent::ArchiveProgress { completed, total } => {
                 self.update_archive_progress(*completed, *total);

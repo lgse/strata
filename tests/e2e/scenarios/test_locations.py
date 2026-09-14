@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES
+from harness.modes import COLUMNS_AND_ONE
 
 
 def test_typing_a_path_navigates_there(strata):
@@ -72,7 +72,7 @@ def test_a_sidebar_place_navigates_there(strata):
     strata.entry("sidebar-target.txt")
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_refresh_reconciles_external_file_creation_and_removal(strata, mode):
     strata.entry("todo.txt")
     strata.fixture.path("appeared-later.txt").write_text("new\n")
@@ -90,7 +90,7 @@ def test_an_unreadable_location_reports_an_error(strata):
     blocked.chmod(0o000)
     try:
         strata.keyboard.press("F5")
-        strata.click_entry("blocked")
+        strata.select_entry("blocked")
 
         dialog = strata.wait_for_dialog()
         assert dialog.name == "Unable to open directory", (

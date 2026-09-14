@@ -170,7 +170,6 @@ pub(super) fn present_target(
             );
         });
     }
-    super::portal_preferences::schedule_offer(&window);
     schedule_due_update_check(&theme_manager, &update_notice);
     browser
 }

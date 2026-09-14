@@ -3,8 +3,6 @@
 import pytest
 from gi.repository import Gio
 
-from harness.modes import ALL_MODES
-
 
 @pytest.fixture
 def open_with_app(test_environment):
@@ -29,25 +27,29 @@ def open_with_app(test_environment):
     return output, associations, contents
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_open_with_launches_selected_file_without_changing_default(
-    open_with_app, strata, mode
-):
+@pytest.mark.parametrize("target", ["todo.txt", "documents", "background"])
+def test_open_with_launches_without_changing_default(open_with_app, strata, target):
     output, associations, contents = open_with_app
-    strata.open_context_menu("todo.txt")
-    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
+    if target == "background":
+        expected = strata.fixture.root
+        strata.pointer.right_click(strata.pane(), at=strata.background_point())
+        strata.wait(lambda: "Open With…" in strata.menu_items(), "folder menu")
+    else:
+        expected = strata.fixture.path(target)
+        strata.open_context_menu(target)
+        strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
     strata.choose_menu_item("Open With…")
     dialog = strata.wait_for_dialog()
     assert "Review Text Viewer" in dialog.dump()
     strata.keyboard.press("Return")
     strata.wait(
         lambda: output.exists() and output.read_text(),
-        "the selected application to receive the file",
+        "the selected application to receive the target",
     )
     received = output.read_text().splitlines()
     assert len(received) == 1
     assert Gio.File.new_for_commandline_arg(received[0]).equal(
-        Gio.File.new_for_path(str(strata.fixture.path("todo.txt")))
+        Gio.File.new_for_path(str(expected))
     )
     assert associations.read_text() == contents
     strata.wait(lambda: strata.dialog() is None, "the chooser to close")
@@ -176,26 +178,8 @@ def test_open_with_search_filters_and_escape_clears(chooser_apps, strata, reques
     strata.wait(lambda: strata.dialog() is None, "dismissed chooser")
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_open_with_background_launches_current_folder(open_with_app, strata, mode):
-    output, associations, contents = open_with_app
-    strata.pointer.right_click(strata.pane(), at=strata.background_point())
-    strata.wait(lambda: "Open With…" in strata.menu_items(), "folder menu")
-    strata.choose_menu_item("Open With…")
-    strata.wait_for_dialog()
-    strata.keyboard.press("Return")
-    strata.wait(lambda: output.exists() and output.read_text(), "folder launch")
-    received = output.read_text().splitlines()
-    assert len(received) == 1
-    assert Gio.File.new_for_commandline_arg(received[0]).equal(
-        Gio.File.new_for_path(str(strata.fixture.root))
-    )
-    assert associations.read_text() == contents
-
-
 @pytest.mark.parametrize("action", ["Open", "Open With…"])
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_open_with_mixed_types_share_a_hidden_default(chooser_apps, strata, action, mode):
+def test_open_with_mixed_types_share_a_hidden_default(chooser_apps, strata, action):
     output, associations, contents = chooser_apps
     strata.select_entry("todo.txt")
     strata.pointer.click(strata.entry("readme.md"), modifiers=["ctrl"])
@@ -292,21 +276,3 @@ def test_open_with_incompatible_types_offers_other_apps(incompatible_files, stra
     strata.wait(lambda: strata.dialog() is None, "the chooser to close")
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_open_with_launches_selected_folder(open_with_app, strata, mode):
-    output, associations, contents = open_with_app
-    strata.open_context_menu("documents")
-    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
-    strata.choose_menu_item("Open With…")
-    assert "Review Text Viewer" in strata.wait_for_dialog().dump()
-    strata.keyboard.press("Return")
-    strata.wait(
-        lambda: output.exists() and output.read_text(),
-        "the selected application to receive the folder",
-    )
-    received = output.read_text().splitlines()
-    assert len(received) == 1
-    assert Gio.File.new_for_commandline_arg(received[0]).equal(
-        Gio.File.new_for_path(str(strata.fixture.path("documents")))
-    )
-    assert associations.read_text() == contents

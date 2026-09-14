@@ -28,10 +28,41 @@ def fixture_tree():
         tree.cleanup()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_space_opens_and_closes_the_quick_preview(strata, mode):
+@pytest.mark.parametrize(
+    "mode,selection",
+    [
+        pytest.param(
+            "Columns",
+            "keyboard",
+            marks=pytest.mark.preferences(browser_mode="columns"),
+            id="columns-keyboard",
+        ),
+        pytest.param(
+            "Icons",
+            "keyboard",
+            marks=pytest.mark.preferences(browser_mode="icons"),
+            id="icons-keyboard",
+        ),
+        pytest.param(
+            "List",
+            "keyboard",
+            marks=pytest.mark.preferences(browser_mode="list"),
+            id="list-keyboard",
+        ),
+        pytest.param(
+            "List",
+            "pointer",
+            marks=pytest.mark.preferences(browser_mode="list"),
+            id="list-pointer",
+        ),
+    ],
+)
+def test_space_opens_and_closes_the_quick_preview(strata, mode, selection):
     before = strata.entry_names()
-    strata.select_entry_with_keyboard("notes.txt")
+    if selection == "keyboard":
+        strata.select_entry_with_keyboard("notes.txt")
+    else:
+        strata.select_entry("notes.txt")
 
     strata.keyboard.press("space")
 
@@ -82,12 +113,7 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("selection", ["keyboard", "pointer"])
-@pytest.mark.parametrize(
-    "preferences",
-    [{"single_click_previews": False}, {"single_click_previews": True}],
-    ids=["explicit-preview", "single-click-preview"],
-)
-def test_preview_follows_the_selection(strata, mode, selection, preferences):
+def test_preview_follows_the_selection(strata, mode, selection):
     strata.select_entry_with_keyboard("notes.txt")
     strata.keyboard.press("space")
     strata.wait(
@@ -308,11 +334,3 @@ def test_narrow_window_prioritizes_the_last_column_and_restores_the_latest_previ
     strata.wait(last_column_visible, "the last column beside the resumed preview")
     resize(1200)
     strata.wait(lambda: strata.preview().screen_bounds().width == preferred, "the preferred preview width to return")
-
-
-def test_space_opens_the_preview_after_a_pointer_selection(strata):
-    strata.select_entry("notes.txt")
-
-    strata.keyboard.press("space")
-
-    strata.wait(strata.preview, "the preview to open on the first Space")

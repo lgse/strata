@@ -18,6 +18,7 @@ use rustix::process::{Pid, Signal, kill_process_group};
 use crate::services::MediaPreviewSize;
 
 pub(crate) mod media;
+pub(crate) mod metadata;
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -97,6 +98,7 @@ pub(crate) enum ParseOperation {
     ThumbnailPdf,
     ThumbnailVideo,
     PreviewImage,
+    MediaMetadata,
     PreviewPdf(PdfRenderSize),
     PreviewMedia(MediaPreviewSize),
 }
@@ -109,6 +111,7 @@ impl ParseOperation {
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
             Self::PreviewImage => "preview-image",
+            Self::MediaMetadata => "media-metadata",
             Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewMedia(_) => "preview-media",
         }
@@ -119,7 +122,9 @@ impl ParseOperation {
     }
 
     fn output_name(self) -> &'static str {
-        if self.is_media() {
+        if self == Self::MediaMetadata {
+            "result.json"
+        } else if self.is_media() {
             "result.media"
         } else {
             "result.png"
@@ -134,7 +139,7 @@ impl ParseOperation {
             | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
             Self::PreviewImage => Some((800, 800, 800 * 800)),
             Self::PreviewPdf(size) => Some(size.image_limits()),
-            Self::PreviewMedia(_) => None,
+            Self::PreviewMedia(_) | Self::MediaMetadata => None,
         }
     }
 
@@ -145,7 +150,7 @@ impl ParseOperation {
             | Self::ThumbnailPdf
             | Self::PreviewImage
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
-            Self::ThumbnailVideo | Self::PreviewMedia(_) => None,
+            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata => None,
         }
     }
 }
@@ -223,7 +228,12 @@ pub(crate) fn parse(
     }
 
     let result_path = output.path().join(operation.output_name());
-    let data = read_private_output(&result_path, MAX_OUTPUT_BYTES)?;
+    let limit = if operation == ParseOperation::MediaMetadata {
+        metadata::MAX_METADATA_BYTES
+    } else {
+        MAX_OUTPUT_BYTES
+    };
+    let data = read_private_output(&result_path, limit)?;
     if !valid_output(operation, &data) {
         return Err("The preview renderer produced invalid image data".to_owned());
     }
@@ -364,6 +374,21 @@ fn sandbox_command(
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
+    if matches!(
+        operation,
+        ParseOperation::ThumbnailVideo
+            | ParseOperation::PreviewMedia(_)
+            | ParseOperation::MediaMetadata
+    ) {
+        // Debian-family FFmpeg libraries resolve BLAS/LAPACK through these links.
+        // Expose only the runtime files, not the system alternatives directory.
+        for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
+            for library in ["libblas.so.3", "liblapack.so.3"] {
+                let path = format!("/etc/alternatives/{library}-{architecture}");
+                command.arg("--ro-bind-try").arg(&path).arg(&path);
+            }
+        }
+    }
     let sandbox_input = sandbox_input_path(input);
     if operation != ParseOperation::ThumbnailVideo {
         command.arg("--ro-bind").arg(executable).arg("/app/strata");
@@ -511,7 +536,10 @@ pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
 }
 
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
-    if operation.is_media() {
+    if operation == ParseOperation::MediaMetadata {
+        data.len() as u64 <= metadata::MAX_METADATA_BYTES
+            && serde_json::from_slice::<serde_json::Value>(data).is_ok()
+    } else if operation.is_media() {
         false
     } else {
         let Some((width, height)) = png_dimensions(data) else {

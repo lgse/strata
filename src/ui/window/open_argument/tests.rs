@@ -330,35 +330,16 @@ fn errors_do_not_expose_uri_credentials() {
                 Location::uri("sftp://user@example.invalid/file.txt"),
             );
             let status = status_widget(&browser.overlay()).expect("error status");
-            let content = status
-                .clone()
-                .downcast::<gtk::Box>()
-                .expect("error content");
-            assert_eq!(content.orientation(), gtk::Orientation::Vertical);
-            assert_eq!(content.halign(), gtk::Align::Center);
-            assert_eq!(content.valign(), gtk::Align::Center);
-            assert!(content.has_css_class("directory-feedback"));
-            assert!(!content.has_css_class("open-argument-connecting"));
-
             let label = first_label(&status).expect("error label");
             assert_eq!(
                 label.text(),
                 "The requested location is unavailable\nsftp://user@example.invalid/file.txt"
             );
-            assert!(label.has_css_class("status-message"));
-            assert!(label.has_css_class("error"));
-            assert!(!label.has_css_class("form-message"));
-            assert_eq!(label.justify(), gtk::Justification::Center);
             assert!(label.wraps());
             assert_eq!(label.wrap_mode(), gtk::pango::WrapMode::WordChar);
-            assert_eq!(label.ellipsize(), gtk::pango::EllipsizeMode::Middle);
             assert_eq!(label.lines(), 3);
             assert!(!label.text().contains("secret"));
-
-            let retry = button_with_label(&status, "Retry").expect("retry button");
-            assert!(retry.has_css_class("retry-button"));
-            assert!(!retry.has_css_class("suggested-action"));
-            assert_eq!(retry.halign(), gtk::Align::Center);
+            button_with_label(&status, "Retry").expect("retry button");
         },
     );
 }

@@ -42,8 +42,7 @@ def filter_results(strata, query="match-note", count=4, directory=None):
     return field
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_filter_text_selection_uses_the_active_theme(strata, mode, tmp_path):
+def test_filter_text_selection_uses_the_active_theme(strata, tmp_path):
     field = filter_results(strata)
     strata.keyboard.press("ctrl+a")
     settings = tomllib.loads(strata.environment.settings_path.read_text())

@@ -57,7 +57,8 @@ def test_delete_keeps_survivors_in_place_until_dissolve_finishes(strata, mode):
         lambda: not strata.fixture.path("todo.txt").exists(),
         "the file to be deleted",
     )
-    strata.wait(lambda: strata.dialog() is None, "the delete dialog to disappear")
+    # Deletion starts after confirmation dismissal; AT-SPI traversal here can
+    # consume the remaining dissolve window before the screenshot is taken.
     frozen = grab()
     animated_y, _ = text_position(frozen, bounds)
     assert abs(animated_y - original_y) < 1, "surviving text moved before the dissolve finished"
@@ -67,6 +68,7 @@ def test_delete_keeps_survivors_in_place_until_dissolve_finishes(strata, mode):
         lambda: grab().crop(region).tobytes() != frozen_pixels,
         "the updated layout to replace the frozen presentation",
     )
+    strata.wait(lambda: strata.dialog() is None, "the delete dialog to disappear")
     final_label = strata.entry("zz-survivor.txt").find(role="label", name="zz-survivor.txt")
     assert final_label is not None and final_label.screen_bounds() != bounds
 

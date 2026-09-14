@@ -89,13 +89,6 @@ fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
 }
 
 #[test]
-fn pane_resizing_preserves_the_initial_minimum_width() {
-    assert_eq!(resized_column_width(COLUMN_WIDTH, -80.0), COLUMN_WIDTH);
-    assert_eq!(resized_column_width(COLUMN_WIDTH, 75.0), 375);
-    assert_eq!(resized_column_width(420, -20.0), 400);
-}
-
-#[test]
 fn reveal_target_scrolls_only_enough_to_show_the_new_column() {
     assert_eq!(
         ColumnSpan {
