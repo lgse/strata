@@ -152,9 +152,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         .await;
         timer_id.remove();
         match result {
-            Ok(()) => emit(OperationEvent::Compressed {
+            Ok(archive_name) => emit(OperationEvent::Compressed {
                 request_id: request.id,
-                archive_name: archive_name.clone(),
+                archive_name,
             }),
             Err(ArchiveError::Cancelled) => emit(cancelled_archive_event(
                 request.id,

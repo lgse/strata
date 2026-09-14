@@ -29,8 +29,9 @@ use std::{
 ///
 /// Creates a `.strata-compression-` tempfile in `destination` with mode `0o600`,
 /// runs `write_archive` on a worker thread, applies the published permissions,
-/// and persists the file according to `conflict`. [`FailIfExists`] refuses to
-/// replace an existing archive; [`ReplaceExisting`] overwrites it and copies
+/// and persists the file according to `conflict`, returning the published filename.
+/// [`FailIfExists`] refuses to replace an existing archive; [`KeepBoth`] tries numbered names atomically
+/// without encoding again; [`ReplaceExisting`] overwrites it and copies
 /// the current destination file's mode when that path is already a regular
 /// file. Otherwise the published mode is `0o666` masked by the process umask.
 ///
@@ -52,16 +53,21 @@ use std::{
 /// [`Failed`]: ArchiveError::Failed
 /// [`FailIfExists`]: TransferConflict::FailIfExists
 /// [`ReplaceExisting`]: TransferConflict::ReplaceExisting
+/// [`KeepBoth`]: TransferConflict::KeepBoth
 pub(super) async fn write_staged_archive<F>(
     destination: &Path,
     archive_path: &Path,
     conflict: TransferConflict,
     cancelled: &AtomicBool,
     write_archive: F,
-) -> Result<(), ArchiveError>
+) -> Result<String, ArchiveError>
 where
     F: FnOnce(std::fs::File) -> Result<(), ArchiveError> + Send + 'static,
 {
+    let requested_name = archive_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or("Archive filename must be UTF-8")?;
     let published_permissions = if conflict == TransferConflict::ReplaceExisting {
         match std::fs::symlink_metadata(archive_path) {
             Ok(metadata) if metadata.file_type().is_file() => Some(metadata.permissions()),
@@ -77,7 +83,7 @@ where
     builder
         .prefix(".strata-compression-")
         .permissions(std::fs::Permissions::from_mode(0o600));
-    let staged = builder.tempfile_in(destination).map_err(archive_failed)?;
+    let mut staged = builder.tempfile_in(destination).map_err(archive_failed)?;
     let file = staged.reopen().map_err(archive_failed)?;
     gio::spawn_blocking(move || write_archive(file))
         .await
@@ -89,13 +95,33 @@ where
         .as_file()
         .set_permissions(published_permissions)
         .map_err(archive_failed)?;
-    match conflict {
-        TransferConflict::FailIfExists => staged.persist_noclobber(archive_path),
-        TransferConflict::ReplaceExisting => staged.persist(archive_path),
-        TransferConflict::KeepBoth => staged.persist_noclobber(archive_path),
+    if conflict != TransferConflict::KeepBoth {
+        return match conflict {
+            TransferConflict::ReplaceExisting => staged.persist(archive_path),
+            _ => staged.persist_noclobber(archive_path),
+        }
+        .map(|_| requested_name.to_owned())
+        .map_err(archive_failed);
     }
-    .map(|_| ())
-    .map_err(archive_failed)
+
+    let (stem, extension) = requested_name
+        .strip_suffix(".tar.gz")
+        .map(|stem| (stem, "tar.gz"))
+        .or_else(|| requested_name.rsplit_once('.'))
+        .ok_or("Archive filename must have a format extension")?;
+    let mut candidate_name = requested_name.to_owned();
+    for suffix in 1_u64.. {
+        let candidate = archive_path.with_file_name(&candidate_name);
+        match staged.persist_noclobber(&candidate) {
+            Ok(_) => return Ok(candidate_name),
+            Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {
+                staged = error.file;
+                candidate_name = format!("{stem} ({suffix}).{extension}");
+            }
+            Err(error) => return Err(archive_failed(error)),
+        }
+    }
+    Err(archive_failed("No available archive filename"))
 }
 
 /// Returns `0o666` masked by the process umask from [`process_umask`].
