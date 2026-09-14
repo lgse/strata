@@ -274,8 +274,40 @@ fn symlink_parent_that_leaves_the_volume_is_rejected() -> std::io::Result<()> {
         &context,
     )
     .expect_err("symlink escape");
-    assert!(error.message().contains("outside the trash volume"));
+    assert!(
+        error.message().contains("is a symlink"),
+        "{}",
+        error.message()
+    );
     Ok(())
+}
+
+#[test]
+fn symlink_parent_on_the_same_volume_is_rejected() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = volume_trash(fixture.path(), uid);
+    let source = trash.join("files/inner.txt");
+    fs::write(&source, b"bad").expect("source");
+    fs::create_dir_all(fixture.path().join("documents")).expect("documents");
+    let pictures = fixture.path().join("pictures");
+    fs::create_dir_all(&pictures).expect("pictures");
+    symlink(&pictures, fixture.path().join("documents/nested")).expect("symlink");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    let error = plan_restore_from_known_paths(
+        &source,
+        Path::new("documents/nested/inner.txt"),
+        &trash,
+        None,
+        &context,
+    )
+    .expect_err("same-volume symlink parent");
+    assert!(
+        error.message().contains("is a symlink"),
+        "{}",
+        error.message()
+    );
+    assert!(!pictures.join("inner.txt").exists());
 }
 
 #[test]

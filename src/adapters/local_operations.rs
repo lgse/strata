@@ -2241,7 +2241,11 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
             relative,
             rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
             rustix::fs::Mode::empty(),
+            // NO_SYMLINKS: a parent replaced with a symlink since planning must fail
+            // closed here too, even when the symlink target stays beneath
+            // `allowed_root` and so would otherwise satisfy BENEATH/NO_XDEV.
             rustix::fs::ResolveFlags::BENEATH
+                | rustix::fs::ResolveFlags::NO_SYMLINKS
                 | rustix::fs::ResolveFlags::NO_MAGICLINKS
                 | rustix::fs::ResolveFlags::NO_XDEV,
         )

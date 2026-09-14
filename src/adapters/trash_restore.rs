@@ -8,6 +8,7 @@ mod tests;
 
 use std::{
     ffi::{OsStr, OsString},
+    fs,
     future::Future,
     os::unix::{
         ffi::{OsStrExt, OsStringExt},
@@ -314,13 +315,13 @@ fn resolve_restore_destination(
     };
     let normalized = lexically_normalize(&absolute)
         .ok_or_else(|| RestoreTargetError::new("The original location is invalid"))?;
-    let destination = canonical_restore_destination(&normalized)?;
-    if destination.file_name().is_none() {
-        return Err(RestoreTargetError::new("The original location is invalid"));
-    }
     let allowed_root = allowed_root
         .canonicalize()
         .map_err(|_| escaped_restore_error())?;
+    let destination = verified_restore_destination(&normalized, &allowed_root)?;
+    if destination.file_name().is_none() {
+        return Err(RestoreTargetError::new("The original location is invalid"));
+    }
     Ok((destination, allowed_root))
 }
 
@@ -634,40 +635,47 @@ fn lexically_normalize(path: &Path) -> Option<PathBuf> {
     Some(normalized)
 }
 
-fn canonical_restore_destination(path: &Path) -> Result<PathBuf, RestoreTargetError> {
+/// Walks the destination's parent chain component-by-component from the
+/// already-canonical volume root, rejecting a symlink at any real step
+/// instead of following it. `Path::canonicalize` would silently resolve a
+/// parent that has been replaced with a symlink to wherever that symlink now
+/// points, even when the target stays on the same volume — restoring there
+/// would write outside the location the user is actually confirming.
+fn verified_restore_destination(
+    path: &Path,
+    allowed_root: &Path,
+) -> Result<PathBuf, RestoreTargetError> {
     let file_name = path
         .file_name()
         .ok_or_else(|| RestoreTargetError::new("The original location is invalid"))?;
     let parent = path
         .parent()
         .ok_or_else(|| RestoreTargetError::new("The original location is invalid"))?;
-    let mut existing = parent.to_path_buf();
-    let mut missing = Vec::new();
-    while !existing.as_os_str().is_empty() && !existing.exists() {
-        let Some(name) = existing.file_name() else {
-            break;
-        };
-        missing.push(name.to_os_string());
-        match existing.parent() {
-            Some(parent) => existing = parent.to_path_buf(),
-            None => break,
-        }
-    }
-    let mut canonical = if existing.exists() {
-        existing
-            .canonicalize()
-            .map_err(|_| escaped_restore_error())?
-    } else {
-        existing
-    };
-    for name in missing.into_iter().rev() {
-        if name.as_bytes() == b".." || name.as_bytes() == b"." || name.as_bytes().contains(&0) {
+    let relative = parent
+        .strip_prefix(allowed_root)
+        .map_err(|_| escaped_restore_error())?;
+    let mut destination = allowed_root.to_path_buf();
+    let mut past_existing = false;
+    for component in relative.components() {
+        let Component::Normal(part) = component else {
             return Err(RestoreTargetError::new("The original location is invalid"));
+        };
+        destination.push(part);
+        if past_existing {
+            continue;
         }
-        canonical.push(name);
+        match fs::symlink_metadata(&destination) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(RestoreTargetError::new(
+                    "The original location's parent folder is a symlink and cannot be restored",
+                ));
+            }
+            Ok(_) => {}
+            Err(_) => past_existing = true,
+        }
     }
-    canonical.push(file_name);
-    Ok(canonical)
+    destination.push(file_name);
+    Ok(destination)
 }
 
 fn path_is_within(path: &Path, root: &Path) -> bool {

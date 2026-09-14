@@ -145,6 +145,29 @@ fn restore_execution_refuses_a_parent_symlink_escape() -> Result<(), Box<dyn Err
     Ok(())
 }
 
+/// A parent replaced with a symlink whose target stays inside `allowed_root`
+/// passes RESOLVE_BENEATH/NO_XDEV on its own; only NO_SYMLINKS catches it.
+#[test]
+fn restore_execution_refuses_a_same_volume_symlink_parent() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
+    let allowed = tempfile::tempdir()?;
+    let source = allowed.path().join("source");
+    fs::write(&source, b"original")?;
+    let pictures = allowed.path().join("pictures");
+    fs::create_dir(&pictures)?;
+    symlink(&pictures, allowed.path().join("nested"))?;
+    let result = glib::MainContext::default().block_on(move_restore_path(
+        source.clone(),
+        allowed.path().join("nested/report"),
+        allowed.path().to_path_buf(),
+        gio::Cancellable::new(),
+    ));
+    assert!(result.is_err());
+    assert_eq!(fs::read(&source)?, b"original");
+    assert!(!pictures.join("report").exists());
+    Ok(())
+}
+
 #[test]
 fn restore_shared_trash_moves_the_item_and_removes_its_metadata() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock()?;
