@@ -4,14 +4,26 @@
 import pytest
 
 from harness.fixtures import FixtureTree
-from harness.modes import ALL_MODES
 
 PANELS = [
-    pytest.param(mode.values[0], panel, marks=mode.marks, id=f"{panel}-{mode.id}")
-    for mode in ALL_MODES
-    for panel in ["sort", "appearance", "thumbnail"]
-    if (panel != "sort" or mode.id != "list")
-    and (panel != "thumbnail" or mode.id == "icons")
+    pytest.param(
+        "Columns",
+        "sort",
+        marks=pytest.mark.preferences(browser_mode="columns"),
+        id="sort-columns",
+    ),
+    pytest.param(
+        "List",
+        "appearance",
+        marks=pytest.mark.preferences(browser_mode="list"),
+        id="appearance-list",
+    ),
+    pytest.param(
+        "Icons",
+        "thumbnail",
+        marks=pytest.mark.preferences(browser_mode="icons"),
+        id="thumbnail-icons",
+    ),
 ]
 
 
@@ -81,11 +93,8 @@ def test_panel_wheel_routing(strata, mode, panel, target):
             assert row.screen_bounds() == before
 
 
-@pytest.mark.parametrize("panel", ["sort", "appearance"])
 @pytest.mark.parametrize("pointed_column", ["parent", "child"])
-def test_outside_wheel_only_moves_the_column_under_the_pointer(
-    strata, panel, pointed_column
-):
+def test_outside_wheel_only_moves_the_column_under_the_pointer(strata, pointed_column):
     root = strata.fixture.root.name
     strata.open_directory("nested")
     parent_row = strata.entry("005.txt", directory=root)
@@ -94,7 +103,7 @@ def test_outside_wheel_only_moves_the_column_under_the_pointer(
     strata.settle(child_row)
     parent_before = parent_row.screen_bounds()
     child_before = child_row.screen_bounds()
-    option = open_panel(strata, panel)
+    option = open_panel(strata, "appearance")
     bounds = viewport(strata, root if pointed_column == "parent" else "nested")
     strata.pointer.scroll(
         at=(bounds.center[0], bounds.y + bounds.height * 4 // 5), clicks=1

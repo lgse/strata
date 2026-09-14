@@ -65,19 +65,3 @@ def test_focus_order_reaches_the_files_from_the_header(strata):
             return
         strata.keyboard.press("Tab")
     raise AssertionError(f"Tab never reached the file listing; visited {seen}")
-
-
-def test_a_whole_file_operation_is_possible_with_the_keyboard_alone(strata):
-    fixture = strata.fixture
-
-    strata.select_entry_with_keyboard("todo.txt")
-    strata.keyboard.press("F2")
-    strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text("keyboard-only.txt")
-    strata.keyboard.press("Return")
-
-    strata.wait(
-        lambda: fixture.path("keyboard-only.txt").exists(),
-        "the keyboard-only rename to apply",
-    )

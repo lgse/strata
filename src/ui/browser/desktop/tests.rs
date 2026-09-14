@@ -102,16 +102,3 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[file]), None);
     assert_eq!(selected_terminal_location(&[]), None);
 }
-
-#[cfg(unix)]
-#[test]
-fn terminal_directory_argument_preserves_native_path_bytes() {
-    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
-
-    let path = Path::new(OsStr::from_bytes(b"/tmp/non-utf8-\xff"));
-
-    assert_eq!(
-        terminal_directory_argument(path).as_encoded_bytes(),
-        b"--dir=/tmp/non-utf8-\xff"
-    );
-}

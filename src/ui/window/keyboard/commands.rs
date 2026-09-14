@@ -24,6 +24,9 @@ use crate::{
 
 impl Dispatcher {
     pub(super) fn window_commands(&self, event: &KeyEvent) -> KeyResult {
+        if event.text_has_focus() {
+            return None;
+        }
         if event.control()
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && let Some(mode) = browser_mode_for_digit(event.key)

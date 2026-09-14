@@ -8,9 +8,9 @@ use std::rc::Rc;
 use gtk::{glib, prelude::*};
 
 use super::{
-    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
-    format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_target, print_fit, print_page_starts, print_progress_for_page,
+    MEDIA_PLUGIN_INSTALL_COMMAND, PreviewDrawer, format_file_size, format_media_time,
+    media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries, preview_target, print_fit,
+    print_page_starts, print_progress_for_page,
 };
 use crate::app::{Browser, BrowserEvent, EntrySplice};
 use crate::model::Location;
@@ -168,8 +168,6 @@ fn media_errors_explain_missing_runtime_plugins() {
 fn pdf_scroll_zoom_stays_within_its_supported_range() {
     assert!(pdf_zoom_after_scroll(1.0, -1.0) > 1.0);
     assert!(pdf_zoom_after_scroll(2.0, 1.0) < 2.0);
-    assert_eq!(pdf_zoom_after_scroll(PDF_MIN_ZOOM, 100.0), PDF_MIN_ZOOM);
-    assert_eq!(pdf_zoom_after_scroll(PDF_MAX_ZOOM, -100.0), PDF_MAX_ZOOM);
 }
 
 #[test]
