@@ -429,6 +429,16 @@ pub(super) fn column_rows(
                             .and_then(|source_position| {
                                 let entry = state.browser.entry_at(depth, source_position)?;
                                 state.browser.select(depth, source_position);
+                                if is_trash_location(&entry.location) && !entry.is_directory() {
+                                    if state.single_click_previews.get() {
+                                        return Some((
+                                            source_position,
+                                            entry.location,
+                                            PendingActivationKind::Standard { preview: true },
+                                        ));
+                                    }
+                                    return None;
+                                }
                                 Some((
                                     source_position,
                                     entry.location,

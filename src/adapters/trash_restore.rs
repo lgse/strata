@@ -641,6 +641,9 @@ fn canonical_restore_destination(path: &Path) -> Result<PathBuf, RestoreTargetEr
     let parent = path
         .parent()
         .ok_or_else(|| RestoreTargetError::new("The original location is invalid"))?;
+    if std::fs::symlink_metadata(parent).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        return Err(symlinked_parent_error());
+    }
     let mut existing = parent.to_path_buf();
     let mut missing = Vec::new();
     while !existing.as_os_str().is_empty() && !existing.exists() {
@@ -678,4 +681,8 @@ fn escaped_restore_error() -> RestoreTargetError {
     RestoreTargetError::new(
         "The original location is outside the trash volume and cannot be restored.",
     )
+}
+
+fn symlinked_parent_error() -> RestoreTargetError {
+    RestoreTargetError::new("The original location's parent is a symlink and cannot be restored.")
 }

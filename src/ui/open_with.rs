@@ -205,6 +205,21 @@ struct AppEntry {
     haystack: String,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum OpenWithContext {
+    Explicit,
+    ActivationFallback,
+}
+
+impl OpenWithContext {
+    fn empty_message(self) -> &'static str {
+        match self {
+            Self::Explicit => "No compatible applications were found.",
+            Self::ActivationFallback => "No application is registered for this file",
+        }
+    }
+}
+
 fn create_section_header(title: &str) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("open-with-heading-row");
@@ -260,6 +275,7 @@ pub(super) fn show(
     files: Vec<gio::File>,
     recommended_apps: Vec<gio::AppInfo>,
     other_apps: Vec<gio::AppInfo>,
+    context: OpenWithContext,
     on_close: Rc<dyn Fn()>,
 ) {
     let Some(window_overlay) = parent
@@ -391,7 +407,7 @@ pub(super) fn show(
     if !has_apps {
         search_entry.set_visible(false);
         list_scroll.set_visible(false);
-        let empty = gtk::Label::new(Some("No compatible applications were found."));
+        let empty = gtk::Label::new(Some(context.empty_message()));
         empty.add_css_class("open-with-empty");
         empty.set_wrap(true);
         empty.set_xalign(0.5);

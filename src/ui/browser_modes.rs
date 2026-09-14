@@ -3501,7 +3501,7 @@ fn activate_filtered_item(
     };
     if browser.is_chooser_mode() && !entry.is_directory() {
         browser.open_location(entry.location);
-    } else {
+    } else if !is_trash_location(&entry.location) || entry.is_directory() {
         browser.activate_in_place(depth, source_position);
     }
 }
@@ -3555,8 +3555,15 @@ fn install_preview_click(
             gesture.set_state(gtk::EventSequenceState::Claimed);
             if press_count == 1 {
                 browser.select(depth, position);
-                if !browser.is_chooser_mode() {
+                if !browser.is_chooser_mode()
+                    && (!is_trash_location(&entry.location) || entry.is_directory())
+                {
                     browser.activate_in_place(depth, position);
+                } else if enabled.get()
+                    && !entry.is_directory()
+                    && super::preview::entry_supports_quick_preview(&entry)
+                {
+                    browser.preview(depth, position);
                 }
             }
             return;
