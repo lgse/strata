@@ -52,6 +52,11 @@ def test_settings_search_filters_navigates_and_clears(strata, width):
     assert strata.window.find(name="Single-click file previews") is None
 
     strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("keep arrows")
+    strata.wait(lambda: strata.window.find(name="Keep arrows in file list"), "arrow scope setting")
+    assert strata.window.find(name="Folder peeking") is None
+
+    strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("unfindablequantumsetting")
     strata.wait(
         lambda: strata.window.find(role="label", name="No settings match your search."),

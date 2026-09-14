@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -79,6 +80,25 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertIn("always()", gate)
         self.assertIn('test "$BUILD_RESULT" = success && test "$SHARD_RESULT" = success', gate)
         self.assertIn("python3 scripts/quality_ci.py verify", gate)
+
+    def test_post_merge_skips_test_execution_but_keeps_trusted_cache_build(self):
+        workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
+        jobs = dict(re.findall(r"^  ([\w-]+):\n(.*?)(?=^  [\w-]+:\n|\Z)",
+                               workflow.split("\njobs:\n", 1)[1], re.M | re.S))
+        for name in ("quality-shard", "quality", "e2e-build", "e2e", "release-scripts"):
+            with self.subTest(job=name):
+                condition = re.search(r"^    if: (.+)$", jobs[name], re.M).group(1)
+                self.assertIn("github.event_name != 'push'", condition)
+        self.assertIn("needs: e2e-build", jobs["e2e-shard"])
+        self.assertNotIn("always()", jobs["e2e-shard"])
+        build = jobs["quality-build"]
+        condition = re.search(r"^    if: (.+)$", build, re.M).group(1)
+        self.assertNotIn("github.event_name != 'push'", condition)
+        self.assertIn("STRATA_QUALITY_TASK: build", build)
+        self.assertIn("if: github.event_name == 'push' && github.ref == 'refs/heads/main'", build)
+        packaging = (REPOSITORY / ".github/workflows/packaging.yml").read_text()
+        renderer = packaging.split("- name: Test the package renderer\n", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("if: ${{ github.event_name != 'push' }}", renderer)
 
     def test_invalid_provenance_never_executes_the_image(self):
         result, calls = self.run_runner(key="wrong")

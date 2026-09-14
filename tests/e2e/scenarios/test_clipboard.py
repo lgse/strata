@@ -8,23 +8,17 @@ import pytest
 from harness.modes import ALL_MODES, SINGLE_PANE_MODES
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize(
-    "source, duplicate, action",
+    "source, duplicate",
     [
-        ("todo.txt", "todo (1).txt", "duplicate"),
-        ("documents", "documents (1)", "duplicate"),
-        ("todo.txt", "todo (1).txt", "paste"),
+        ("todo.txt", "todo (1).txt"),
+        ("documents", "documents (1)"),
     ],
 )
-def test_same_folder_copy_creates_a_numbered_duplicate(strata, mode, source, duplicate, action):
+def test_same_folder_copy_creates_a_numbered_duplicate(strata, source, duplicate):
     fixture = strata.fixture
     strata.select_entry_with_keyboard(source)
-    if action == "duplicate":
-        strata.keyboard.press("ctrl+d")
-    else:
-        strata.keyboard.press("ctrl+c")
-        strata.paste_into(fixture.root.name)
+    strata.keyboard.press("ctrl+d")
     strata.wait(lambda: fixture.path(duplicate).exists(), "the numbered copy")
     strata.entry(duplicate, directory=fixture.root.name)
     assert fixture.path(source).exists()

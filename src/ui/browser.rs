@@ -8,7 +8,8 @@ use crate::model::{FileEntry, Location};
 use crate::services::{FileSource, LoadHandle, OperationProvider};
 use crate::ui::browser::clipboard::{copy_locations, register_cut_view};
 use crate::ui::browser::collection::cancel_source;
-use crate::ui::browser::columns::{COLUMN_WIDTH, ColumnView};
+pub(super) use crate::ui::browser::columns::COLUMN_WIDTH;
+use crate::ui::browser::columns::ColumnView;
 use crate::ui::browser::desktop::selected_terminal_location;
 use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
 use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
@@ -44,6 +45,7 @@ pub(in crate::ui) mod paths;
 mod peek;
 mod preferences;
 mod presentation;
+mod preview;
 mod progress;
 mod properties;
 mod transfer;
@@ -188,7 +190,9 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
-    pending_delete_dissolve: RefCell<Option<dissolve_delete::PreparedDissolve>>,
+    /// Visible permanent-delete rows captured before the operation mutates the model.
+    pending_delete_dissolve: RefCell<Option<(usize, dissolve_delete::PreparedDissolve)>>,
+    deferred_delete_empty_depth: Cell<Option<usize>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
@@ -500,6 +504,7 @@ impl BrowserView {
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
             pending_delete_dissolve: RefCell::new(None),
+            deferred_delete_empty_depth: Cell::new(None),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_lookup: RefCell::new(None),
@@ -514,6 +519,7 @@ impl BrowserView {
         // one is the natural place to begin a marquee that runs into it.
         register_cut_view(&state);
         state.install_input_ownership();
+        state.install_column_peek_targets();
 
         let weak_state = Rc::downgrade(&state);
         super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
@@ -769,18 +775,6 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
-    pub fn preview_occupied_width(&self) -> i32 {
-        if self.view_mode() != BrowserMode::Columns {
-            return single_pane_preview_reservation(self.state.overlay.width());
-        }
-        self.state
-            .columns
-            .borrow()
-            .iter()
-            .map(|column| column.shell.width().max(COLUMN_WIDTH))
-            .fold(0, i32::saturating_add)
-    }
-
     /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
     /// and run into whichever view the current mode shows. The pane nearest the start
     /// edge is the target, since that is the one such a drag runs into.
@@ -869,6 +863,27 @@ impl BrowserView {
         } else {
             self.state.browser.activate_focused();
         }
+    }
+
+    pub(in crate::ui) fn activate_directory_column(&self) -> bool {
+        if self.view_mode() != BrowserMode::Columns {
+            return false;
+        }
+        if let Some(entry) = self.selected_search_result() {
+            if entry.is_directory() {
+                self.state.browser.navigate(entry.location);
+                return true;
+            }
+        } else if self
+            .state
+            .browser
+            .focused_entry()
+            .is_some_and(|entry| entry.is_directory())
+        {
+            self.activate_focused();
+            return true;
+        }
+        false
     }
 
     pub fn commit_selection(&self) {
@@ -1305,7 +1320,9 @@ impl BrowserView {
 
     pub fn confirm_delete(&self, permanent: bool) -> bool {
         self.state.sync_mode_selection();
-        let entries = if self.view_mode() == BrowserMode::Columns {
+        let entries = if let Some(entries) = self.selected_search_results() {
+            entries
+        } else if self.view_mode() == BrowserMode::Columns {
             self.state.browser.selected_entries()
         } else {
             self.state.browser.deletion_entries()

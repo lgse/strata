@@ -751,3 +751,71 @@ fn save_file_with_selected_file_saves_to_active_folder() {
         },
     );
 }
+
+fn key_controller(window: &gtk::Window) -> gtk::EventControllerKey {
+    let controllers = window.observe_controllers();
+    for index in 0..controllers.n_items() {
+        if let Some(controller) = controllers
+            .item(index)
+            .and_downcast::<gtk::EventControllerKey>()
+        {
+            return controller;
+        }
+    }
+    panic!("no EventControllerKey on the chooser window");
+}
+
+fn press(window: &gtk::Window, key: gtk::gdk::Key) -> bool {
+    key_controller(window).emit_by_name::<bool>(
+        "key-pressed",
+        &[&key, &0u32, &gtk::gdk::ModifierType::empty()],
+    )
+}
+
+#[test]
+fn arrow_scope_keeps_left_in_the_chooser_file_view() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::arrow_scope_keeps_left_in_the_chooser_file_view",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_arrow_navigation_scoped(true);
+            let root = tempfile::tempdir().expect("fixture");
+            for name in ["a.txt", "b.txt", "c.txt"] {
+                std::fs::write(root.path().join(name), "text").expect("fixture file");
+            }
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                ThemeManager::shared().set_browser_mode(mode);
+                let state = build_chooser(
+                    request(root.path().to_path_buf()),
+                    Arc::new(AtomicBool::new(false)),
+                    |_| {},
+                )
+                .expect("chooser");
+                state.view.set_view_mode(mode);
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 3)
+                });
+                for scoped in [true, false, true] {
+                    ThemeManager::shared().set_arrow_navigation_scoped(scoped);
+                    for key in [gtk::gdk::Key::Left, gtk::gdk::Key::Up] {
+                        browser.select(0, 0);
+                        browser.focus_active();
+                        wait_until(|| {
+                            state.view.item_view_has_focus() && state.view.item_at_sidebar_edge()
+                        });
+                        press(&state.window, key);
+                        assert_eq!(
+                            state.view.item_view_has_focus(),
+                            scoped,
+                            "{mode:?}: {key:?} with arrow scope {scoped}"
+                        );
+                    }
+                }
+                state.window.close();
+            }
+        },
+    );
+}

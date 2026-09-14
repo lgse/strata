@@ -560,6 +560,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let single = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let open = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "↵");
     let open_with = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
+    let run = item_context_option(crate::assets::icons::PLAY, "Run", "");
     let open_terminal =
         item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
@@ -568,6 +569,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     restore.set_visible(in_trash);
     let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
     let copy = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
+    let duplicate = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
     let copy_path = item_context_option(crate::assets::icons::COPY, "Copy path", "Y");
     let copy_name = item_context_option(crate::assets::icons::COPY, "Copy name", "");
     let move_to = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
@@ -599,6 +601,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
     single.append(&open);
     single.append(&open_with);
+    single.append(&run);
     single.append(&open_terminal);
     single.append(&preview);
     single.append(&print);
@@ -609,6 +612,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     single.append(&pin);
     single.append(&cut);
     single.append(&copy);
+    single.append(&duplicate);
     single.append(&copy_path);
     single.append(&copy_name);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -634,6 +638,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let restore_multiple = item_context_option(crate::assets::icons::FOLDER, "Restore items", "");
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
+    let duplicate_multiple = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
     let copy_paths = item_context_option(crate::assets::icons::COPY, "Copy paths", "Y");
     let copy_names_button = item_context_option(crate::assets::icons::COPY, "Copy names", "");
     let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
@@ -659,6 +664,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&restore_multiple);
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
+    multiple.append(&duplicate_multiple);
     multiple.append(&copy_paths);
     multiple.append(&copy_names_button);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -708,6 +714,24 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             } else {
                 state.browser.open_location(entry.location);
             }
+        }
+    });
+    let run_target = target.clone();
+    let run_state = Rc::downgrade(state);
+    let run_popover = popover.downgrade();
+    run.connect_clicked(move |_| {
+        if let Some(popover) = run_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some(state) = run_state.upgrade() else {
+            return;
+        };
+        let entries = context_entries(&state, &run_target);
+        let [entry] = entries.as_slice() else {
+            return;
+        };
+        if super::desktop::entry_is_regular_executable(entry) {
+            super::desktop::confirm_run_program(&entry.location, &state.overlay);
         }
     });
     let open_multiple_target = target.clone();
@@ -946,6 +970,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             state.copy_entries(&entries);
         });
     }
+    for button in [&duplicate, &duplicate_multiple] {
+        connect_selection_action(button, &popover, state, &target, |state, entries| {
+            state.duplicate_entries(&entries);
+        });
+    }
     for (button, permanent) in [
         (&move_to_trash, in_trash),
         (&trash_multiple, in_trash),
@@ -1056,6 +1085,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         focus_context_entry(&state, depth, position, &entry);
         target.replace(Some((position, entry.clone())));
         let entries = context_entries(&state, &target);
+        run.set_visible(
+            !in_trash && entries.len() == 1 && super::desktop::entry_is_regular_executable(&entry),
+        );
         let open_with_entries = entries.clone();
         open_with.set_visible(open_with_entries.len() == 1);
         open_with_multiple.set_visible(open_with_entries.len() > 1);
@@ -1341,7 +1373,10 @@ fn selected_items_summary(entries: &[FileEntry]) -> String {
     names
 }
 
-fn context_entries(state: &ViewState, target: &RefCell<Option<ContextTarget>>) -> Vec<FileEntry> {
+pub(super) fn context_entries(
+    state: &ViewState,
+    target: &RefCell<Option<ContextTarget>>,
+) -> Vec<FileEntry> {
     if let Some((None, entry)) = target.borrow().as_ref() {
         return vec![entry.clone()];
     }
@@ -1467,6 +1502,32 @@ pub(super) fn context_menu_option(icon: &str, label: &str, accelerator: &str) ->
     button
 }
 
+pub(super) fn context_menu_danger_option(
+    icon: &str,
+    label: &str,
+    accelerator: &str,
+) -> gtk::Button {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let icon = crate::assets::danger_icon(icon, 15);
+    icon.add_css_class("folder-context-icon");
+    let title = gtk::Label::new(Some(label));
+    title.set_xalign(0.0);
+    title.set_hexpand(true);
+    row.append(&icon);
+    row.append(&title);
+    if !accelerator.is_empty() {
+        let shortcut = gtk::Label::new(Some(accelerator));
+        shortcut.add_css_class("folder-context-shortcut");
+        row.append(&shortcut);
+    }
+    let button = crate::ui::accessibility::menu_item_button();
+    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
+    button.add_css_class("folder-context-option");
+    button.add_css_class("danger");
+    button.set_child(Some(&row));
+    button
+}
+
 fn context_menu_toggle_option(
     icon: &str,
     label: &str,
@@ -1483,13 +1544,13 @@ fn context_menu_toggle_option(
 /// In Trash this shared action deletes permanently, so `can_trash` is irrelevant.
 /// Unknown capabilities retain the delete fallback (#179); callers exclude
 /// nested Trash children, which GVfs cannot remove independently.
-fn move_to_trash_is_visible(in_trash: bool, can_trash: Option<bool>) -> bool {
+pub(super) fn move_to_trash_is_visible(in_trash: bool, can_trash: Option<bool>) -> bool {
     in_trash || can_trash.unwrap_or(true)
 }
 
 /// Hidden in Trash, where the shared delete action is already permanent, or
 /// when GIO confirms deletion is unsupported.
-fn permanently_delete_is_visible(in_trash: bool, can_delete: Option<bool>) -> bool {
+pub(super) fn permanently_delete_is_visible(in_trash: bool, can_delete: Option<bool>) -> bool {
     !in_trash && can_delete.unwrap_or(true)
 }
 

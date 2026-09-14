@@ -3,6 +3,8 @@
 #[cfg(test)]
 mod tests;
 
+mod omarchy;
+
 use std::{
     env, fs, io,
     io::Write as _,
@@ -24,6 +26,11 @@ const SERVICE_FILE: &str = "org.freedesktop.impl.portal.desktop.strata.service";
 const STATE_DIRECTORY: &str = "strata/portal-install";
 const STATE_FILE: &str = "state.toml";
 const PORTAL_BACKEND_UNIT: &str = "dbus-:*-org.freedesktop.impl.portal.desktop.strata@*.service";
+const DESKTOP_ID: &str = "io.github.lgse.Strata.desktop";
+const FILE_MANAGER_SERVICE: &str = "io.github.lgse.Strata.FileManager1.service";
+const FILE_MANAGER_STATE_DIRECTORY: &str = "strata/file-manager-install";
+const FILE_MANAGER_STATE_FILE: &str = "state.toml";
+const INODE_DIRECTORY: &str = "inode/directory";
 
 pub(crate) fn install() -> Result<String, String> {
     let executable = env::current_exe()
@@ -52,6 +59,320 @@ pub(crate) fn uninstall() -> Result<String, String> {
     Ok(format!(
         "Removed the per-user Strata file chooser integration.{edit_note}{restart_warning}"
     ))
+}
+
+pub(crate) fn install_file_manager() -> Result<String, String> {
+    let executable = env::current_exe()
+        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    let context = SetupContext::from_environment()?;
+    let previous = query_default_file_manager().filter(|id| id != DESKTOP_ID);
+    install_file_manager_at(&context, &executable, previous.as_deref())?;
+    set_default_file_manager()?;
+    omarchy::install(&context, &executable)?;
+    reload_dbus();
+    Ok("Installed Strata as the default file manager. Reveal and Open Containing Folder from other apps will now use Strata.".into())
+}
+
+pub(crate) fn uninstall_file_manager() -> Result<String, String> {
+    let context = SetupContext::from_environment()?;
+    let restored = restore_file_manager_at(&context, |previous| {
+        let restored = restore_folder_handler(
+            query_default_file_manager().as_deref(),
+            previous,
+            detected_nautilus,
+            restore_default_file_manager,
+        )?;
+        omarchy::restore(&context)?;
+        Ok(restored)
+    })?;
+    reload_dbus();
+    Ok(if let Some(restored) = restored {
+        format!(
+            "Removed the Strata file manager integration. Restored the folder handler: {restored}."
+        )
+    } else {
+        "Removed the Strata file manager integration. Your system default file manager will handle folders again.".into()
+    })
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct FileManagerStatus {
+    pub default: bool,
+    pub has_service: bool,
+    pub has_installation: bool,
+    pub shortcuts: Option<bool>,
+}
+
+pub(crate) fn file_manager_status() -> Result<FileManagerStatus, String> {
+    let context = SetupContext::from_environment()?;
+    file_manager_status_at(&context)
+}
+
+fn install_file_manager_at(
+    context: &SetupContext,
+    executable: &Path,
+    previous: Option<&str>,
+) -> Result<(), String> {
+    let executable = secure_executable(executable)?;
+    let executable = executable
+        .to_str()
+        .ok_or_else(|| "Strata must be installed at a UTF-8 path".to_owned())?;
+    if executable
+        .chars()
+        .any(|character| character.is_whitespace() || matches!(character, '\\' | '\'' | '"'))
+    {
+        return Err(
+            "The Strata executable path contains characters unsupported by D-Bus activation"
+                .to_owned(),
+        );
+    }
+
+    let service_directory = context.data_home.join("dbus-1/services");
+    fs::create_dir_all(&service_directory)
+        .map_err(|error| path_error("create", &service_directory, error))?;
+
+    let target = service_directory.join(FILE_MANAGER_SERVICE);
+    let conflict = find_file_manager_conflict(&service_directory)?;
+    if let Some(conflict) = conflict {
+        return Err(format!(
+            "Another per-user FileManager1 provider is already installed: {conflict}"
+        ));
+    }
+
+    let service = include_str!("../data/io.github.lgse.Strata.FileManager1.service")
+        .replace("/usr/bin/strata", executable);
+    let state_directory = context.data_home.join(FILE_MANAGER_STATE_DIRECTORY);
+    if read_file_manager_state(&state_directory)?.is_none() {
+        let state = FileManagerInstallState {
+            previous_default: previous.map(str::to_owned),
+        };
+        write_file_manager_state(&state_directory, &state)?;
+    }
+    write_public(&target, service.as_bytes())?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+fn uninstall_file_manager_at(context: &SetupContext) -> Result<Option<String>, String> {
+    restore_file_manager_at(context, |previous| Ok(previous.map(str::to_owned)))
+}
+
+fn restore_file_manager_at(
+    context: &SetupContext,
+    restore: impl FnOnce(Option<&str>) -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    let state_directory = context.data_home.join(FILE_MANAGER_STATE_DIRECTORY);
+    let restored =
+        read_file_manager_state(&state_directory)?.and_then(|state| state.previous_default);
+    let restored = restore(restored.as_deref())?;
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(FILE_MANAGER_SERVICE);
+    remove_if_exists(&service)?;
+
+    remove_file_manager_state(&state_directory)?;
+    Ok(restored)
+}
+
+fn detected_nautilus() -> Option<String> {
+    use gio::prelude::AppInfoExt as _;
+
+    ["org.gnome.Nautilus.desktop", "nautilus.desktop"]
+        .into_iter()
+        .find(|id| {
+            gio_unix::DesktopAppInfo::new(id)
+                .is_some_and(|app| glib::find_program_in_path(app.executable()).is_some())
+        })
+        .map(str::to_owned)
+}
+
+fn restore_folder_handler(
+    current: Option<&str>,
+    previous: Option<&str>,
+    nautilus: impl FnOnce() -> Option<String>,
+    restore: impl FnOnce(&str) -> Result<(), String>,
+) -> Result<Option<String>, String> {
+    if current.is_some_and(|id| id != DESKTOP_ID) {
+        return Ok(None);
+    }
+    let target = previous.map(str::to_owned).or_else(nautilus).ok_or_else(|| {
+        "No previous folder handler was recorded and Nautilus was not detected. Choose another default file manager first, then retry Restore previous.".to_owned()
+    })?;
+    restore(&target)?;
+    Ok(Some(target))
+}
+
+fn file_manager_status_at(context: &SetupContext) -> Result<FileManagerStatus, String> {
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(FILE_MANAGER_SERVICE);
+    let has_service = if service.exists() {
+        let config = KeyFile::new();
+        config
+            .load_from_data(&read_utf8(&service)?, KeyFileFlags::NONE)
+            .map_err(|error| format!("Could not parse FileManager1 service: {error}"))?;
+        config
+            .string("D-BUS Service", "Name")
+            .is_ok_and(|name| name == "org.freedesktop.FileManager1")
+            && config.string("D-BUS Service", "Exec").is_ok_and(|exec| {
+                env::current_exe()
+                    .is_ok_and(|path| exec == format!("{} --gapplication-service", path.display()))
+            })
+    } else {
+        false
+    };
+    let has_service = has_service
+        && find_file_manager_conflict(&context.data_home.join("dbus-1/services"))?.is_none();
+    let has_installation = service.exists()
+        || context
+            .data_home
+            .join(FILE_MANAGER_STATE_DIRECTORY)
+            .join(FILE_MANAGER_STATE_FILE)
+            .exists()
+        || omarchy::has_installation(context)?;
+    let default = query_default_file_manager().as_deref() == Some(DESKTOP_ID);
+    Ok(FileManagerStatus {
+        default,
+        has_service,
+        has_installation,
+        shortcuts: omarchy::shortcuts_configured(context)?,
+    })
+}
+
+fn find_file_manager_conflict(service_directory: &Path) -> Result<Option<String>, String> {
+    let entries = match fs::read_dir(service_directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(path_error("read", service_directory, error)),
+    };
+    for entry in entries {
+        let path = entry
+            .map_err(|error| path_error("read", service_directory, error))?
+            .path();
+        if path
+            .file_name()
+            .is_some_and(|name| name == FILE_MANAGER_SERVICE)
+            || path
+                .extension()
+                .is_none_or(|extension| extension != "service")
+        {
+            continue;
+        }
+        let config = KeyFile::new();
+        config
+            .load_from_data(&read_utf8(&path)?, KeyFileFlags::NONE)
+            .map_err(|error| format!("Could not parse {}: {error}", path.display()))?;
+        if config
+            .string("D-BUS Service", "Name")
+            .is_ok_and(|name| name == "org.freedesktop.FileManager1")
+        {
+            return Ok(Some(path.display().to_string()));
+        }
+    }
+    Ok(None)
+}
+
+fn query_default_file_manager() -> Option<String> {
+    Command::new("xdg-mime")
+        .args(["query", "default", INODE_DIRECTORY])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|output| output.trim().to_owned())
+        .filter(|output| !output.is_empty())
+}
+
+fn set_default_file_manager() -> Result<(), String> {
+    let status = Command::new("xdg-mime")
+        .args(["default", DESKTOP_ID, INODE_DIRECTORY])
+        .status()
+        .map_err(|error| format!("Could not set the default file manager: {error}"))?;
+    if !status.success() {
+        return Err("The folder association did not change".to_owned());
+    }
+    let current = query_default_file_manager();
+    if current.as_deref() != Some(DESKTOP_ID) {
+        return Err(format!(
+            "The folder association did not change (current value: {current:?})"
+        ));
+    }
+    Ok(())
+}
+
+fn restore_default_file_manager(previous: &str) -> Result<(), String> {
+    let status = Command::new("xdg-mime")
+        .args(["default", previous, INODE_DIRECTORY])
+        .status()
+        .map_err(|error| format!("Could not restore the previous file manager: {error}"))?;
+    if !status.success() || query_default_file_manager().as_deref() != Some(previous) {
+        return Err("Could not restore the previous file manager".to_owned());
+    }
+    Ok(())
+}
+
+fn reload_dbus() {
+    let _ = Command::new("gdbus")
+        .args([
+            "call",
+            "--session",
+            "--dest",
+            "org.freedesktop.DBus",
+            "--object-path",
+            "/org/freedesktop/DBus",
+            "--method",
+            "org.freedesktop.DBus.ReloadConfig",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct FileManagerInstallState {
+    previous_default: Option<String>,
+}
+
+fn write_file_manager_state(
+    directory: &Path,
+    state: &FileManagerInstallState,
+) -> Result<(), String> {
+    fs::create_dir_all(directory).map_err(|error| path_error("create", directory, error))?;
+    let path = directory.join(FILE_MANAGER_STATE_FILE);
+    let contents = toml::to_string(state)
+        .map_err(|error| format!("Could not serialize file manager state: {error}"))?;
+    crate::storage::atomic_write(&path, contents.as_bytes())
+        .map_err(|error| path_error("write", &path, error))
+}
+
+fn read_file_manager_state(directory: &Path) -> Result<Option<FileManagerInstallState>, String> {
+    let path = directory.join(FILE_MANAGER_STATE_FILE);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let contents = read_utf8(&path)?;
+    let state: FileManagerInstallState = toml::from_str(&contents)
+        .map_err(|error| format!("Could not read file manager state: {error}"))?;
+    Ok(Some(state))
+}
+
+fn remove_file_manager_state(directory: &Path) -> Result<(), String> {
+    remove_if_exists(&directory.join(FILE_MANAGER_STATE_FILE))?;
+    match fs::remove_dir(directory) {
+        Ok(()) => Ok(()),
+        Err(error)
+            if matches!(
+                error.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(path_error("remove", directory, error)),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -186,13 +507,10 @@ fn status_at(context: &SetupContext) -> Result<PortalStatus, String> {
 
 pub(crate) fn dismiss_prompt() -> Result<String, String> {
     dismiss_prompt_at(&SetupContext::from_environment()?)?;
-    Ok("File chooser offer dismissed. You can enable it later in Settings → General → System file chooser.".into())
+    Ok("File chooser offer dismissed. You can enable it later in Settings → General → System file manager.".into())
 }
 
-pub(crate) fn take_prompt_offer() -> Result<bool, String> {
-    take_prompt_offer_at(&SetupContext::from_environment()?)
-}
-
+#[cfg(test)]
 fn take_prompt_offer_at(context: &SetupContext) -> Result<bool, String> {
     if prompt_path(context).exists() {
         return Ok(false);

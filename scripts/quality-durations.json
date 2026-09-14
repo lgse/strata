@@ -127,7 +127,7 @@
   "ui::search::tests::arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start": 0.57,
   "ui::search::tests::arrow_navigation_reveals_offscreen_results_without_moving_focus": 25.27,
   "ui::search::tests::arrows_with_empty_results_preserve_the_entry_caret": 0.56,
-  "ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset": 154.22,
+  "ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset": 1.32,
   "ui::search::tests::enter_activates_the_default_result_directly_from_the_entry": 0.61,
   "ui::search::tests::global_search_combines_home_and_drives_and_refreshes_mounts": 0.63,
   "ui::search::tests::partial_updates_preserve_selected_path_entry_focus_and_navigation_progress": 0.65,

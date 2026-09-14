@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod media_keys;
+
 use gtk::gdk::{Key, ModifierType};
 
 use super::super::*;
@@ -19,6 +21,10 @@ struct KeyboardFixture {
 
 impl KeyboardFixture {
     fn new() -> Self {
+        Self::with_provider(Rc::new(super::type_to_search::TextPreview))
+    }
+
+    fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
         ThemeManager::seed_saved_preferences_for_test();
         let preferences = ThemeManager::shared();
         let directory = tempfile::tempdir().expect("fixture");
@@ -33,7 +39,7 @@ impl KeyboardFixture {
         header.append(&toggle);
         header.append(&view.location_widget());
         let top_bar = TopBarNavigation::new(&header, &sidebar.widget, &toggle);
-        let preview = PreviewDrawer::new(Rc::new(super::type_to_search::TextPreview), false);
+        let preview = PreviewDrawer::new(provider, false);
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         row.append(&sidebar.widget);
         row.append(&view.widget());
@@ -145,6 +151,33 @@ fn text_view_in(widget: &gtk::Widget) -> Option<gtk::TextView> {
         child = widget.next_sibling();
     }
     None
+}
+
+fn widget_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
+    if widget.has_css_class(class) {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(found) = widget_with_class(&widget, class) {
+            return Some(found);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+fn press_on(widget: &gtk::Widget, key: Key, modifiers: ModifierType) -> bool {
+    let controllers = widget.observe_controllers();
+    let controller = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .next()
+        .expect("key controller");
+    controller.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
 }
 
 fn wait_until(condition: impl Fn() -> bool) {
@@ -327,6 +360,33 @@ fn filter_clipboard_proceeds_and_escape_dismisses_one_surface_at_a_time() {
 }
 
 #[test]
+fn delete_trashes_a_selected_filter_result() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::delete_trashes_a_selected_filter_result",
+        || {
+            let fixture = KeyboardFixture::new();
+            fixture
+                .view
+                .set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            assert!(fixture.view.show_filter_with_query("b.txt"));
+            let entry = widget_with_class(&fixture.view.widget(), "column-filter-entry")
+                .expect("filter entry");
+            wait_until(|| {
+                press_on(&entry, Key::Down, ModifierType::empty());
+                fixture.view.selected_search_result().is_some()
+            });
+            fixture.view.browser().focus_active();
+            wait_until(|| !fixture.view.filter_has_focus());
+
+            assert!(fixture.press(Key::Delete, ModifierType::empty()));
+            wait_until(|| !fixture._directory.path().join("b.txt").exists());
+            assert!(fixture._directory.path().join("a.txt").exists());
+            assert!(fixture._directory.path().join("c.txt").exists());
+        },
+    );
+}
+
+#[test]
 fn single_pane_arrows_preserve_native_propagation_and_sidebar_focus_return() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::single_pane_arrows_preserve_native_propagation_and_sidebar_focus_return",
@@ -402,6 +462,45 @@ fn shift_after_escape_starts_on_the_focused_entry() {
                         !fixture.press(next, ModifierType::SHIFT_MASK),
                         "{mode:?}: further Shift arrows stay native once a range exists"
                     );
+                }
+            }
+        },
+    );
+}
+
+#[test]
+fn arrow_scope_preference_keeps_up_in_the_file_list() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::arrow_scope_preference_keeps_up_in_the_file_list",
+        || {
+            let fixtures = [KeyboardFixture::new(), KeyboardFixture::new()];
+            let preferences = ThemeManager::shared();
+            assert!(preferences.arrow_navigation_scoped());
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                for scoped in [true, false, true] {
+                    preferences.set_arrow_navigation_scoped(scoped);
+                    for fixture in &fixtures {
+                        fixture.view.set_view_mode(mode);
+                        fixture.window.present();
+                        fixture.view.browser().select(0, 0);
+                        fixture.view.browser().focus_active();
+                        wait_until(|| {
+                            fixture.view.item_view_has_focus() && fixture.selected() == [0]
+                        });
+
+                        fixture.press(Key::Up, ModifierType::empty());
+                        assert_eq!(fixture.view.item_view_has_focus(), scoped, "{mode:?}");
+                        assert_eq!(
+                            fixture.view.header_actions_have_focus(),
+                            !scoped,
+                            "{mode:?}"
+                        );
+
+                        fixture.view.browser().focus_active();
+                        wait_until(|| fixture.view.item_view_has_focus());
+                        fixture.press(Key::Left, ModifierType::empty());
+                        assert_eq!(fixture.view.item_view_has_focus(), scoped, "{mode:?}");
+                    }
                 }
             }
         },

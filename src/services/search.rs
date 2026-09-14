@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::model::EntryKind;
+use crate::model::{EntryKind, MetadataValue};
 use unicode_normalization::UnicodeNormalization;
 
 use super::{is_hidden_name, native_hidden_names, native_kind};
@@ -58,6 +58,8 @@ pub struct SearchItem {
     pub path: PathBuf,
     pub name: String,
     pub is_directory: bool,
+    pub kind: EntryKind,
+    pub mode: MetadataValue<u32>,
     search_path: String,
     search_name_start: usize,
     depth: u8,
@@ -73,7 +75,32 @@ impl SearchItem {
         )
     }
 
+    #[cfg(test)]
     fn new(path: PathBuf, root: &Path, is_directory: bool) -> Self {
+        let kind = if is_directory {
+            EntryKind::Directory
+        } else {
+            EntryKind::File
+        };
+        Self::with_metadata(path, root, is_directory, kind, MetadataValue::Unknown)
+    }
+
+    fn from_native(path: PathBuf, root: &Path, is_directory: bool, kind: EntryKind) -> Self {
+        use std::os::unix::fs::MetadataExt;
+
+        let mode = std::fs::metadata(&path)
+            .map(|metadata| MetadataValue::Known(metadata.mode()))
+            .unwrap_or(MetadataValue::Unknown);
+        Self::with_metadata(path, root, is_directory, kind, mode)
+    }
+
+    fn with_metadata(
+        path: PathBuf,
+        root: &Path,
+        is_directory: bool,
+        kind: EntryKind,
+        mode: MetadataValue<u32>,
+    ) -> Self {
         let name = path
             .file_name()
             .unwrap_or_default()
@@ -95,6 +122,8 @@ impl SearchItem {
             name,
             path,
             is_directory,
+            kind,
+            mode,
             search_path,
             search_name_start,
             depth,
@@ -717,7 +746,8 @@ fn build_index(
             if entry.error().is_some() {
                 coverage.unreadable = true;
             }
-            let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
+            let file_type = entry.file_type();
+            let is_directory = file_type.is_some_and(|kind| kind.is_dir());
             // Structural entries are cheap within a branch so nested documents progress
             // before dense runs of regular files consume the shared entry budget.
             slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
@@ -726,6 +756,7 @@ fn build_index(
                 continue;
             }
             let path = entry.into_path();
+            let kind = file_type.map_or(EntryKind::Other, |kind| native_kind(kind, &path));
             match admit_path(&mut indexed_paths, &path, max_entries) {
                 PathAdmission::Duplicate => continue,
                 PathAdmission::EntryLimit => {
@@ -735,7 +766,12 @@ fn build_index(
                 PathAdmission::Unique => {}
             }
             let entry_depth = directory.depth.saturating_add(1);
-            pending_items.push(SearchItem::new(path.clone(), &directory.root, is_directory));
+            pending_items.push(SearchItem::from_native(
+                path.clone(),
+                &directory.root,
+                is_directory,
+                kind,
+            ));
             indexed_entries += 1;
             if is_directory {
                 // Keep one queue slot available for this slice's continuation. A child that

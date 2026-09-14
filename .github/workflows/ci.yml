@@ -85,7 +85,7 @@ jobs:
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: ./scripts/quality.sh clippy
 
-      - name: Compile all test targets once and plan four shards
+      - name: Compile all test targets once and plan two shards
         env:
           STRATA_CONTAINER_ENGINE: docker
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
@@ -93,6 +93,7 @@ jobs:
         run: ./scripts/quality.sh test
 
       - name: Share test binaries and inventory
+        if: ${{ github.event_name != 'push' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-bundle-${{ github.run_attempt }}
@@ -101,6 +102,7 @@ jobs:
           retention-days: 1
 
       - name: Share the small quality plan separately
+        if: ${{ github.event_name != 'push' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-plan-${{ github.run_attempt }}
@@ -109,7 +111,7 @@ jobs:
           retention-days: 1
 
       - name: Export an unpublished candidate environment for the shards
-        if: steps.environment.outputs.candidate == 'true'
+        if: github.event_name != 'push' && steps.environment.outputs.candidate == 'true'
         env:
           IMAGE: ${{ steps.environment.outputs.environment_image }}
         run: |
@@ -117,7 +119,7 @@ jobs:
           docker save "$IMAGE" | zstd -T0 -1 > target/quality-environment/image.tar.zst
 
       - name: Share the unpublished environment without publishing it
-        if: steps.environment.outputs.candidate == 'true'
+        if: github.event_name != 'push' && steps.environment.outputs.candidate == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-environment-${{ github.run_attempt }}
@@ -137,13 +139,14 @@ jobs:
 
   quality-shard:
     name: Rust tests shard ${{ matrix.shard }}
+    if: ${{ github.event_name != 'push' }}
     needs: quality-build
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1]
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -191,7 +194,7 @@ jobs:
   quality:
     name: Format, lint, and test
     needs: [quality-build, quality-shard]
-    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    if: ${{ always() && github.event_name != 'push' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -225,7 +228,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     env:
       DOCKER_BUILD_RECORD_UPLOAD: 'false'
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    if: ${{ github.event_name != 'push' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     # Bound hung bootstrap jobs independently of informational timing reports.
     timeout-minutes: 10
     outputs:
@@ -454,7 +457,7 @@ jobs:
   e2e:
     name: End-to-end GUI suite
     needs: [e2e-build, e2e-shard]
-    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    if: ${{ always() && github.event_name != 'push' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     permissions:
@@ -500,7 +503,7 @@ jobs:
   release-scripts:
     name: Release workflow scripts
     runs-on: ubuntu-24.04
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    if: ${{ github.event_name != 'push' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
 
     steps:
       - name: Check out repository

@@ -60,6 +60,24 @@ fn archive_stem(name: &str) -> &str {
     name
 }
 
+fn create_extraction_subfolder(parent: &Path, stem: &str) -> std::io::Result<Location> {
+    for suffix in 0_u64.. {
+        let name = if suffix == 0 {
+            stem.to_owned()
+        } else {
+            format!("{stem} ({suffix})")
+        };
+        let path = parent.join(name);
+        // Reserve the directory atomically, including collisions with dangling symlinks.
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(Location::local(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::other("No available extraction folder name"))
+}
+
 /// Whether `destination` already contains a child named `archive_name`.
 ///
 /// Collision checks use the final filename, including the format extension.
@@ -137,10 +155,10 @@ impl ViewState {
         (layout.body, layout.confirm, dismiss)
     }
 
-    /// Starts compression, prompting to replace when the target already exists.
+    /// Starts compression, offering replacement or a numbered copy on collision.
     ///
     /// Uses [`TransferConflict::FailIfExists`] when the name is free. On a
-    /// collision, shows a replace confirmation instead of overwriting. If that
+    /// collision, shows a conflict prompt instead of overwriting. If that
     /// prompt cannot be hosted, the operation is not started.
     ///
     /// # Arguments
@@ -188,9 +206,14 @@ impl ViewState {
             ModalTone::Danger,
         );
         layout.body.append(&message_dialog_description(&format!(
-            "An archive named “{final_name}” already exists in {}. Replacing it will overwrite its contents.",
+            "An archive named “{final_name}” already exists in {}. Replace it to overwrite its contents, or keep both to create a numbered copy.",
             compact_display_path(&destination)
         )));
+        let keep_both = gtk::Button::with_label("Keep Both");
+        keep_both.add_css_class("action-dialog-cancel");
+        layout
+            .actions
+            .insert_child_after(&keep_both, Some(&layout.cancel));
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;
@@ -213,40 +236,53 @@ impl ViewState {
             });
         }
 
-        let replaced_layer = layer.clone();
-        let replaced_overlay = window_overlay.clone();
-        let replaced_root = blurred_root.clone();
-        let state = Rc::downgrade(self);
-        replace.connect_clicked(move |_| {
-            dismiss_modal_layer(&replaced_layer, &replaced_overlay, replaced_root.as_ref());
-            if let Some(state) = state.upgrade() {
-                state
-                    .pending_archive_destination
-                    .replace(Some(destination.clone()));
-                state.browser.compress(
-                    entries.clone(),
-                    destination.clone(),
-                    archive_name.clone(),
-                    TransferConflict::ReplaceExisting,
-                    format,
-                    password.clone(),
-                );
-            }
-        });
+        for (button, conflict) in [
+            (&replace, TransferConflict::ReplaceExisting),
+            (&keep_both, TransferConflict::KeepBoth),
+        ] {
+            let chosen_layer = layer.clone();
+            let chosen_overlay = window_overlay.clone();
+            let chosen_root = blurred_root.clone();
+            let state = Rc::downgrade(self);
+            let entries = entries.clone();
+            let destination = destination.clone();
+            let archive_name = archive_name.clone();
+            let password = password.clone();
+            button.connect_clicked(move |_| {
+                dismiss_modal_layer(&chosen_layer, &chosen_overlay, chosen_root.as_ref());
+                if let Some(state) = state.upgrade() {
+                    state
+                        .pending_archive_destination
+                        .replace(Some(destination.clone()));
+                    state.browser.compress(
+                        entries.clone(),
+                        destination.clone(),
+                        archive_name.clone(),
+                        conflict,
+                        format,
+                        password.clone(),
+                    );
+                }
+            });
+        }
 
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let enter_replace = replace.clone();
+        let enter_buttons = [keep_both, replace.clone(), cancel, close];
         keys.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 glib::Propagation::Stop
             } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
-                enter_replace.emit_clicked();
-                glib::Propagation::Stop
+                if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
+                    button.emit_clicked();
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
             } else {
                 glib::Propagation::Proceed
             }
@@ -476,9 +512,15 @@ impl ViewState {
             self.extract_entry(entry);
             return;
         }
-        let Some(destination) = parent.child(std::ffi::OsStr::new(stem)) else {
-            self.extract_entry(entry);
+        let Some(parent_path) = parent.native_path() else {
             return;
+        };
+        let destination = match create_extraction_subfolder(parent_path, stem) {
+            Ok(destination) => destination,
+            Err(error) => {
+                show_error_dialog(&self.overlay, "Cannot extract", &error.to_string());
+                return;
+            }
         };
         let format = ArchiveFormat::from_extension(&entry.display_name);
         if format.map(|f| f.supports_password()).unwrap_or(false) {

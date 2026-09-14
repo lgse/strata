@@ -40,4 +40,4 @@ On Omarchy Quattro, Strata detects the active theme from:
 
 The application maps Quattro's `background`, `foreground`, `accent`, `selection`, and `color8` values into its semantic tokens and monitors the current-theme state for changes. It defaults to following Omarchy on first launch.
 
-The system option is not shown when a valid Quattro current-theme state is unavailable. Legacy Omarchy theme layouts and alacritty-based color extraction are intentionally unsupported.
+The system option is not shown when a valid Quattro current-theme state is unavailable. If that state disappears while Strata is running, following turns off and Strata returns to the selected built-in theme. Legacy Omarchy theme layouts and alacritty-based color extraction are intentionally unsupported.

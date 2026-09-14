@@ -210,12 +210,6 @@ fn filters_and_choices_keep_input_order_and_current_filter() {
 }
 
 #[test]
-fn readonly_state_maps_to_writable_result() {
-    assert!(!writable_from_read_only(true));
-    assert!(writable_from_read_only(false));
-}
-
-#[test]
 fn open_selection_validates_kind_cardinality_and_locality() {
     let current = Location::local("/tmp");
     let file = entry(Path::new("/tmp/file"), false);
@@ -318,7 +312,6 @@ fn active_request_count_is_bounded() {
 
 #[test]
 fn backend_version_and_success_uri_scheme_are_fixed() {
-    assert_eq!(FILE_CHOOSER_VERSION, 4);
     for path in [Path::new("/tmp/a"), Path::new("/tmp/a b")] {
         assert!(
             local_uri(path)

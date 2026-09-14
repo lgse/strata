@@ -203,6 +203,43 @@ fn reload_retains_views_until_terminal_reconnects_models() {
 }
 
 #[test]
+fn reload_reconnects_with_the_restored_multi_selection() {
+    gtk_test(
+        "ui::browser_modes::events::tests::reload_reconnects_with_the_restored_multi_selection",
+        || {
+            for (mode, grouped) in presentations() {
+                if grouped {
+                    continue;
+                }
+                let mut fixture = Fixture::new(mode, grouped);
+                fixture.browser.set_selection(0, &[0, 2], Some(2));
+                let pane = fixture.pane();
+                fixture
+                    .views
+                    .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+                fixture
+                    .views
+                    .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 3 });
+                fixture.views.handle(&BrowserEvent::LoadFinished {
+                    depth: 0,
+                    truncated: false,
+                });
+                assert_attached(&pane, true);
+                let selected: Vec<u32> = pane
+                    .item_sections()
+                    .into_iter()
+                    .flat_map(|section| {
+                        (0..section.selection.n_items())
+                            .filter(move |&position| section.selection.is_selected(position))
+                    })
+                    .collect();
+                assert_eq!(selected, vec![0, 2], "{mode:?} grouped={grouped}");
+            }
+        },
+    );
+}
+
+#[test]
 fn busy_insertions_and_splices_preserve_distinct_presentation_rules() {
     gtk_test(
         "ui::browser_modes::events::tests::busy_insertions_and_splices_preserve_distinct_presentation_rules",
@@ -249,6 +286,67 @@ fn busy_insertions_and_splices_preserve_distinct_presentation_rules() {
                 assert!(!pane.spinner.is_spinning());
                 assert!(!pane.spinner.get_visible());
                 assert!(pane.spinner.tooltip_text().is_none());
+            }
+        },
+    );
+}
+
+#[test]
+fn deferred_empty_state_stays_hidden_until_delete_animation_finishes() {
+    gtk_test(
+        "ui::browser_modes::events::tests::deferred_empty_state_stays_hidden_until_delete_animation_finishes",
+        || {
+            for (mode, grouped) in presentations() {
+                let mut fixture = Fixture::new(mode, grouped);
+                let pane = fixture.pane();
+
+                fixture.views.handle_with_deferred_empty(
+                    &BrowserEvent::EntriesSpliced {
+                        depth: 0,
+                        splices: vec![EntrySplice {
+                            position: 0,
+                            removed: 3,
+                            entries: Vec::new(),
+                        }],
+                    },
+                    true,
+                );
+
+                assert_eq!(pane.model.n_items(), 0);
+                assert_eq!(visible_page(&pane), "content");
+                fixture.views.show_empty_if_empty(0);
+                assert_eq!(visible_page(&pane), "status");
+                assert_eq!(pane.status.label(), "This directory is empty");
+            }
+        },
+    );
+}
+
+#[test]
+fn deferred_empty_state_survives_a_reload_finishing_during_delete_animation() {
+    gtk_test(
+        "ui::browser_modes::events::tests::deferred_empty_state_survives_a_reload_finishing_during_delete_animation",
+        || {
+            for (mode, grouped) in presentations() {
+                let mut fixture = Fixture::new(mode, grouped);
+                let pane = fixture.pane();
+
+                fixture
+                    .views
+                    .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+                fixture.views.handle_with_deferred_empty(
+                    &BrowserEvent::LoadFinished {
+                        depth: 0,
+                        truncated: false,
+                    },
+                    true,
+                );
+
+                assert_eq!(pane.model.n_items(), 0);
+                assert_ne!(visible_page(&pane), "status");
+                fixture.views.show_empty_if_empty(0);
+                assert_eq!(visible_page(&pane), "status");
+                assert_eq!(pane.status.label(), "This directory is empty");
             }
         },
     );
