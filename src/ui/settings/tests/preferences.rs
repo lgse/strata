@@ -61,6 +61,44 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             );
             assert_eq!(active_switches(&first), active_switches(&second));
             assert_eq!(active_choices(&first), active_choices(&second));
+            let directory_buttons = [&first, &second].map(|page| {
+                descendants::<gtk::Button>(page)
+                    .into_iter()
+                    .find(|button| {
+                        button.tooltip_text().as_deref() == Some("Select default directory")
+                    })
+                    .expect("default directory control")
+            });
+            let reset_buttons = [&first, &second].map(|page| {
+                descendants::<gtk::Button>(page)
+                    .into_iter()
+                    .find(|button| {
+                        button.tooltip_text().as_deref()
+                            == Some("Restore the home directory as default")
+                    })
+                    .expect("reset default directory")
+            });
+            for (index, reset) in reset_buttons.iter().enumerate() {
+                let chosen = glib::user_config_dir().join(format!("startup-{index}"));
+                manager.set_default_directory(Some(chosen.clone()));
+                for button in &directory_buttons {
+                    assert!(
+                        button
+                            .label()
+                            .expect("directory label")
+                            .ends_with(&format!("/startup-{index}"))
+                    );
+                }
+                assert!(reset_buttons.iter().all(|button| button.is_sensitive()));
+                reset.emit_clicked();
+                assert_eq!(manager.default_directory(), None);
+                assert!(
+                    directory_buttons
+                        .iter()
+                        .all(|button| button.label().as_deref() == Some("Home directory"))
+                );
+                assert!(reset_buttons.iter().all(|button| !button.is_sensitive()));
+            }
             for page in [&first, &second] {
                 for toggle in descendants::<gtk::Switch>(page) {
                     toggle.set_active(!toggle.is_active());

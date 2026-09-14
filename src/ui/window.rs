@@ -3088,9 +3088,6 @@ pub(crate) fn home_directory() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// Resolves the directory Strata opens at launch. Falls back to the home
-/// directory when no default is saved or the saved directory no longer exists,
-/// and clears a stale saved value so it stays reset until a new one is chosen.
 fn startup_location(manager: &ThemeManager) -> Location {
     let saved = manager.default_directory();
     if let Some(path) = &saved
