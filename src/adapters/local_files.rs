@@ -425,6 +425,9 @@ fn enumerate_native(
 
 impl FileSource for LocalFileSource {
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        if location.is_smart_folder() {
+            return Ok(());
+        }
         if let Some(path) = location.native_path() {
             let metadata = std::fs::metadata(path).map_err(map_validation_error)?;
             if !metadata.is_dir() {
@@ -455,6 +458,10 @@ impl FileSource for LocalFileSource {
         location: Location,
         emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
     ) -> LoadHandle {
+        if location.is_smart_folder() {
+            emit(Ok(()));
+            return LoadHandle::new(|| {});
+        }
         if location.native_path().is_some() {
             emit(self.validate_location(&location));
             return LoadHandle::new(|| {});
@@ -478,6 +485,10 @@ impl FileSource for LocalFileSource {
         let location = request.location.clone();
         let started = Instant::now();
         log_directory_load_started(request_id, &location);
+
+        if location.is_smart_folder() {
+            return LoadHandle::new(|| {});
+        }
 
         if let Some(path) = location.native_path() {
             return enumerate_native(request, emit, started, path.to_path_buf());
@@ -737,6 +748,9 @@ impl FileSource for LocalFileSource {
         notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
         let _ = include_hidden;
+        if location.is_smart_folder() {
+            return None;
+        }
         let file = gio_file_for_location(&location);
         let monitor = match file.monitor_directory(
             gio::FileMonitorFlags::WATCH_MOVES,

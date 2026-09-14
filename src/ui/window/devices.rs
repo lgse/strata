@@ -353,7 +353,7 @@ pub(super) fn password_drive_is_orphaned(
     should_list_orphaned_password_drive(start_stop, covered)
 }
 
-pub(super) fn global_search_roots() -> Vec<PathBuf> {
+pub(crate) fn global_search_roots() -> Vec<PathBuf> {
     let monitor = gio::VolumeMonitor::get();
     let roots = monitor
         .mounts()

@@ -47,6 +47,17 @@ const REMOTE_DIRECTORY_BATCH_SIZE: usize = 128;
 const PEEK_MAX_ENTRIES: usize = 64;
 const PEEK_TIME_BUDGET: Duration = Duration::from_secs(3);
 
+fn resolve_smart_folder_roots(
+    saved_roots: Vec<PathBuf>,
+    fallback: impl FnOnce() -> Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    if saved_roots.is_empty() {
+        fallback()
+    } else {
+        saved_roots
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct BrowserColumnSnapshot {
     pub location: Location,
@@ -771,6 +782,40 @@ impl Browser {
 
     pub fn navigate(self: &Rc<Self>, location: Location) {
         self.navigate_with_selection(location, true);
+    }
+
+    pub fn navigate_smart_folder(
+        self: &Rc<Self>,
+        location: Location,
+        query: String,
+        rules: Vec<crate::model::SmartQueryRule>,
+        roots: Vec<PathBuf>,
+        show_hidden: bool,
+    ) {
+        let roots = resolve_smart_folder_roots(roots, crate::ui::global_search_roots);
+        self.bump_navigation_generation();
+        if self.active_location().is_some() {
+            self.emit(BrowserEvent::NavigationStarting);
+        }
+        self.close_peek();
+        self.loads.borrow_mut().clear();
+        self.monitors.borrow_mut().clear();
+        self.cancel_deferred_work();
+        let request_id = self.new_request_id();
+        self.state
+            .borrow_mut()
+            .navigate(location.clone(), request_id);
+        self.select_first_on_load(0);
+        self.emit(BrowserEvent::Reset);
+        self.emit(BrowserEvent::ColumnAdded {
+            depth: 0,
+            location: location.clone(),
+        });
+        self.emit(BrowserEvent::FocusChanged {
+            depth: 0,
+            position: None,
+        });
+        self.start_smart_folder_load(request_id, query, rules, roots, show_hidden);
     }
 
     pub(crate) fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
@@ -2470,11 +2515,97 @@ impl Browser {
     }
 
     fn start_load(self: &Rc<Self>, depth: usize, location: Location, request_id: RequestId) {
+        if let Some(smart_id) = location.smart_folder_id() {
+            let def = crate::ui::ThemeManager::shared()
+                .smart_folder(smart_id)
+                .unwrap_or_else(|| {
+                    crate::ui::default_smart_folders()
+                        .into_iter()
+                        .find(|f| f.id == smart_id)
+                        .unwrap_or_else(|| crate::ui::SmartFolderDef {
+                            id: smart_id.to_string(),
+                            name: "Smart Search".into(),
+                            query: String::new(),
+                            rules: Vec::new(),
+                            roots: Vec::new(),
+                            show_hidden: false,
+                        })
+                });
+            let roots = resolve_smart_folder_roots(def.roots, crate::ui::global_search_roots);
+            self.start_smart_folder_load(request_id, def.query, def.rules, roots, def.show_hidden);
+            return;
+        }
         let handle = self.request_directory(depth, location.clone(), request_id);
         self.loads.borrow_mut().push(handle);
 
         let monitor = self.install_monitor(depth, location);
         self.monitors.borrow_mut().push(monitor);
+    }
+
+    fn start_smart_folder_load(
+        self: &Rc<Self>,
+        request_id: RequestId,
+        query: String,
+        rules: Vec<crate::model::SmartQueryRule>,
+        roots: Vec<PathBuf>,
+        show_hidden: bool,
+    ) {
+        let (handle, receiver) = crate::services::index_trees(roots, show_hidden);
+        handle.smart_query(&query, rules);
+        let browser = Rc::downgrade(self);
+        let cancelled = Rc::new(Cell::new(false));
+        let cancelled_for_closure = cancelled.clone();
+        let receiver = RefCell::new(receiver);
+        let _poll = glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+            if cancelled_for_closure.get() {
+                return glib::ControlFlow::Break;
+            }
+            let Some(browser) = browser.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            loop {
+                match receiver
+                    .borrow()
+                    .recv_timeout(std::time::Duration::from_millis(0))
+                {
+                    Ok(crate::services::SearchEvent::Results {
+                        items, indexing, ..
+                    }) => {
+                        // Search updates are cumulative; install only the terminal snapshot so
+                        // the directory loader does not append the same matches repeatedly.
+                        if !indexing {
+                            let entries: Vec<FileEntry> =
+                                items.iter().map(crate::ui::search_result_entry).collect();
+                            browser.handle_directory_event(
+                                crate::services::DirectoryEvent::Batch {
+                                    request_id,
+                                    entries,
+                                },
+                            );
+                            browser.handle_directory_event(
+                                crate::services::DirectoryEvent::Finished {
+                                    request_id,
+                                    truncated: false,
+                                    can_trash: Some(true),
+                                    can_delete: Some(true),
+                                },
+                            );
+                            return glib::ControlFlow::Break;
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => break,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        return glib::ControlFlow::Break;
+                    }
+                }
+            }
+            glib::ControlFlow::Continue
+        });
+        let cancel_handle = LoadHandle::new(move || {
+            cancelled.set(true);
+            drop(handle);
+        });
+        self.loads.borrow_mut().push(cancel_handle);
     }
 
     fn install_monitor(self: &Rc<Self>, depth: usize, location: Location) -> Option<LoadHandle> {

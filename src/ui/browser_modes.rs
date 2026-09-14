@@ -1372,7 +1372,7 @@ impl ModeViews {
                 density: self.density,
             },
             depth,
-            &snapshot.location.display_name(),
+            &crate::ui::location_display_name(&snapshot.location),
         );
         configure_icons_density(&pane, self.density);
         pane.folder_context_trigger = self.install_context_menu(&pane);
@@ -1405,7 +1405,7 @@ impl ModeViews {
                 group_by_type: self.grouping_for_snapshot(&snapshot),
             },
             depth,
-            &snapshot.location.display_name(),
+            &crate::ui::location_display_name(&snapshot.location),
         );
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.list_root.append(&pane.shell);
@@ -1899,7 +1899,7 @@ fn build_icons_pane(
 fn pane_directory_name(browser: &Rc<Browser>, depth: usize) -> String {
     browser
         .location_at(depth)
-        .map(|location| location.display_name())
+        .map(|location| crate::ui::location_display_name(&location))
         .unwrap_or_default()
 }
 

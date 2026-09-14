@@ -69,7 +69,8 @@ impl Browser {
         let state = self.state.borrow();
         let depth = state.depth_for_request(request_id)?;
         state.open_load_depth(request_id)?;
-        if state.location_at(depth)?.native_path().is_some() {
+        let location = state.location_at(depth)?;
+        if location.native_path().is_some() || location.is_smart_folder() {
             Some(OpenLoad::Native(depth))
         } else {
             Some(OpenLoad::Remote(depth))

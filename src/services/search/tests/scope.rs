@@ -92,6 +92,7 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
                 items,
                 indexing,
                 coverage,
+                ..
             } = wait_for_results(&events).expect("filter results");
             assert_eq!(returned, query);
             assert!(!indexing);

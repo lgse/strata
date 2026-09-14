@@ -16,6 +16,22 @@ use crate::{
 };
 
 #[test]
+fn dynamic_smart_folder_scope_uses_current_global_roots() {
+    let fallback = vec![
+        PathBuf::from("/home/fixture"),
+        PathBuf::from("/media/archive"),
+    ];
+    assert_eq!(
+        resolve_smart_folder_roots(Vec::new(), || fallback.clone()),
+        fallback
+    );
+    assert_eq!(
+        resolve_smart_folder_roots(vec![PathBuf::from("/projects")], Vec::new),
+        vec![PathBuf::from("/projects")]
+    );
+}
+
+#[test]
 fn deleted_trash_entries_refresh_the_trash_root() {
     let entry = FileEntry {
         location: Location::uri("trash:///photo.jpg"),

@@ -411,6 +411,7 @@ pub(super) fn wrap(
                 mut items,
                 indexing,
                 coverage,
+                ..
             }) = latest
                 && !returned.is_empty()
                 && returned == entry.text().trim()

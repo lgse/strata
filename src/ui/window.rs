@@ -37,6 +37,7 @@ mod open_argument;
 mod sidebar;
 mod volume_password;
 
+pub(crate) use devices::global_search_roots;
 pub use open_argument::present_open;
 
 use sidebar::PlaceNavigation;
@@ -1084,6 +1085,9 @@ impl SidebarState {
         self.append_separator();
         self.append_standard_places();
         self.append_pinned_places();
+        if !self.local_only {
+            self.append_smart_folders();
+        }
     }
 
     fn append_standard_places(self: &Rc<Self>) {
@@ -1122,6 +1126,131 @@ impl SidebarState {
                 }
             }
         }
+    }
+
+    fn append_smart_folders(self: &Rc<Self>) {
+        let folders = self.theme_manager.smart_folders();
+        if folders.is_empty() {
+            return;
+        }
+        self.append_separator();
+        self.append_heading("SMART FOLDERS");
+        for folder in folders {
+            let location = Location::smart_folder(&folder.id);
+            let row = sidebar_button(crate::assets::icons::FUNNEL, &folder.name);
+            row.set_tooltip_text(Some(&folder.summary()));
+            self.bind_smart_folder_row(&row, location, folder.clone());
+            self.install_smart_folder_context_menu(&row, folder.id);
+            self.widget.append(&row);
+        }
+    }
+
+    fn install_smart_folder_context_menu(self: &Rc<Self>, row: &gtk::Button, id: String) {
+        let menu = super::accessibility::menu_box();
+        menu.add_css_class("folder-context-menu");
+        let rename = sidebar_context_option(crate::assets::icons::PENCIL, "Rename…", false);
+        let remove = sidebar_context_option(crate::assets::icons::X, "Remove from Sidebar", false);
+        menu.append(&rename);
+        menu.append(&remove);
+        let popover = gtk::Popover::builder()
+            .child(&menu)
+            .autohide(true)
+            .has_arrow(false)
+            .build();
+        popover.add_css_class("folder-context-popover");
+        popover.set_parent(row);
+
+        let rename_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        rename_box.add_css_class("smart-folder-rename-box");
+        let rename_heading = gtk::Label::new(Some("RENAME SMART FOLDER"));
+        rename_heading.add_css_class("menu-heading");
+        rename_heading.set_xalign(0.0);
+        let rename_entry = gtk::Entry::builder()
+            .placeholder_text("Folder name…")
+            .build();
+        rename_entry.add_css_class("form-control");
+        let rename_btn = gtk::Button::builder()
+            .label("Rename")
+            .css_classes(["save-smart-folder-action"])
+            .build();
+        rename_box.append(&rename_heading);
+        rename_box.append(&rename_entry);
+        rename_box.append(&rename_btn);
+        let rename_popover = gtk::Popover::builder()
+            .child(&rename_box)
+            .autohide(true)
+            .has_arrow(true)
+            .build();
+        rename_popover.set_parent(row);
+
+        let weak_state = Rc::downgrade(self);
+        let rename_state = Rc::downgrade(self);
+        let menu_popover = popover.downgrade();
+        let target_rename_popover = rename_popover.clone();
+        let entry_for_rename = rename_entry.clone();
+        let id_for_menu = id.clone();
+        rename.connect_clicked(move |_| {
+            if let Some(popover) = menu_popover.upgrade() {
+                popover.popdown();
+            }
+            if let Some(state) = rename_state.upgrade()
+                && let Some(folder) = state.theme_manager.smart_folder(&id_for_menu)
+            {
+                entry_for_rename.set_text(&folder.name);
+                target_rename_popover.popup();
+                entry_for_rename.select_region(0, -1);
+                entry_for_rename.grab_focus();
+            }
+        });
+
+        let id_for_apply = id.clone();
+        let apply_state = Rc::downgrade(self);
+        let apply_popover = rename_popover.clone();
+        let apply_entry = rename_entry.clone();
+        let apply_rename = move || {
+            let new_name = apply_entry.text().trim().to_string();
+            if !new_name.is_empty()
+                && let Some(state) = apply_state.upgrade()
+            {
+                state
+                    .theme_manager
+                    .rename_smart_folder(&id_for_apply, &new_name);
+            }
+            apply_popover.popdown();
+        };
+        let apply_rc = Rc::new(apply_rename);
+        let apply_btn = apply_rc.clone();
+        rename_btn.connect_clicked(move |_| apply_btn());
+        let apply_enter = apply_rc.clone();
+        rename_entry.connect_activate(move |_| apply_enter());
+
+        let remove_popover = popover.downgrade();
+        let id_for_remove = id.clone();
+        remove.connect_clicked(move |_| {
+            if let Some(popover) = remove_popover.upgrade() {
+                popover.popdown();
+            }
+            if let Some(state) = weak_state.upgrade() {
+                state.theme_manager.remove_smart_folder(&id_for_remove);
+            }
+        });
+        let context = gtk::GestureClick::new();
+        context.set_button(3);
+        let weak_popover = popover.downgrade();
+        context.connect_pressed(move |gesture, _, x, y| {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            let Some(popover) = weak_popover.upgrade() else {
+                return;
+            };
+            popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+                x.round() as i32,
+                y.round() as i32,
+                1,
+                1,
+            )));
+            popover.popup();
+        });
+        row.add_controller(context);
     }
 
     fn append_devices(self: &Rc<Self>) {

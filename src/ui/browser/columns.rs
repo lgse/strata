@@ -558,7 +558,7 @@ impl ViewState {
         column.add_css_class("directory-column");
         crate::ui::accessibility::describe_pane(
             &column,
-            &location.display_name(),
+            &crate::ui::location_display_name(location),
             crate::ui::browser_modes::BrowserMode::Columns,
         );
         column.set_hexpand(true);
@@ -587,7 +587,7 @@ impl ViewState {
         let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heading_box.set_hexpand(true);
         heading_box.set_valign(gtk::Align::Center);
-        let heading = gtk::Label::new(Some(&location.display_name()));
+        let heading = gtk::Label::new(Some(&crate::ui::location_display_name(location)));
         heading.add_css_class("column-heading");
         heading.set_xalign(0.0);
         heading.set_yalign(0.5);
@@ -894,7 +894,10 @@ impl ViewState {
         list.set_enable_rubberband(false);
         list.set_single_click_activate(false);
         list.set_vexpand(true);
-        crate::ui::accessibility::describe_entry_container(&list, &location.display_name());
+        crate::ui::accessibility::describe_entry_container(
+            &list,
+            &crate::ui::location_display_name(location),
+        );
 
         let search_navigation = gtk::EventControllerKey::new();
         search_navigation.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -1289,7 +1292,10 @@ impl ViewState {
         reveal_button.set_visible(false);
         crate::ui::accessibility::set_label(
             &reveal_button,
-            &format!("Reveal {} column", location.display_name()),
+            &format!(
+                "Reveal {} column",
+                crate::ui::location_display_name(location)
+            ),
         );
         reveal_button.set_tooltip_text(Some(&format!("Reveal {}", location.display_path())));
         let weak = Rc::downgrade(self);

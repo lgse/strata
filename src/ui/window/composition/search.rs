@@ -52,6 +52,7 @@ fn toggle_handler(
 ) -> Rc<dyn Fn()> {
     let button = content.header.search.clone();
     let root = content.blurred_root.clone();
+    let browser = content.browser.browser();
     let preferences = preferences.clone();
     Rc::new(move || {
         if dialog.is_visible() {
@@ -59,9 +60,17 @@ fn toggle_handler(
             return;
         }
         let roots = super::super::devices::global_search_roots();
+        let current_folder = browser.active_location().and_then(|location| {
+            let path = location.native_path()?.to_path_buf();
+            Some((path, crate::ui::location_display_name(&location)))
+        });
         button.add_css_class("active");
         root.set_blurred(true);
-        dialog.show(roots, preferences.sort_preferences().show_hidden);
+        dialog.show(
+            roots,
+            current_folder,
+            preferences.sort_preferences().show_hidden,
+        );
     })
 }
 

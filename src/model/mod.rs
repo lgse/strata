@@ -60,6 +60,7 @@ impl Location {
                 (parent != path).then(|| Self::local(parent))
             }
             LocationKind::Uri(uri) if uri == "trash:///" || uri == "network:///" => None,
+            LocationKind::Uri(uri) if uri.starts_with("strata-search://") => None,
             LocationKind::Uri(uri) => {
                 let file = gio::File::for_uri(uri);
                 let parent = file.parent()?;
@@ -234,6 +235,15 @@ impl Location {
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
             LocationKind::Uri(uri) if uri == "trash:///" => "Trash".into(),
+            LocationKind::Uri(_) if self.is_smart_folder() => {
+                let id = self.smart_folder_id().unwrap_or("Smart Folder");
+                match id {
+                    "recent-documents" => "Recent Documents".to_string(),
+                    "recent-images" => "Recent Images".to_string(),
+                    "large-files" => "Large Files (>100MB)".to_string(),
+                    _ => id.to_string(),
+                }
+            }
             LocationKind::Uri(uri) => self
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
@@ -248,14 +258,12 @@ impl Location {
         }
     }
 
-    pub fn breadcrumbs(&self) -> Vec<Self> {
-        if let Some(path) = self.native_path() {
-            let mut locations: Vec<_> = path.ancestors().map(Self::local).collect();
-            locations.reverse();
-            return locations;
-        }
-        let mut locations = vec![self.clone()];
-        while let Some(parent) = locations.last().and_then(Self::parent) {
+    pub fn breadcrumbs(&self) -> Vec<Location> {
+        let mut locations = Vec::new();
+        let mut current = self.clone();
+        locations.push(current.clone());
+        while let Some(parent) = current.parent() {
+            current = parent.clone();
             if locations.contains(&parent) {
                 break;
             }
@@ -263,6 +271,238 @@ impl Location {
         }
         locations.reverse();
         locations
+    }
+
+    pub fn smart_folder(id: &str) -> Self {
+        Self::uri(format!("strata-search://{id}"))
+    }
+
+    pub fn smart_folder_id(&self) -> Option<&str> {
+        self.uri_value()
+            .filter(|uri| uri.starts_with("strata-search://"))
+            .map(|uri| &uri["strata-search://".len()..])
+            .filter(|id| !id.is_empty())
+    }
+
+    pub fn is_smart_folder(&self) -> bool {
+        self.smart_folder_id().is_some()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum FileCategory {
+    Any,
+    Document,
+    Image,
+    Audio,
+    Video,
+    Archive,
+    Code,
+    Folder,
+}
+
+impl FileCategory {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Any => "Any Kind",
+            Self::Document => "Documents",
+            Self::Image => "Images",
+            Self::Audio => "Audio",
+            Self::Video => "Videos",
+            Self::Archive => "Archives",
+            Self::Code => "Code",
+            Self::Folder => "Folders",
+        }
+    }
+
+    pub fn matches(&self, path: &Path, is_directory: bool) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Folder => is_directory,
+            Self::Document => {
+                !is_directory
+                    && Self::has_extension(
+                        path,
+                        &[
+                            "pdf", "doc", "docx", "odt", "rtf", "txt", "md", "markdown", "epub",
+                            "pages", "xls", "xlsx", "ods", "ppt", "pptx", "odp", "csv", "tsv",
+                        ],
+                    )
+            }
+            Self::Image => {
+                !is_directory
+                    && Self::has_extension(
+                        path,
+                        &[
+                            "jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff",
+                            "tif", "avif", "heic", "heif", "raw", "exr", "psd", "xcf",
+                        ],
+                    )
+            }
+            Self::Audio => {
+                !is_directory
+                    && Self::has_extension(
+                        path,
+                        &[
+                            "mp3", "flac", "wav", "ogg", "m4a", "aac", "opus", "wma", "aiff",
+                            "alac",
+                        ],
+                    )
+            }
+            Self::Video => {
+                !is_directory
+                    && Self::has_extension(
+                        path,
+                        &[
+                            "mp4", "mkv", "webm", "avi", "mov", "flv", "wmv", "m4v", "ts", "3gp",
+                        ],
+                    )
+            }
+            Self::Archive => {
+                !is_directory
+                    && Self::has_extension(
+                        path,
+                        &[
+                            "zip", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "7z", "rar",
+                            "zst", "iso",
+                        ],
+                    )
+            }
+            Self::Code => {
+                !is_directory
+                    && Self::has_extension(
+                        path,
+                        &[
+                            "rs", "c", "cpp", "cc", "cxx", "h", "hpp", "py", "pyw", "js", "mjs",
+                            "cjs", "ts", "tsx", "jsx", "html", "htm", "css", "scss", "sass",
+                            "less", "json", "toml", "yaml", "yml", "xml", "sh", "bash", "zsh",
+                            "fish", "go", "java", "kt", "kts", "swift", "rb", "php", "sql", "lua",
+                            "zig",
+                        ],
+                    )
+            }
+        }
+    }
+
+    fn has_extension(path: &Path, extensions: &[&str]) -> bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| {
+                let ext_lower = ext.to_ascii_lowercase();
+                extensions.iter().any(|&candidate| candidate == ext_lower)
+            })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum DateConstraint {
+    WithinPastDays(u32),
+    OlderThanDays(u32),
+}
+
+impl DateConstraint {
+    pub fn matches(&self, modified_secs: u64, now_secs: u64) -> bool {
+        if modified_secs == 0 {
+            return false;
+        }
+        let age_secs = now_secs.saturating_sub(modified_secs);
+        match self {
+            Self::WithinPastDays(days) => age_secs <= u64::from(*days).saturating_mul(86400),
+            Self::OlderThanDays(days) => age_secs > u64::from(*days).saturating_mul(86400),
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            Self::WithinPastDays(1) => "Past 24 hours".to_string(),
+            Self::WithinPastDays(7) => "Past 7 days".to_string(),
+            Self::WithinPastDays(30) => "Past 30 days".to_string(),
+            Self::WithinPastDays(90) => "Past 90 days".to_string(),
+            Self::WithinPastDays(365) => "Past year".to_string(),
+            Self::WithinPastDays(days) => format!("Past {days} days"),
+            Self::OlderThanDays(days) => format!("Older than {days} days"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum SizeConstraint {
+    GreaterThan(u64),
+    LessThan(u64),
+}
+
+impl SizeConstraint {
+    pub fn matches(&self, size_bytes: u64, is_directory: bool) -> bool {
+        if is_directory {
+            return false;
+        }
+        match self {
+            Self::GreaterThan(bytes) => size_bytes > *bytes,
+            Self::LessThan(bytes) => size_bytes < *bytes,
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            Self::GreaterThan(bytes) => format!("> {}", format_size_human(*bytes)),
+            Self::LessThan(bytes) => format!("< {}", format_size_human(*bytes)),
+        }
+    }
+}
+
+fn format_size_human(bytes: u64) -> String {
+    if bytes >= 1_000_000_000 {
+        format!("{} GB", bytes / 1_000_000_000)
+    } else if bytes >= 1_000_000 {
+        format!("{} MB", bytes / 1_000_000)
+    } else if bytes >= 1_000 {
+        format!("{} KB", bytes / 1_000)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "type", content = "value")]
+pub enum SmartQueryRule {
+    Kind(FileCategory),
+    NameContains(String),
+    DateModified(DateConstraint),
+    FileSize(SizeConstraint),
+}
+
+impl SmartQueryRule {
+    pub fn matches(
+        &self,
+        path: &Path,
+        name: &str,
+        is_directory: bool,
+        size_bytes: u64,
+        modified_secs: u64,
+        now_secs: u64,
+    ) -> bool {
+        match self {
+            Self::Kind(category) => category.matches(path, is_directory),
+            Self::NameContains(sub) => {
+                if sub.is_empty() {
+                    true
+                } else {
+                    name.to_ascii_lowercase()
+                        .contains(&sub.to_ascii_lowercase())
+                }
+            }
+            Self::DateModified(date) => date.matches(modified_secs, now_secs),
+            Self::FileSize(size) => size.matches(size_bytes, is_directory),
+        }
+    }
+
+    pub fn summary(&self) -> String {
+        match self {
+            Self::Kind(category) => format!("Kind: {}", category.label()),
+            Self::NameContains(sub) => format!("Name: \"{sub}\""),
+            Self::DateModified(date) => format!("Modified: {}", date.label()),
+            Self::FileSize(size) => format!("Size: {}", size.label()),
+        }
     }
 }
 

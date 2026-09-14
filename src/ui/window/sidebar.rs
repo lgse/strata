@@ -151,6 +151,16 @@ impl SidebarState {
                 }
             },
         );
+        let weak = Rc::downgrade(self);
+        self.theme_manager.bind_preference(
+            &self.widget,
+            ThemeManager::smart_folders,
+            move |_, _| {
+                if let Some(state) = weak.upgrade() {
+                    state.rebuild();
+                }
+            },
+        );
     }
 
     fn observe_navigation_and_trash(self: &Rc<Self>) {
@@ -201,6 +211,32 @@ impl SidebarState {
                         browser.navigate_location(location.clone(), select_first);
                     }
                 }
+            }
+        });
+    }
+
+    pub(super) fn bind_smart_folder_row(
+        &self,
+        row: &gtk::Button,
+        location: Location,
+        folder: crate::ui::theme::SmartFolderDef,
+    ) {
+        self.place_rows
+            .borrow_mut()
+            .push((location.clone(), row.clone()));
+        let browser = Rc::downgrade(&self.browser);
+        let sidebar = self.widget.clone();
+        let selected_row = row.clone();
+        row.connect_clicked(move |_| {
+            select_sidebar_row(&sidebar, &selected_row);
+            if let Some(browser) = browser.upgrade() {
+                browser.navigate_smart_folder(
+                    location.clone(),
+                    folder.query.clone(),
+                    folder.rules.clone(),
+                    folder.roots.clone(),
+                    folder.show_hidden,
+                );
             }
         });
     }

@@ -7,6 +7,7 @@ mod browser_modes;
 mod chooser;
 mod controls;
 mod entry_list_model;
+
 mod focus_navigation;
 mod icons_cell;
 mod inline_search;
@@ -31,9 +32,19 @@ pub(crate) mod thumbnail_cache;
 mod top_bar_navigation;
 mod window;
 
+pub(crate) use browser::search_result_entry;
 pub(crate) use chooser::{cancel_chooser, present_chooser};
-pub(crate) use window::home_directory;
+pub(crate) use theme::{SmartFolderDef, ThemeManager, default_smart_folders};
+pub(crate) use window::{global_search_roots, home_directory};
 pub use window::{present, present_open, present_reveal};
+
+pub(crate) fn location_display_name(location: &crate::model::Location) -> String {
+    location
+        .smart_folder_id()
+        .and_then(|id| ThemeManager::shared().smart_folder(id))
+        .map(|folder| folder.name)
+        .unwrap_or_else(|| location.display_name())
+}
 
 pub(crate) fn prepare_portal_ui() {
     let _theme = theme::ThemeManager::shared();
