@@ -162,10 +162,13 @@ pass before merge.
   only purpose is to repeat constants or setter assignments, match CSS text,
   count incidental widget children, or enforce cosmetic pixel sizes, spacing,
   and alignment.
-- Keep functional geometry regressions: clipped editors/carets, obscured names,
-  broken hit targets or scrolling, and unreachable controls are real failures.
-  Visual baselines and lifecycle, filesystem-safety, and live-preference coverage
-  are not cosmetic duplicates.
+- Never write layout tests. Do not add assertions for widget geometry, alignment,
+  spacing, dimensions, wrapping, responsive arrangement, or pixel placement,
+  including tests framed as clipping or layout regressions. Verify layout changes
+  manually with screenshots instead.
+- Keep behavioral tests for actions, input routing, lifecycle, filesystem safety,
+  error handling, and live preferences. Do not turn visual adjustments into
+  widget-tree or layout assertions.
 - Before adding a test, identify the existing coverage owner. Extend a matching
   setup or use table-driven inputs instead of duplicating default/round-trip
   assertions or adding another E2E smoke launch. Preserve separate cases where

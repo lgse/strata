@@ -455,7 +455,18 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool, stack_text_size: bool) {
     {
         row.set_end_align(!compact);
     }
-    if widget.has_css_class("theme-appearance-filter") {
+    if widget.has_css_class("settings-integration-actions")
+        && let Some(actions) = widget.downcast_ref::<gtk::Box>()
+    {
+        actions.set_orientation(if compact {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
+    }
+    if widget.has_css_class("theme-appearance-filter")
+        || widget.has_css_class("settings-integration-actions")
+    {
         widget.set_halign(if compact {
             gtk::Align::Fill
         } else {
