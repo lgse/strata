@@ -61,6 +61,16 @@ pub(super) fn hits_item_content(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     false
 }
 
+/// Icon cards treat the icon frame as content for hover, click focus, and drag,
+/// but not for marquee: the frame's padding around the thumbnail is part of the
+/// icon's visual area, not inert gutter.
+pub(super) fn hits_icon_card_content(card: &gtk::Widget, x: f64, y: f64) -> bool {
+    hits_item_content(card, x, y)
+        || card
+            .pick(x, y, gtk::PickFlags::DEFAULT)
+            .is_some_and(|widget| widget.has_css_class("icons-card-icon-frame"))
+}
+
 /// The full Name column, including row padding, uses content-only hit testing.
 pub(super) fn hits_list_item_content(row: &gtk::Widget, x: f64, y: f64) -> bool {
     let in_name = row

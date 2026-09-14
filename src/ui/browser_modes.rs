@@ -3000,11 +3000,7 @@ fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widge
 }
 
 fn set_icons_content_hover(card: &gtk::Box, x: f64, y: f64) {
-    if super::pointer::hits_item_content(card.upcast_ref(), x, y)
-        || card
-            .pick(x, y, gtk::PickFlags::DEFAULT)
-            .is_some_and(|widget| widget.has_css_class("icons-card-icon-frame"))
-    {
+    if super::pointer::hits_icon_card_content(card.upcast_ref(), x, y) {
         card.add_css_class("content-hover");
     } else {
         card.remove_css_class("content-hover");
@@ -3154,7 +3150,7 @@ fn install_list_drag_drop(
             {
                 return None;
             }
-        } else if !super::pointer::hits_item_content(&prepare_row, x, y) {
+        } else if !super::pointer::hits_icon_card_content(&prepare_row, x, y) {
             return None;
         }
         source.set_actions(super::browser::drag_actions_for_modifiers(
@@ -3394,7 +3390,7 @@ fn install_modified_selection_click(
             return;
         }
         if let Some(widget) = gesture.widget()
-            && super::pointer::hits_item_content(&widget, x, y)
+            && super::pointer::hits_icon_card_content(&widget, x, y)
             && let Some(item_widget) = widget.parent()
         {
             item_widget.grab_focus();
