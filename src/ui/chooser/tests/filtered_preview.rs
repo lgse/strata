@@ -84,6 +84,11 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                     };
                     let state = build_chooser(request, Arc::new(AtomicBool::new(false)), |_| {})
                         .expect("chooser");
+                    // Finish deferred startup focus before simulating user input.
+                    let initialized = Rc::new(Cell::new(false));
+                    let initialized_at_idle = initialized.clone();
+                    glib::idle_add_local_once(move || initialized_at_idle.set(true));
+                    wait_until(|| initialized.get());
                     let browser = state.view.browser();
                     wait_until(|| {
                         browser
