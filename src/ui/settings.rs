@@ -1453,6 +1453,7 @@ fn update_check_row(
     row.append(&available_notes.container);
 
     let checking = Rc::new(Cell::new(false));
+    let row_generation = Rc::new(Cell::new(0u64));
     // Set once a check finds an update this platform can install; consumed by the
     // button's next click instead of re-running a check.
     let pending_download = Rc::new(RefCell::new(None::<PendingInstall>));
@@ -1477,6 +1478,7 @@ fn update_check_row(
         let progress = progress.clone();
         let available_notes = available_notes.clone();
         let manager = manager.clone();
+        let row_generation = row_generation.clone();
         move |force: bool| {
             // Always start a fresh check rather than dropping it: a channel
             // toggle must never be silently ignored just because a previous
@@ -1484,6 +1486,8 @@ fn update_check_row(
             // check's own result is discarded below instead, once its
             // generation no longer matches.
             let my_generation = next_check_generation();
+            let my_row_generation = row_generation.get().saturating_add(1);
+            row_generation.set(my_row_generation);
             checking.set(true);
             *pending_download.borrow_mut() = None;
             installed.set(false);
@@ -1520,12 +1524,17 @@ fn update_check_row(
             let pending_download = pending_download.clone();
             let managed_update_available = managed_update_available.clone();
             let available_notes = available_notes.clone();
+            let row_generation = row_generation.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 if is_stale_check(my_generation, CHECK_GENERATION.get()) {
-                    // A newer check has since started; that one owns
-                    // `checking`, `status`, and every other piece of shared
-                    // state this closure would otherwise touch. Stop polling
-                    // without applying this result.
+                    // Same row started a newer check: it owns the UI. A
+                    // different window or the due scheduler bumped the global
+                    // generation without touching this row's button.
+                    if is_stale_check(my_row_generation, row_generation.get()) {
+                        return glib::ControlFlow::Break;
+                    }
+                    button.set_sensitive(true);
+                    checking.set(false);
                     return glib::ControlFlow::Break;
                 }
                 match receiver.try_recv() {
