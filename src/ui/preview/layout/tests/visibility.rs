@@ -360,6 +360,7 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
                             path: "/synthetic-video.mp4".into(),
                             size: MediaPreviewSize::new(320, 180),
                             backend: crate::sandbox::MediaPreviewBackend::Software,
+                            input_owner: None,
                         },
                     },
                 }),

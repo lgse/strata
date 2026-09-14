@@ -85,7 +85,11 @@ impl ViewState {
                     .map(|insertion| insertion.entries.len())
                     .sum();
                 if let Some(column) = self.columns.borrow().get(*depth).cloned() {
-                    if entry_count > 0 && !column.spinner.is_spinning() {
+                    let camera = self
+                        .browser
+                        .location_at(*depth)
+                        .is_some_and(|location| location.is_camera_photo_root());
+                    if entry_count > 0 && (!column.spinner.is_spinning() || camera) {
                         column.presentation.show_content();
                     }
                     for insertion in insertions {
@@ -96,6 +100,11 @@ impl ViewState {
                             0,
                             insertion.entries.len() as u32,
                         );
+                    }
+                    if camera && entry_count > 0 && column.selection.model().is_none() {
+                        column.filtered_model.set_model(Some(&column.model));
+                        column.selection.set_model(Some(&column.filtered_model));
+                        column.syncing_selection.set(false);
                     }
                     let count = column.entry_count.get() + entry_count;
                     column.entry_count.set(count);
@@ -527,7 +536,7 @@ impl ViewState {
             }
             BrowserEvent::OpenRequested { location } => {
                 if self.interactive {
-                    open_location(location, &self.overlay);
+                    open_location(location, &self.overlay, &self.browser);
                 }
             }
             BrowserEvent::EntryCreated { location } => {

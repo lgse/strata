@@ -401,6 +401,7 @@ pub(in crate::ui) fn install_folder_context_menu(
             vec![file],
             recommended_apps,
             other_apps,
+            crate::ui::open_with::OpenWithContext::Explicit,
             Rc::new(move || {
                 if let Some(browser) = browser.upgrade() {
                     browser.focus_active();
@@ -784,6 +785,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 selection.files,
                 selection.recommended_apps,
                 selection.other_apps,
+                crate::ui::open_with::OpenWithContext::Explicit,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();
@@ -813,6 +815,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 selection.files,
                 selection.recommended_apps,
                 selection.other_apps,
+                crate::ui::open_with::OpenWithContext::Explicit,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();

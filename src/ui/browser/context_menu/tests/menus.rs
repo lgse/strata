@@ -433,7 +433,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     view.browser().select(0, 0);
                     let menu = open_menu(&view, Some("picture.png"));
                     if in_trash {
-                        assert_actions(&menu, &[], &["Print", "Quick preview"]);
+                        assert_actions(&menu, &["Quick preview"], &["Print"]);
                     } else {
                         assert_actions(&menu, &["Print", "Quick preview"], &[]);
                     }

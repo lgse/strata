@@ -26,6 +26,77 @@ def open_with_app(test_environment):
     associations.write_text(contents)
     return output, associations, contents
 
+@pytest.fixture
+def activation_fallback_app(open_with_app):
+    output, associations, _ = open_with_app
+    contents = associations.read_text().replace(
+        "text/plain=strata-review.desktop;\n",
+        "",
+    )
+    associations.write_text(contents)
+    return output, associations, contents
+
+
+@pytest.fixture
+def empty_application_data(test_environment, monkeypatch):
+    data_dirs = test_environment.root / "empty-data-dirs"
+    data_dirs.mkdir()
+    variables = test_environment.variables
+    monkeypatch.setattr(
+        test_environment,
+        "variables",
+        lambda: {**variables(), "XDG_DATA_DIRS": str(data_dirs)},
+    )
+
+
+def test_activation_without_default_opens_with_visible_application(
+    activation_fallback_app, strata
+):
+    output, associations, contents = activation_fallback_app
+    expected = strata.fixture.path("todo.txt")
+    strata.select_entry_with_keyboard("todo.txt")
+    strata.keyboard.press("Return")
+
+    dialog = strata.wait_for_dialog()
+    assert "Review Text Viewer" in dialog.dump()
+    strata.keyboard.type_text("Review Text Viewer")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: output.exists() and output.read_text(),
+        "the selected application to receive the activated file",
+    )
+
+    received = output.read_text().splitlines()
+    assert len(received) == 1
+    assert Gio.File.new_for_commandline_arg(received[0]).equal(
+        Gio.File.new_for_path(str(expected))
+    )
+    assert associations.read_text() == contents
+    strata.wait(lambda: strata.dialog() is None, "the chooser to close")
+    strata.wait_for_focused_entry("todo.txt")
+
+
+def test_activation_without_selectable_application_shows_specific_empty_state(
+    empty_application_data, strata
+):
+    strata.select_entry_with_keyboard("todo.txt")
+    strata.keyboard.press("Return")
+
+    dialog = strata.wait_for_dialog()
+    strata.wait(
+        lambda: dialog.find(
+            role="label", name="No application is registered for this file"
+        )
+        is not None,
+        "the activation-specific empty feedback",
+        timeout=3.0,
+    )
+    assert "sensitive" not in strata.dialog_button("Open").states
+
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "the empty chooser to close")
+    strata.wait_for_focused_entry("todo.txt")
+
 
 @pytest.mark.parametrize("target", ["todo.txt", "documents", "background"])
 def test_open_with_launches_without_changing_default(open_with_app, strata, target):
@@ -274,5 +345,3 @@ def test_open_with_incompatible_types_offers_other_apps(incompatible_files, stra
     assert "Review Text Viewer" in dump
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "the chooser to close")
-
-

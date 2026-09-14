@@ -110,6 +110,7 @@ fn decoder_failure_and_trailing_output_are_not_successful_end_of_stream() {
         path: "/unused".into(),
         size: crate::services::MediaPreviewSize::new(16, 16),
         backend: MediaPreviewBackend::Software,
+        input_owner: None,
     };
     let h = Header {
         width: 1,

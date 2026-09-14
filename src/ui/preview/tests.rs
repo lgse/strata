@@ -217,6 +217,43 @@ fn media_time_formats_minutes_and_seconds_and_clamps_negative_timestamps() {
 }
 
 #[test]
+fn remote_images_and_supported_video_are_quick_preview_targets() {
+    use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
+    for (name, supported) in [
+        ("photo.jpg", true),
+        ("photo.heic", true),
+        ("document.pdf", false),
+        ("video.mp4", true),
+        ("video.MOV", true),
+        ("video.mkv", false),
+        ("audio.mp3", false),
+        ("animated.gif", false),
+    ] {
+        let entry = FileEntry {
+            location: Location::uri(format!("gphoto2://device/{name}")),
+            native_name: name.into(),
+            thumbnail_path: None,
+            display_name: name.into(),
+            kind: EntryKind::File,
+            size: MetadataValue::Unknown,
+            modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
+            is_hidden: false,
+        };
+        assert_eq!(
+            preview_target(Some(entry.clone())).is_some(),
+            supported,
+            "{name}"
+        );
+        let directory = FileEntry {
+            kind: EntryKind::Directory,
+            ..entry
+        };
+        assert!(preview_target(Some(directory)).is_none());
+    }
+}
+
+#[test]
 fn preview_drag_entries_contains_only_the_loaded_entry() {
     assert_eq!(preview_drag_entries(None), None);
     let entry = crate::model::FileEntry {

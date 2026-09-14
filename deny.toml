@@ -21,6 +21,11 @@ allow = [
   "Zlib",
 ]
 
+# tiny-skia dependency; its redistribution notice is in THIRD_PARTY_LICENSES.md.
+[[licenses.exceptions]]
+name = "arrayref"
+allow = ["BSD-2-Clause"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

@@ -59,6 +59,36 @@ fn open_defaults_match_the_portal_contract() {
 }
 
 #[test]
+fn folder_hints_override_defaults_and_invalid_hints_preserve_save_names() {
+    let current = tempfile::tempdir().expect("current directory");
+    for hint in [
+        None,
+        Some(PathBuf::from("relative")),
+        Some(current.path().join("missing")),
+        Some(current.path().to_path_buf()),
+    ] {
+        let expected = if hint.as_deref() == Some(current.path()) {
+            current.path().to_path_buf()
+        } else {
+            crate::ui::default_save_folder()
+        };
+        assert_eq!(
+            run_async(accessible_folder(hint.clone())).expect("open/save-files folder"),
+            expected
+        );
+        assert_eq!(
+            run_async(save_file_suggestion(
+                None,
+                hint,
+                Some("report.txt".to_owned()),
+            ))
+            .expect("save suggestion"),
+            (expected, Some(OsString::from("report.txt")))
+        );
+    }
+}
+
+#[test]
 fn current_file_takes_precedence_over_folder_and_name() {
     let current = tempfile::tempdir().expect("current directory");
     let ignored = tempfile::tempdir().expect("ignored directory");
@@ -115,7 +145,7 @@ fn current_file_rejects_directories_and_missing_parents() {
     ] {
         let suggestion =
             run_async(save_file_suggestion(Some(file), None, None)).expect("save suggestion");
-        assert_eq!(suggestion, (crate::ui::home_directory(), None));
+        assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
     }
 }
 
@@ -128,7 +158,7 @@ fn invalid_current_file_falls_back_without_using_lower_priority_suggestions() {
         Some("ignored.txt".to_owned()),
     ))
     .expect("save suggestion");
-    assert_eq!(suggestion, (crate::ui::home_directory(), None));
+    assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
 }
 
 #[test]
