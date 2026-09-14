@@ -346,7 +346,7 @@ fn delete_trashes_a_selected_filter_result() {
             fixture
                 .view
                 .set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
-            assert!(fixture.view.show_filter_with_query("a.txt"));
+            assert!(fixture.view.show_filter_with_query("b.txt"));
             let entry = widget_with_class(&fixture.view.widget(), "column-filter-entry")
                 .expect("filter entry");
             wait_until(|| {
@@ -357,7 +357,9 @@ fn delete_trashes_a_selected_filter_result() {
             wait_until(|| !fixture.view.filter_has_focus());
 
             assert!(fixture.press(Key::Delete, ModifierType::empty()));
-            wait_until(|| !fixture._directory.path().join("a.txt").exists());
+            wait_until(|| !fixture._directory.path().join("b.txt").exists());
+            assert!(fixture._directory.path().join("a.txt").exists());
+            assert!(fixture._directory.path().join("c.txt").exists());
         },
     );
 }

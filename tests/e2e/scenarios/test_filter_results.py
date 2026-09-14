@@ -228,9 +228,6 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
     assert result(strata, "beta/match-note.txt").has_state("selected")
     assert field.text == "match-note"
     assert strata.fixture.path("beta/match-note.txt").read_text() == "beta source\n"
-    strata.keyboard.press("Delete")
-    strata.settle(result(strata, "beta/match-note.txt"))
-    assert strata.dialog() is None
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
     strata.keyboard.press("F2")
     strata.wait_for_dialog()
@@ -250,6 +247,24 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
     strata.keyboard.type_text("match-note.t")
     strata.wait(lambda: len(strata.matches()) == 2, "only the surviving matches after a query change")
     assert result(strata, "beta/match-note.txt") is None
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_delete_trashes_filtered_result_without_touching_hidden_selection(strata, mode):
+    filter_results(strata)
+    row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
+    strata.pointer.click(row, modifiers=("ctrl",))
+    strata.keyboard.press("F2")
+    strata.wait_for_dialog()
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: result(strata, "beta/match-note.txt").has_state("focused"), "result focus")
+    strata.keyboard.press("Delete")
+    strata.wait(
+        lambda: not strata.fixture.path("beta/match-note.txt").exists(),
+        "the selected result to be trashed",
+    )
+    assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
+    assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
