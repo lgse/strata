@@ -404,6 +404,7 @@ fn stale_due_result_is_not_published_or_replayed() {
                 channel,
                 available_release(),
                 UpdateMethod::InPlace,
+                super::current_check_generation(),
             );
             assert_eq!(published.get(), 0);
 
@@ -414,6 +415,89 @@ fn stale_due_result_is_not_published_or_replayed() {
             });
             super::register_update_notice(&later);
             assert_eq!(replayed.get(), 0);
+        },
+    );
+}
+
+#[test]
+fn due_failed_or_up_to_date_does_not_clear_existing_notice() {
+    gtk_test(
+        "ui::settings::tests::due_failed_or_up_to_date_does_not_clear_existing_notice",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            super::clear_cached_update_notice();
+            let manager = ThemeManager::shared();
+            manager.set_checks_for_updates(true);
+            let channel = manager.release_channel();
+            let notices = Rc::new(std::cell::RefCell::new(Vec::new()));
+            let observed = notices.clone();
+            let notice: super::UpdateNoticeHandler = Rc::new(move |result| {
+                observed.borrow_mut().push(result.is_some());
+            });
+            super::register_update_notice(&notice);
+
+            super::publish_update_notice_for_test(Some((
+                match available_release() {
+                    UpdateCheck::Available { release, .. } => release,
+                    _ => unreachable!(),
+                },
+                "https://example.invalid/strata.tar.gz".to_owned(),
+                UpdateMethod::InPlace,
+            )));
+            assert_eq!(*notices.borrow(), vec![true]);
+
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                UpdateCheck::Failed("network error".into()),
+                UpdateMethod::InPlace,
+                super::current_check_generation(),
+            );
+            assert_eq!(*notices.borrow(), vec![true]);
+
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                UpdateCheck::UpToDate,
+                UpdateMethod::InPlace,
+                super::current_check_generation(),
+            );
+            assert_eq!(*notices.borrow(), vec![true]);
+        },
+    );
+}
+
+#[test]
+fn superseded_due_check_does_not_override_newer_check() {
+    gtk_test(
+        "ui::settings::tests::superseded_due_check_does_not_override_newer_check",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            super::clear_cached_update_notice();
+            let manager = ThemeManager::shared();
+            manager.set_checks_for_updates(true);
+            let channel = manager.release_channel();
+            let notices = Rc::new(std::cell::RefCell::new(Vec::new()));
+            let observed = notices.clone();
+            let notice: super::UpdateNoticeHandler = Rc::new(move |result| {
+                observed.borrow_mut().push(result.is_some());
+            });
+            super::register_update_notice(&notice);
+
+            let older_generation = super::next_check_generation_for_test();
+            let _newer_generation = super::next_check_generation_for_test();
+
+            super::publish_update_notice_for_test(None);
+            assert_eq!(*notices.borrow(), vec![false]);
+
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                available_release(),
+                UpdateMethod::InPlace,
+                older_generation,
+            );
+            assert_eq!(*notices.borrow(), vec![false]);
         },
     );
 }
