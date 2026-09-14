@@ -55,6 +55,14 @@ validation is sufficient before pushing a bounded change; full local suites are
 required only for the escalation cases below. Required GitHub checks must still
 pass before merge.
 
+- **Scoped tests are the default, including after failures.** When a run has an
+  isolated failure, reproduce that exact test first. After fixing it, rerun that
+  test and the affected callers/regressions only. Do not rerun the entire Rust or
+  E2E suite to diagnose one failure, recover a green summary, or satisfy a generic
+  review/push checklist. Preserve earlier results and report the scoped rerun.
+  A full rerun requires concrete evidence of broader impact under the escalation
+  rule below or an explicit owner request; state that reason before launching it.
+  If the owner directs scoped validation, do not expand it without renewed consent.
 - Run local lint and formatting checks only at the pre-push checkpoint, not
   after each edit or during the test/implementation loop. For Rust changes, run
   `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` on the final code
@@ -77,8 +85,9 @@ pass before merge.
   `STRATA_CONTAINER_ENGINE=podman ./scripts/e2e.sh` when impact is broad or
   uncertain. Escalate to both for shared infrastructure, dependencies,
   build/CI/harness code, cross-cutting behavior, or uncertain coverage.
-  During iteration, use `./scripts/quality.sh test` for full Rust tests; defer
-  the `fmt` and `clippy` phases to the pre-push checkpoint even in these cases.
+  Even after escalation, isolate individual failures with scoped tests rather
+  than repeating the full run. Use `./scripts/quality.sh test` only when a full
+  Rust run is justified; defer `fmt` and `clippy` to the pre-push checkpoint.
   Preserve pinned image provenance and the existing `target/quality-container`
   and `target/e2e-container` caches.
 - GUI and delegated checks must never use the desktop or an inherited session
