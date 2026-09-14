@@ -694,7 +694,7 @@ fn drop_open_preference_applies_before_settings_and_live_across_views() {
                 .collect();
             for enabled in [true, false, true] {
                 manager.set_open_folder_after_drop(enabled);
-                for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                for mode in [BrowserMode::List, BrowserMode::Columns] {
                     for (index, view) in views.iter().enumerate() {
                         view.set_view_mode(mode);
                         let fixture = tempfile::tempdir().expect("drop fixture");

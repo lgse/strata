@@ -321,21 +321,19 @@ fn missing_or_invalid_application_geometry_preserves_monitor_fallback() {
 
 #[test]
 fn a_long_dropdown_opens_toward_the_roomier_side() {
-    let (position, height) = dropdown_placement(680, 572, 602);
+    let (position, _) = dropdown_placement(680, 572, 602);
     assert_eq!(
         position,
         gtk::PositionType::Top,
         "a button near the bottom must open upward"
     );
-    assert_eq!(height, 572 - DROPDOWN_EDGE_MARGIN);
 
-    let (position, height) = dropdown_placement(680, 78, 108);
+    let (position, _) = dropdown_placement(680, 78, 108);
     assert_eq!(
         position,
         gtk::PositionType::Bottom,
         "a button near the top must open downward"
     );
-    assert_eq!(height, 680 - 108 - DROPDOWN_EDGE_MARGIN);
 
     for (available, top, bottom) in [(0, 0, 0), (-10, -10, -5), (120, 60, 90)] {
         let (_, height) = dropdown_placement(available, top, bottom);

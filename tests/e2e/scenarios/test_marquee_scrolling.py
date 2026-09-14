@@ -177,3 +177,4 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
     assert not strata.entry("000.txt").has_state("selected"), (
         "files above the anchor must stay unselected"
     )
+    assert strata.preview() is None

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    compression::{compress_7z, compress_tar, compress_zip},
+    compression::{compress_7z, compress_tar, compress_zip, inspect_archive_sources},
     decoders::extract_zip_from_archive,
     extraction::ArchiveOutcome,
 };
@@ -69,8 +69,18 @@ pub(super) fn write_compression_fixture(
     match format {
         ArchiveFormat::Zip => compress_zip(file, entries, password, &progress, &cancelled),
         ArchiveFormat::SevenZ => compress_7z(file, entries, password, &progress, &cancelled),
-        ArchiveFormat::Tar => compress_tar(file, entries, false, &progress, &cancelled),
-        ArchiveFormat::TarGz => compress_tar(file, entries, true, &progress, &cancelled),
+        ArchiveFormat::Tar => compress_tar(file, entries, None, &progress, &cancelled),
+        ArchiveFormat::TarGz => compress_tar(
+            file,
+            entries,
+            Some(
+                inspect_archive_sources(entries, &cancelled)
+                    .map_err(|error| error.to_string())?
+                    .gzip_level(),
+            ),
+            &progress,
+            &cancelled,
+        ),
         ArchiveFormat::Rar => return Err("RAR compression is not supported".to_owned()),
     }
     .map_err(|error| error.to_string())?;

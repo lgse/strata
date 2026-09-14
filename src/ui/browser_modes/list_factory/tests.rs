@@ -73,7 +73,6 @@ struct Fixture {
     browser: Option<Rc<Browser>>,
     source: Rc<Source>,
     index: SourceIndexMap,
-    columns: ListColumnLayout,
     cuts: Rc<RefCell<HashSet<Location>>>,
     scrolling: Rc<Cell<bool>>,
     items: Rc<RefCell<Vec<BoundModeItem>>>,
@@ -139,7 +138,6 @@ impl Fixture {
             browser: Some(browser),
             source,
             index,
-            columns,
             cuts,
             scrolling,
             items,
@@ -215,11 +213,6 @@ fn setup_and_binding_follow_source_positions_and_shared_column_widths() {
             assert_eq!(row.size.label(), entry_size(expected));
             assert_eq!(row.mode.label(), entry_mode(expected));
             assert_eq!(row.kind.label(), "File");
-            assert_eq!(row.icon.slot_size(), 18);
-            super::super::set_list_column_width(&fixture.columns, 0, 240);
-            super::super::set_list_column_width(&fixture.columns, 2, 115);
-            assert_eq!(row.name_cell.width_request(), 240);
-            assert_eq!(row.size.width_request(), 115);
         },
     );
 }

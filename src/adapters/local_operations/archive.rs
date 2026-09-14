@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use compression::{
-    compress_7z, compress_tar, compress_zip, count_archive_files, write_staged_archive,
+    compress_7z, compress_tar, compress_zip, inspect_archive_sources, write_staged_archive,
 };
 use decoders::{extract_7z_from_reader, extract_rar, extract_tar, extract_zip_from_archive};
 use extraction::ArchiveOutcome;
@@ -116,8 +116,8 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
             request.conflict,
             &task_cancelled,
             move |file| {
-                let count = count_archive_files(&entries, &work_cancelled)?;
-                work_total.store(count, Ordering::Relaxed);
+                let sources = inspect_archive_sources(&entries, &work_cancelled)?;
+                work_total.store(sources.files, Ordering::Relaxed);
                 match format {
                     ArchiveFormat::Zip => compress_zip(
                         file,
@@ -133,11 +133,15 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
                         &work_progress,
                         &work_cancelled,
                     ),
-                    ArchiveFormat::TarGz => {
-                        compress_tar(file, &entries, true, &work_progress, &work_cancelled)
-                    }
+                    ArchiveFormat::TarGz => compress_tar(
+                        file,
+                        &entries,
+                        Some(sources.gzip_level()),
+                        &work_progress,
+                        &work_cancelled,
+                    ),
                     ArchiveFormat::Tar => {
-                        compress_tar(file, &entries, false, &work_progress, &work_cancelled)
+                        compress_tar(file, &entries, None, &work_progress, &work_cancelled)
                     }
                     ArchiveFormat::Rar => Err(ArchiveError::Failed(
                         "RAR compression is not supported".to_owned(),
@@ -148,9 +152,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         .await;
         timer_id.remove();
         match result {
-            Ok(()) => emit(OperationEvent::Compressed {
+            Ok(archive_name) => emit(OperationEvent::Compressed {
                 request_id: request.id,
-                archive_name: archive_name.clone(),
+                archive_name,
             }),
             Err(ArchiveError::Cancelled) => emit(cancelled_archive_event(
                 request.id,

@@ -2114,55 +2114,46 @@ fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(
 
 #[test]
 fn copy_suffix_parsing_and_candidate_naming() {
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name")),
-        (OsStr::new("name"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (1)")),
-        (OsStr::new("name"), Some(1))
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (2)")),
-        (OsStr::new("name"), Some(2))
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (42)")),
-        (OsStr::new("name"), Some(42))
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (foo)")),
-        (OsStr::new("name (foo)"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (0)")),
-        (OsStr::new("name (0)"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (2")),
-        (OsStr::new("name (2"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("name (18446744073709551615)")),
-        (OsStr::new("name (18446744073709551615)"), None)
-    );
+    for (input, stem, suffix) in [
+        ("name", "name", None),
+        ("name (1)", "name", Some(1u64)),
+        ("name (2)", "name", Some(2)),
+        ("name (42)", "name", Some(42)),
+        ("name (foo)", "name (foo)", None),
+        ("name (0)", "name (0)", None),
+        ("name (2", "name (2", None),
+        (
+            "name (18446744073709551615)",
+            "name (18446744073709551615)",
+            None,
+        ),
+        (".gitignore", ".gitignore", None),
+        (".gitignore (1)", ".gitignore", Some(1)),
+        ("archive", "archive", None),
+        ("archive (1)", "archive", Some(1)),
+    ] {
+        assert_eq!(
+            parse_copy_suffix(OsStr::new(input)),
+            (OsStr::new(stem), suffix)
+        );
+    }
 
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 1),
-        OsString::from("name (1).ext")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 2),
-        OsString::from("name (2).ext")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), None, 1),
-        OsString::from("name (1)")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("name"), None, 2),
-        OsString::from("name (2)")
-    );
+    for (stem, extension, number, expected) in [
+        ("name", Some("ext"), 1u64, "name (1).ext"),
+        ("name", Some("ext"), 2, "name (2).ext"),
+        ("name", None, 1, "name (1)"),
+        ("name", None, 2, "name (2)"),
+        (".gitignore", None, 1, ".gitignore (1)"),
+        (".config", None, 2, ".config (2)"),
+        ("archive", Some("tar.gz"), 1, "archive (1).tar.gz"),
+        ("archive", Some("tar.gz"), 3, "archive (3).tar.gz"),
+        ("backup.tar", Some("gz"), 1, "backup.tar (1).gz"),
+    ] {
+        assert_eq!(
+            duplicate_candidate_name(OsStr::new(stem), extension.map(OsStr::new), number),
+            OsString::from(expected)
+        );
+    }
 }
 
 #[test]
@@ -2899,50 +2890,6 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
     );
     assert!(!target.join("pipe").exists());
     Ok(())
-}
-
-#[test]
-fn hidden_file_copy_suffix_parsing_preserves_dot_prefix() {
-    assert_eq!(
-        parse_copy_suffix(OsStr::new(".gitignore")),
-        (OsStr::new(".gitignore"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new(".gitignore (1)")),
-        (OsStr::new(".gitignore"), Some(1))
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new(".gitignore"), None, 1),
-        OsString::from(".gitignore (1)")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new(".config"), None, 2),
-        OsString::from(".config (2)")
-    );
-}
-
-#[test]
-fn multi_extension_copy_suffix_parsing_preserves_full_extension() {
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("archive")),
-        (OsStr::new("archive"), None)
-    );
-    assert_eq!(
-        parse_copy_suffix(OsStr::new("archive (1)")),
-        (OsStr::new("archive"), Some(1))
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("archive"), Some(OsStr::new("tar.gz")), 1),
-        OsString::from("archive (1).tar.gz")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("archive"), Some(OsStr::new("tar.gz")), 3),
-        OsString::from("archive (3).tar.gz")
-    );
-    assert_eq!(
-        duplicate_candidate_name(OsStr::new("backup.tar"), Some(OsStr::new("gz")), 1),
-        OsString::from("backup.tar (1).gz")
-    );
 }
 
 #[test]

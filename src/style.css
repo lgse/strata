@@ -2280,11 +2280,21 @@ paned > separator {
   font-variant-numeric: tabular-nums;
 }
 
+.preview-media-seek,
+.preview-media-volume {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
 .preview-media-seek trough,
 .preview-media-volume trough {
   background: alpha(@theme_border, 0.42);
+  border: none;
   border-radius: 3px;
   min-height: 4px;
+  outline: none;
+  box-shadow: none;
 }
 
 .preview-media-seek highlight,
@@ -2309,6 +2319,31 @@ paned > separator {
   min-height: 12px;
   min-width: 12px;
   margin: -5px;
+}
+
+.preview-media-seek:focus-visible,
+.preview-media-volume:focus-visible,
+.preview-media-seek:focus,
+.preview-media-volume:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.preview-media-seek:focus-visible trough,
+.preview-media-volume:focus-visible trough,
+.preview-media-seek:focus trough,
+.preview-media-volume:focus trough {
+  outline: none;
+  box-shadow: none;
+}
+
+.preview-media-seek:focus-visible slider,
+.preview-media-volume:focus-visible slider,
+.preview-media-seek:focus slider,
+.preview-media-volume:focus slider {
+  outline: none;
+  box-shadow: none;
+  border: none;
 }
 
 .preview-pdf-list,
@@ -2836,6 +2871,31 @@ menubutton.column-header-action > button:active {
 
 .properties-content .action-dialog-body {
   padding: 0;
+}
+
+.media-details-scroll scrollbar,
+.media-details-scroll scrollbar range,
+.media-details-scroll scrollbar trough {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.media-details-scroll scrollbar slider {
+  background: alpha(@theme_border, 0.62);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  min-width: 6px;
+  min-height: 32px;
+}
+
+.media-details-scroll scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.media-details-scroll scrollbar slider:active,
+.media-details-scroll scrollbar slider:focus {
+  background: @theme_accent;
 }
 
 .properties-row-label,

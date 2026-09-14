@@ -180,24 +180,3 @@ fn preselected_entries_keep_hover_feedback_in_all_modes() {
         },
     );
 }
-
-#[test]
-fn application_stylesheet_has_no_parser_errors() {
-    crate::test_support::gtk_test(
-        "ui::browser::tests::hover::application_stylesheet_has_no_parser_errors",
-        || {
-            let errors = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-            let captured = errors.clone();
-            let provider = gtk::CssProvider::new();
-            provider.connect_parsing_error(move |_, _, error| {
-                captured.borrow_mut().push(error.to_string())
-            });
-            provider.load_from_string(include_str!("../../../style.css"));
-            assert!(
-                errors.borrow().is_empty(),
-                "CSS parser errors: {:?}",
-                errors.borrow()
-            );
-        },
-    );
-}

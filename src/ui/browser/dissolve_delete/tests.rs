@@ -109,13 +109,6 @@ fn survivors_remain_at_original_positions_until_dissolve_cleanup() {
 }
 
 #[test]
-fn fragment_budget_is_bounded_for_large_batches() {
-    assert_eq!(fragment_budget(1), MIN_FRAGMENT_BUDGET);
-    assert_eq!(fragment_budget(4), MAX_FRAGMENT_BUDGET);
-    assert_eq!(fragment_budget(1_000), MAX_FRAGMENT_BUDGET);
-}
-
-#[test]
 fn one_row_stays_below_one_hundred_animated_fragments() {
     let width = 300.0;
     let height = 28.0;

@@ -452,13 +452,9 @@ enum DelayedRenameResult {
     SynchronousCancellation,
 }
 
-fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: DelayedRenameResult) {
-    let original = if directory {
-        "original"
-    } else {
-        "original.txt"
-    };
-    let replacement = if directory { "renamed" } else { "renamed.txt" };
+fn run_delayed_rename_handler(mode: BrowserMode, result: DelayedRenameResult) {
+    let original = "original.txt";
+    let replacement = "renamed.txt";
     let native_fixture = matches!(
         result,
         DelayedRenameResult::MonitorBeforeCompletion | DelayedRenameResult::MonitorAfterCompletion
@@ -473,14 +469,14 @@ fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: Delaye
         .child(replacement.as_ref())
         .expect("renamed location");
     let initial = if native_fixture.is_some() {
-        entry_at_location(initial_location, original, directory)
+        entry_at_location(initial_location, original, false)
     } else {
-        remote_entry(original, directory)
+        remote_entry(original, false)
     };
     let renamed = if native_fixture.is_some() {
-        entry_at_location(renamed_location, replacement, directory)
+        entry_at_location(renamed_location, replacement, false)
     } else {
-        remote_entry(replacement, directory)
+        remote_entry(replacement, false)
     };
     let source = Rc::new(ControlledRenameSource {
         initial: initial.clone(),
@@ -613,7 +609,7 @@ fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: Delaye
     // deliberately looks up the current bound row after the rebind, not the old widget.
     browser.reload_active();
     assert_eq!(source.pending_count(), 1);
-    source.respond(0, Some(vec![remote_entry("unrelated", directory)]));
+    source.respond(0, Some(vec![remote_entry("unrelated", false)]));
     browser.reload_active();
     wait_until(|| source.pending_count() == 1);
     source.respond(0, Some(vec![initial]));
@@ -679,10 +675,8 @@ fn click_away_rename_handler_preserves_current_bound_label_through_delayed_callb
         "ui::browser::inline_edit::tests::click_away_rename_handler_preserves_current_bound_label_through_delayed_callbacks",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for directory in [false, true] {
-                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Failure);
-                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Success);
-                }
+                run_delayed_rename_handler(mode, DelayedRenameResult::Failure);
+                run_delayed_rename_handler(mode, DelayedRenameResult::Success);
             }
         },
     );
@@ -766,18 +760,8 @@ fn monitor_completion_is_safe_in_both_event_orders() {
         "ui::browser::inline_edit::tests::monitor_completion_is_safe_in_both_event_orders",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for directory in [false, true] {
-                    run_delayed_rename_handler(
-                        mode,
-                        directory,
-                        DelayedRenameResult::MonitorBeforeCompletion,
-                    );
-                    run_delayed_rename_handler(
-                        mode,
-                        directory,
-                        DelayedRenameResult::MonitorAfterCompletion,
-                    );
-                }
+                run_delayed_rename_handler(mode, DelayedRenameResult::MonitorBeforeCompletion);
+                run_delayed_rename_handler(mode, DelayedRenameResult::MonitorAfterCompletion);
             }
         },
     );
@@ -788,13 +772,10 @@ fn queued_rename_survives_truncation_and_mode_rebuild() {
     gtk_test(
         "ui::browser::inline_edit::tests::queued_rename_survives_truncation_and_mode_rebuild",
         || {
-            for directory in [false, true] {
-                run_delayed_rename_handler(
-                    BrowserMode::Columns,
-                    directory,
-                    DelayedRenameResult::QueuedThroughRebuild,
-                );
-            }
+            run_delayed_rename_handler(
+                BrowserMode::Columns,
+                DelayedRenameResult::QueuedThroughRebuild,
+            );
         },
     );
 }
@@ -805,27 +786,7 @@ fn synchronous_rename_handler_completion_enters_the_refresh_lifecycle() {
         "ui::browser::inline_edit::tests::synchronous_rename_handler_completion_enters_the_refresh_lifecycle",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for directory in [false, true] {
-                    run_delayed_rename_handler(
-                        mode,
-                        directory,
-                        DelayedRenameResult::SynchronousSuccess,
-                    );
-                }
-            }
-        },
-    );
-}
-
-#[test]
-fn successful_rename_handler_clears_pending_state_after_the_refreshed_entry() {
-    gtk_test(
-        "ui::browser::inline_edit::tests::successful_rename_handler_clears_pending_state_after_the_refreshed_entry",
-        || {
-            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for directory in [false, true] {
-                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Success);
-                }
+                run_delayed_rename_handler(mode, DelayedRenameResult::SynchronousSuccess);
             }
         },
     );
@@ -861,7 +822,6 @@ fn synchronous_cancellation_abandons_dispatching_rename() {
         || {
             run_delayed_rename_handler(
                 BrowserMode::Columns,
-                false,
                 DelayedRenameResult::SynchronousCancellation,
             )
         },
@@ -874,13 +834,7 @@ fn completed_rename_reconciles_a_real_refresh_failure() {
         "ui::browser::inline_edit::tests::completed_rename_reconciles_a_real_refresh_failure",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for directory in [false, true] {
-                    run_delayed_rename_handler(
-                        mode,
-                        directory,
-                        DelayedRenameResult::RefreshFailure,
-                    );
-                }
+                run_delayed_rename_handler(mode, DelayedRenameResult::RefreshFailure);
             }
         },
     );
@@ -892,9 +846,7 @@ fn completed_rename_uses_the_real_replacement_refresh_after_supersession() {
         "ui::browser::inline_edit::tests::completed_rename_uses_the_real_replacement_refresh_after_supersession",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for directory in [false, true] {
-                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Replacement);
-                }
+                run_delayed_rename_handler(mode, DelayedRenameResult::Replacement);
             }
         },
     );

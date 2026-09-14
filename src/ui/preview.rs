@@ -48,7 +48,7 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         return false;
     }
 
-    let (content_type, _) =
+    let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
     let content = crate::services::content_family(&content_type);
     if entry.location.native_path().is_none()
@@ -59,7 +59,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     {
         return false;
     }
+    // An uncertain name guess defers to the loader, which resolves the file's content type.
     !matches!(content, PreviewContent::Unsupported)
+        || uncertain
         || gio::content_type_is_a(&content_type, "text/plain")
         || crate::services::has_plain_text_extension(&entry.native_name)
         || crate::services::is_extensionless_dotfile(&entry.native_name)
@@ -748,7 +750,10 @@ impl PreviewState {
                     PreviewContent::Image
                     | PreviewContent::Media
                     | PreviewContent::SandboxedMedia { .. }
-                    | PreviewContent::Unsupported => {}
+                    | PreviewContent::Unsupported => {
+                        self.dismiss_print_progress();
+                        show_print_error(parent.as_ref(), "This file type cannot be printed.");
+                    }
                 }
             }
             PreviewEvent::Failed {

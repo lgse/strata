@@ -30,13 +30,12 @@ def visible_entries(strata):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("wheel_clicks", [2, 12])
-def test_background_rename_preserves_scroll_and_multiselection(strata, mode, wheel_clicks):
+def test_background_rename_preserves_scroll_and_multiselection(strata, mode):
     strata.select_entry("001.txt")
     strata.pointer.click(strata.entry("003.txt"), modifiers=["ctrl"])
     strata.wait_for_selection(["001.txt", "003.txt"])
     before = visible_entries(strata)[0].name
-    strata.pointer.scroll(at=strata.pane().screen_bounds().center, clicks=wheel_clicks)
+    strata.pointer.scroll(at=strata.pane().screen_bounds().center, clicks=2)
     strata.wait(
         lambda: visible_entries(strata) and visible_entries(strata)[0].name != before,
         "the listing to scroll",

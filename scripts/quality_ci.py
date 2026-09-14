@@ -18,7 +18,7 @@ from e2e_bundle import image_key, source_key
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "target/quality-bundle"
 REPORTS = ROOT / "target/quality-reports"
-SHARDS = 4
+SHARDS = 2
 ISOLATED_TEST = (
     "ui::search::tests::"
     "deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset"
@@ -54,10 +54,7 @@ def partition(tests, durations):
     loads = [0.0] * SHARDS
     assignments = [[] for _ in loads]
     for test in sorted(tests, key=lambda name: (-durations.get(name, 1.0), name)):
-        if test == ISOLATED_TEST:
-            assignments[0].append(test)
-            continue
-        shard = min(range(1, SHARDS), key=lambda index: (loads[index], index))
+        shard = min(range(SHARDS), key=lambda index: (loads[index], index))
         assignments[shard].append(test)
         loads[shard] += durations.get(test, 1.0)
     return [sorted(names) for names in assignments]
@@ -120,12 +117,11 @@ def validate_plan(plan):
             raise ValueError("Invalid ignored inventory or shard count")
         if Counter(test for shard in shards for test in shard) != Counter(tests):
             raise ValueError("Missing, extra, or duplicate assignment")
-        if shards[0] != ([ISOLATED_TEST] if ISOLATED_TEST in tests else []):
-            raise ValueError("Shard 0 must contain only the isolated test")
         for index, shard in enumerate(shards):
             totals[index] += len(set(shard) - set(ignored))
-    if totals[0] != 1:
-        raise ValueError("Expected exactly one runnable isolated test in shard 0")
+    if sum(ISOLATED_TEST in binary["tests"] and ISOLATED_TEST not in binary["ignored"]
+           for binary in plan["binaries"]) != 1:
+        raise ValueError("Expected exactly one runnable isolated test")
     if len(files) != len(set(files)) or not all(totals):
         raise ValueError("Duplicate binary or empty runnable shard")
 
@@ -156,17 +152,22 @@ def run(shard):
             continue
         if inventory(executable, selected) != selected:
             raise ValueError("Libtest selection mismatch")
-        command = [str(executable), "--exact", *selected, "--nocapture"]
-        result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT)
-        log = result.stdout
-        print(log, end="", flush=True)
-        (REPORTS / f"shard-{shard}-{binary['file']}.log").write_text(log)
-        summaries = SUMMARY.findall(log)
+        batches = [[test for test in selected if test == ISOLATED_TEST],
+                   [test for test in selected if test != ISOLATED_TEST]]
+        log = ""
+        for batch in filter(None, batches):
+            command = [str(executable), "--exact", *batch, "--nocapture"]
+            result = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT)
+            print(result.stdout, end="", flush=True)
+            log += result.stdout
+            (REPORTS / f"shard-{shard}-{binary['file']}.log").write_text(log)
+            summaries = SUMMARY.findall(result.stdout)
+            ignored_count = len(set(batch) & set(binary["ignored"]))
+            expected = (str(len(batch) - ignored_count), str(ignored_count))
+            if result.returncode or not summaries or summaries[-1] != expected:
+                raise ValueError(f"{binary['file']} failed or did not execute its complete selection")
         ignored = sorted(set(selected) & set(binary["ignored"]))
-        expected = (str(len(selected) - len(ignored)), str(len(ignored)))
-        if result.returncode or not summaries or summaries[-1] != expected:
-            raise ValueError(f"{binary['file']} failed or did not execute its complete selection")
         report["binaries"].append(dict(file=binary["file"], passed=sorted(set(selected) - set(ignored)),
                                        ignored=ignored))
     report["seconds"] = round(time.monotonic() - started, 2)

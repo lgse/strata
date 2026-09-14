@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: MIT
 
+mod cancellation;
+mod policy;
+
 use super::super::fixtures::{
     compression_stage_mode, compression_stages, never_cancelled, write_compression_fixture,
 };
-use super::{ArchiveError, count_archive_files, process_umask, write_staged_archive};
+use super::{ArchiveError, inspect_archive_sources, process_umask, write_staged_archive};
 use crate::{
     services::{ArchiveFormat, TransferConflict},
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
 use gtk::glib;
+use policy::assert_seven_z_methods;
 use std::{
     collections::BTreeMap,
     error::Error,
@@ -65,7 +69,7 @@ fn compression_staging_stays_private_while_encoding() -> Result<(), Box<dyn Erro
     assert_eq!(compression_stage_mode(&destination)?, 0o600);
 
     release.store(true, Ordering::Release);
-    assert_eq!(context.block_on(task)?, Ok(()));
+    assert_eq!(context.block_on(task)?, Ok("existing.zip".to_owned()));
     assert_eq!(fs::read(&archive)?, b"replacement");
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
     assert!(compression_stages(&destination)?.is_empty());
@@ -112,13 +116,58 @@ fn compression_new_archive_staging_stays_private_until_publish() -> Result<(), B
     assert_eq!(compression_stage_mode(&destination)?, 0o600);
 
     release.store(true, Ordering::Release);
-    assert_eq!(context.block_on(task)?, Ok(()));
+    assert_eq!(context.block_on(task)?, Ok("created.zip".to_owned()));
     assert_eq!(fs::read(&archive)?, b"created");
     assert_eq!(
         fs::metadata(&archive)?.permissions().mode() & 0o777,
         0o666 & !process_umask()
     );
     assert!(compression_stages(&destination)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn keep_both_retries_publication_collisions_without_encoding_again() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    for extension in ["zip", "7z", "tar", "tar.gz"] {
+        let destination = root.path().join(extension);
+        fs::create_dir(&destination)?;
+        let archive = destination.join(format!("archive.part.{extension}"));
+        let first = destination.join(format!("archive.part (1).{extension}"));
+        let directory = destination.join(format!("archive.part (2).{extension}"));
+        let symlink = destination.join(format!("archive.part (3).{extension}"));
+        fs::create_dir(&directory)?;
+        std::os::unix::fs::symlink("missing", &symlink)?;
+        let encoded = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let worker_encoded = encoded.clone();
+        let late_archive = archive.clone();
+        let late_first = first.clone();
+        let published = glib::MainContext::default().block_on(write_staged_archive(
+            &destination,
+            &archive,
+            TransferConflict::KeepBoth,
+            &never_cancelled(),
+            move |mut file| {
+                worker_encoded.fetch_add(1, Ordering::Relaxed);
+                file.write_all(b"new archive")
+                    .map_err(|error| error.to_string())?;
+                fs::write(late_archive, b"late original").map_err(|error| error.to_string())?;
+                fs::write(late_first, b"late numbered").map_err(|error| error.to_string())?;
+                Ok(())
+            },
+        ))?;
+        assert_eq!(published, format!("archive.part (4).{extension}"));
+        assert_eq!(encoded.load(Ordering::Relaxed), 1);
+        assert_eq!(fs::read(destination.join(published))?, b"new archive");
+        assert_eq!(fs::read(&archive)?, b"late original");
+        assert_eq!(fs::read(&first)?, b"late numbered");
+        assert!(directory.is_dir());
+        assert_eq!(fs::read_link(symlink)?, Path::new("missing"));
+        assert!(compression_stages(&destination)?.is_empty());
+    }
     Ok(())
 }
 
@@ -245,7 +294,10 @@ fn compression_preserves_links_in_zip_and_tar() -> Result<(), Box<dyn Error>> {
         CompressedEntry::Symlink(PathBuf::from("source/nested")),
     );
     let entries = [source, selected_link];
-    assert_eq!(count_archive_files(&entries, &never_cancelled())?, 7);
+    assert_eq!(
+        inspect_archive_sources(&entries, &never_cancelled())?.files,
+        7
+    );
     for (format, password) in [
         (ArchiveFormat::Zip, None),
         (ArchiveFormat::Zip, Some("test-password")),
@@ -267,7 +319,8 @@ fn compression_preserves_links_in_zip_and_tar() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn seven_z_compression_preserves_files_and_empty_directories() -> Result<(), Box<dyn Error>> {
+fn seven_z_compression_preserves_mixed_methods_and_empty_directories() -> Result<(), Box<dyn Error>>
+{
     let root = tempfile::tempdir()?;
     let source = root.path().join("source");
     fs::create_dir_all(source.join("empty"))?;
@@ -300,6 +353,16 @@ fn seven_z_compression_preserves_files_and_empty_directories() -> Result<(), Box
             read_compressed_entries(&archive, ArchiveFormat::SevenZ, password)?,
             expected,
         );
+        assert_seven_z_methods(&archive, password, "source/one.txt", false)?;
+        assert_seven_z_methods(&archive, password, "source/two.png", true)?;
+        if password.is_some() {
+            for wrong_password in [None, Some("wrong-password")] {
+                assert!(
+                    read_compressed_entries(&archive, ArchiveFormat::SevenZ, wrong_password)
+                        .is_err()
+                );
+            }
+        }
     }
     Ok(())
 }
@@ -333,7 +396,8 @@ fn compression_handles_non_utf8_link_targets_without_loss() -> Result<(), Box<dy
 }
 
 #[test]
-fn cancelling_staged_compression_unlinks_the_partial_output() -> Result<(), Box<dyn Error>> {
+fn cancelling_staged_compression_waits_for_worker_exit_before_cleanup() -> Result<(), Box<dyn Error>>
+{
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -344,6 +408,9 @@ fn cancelling_staged_compression_unlinks_the_partial_output() -> Result<(), Box<
     let started = Arc::new(AtomicBool::new(false));
     let release = Arc::new(AtomicBool::new(false));
     let finished = Arc::new(AtomicBool::new(false));
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let task_cancelled = cancelled.clone();
+    let worker_cancelled = cancelled.clone();
     let worker_started = started.clone();
     let worker_release = release.clone();
     let worker_finished = finished.clone();
@@ -354,7 +421,7 @@ fn cancelling_staged_compression_unlinks_the_partial_output() -> Result<(), Box<
             &worker_destination,
             &worker_archive,
             TransferConflict::ReplaceExisting,
-            &never_cancelled(),
+            &task_cancelled,
             move |mut file| {
                 file.write_all(b"partial")
                     .map_err(|error| error.to_string())?;
@@ -363,7 +430,7 @@ fn cancelling_staged_compression_unlinks_the_partial_output() -> Result<(), Box<
                     std::thread::yield_now();
                 }
                 worker_finished.store(true, Ordering::Release);
-                Ok(())
+                super::check_archive_cancelled(&worker_cancelled)
             },
         )
         .await
@@ -375,20 +442,15 @@ fn cancelling_staged_compression_unlinks_the_partial_output() -> Result<(), Box<
     }
     assert_eq!(compression_stages(&destination)?.len(), 1);
 
-    task.abort();
-    drop(task);
-    while context.pending() {
-        context.iteration(false);
-    }
-    let stage_was_removed = compression_stages(&destination)?.is_empty();
-    let destination_was_preserved = fs::read(&archive)? == b"original";
+    cancelled.store(true, Ordering::Release);
+    assert!(!finished.load(Ordering::Acquire));
+    assert_eq!(compression_stages(&destination)?.len(), 1);
     release.store(true, Ordering::Release);
-    while !finished.load(Ordering::Acquire) {
-        std::thread::yield_now();
-    }
-
-    assert!(stage_was_removed);
-    assert!(destination_was_preserved);
+    let result = context.block_on(task)?;
+    assert!(matches!(result, Err(ArchiveError::Cancelled)));
+    assert!(finished.load(Ordering::Acquire));
+    assert!(compression_stages(&destination)?.is_empty());
+    assert_eq!(fs::read(&archive)?, b"original");
     Ok(())
 }
 
@@ -453,7 +515,10 @@ fn compression_accepts_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Erro
         ArchiveFormat::SevenZ,
     ] {
         let archive = root.path().join("archive");
-        assert_eq!(count_archive_files(&entries, &never_cancelled())?, 1);
+        assert_eq!(
+            inspect_archive_sources(&entries, &never_cancelled())?.files,
+            1
+        );
         assert_eq!(
             write_compression_fixture(&archive, &entries, format, None)?,
             1
