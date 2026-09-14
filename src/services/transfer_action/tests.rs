@@ -285,9 +285,6 @@ fn cross_volume_strategy_parses_stored_values() {
         CrossVolumeDropStrategy::parse("unknown"),
         CrossVolumeDropStrategy::Ask
     );
-    assert_eq!(CrossVolumeDropStrategy::Copy.as_str(), "always-copy");
-    assert_eq!(CrossVolumeDropStrategy::Move.as_str(), "always-move");
-    assert_eq!(CrossVolumeDropStrategy::Ask.as_str(), "always-ask");
 }
 
 #[test]

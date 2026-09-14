@@ -34,12 +34,26 @@ fn parses_mount_points_and_filesystem_types() {
 #[test]
 fn innermost_mount_wins() {
     let table = MountTable::parse(SAMPLE);
+    let nested = Path::new("/mnt/nfs/local/file");
+    assert_eq!(table.fs_type_for(nested), Some("ext4"));
     assert_eq!(
-        table.fs_type_for(Path::new("/mnt/nfs/local/file")),
-        Some("ext4")
+        table.mount_point_for(nested),
+        Some(Path::new("/mnt/nfs/local"))
     );
-    assert!(!table.is_remote_path(Path::new("/mnt/nfs/local/file")));
+    assert!(!table.is_remote_path(nested));
     assert!(table.is_remote_path(Path::new("/mnt/nfs/file")));
+    assert_eq!(
+        table.mount_point_for(Path::new("/mnt/nfs/docs")),
+        Some(Path::new("/mnt/nfs"))
+    );
+    assert_eq!(
+        table.mount_point_for(Path::new("/home/user")),
+        Some(Path::new("/"))
+    );
+    assert_eq!(
+        table.mount_point_for(Path::new("/mnt/nfsdata")),
+        Some(Path::new("/"))
+    );
 }
 
 #[test]
@@ -70,27 +84,6 @@ fn trash_scan_skips_virtual_remote_and_fuse_mounts() {
     let table = MountTable::parse(SAMPLE);
     let scanned: Vec<_> = table.trash_scan_mounts().collect();
     assert_eq!(scanned, vec![Path::new("/"), Path::new("/mnt/nfs/local")]);
-}
-
-#[test]
-fn innermost_mount_point_wins() {
-    let table = MountTable::parse(SAMPLE);
-    assert_eq!(
-        table.mount_point_for(Path::new("/mnt/nfs/local/file")),
-        Some(Path::new("/mnt/nfs/local"))
-    );
-    assert_eq!(
-        table.mount_point_for(Path::new("/mnt/nfs/docs")),
-        Some(Path::new("/mnt/nfs"))
-    );
-    assert_eq!(
-        table.mount_point_for(Path::new("/home/user")),
-        Some(Path::new("/"))
-    );
-    assert_eq!(
-        table.mount_point_for(Path::new("/mnt/nfsdata")),
-        Some(Path::new("/"))
-    );
 }
 
 #[test]

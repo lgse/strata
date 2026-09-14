@@ -2873,6 +2873,31 @@ menubutton.column-header-action > button:active {
   padding: 0;
 }
 
+.media-details-scroll scrollbar,
+.media-details-scroll scrollbar range,
+.media-details-scroll scrollbar trough {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.media-details-scroll scrollbar slider {
+  background: alpha(@theme_border, 0.62);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  min-width: 6px;
+  min-height: 32px;
+}
+
+.media-details-scroll scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.media-details-scroll scrollbar slider:active,
+.media-details-scroll scrollbar slider:focus {
+  background: @theme_accent;
+}
+
 .properties-row-label,
 .properties-section-title,
 .properties-permission-identity,

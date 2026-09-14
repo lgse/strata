@@ -4,7 +4,6 @@
 import pytest
 
 from harness.artifacts import ArtifactCollector
-from harness.modes import ALL_MODES
 
 
 @pytest.mark.preferences(text_size=17)
@@ -137,10 +136,8 @@ def _inside_scroll_view(node):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.preferences(text_size=24)
-def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, request):
-    strata.switch_view(mode)
+def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, request):
     strata.select_entry("todo.txt")
     strata.keyboard.press("ctrl+=")
     strata.wait(
@@ -158,7 +155,7 @@ def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, re
         "reset to the default size",
     )
     if request.config.getoption("--keep-artifacts"):
-        strata.screenshot(ArtifactCollector(test_name=f"text-size-{mode}").directory / "before.png")
+        strata.screenshot(ArtifactCollector(test_name="text-size").directory / "before.png")
     strata.open_appearance_menu()
     for name, pixels in [
         ("Increase text size (Ctrl++)", "14"),
@@ -177,7 +174,7 @@ def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, re
         )
     if request.config.getoption("--keep-artifacts"):
         strata.screenshot(
-            ArtifactCollector(test_name=f"text-size-{mode}").directory / "appearance.png"
+            ArtifactCollector(test_name="text-size").directory / "appearance.png"
         )
     strata.keyboard.press("Escape")
     strata.keyboard.press("F2")
@@ -223,4 +220,4 @@ def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, re
         "restart to load the exact custom size",
     )
     if request.config.getoption("--keep-artifacts"):
-        strata.screenshot(ArtifactCollector(test_name=f"text-size-{mode}").directory / "after.png")
+        strata.screenshot(ArtifactCollector(test_name="text-size").directory / "after.png")

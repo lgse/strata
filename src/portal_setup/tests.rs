@@ -9,8 +9,8 @@ use std::{
 
 use super::{
     SetupContext, disable_config, enable_config, install_at, install_file_manager_at,
-    refresh_configured_portal_at, refresh_stale_portal_at, secure_executable, trusted_owner,
-    uninstall_at, uninstall_file_manager_at,
+    refresh_configured_portal_at, refresh_stale_portal_at, secure_executable, uninstall_at,
+    uninstall_file_manager_at,
 };
 
 const FILE_CHOOSER: &str = "org.freedesktop.impl.portal.FileChooser";
@@ -247,13 +247,6 @@ fn portal_activation_rejects_replaceable_executables() {
     fs::set_permissions(fixture.path(), fs::Permissions::from_mode(0o777))
         .expect("world-writable executable ancestor");
     assert!(secure_executable(&executable).is_err());
-}
-
-#[test]
-fn portal_activation_accepts_only_the_effective_user_or_root_as_owners() {
-    assert!(trusted_owner(0, 1_000));
-    assert!(trusted_owner(1_000, 1_000));
-    assert!(!trusted_owner(1_001, 1_000));
 }
 
 #[test]

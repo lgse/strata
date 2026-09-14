@@ -102,6 +102,14 @@ fn quick_preview_is_offered_only_for_supported_files() {
         ".steampath",
         crate::model::EntryKind::File,
     )));
+    assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
+        "some notes",
+        crate::model::EntryKind::File,
+    )));
+    assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
+        "some notes",
+        crate::model::EntryKind::Directory,
+    )));
     assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
         "archive.zip",
         crate::model::EntryKind::File,
@@ -140,6 +148,7 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         "settings.toml",
         "photo.png",
         "guide.pdf",
+        "some notes",
     ] {
         assert!(entry_supports_printing(&entry(
             name,
