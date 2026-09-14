@@ -308,10 +308,17 @@ impl ViewState {
                 }
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     if column.selection.model().is_none() {
+                        column.syncing_selection.set(true);
                         column.filtered_model.set_model(Some(&column.model));
                         column.selection.set_model(Some(&column.filtered_model));
-                        column.syncing_selection.set(false);
                     }
+                    let positions: Vec<u32> = self
+                        .browser
+                        .selected_positions(*depth)
+                        .into_iter()
+                        .filter_map(|position| column.map.view_position(position))
+                        .collect();
+                    set_column_selections(column, &positions);
                     stop_column_spinner(column);
                     column.truncated_hint.set_visible(*truncated);
                     let count = column.entry_count.get();
@@ -484,7 +491,8 @@ impl ViewState {
                 }
             }
             BrowserEvent::FocusChanged { depth, position } => {
-                if let Some(column) = self.columns.borrow().get(*depth) {
+                let column = self.columns.borrow().get(*depth).cloned();
+                if let Some(column) = column {
                     let editing = self.active_rename.borrow().is_some();
                     if let Some(filtered_position) =
                         position.and_then(|position| column.map.view_position(position))
@@ -495,9 +503,9 @@ impl ViewState {
                             .into_iter()
                             .filter_map(|position| column.map.view_position(position))
                             .collect();
-                        set_column_selections(column, &positions);
+                        set_column_selections(&column, &positions);
                         if !editing {
-                            scroll_column_to(column, filtered_position);
+                            scroll_column_to(&column, filtered_position);
                         }
                     }
                     if !editing
@@ -505,6 +513,9 @@ impl ViewState {
                         && !column.list.grab_focus()
                     {
                         column.presentation.stack.grab_focus();
+                    }
+                    if !editing && self.mode_views.borrow().mode() == BrowserMode::Columns {
+                        self.reveal_column(column.shell);
                     }
                 }
             }

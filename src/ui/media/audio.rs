@@ -14,7 +14,6 @@ const MAX_CHUNK_BYTES: usize = 6_400;
 const MAX_BYTES: u64 = 38_400;
 const MAX_TIME_NS: u64 = 200_000_000;
 const MAX_CHUNK_NS: u64 = 33_333_334;
-const MAX_FRAMES: u64 = SAMPLE_RATE * 30;
 
 pub(super) struct PcmOutput {
     pipeline: gst::Pipeline,
@@ -94,10 +93,9 @@ impl PcmOutput {
         let frames = self.frames.get();
         let end = frames
             .checked_add((data.len() / FRAME_BYTES) as u64)
-            .filter(|end| *end <= MAX_FRAMES)
-            .ok_or("PCM exceeds the 30-second limit")?;
+            .ok_or("PCM sample count overflow")?;
         // Compare in the caller's microsecond precision, but retain sample-exact timing.
-        if timestamp_us != frames * 1_000_000 / SAMPLE_RATE {
+        if u128::from(timestamp_us) != u128::from(frames) * 1_000_000 / u128::from(SAMPLE_RATE) {
             return Err("PCM timestamps must start at zero and be contiguous".into());
         }
         if let Some(error) = self.error() {
@@ -106,8 +104,14 @@ impl PcmOutput {
         if !self.has_capacity() {
             return Err("PCM output is full or finished".into());
         }
-        let start_ns = frames * 1_000_000_000 / SAMPLE_RATE;
-        let end_ns = end * 1_000_000_000 / SAMPLE_RATE;
+        let nanos = |samples: u64| -> Result<u64, String> {
+            u64::try_from(u128::from(samples) * 1_000_000_000 / u128::from(SAMPLE_RATE))
+                .ok()
+                .filter(|time| *time < u64::MAX)
+                .ok_or_else(|| "PCM timestamp exceeds the clock range".into())
+        };
+        let start_ns = nanos(frames)?;
+        let end_ns = nanos(end)?;
         let duration = end_ns.checked_sub(start_ns).ok_or("Invalid PCM duration")?;
         let mut buffer = gst::Buffer::from_mut_slice(data);
         let writable = buffer.get_mut().ok_or("PCM buffer is not writable")?;

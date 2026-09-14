@@ -29,6 +29,7 @@ def test_archive_activation_extracts_to_subfolder(strata, mode, activation, form
     strata.entry(archive_name)
 
     if activation == "keyboard":
+        strata.select_entry("todo.txt")
         strata.select_entry_with_keyboard(archive_name)
         strata.keyboard.press("Return")
     else:

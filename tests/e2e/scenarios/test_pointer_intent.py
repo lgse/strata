@@ -153,7 +153,12 @@ def test_modifier_clicks_on_inert_space_still_select(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_ctrl_drag_from_content_copies_and_keeps_selection(strata, mode):
+@pytest.mark.parametrize("open_after_drop", [
+    pytest.param(False, marks=pytest.mark.preferences(open_folder_after_drop=False)),
+    pytest.param(True, marks=pytest.mark.preferences(open_folder_after_drop=True)),
+])
+def test_ctrl_drag_from_content_copies_and_keeps_selection(strata, mode, open_after_drop):
+    initial_selection = strata.selected_names()
     start = strata.pointer.drag_origin(strata.entry("todo.txt"))
     target = strata.entry("archive")
     strata.pointer.drag_points(
@@ -164,7 +169,13 @@ def test_ctrl_drag_from_content_copies_and_keeps_selection(strata, mode):
         "the ctrl-drag from content to copy the file",
     )
     assert strata.fixture.path("todo.txt").exists()
-    strata.wait_for_selection(["todo.txt"])
+    if open_after_drop:
+        strata.entry("todo.txt", directory="archive")
+        strata.wait_for_selection(["todo.txt"])
+    else:
+        strata.wait_for_selection(sorted(set(initial_selection) | {"todo.txt"}))
+        strata.entry("todo.txt", directory=strata.fixture.root.name)
+        assert "archive" not in strata.pane_names()
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

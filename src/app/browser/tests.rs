@@ -1301,6 +1301,35 @@ fn successful_transfers_reveal_actual_destination_names_only_without_navigation(
 }
 
 #[test]
+fn a_drop_onto_a_folder_does_not_navigate_into_it() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let root = Location::local("/fixture");
+    browser.navigate(root);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    let destination = Location::local("/fixture/archive");
+    browser.transfer_destination.replace(Some(destination));
+    browser.transfer_reveal.set(false);
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![Location::local("/fixture/report.txt")],
+    });
+
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferReveal { .. })),
+        "a drop must move or copy the file without leaving the source listing"
+    );
+}
+
+#[test]
 fn failed_transfers_do_not_request_a_reveal() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -1337,6 +1366,7 @@ fn a_completed_move_records_where_each_item_landed() {
             conflict: TransferConflict::FailIfExists,
         }],
         true,
+        true,
     );
 
     assert_eq!(
@@ -1360,6 +1390,7 @@ fn a_completed_copy_records_the_destinations_it_created() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
 
     assert_eq!(
@@ -1407,6 +1438,7 @@ fn undoing_a_copy_removes_only_the_destinations_it_created() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1470,6 +1502,7 @@ fn undoing_a_copy_leaves_the_previous_trash_undo_available() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1495,6 +1528,7 @@ fn undoing_a_copy_records_no_trash_undo_of_its_own() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1580,6 +1614,7 @@ fn a_completed_copy_displaces_an_older_trash_undo() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
 
     assert!(!browser.undo_last_trash());
@@ -1597,6 +1632,7 @@ fn a_move_into_the_items_own_directory_records_no_undo() {
             conflict: TransferConflict::FailIfExists,
         }],
         true,
+        true,
     );
 
     assert_eq!(pending_undo_entry(), None);
@@ -1613,6 +1649,7 @@ fn undoing_a_move_transfers_items_back_once() {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
         }],
+        true,
         true,
     );
     let (generation, records) = browser.pending_undo_move().expect("pending move undo");
@@ -1953,6 +1990,26 @@ fn selecting_entries_by_name_preserves_the_full_matching_selection() {
         .collect();
     assert_eq!(selected_names, ["large", "small"]);
 }
+
+#[test]
+fn reload_active_preserves_a_multi_selection() {
+    let browser = Browser::new(Rc::new(RestoredSortingSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.set_selection(0, &[0, 1], Some(1));
+    assert_eq!(browser.selected_positions(0), [0, 1]);
+
+    browser.reload_active();
+
+    assert_eq!(browser.selected_positions(0), [0, 1]);
+    assert_eq!(
+        browser
+            .column_snapshot(0)
+            .expect("reloaded column")
+            .selected_positions,
+        vec![0, 1]
+    );
+}
+
 #[test]
 fn filesystem_notifications_update_the_affected_column_incrementally() {
     let notify = Rc::new(RefCell::new(None::<WatchCallback>));
@@ -3085,6 +3142,23 @@ fn escape_clears_only_the_active_selection_and_preserves_the_cursor() {
     }
 }
 
+#[test]
+fn select_all_excludes_hidden_entries_unless_shown() {
+    let source = ScriptedSource::scripted(vec!["visible.txt", ".hidden.txt"], Vec::new());
+    let browser = Browser::new(Rc::new(source));
+    browser.navigate(Location::local("/fixture"));
+
+    browser.select_all(0);
+    let selected = browser.selected_positions(0);
+    assert_eq!(selected.len(), 1, "{selected:?}");
+    let entry = browser.entry_at(0, selected[0]).expect("selected entry");
+    assert_eq!(entry.display_name, "visible.txt");
+
+    browser.toggle_hidden();
+    browser.select_all(0);
+    assert_eq!(browser.selected_positions(0).len(), 2);
+}
+
 type CapturedLoad = Rc<RefCell<Option<(RequestId, Rc<dyn Fn(DirectoryEvent)>)>>>;
 
 struct BatchReplaySource {
@@ -3536,7 +3610,7 @@ impl ScriptedSource {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
-            is_hidden: false,
+            is_hidden: name.starts_with('.'),
         }
     }
     fn answer(

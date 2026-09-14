@@ -56,6 +56,40 @@ impl MediaPreviewBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct PdfRenderSize {
+    pub(crate) width: i32,
+    pub(crate) height: i32,
+}
+
+impl PdfRenderSize {
+    const MAX_WIDTH: i32 = 1_400;
+    const MAX_HEIGHT: i32 = 1_800;
+    const MAX_PIXELS: u64 = 2_500_000;
+
+    pub(crate) fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.clamp(16, Self::MAX_WIDTH),
+            height: height.clamp(16, Self::MAX_HEIGHT),
+        }
+    }
+
+    pub(crate) fn for_viewport_width(width: i32) -> Self {
+        Self::new(width, Self::MAX_HEIGHT)
+    }
+
+    pub(crate) fn image_limits(self) -> (u32, u32, u64) {
+        let size = Self::new(self.width, self.height);
+        let width = size.width as u32;
+        let height = size.height as u32;
+        (
+            width,
+            height,
+            (u64::from(width) * u64::from(height)).min(Self::MAX_PIXELS),
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
     ThumbnailImage,
@@ -63,7 +97,7 @@ pub(crate) enum ParseOperation {
     ThumbnailPdf,
     ThumbnailVideo,
     PreviewImage,
-    PreviewPdf,
+    PreviewPdf(PdfRenderSize),
     PreviewMedia(MediaPreviewSize),
 }
 
@@ -75,7 +109,7 @@ impl ParseOperation {
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
             Self::PreviewImage => "preview-image",
-            Self::PreviewPdf => "preview-pdf",
+            Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewMedia(_) => "preview-media",
         }
     }
@@ -99,7 +133,7 @@ impl ParseOperation {
             | Self::ThumbnailPdf
             | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
             Self::PreviewImage => Some((800, 800, 800 * 800)),
-            Self::PreviewPdf => Some((1_400, 1_800, 2_500_000)),
+            Self::PreviewPdf(size) => Some(size.image_limits()),
             Self::PreviewMedia(_) => None,
         }
     }
@@ -110,7 +144,7 @@ impl ParseOperation {
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::PreviewImage
-            | Self::PreviewPdf => Some(MAX_RASTER_INPUT_BYTES),
+            | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
             Self::ThumbnailVideo | Self::PreviewMedia(_) => None,
         }
     }
@@ -386,7 +420,14 @@ fn sandbox_command(
         command.arg(format!("{}x{}", size.width, size.height));
     } else {
         command.arg(format!("/output/{}", operation.output_name()));
-        command.arg(value.to_string());
+        let value = match operation {
+            ParseOperation::PreviewPdf(size) => {
+                let size = PdfRenderSize::new(size.width, size.height);
+                format!("{value}:{}x{}", size.width, size.height)
+            }
+            _ => value.to_string(),
+        };
+        command.arg(value);
     }
     command.arg(media_backend.argument());
     command

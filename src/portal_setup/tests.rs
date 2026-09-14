@@ -8,8 +8,9 @@ use std::{
 };
 
 use super::{
-    SetupContext, disable_config, enable_config, install_at, refresh_configured_portal_at,
-    refresh_stale_portal_at, secure_executable, trusted_owner, uninstall_at,
+    SetupContext, disable_config, enable_config, install_at, install_file_manager_at,
+    refresh_configured_portal_at, refresh_stale_portal_at, secure_executable, trusted_owner,
+    uninstall_at, uninstall_file_manager_at,
 };
 
 const FILE_CHOOSER: &str = "org.freedesktop.impl.portal.FileChooser";
@@ -379,4 +380,223 @@ fn fixture() -> tempfile::TempDir {
         .prefix("strata-portal-")
         .tempdir_in("target")
         .expect("fixture directory")
+}
+
+#[test]
+fn file_manager_service_installs_and_reports_status() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install file manager");
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(super::FILE_MANAGER_SERVICE);
+    assert!(service.is_file());
+    let contents = fs::read_to_string(&service).expect("service contents");
+    assert!(contents.contains("Name=org.freedesktop.FileManager1"));
+    assert!(contents.contains(&exe.display().to_string()));
+    let state = super::read_file_manager_state(
+        &context.data_home.join(super::FILE_MANAGER_STATE_DIRECTORY),
+    )
+    .expect("read state")
+    .expect("state exists");
+    assert_eq!(state.previous_default.as_deref(), Some("thunar.desktop"));
+}
+
+#[test]
+fn file_manager_repair_preserves_restore_state() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install");
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(super::FILE_MANAGER_SERVICE);
+    fs::remove_file(&service).expect("simulate drift");
+    install_file_manager_at(&context, &exe, None).expect("repair");
+    assert!(service.exists());
+    assert_eq!(
+        uninstall_file_manager_at(&context)
+            .expect("restore")
+            .as_deref(),
+        Some("thunar.desktop")
+    );
+}
+
+#[test]
+fn file_manager_restore_failure_keeps_recovery_state() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install");
+    let result = super::restore_file_manager_at(&context, |previous| {
+        assert_eq!(previous, Some("thunar.desktop"));
+        Err("association failure".into())
+    });
+    assert_eq!(
+        result.expect_err("restore must fail"),
+        "association failure"
+    );
+    assert!(
+        context
+            .data_home
+            .join("dbus-1/services")
+            .join(super::FILE_MANAGER_SERVICE)
+            .exists()
+    );
+    assert_eq!(
+        uninstall_file_manager_at(&context)
+            .expect("retry")
+            .as_deref(),
+        Some("thunar.desktop")
+    );
+}
+
+#[test]
+fn folder_restore_uses_nautilus_only_without_a_saved_handler() {
+    for (current, previous, detected, expected) in [
+        (
+            Some(super::DESKTOP_ID),
+            Some("thunar.desktop"),
+            Some("org.gnome.Nautilus.desktop"),
+            Some("thunar.desktop"),
+        ),
+        (
+            Some(super::DESKTOP_ID),
+            None,
+            Some("org.gnome.Nautilus.desktop"),
+            Some("org.gnome.Nautilus.desktop"),
+        ),
+        (
+            None,
+            None,
+            Some("nautilus.desktop"),
+            Some("nautilus.desktop"),
+        ),
+        (
+            Some("dolphin.desktop"),
+            None,
+            Some("org.gnome.Nautilus.desktop"),
+            None,
+        ),
+        (Some("dolphin.desktop"), Some("thunar.desktop"), None, None),
+    ] {
+        let mut applied = None;
+        let result = super::restore_folder_handler(
+            current,
+            previous,
+            || {
+                assert!(previous.is_none());
+                detected.map(str::to_owned)
+            },
+            |id| {
+                applied = Some(id.to_owned());
+                Ok(())
+            },
+        )
+        .expect("restore");
+        assert_eq!(result.as_deref(), expected);
+        assert_eq!(applied.as_deref(), expected);
+    }
+}
+
+#[test]
+fn nautilus_fallback_failure_preserves_recovery_until_retry() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, None).expect("install without previous handler");
+    for detected in [None, Some("org.gnome.Nautilus.desktop")] {
+        let result = super::restore_file_manager_at(&context, |previous| {
+            super::restore_folder_handler(
+                Some(super::DESKTOP_ID),
+                previous,
+                || detected.map(str::to_owned),
+                |_| Err("association failure".into()),
+            )
+        });
+        assert!(result.is_err());
+        assert!(
+            super::read_file_manager_state(
+                &context.data_home.join(super::FILE_MANAGER_STATE_DIRECTORY)
+            )
+            .expect("valid test fixture")
+            .is_some()
+        );
+        assert!(
+            context
+                .data_home
+                .join("dbus-1/services")
+                .join(super::FILE_MANAGER_SERVICE)
+                .exists()
+        );
+    }
+    let restored = super::restore_file_manager_at(&context, |previous| {
+        super::restore_folder_handler(
+            Some(super::DESKTOP_ID),
+            previous,
+            || Some("org.gnome.Nautilus.desktop".into()),
+            |id| {
+                assert_eq!(id, "org.gnome.Nautilus.desktop");
+                Ok(())
+            },
+        )
+    })
+    .expect("retry with Nautilus");
+    assert_eq!(restored.as_deref(), Some("org.gnome.Nautilus.desktop"));
+    assert!(
+        !context
+            .data_home
+            .join("dbus-1/services")
+            .join(super::FILE_MANAGER_SERVICE)
+            .exists()
+    );
+    assert!(
+        super::read_file_manager_state(
+            &context.data_home.join(super::FILE_MANAGER_STATE_DIRECTORY)
+        )
+        .expect("valid test fixture")
+        .is_none()
+    );
+}
+
+#[test]
+fn file_manager_conflict_is_rejected() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    let service_dir = context.data_home.join("dbus-1/services");
+    fs::create_dir_all(&service_dir).expect("service dir");
+    let other = service_dir.join("org.other.FileManager1.service");
+    fs::write(
+        &other,
+        "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/other\n",
+    )
+    .expect("conflicting service");
+    let error = install_file_manager_at(&context, &exe, None).expect_err("conflict rejected");
+    assert!(error.contains("Another per-user FileManager1 provider"));
+}
+
+#[test]
+fn file_manager_uninstall_removes_service_and_state() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install");
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(super::FILE_MANAGER_SERVICE);
+    assert!(service.is_file());
+    uninstall_file_manager_at(&context).expect("uninstall");
+    assert!(!service.exists());
+    assert!(
+        !context
+            .data_home
+            .join(super::FILE_MANAGER_STATE_DIRECTORY)
+            .join(super::FILE_MANAGER_STATE_FILE)
+            .exists()
+    );
 }

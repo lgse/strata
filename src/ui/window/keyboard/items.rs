@@ -47,7 +47,7 @@ impl Dispatcher {
     }
 
     fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
-        if self.preview.is_open() {
+        if self.preview.is_enabled() {
             self.preview.close();
             return Some(Propagation::Stop);
         }
@@ -136,6 +136,9 @@ impl Dispatcher {
                 self.view.copy_path();
             }
             Key::p | Key::P => self.view.pin_focused(),
+            Key::space
+                if event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+                    && self.view.activate_directory_column() => {}
             Key::space => self.preview.toggle(
                 preview_target(browser.focused_entry()),
                 browser.active_depth(),

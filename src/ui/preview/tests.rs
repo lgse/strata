@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-mod media_size;
+pub(super) mod media_size;
 mod preferences;
 
 use std::rc::Rc;
@@ -10,8 +10,7 @@ use gtk::{glib, prelude::*};
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
     format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_target, preview_width_for_empty_space, print_fit, print_page_starts,
-    print_progress_for_page,
+    preview_target, print_fit, print_page_starts, print_progress_for_page,
 };
 use crate::app::{Browser, BrowserEvent, EntrySplice};
 use crate::model::Location;
@@ -51,11 +50,12 @@ fn render_media_widgets(drawer: &PreviewDrawer, is_gif: bool) -> WeakMediaWidget
         .child()
         .and_downcast::<gtk::Picture>()
         .expect("production media picture");
-    drawer.state.content.append(&overlay);
+    let section = super::media_layout::section(&overlay, &media);
+    drawer.state.content.append(&section);
     drawer.state.append_media_controls(
         media.upcast_ref(),
         &ThemeManager::shared(),
-        &overlay.clone().upcast(),
+        &section,
         &center_play,
         is_gif,
     );
@@ -162,13 +162,6 @@ fn media_errors_explain_missing_runtime_plugins() {
     assert_eq!(title, "Preview unavailable");
     assert!(detail.contains("The media data is corrupt"));
     assert_eq!(command, None);
-}
-
-#[test]
-fn initial_preview_uses_most_of_the_unoccupied_width() {
-    assert_eq!(preview_width_for_empty_space(2_000, 500), 1_350);
-    assert_eq!(preview_width_for_empty_space(700, 650), 560);
-    assert_eq!(preview_width_for_empty_space(500, 500), 560);
 }
 
 #[test]

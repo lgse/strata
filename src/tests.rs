@@ -5,6 +5,7 @@ use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 use super::{
     GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
     gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, run_preview_helper,
+    version_line,
 };
 
 #[test]
@@ -32,6 +33,7 @@ fn launch_mode_recognizes_only_the_first_argument_as_a_mode() {
         ("--install-portal", LaunchMode::InstallPortal),
         ("--dismiss-portal-prompt", LaunchMode::DismissPortalPrompt),
         ("--uninstall-portal", LaunchMode::UninstallPortal),
+        ("--version", LaunchMode::Version),
     ] {
         assert_eq!(launch_mode(&["strata".into(), flag.into()]), mode);
         assert_eq!(
@@ -39,6 +41,24 @@ fn launch_mode_recognizes_only_the_first_argument_as_a_mode() {
             LaunchMode::Application
         );
     }
+}
+
+#[test]
+fn version_line_is_the_package_name_and_installed_version() {
+    let line = version_line();
+    assert!(
+        line.starts_with("strata "),
+        "the --version line should start with the package name"
+    );
+    assert!(
+        line.contains(&crate::build_info::installed_version().to_string()),
+        "the --version line should include the installed version"
+    );
+    assert_eq!(
+        line.lines().count(),
+        1,
+        "the --version line should be a single line"
+    );
 }
 
 #[test]

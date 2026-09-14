@@ -13,7 +13,7 @@ type Shortcut = (&'static str, &'static str);
 
 const FILES: &[Shortcut] = &[
     ("Enter", "Open the current item"),
-    ("Space", "Toggle quick preview"),
+    ("Space", "Toggle file preview"),
     ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
     ("Ctrl+V", "Paste into the indicated directory"),
     ("Ctrl+D", "Duplicate selected items"),
@@ -27,6 +27,13 @@ const FILES: &[Shortcut] = &[
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
     ("y / p", "Copy path / pin a folder (type-to-search off)"),
+];
+
+const MEDIA: &[Shortcut] = &[
+    ("Ctrl+Alt+Space", "Play / pause"),
+    ("Ctrl+Alt+← / →", "Seek −5 / +5 seconds"),
+    ("Ctrl+Alt+↑ / ↓", "Volume up / down"),
+    ("Ctrl+Alt+M", "Mute / unmute"),
 ];
 
 const TOOLS: &[Shortcut] = &[
@@ -108,7 +115,7 @@ impl ShortcutFooter {
         header.append(&close);
         content.append(&header);
         let note = gtk::Label::builder()
-            .label("File-view shortcuts. Text fields, dialogs, and media previews use their own controls.")
+            .label("Media controls use Ctrl+Alt. Plain keys keep browsing; text fields and dialogs keep native controls.")
             .xalign(0.0).wrap(true).build();
         note.add_css_class("shortcut-reference-note");
         content.append(&note);
@@ -120,7 +127,7 @@ impl ShortcutFooter {
             .overlay_scrolling(false)
             .propagate_natural_height(true)
             .max_content_height(440)
-            .min_content_width(420)
+            .width_request(420)
             .focusable(true)
             .build();
         scroll.add_css_class("fixed-scrollbar");
@@ -133,7 +140,7 @@ impl ShortcutFooter {
             {
                 scroll.vadjustment().set_value(scroll.vadjustment().lower());
                 scroll.set_max_content_height((window.height() - 150).clamp(100, 440));
-                scroll.set_min_content_width((window.width() - 60).clamp(260, 420));
+                scroll.set_width_request((window.width() - 60).clamp(260, 420));
             }
         });
         more.set_popover(Some(&popover));
@@ -265,6 +272,7 @@ impl ShortcutFooter {
         );
         append_section(&self.reference, "Files and selection", FILES);
         append_section(&self.reference, "Search and tools", TOOLS);
+        append_section(&self.reference, "Preview media", MEDIA);
     }
 
     pub fn handle_key(
@@ -415,7 +423,14 @@ fn summary_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
     shortcuts.extend_from_slice(&[
         ("↑ at top", "Header"),
         ("Enter", "Open"),
-        ("Space", "Preview"),
+        (
+            "Space",
+            if mode == BrowserMode::Columns {
+                "Open / preview"
+            } else {
+                "Preview"
+            },
+        ),
         ("Ctrl+F", "Filter"),
         ("Ctrl+C / X", "Copy / cut"),
         ("Del", "Trash"),
@@ -428,6 +443,7 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
         BrowserMode::Columns => vec![
             ("↑ / ↓", "Move between items"),
             ("← / →", "Parent pane / enter folder"),
+            ("Space", "Open folder column"),
             ("← at first pane", "Focus the visible sidebar"),
             (
                 "Backspace",
@@ -493,6 +509,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut]) {
             .xalign(0.0)
             .hexpand(true)
             .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
             .build();
         action.add_css_class("shortcut-reference-description");
         row.append(&key);

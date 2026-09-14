@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod preview_session;
+
 use gtk::{
     gdk::{Key, ModifierType},
     glib,

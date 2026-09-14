@@ -480,21 +480,17 @@ impl ViewMap {
 }
 
 pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::model::FileEntry {
-    use crate::model::{EntryKind, FileEntry, MetadataValue};
+    use crate::model::{FileEntry, MetadataValue};
     FileEntry {
         location: Location::local(item.path.clone()),
         native_name: item.path.file_name().unwrap_or_default().to_os_string(),
         thumbnail_path: None,
         display_name: item.name.clone(),
-        kind: if item.is_directory {
-            EntryKind::Directory
-        } else {
-            EntryKind::File
-        },
+        kind: item.kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
-        mode: MetadataValue::Unknown,
+        mode: item.mode.clone(),
     }
 }
 
