@@ -436,8 +436,34 @@ fn columns_filter_in_non_active_column_accepts_search_result_on_open() {
                     .is_some_and(|column| !column.loading && column.count == 1)
             });
 
+            browser.select(1, 0);
+            wait_until(|| {
+                browser.selected_entries().first().is_some_and(|entry| {
+                    entry.location == Location::local(root.path().join("folder/notes.txt"))
+                })
+            });
             let root_filter_entry =
                 nth_filter_entry(&state.view.widget(), 0).expect("column 0 filter");
+            root_filter_entry.set_text("no-matches");
+            root_filter_entry.grab_focus_without_selecting();
+            wait_until(|| state.view.selected_search_results() == Some(Vec::new()));
+            state.accept_button.grab_focus();
+            while glib::MainContext::default().pending() {
+                glib::MainContext::default().iteration(false);
+            }
+            browser.select(1, 0);
+            assert_eq!(
+                browser.selected_entries()[0].location,
+                Location::local(root.path().join("folder/notes.txt"))
+            );
+            assert_eq!(state.view.selected_search_results(), Some(Vec::new()));
+            state.accept_button.emit_clicked();
+            assert!(
+                result.borrow().is_none(),
+                "empty search must not accept another column's file"
+            );
+            assert!(state.error.is_visible(), "empty search must show an error");
+
             root_filter_entry.set_text("readme");
             root_filter_entry.grab_focus_without_selecting();
             wait_until(|| {
@@ -448,10 +474,6 @@ fn columns_filter_in_non_active_column_accepts_search_result_on_open() {
                     .is_some_and(|entries| !entries.is_empty())
             });
             state.accept_button.grab_focus();
-            assert!(
-                !state.error.is_visible(),
-                "selecting a search result in a non-active column must not show an error"
-            );
             state.accept_button.emit_clicked();
             wait_until(|| result.borrow().is_some());
             let selected = result

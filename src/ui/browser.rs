@@ -1426,10 +1426,9 @@ impl BrowserView {
             .and_then(|depth| columns.get(depth))
             .filter(|column| column.search_handle.borrow().is_some())
             .or_else(|| {
-                columns.iter().find(|column| {
-                    column.search_handle.borrow().is_some()
-                        && !column.selection.selection().is_empty()
-                })
+                columns
+                    .iter()
+                    .find(|column| column.search_handle.borrow().is_some())
             })?;
         let results = column.search_results.borrow();
         Some(
