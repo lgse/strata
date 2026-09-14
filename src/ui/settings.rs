@@ -3,7 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     process::Command,
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::{OnceLock, mpsc::TryRecvError},
     time::{Duration, Instant},
 };
@@ -42,7 +42,10 @@ use super::{
     theme::ThemeManager,
 };
 
-pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String, UpdateMethod)>)>;
+type AvailableUpdate = (ReleaseMetadata, String, UpdateMethod);
+type CachedUpdate = Option<AvailableUpdate>;
+pub(super) type UpdateNoticeHandler = Rc<dyn Fn(CachedUpdate)>;
+type WeakUpdateNoticeHandler = Weak<dyn Fn(CachedUpdate)>;
 
 struct UpdateCheckRow {
     row: gtk::Box,
@@ -95,6 +98,9 @@ thread_local! {
     /// Shared by the due scheduler so every window uses one TTL.
     static LAST_COMPLETED_CHECK: Cell<Option<Instant>> = const { Cell::new(None) };
     static CHECK_IN_FLIGHT: Cell<bool> = const { Cell::new(false) };
+    /// The most recent check result and every live window that should receive it.
+    static LAST_UPDATE_RESULT: RefCell<CachedUpdate> = const { RefCell::new(None) };
+    static UPDATE_NOTICE_HANDLERS: RefCell<Vec<WeakUpdateNoticeHandler>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Detection spawns a package-manager child, so it resolves asynchronously
@@ -149,7 +155,7 @@ fn force_due_update_check(last: Option<Instant>) -> bool {
     last.is_none()
 }
 
-pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &UpdateNoticeHandler) {
+pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>) {
     if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
         return;
     }
@@ -161,7 +167,6 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
     CHECK_IN_FLIGHT.set(true);
     let channel = manager.release_channel();
     let weak_manager = Rc::downgrade(manager);
-    let notice = notice.clone();
     resolve_update_method_async(move |method| {
         let receiver = services::check_for_updates(
             channel,
@@ -176,28 +181,71 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
                     CHECK_IN_FLIGHT.set(false);
                     glib::ControlFlow::Break
                 }
-                Ok(UpdateCheck::Available {
-                    release,
-                    download_url,
-                }) => {
-                    CHECK_IN_FLIGHT.set(false);
-                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
-                    if weak_manager.upgrade().is_some_and(|manager| {
-                        manager.checks_for_updates() && manager.release_channel() == channel
-                    }) {
-                        notice(Some((release, download_url, method)));
-                    }
-                    glib::ControlFlow::Break
-                }
-                Ok(_) => {
-                    // Failed stays uncached so the next launch retries on transient errors.
-                    CHECK_IN_FLIGHT.set(false);
-                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+                Ok(result) => {
+                    complete_due_update_check(&weak_manager, channel, result, method);
                     glib::ControlFlow::Break
                 }
             }
         });
     });
+}
+
+fn complete_due_update_check(
+    manager: &Weak<ThemeManager>,
+    channel: Channel,
+    result: UpdateCheck,
+    method: UpdateMethod,
+) {
+    CHECK_IN_FLIGHT.set(false);
+    if !manager
+        .upgrade()
+        .is_some_and(|manager| manager.checks_for_updates() && manager.release_channel() == channel)
+    {
+        return;
+    }
+    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+    match result {
+        UpdateCheck::Available {
+            release,
+            download_url,
+        } => publish_update_notice(Some((release, download_url, method))),
+        UpdateCheck::UpToDate | UpdateCheck::Failed(_) => publish_update_notice(None),
+    }
+}
+
+pub(super) fn register_update_notice(notice: &UpdateNoticeHandler) {
+    UPDATE_NOTICE_HANDLERS.with(|handlers| {
+        handlers.borrow_mut().push(Rc::downgrade(notice));
+    });
+    LAST_UPDATE_RESULT.with(|cache| {
+        if let Some(result) = cache.borrow().clone() {
+            notice(Some(result));
+        }
+    });
+}
+
+fn publish_update_notice(result: CachedUpdate) {
+    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = result.clone());
+    UPDATE_NOTICE_HANDLERS.with(|handlers| {
+        handlers.borrow_mut().retain(|notice| {
+            let Some(notice) = notice.upgrade() else {
+                return false;
+            };
+            notice(result.clone());
+            true
+        });
+    });
+}
+
+/// Clears the cached result so later windows do not show a stale notice
+/// after the user disables checks or switches the release channel.
+pub(super) fn clear_cached_update_notice() {
+    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = None);
+}
+
+#[cfg(test)]
+pub(super) fn publish_update_notice_for_test(result: CachedUpdate) {
+    publish_update_notice(result);
 }
 
 const DIALOG_WIDTH: i32 = 1400;
@@ -678,6 +726,7 @@ pub fn build_layer(
                         let _ = stack;
                         let search_state = search_state.clone();
                         resolve_update_method_async(move |method| {
+                            maybe_run_due_update_check(&themes);
                             let (updates, actions) =
                                 updates_page(themes, update_notice, install_guard, method);
                             while let Some(child) = container.first_child() {
@@ -815,7 +864,6 @@ fn updates_page(
         install_underway,
     } = update_check_row(
         manager.clone(),
-        update_notice.clone(),
         available_notes.clone(),
         install_guard.clone(),
         update_method,
@@ -1326,7 +1374,6 @@ fn offer_still_eligible(channel: Channel, kind: BuildKind) -> bool {
 
 fn update_check_row(
     manager: Rc<ThemeManager>,
-    update_notice: UpdateNoticeHandler,
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
@@ -1406,7 +1453,6 @@ fn update_check_row(
         let generation = generation.clone();
         let status = status.clone();
         let button = button.clone();
-        let update_notice = update_notice.clone();
         let pending_download = pending_download.clone();
         let installed = installed.clone();
         let managed_update_available = managed_update_available.clone();
@@ -1437,7 +1483,7 @@ fn update_check_row(
             // this check's own result lands: otherwise the sidebar keeps
             // showing a (possibly prerelease) offer from before the channel
             // was switched for the whole duration of this check.
-            update_notice(None);
+            publish_update_notice(None);
             button.set_sensitive(false);
             // Read the channel now, not once when the row was built: a
             // mid-session channel toggle must be reflected by the very next
@@ -1455,7 +1501,6 @@ fn update_check_row(
             let generation = generation.clone();
             let status = status.clone();
             let button = button.clone();
-            let update_notice = update_notice.clone();
             let pending_download = pending_download.clone();
             let managed_update_available = managed_update_available.clone();
             let available_notes = available_notes.clone();
@@ -1515,12 +1560,14 @@ fn update_check_row(
                             UpdateCheck::Available {
                                 release,
                                 download_url,
-                            } => update_notice(Some((
+                            } => publish_update_notice(Some((
                                 release.clone(),
                                 download_url.clone(),
                                 update_method,
                             ))),
-                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => update_notice(None),
+                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {
+                                publish_update_notice(None)
+                            }
                         }
                         match &result {
                             UpdateCheck::Available {

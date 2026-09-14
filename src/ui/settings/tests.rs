@@ -22,7 +22,7 @@ use super::{
     update_check_due, update_check_message, update_dialog_status, update_status_markup,
     uses_compact_navigation,
 };
-use crate::sandbox::MediaPreviewBackend;
+use crate::{sandbox::MediaPreviewBackend, test_support::gtk_test, ui::theme::ThemeManager};
 
 #[test]
 fn a_checks_result_is_stale_once_a_newer_check_has_started() {
@@ -379,6 +379,43 @@ fn due_check_respects_its_ttl() {
         Some(now - UPDATE_DUE_INTERVAL + Duration::from_secs(1)),
         now
     ));
+}
+
+#[test]
+fn stale_due_result_is_not_published_or_replayed() {
+    gtk_test(
+        "ui::settings::tests::stale_due_result_is_not_published_or_replayed",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            super::clear_cached_update_notice();
+            let manager = ThemeManager::shared();
+            manager.set_checks_for_updates(true);
+            let channel = manager.release_channel();
+            let published = Rc::new(std::cell::Cell::new(0));
+            let observed = published.clone();
+            let notice: super::UpdateNoticeHandler = Rc::new(move |_| {
+                observed.set(observed.get() + 1);
+            });
+            super::register_update_notice(&notice);
+
+            manager.set_checks_for_updates(false);
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                available_release(),
+                UpdateMethod::InPlace,
+            );
+            assert_eq!(published.get(), 0);
+
+            let replayed = Rc::new(std::cell::Cell::new(0));
+            let observed = replayed.clone();
+            let later: super::UpdateNoticeHandler = Rc::new(move |_| {
+                observed.set(observed.get() + 1);
+            });
+            super::register_update_notice(&later);
+            assert_eq!(replayed.get(), 0);
+        },
+    );
 }
 
 #[test]

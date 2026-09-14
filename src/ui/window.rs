@@ -112,6 +112,7 @@ fn bind_update_notice_preferences(
             if !initial.replace(false)
                 && let Some(notice) = notice.upgrade()
             {
+                super::settings::clear_cached_update_notice();
                 notice(None);
             }
         },
@@ -148,7 +149,7 @@ pub(super) fn present_target(
         .build();
 
     let content = composition::WindowContent::new(&window, &theme_manager);
-    let update_notice = content.bind(&window, &theme_manager);
+    content.bind(&window, &theme_manager);
     let browser = content.browser.clone();
     browser.connect_navigation_cleanup(window.upcast_ref());
     schedule_after_first_paint(&window, &content.sidebar);
@@ -170,7 +171,7 @@ pub(super) fn present_target(
             );
         });
     }
-    schedule_due_update_check(&theme_manager, &update_notice);
+    schedule_due_update_check(&theme_manager);
     browser
 }
 
@@ -200,15 +201,12 @@ fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &Sidebar
     });
 }
 
-fn schedule_due_update_check(
-    manager: &Rc<ThemeManager>,
-    notice: &super::settings::UpdateNoticeHandler,
-) {
+fn schedule_due_update_check(manager: &Rc<ThemeManager>) {
     let manager = manager.clone();
-    let notice = notice.clone();
-    glib::timeout_add_local_once(std::time::Duration::from_secs(8), move || {
+    // Stay clear of first paint without making an available update feel late.
+    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
         glib::idle_add_local_once(move || {
-            super::settings::maybe_run_due_update_check(&manager, &notice);
+            super::settings::maybe_run_due_update_check(&manager);
         });
     });
 }
