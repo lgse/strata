@@ -60,6 +60,24 @@ fn archive_stem(name: &str) -> &str {
     name
 }
 
+fn create_extraction_subfolder(parent: &Path, stem: &str) -> std::io::Result<Location> {
+    for suffix in 0_u64.. {
+        let name = if suffix == 0 {
+            stem.to_owned()
+        } else {
+            format!("{stem} ({suffix})")
+        };
+        let path = parent.join(name);
+        // Reserve the directory atomically, including collisions with dangling symlinks.
+        match std::fs::create_dir(&path) {
+            Ok(()) => return Ok(Location::local(path)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::other("No available extraction folder name"))
+}
+
 /// Whether `destination` already contains a child named `archive_name`.
 ///
 /// Collision checks use the final filename, including the format extension.
@@ -476,9 +494,15 @@ impl ViewState {
             self.extract_entry(entry);
             return;
         }
-        let Some(destination) = parent.child(std::ffi::OsStr::new(stem)) else {
-            self.extract_entry(entry);
+        let Some(parent_path) = parent.native_path() else {
             return;
+        };
+        let destination = match create_extraction_subfolder(parent_path, stem) {
+            Ok(destination) => destination,
+            Err(error) => {
+                show_error_dialog(&self.overlay, "Cannot extract", &error.to_string());
+                return;
+            }
         };
         let format = ArchiveFormat::from_extension(&entry.display_name);
         if format.map(|f| f.supports_password()).unwrap_or(false) {

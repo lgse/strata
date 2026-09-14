@@ -2280,11 +2280,21 @@ paned > separator {
   font-variant-numeric: tabular-nums;
 }
 
+.preview-media-seek,
+.preview-media-volume {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
 .preview-media-seek trough,
 .preview-media-volume trough {
   background: alpha(@theme_border, 0.42);
+  border: none;
   border-radius: 3px;
   min-height: 4px;
+  outline: none;
+  box-shadow: none;
 }
 
 .preview-media-seek highlight,
@@ -2309,6 +2319,31 @@ paned > separator {
   min-height: 12px;
   min-width: 12px;
   margin: -5px;
+}
+
+.preview-media-seek:focus-visible,
+.preview-media-volume:focus-visible,
+.preview-media-seek:focus,
+.preview-media-volume:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.preview-media-seek:focus-visible trough,
+.preview-media-volume:focus-visible trough,
+.preview-media-seek:focus trough,
+.preview-media-volume:focus trough {
+  outline: none;
+  box-shadow: none;
+}
+
+.preview-media-seek:focus-visible slider,
+.preview-media-volume:focus-visible slider,
+.preview-media-seek:focus slider,
+.preview-media-volume:focus slider {
+  outline: none;
+  box-shadow: none;
+  border: none;
 }
 
 .preview-pdf-list,
