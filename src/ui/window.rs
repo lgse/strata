@@ -155,7 +155,7 @@ pub(super) fn present_target(
     content.bind(&window, &theme_manager);
     let browser = content.browser.clone();
     browser.connect_navigation_cleanup(window.upcast_ref());
-    schedule_after_first_paint(&window, &content.sidebar);
+    schedule_after_first_paint(&window, &content.sidebar, &theme_manager);
     content.connect_cleanup(&window);
     window.present();
     crate::metrics::mark_window_presented();
@@ -174,12 +174,16 @@ pub(super) fn present_target(
             );
         });
     }
-    schedule_due_update_check(&theme_manager);
     browser
 }
 
-fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &SidebarView) {
+fn schedule_after_first_paint(
+    window: &gtk::ApplicationWindow,
+    sidebar: &SidebarView,
+    manager: &Rc<ThemeManager>,
+) {
     let state = sidebar.state.clone();
+    let manager = manager.clone();
     let armed = Cell::new(false);
     window.connect_map(move |window| {
         if armed.get() {
@@ -192,6 +196,7 @@ fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &Sidebar
         let handler = Rc::new(RefCell::new(None));
         let handler_for_paint = handler.clone();
         let state = state.clone();
+        let manager = manager.clone();
         let id = clock.connect_after_paint(move |clock| {
             if let Some(id) = handler_for_paint.borrow_mut().take() {
                 clock.disconnect(id);
@@ -199,20 +204,15 @@ fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &Sidebar
             crate::metrics::mark_first_themed_frame();
             let state = state.clone();
             glib::idle_add_local_once(move || state.rebuild());
+            let manager = manager.clone();
+            glib::idle_add_local_once(move || {
+                super::settings::maybe_run_due_update_check(&manager);
+            });
         });
         handler.replace(Some(id));
     });
 }
 
-fn schedule_due_update_check(manager: &Rc<ThemeManager>) {
-    let manager = manager.clone();
-    // Stay clear of first paint without making an available update feel late.
-    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
-        glib::idle_add_local_once(move || {
-            super::settings::maybe_run_due_update_check(&manager);
-        });
-    });
-}
 pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
     ThemeManager::shared().bind_interface_scale(paned, |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");

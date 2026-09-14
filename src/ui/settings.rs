@@ -99,7 +99,6 @@ thread_local! {
     static LAST_COMPLETED_CHECK: Cell<Option<Instant>> = const { Cell::new(None) };
     static CHECK_IN_FLIGHT: Cell<bool> = const { Cell::new(false) };
     static CHECK_GENERATION: Cell<u64> = const { Cell::new(0) };
-    /// The most recent check result and every live window that should receive it.
     static LAST_UPDATE_RESULT: RefCell<CachedUpdate> = const { RefCell::new(None) };
     static UPDATE_NOTICE_HANDLERS: RefCell<Vec<WeakUpdateNoticeHandler>> = const { RefCell::new(Vec::new()) };
 }
@@ -255,8 +254,6 @@ fn publish_update_notice(result: CachedUpdate) {
     });
 }
 
-/// Clears the cached result so later windows do not show a stale notice
-/// after the user disables checks or switches the release channel.
 pub(super) fn clear_cached_update_notice() {
     LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = None);
 }
@@ -1527,9 +1524,7 @@ fn update_check_row(
             let row_generation = row_generation.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 if is_stale_check(my_generation, CHECK_GENERATION.get()) {
-                    // Same row started a newer check: it owns the UI. A
-                    // different window or the due scheduler bumped the global
-                    // generation without touching this row's button.
+                    // Only a newer check on this row owns its disabled button.
                     if is_stale_check(my_row_generation, row_generation.get()) {
                         return glib::ControlFlow::Break;
                     }
