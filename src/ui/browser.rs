@@ -1432,14 +1432,12 @@ impl BrowserView {
                 })
             })?;
         let results = column.search_results.borrow();
-        let entries: Vec<FileEntry> = collection::bitset_positions(&column.selection.selection())
-            .into_iter()
-            .filter_map(|position| results.get(position as usize).map(search_result_entry))
-            .collect();
-        if entries.is_empty() {
-            return None;
-        }
-        Some(entries)
+        Some(
+            collection::bitset_positions(&column.selection.selection())
+                .into_iter()
+                .filter_map(|position| results.get(position as usize).map(search_result_entry))
+                .collect(),
+        )
     }
 
     pub fn item_view_has_focus(&self) -> bool {

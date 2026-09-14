@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[track_caller]
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -200,7 +201,6 @@ fn filter_dropdown_select_file_click_open_accepts_filtered_file() {
                         .is_some_and(|column| !column.loading && column.count == 2)
                 });
 
-                // Trigger the filter dropdown change to "Text" (index 1).
                 {
                     let dropdown = state.filter_dropdown.as_ref().expect("filter dropdown");
                     let changed = dropdown.changed.borrow();
@@ -285,6 +285,25 @@ fn filter_text_select_file_click_open_accepts_root_file() {
                     !state.error.is_visible(),
                     "selecting a root file must not show an error: {mode:?}"
                 );
+                if mode == BrowserMode::Columns {
+                    assert!(state.view.show_filter_with_query("no-matches"));
+                    wait_until(|| state.view.selected_search_results() == Some(Vec::new()));
+                    state.accept_button.grab_focus();
+                    state.accept_button.emit_clicked();
+                    assert!(result.borrow().is_none(), "no results must not accept");
+                    assert!(state.error.is_visible(), "no results must show an error");
+                    while glib::MainContext::default().pending() {
+                        glib::MainContext::default().iteration(false);
+                    }
+                    assert!(state.view.show_filter_with_query("readme"));
+                    wait_until(|| {
+                        select_first_file_list_item(&state.view.widget());
+                        state
+                            .view
+                            .selected_search_results()
+                            .is_some_and(|entries| entries.len() == 1)
+                    });
+                }
                 state.accept_button.emit_clicked();
                 wait_until(|| result.borrow().is_some());
                 let selected = result
@@ -332,7 +351,6 @@ fn columns_filter_after_navigating_into_subfolder_accepts_search_result() {
                     .is_some_and(|column| !column.loading && column.count == 2)
             });
 
-            // Navigate into the subfolder (creates column 1, active depth becomes 1).
             let folder_position = (0..2)
                 .find(|&position| {
                     browser
@@ -347,7 +365,6 @@ fn columns_filter_after_navigating_into_subfolder_accepts_search_result() {
                     .is_some_and(|column| !column.loading && column.count == 1)
             });
 
-            // Filter in the active column (depth 1) and select the search result.
             assert!(state.view.show_filter_with_query("notes"));
             wait_until(|| {
                 select_first_file_list_item(&state.view.widget());
@@ -356,8 +373,6 @@ fn columns_filter_after_navigating_into_subfolder_accepts_search_result() {
                     .selected_search_results()
                     .is_some_and(|entries| !entries.is_empty())
             });
-            // Simulate the user moving focus to the Open button before clicking it,
-            // as a real click would do.
             state.accept_button.grab_focus();
             assert!(
                 !state.error.is_visible(),
@@ -407,7 +422,6 @@ fn columns_filter_in_non_active_column_accepts_search_result_on_open() {
                     .is_some_and(|column| !column.loading && column.count == 2)
             });
 
-            // Navigate into the subfolder (active depth becomes 1).
             let folder_position = (0..2)
                 .find(|&position| {
                     browser
@@ -422,7 +436,6 @@ fn columns_filter_in_non_active_column_accepts_search_result_on_open() {
                     .is_some_and(|column| !column.loading && column.count == 1)
             });
 
-            // Open the filter in column 0 (root) directly, even though column 1 is active.
             let root_filter_entry =
                 nth_filter_entry(&state.view.widget(), 0).expect("column 0 filter");
             root_filter_entry.set_text("readme");
@@ -434,7 +447,6 @@ fn columns_filter_in_non_active_column_accepts_search_result_on_open() {
                     .selected_search_results()
                     .is_some_and(|entries| !entries.is_empty())
             });
-            // Simulate the user moving focus to the Open button before clicking it.
             state.accept_button.grab_focus();
             assert!(
                 !state.error.is_visible(),
