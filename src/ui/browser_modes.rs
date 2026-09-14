@@ -3000,7 +3000,11 @@ fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widge
 }
 
 fn set_icons_content_hover(card: &gtk::Box, x: f64, y: f64) {
-    if super::pointer::hits_item_content(card.upcast_ref(), x, y) {
+    if super::pointer::hits_item_content(card.upcast_ref(), x, y)
+        || card
+            .pick(x, y, gtk::PickFlags::DEFAULT)
+            .is_some_and(|widget| widget.has_css_class("icons-card-icon-frame"))
+    {
         card.add_css_class("content-hover");
     } else {
         card.remove_css_class("content-hover");
