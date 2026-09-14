@@ -2,6 +2,8 @@
 
 use std::{fs, time::Duration};
 
+mod remote_preview;
+
 use super::*;
 use crate::services::{MediaPreviewSize, PreviewContent};
 
@@ -437,6 +439,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
             path: "clip.mp4".into(),
             size: MediaPreviewSize::new(520, 800),
             backend: MediaPreviewBackend::Software,
+            input_owner: None,
         },
     };
     cache.insert(key.clone(), content.clone());
@@ -465,7 +468,8 @@ fn preview_content_size_computes_accurately() {
             media: SandboxedMedia {
                 path: "clip.mp4".into(),
                 size: MediaPreviewSize::new(520, 800),
-                backend: MediaPreviewBackend::Software
+                backend: MediaPreviewBackend::Software,
+                input_owner: None,
             },
         }),
         0

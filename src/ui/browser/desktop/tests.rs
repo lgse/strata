@@ -102,3 +102,16 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[file]), None);
     assert_eq!(selected_terminal_location(&[]), None);
 }
+
+#[test]
+fn open_location_rejects_trash_locations() {
+    crate::test_support::gtk_test(
+        "ui::browser::desktop::tests::open_location_rejects_trash_locations",
+        || {
+            let overlay = gtk::Overlay::new();
+            let location = Location::uri("trash:///test.png");
+            open_location(&location, &overlay);
+            assert!(overlay.last_child().is_some());
+        },
+    );
+}

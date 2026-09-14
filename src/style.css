@@ -1866,9 +1866,10 @@ scrollbar slider:active {
   min-width: 22px;
 }
 
+/* Reserve the overlay scrollbar's width so it cannot cover device controls. */
 .sidebar {
   background: @theme_surface;
-  padding: 8px 7px;
+  padding: 8px 14px 8px 7px;
 }
 
 .sidebar-update {
@@ -1935,6 +1936,7 @@ scrollbar slider:active {
   box-shadow: none;
   color: @theme_text;
   min-height: 30px;
+  min-width: 0;
   outline: 1px solid transparent;
   outline-offset: -1px;
   padding: 3px 8px;
@@ -1950,13 +1952,26 @@ scrollbar slider:active {
 }
 
 .sidebar-row.active,
-.sidebar-row.active:hover {
+.sidebar-row.active:hover,
+.sidebar-device.active,
+.sidebar-device.active:hover {
   background: alpha(@theme_accent, 0.18);
   color: @theme_text;
 }
 
-.sidebar-row.active image {
+.sidebar-row.active image,
+.sidebar-device.active .sidebar-row image {
   color: @theme_accent;
+}
+
+.sidebar-device:hover {
+  background: alpha(@theme_accent, 0.15);
+}
+
+.sidebar-device:hover > .sidebar-row,
+.sidebar-device.active > .sidebar-row,
+.sidebar-device.active > .sidebar-row:hover {
+  background: transparent;
 }
 
 .sidebar-row.reorderable.dragging {
@@ -1975,15 +1990,34 @@ scrollbar slider:active {
   outline-offset: -1px;
 }
 
+.sidebar-device > .sidebar-row:focus,
+.sidebar-device > .sidebar-row:focus-visible {
+  outline-color: transparent;
+}
+
 .sidebar-row image {
   color: @theme_border;
 }
 
 .sidebar-device {
+  border-radius: 6px;
+  min-width: 0;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
   padding-right: 2px;
+  transition: background 220ms ease-out, outline-color 220ms ease-out;
 }
 
-.sidebar-eject {
+.sidebar-device.focused {
+  outline-color: @theme_accent;
+}
+
+.sidebar-device-actions {
+  min-width: 24px;
+}
+
+.sidebar-eject,
+.sidebar-device-action {
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -1995,12 +2029,14 @@ scrollbar slider:active {
   padding: 2px;
 }
 
-.sidebar-eject:hover {
+.sidebar-eject:hover,
+.sidebar-device-action:hover {
   background: alpha(@theme_accent, 0.15);
   opacity: 1;
 }
 
-.sidebar-eject:focus {
+.sidebar-eject:focus,
+.sidebar-device-action:focus {
   opacity: 1;
   outline: 1px solid @theme_accent;
   outline-offset: -1px;
@@ -2008,8 +2044,12 @@ scrollbar slider:active {
 
 .sidebar-separator {
   background: alpha(@theme_border, 0.24);
-  margin: 6px 4px;
+  background-image: none;
+  border: none;
+  /* Offset sidebar padding; min-width keeps measurement nonnegative. */
+  margin: 6px -14px 6px -7px;
   min-height: 1px;
+  min-width: 21px;
 }
 
 .sidebar-update-separator {
@@ -2032,11 +2072,6 @@ paned > separator {
   border-right: none;
 }
 
-/* The resize handle supplies four surface pixels of the trailing inset. */
-.sidebar-split .sidebar {
-  padding-right: 3px;
-}
-
 .sidebar-split .sidebar-update {
   margin-left: 4px;
   padding-left: 9px;
@@ -2048,10 +2083,10 @@ paned > separator {
 }
 
 .sidebar-split > separator {
-  padding: 0 2px;
+  padding: 0 2px 0 0;
   border: none;
   background: @theme_surface;
-  box-shadow: inset -1px 0 alpha(@theme_border, 0.6);
+  box-shadow: inset 1px 0 alpha(@theme_border, 0.6);
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */

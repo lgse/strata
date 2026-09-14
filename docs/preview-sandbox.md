@@ -14,6 +14,73 @@ parsing and decoding run inside bubblewrap, never in the application.
 - Plain text stays in-process, invokes no native format parser, and is capped at
   1 MiB.
 
+## Bundled interface icons
+
+Strata's bundled Lucide SVGs are trusted application resources, not browser files.
+They render directly to bounded in-memory pixels with `resvg`, avoiding synchronous
+GdkPixbuf/Glycin loader startup on the GTK thread during row binding and live theme
+changes. External and embedded image references are disabled; icon inputs and
+output dimensions are bounded. SVG text, system-font lookup, and raster-image
+features of this renderer are disabled. Emoji icons retain Pango/Cairo rendering
+but pass raw pixels to GTK instead of encoding and decoding an intermediate PNG.
+
+This renderer is not used for user SVGs, phone photos, or thumbnails of originals;
+those keep their existing sandbox boundary. No toolkit libraries or private media
+runtime patches are updated by this change.
+
+## Remote still-image previews
+
+Still images on GIO/GVfs locations (including phone camera, AFC, and MTP storage)
+can use the preview pane and Space quick preview. The application streams the
+selected original to a randomly named mode-0600 temporary file before invoking
+the same image sandbox as local files. Only a short alphanumeric extension is
+preserved; remote names never choose a local path. The displayed entry and its
+actions retain the original URI.
+
+Still-image transfers have a 64-MiB byte limit and a 30-second total deadline. Known
+oversized files are rejected before opening; the stream limit also applies when
+size metadata is missing or inaccurate. At most four transfers/staged originals
+can be active per process, including ones waiting for cancellation or decoding.
+A busy request fails with an explanatory message rather than starting another
+unbounded transfer. Downloads run off the GTK thread.
+
+Changing selection or closing the preview cancels GIO. A backend that is slow to
+acknowledge cancellation retains its slot until its worker exits. Partial files
+are removed on transfer failure; successful inputs remain owned by the decoder
+worker and are removed when it exits, even if the UI has already cancelled the
+request. Normal cleanup does not guarantee removal after a process crash or
+forced termination. Remote previews do not populate the persistent thumbnail
+cache or the in-memory rendered-preview cache, and originals are never modified.
+
+MOV and MP4 previews use the same staging boundary, with a 256-MiB byte limit
+and 60-second deadline, and share the four-input admission limit with images.
+Playback starts only after download completes. The sandboxed media descriptor
+retains the temporary file and its admission permit across player clones,
+seeks, resizing, and paused-worker restart. The final player/worker owner removes
+the input, including cancellation and decoder-error paths; no compressed input
+is handed to an in-process media parser.
+
+Remote PDFs, animated GIFs, audio, and other video formats remain unsupported:
+copy them locally first. In particular, remote PDF rendering/printing needs a shared document
+snapshot before it can safely request multiple pages without repeated downloads.
+Supported still-image formats continue to depend on installed sandbox decoder tools;
+HEIC/HEIF can use ImageMagick with libheif inside the image sandbox.
+
+### Camera file-list thumbnails
+
+Camera/PTP rows use the backend's `preview::icon` / `GLoadableIcon` interface.
+GVfs's gphoto2 implementation requests `GP_FILE_TYPE_PREVIEW`, not the original.
+Missing or failed previews leave the ordinary file icon; Strata does not fall
+back to downloading full photos for thumbnails.
+
+Retrieval is asynchronous, limited to 1 MiB and 15 seconds. These jobs share the
+existing four-worker, 64-waiting-job thumbnail queue and row-binding cancellation.
+The compressed preview is written to a random mode-0600 temporary file, decoded
+by the existing image-thumbnail sandbox, and removed after the decoder exits.
+Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded
+in-memory cache, never the persistent thumbnail cache. AFC and MTP file-list
+thumbnails are not enabled by this path.
+
 ## Media metadata
 
 File Properties shows available source-media details: image
@@ -205,8 +272,11 @@ Toolkit versions and the opt-in patches in
 The new player does not use the two patched `GtkGstSink`/`GstPlay` paths, but this
 change neither applies nor retires that patch kit or claims to fix all RAM growth.
 
-By explicit owner decision, the Ubuntu runtime-library alias problem
-[#806](https://github.com/lgse/strata/issues/806) remains outside this change.
-No additional filesystem mounts have been added to work around it. Affected
-installations still fail closed at sandbox startup, before this playback path can
-run; direct helper/GTK tests are not proof that this platform problem is fixed.
+The Ubuntu runtime-library alias problem tracked in
+[#806](https://github.com/lgse/strata/issues/806) was initially deferred. The sandbox
+now includes optional read-only binds of the BLAS/LAPACK alternatives used by
+media helpers on x86-64 and ARM64 Debian-family installations. This resolves their
+runtime links without exposing the whole `/etc/alternatives` directory or the
+rest of `/etc`. Canonical pinned-container HEIC, MOV,
+and MP4 preview tests exercise actual sandbox startup and decoding; installed
+systems still depend on their available codec libraries.

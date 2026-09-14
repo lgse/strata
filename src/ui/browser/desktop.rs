@@ -12,6 +12,14 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 pub(in crate::ui) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>) {
+    if is_trash_location(location) {
+        show_error_dialog(
+            parent,
+            "Unable to open item",
+            "Items in Trash cannot be opened",
+        );
+        return;
+    }
     let file = gio_file_for_location(location);
     if file.is_native() {
         report_open_result(

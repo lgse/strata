@@ -310,6 +310,7 @@ struct RecordingFileSource {
     request_count: Rc<Cell<usize>>,
 }
 
+mod camera_photos;
 mod relocation;
 
 type WatchCallback = Rc<dyn Fn(DirectoryChange)>;

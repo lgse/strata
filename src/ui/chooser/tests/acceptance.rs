@@ -10,6 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[track_caller]
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -48,6 +49,76 @@ fn select_first_two_file_list_items(widget: &gtk::Widget) {
     let mut child = widget.first_child();
     while let Some(current) = child {
         select_first_two_file_list_items(&current);
+        child = current.next_sibling();
+    }
+}
+
+fn select_first_file_list_item(widget: &gtk::Widget) {
+    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+        && list.has_css_class("file-list")
+        && list.is_mapped()
+        && let Some(selection) = list.model()
+        && selection.n_items() >= 1
+    {
+        selection.select_item(0, true);
+    }
+    if let Ok(list) = widget.clone().downcast::<gtk::ListBox>()
+        && list.has_css_class("file-list")
+        && list.is_mapped()
+        && let Some(row) = list.row_at_index(0)
+    {
+        list.select_row(Some(&row));
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        select_first_file_list_item(&current);
+        child = current.next_sibling();
+    }
+}
+
+fn select_first_file_list_item_in_first_list(widget: &gtk::Widget) -> bool {
+    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+        && list.has_css_class("file-list")
+        && list.is_mapped()
+        && let Some(selection) = list.model()
+        && selection.n_items() >= 1
+    {
+        selection.select_item(0, true);
+        return true;
+    }
+    if let Ok(list) = widget.clone().downcast::<gtk::ListBox>()
+        && list.has_css_class("file-list")
+        && list.is_mapped()
+        && let Some(row) = list.row_at_index(0)
+    {
+        list.select_row(Some(&row));
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if select_first_file_list_item_in_first_list(&current) {
+            return true;
+        }
+        child = current.next_sibling();
+    }
+    false
+}
+
+fn nth_filter_entry(widget: &gtk::Widget, index: usize) -> Option<gtk::Entry> {
+    let mut entries = Vec::new();
+    collect_filter_entries(widget, &mut entries);
+    entries.into_iter().nth(index)
+}
+
+fn collect_filter_entries(widget: &gtk::Widget, entries: &mut Vec<gtk::Entry>) {
+    if let Ok(entry) = widget.clone().downcast::<gtk::Entry>()
+        && entry.has_css_class("column-filter-entry")
+    {
+        entries.push(entry);
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        collect_filter_entries(&current, entries);
         child = current.next_sibling();
     }
 }
@@ -98,6 +169,328 @@ fn request(root: PathBuf) -> ChooserRequest {
 }
 
 #[test]
+fn filter_dropdown_select_file_click_open_accepts_filtered_file() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::filter_dropdown_select_file_click_open_accepts_filtered_file",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                ThemeManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                std::fs::write(root.path().join("readme.md"), "readme").expect("file");
+                std::fs::write(root.path().join("notes.txt"), "notes").expect("file");
+                let result = Rc::new(RefCell::new(None));
+                let received = result.clone();
+                let mut chooser_request = request(root.path().to_path_buf());
+                chooser_request.filters = vec![
+                    FileFilter::new("All files").glob("*"),
+                    FileFilter::new("Text").glob("*.txt"),
+                ];
+                let state = build_chooser(
+                    chooser_request,
+                    Arc::new(AtomicBool::new(false)),
+                    move |value| {
+                        received.replace(Some(value));
+                    },
+                )
+                .expect("chooser");
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 2)
+                });
+
+                {
+                    let dropdown = state.filter_dropdown.as_ref().expect("filter dropdown");
+                    let changed = dropdown.changed.borrow();
+                    changed.as_ref().expect("filter callback")(1);
+                }
+
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 1)
+                });
+
+                let selection = visible_collection_selection(&state.view.widget())
+                    .expect("visible browser collection");
+                selection.select_item(0, true);
+                wait_until(|| {
+                    browser.selected_entries().first().is_some_and(|entry| {
+                        entry.location == Location::local(root.path().join("notes.txt"))
+                    })
+                });
+
+                assert!(
+                    !state.error.is_visible(),
+                    "selecting a filtered file must not show an error: {mode:?}"
+                );
+                state.accept_button.emit_clicked();
+                wait_until(|| result.borrow().is_some());
+                let selected = result
+                    .borrow_mut()
+                    .take()
+                    .expect("result")
+                    .expect("accepted");
+                assert_eq!(selected.uris().len(), 1, "{mode:?}");
+                assert_eq!(
+                    selected.uris()[0].to_string(),
+                    gio::File::for_path(root.path().join("notes.txt")).uri(),
+                    "{mode:?}"
+                );
+                state.window.close();
+            }
+        },
+    );
+}
+
+#[test]
+fn filter_text_select_file_click_open_accepts_root_file() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::filter_text_select_file_click_open_accepts_root_file",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                ThemeManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                std::fs::write(root.path().join("readme.md"), "readme").expect("file");
+                std::fs::write(root.path().join("todo.txt"), "todo").expect("file");
+                let result = Rc::new(RefCell::new(None));
+                let received = result.clone();
+                let state = build_chooser(
+                    request(root.path().to_path_buf()),
+                    Arc::new(AtomicBool::new(false)),
+                    move |value| {
+                        received.replace(Some(value));
+                    },
+                )
+                .expect("chooser");
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 2)
+                });
+
+                assert!(state.view.show_filter_with_query("readme"));
+                wait_until(|| {
+                    select_first_file_list_item(&state.view.widget());
+                    state
+                        .view
+                        .selected_search_results()
+                        .is_some_and(|entries| !entries.is_empty())
+                });
+                assert!(
+                    !state.error.is_visible(),
+                    "selecting a root file must not show an error: {mode:?}"
+                );
+                if mode == BrowserMode::Columns {
+                    assert!(state.view.show_filter_with_query("no-matches"));
+                    wait_until(|| state.view.selected_search_results() == Some(Vec::new()));
+                    state.accept_button.grab_focus();
+                    state.accept_button.emit_clicked();
+                    assert!(result.borrow().is_none(), "no results must not accept");
+                    assert!(state.error.is_visible(), "no results must show an error");
+                    while glib::MainContext::default().pending() {
+                        glib::MainContext::default().iteration(false);
+                    }
+                    assert!(state.view.show_filter_with_query("readme"));
+                    wait_until(|| {
+                        select_first_file_list_item(&state.view.widget());
+                        state
+                            .view
+                            .selected_search_results()
+                            .is_some_and(|entries| entries.len() == 1)
+                    });
+                }
+                state.accept_button.emit_clicked();
+                wait_until(|| result.borrow().is_some());
+                let selected = result
+                    .borrow_mut()
+                    .take()
+                    .expect("result")
+                    .expect("accepted");
+                assert_eq!(selected.uris().len(), 1, "{mode:?}");
+                assert_eq!(
+                    selected.uris()[0].to_string(),
+                    gio::File::for_path(root.path().join("readme.md")).uri(),
+                    "{mode:?}"
+                );
+                state.window.close();
+            }
+        },
+    );
+}
+
+#[test]
+fn columns_filter_after_navigating_into_subfolder_accepts_search_result() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::columns_filter_after_navigating_into_subfolder_accepts_search_result",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_browser_mode(BrowserMode::Columns);
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("readme.md"), "readme").expect("file");
+            std::fs::create_dir(root.path().join("folder")).expect("folder");
+            std::fs::write(root.path().join("folder/notes.txt"), "notes").expect("nested file");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let state = build_chooser(
+                request(root.path().to_path_buf()),
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 2)
+            });
+
+            let folder_position = (0..2)
+                .find(|&position| {
+                    browser
+                        .entry_at(0, position)
+                        .is_some_and(|entry| entry.is_directory())
+                })
+                .expect("folder position");
+            browser.activate(0, folder_position);
+            wait_until(|| {
+                browser
+                    .column_snapshot(1)
+                    .is_some_and(|column| !column.loading && column.count == 1)
+            });
+
+            assert!(state.view.show_filter_with_query("notes"));
+            wait_until(|| {
+                select_first_file_list_item(&state.view.widget());
+                state
+                    .view
+                    .selected_search_results()
+                    .is_some_and(|entries| !entries.is_empty())
+            });
+            state.accept_button.grab_focus();
+            assert!(
+                !state.error.is_visible(),
+                "selecting a search result must not show an error"
+            );
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            assert_eq!(
+                selected.uris()[0].to_string(),
+                gio::File::for_path(root.path().join("folder/notes.txt")).uri()
+            );
+        },
+    );
+}
+
+#[test]
+fn columns_filter_in_non_active_column_accepts_search_result_on_open() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::columns_filter_in_non_active_column_accepts_search_result_on_open",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_browser_mode(BrowserMode::Columns);
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("readme.md"), "readme").expect("file");
+            std::fs::create_dir(root.path().join("folder")).expect("folder");
+            std::fs::write(root.path().join("folder/notes.txt"), "notes").expect("nested file");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let state = build_chooser(
+                request(root.path().to_path_buf()),
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 2)
+            });
+
+            let folder_position = (0..2)
+                .find(|&position| {
+                    browser
+                        .entry_at(0, position)
+                        .is_some_and(|entry| entry.is_directory())
+                })
+                .expect("folder position");
+            browser.activate(0, folder_position);
+            wait_until(|| {
+                browser
+                    .column_snapshot(1)
+                    .is_some_and(|column| !column.loading && column.count == 1)
+            });
+
+            browser.select(1, 0);
+            wait_until(|| {
+                browser.selected_entries().first().is_some_and(|entry| {
+                    entry.location == Location::local(root.path().join("folder/notes.txt"))
+                })
+            });
+            let root_filter_entry =
+                nth_filter_entry(&state.view.widget(), 0).expect("column 0 filter");
+            root_filter_entry.set_text("no-matches");
+            root_filter_entry.grab_focus_without_selecting();
+            wait_until(|| state.view.selected_search_results() == Some(Vec::new()));
+            state.accept_button.grab_focus();
+            while glib::MainContext::default().pending() {
+                glib::MainContext::default().iteration(false);
+            }
+            browser.select(1, 0);
+            assert_eq!(
+                browser.selected_entries()[0].location,
+                Location::local(root.path().join("folder/notes.txt"))
+            );
+            assert_eq!(state.view.selected_search_results(), Some(Vec::new()));
+            state.accept_button.emit_clicked();
+            assert!(
+                result.borrow().is_none(),
+                "empty search must not accept another column's file"
+            );
+            assert!(state.error.is_visible(), "empty search must show an error");
+
+            root_filter_entry.set_text("readme");
+            root_filter_entry.grab_focus_without_selecting();
+            wait_until(|| {
+                select_first_file_list_item_in_first_list(&state.view.widget());
+                state
+                    .view
+                    .selected_search_results()
+                    .is_some_and(|entries| !entries.is_empty())
+            });
+            state.accept_button.grab_focus();
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            assert_eq!(
+                selected.uris()[0].to_string(),
+                gio::File::for_path(root.path().join("readme.md")).uri()
+            );
+        },
+    );
+}
+
+#[test]
 fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path",
@@ -127,7 +520,7 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
                     .is_some_and(|column| !column.loading)
             });
 
-            state.view.show_filter_with_query("nested");
+            state.view.show_filter_with_query("nested*.TXT");
             wait_until(|| {
                 search_results_list(&state.view.widget())
                     .is_some_and(|list| list.row_at_index(1).is_some())
@@ -368,7 +761,13 @@ fn columns_recursive_multi_selection_accepts_every_selected_file() {
                     .is_some_and(|column| !column.loading)
             });
 
+            // Startup's deferred focus restoration must precede simulated filter input.
+            let initialized = Rc::new(Cell::new(false));
+            let initialized_at_idle = initialized.clone();
+            glib::idle_add_local_once(move || initialized_at_idle.set(true));
+            wait_until(|| initialized.get());
             state.view.show_filter_with_query("nested");
+            wait_until(|| state.view.selected_search_results().is_some());
             wait_until(|| {
                 select_first_two_file_list_items(&state.view.widget());
                 state

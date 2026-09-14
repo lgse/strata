@@ -8,11 +8,14 @@ use crate::{
 use std::rc::Rc;
 
 pub(crate) fn player(audio: bool, duration_us: u64) -> DecodedMedia {
+    let input = tempfile::NamedTempFile::new().expect("staged media fixture");
     let source = SandboxedMedia {
-        path: "/synthetic-media".into(),
+        path: input.path().to_path_buf(),
         size: MediaPreviewSize::new(160, 90),
         backend: MediaPreviewBackend::Software,
-    };
+        input_owner: None,
+    }
+    .retain_input(input);
     let player = DecodedMedia::new(source);
     use_test_decoder(&player, audio, duration_us);
     player
@@ -23,6 +26,12 @@ pub(crate) fn use_test_decoder(player: &DecodedMedia, audio: bool, duration_us: 
         .imp()
         .loader
         .replace(Some(Rc::new(move |source, start_tick| {
+            if source.input_owner.is_some() {
+                assert!(
+                    source.path.is_file(),
+                    "staged input must survive seeking and worker restart"
+                );
+            }
             stream(Header {
                 width: source.size.width as u32,
                 height: source.size.height as u32,
@@ -103,6 +112,14 @@ fn paused_idle_releases_worker_and_resumes_at_retained_frame_position() {
         || {
             for duration in [60_000_000, media::MAX_DURATION_US] {
                 let player = player(true, duration);
+                let staged_path = player
+                    .imp()
+                    .source
+                    .borrow()
+                    .as_ref()
+                    .expect("source")
+                    .path
+                    .clone();
                 player.play();
                 wait(|| player.timestamp() > 150_000);
                 player.pause();
@@ -117,6 +134,10 @@ fn paused_idle_releases_worker_and_resumes_at_retained_frame_position() {
                 player.imp().paused.set(Some(Instant::now() - PAUSED_IDLE));
                 player.tick().expect("idle cleanup");
                 assert!(player.imp().dormant.get());
+                assert!(
+                    staged_path.is_file(),
+                    "idle teardown must retain the source for resume"
+                );
                 assert!(player.imp().session.borrow().is_none());
                 assert!(player.imp().audio.borrow().is_none());
                 assert_eq!(player.imp().texture.borrow().as_ref(), Some(&texture));
@@ -135,6 +156,7 @@ fn paused_idle_releases_worker_and_resumes_at_retained_frame_position() {
                     assert_eq!(player.duration(), 0);
                     assert!(!player.is_seekable());
                     player.close();
+                    assert!(!staged_path.exists(), "closed player releases staged input");
                     continue;
                 }
                 player.pause();
@@ -150,6 +172,7 @@ fn paused_idle_releases_worker_and_resumes_at_retained_frame_position() {
                 wait(|| player.timestamp() as u64 > 2_100_000);
                 assert!(player.error().is_none());
                 player.close();
+                assert!(!staged_path.exists(), "closed player releases staged input");
             }
         },
     );

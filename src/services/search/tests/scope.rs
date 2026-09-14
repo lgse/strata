@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::services::search::index_filter;
+use crate::services::search::{
+    SearchCoverage, SharedIndex, append_index_items, filter_score_normalized, index_filter,
+    start_search_session,
+};
+use std::sync::Arc;
 
 #[test]
 fn directory_filter_keeps_immediate_files_and_folders_without_traversing_children() {
@@ -36,6 +40,100 @@ fn directory_filter_keeps_immediate_files_and_folders_without_traversing_childre
                 .any(|item| item.name == "needle-folder" && item.is_directory)
         );
     }
+}
+
+#[test]
+fn wildcard_filters_match_basenames_within_the_selected_scope() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = fixture.path();
+    for name in [
+        "clip.MOV",
+        "IMG_001.MOV",
+        "IMG_001.jpg",
+        "clip.MOV.bak",
+        ".hidden.MOV",
+        "album.MOV/nested.txt",
+        "album.MOV/deep.MOV",
+    ] {
+        fixture_file(root, name);
+    }
+    for recursive in [false, true] {
+        let (search, events) = index_filter(root.to_path_buf(), false, recursive);
+        for (query, mut expected) in [
+            ("*.MOV", vec!["album.MOV", "clip.MOV", "IMG_001.MOV"]),
+            ("IMG*", vec!["IMG_001.MOV", "IMG_001.jpg"]),
+            ("IMG*.MOV", vec!["IMG_001.MOV"]),
+            (
+                "*",
+                vec![
+                    "album.MOV",
+                    "clip.MOV",
+                    "IMG_001.MOV",
+                    "IMG_001.jpg",
+                    "clip.MOV.bak",
+                ],
+            ),
+            ("*.MISSING", vec![]),
+            (
+                "MOV",
+                vec!["album.MOV", "clip.MOV", "IMG_001.MOV", "clip.MOV.bak"],
+            ),
+        ] {
+            if recursive {
+                match query {
+                    "*.MOV" => expected.push("album.MOV/deep.MOV"),
+                    "*" | "MOV" => expected.extend(["album.MOV/nested.txt", "album.MOV/deep.MOV"]),
+                    _ => {}
+                }
+            }
+            search.query(query);
+            let SearchEvent::Results {
+                query: returned,
+                items,
+                indexing,
+                coverage,
+            } = wait_for_results(&events).expect("filter results");
+            assert_eq!(returned, query);
+            assert!(!indexing);
+            assert!(!coverage.is_partial());
+            let actual: HashSet<_> = items.iter().map(|item| item.path.clone()).collect();
+            let expected: HashSet<_> = expected.into_iter().map(|name| root.join(name)).collect();
+            assert_eq!(actual, expected, "recursive={recursive}, query={query}");
+        }
+    }
+    let (search, events) = index_filter(root.to_path_buf(), true, false);
+    search.query("*.MOV");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("hidden results");
+    assert!(items.iter().any(|item| item.name == ".hidden.MOV"));
+}
+
+#[test]
+fn wildcard_scoring_is_session_local_and_applies_to_new_index_batches() {
+    let index = Arc::new(SharedIndex::new());
+    let (filter, events) = start_search_session(index.clone(), filter_score_normalized);
+    filter.query("*.MOV");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("empty index");
+    assert!(items.is_empty());
+    let mut batch: Vec<_> = ["clip.MOV", "clip.MOV.bak", "*.MOV", "IMG_001.jpg"]
+        .into_iter()
+        .map(|name| SearchItem::for_test(PathBuf::from("/fixture").join(name), false))
+        .collect();
+    append_index_items(&index, &mut batch, false, SearchCoverage::default());
+    index.broadcast_change();
+    let SearchEvent::Results { items, .. } =
+        wait_for_results(&events).expect("incremental results");
+    let expected = items;
+    assert_eq!(expected.len(), 2);
+    filter.query("*.MOV");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("rescored results");
+    assert_eq!(items, expected);
+
+    let (global, global_events) = start_search_session(index, fuzzy_score_normalized);
+    global.query("*.MOV");
+    let SearchEvent::Results { items, .. } =
+        wait_for_results(&global_events).expect("global results");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "*.MOV");
 }
 
 #[test]
