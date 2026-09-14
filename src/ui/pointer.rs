@@ -39,6 +39,7 @@ pub(super) fn hits_item_content(surface: &gtk::Widget, x: f64, y: f64) -> bool {
         if widget.is::<super::thumbnail::ThumbnailSlot>()
             || widget.is::<gtk::Image>()
             || widget.is::<gtk::Inscription>()
+            || widget.has_css_class("icons-card-icon-frame")
         {
             return true;
         }
