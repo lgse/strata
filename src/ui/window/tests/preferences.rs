@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::{home_directory, startup_location};
 use super::*;
 use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount};
 
@@ -165,6 +166,58 @@ auto_refresh_interval = 600
                 std::fs::read_to_string(path).expect("unchanged preferences"),
                 saved
             );
+        },
+    );
+}
+
+#[test]
+fn startup_directory_loads_without_settings_and_clears_stale_paths() {
+    gtk_test(
+        "ui::window::tests::preferences::startup_directory_loads_without_settings_and_clears_stale_paths",
+        || {
+            let directory = tempfile::tempdir().expect("startup fixture");
+            let chosen = directory.path().join("chosen");
+            std::fs::create_dir(&chosen).expect("chosen folder");
+            let config = glib::user_config_dir().join("strata/settings.toml");
+            std::fs::create_dir_all(config.parent().expect("config parent"))
+                .expect("config directory");
+            let saved = toml::Table::from_iter([(
+                "default_directory".into(),
+                toml::Value::String(chosen.to_str().expect("UTF-8 fixture path").into()),
+            )]);
+            std::fs::write(
+                &config,
+                toml::to_string(&saved).expect("serialized preferences"),
+            )
+            .expect("saved preferences");
+            let manager = ThemeManager::shared();
+            assert_eq!(startup_location(&manager), Location::local(&chosen));
+            std::fs::remove_dir(&chosen).expect("remove chosen folder");
+            assert_eq!(
+                startup_location(&manager),
+                Location::local(home_directory())
+            );
+            assert_eq!(manager.default_directory(), None);
+            let persisted: toml::Table = std::fs::read_to_string(&config)
+                .expect("persisted preferences")
+                .parse()
+                .expect("valid preferences");
+            assert!(!persisted.contains_key("default_directory"));
+            std::fs::create_dir(&chosen).expect("recreate chosen folder");
+            assert_eq!(
+                startup_location(&manager),
+                Location::local(home_directory())
+            );
+            manager.set_default_directory(Some(chosen.clone()));
+            assert_eq!(startup_location(&manager), Location::local(&chosen));
+            let file = directory.path().join("not-a-directory");
+            std::fs::write(&file, "fixture").expect("regular file fixture");
+            manager.set_default_directory(Some(file));
+            assert_eq!(
+                startup_location(&manager),
+                Location::local(home_directory())
+            );
+            assert_eq!(manager.default_directory(), None);
         },
     );
 }
