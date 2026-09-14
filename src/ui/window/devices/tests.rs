@@ -1,6 +1,174 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use gtk::gio::DriveStartStopType;
+
+#[test]
+fn encrypted_device_detection() {
+    let none = BlockCryptoRef::default();
+    assert!(is_encrypted_device(
+        &["drive-harddisk-usb", "changes-prevent"],
+        None,
+        none
+    ));
+    assert!(is_encrypted_device(
+        &["changes-allow-symbolic"],
+        Some(DriveStartStopType::Shutdown),
+        none
+    ));
+    assert!(is_encrypted_device(
+        &["drive-harddisk-encrypted-symbolic"],
+        None,
+        none
+    ));
+    assert!(!is_encrypted_device(
+        &["drive-harddisk-usb", "drive-harddisk"],
+        Some(DriveStartStopType::Shutdown),
+        none
+    ));
+    assert!(is_encrypted_device(
+        &["drive-harddisk"],
+        Some(DriveStartStopType::Shutdown),
+        BlockCryptoRef {
+            dm_uuid: Some("CRYPT-LUKS2-abc-root"),
+            ..BlockCryptoRef::default()
+        }
+    ));
+    assert!(!is_encrypted_device(
+        &["drive-harddisk"],
+        Some(DriveStartStopType::Shutdown),
+        BlockCryptoRef {
+            dm_uuid: Some("LVM-abc"),
+            ..BlockCryptoRef::default()
+        }
+    ));
+    assert!(is_encrypted_device(
+        &["drive-harddisk-usb"],
+        Some(DriveStartStopType::Shutdown),
+        BlockCryptoRef {
+            id_fs_usage: Some("crypto"),
+            id_fs_type: Some("crypto_LUKS"),
+            ..BlockCryptoRef::default()
+        }
+    ));
+    assert!(!is_encrypted_device(
+        &["drive-harddisk-usb"],
+        Some(DriveStartStopType::Shutdown),
+        BlockCryptoRef {
+            id_fs_usage: Some("filesystem"),
+            id_fs_type: Some("ext4"),
+            ..BlockCryptoRef::default()
+        }
+    ));
+}
+
+#[test]
+fn padlock_emblem_decides_lock_state() {
+    assert!(encrypted_device_is_locked(&["changes-prevent"], true));
+    assert!(!encrypted_device_is_locked(&["changes-allow"], false));
+    assert!(encrypted_device_is_locked(
+        &["drive-harddisk-encrypted"],
+        false
+    ));
+    assert!(!encrypted_device_is_locked(
+        &["drive-harddisk-encrypted"],
+        true
+    ));
+}
+
+#[test]
+fn missing_unix_device_has_no_crypto_hint() {
+    assert_eq!(
+        probe_block_crypto("/dev/this-device-does-not-exist-537"),
+        BlockCryptoHint::default()
+    );
+}
+
+#[test]
+fn luks_uuid_from_mapper_and_dm() {
+    assert_eq!(
+        luks_uuid_from_dm_uuid(
+            "CRYPT-LUKS2-6e5d75a7e4e24c7d9c1c8e5a5e5d75a7-luks-6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7"
+        )
+        .as_deref(),
+        Some("6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7")
+    );
+    assert_eq!(
+        luks_uuid_from_dm_uuid("CRYPT-LUKS1-AABBCCDDEEFF00112233445566778899-crypt").as_deref(),
+        Some("aabbccdd-eeff-0011-2233-445566778899")
+    );
+    assert_eq!(luks_uuid_from_dm_uuid("LVM-abc"), None);
+    assert_eq!(luks_uuid_from_dm_uuid("CRYPT-PLAIN-abc"), None);
+    assert_eq!(
+        luks_uuid_from_unix_device("/dev/mapper/luks-6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7")
+            .as_deref(),
+        Some("6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7")
+    );
+    assert_eq!(luks_uuid_from_unix_device("/dev/dm-0"), None);
+}
+
+#[test]
+fn crypto_password_uuid_prefers_mapper_over_filesystem() {
+    let unlocked = BlockCryptoRef {
+        dm_uuid: Some("CRYPT-LUKS2-6e5d75a7e4e24c7d9c1c8e5a5e5d75a7-crypt"),
+        ..BlockCryptoRef::default()
+    };
+    assert_eq!(
+        crypto_password_uuid(
+            Some("11111111-2222-3333-4444-555555555555"),
+            Some("/dev/dm-0"),
+            unlocked,
+            false
+        )
+        .as_deref(),
+        Some("6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7")
+    );
+    assert_eq!(
+        crypto_password_uuid(
+            Some("11111111-2222-3333-4444-555555555555"),
+            Some("/dev/dm-0"),
+            BlockCryptoRef::default(),
+            false
+        ),
+        None
+    );
+    assert_eq!(
+        crypto_password_uuid(
+            Some("6E5D75A7-E4E2-4C7D-9C1C-8E5A5E5D75A7"),
+            Some("/dev/sdb1"),
+            BlockCryptoRef::default(),
+            true
+        )
+        .as_deref(),
+        Some("6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7")
+    );
+}
+
+#[test]
+fn orphaned_password_drive_listing_uses_production_filter() {
+    let covered = vec!["/dev/loop0".to_owned()];
+    assert!(
+        password_drive_is_orphaned(DriveStartStopType::Password, Some("/dev/sdb"), &[], false),
+        "uncovered password drive should stay in the listing"
+    );
+    assert!(
+        !password_drive_is_orphaned(
+            DriveStartStopType::Password,
+            Some("/dev/loop0"),
+            &covered,
+            false
+        ),
+        "a volume with the same identity should omit the password drive"
+    );
+    assert!(
+        !password_drive_is_orphaned(DriveStartStopType::Password, Some("/dev/sdb"), &[], true),
+        "a volume that claims the drive should omit the password drive"
+    );
+    assert!(
+        !password_drive_is_orphaned(DriveStartStopType::Shutdown, Some("/dev/sr0"), &[], false),
+        "non-password drives are not listed as orphaned unlock targets"
+    );
+}
 
 #[test]
 fn global_search_always_includes_home_and_all_mounted_drives() {

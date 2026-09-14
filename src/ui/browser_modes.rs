@@ -884,6 +884,12 @@ impl ModeViews {
         self.rebuild_icons();
     }
 
+    fn grouping_for_snapshot(&self, snapshot: &BrowserColumnSnapshot) -> bool {
+        // GTK 4.22 can abort in gtk_list_item_manager_ensure_items when a
+        // sectioned list receives interleaved camera batches while scrolling.
+        self.group_by_type && !(snapshot.loading && snapshot.location.is_camera_photo_root())
+    }
+
     fn prepare_list(&mut self) {
         let Some(depth) = self.browser.active_depth() else {
             self.clear_list();
@@ -895,7 +901,7 @@ impl ModeViews {
         if let Some(pane) = self.list_pane.as_ref()
             && pane.depth == depth
             && pane.location.as_ref() == Some(&snapshot.location)
-            && pane.group_by_type == self.group_by_type
+            && pane.group_by_type == self.grouping_for_snapshot(&snapshot)
             && pane.sorting.as_ref().map(|sorting| sorting.get())
                 == self
                     .browser
@@ -1397,7 +1403,7 @@ impl ModeViews {
             ListOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
-                group_by_type: self.group_by_type,
+                group_by_type: self.grouping_for_snapshot(&snapshot),
             },
             depth,
             &snapshot.location.display_name(),
@@ -1531,6 +1537,7 @@ struct IconsControls {
 pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
         .placeholder_text("Filter items…")
+        .tooltip_text("Filter by name. Use * for any characters: *.png, IMG*, or IMG*.png.")
         .has_frame(false)
         .hexpand(true)
         .build();
@@ -3890,7 +3897,9 @@ fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Brows
     pane.truncated_hint.set_visible(snapshot.truncated);
     if snapshot.loading {
         pane.spinner.start();
-        pane.loading.start();
+        if snapshot.count == 0 || !snapshot.location.is_camera_photo_root() {
+            pane.loading.start();
+        }
     } else {
         pane.spinner.stop();
         if let Some(message) = snapshot.error.as_deref() {

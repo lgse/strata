@@ -33,7 +33,7 @@ pub use preview::{
 };
 pub(crate) use preview::{
     content_family, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
-    is_media_path, is_non_executable_extensionless_dotfile,
+    is_media_path, is_non_executable_extensionless_dotfile, supports_remote_video,
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
@@ -46,8 +46,8 @@ pub(crate) use transfer_action::{
 // reachable from UI code.
 pub(crate) use release_channel::{BuildKind, Channel, Version};
 pub(crate) use search::{
-    SearchCoverage, SearchEvent, SearchHandle, SearchItem, fold_for_search, index_filter,
-    index_tree, index_trees,
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, filter_name_matches, fold_for_search,
+    index_filter, index_tree, index_trees,
 };
 pub(crate) use update_check::{
     ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,

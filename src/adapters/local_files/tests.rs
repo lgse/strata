@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod browse;
 mod trash;
 
 use std::{
@@ -11,6 +12,7 @@ use std::{
         ffi::{OsStrExt, OsStringExt},
         fs::PermissionsExt,
     },
+    process::Command,
     sync::{Arc, Mutex, MutexGuard},
     time::{Instant, SystemTime},
 };
@@ -194,19 +196,6 @@ fn missing_optional_attributes_use_safe_defaults() {
 
     info.set_attribute_uint32(gio::FILE_ATTRIBUTE_UNIX_MODE, 0);
     assert_eq!(info_mode(&info), MetadataValue::Known(0));
-}
-
-#[test]
-fn unmounted_network_shares_are_treated_as_directories() {
-    let info = gio::FileInfo::new();
-    info.set_file_type(gio::FileType::Mountable);
-    info.set_name("share");
-    info.set_display_name("share");
-
-    let entry = entry_from_info(Location::uri("smb://host/share"), info);
-
-    assert_eq!(entry.kind, EntryKind::Directory);
-    assert!(entry.is_directory());
 }
 
 #[test]
@@ -1163,7 +1152,7 @@ fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> 
         _ => None,
     });
     assert_eq!(duration, Some(MetadataValue::Known(2)));
-    assert_eq!(media_duration_probe_count(&path), 1);
+    assert_eq!(media_metadata_probe_count(&path), 1);
 
     let revisited_entries = batched_entries(&run_enumerate(DirectoryRequest {
         id: RequestId(2),
@@ -1194,7 +1183,7 @@ fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> 
         _ => None,
     });
     assert_eq!(revisited_duration, Some(MetadataValue::Known(2)));
-    assert_eq!(media_duration_probe_count(&path), 1);
+    assert_eq!(media_metadata_probe_count(&path), 1);
 
     let status = Command::new("ffmpeg")
         .args([
@@ -1229,7 +1218,7 @@ fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> 
         _ => None,
     });
     assert_eq!(changed_duration, Some(MetadataValue::Known(3)));
-    assert_eq!(media_duration_probe_count(&path), 2);
+    assert_eq!(media_metadata_probe_count(&path), 2);
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
     Ok(())
 }

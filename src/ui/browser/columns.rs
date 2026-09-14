@@ -486,7 +486,12 @@ impl ViewState {
                 cancel_column_spinner(column);
                 column.spinner.set_visible(true);
                 column.spinner.start();
-                column.presentation.show_loading();
+                if snapshot.count > 0 && snapshot.location.is_camera_photo_root() {
+                    column.presentation.show_content();
+                    set_column_busy(column, false);
+                } else {
+                    column.presentation.show_loading();
+                }
             } else {
                 // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
                 stop_column_spinner(column);

@@ -63,6 +63,24 @@ including spaces around a nonblank name, hidden-file prefixes, and Unicode.
 Name conflicts, filesystem-specific limits, and permission errors retain the
 original item and report an error.
 
+## Filename patterns while filtering
+
+Use **Ctrl+F** to filter a pane. Plain text keeps its existing matching behavior.
+Add `*` to match a whole filename, ignoring case:
+
+- `*.MOV` matches `clip.MOV`, but not `clip.MOV.bak`.
+- `IMG*` matches names beginning with `IMG`.
+- `IMG*.MOV` combines a prefix and an extension.
+- `*holiday*` matches names containing `holiday`; `*` matches any name.
+
+Each `*` stands for zero or more characters. Other punctuation (including `?`,
+`[]`, and regex syntax) is literal. Patterns match file and folder names, not
+parent paths, in Columns, Icons, List, and the file chooser. Hidden-file visibility
+and [Include subfolders](preferences.md#filter-scope) still control the scope;
+a wildcard does not enable recursive search. Existing result limits still apply.
+Clear the input or press Escape to restore the directory listing. **Ctrl+K**
+global fuzzy search is unchanged.
+
 ## Preview while filtering
 
 In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.

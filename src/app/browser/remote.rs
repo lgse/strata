@@ -59,12 +59,16 @@ impl RemoteState {
         }
     }
 
-    pub(super) fn take_chunk(&mut self, depth: usize) -> Option<(RequestId, Vec<FileEntry>)> {
+    pub(super) fn take_chunk(
+        &mut self,
+        depth: usize,
+        limit: usize,
+    ) -> Option<(RequestId, Vec<FileEntry>)> {
         self.pending.get_mut(&depth).and_then(|slot| {
             if slot.1.is_empty() {
                 return None;
             }
-            let take = slot.1.len().min(super::REMOTE_FLUSH_CAP);
+            let take = slot.1.len().min(limit);
             Some((slot.0, slot.1.drain(..take).collect()))
         })
     }
@@ -130,7 +134,10 @@ impl Browser {
         entries: Vec<FileEntry>,
     ) {
         let full = self.remote.borrow_mut().queue(request_id, depth, entries);
-        if full {
+        let camera = self
+            .location_at(depth)
+            .is_some_and(|location| location.is_camera_photo_root());
+        if full && !camera {
             self.flush_coalesced_capped(Some(depth));
         } else {
             self.arm_remote_flush_timer();
@@ -141,7 +148,15 @@ impl Browser {
         let depths = self.remote.borrow().depths(depth);
         for &depth in &depths {
             self.drain_publish(depth);
-            let chunk = self.remote.borrow_mut().take_chunk(depth);
+            let limit = if self
+                .location_at(depth)
+                .is_some_and(|location| location.is_camera_photo_root())
+            {
+                super::CAMERA_FLUSH_CAP
+            } else {
+                super::REMOTE_FLUSH_CAP
+            };
+            let chunk = self.remote.borrow_mut().take_chunk(depth, limit);
             if let Some((request_id, entries)) = chunk {
                 self.apply_owned_batch(request_id, entries);
             }
@@ -210,13 +225,18 @@ impl Browser {
             return;
         }
         let weak: Weak<Self> = Rc::downgrade(self);
-        let source = gio::glib::timeout_add_local_once(super::REMOTE_FLUSH_DELAY, move || {
-            if let Some(browser) = weak.upgrade() {
-                // Disarm before flushing: a fired source cannot be removed.
-                browser.remote.borrow_mut().take_timer();
-                browser.flush_coalesced_capped(None);
-            }
-        });
+        let source = gio::glib::timeout_add_local_full(
+            super::REMOTE_FLUSH_DELAY,
+            gio::glib::Priority::DEFAULT_IDLE,
+            move || {
+                if let Some(browser) = weak.upgrade() {
+                    // Disarm before flushing: a fired source cannot be removed.
+                    browser.remote.borrow_mut().take_timer();
+                    browser.flush_coalesced_capped(None);
+                }
+                gio::glib::ControlFlow::Break
+            },
+        );
         self.remote.borrow_mut().set_timer(source);
     }
 

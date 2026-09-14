@@ -274,5 +274,3 @@ def test_open_with_incompatible_types_offers_other_apps(incompatible_files, stra
     assert "Review Text Viewer" in dump
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "the chooser to close")
-
-

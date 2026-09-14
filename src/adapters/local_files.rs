@@ -7,7 +7,6 @@ use std::{
     io::ErrorKind,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     rc::Rc,
     sync::{
         Mutex, OnceLock,
@@ -29,7 +28,9 @@ use crate::{
     },
 };
 
-const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash,access::can-delete";
+mod camera_photos;
+
+const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::target-uri,access::can-trash,access::can-delete";
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
@@ -277,16 +278,25 @@ pub(crate) async fn query_file_entry(location: Location) -> Result<FileEntry, gl
 }
 
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
+    let location = if matches!(
+        info.file_type(),
+        gio::FileType::Shortcut | gio::FileType::Mountable
+    ) {
+        info.attribute_string(gio::FILE_ATTRIBUTE_STANDARD_TARGET_URI)
+            .and_then(|uri| location_for_file(&gio::File::for_uri(&uri)))
+            .unwrap_or(location)
+    } else {
+        location
+    };
     let native_name = info.name().into_os_string();
     let kind = match (info.file_type(), info_is_symlink(&info)) {
         (gio::FileType::Directory, true) => EntryKind::DirectorySymbolicLink,
         (gio::FileType::Regular, true) => EntryKind::FileSymbolicLink,
-        // GVfs reports unmounted browsable children (an smb:// host's shares, a
-        // "Connect to Server" bookmark, ...) as `Mountable` rather than
-        // `Directory`. Treat them as directories so activation descends into
-        // them (and can trigger the mount-and-retry flow) instead of asking
-        // the desktop to "open" the location in a new application instance.
-        (gio::FileType::Directory | gio::FileType::Mountable, false) => EntryKind::Directory,
+        // GVfs browse entries must use directory navigation, including mount-and-retry,
+        // rather than launching the desktop's URI handler.
+        (gio::FileType::Directory | gio::FileType::Shortcut | gio::FileType::Mountable, false) => {
+            EntryKind::Directory
+        }
         (gio::FileType::Regular, false) => EntryKind::File,
         (gio::FileType::SymbolicLink, _) => EntryKind::SymbolicLink,
         _ => EntryKind::Other,
@@ -638,6 +648,9 @@ impl FileSource for LocalFileSource {
         if let Some(path) = location.native_path() {
             return enumerate_native(request, emit, started, path.to_path_buf());
         }
+        if location.is_camera_photo_root() {
+            return camera_photos::enumerate(request, emit);
+        }
 
         let task = glib::MainContext::default().spawn_local(async move {
             let directory = gio_file_for_location(&location);
@@ -965,6 +978,11 @@ impl FileSource for LocalFileSource {
                 }
                 _ => Some(PendingMonitorChange::Rescan),
             };
+            let change = if watched.is_camera_photo_root() {
+                Some(PendingMonitorChange::Rescan)
+            } else {
+                change
+            };
             let Some(change) = change else {
                 return;
             };
@@ -1182,93 +1200,49 @@ fn fill_parallel_with(
 }
 
 #[cfg(test)]
-fn media_duration_probe_counts() -> &'static Mutex<HashMap<PathBuf, usize>> {
+fn media_metadata_probe_counts() -> &'static Mutex<HashMap<PathBuf, usize>> {
     static COUNTS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
     COUNTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 #[cfg(test)]
-fn media_duration_probe_count(path: &Path) -> usize {
-    media_duration_probe_counts()
+fn media_metadata_probe_count(path: &Path) -> usize {
+    media_metadata_probe_counts()
         .lock()
         .ok()
         .and_then(|counts| counts.get(path).copied())
         .unwrap_or(0)
 }
 
-enum DurationProbe {
-    Known(u64),
-    Unavailable,
-    Interrupted,
-}
-
-fn parse_media_duration(output: &[u8]) -> Option<u64> {
-    let seconds = std::str::from_utf8(output)
-        .ok()?
-        .trim()
-        .parse::<f64>()
-        .ok()?;
-    (seconds.is_finite() && seconds >= 0.0).then(|| seconds.round() as u64)
-}
-
-fn probe_media_duration(
+fn probe_sandboxed_media_metadata(
     path: &Path,
-    cancellable: &gio::Cancellable,
-    deadline: Instant,
-) -> DurationProbe {
-    #[cfg(test)]
-    if let Ok(mut counts) = media_duration_probe_counts().lock() {
-        *counts.entry(path.to_path_buf()).or_default() += 1;
-    }
-    let mut child = match Command::new("ffprobe")
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-        ])
-        .arg(path)
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .stdout(Stdio::piped())
-        .spawn()
+    image: bool,
+) -> Result<crate::sandbox::metadata::MediaMetadata, String> {
+    #[cfg(not(test))]
     {
-        Ok(child) => child,
-        Err(_) => return DurationProbe::Unavailable,
-    };
-    let probe_deadline = deadline.min(Instant::now() + Duration::from_secs(2));
-    loop {
-        if cancellable.is_cancelled() || Instant::now() >= probe_deadline {
-            let interrupted = cancellable.is_cancelled() || Instant::now() >= deadline;
-            let _ = child.kill();
-            let _ = child.wait();
-            return if interrupted {
-                DurationProbe::Interrupted
-            } else {
-                DurationProbe::Unavailable
-            };
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                if !status.success() {
-                    return DurationProbe::Unavailable;
-                }
-                return child
-                    .wait_with_output()
-                    .ok()
-                    .and_then(|output| parse_media_duration(&output.stdout))
-                    .map(DurationProbe::Known)
-                    .unwrap_or(DurationProbe::Unavailable);
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(5)),
-            Err(_) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return DurationProbe::Unavailable;
-            }
-        }
+        let cancellation = crate::sandbox::Cancellation::default();
+        crate::sandbox::parse(
+            path,
+            crate::sandbox::ParseOperation::MediaMetadata,
+            0,
+            crate::sandbox::MediaPreviewBackend::Software,
+            &cancellation,
+        )
+        .and_then(|output| crate::sandbox::metadata::MediaMetadata::from_json(&output.data, image))
+    }
+    #[cfg(test)]
+    {
+        let output_dir = tempfile::tempdir().map_err(|error| error.to_string())?;
+        let output_path = output_dir.path().join("result.json");
+        crate::sandbox_helper::run(&[
+            "media-metadata".to_owned(),
+            path.to_string_lossy().into_owned(),
+            output_path.to_string_lossy().into_owned(),
+            "0".to_owned(),
+            "software".to_owned(),
+        ])?;
+        let data = std::fs::read(&output_path).map_err(|error| error.to_string())?;
+        crate::sandbox::metadata::MediaMetadata::from_json(&data, image)
     }
 }
 
@@ -1321,23 +1295,35 @@ fn fill_icon_details(
     if cancellable.is_cancelled() || Instant::now() >= deadline {
         return false;
     }
-    update.image_dimensions = if info.file_type() == gio::FileType::Regular && is_image_path(path) {
-        gdk_pixbuf::Pixbuf::file_info(path)
-            .filter(|(_, width, height)| *width > 0 && *height > 0)
-            .map(|(_, width, height)| MetadataValue::Known((width as u32, height as u32)))
-            .unwrap_or(MetadataValue::Unavailable)
-    } else {
-        MetadataValue::Unavailable
-    };
-    update.duration_seconds = if info.file_type() == gio::FileType::Regular && is_media_path(path) {
-        match probe_media_duration(path, cancellable, deadline) {
-            DurationProbe::Known(seconds) => MetadataValue::Known(seconds),
-            DurationProbe::Unavailable => MetadataValue::Unavailable,
-            DurationProbe::Interrupted => return false,
+    let needs_metadata =
+        info.file_type() == gio::FileType::Regular && (is_image_path(path) || is_media_path(path));
+    if needs_metadata {
+        #[cfg(test)]
+        if let Ok(mut counts) = media_metadata_probe_counts().lock() {
+            *counts.entry(path.to_path_buf()).or_default() += 1;
+        }
+        let image = is_image_path(path);
+        match probe_sandboxed_media_metadata(path, image) {
+            Ok(metadata) => {
+                update.image_dimensions = metadata
+                    .dimensions
+                    .map(MetadataValue::Known)
+                    .unwrap_or(MetadataValue::Unavailable);
+                update.duration_seconds = metadata
+                    .duration
+                    .filter(|d| *d > 0.0)
+                    .map(|d| MetadataValue::Known(d.round() as u64))
+                    .unwrap_or(MetadataValue::Unavailable);
+            }
+            Err(_) => {
+                update.image_dimensions = MetadataValue::Unavailable;
+                update.duration_seconds = MetadataValue::Unavailable;
+            }
         }
     } else {
-        MetadataValue::Unavailable
-    };
+        update.image_dimensions = MetadataValue::Unavailable;
+        update.duration_seconds = MetadataValue::Unavailable;
+    }
     cache_icon_details(path, fingerprint, update);
     true
 }

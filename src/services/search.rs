@@ -285,6 +285,11 @@ impl SharedIndex {
 }
 
 mod directory;
+mod pattern;
+
+pub(crate) use pattern::filter_name_matches;
+
+type SearchScorer = fn(&SearchItem, &str) -> Option<i64>;
 
 type IndexRegistry = HashMap<(Vec<PathBuf>, bool, bool), Weak<SharedIndex>>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
@@ -322,7 +327,12 @@ pub fn index_filter(
     show_hidden: bool,
     include_subfolders: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(vec![root], show_hidden, include_subfolders)
+    index_scoped(
+        vec![root],
+        show_hidden,
+        include_subfolders,
+        filter_score_normalized,
+    )
 }
 
 /// Concurrent sessions share a snapshot until the last handle is dropped.
@@ -331,13 +341,14 @@ pub fn index_trees(
     roots: Vec<PathBuf>,
     show_hidden: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(roots, show_hidden, true)
+    index_scoped(roots, show_hidden, true, fuzzy_score_normalized)
 }
 
 fn index_scoped(
     roots: Vec<PathBuf>,
     show_hidden: bool,
     recursive: bool,
+    scorer: SearchScorer,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
     let mut seen = HashSet::new();
     let roots: Vec<_> = roots
@@ -371,7 +382,7 @@ fn index_scoped(
         index
     };
     drop(registry);
-    start_search_session(index)
+    start_search_session(index, scorer)
 }
 
 #[cfg(test)]
@@ -416,10 +427,13 @@ fn index_trees_with_scheduler_budget(
             max_pending_directories,
         },
     );
-    start_search_session(index)
+    start_search_session(index, fuzzy_score_normalized)
 }
 
-fn start_search_session(index: Arc<SharedIndex>) -> (SearchHandle, Receiver<SearchEvent>) {
+fn start_search_session(
+    index: Arc<SharedIndex>,
+    scorer: SearchScorer,
+) -> (SearchHandle, Receiver<SearchEvent>) {
     let (command_sender, command_receiver) = mpsc::channel();
     let (event_sender, event_receiver) = mpsc::channel();
     let cancelled = Arc::new(AtomicBool::new(false));
@@ -434,6 +448,7 @@ fn start_search_session(index: Arc<SharedIndex>) -> (SearchHandle, Receiver<Sear
                 &worker_cancelled,
                 &command_receiver,
                 &event_sender,
+                scorer,
             );
         });
     if let Err(error) = worker {
@@ -456,6 +471,7 @@ fn run_search_session(
     cancelled: &AtomicBool,
     commands: &Receiver<SearchCommand>,
     events: &Sender<SearchEvent>,
+    scorer: SearchScorer,
 ) {
     let mut progress = WalkProgress::default();
     let mut indexed_items = 0;
@@ -484,11 +500,11 @@ fn run_search_session(
             progress.matches = if progress.normalized_query.is_empty() {
                 Vec::new()
             } else {
-                score_index(&state.items, &progress.normalized_query)
+                score_index(&state.items, &progress.normalized_query, scorer)
             };
         } else if index_changed && !progress.normalized_query.is_empty() {
             for item in &state.items[indexed_items..] {
-                if let Some(score) = fuzzy_score_normalized(item, &progress.normalized_query) {
+                if let Some(score) = scorer(item, &progress.normalized_query) {
                     insert_match(&mut progress.matches, score, item);
                 }
             }
@@ -863,12 +879,16 @@ fn append_index_items(
 
 type RankedPosition = Reverse<(i64, Reverse<usize>)>;
 
-fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, SearchItem)> {
+fn score_index(
+    index: &[SearchItem],
+    normalized_query: &str,
+    scorer: SearchScorer,
+) -> Vec<(i64, SearchItem)> {
     let worker_count = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(4);
     let best = if index.len() < 50_000 || worker_count == 1 {
-        score_range(index, normalized_query, 0)
+        score_range(index, normalized_query, 0, scorer)
     } else {
         let chunk_size = index.len().div_ceil(worker_count);
         std::thread::scope(|scope| {
@@ -876,7 +896,9 @@ fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, Search
                 .chunks(chunk_size)
                 .enumerate()
                 .map(|(chunk, items)| {
-                    scope.spawn(move || score_range(items, normalized_query, chunk * chunk_size))
+                    scope.spawn(move || {
+                        score_range(items, normalized_query, chunk * chunk_size, scorer)
+                    })
                 })
                 .collect::<Vec<_>>();
             let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
@@ -907,10 +929,11 @@ fn score_range(
     index: &[SearchItem],
     normalized_query: &str,
     position_offset: usize,
+    scorer: SearchScorer,
 ) -> BinaryHeap<RankedPosition> {
     let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
     for (position, item) in index.iter().enumerate() {
-        let Some(score) = fuzzy_score_normalized(item, normalized_query) else {
+        let Some(score) = scorer(item, normalized_query) else {
             continue;
         };
         retain_candidate(&mut best, (score, Reverse(position_offset + position)));
@@ -951,6 +974,14 @@ fn publish(
         indexing,
         coverage,
     });
+}
+
+fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
+    if !query.contains('*') {
+        return fuzzy_score_normalized(item, query);
+    }
+    filter_name_matches(item.search_name(), query)
+        .then_some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
 }
 
 fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {

@@ -27,6 +27,12 @@ fn entry_matching_uses_the_display_name_and_hidden_flag() {
         ),
         ("plain name", false, "name", true),
         ("fv\tAlpha.txt", true, "beta", false),
+        ("fv\tAlpha.txt", false, "*.TXT", true),
+        ("fv\tAlpha.txt.bak", false, "*.txt", false),
+        ("fh\t.secret.txt", false, "*", false),
+        ("fh\t.secret.txt", true, "*.txt", true),
+        ("dv\tPhotos", false, "Photo*", true),
+        ("fv\tAlpha.txt", false, "fv*", false),
     ] {
         assert_eq!(
             entry_matches(value, show_hidden, &fold(query)),
@@ -165,11 +171,11 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         )));
     }
 
-    for (name, supported) in [
-        ("notes.txt", true),
-        ("main.rs", true),
-        ("photo.png", false),
-        ("guide.pdf", false),
+    for (name, printable, previewable) in [
+        ("notes.txt", true, true),
+        ("main.rs", true, true),
+        ("photo.png", false, true),
+        ("guide.pdf", false, false),
     ] {
         let trashed = FileEntry {
             location: Location::uri(format!("trash:///{name}")),
@@ -178,10 +184,10 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
             duration_seconds: crate::model::MetadataValue::Unknown,
             ..entry(name, crate::model::EntryKind::File)
         };
-        assert_eq!(entry_supports_printing(&trashed), supported, "{name}");
+        assert_eq!(entry_supports_printing(&trashed), printable, "{name}");
         assert_eq!(
             crate::ui::preview::entry_supports_quick_preview(&trashed),
-            supported,
+            previewable,
             "{name}"
         );
     }
