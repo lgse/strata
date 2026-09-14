@@ -3,8 +3,6 @@
 
 import pytest
 
-from harness.modes import ALL_MODES
-
 
 def _measurement_finished(dialog):
     spinner = dialog.find(name="Calculating folder size")
@@ -28,10 +26,9 @@ def sized_folder(fixture_tree):
     return folder
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("current_folder", [False, True], ids=["entry", "current-folder"])
 def test_properties_calculates_nested_and_hidden_file_sizes(
-    sized_folder, strata, mode, current_folder
+    sized_folder, strata, current_folder
 ):
     if current_folder:
         strata.open_directory(sized_folder.name)

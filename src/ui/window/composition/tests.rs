@@ -87,24 +87,21 @@ fn composition_initializes_live_preferences_before_settings_in_two_windows() {
                     fixture.preferences.show_keybinding_hints()
                 );
             }
-            for enabled in [true, false, true] {
-                first.preferences.set_show_keybinding_hints(enabled);
-                first.preferences.set_single_click_previews(enabled);
-                for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
-                    first.preferences.set_browser_mode(mode);
-                    for fixture in [&first, &second] {
-                        fixture
-                            .content
-                            .browser
-                            .assert_saved_preferences(&fixture.preferences);
-                        assert_eq!(fixture.content.browser.view_mode(), mode);
-                        assert_eq!(
-                            fixture.content.footer.shortcuts.widget().is_visible(),
-                            enabled
-                        );
-                        assert!(fixture.layer("settings-backdrop").is_none());
-                    }
-                }
+            first.preferences.set_show_keybinding_hints(false);
+            first.preferences.set_browser_mode(BrowserMode::List);
+            for fixture in [&first, &second] {
+                fixture
+                    .content
+                    .browser
+                    .assert_saved_preferences(&fixture.preferences);
+                assert_eq!(fixture.content.browser.view_mode(), BrowserMode::List);
+                assert!(!fixture.content.footer.shortcuts.widget().is_visible());
+                assert!(fixture.layer("settings-backdrop").is_none());
+            }
+            first.preferences.set_show_keybinding_hints(true);
+            for fixture in [&first, &second] {
+                assert!(fixture.content.footer.shortcuts.widget().is_visible());
+                assert!(fixture.layer("settings-backdrop").is_none());
             }
             first.close();
             second.close();

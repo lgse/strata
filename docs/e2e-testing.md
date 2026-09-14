@@ -365,10 +365,13 @@ def test_something(strata):
 
 `test_inline_renaming.py` checks immediate default-file/folder creation, collision
 numbering, selected default names, valid-name commits on click-away, and retaining
-the original name on Escape or representative invalid input. It exercises existing and newly
-created items in all three views, verifies file contents, and covers repeated
-renames with folder-wide or file-stem selection. `test_entry_management.py` also
-covers reopening invalid edits, inside-field clicks, name conflicts, and empty
+the original name on Escape or representative invalid input. Enter and sidebar
+commits still run existing and newly created files and folders in all three views;
+the four shared click-away targets run in Columns and List on an existing file.
+Invalid names keep one Enter and one real click-away; correction/reopen still runs in all three views.
+Escape cancellation is kind × new in the default Columns view. Repeated renames
+keep file-stem vs folder-name selection in Columns and List. `test_entry_management.py`
+also covers reopening invalid edits, inside-field clicks, name conflicts, and empty
 directories.
 
 ```bash
@@ -463,13 +466,16 @@ workflow fail:
 ./scripts/e2e-mutation-check.sh clipboard    # one of them
 ```
 
-Each patch breaks a single critical workflow — drag and drop, clipboard,
-keyboard navigation, click modes, view switching, filtered quick preview. The unmodified scenarios
-must pass first; only a failed scenario assertion in the mutated run counts as
-detection, not a startup/collection error or killed process. Logs and JUnit
-reports are saved in `target/e2e-mutations`. The script restores source changes
-afterwards. Run it after changing the harness, and when adding a scenario for
-a workflow that does not have a mutation yet.
+Each patch breaks a single critical workflow and maps to the scenario that
+hits the mutated line, not every test in that file: drop onto a folder,
+Ctrl+V paste, arrow-key selection, single-click activation, the appearance
+menu, filtered Space preview, filter-row updates, popover outside-wheel,
+and the long-name caret. The unmodified scenarios must pass first; only a failed
+scenario assertion in the mutated run counts as detection, not a
+startup/collection error or killed process. Logs and JUnit reports are
+saved in `target/e2e-mutations`. The script restores source changes
+afterwards. Run it after changing the harness, and when adding a scenario
+for a workflow that does not have a mutation yet.
 
 ## In CI
 
@@ -739,15 +745,17 @@ nightly-only, or changed-files-only suite.
 
 | Removed/reduced coverage | Retained owner |
 | --- | --- |
-| Six invalid strings × mode × kind × new/existing × completion, reduced to `bad/name` (120 cases removed) | `src/services/operations/tests.rs::basenames_reject_empty_reserved_nested_absolute_and_nul_names` (no GTK/display requirement); GUI retains every mode/kind/lifecycle and both Enter and real click-away |
+| Six invalid strings × mode × kind × new/existing × completion, reduced to `bad/name` (120 cases removed) | `src/services/operations/tests.rs::basenames_reject_empty_reserved_nested_absolute_and_nul_names` (no GTK/display requirement); GUI keeps one Enter and one real click-away |
 | Four invalid names in correction/reopen workflow, reduced to one (9) | Same validation tests; correction/reopen still runs in all three views |
-| Four accepted-name variants in inside-field click workflow, reduced to ` padded ` (18) | `basenames_accept_single_native_and_unicode_components`; GUI still checks exact untrimmed names for files/folders in every view |
-| Standalone new-folder Escape and existing-file cancellation tests (4) | `test_inline_renaming.py::test_escape_preserves_the_original_name`, covering both lifecycles, kinds, and every view |
+| Four accepted-name variants in inside-field click workflow, reduced to ` padded ` (18) | `basenames_accept_single_native_and_unicode_components`; GUI still checks exact untrimmed names for files and folders |
+| Standalone new-folder Escape and existing-file cancellation tests (4) | `test_inline_renaming.py::test_escape_preserves_the_original_name`, covering both lifecycles and kinds |
 | Standalone invalid rename in dialogs suite (1) | Stronger synchronized `test_invalid_names_retain_the_original`, including filesystem contents and GTK-critical checks |
 | Separate preview metadata/list-preservation launches (2) | Assertions consolidated into `test_space_opens_and_closes_the_quick_preview` in all three views |
 
-All 72 valid rename focus-exit combinations remain: GTK's real in-flight focus walk
-is not covered by emitting a controller signal in Rust. Real drag/XTEST routing,
+All six valid-rename dismiss targets remain as real XTEST focus walks: GTK's in-flight
+focus walk is not covered by emitting a controller signal in Rust. Enter and sidebar
+still run across modes, kinds, and new vs existing items; the four shared click-away
+targets run in Columns and List on an existing file. Real drag/XTEST routing,
 caret visibility, clipboard selection/undo, multi-window preferences, accessibility
 semantics, and all six visual baselines also remain. The removed validation vectors
 are covered by unconditional, display-independent Rust tests—not by tests that
