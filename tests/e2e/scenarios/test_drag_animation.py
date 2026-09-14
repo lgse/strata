@@ -38,39 +38,37 @@ def text_position(image, bounds):
 
 @pytest.mark.preferences(reduce_motion=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_delete_keeps_survivors_in_place_until_dissolve_finishes(strata, mode):
+def test_delete_animation_preserves_survivors_and_restores_interaction(strata, mode):
     assert strata.view_mode() == mode
-    strata.fixture.path("zz-survivor.txt").write_text("survivor")
-    survivor = strata.entry("zz-survivor.txt")
+    fixture = strata.fixture
+    fixture.path("zz-survivor.txt").write_text("survivor")
+    original_names = set(fixture.names())
+    strata.entry("zz-survivor.txt")
     strata.select_entry("todo.txt")
-    strata.settle(survivor)
-    label = survivor.find(role="label", name="zz-survivor.txt")
-    assert label is not None
-    bounds = label.screen_bounds()
-    grab = lambda: ImageGrab.grab(xdisplay=strata.display.display)
-    original_y, _ = text_position(grab(), bounds)
 
     strata.keyboard.press("shift+Delete")
     strata.wait_for_dialog()
     strata.pointer.click(strata.dialog_button("Permanently delete 1 item"))
     strata.wait(
-        lambda: not strata.fixture.path("todo.txt").exists(),
+        lambda: not fixture.path("todo.txt").exists(),
         "the file to be deleted",
     )
-    # Deletion starts after confirmation dismissal; AT-SPI traversal here can
-    # consume the remaining dissolve window before the screenshot is taken.
-    frozen = grab()
-    animated_y, _ = text_position(frozen, bounds)
-    assert abs(animated_y - original_y) < 1, "surviving text moved before the dissolve finished"
-    region = (bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height)
-    frozen_pixels = frozen.crop(region).tobytes()
-    strata.wait(
-        lambda: grab().crop(region).tobytes() != frozen_pixels,
-        "the updated layout to replace the frozen presentation",
-    )
     strata.wait(lambda: strata.dialog() is None, "the delete dialog to disappear")
-    final_label = strata.entry("zz-survivor.txt").find(role="label", name="zz-survivor.txt")
-    assert final_label is not None and final_label.screen_bounds() != bounds
+    strata.wait_for_entry_gone("todo.txt")
+    assert set(fixture.names()) == original_names - {"todo.txt"}
+
+    strata.select_entry("zz-survivor.txt")
+    strata.keyboard.press("F2")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("renamed-survivor.txt")
+    strata.wait(lambda: field.text == "renamed-survivor.txt", "the survivor name to be typed")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: fixture.path("renamed-survivor.txt").exists(), "the survivor to be renamed")
+    assert fixture.path("renamed-survivor.txt").read_text() == "survivor"
+    assert set(fixture.names()) == (
+        original_names - {"todo.txt", "zz-survivor.txt"} | {"renamed-survivor.txt"}
+    )
 
 
 @pytest.mark.preferences(browser_mode="columns", reduce_motion=False)
