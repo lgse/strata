@@ -3,6 +3,7 @@
 mod file_source;
 mod install_source;
 mod native_fs;
+mod navigation_history;
 mod operations;
 mod preview;
 mod release_channel;
@@ -20,6 +21,7 @@ pub use file_source::{
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
 pub(crate) use native_fs::{is_hidden_name, native_hidden_names, native_kind};
+pub(crate) use navigation_history::NavigationHistory;
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,

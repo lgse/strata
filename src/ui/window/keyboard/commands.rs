@@ -34,11 +34,18 @@ impl Dispatcher {
             apply_browser_mode(&self.view, &crate::ui::theme::ThemeManager::shared(), mode);
             return Some(Propagation::Stop);
         }
-        if event.control() && matches!(event.key, Key::k | Key::K) {
-            if let Err(error) =
-                gtk::prelude::WidgetExt::activate_action(&self.window, "win.search", None)
+        if event.control()
+            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::k | Key::K)
+        {
+            let (action, label) = if event.shift() {
+                ("win.jump-folder", "folder jump")
+            } else {
+                ("win.search", "global search")
+            };
+            if let Err(error) = gtk::prelude::WidgetExt::activate_action(&self.window, action, None)
             {
-                tracing::warn!(%error, "unable to activate global search shortcut");
+                tracing::warn!(%error, "unable to activate {label} shortcut");
             }
             return Some(Propagation::Stop);
         }

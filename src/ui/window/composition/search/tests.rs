@@ -45,6 +45,70 @@ impl SearchFixture {
     }
 }
 
+#[test]
+fn visit_recorder_commits_only_completed_new_navigation() {
+    let path = Location::local("/work/project");
+    let mut recorder = VisitRecorder::default();
+    assert!(
+        recorder
+            .handle(&BrowserEvent::ColumnAdded {
+                depth: 0,
+                location: path.clone(),
+            })
+            .is_none()
+    );
+    assert_eq!(
+        recorder.handle(&BrowserEvent::LoadFinished {
+            depth: 0,
+            truncated: false,
+        }),
+        Some(std::path::PathBuf::from("/work/project"))
+    );
+    assert!(
+        recorder
+            .handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            })
+            .is_none()
+    );
+}
+
+#[test]
+fn visit_recorder_discards_superseded_navigation_and_records_successful_retries() {
+    let mut recorder = VisitRecorder::default();
+    for (depth, path) in [(0, "/work"), (1, "/work/project")] {
+        recorder.handle(&BrowserEvent::ColumnAdded {
+            depth,
+            location: Location::local(path),
+        });
+    }
+    recorder.handle(&BrowserEvent::ColumnsTruncated { len: 1 });
+    assert!(
+        recorder
+            .handle(&BrowserEvent::LoadFinished {
+                depth: 1,
+                truncated: false,
+            })
+            .is_none()
+    );
+    assert!(
+        recorder
+            .handle(&BrowserEvent::LoadFailed {
+                depth: 0,
+                message: "unavailable".into(),
+            })
+            .is_none()
+    );
+    assert_eq!(
+        recorder.handle(&BrowserEvent::LoadFinished {
+            depth: 0,
+            truncated: false,
+        }),
+        Some(std::path::PathBuf::from("/work"))
+    );
+}
+
 fn indexed_items(root: &std::path::Path) -> Vec<SearchItem> {
     let (handle, receiver) = index_trees(vec![root.to_path_buf()], false);
     handle.query("fixture");
