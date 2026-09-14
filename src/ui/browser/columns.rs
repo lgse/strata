@@ -1167,6 +1167,43 @@ impl ViewState {
         column.append(&destination_hint);
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+
+        // Focus may be unset during transfer; inspect its destination at idle.
+        let filter_button_for_blur = filter_button.clone();
+        let shell_for_blur = shell.downgrade();
+        let filter_focus = gtk::EventControllerFocus::new();
+        filter_focus.connect_leave(move |controller| {
+            let Some(widget) = controller.widget() else {
+                return;
+            };
+            let shell_for_blur = shell_for_blur.clone();
+            let filter_button_for_blur = filter_button_for_blur.clone();
+            glib::idle_add_local_once(move || {
+                let Some(shell) = shell_for_blur.upgrade() else {
+                    return;
+                };
+                let Some(root) = widget.root() else {
+                    return;
+                };
+                // Result dialogs must retain the query for restoration after dismissal.
+                if root
+                    .downcast_ref::<gtk::Window>()
+                    .is_some_and(|window| crate::ui::window::visible_modal_layer(window).is_some())
+                {
+                    return;
+                }
+                let left_column = root.focus().is_some_and(|focused| {
+                    !focused.is_ancestor(&shell)
+                        && focused != shell.clone().upcast::<gtk::Widget>()
+                        && focused.ancestor(gtk::Popover::static_type()).is_none()
+                });
+                if left_column {
+                    filter_button_for_blur.set_active(false);
+                }
+            });
+        });
+        shell.add_controller(filter_focus);
+
         shell.set_size_request(COLUMN_WIDTH, -1);
         let previous_scale = Cell::new(1.0);
         crate::ui::theme::ThemeManager::shared().bind_interface_scale(

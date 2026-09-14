@@ -84,14 +84,14 @@ fn assert_navigate_lands_on_first_item(view: &BrowserView, browser: &crate::app:
 
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
-fn icons_navigate_focuses_first_item_so_arrows_move_without_left_right() {
-    const CHILD: &str = "STRATA_ICONS_NAVIGATE_FOCUS_GTK_CHILD";
+fn navigate_focuses_first_item_in_single_pane_modes() {
+    const CHILD: &str = "STRATA_NAVIGATE_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let sandbox = tempfile::tempdir().expect("isolated settings");
         let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
             .args([
                 "--exact",
-                "ui::browser::tests::navigate::icons_navigate_focuses_first_item_so_arrows_move_without_left_right",
+                "ui::browser::tests::navigate::navigate_focuses_first_item_in_single_pane_modes",
                 "--nocapture",
                 "--ignored",
             ])
@@ -109,47 +109,14 @@ fn icons_navigate_focuses_first_item_so_arrows_move_without_left_right() {
     }
     crate::assets::prepare().expect("assets");
     crate::assets::register_icon_theme();
-    let (view, browser, window, _home, _place) = present_single_pane(BrowserMode::Icons);
-    browser.select(0, 0);
-    view.activate_focused();
-    assert_navigate_lands_on_first_item(&view, &browser);
-    window.destroy();
-    browser.clear_observer();
-}
-
-#[test]
-#[ignore = "requires a mapped GTK window; run this test alone"]
-fn list_navigate_focuses_first_item_so_arrows_move() {
-    const CHILD: &str = "STRATA_LIST_NAVIGATE_FOCUS_GTK_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        let sandbox = tempfile::tempdir().expect("isolated settings");
-        let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
-            .args([
-                "--exact",
-                "ui::browser::tests::navigate::list_navigate_focuses_first_item_so_arrows_move",
-                "--nocapture",
-                "--ignored",
-            ])
-            .env(CHILD, "1")
-            .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
-            .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
-            .env("XDG_DATA_HOME", sandbox.path().join("data"))
-            .status()
-            .expect("GTK test starts");
-        assert!(status.success());
-        return;
+    for mode in [BrowserMode::Icons, BrowserMode::List] {
+        let (view, browser, window, _home, _place) = present_single_pane(mode);
+        browser.select(0, 0);
+        view.activate_focused();
+        assert_navigate_lands_on_first_item(&view, &browser);
+        window.destroy();
+        browser.clear_observer();
     }
-    if gtk::init().is_err() {
-        return;
-    }
-    crate::assets::prepare().expect("assets");
-    crate::assets::register_icon_theme();
-    let (view, browser, window, _home, _place) = present_single_pane(BrowserMode::List);
-    browser.select(0, 0);
-    view.activate_focused();
-    assert_navigate_lands_on_first_item(&view, &browser);
-    window.destroy();
-    browser.clear_observer();
 }
 
 fn assert_parent_paste_stays_in_current_directory(

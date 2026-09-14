@@ -179,6 +179,43 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 }
 
 #[test]
+fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
+    let command = sandbox_command(
+        Path::new("/tmp/strata"),
+        Path::new("/home/alice/Videos/untrusted.mkv"),
+        Path::new("/tmp/private-output"),
+        ParseOperation::MediaMetadata,
+        0,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let arguments: Vec<_> = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect();
+    let joined = arguments.join(" ");
+    assert!(joined.contains("--unshare-all --die-with-parent --new-session --clearenv"));
+    assert!(joined.contains("--ro-bind /home/alice/Videos/untrusted.mkv /input.mkv"));
+    assert!(joined.contains("--as=2147483648 --cpu=10"));
+    assert!(joined.contains("media-metadata /input.mkv /output/result.json 0 software"));
+    assert!(!joined.contains("--dev-bind"));
+    assert!(!joined.contains("--share-net"));
+    assert!(
+        !arguments
+            .iter()
+            .any(|argument| argument == "/etc/alternatives"
+                || argument == "/home"
+                || argument == "/sys")
+    );
+    for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
+        for library in ["libblas.so.3", "liblapack.so.3"] {
+            let path = format!("/etc/alternatives/{library}-{architecture}");
+            assert!(joined.contains(&format!("--ro-bind-try {path} {path}")));
+        }
+    }
+}
+
+#[test]
 fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits() {
     let operation = MEDIA_PREVIEW;
     let command = sandbox_command(

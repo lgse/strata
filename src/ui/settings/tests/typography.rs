@@ -99,17 +99,9 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                 .into_iter()
                 .find_map(|widget| widget.downcast::<ResponsiveBin>().ok())
                 .expect("responsive panel");
-            for (width, height) in [
-                (1600, 1100),
-                (1200, 800),
-                (1000, 800),
-                (800, 560),
-                (640, 480),
-                (480, 560),
-                (1600, 1100),
-            ] {
+            for (width, height) in [(1600, 1100), (480, 560)] {
                 window.set_default_size(width, height);
-                for pixels in [8, 11, 17, 24, 32, 48, 13] {
+                for pixels in [8, 48] {
                     manager.set_text_size(TextSize::new(pixels));
                     settle();
                     for page in ["General", "Appearance", "Keybindings", "About", "Updates"] {

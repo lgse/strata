@@ -57,7 +57,7 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             );
             assert_eq!(
                 active_switches(&first),
-                vec![false, false, false, false, true, true, false]
+                vec![false, false, true, false, false, true, true, false]
             );
             assert_eq!(active_switches(&first), active_switches(&second));
             assert_eq!(active_choices(&first), active_choices(&second));
@@ -340,6 +340,100 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
                         Some(value)
                     );
                 }
+            }
+        },
+    );
+}
+
+fn wait_for_omarchy_availability(manager: &Rc<ThemeManager>, available: bool) {
+    let loop_ = glib::MainLoop::new(None, false);
+    let stop = loop_.clone();
+    let observed = manager.clone();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    glib::timeout_add_local(Duration::from_millis(20), move || {
+        if observed.is_omarchy_available() == available || Instant::now() >= deadline {
+            stop.quit();
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+    loop_.run();
+    assert_eq!(manager.is_omarchy_available(), available);
+}
+
+#[test]
+fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
+    gtk_test(
+        "ui::settings::tests::preferences::follow_omarchy_hides_and_falls_back_when_quattro_state_disappears",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            ThemeManager::seed_omarchy_for_test();
+            let manager = ThemeManager::shared();
+            let pages = [
+                theme_page(manager.clone()).widget,
+                theme_page(manager.clone()).widget,
+            ];
+            let rows = pages.each_ref().map(|page| {
+                descendants::<gtk::Box>(page)
+                    .into_iter()
+                    .find(|widget| widget.widget_name() == "settings-search-omarchy")
+                    .expect("Follow Omarchy row")
+            });
+            manager.set_follow_omarchy(true);
+            let theme = glib::home_dir().join(".local/state/omarchy/current/theme");
+            let staged = theme.with_file_name("staged-theme");
+            std::fs::rename(&theme, &staged).expect("stage theme switch");
+            let loop_ = glib::MainLoop::new(None, false);
+            let stop = loop_.clone();
+            glib::timeout_add_local_once(Duration::from_millis(200), move || stop.quit());
+            loop_.run();
+            assert!(manager.is_omarchy_available());
+            assert!(manager.follows_omarchy());
+            assert!(rows.iter().all(|row| row.is_visible()));
+            std::fs::rename(staged, theme).expect("finish theme switch");
+
+            for moved_path in [
+                None,
+                Some(".local/state/omarchy/current"),
+                Some(".local/state/omarchy"),
+                Some(".local/state"),
+            ] {
+                manager.set_follow_omarchy(true);
+                assert!(manager.follows_omarchy());
+                assert!(rows.iter().all(|row| row.is_visible()));
+                let backup = glib::home_dir().join("omarchy-backup");
+                if let Some(path) = moved_path {
+                    std::fs::rename(glib::home_dir().join(path), &backup)
+                        .expect("move Omarchy state away");
+                } else {
+                    std::fs::remove_dir_all(glib::home_dir().join(".local/state/omarchy"))
+                        .expect("remove Omarchy state");
+                }
+                wait_for_omarchy_availability(&manager, false);
+
+                assert!(!manager.follows_omarchy());
+                assert!(rows.iter().all(|row| !row.is_visible()));
+                assert_eq!(manager.appearance_tokens().name, "Nord");
+                let saved: toml::Table = toml::from_str(
+                    &std::fs::read_to_string(glib::user_config_dir().join("strata/settings.toml"))
+                        .expect("saved preferences"),
+                )
+                .expect("settings parse");
+                assert_eq!(
+                    saved.get("mode").and_then(toml::Value::as_str),
+                    Some("theme")
+                );
+
+                if let Some(path) = moved_path {
+                    std::fs::rename(&backup, glib::home_dir().join(path))
+                        .expect("restore Omarchy state");
+                } else {
+                    ThemeManager::seed_omarchy_for_test();
+                }
+                wait_for_omarchy_availability(&manager, true);
+                assert!(!manager.follows_omarchy());
+                assert!(rows.iter().all(|row| row.is_visible()));
             }
         },
     );

@@ -81,6 +81,29 @@ Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded
 in-memory cache, never the persistent thumbnail cache. AFC and MTP file-list
 thumbnails are not enabled by this path.
 
+## Media metadata
+
+File Properties shows available source-media details: image
+resolution; audio/video duration and overall bitrate; video codec and frame rate;
+and audio codec, sample rate, and channel count. These describe the original file,
+not the preview's scaled frames or resampled audio. Attached album artwork is not
+reported as a video track, and still images do not show synthetic video timing.
+Missing individual fields are omitted; an unsuccessful inspection shows
+`Media: Unavailable` without blocking the other file information.
+
+Properties uses an asynchronous inspector. Only regular files with a
+local source are inspected; remote files are not downloaded for metadata. The
+inspector runs `ffprobe` inside the existing software-only bubblewrap sandbox,
+with a four-second probe timeout and a 64 KiB JSON limit. Image information can
+fall back to GDK Pixbuf inside that same sandbox. The enclosing helper retains
+the existing memory, CPU, and wall-time limits and receives no GPU access. Media
+sandboxes expose only the optional BLAS/LAPACK runtime alternatives for supported
+x86-64 and ARM64 Debian-family installations, not all of `/etc/alternatives`. Only
+validated numeric fields and bounded codec identifiers reach the UI, not arbitrary
+embedded tags. Closing Properties cancels its work and prevents stale results
+from appearing. The preview pane retains only its normal size, modified date,
+and type information; it does not run this metadata inspector.
+
 ## Incremental media playback
 
 ```text
@@ -251,9 +274,9 @@ change neither applies nor retires that patch kit or claims to fix all RAM growt
 
 The Ubuntu runtime-library alias problem tracked in
 [#806](https://github.com/lgse/strata/issues/806) was initially deferred. The sandbox
-now includes a read-only optional bind of `/etc/alternatives`, allowing libraries
-such as BLAS to resolve their distribution-managed links into the already mounted
-`/usr` runtime. This does not expose the rest of `/etc` or make symlink targets
-outside the sandbox's mounts accessible. Canonical pinned-container HEIC, MOV,
+now includes optional read-only binds of the BLAS/LAPACK alternatives used by
+media helpers on x86-64 and ARM64 Debian-family installations. This resolves their
+runtime links without exposing the whole `/etc/alternatives` directory or the
+rest of `/etc`. Canonical pinned-container HEIC, MOV,
 and MP4 preview tests exercise actual sandbox startup and decoding; installed
 systems still depend on their available codec libraries.

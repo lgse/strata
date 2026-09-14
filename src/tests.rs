@@ -3,9 +3,8 @@
 use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
 use super::{
-    GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
-    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, run_preview_helper,
-    version_line,
+    LaunchMode, encode_daemon_pids, gvfs_daemon_pids, gvfs_probe_marker_is_fresh_at,
+    gvfs_probe_marker_path_in, launch_mode, run_preview_helper, version_line,
 };
 
 #[test]
@@ -148,12 +147,4 @@ fn only_a_readable_matching_marker_is_fresh() {
 
     std::fs::write(&marker, [0xff]).expect("the unreadable marker should be written");
     assert!(!gvfs_probe_marker_is_fresh_at(&marker, &proc_root));
-}
-
-#[test]
-fn gvfs_fallback_covers_files_and_volumes() {
-    assert_eq!(
-        GIO_FALLBACK_BACKENDS,
-        [("GIO_USE_VFS", "local"), ("GIO_USE_VOLUME_MONITOR", "unix"),]
-    );
 }

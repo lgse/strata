@@ -41,7 +41,7 @@ class QualityCiTests(unittest.TestCase):
         self.plan = dict(version=1, commit="fixture", source_key="source", image_key="image", binaries=[dict(
             file="test-0", target="fixture", sha256=quality.digest(self.executable),
             tests=["a", "b", "c", "d", "ignored"], ignored=["ignored"],
-            shards=[["a"], ["b", "ignored"], ["c"], ["d"]],
+            shards=[["a"], ["b", "c", "d", "ignored"]],
         )])
         self.plan_path = self.bundle / "plan.json"
         self.save_plan()
@@ -77,7 +77,26 @@ class QualityCiTests(unittest.TestCase):
         report = json.loads((self.reports / "shard-1.json").read_text())
         self.assertEqual(report["binaries"][0]["ignored"], ["ignored"])
 
-    def test_partition_reserves_shard_zero_independently_of_timing_hints(self):
+    def test_mixed_shard_runs_isolated_test_in_a_separate_process(self):
+        self.plan["binaries"][0]["shards"] = [["a", "b", "ignored"], ["c", "d"]]
+        self.save_plan()
+        real_run = subprocess.run
+        selections = []
+
+        def run(command, **kwargs):
+            if "--nocapture" in command:
+                selections.append(command[2:-1])
+            return real_run(command, **kwargs)
+
+        with patch.object(quality.subprocess, "run", side_effect=run):
+            self.run_all()
+        self.verify()
+        self.assertEqual(selections, [["a"], ["b", "ignored"], ["c", "d"]])
+        report = json.loads((self.reports / "shard-0.json").read_text())
+        self.assertEqual(report["binaries"][0]["passed"], ["a", "b"])
+        self.assertEqual(report["binaries"][0]["ignored"], ["ignored"])
+
+    def test_partition_balances_both_shards_using_timing_hints(self):
         names = ["a", *[f"test_{index}" for index in range(20)]]
         for isolated_duration in (0, 154, 1000):
             with self.subTest(isolated_duration=isolated_duration):
@@ -85,28 +104,21 @@ class QualityCiTests(unittest.TestCase):
                 shards = quality.partition(names, durations)
                 self.assertEqual(shards, quality.partition(list(reversed(names)), durations))
                 self.assertEqual(sorted(test for shard in shards for test in shard), sorted(names))
-                self.assertEqual(shards[0], ["a"])
-                self.assertEqual(shards[1], ["test_0"])
+                loads = [sum(durations.get(name, 1) for name in shard) for shard in shards]
+                self.assertLessEqual(abs(loads[0] - loads[1]), max(durations.values()))
                 self.assertTrue(all(shards))
-        self.assertEqual(quality.partition(names, {})[0], ["a"])
+        shards = quality.partition(names, {})
+        self.assertLessEqual(abs(len(shards[0]) - len(shards[1])), 1)
 
-    def test_other_targets_never_fill_the_reserved_shard(self):
+    def test_other_targets_use_both_shards(self):
         binary = copy.deepcopy(self.plan["binaries"][0])
         binary.update(file="test-1", tests=["e", "f", "g"], ignored=[],
                       shards=quality.partition(["e", "f", "g"], {}))
-        self.assertEqual(binary["shards"], [[], ["e"], ["f"], ["g"]])
+        self.assertEqual(binary["shards"], [["e", "g"], ["f"]])
         self.plan["binaries"].append(binary)
         quality.validate_plan(self.plan)
 
-    def test_plan_rejects_mixing_moving_missing_ignored_or_duplicate_isolated_test(self):
-        def mix(plan):
-            plan["binaries"][0]["shards"][0].append("b")
-            plan["binaries"][0]["shards"][1].remove("b")
-
-        def move(plan):
-            plan["binaries"][0]["shards"][0].remove("a")
-            plan["binaries"][0]["shards"][1].append("a")
-
+    def test_plan_rejects_missing_ignored_or_duplicate_isolated_test(self):
         def remove(plan):
             plan["binaries"][0]["tests"].remove("a")
             plan["binaries"][0]["shards"][0].remove("a")
@@ -119,7 +131,7 @@ class QualityCiTests(unittest.TestCase):
             binary["file"] = "test-1"
             plan["binaries"].append(binary)
 
-        for mutate in (mix, move, remove, ignore, duplicate):
+        for mutate in (remove, ignore, duplicate):
             with self.subTest(mutate=mutate.__name__):
                 plan = copy.deepcopy(self.plan)
                 mutate(plan)
@@ -133,7 +145,7 @@ class QualityCiTests(unittest.TestCase):
             lambda plan: plan["binaries"][0]["shards"][0].remove("a"),
             lambda plan: plan["binaries"][0].update(file="../test-0"),
             lambda plan: plan["binaries"].append(copy.deepcopy(plan["binaries"][0])),
-            lambda plan: plan["binaries"][0]["ignored"].append("d"),
+            lambda plan: plan["binaries"][0]["ignored"].extend(["b", "c", "d"]),
         ]
         for mutate in mutations:
             with self.subTest(mutate=mutate):
@@ -182,7 +194,7 @@ class QualityCiTests(unittest.TestCase):
         self.save_plan()
         with self.assertRaises(ValueError):
             quality.run(0)
-        for shard in (-1, 4, None):
+        for shard in (-1, quality.SHARDS, None):
             with self.assertRaises(ValueError):
                 quality.run(shard)
 
@@ -224,7 +236,8 @@ class QualityCiTests(unittest.TestCase):
         plan = json.loads(self.plan_path.read_text())
         self.assertEqual(plan["binaries"][0]["tests"], self.plan["binaries"][0]["tests"])
         self.assertEqual(plan["binaries"][0]["ignored"], ["ignored"])
-        self.assertEqual(plan["binaries"][0]["shards"][0], ["a"])
+        self.assertEqual(plan["binaries"][0]["shards"],
+                         quality.partition(plan["binaries"][0]["tests"], {}))
 
 
 if __name__ == "__main__":

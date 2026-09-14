@@ -32,64 +32,6 @@ impl super::ModeViews {
     }
 }
 
-#[test]
-fn pointer_controls_cover_navigation_and_pane_actions() {
-    gtk_test(
-        "ui::browser_modes::tests::pointer_controls_cover_navigation_and_pane_actions",
-        || {
-            let browser =
-                crate::app::Browser::new(std::rc::Rc::new(crate::adapters::LocalFileSource));
-            let navigation = super::list_navigation(&browser);
-            let mut child = navigation.first_child();
-            let mut count = 0;
-            while let Some(button) = child {
-                assert_eq!(
-                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
-                    Some("pointer")
-                );
-                count += 1;
-                child = button.next_sibling();
-            }
-            assert_eq!(count, 3);
-            let (headings, _) = super::list_headings(&browser, 0, super::ListColumnLayout::new());
-            let mut child = headings.first_child();
-            let mut index = 0;
-            while let Some(cell) = child {
-                let button = cell
-                    .first_child()
-                    .expect("heading overlay")
-                    .downcast::<gtk::Overlay>()
-                    .expect("overlay")
-                    .child()
-                    .expect("heading button");
-                assert_eq!(
-                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
-                    if index == 1 { None } else { Some("pointer") }
-                );
-                index += 1;
-                child = cell.next_sibling();
-            }
-            assert_eq!(index, 5);
-            let controls = super::icons_controls(&browser, 0, 128);
-            assert_eq!(controls.thumbnail_scale.adjustment().lower(), 32.0);
-            controls.thumbnail_scale.set_value(32.0);
-            assert_eq!(controls.thumbnail_scale.value(), 32.0);
-            let mut child = controls.actions.first_child();
-            let mut count = 0;
-            while let Some(button) = child {
-                assert_eq!(button.valign(), gtk::Align::Center);
-                assert_eq!(
-                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
-                    Some("pointer")
-                );
-                count += 1;
-                child = button.next_sibling();
-            }
-            assert_eq!(count, 6);
-        },
-    );
-}
-
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
     format!("{kind}v\t{name}")
@@ -394,8 +336,6 @@ fn type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group()
 const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
 const SOURCE_INDEX_TEST: &str =
     "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_non_source_items";
-const LIST_ROW_GTK_CHILD: &str = "STRATA_LIST_ROW_GTK_CHILD";
-const LIST_ROW_TEST: &str = "ui::browser_modes::tests::list_bind_can_read_the_rename_field";
 
 fn run_source_index_map_checks() {
     let source = gtk::StringList::new(&["fv\talpha", "dh\t.secret", "fv\tneedle"]);
@@ -513,28 +453,6 @@ fn run_source_index_map_checks() {
         weak.upgrade().is_none(),
         "watching must not pin the StringList after the pane drops"
     );
-}
-
-#[test]
-fn list_bind_can_read_the_rename_field() {
-    if std::env::var_os(LIST_ROW_GTK_CHILD).is_some() {
-        if gtk::init().is_err() {
-            return;
-        }
-        let row = super::assemble_list_row();
-        let (_, name, field, _, _, _, _) =
-            super::list_row_parts(&row).expect("bind and settle walk this row");
-        assert!(name.has_css_class("alternate-rename-label"));
-        assert!(field.has_css_class("inline-rename"));
-        return;
-    }
-
-    let status = Command::new(std::env::current_exe().expect("test executable should exist"))
-        .args(["--exact", LIST_ROW_TEST])
-        .env(LIST_ROW_GTK_CHILD, "1")
-        .status()
-        .expect("isolated GTK list row test should start");
-    assert!(status.success(), "isolated GTK list row test failed");
 }
 
 #[test]

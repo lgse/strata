@@ -16,6 +16,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+mod media;
+
 const SIZE_PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
 
 #[derive(Default)]
@@ -422,6 +424,38 @@ impl ViewState {
         );
         layout.body.append(&details);
 
+        let media_section = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        media_section.add_css_class("properties-details");
+        media_section.set_visible(false);
+        layout.body.append(&media_section);
+
+        // Keep permissions and actions reachable when media adds several rows.
+        layout.content.remove(&layout.body);
+        let scroll = gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
+            .propagate_natural_width(true)
+            .max_content_height(400)
+            .child(&layout.body)
+            .build();
+        scroll.add_css_class("media-details-scroll");
+        layout
+            .content
+            .insert_child_after(&scroll, layout.content.first_child().as_ref());
+        let weak_overlay = window_overlay.downgrade();
+        scroll.add_tick_callback(move |scroll, _| {
+            let Some(overlay) = weak_overlay.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let height = (overlay.height() - 220).max(100);
+            if scroll.max_content_height() != height {
+                scroll.set_max_content_height(height);
+            }
+            glib::ControlFlow::Continue
+        });
+        scroll.set_max_content_height((window_overlay.height() - 220).max(100));
+
         let permissions = gtk::Box::new(gtk::Orientation::Vertical, 8);
         permissions.add_css_class("properties-permissions");
         let permissions_header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -471,6 +505,18 @@ impl ViewState {
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         let restore_focus = remember_properties_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
+        if !is_directory
+            && let Some(path) = entry.as_ref().and_then(FileEntry::local_thumbnail_path)
+        {
+            let load = Rc::new(media::load(&media_section, path.to_path_buf()));
+            let closing = load.clone();
+            layer.connect_sensitive_notify(move |layer| {
+                if !layer.is_sensitive() {
+                    closing.cancel();
+                }
+            });
+            layer.connect_unrealize(move |_| load.cancel());
+        }
 
         let permission_editor = PermissionEditor {
             mode: Rc::new(Cell::new(None)),

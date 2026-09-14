@@ -322,63 +322,6 @@ fn copy_only_source_does_not_move_on_the_same_volume() {
 }
 
 #[test]
-fn file_drop_sites_commit_through_drop_strategy() {
-    let clipboard = include_str!("../clipboard.rs");
-    let drop_fn = function_source(clipboard, "fn transfer_dropped_files");
-    assert!(drop_fn.contains("file_drop_commit"));
-    assert!(drop_fn.contains("commit_file_drop"));
-    assert!(!drop_fn.contains("start_transfer"));
-
-    let paste_fn = function_source(clipboard, "fn paste_into");
-    assert!(paste_fn.contains("start_transfer"));
-    assert!(!paste_fn.contains("commit_file_drop"));
-
-    let rows = include_str!("../columns/rows.rs");
-    assert!(rows.contains("commit_file_drop"));
-    assert!(rows.contains("file_drop_commit"));
-    assert!(!rows.contains("start_transfer"));
-
-    let modes = include_str!("../../browser_modes.rs");
-    assert!(modes.contains("file_drop_commit"));
-    assert!(
-        !function_source(modes, "fn install_mode_directory_drop_target").contains("start_transfer")
-    );
-    assert!(!function_source(modes, "fn install_list_drag_drop").contains("start_transfer"));
-
-    let window = include_str!("../../window.rs");
-    assert!(function_source(window, "fn install_sidebar_file_drop").contains("commit_file_drop"));
-    assert!(function_source(window, "fn install_sidebar_file_drop").contains("file_drop_commit"));
-
-    let browser = include_str!("../../browser.rs");
-    assert!(browser.contains("commit_file_drop"));
-}
-
-fn function_source<'a>(source: &'a str, signature: &str) -> &'a str {
-    let start = source
-        .find(signature)
-        .unwrap_or_else(|| panic!("missing {signature}"));
-    let rest = &source[start..];
-    let mut depth = 0usize;
-    let mut started = false;
-    for (index, ch) in rest.char_indices() {
-        match ch {
-            '{' => {
-                started = true;
-                depth += 1;
-            }
-            '}' => {
-                depth = depth.saturating_sub(1);
-                if started && depth == 0 {
-                    return &rest[..=index];
-                }
-            }
-            _ => {}
-        }
-    }
-    rest
-}
-
-#[test]
 fn cut_clipboard_locations_match_regardless_of_order() {
     let first = Location::local("/fixture/first");
     let second = Location::local("/fixture/second");

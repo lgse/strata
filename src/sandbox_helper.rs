@@ -42,6 +42,9 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if operation == "preview-media" {
         return media::run(input, output, value, media_backend, start_tick);
     }
+    if operation == "media-metadata" {
+        return write_media_metadata(input, output);
+    }
     let numeric_value = || {
         value
             .parse::<i32>()
@@ -72,6 +75,33 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+fn write_media_metadata(input: &Path, output: &Path) -> Result<(), String> {
+    let probe = bounded_output_with_timeout(
+        Command::new("ffprobe")
+            .args([
+                "-v", "error", "-show_entries",
+                "stream=codec_type,codec_name,width,height,duration,avg_frame_rate,r_frame_rate,sample_rate,channels:stream_disposition=attached_pic:stream_side_data=rotation:format=duration,bit_rate",
+                "-of", "json",
+            ])
+            .arg(input),
+        crate::sandbox::metadata::MAX_METADATA_BYTES,
+        Duration::from_secs(4),
+    );
+    let bytes = match probe {
+        Ok(Some(result)) if result.status.success() => result.stdout,
+        _ => {
+            let (_, width, height) = gdk_pixbuf::Pixbuf::file_info(input)
+                .filter(|(_, width, height)| *width > 0 && *height > 0)
+                .ok_or("Unable to inspect media")?;
+            serde_json::to_vec(&serde_json::json!({
+                "streams": [{"codec_type": "video", "width": width, "height": height}]
+            }))
+            .map_err(|error| error.to_string())?
+        }
+    };
+    fs::write(output, bytes).map_err(|error| error.to_string())
 }
 
 fn render_pixbuf(path: &Path, size: i32) -> Result<Vec<u8>, String> {

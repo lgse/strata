@@ -95,6 +95,8 @@ struct Preferences {
     search_open_files_directly: bool,
     #[serde(default = "default_enabled")]
     type_to_search: bool,
+    #[serde(default)]
+    arrow_navigation_scoped: bool,
     #[serde(default = "default_enabled")]
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
@@ -166,6 +168,7 @@ impl Default for Preferences {
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
             type_to_search: true,
+            arrow_navigation_scoped: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             reduce_motion: false,
@@ -288,8 +291,8 @@ pub struct ThemeManager {
     provider: gtk::CssProvider,
     themes: RefCell<Vec<Theme>>,
     preferences: RefCell<Preferences>,
-    omarchy_available: bool,
-    omarchy_monitor: RefCell<Option<gio::FileMonitor>>,
+    omarchy_available: Cell<bool>,
+    omarchy_monitors: RefCell<Vec<gio::FileMonitor>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     previewing: Cell<bool>,
     changes: bindings::PreferenceChanges,
@@ -337,8 +340,8 @@ impl ThemeManager {
             persistence_dirty: Cell::new(false),
             persistence_enabled,
             preferences: RefCell::new(preferences),
-            omarchy_available,
-            omarchy_monitor: RefCell::new(None),
+            omarchy_available: Cell::new(omarchy_available),
+            omarchy_monitors: RefCell::new(Vec::new()),
             pending_omarchy_refresh: RefCell::new(None),
             previewing: Cell::new(false),
         });
@@ -354,7 +357,7 @@ impl ThemeManager {
     }
 
     pub fn is_omarchy_available(&self) -> bool {
-        self.omarchy_available
+        self.omarchy_available.get()
     }
 
     pub fn follows_omarchy(&self) -> bool {
@@ -519,6 +522,15 @@ impl ThemeManager {
 
     pub fn set_type_to_search(&self, enabled: bool) {
         self.preferences.borrow_mut().type_to_search = enabled;
+        self.save_preferences();
+    }
+
+    pub fn arrow_navigation_scoped(&self) -> bool {
+        self.preferences.borrow().arrow_navigation_scoped
+    }
+
+    pub fn set_arrow_navigation_scoped(&self, scoped: bool) {
+        self.preferences.borrow_mut().arrow_navigation_scoped = scoped;
         self.save_preferences();
     }
 
@@ -848,7 +860,7 @@ impl ThemeManager {
     }
 
     pub fn set_follow_omarchy(&self, enabled: bool) {
-        if enabled && !self.omarchy_available {
+        if enabled && !self.is_omarchy_available() {
             return;
         }
         self.preferences.borrow_mut().mode = if enabled {
@@ -1024,52 +1036,76 @@ impl ThemeManager {
     }
 
     fn monitor_omarchy(self: &Rc<Self>) {
-        if !self.omarchy_available {
-            return;
+        for monitor in self.omarchy_monitors.take() {
+            monitor.cancel();
         }
-        let file = gio::File::for_path(omarchy_state_dir());
-        let Ok(monitor) =
-            file.monitor_directory(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
-        else {
-            return;
-        };
-        let weak = Rc::downgrade(self);
-        monitor.connect_changed(move |_, file, other_file, _| {
-            if !is_omarchy_theme_event(file)
-                && !other_file
-                    .as_ref()
-                    .is_some_and(|file| is_omarchy_theme_event(file))
-            {
-                return;
+        let state = omarchy_state_dir();
+        let home = glib::home_dir();
+        // Ancestor watches survive moving away or replacing the current state tree.
+        for path in state.ancestors().take_while(|path| path.starts_with(&home)) {
+            if !path.is_dir() {
+                continue;
             }
-            let Some(manager) = weak.upgrade() else {
-                return;
+            let file = gio::File::for_path(path);
+            let Ok(monitor) =
+                file.monitor_directory(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
+            else {
+                continue;
             };
-            if let Some(pending) = manager.pending_omarchy_refresh.borrow_mut().take() {
-                pending.remove();
-            }
-            let weak = weak.clone();
-            let refresh = glib::timeout_add_local_once(Duration::from_millis(75), move || {
+            let weak = Rc::downgrade(self);
+            monitor.connect_changed(move |_, file, other_file, _| {
+                if !is_omarchy_theme_event(file)
+                    && !other_file
+                        .as_ref()
+                        .is_some_and(|file| is_omarchy_theme_event(file))
+                {
+                    return;
+                }
                 let Some(manager) = weak.upgrade() else {
                     return;
                 };
-                manager.pending_omarchy_refresh.borrow_mut().take();
-                if manager.follows_omarchy() && !manager.previewing.get() {
-                    manager.apply_selected();
-                    manager.changes.notify(&manager);
+                if let Some(pending) = manager.pending_omarchy_refresh.borrow_mut().take() {
+                    pending.remove();
                 }
+                let weak = weak.clone();
+                let refresh = glib::timeout_add_local_once(Duration::from_millis(75), move || {
+                    let Some(manager) = weak.upgrade() else {
+                        return;
+                    };
+                    manager.pending_omarchy_refresh.borrow_mut().take();
+                    manager.monitor_omarchy();
+                    let available = load_omarchy_theme().is_some()
+                        || (manager.is_omarchy_available()
+                            && omarchy_state_dir().join("theme.name").is_file());
+                    let availability_changed =
+                        manager.omarchy_available.replace(available) != available;
+                    if !available && manager.follows_omarchy() {
+                        manager.preferences.borrow_mut().mode = "theme".to_owned();
+                        manager.apply_selected();
+                        manager.save_preferences();
+                        return;
+                    }
+                    if availability_changed {
+                        manager.changes.notify(&manager);
+                        return;
+                    }
+                    if manager.follows_omarchy() && !manager.previewing.get() {
+                        manager.apply_selected();
+                        manager.changes.notify(&manager);
+                    }
+                });
+                manager.pending_omarchy_refresh.replace(Some(refresh));
             });
-            manager.pending_omarchy_refresh.replace(Some(refresh));
-        });
-        self.omarchy_monitor.replace(Some(monitor));
+            self.omarchy_monitors.borrow_mut().push(monitor);
+        }
     }
 }
 
 fn is_omarchy_theme_event(file: &gio::File) -> bool {
-    file.path()
-        .as_deref()
-        .and_then(Path::file_name)
-        .is_some_and(|name| name == "theme" || name == "theme.name")
+    file.path().is_some_and(|path| {
+        let state = omarchy_state_dir();
+        state.starts_with(&path) || path == state.join("theme") || path == state.join("theme.name")
+    })
 }
 
 fn builtins() -> Vec<Theme> {
