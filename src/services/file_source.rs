@@ -241,11 +241,8 @@ pub struct MetadataUpdate {
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
-    /// Native image dimensions requested for a visible icon caption.
     pub image_dimensions: MetadataValue<(u32, u32)>,
-    /// Immediate children requested for a visible folder icon caption.
     pub child_count: MetadataValue<u64>,
-    /// Audio or video duration requested for a visible icon caption.
     pub duration_seconds: MetadataValue<u64>,
 }
 
@@ -256,7 +253,7 @@ pub struct MetadataRequest {
     pub entries: Vec<Location>,
     /// When true, stat the whole list (a sort's full pass); otherwise a viewport window.
     pub full: bool,
-    /// Probe the extra values rendered beneath visible icons. Full sort passes leave this false.
+    /// Keep false for full sort passes to avoid probing off-screen media.
     pub include_icon_details: bool,
     pub time_budget: Duration,
 }
