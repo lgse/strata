@@ -131,8 +131,8 @@ def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata,
     strata.pointer.click(strata.dialog_button("Extract"))
     extracted = fixture.path(member)
     strata.wait(lambda: extracted.exists(), "the archive to extract with the correct password")
-    assert extracted.read_text() == contents
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    assert extracted.read_text() == contents
 
 
 def test_cancelled_extract_to_does_not_hijack_later_extract_here(strata):

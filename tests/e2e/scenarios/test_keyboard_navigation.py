@@ -36,6 +36,36 @@ def test_arrow_keys_move_focus_and_selection(strata, mode, bindings):
     strata.wait_for_focused_entry("readme.md")
 
 
+@pytest.mark.preferences(arrow_navigation_scoped=True, type_to_search=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("bindings", ["arrows", "hjkl"])
+def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, bindings):
+    up, left = ("Up", "Left") if bindings == "arrows" else ("k", "h")
+    strata.select_entry("readme.md")
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    for key in [up, left, up]:
+        strata.keyboard.press(key)
+        strata.wait_for_focused_entry("archive")
+
+    strata.keyboard.press("ctrl+\\")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("arrow_navigation_scoped") == "false",
+        "arrow scope disabled by shortcut",
+    )
+    strata.keyboard.press(up)
+    strata.wait(lambda: strata.focused_name() is None, "Up leaves the file list")
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("archive")
+    strata.keyboard.press("ctrl+\\")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("arrow_navigation_scoped") == "true",
+        "arrow scope enabled by shortcut",
+    )
+    strata.keyboard.press(up)
+    strata.wait_for_focused_entry("archive")
+
+
 @pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_alt_up_and_history_navigate_between_directories(strata, mode):
     root = strata.fixture.root.name
