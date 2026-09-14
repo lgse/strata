@@ -1668,6 +1668,7 @@ fn install_shortcuts(
             && sidebar_toggle.is_active()
             && state.view.item_view_has_focus()
             && state.view.item_at_sidebar_edge()
+            && !ThemeManager::shared().arrow_navigation_scoped()
         {
             focus_before_sidebar.replace(focused.clone());
             sidebar_state.focus_active_place();
@@ -1703,7 +1704,11 @@ fn install_shortcuts(
             if state.view.cross_type_group(direction, extend) {
                 return glib::Propagation::Stop;
             }
-            if !shift && key == gtk::gdk::Key::Up && state.view.focus_header_from_top_item() {
+            if !shift
+                && key == gtk::gdk::Key::Up
+                && !ThemeManager::shared().arrow_navigation_scoped()
+                && state.view.focus_header_from_top_item()
+            {
                 return glib::Propagation::Stop;
             }
             // Keep GTK's spatial movement, then reconcile selection in visual order.
@@ -1745,6 +1750,7 @@ fn install_shortcuts(
         }
         if !shift
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
+            && !ThemeManager::shared().arrow_navigation_scoped()
             && state.view.focus_header_from_top_item()
         {
             return glib::Propagation::Stop;
@@ -1762,7 +1768,8 @@ fn install_shortcuts(
             (gtk::gdk::Key::h | gtk::gdk::Key::Left, false)
                 if !control
                     && state.view.first_column_has_focus()
-                    && sidebar_toggle.is_active() =>
+                    && sidebar_toggle.is_active()
+                    && !ThemeManager::shared().arrow_navigation_scoped() =>
             {
                 focus_before_sidebar.replace(focused.clone());
                 sidebar_state.focus_active_place();

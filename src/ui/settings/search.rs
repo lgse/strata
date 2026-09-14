@@ -24,6 +24,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing quick preview selecting supported files",
     },
     Target {
+        id: "arrow-scope",
+        page: "general",
+        title: "Keep arrows in file list",
+        aliases: "browsing keyboard navigation focus sidebar toolbar",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",

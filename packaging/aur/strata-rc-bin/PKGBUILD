@@ -28,6 +28,7 @@ optdepends=(
   'gvfs-smb: SMB network locations'
   'imagemagick: RAW image previews'
   'libraw: RAW image previews when ImageMagick is unavailable'
+  'xdg-terminal-exec: preferred Open in Terminal launcher (AUR)'
 )
 provides=("strata=${pkgver}")
 conflicts=('strata' 'strata-bin')

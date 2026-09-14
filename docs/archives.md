@@ -50,6 +50,16 @@ creation rejects symlinks rather than following or silently replacing them.
 Compression selection does not relax these restrictions or change staged
 publication, conflict handling, or permissions.
 
+## Existing archive names
+
+When the requested archive already exists, the creation prompt offers Cancel,
+Keep Both, and Replace. Keep Both publishes the next available numbered name,
+such as `archive (1).zip` or `archive (1).tar.gz`, and selects that new archive.
+It skips existing files, directories, and symlinks, including names that appear
+while encoding is running. The completed staging file is retried atomically at
+publication; the sources are not compressed again for each collision. Replace
+retains its existing overwrite behavior.
+
 ## Feedback and cancellation
 
 Archive operations show `Preparing…` immediately, then completed-file counts.

@@ -127,6 +127,20 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
     assert_eq!(fs::read(&archive)?, b"original");
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
 
+    for suffix in [1, 2] {
+        let kept = run_compression(request(TransferConflict::KeepBoth));
+        let expected_name = format!("existing ({suffix}).zip");
+        assert!(kept.iter().any(|event| matches!(event,
+            OperationEvent::Compressed { archive_name, .. } if archive_name == &expected_name
+        )));
+        let extracted = destination.join(format!("kept-{suffix}"));
+        fs::create_dir(&extracted)?;
+        extract_zip(&destination.join(expected_name), &extracted)?;
+        assert_eq!(fs::read(extracted.join("source.txt"))?, b"replacement");
+        assert_eq!(fs::read(&archive)?, b"original");
+        assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
+    }
+
     let replaced = run_compression(request(TransferConflict::ReplaceExisting));
     assert!(
         replaced

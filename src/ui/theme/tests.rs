@@ -189,18 +189,22 @@ fn legacy_palette_without_quattro_semantics_is_not_detected() {
 
 #[test]
 fn omarchy_monitor_ignores_unrelated_state_changes() {
-    assert!(is_omarchy_theme_event(&gtk::gio::File::for_path(
-        "/state/current/theme"
-    )));
-    assert!(is_omarchy_theme_event(&gtk::gio::File::for_path(
-        "/state/current/theme.name"
-    )));
-    assert!(!is_omarchy_theme_event(&gtk::gio::File::for_path(
-        "/state/current/next-theme"
-    )));
-    assert!(!is_omarchy_theme_event(&gtk::gio::File::for_path(
-        "/state/current/background"
-    )));
+    let state = super::omarchy_state_dir();
+    for path in [
+        state.clone(),
+        state.join("theme"),
+        state.join("theme.name"),
+        state.parent().expect("Omarchy state parent").to_path_buf(),
+    ] {
+        assert!(is_omarchy_theme_event(&gtk::gio::File::for_path(path)));
+    }
+    for path in [
+        state.join("next-theme"),
+        state.join("background"),
+        gtk::glib::home_dir().join("theme"),
+    ] {
+        assert!(!is_omarchy_theme_event(&gtk::gio::File::for_path(path)));
+    }
 }
 
 #[test]
