@@ -5,7 +5,7 @@ use crate::model::{FileEntry, Location};
 use std::path::Path;
 
 #[test]
-fn executable_fallback_requires_regular_executable_and_missing_handler()
+fn regular_executable_requires_regular_file_and_execute_bit()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::PermissionsExt;
 
@@ -13,19 +13,12 @@ fn executable_fallback_requires_regular_executable_and_missing_handler()
     let program = fixture.path().join("program");
     std::fs::write(&program, b"#!/bin/sh\n")?;
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))?;
-    let no_handler = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler");
-    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "denied");
 
-    assert!(executable_without_handler(Some(&program), &no_handler));
-    assert!(!executable_without_handler(Some(&program), &denied));
-    assert!(!executable_without_handler(
-        Some(fixture.path()),
-        &no_handler
-    ));
-    assert!(!executable_without_handler(None, &no_handler));
+    assert!(is_regular_executable(&program));
+    assert!(!is_regular_executable(fixture.path()));
 
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o644))?;
-    assert!(!executable_without_handler(Some(&program), &no_handler));
+    assert!(!is_regular_executable(&program));
     Ok(())
 }
 
@@ -110,7 +103,8 @@ fn open_location_rejects_trash_locations() {
         || {
             let overlay = gtk::Overlay::new();
             let location = Location::uri("trash:///test.png");
-            open_location(&location, &overlay);
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            open_location(&location, &overlay, &browser);
             assert!(overlay.last_child().is_some());
         },
     );
