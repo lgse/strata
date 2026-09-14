@@ -274,7 +274,26 @@ pub(super) fn wrap(
             );
         }
     });
-    state.list.add_controller(click);
+    let drag = gtk::DragSource::builder()
+        .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
+        .propagation_phase(gtk::PropagationPhase::Capture)
+        .build();
+    let weak = Rc::downgrade(&state);
+    drag.connect_prepare(move |source, _x, y| {
+        let state = weak.upgrade()?;
+        let row = state.list.row_at_y(y as i32)?;
+        let items = state.items.borrow();
+        let item = items.get(row.index() as usize)?;
+        source.set_actions(super::browser::drag_actions_for_modifiers(
+            source.current_event_state(),
+        ));
+        let paintable = gtk::WidgetPaintable::new(Some(&row));
+        source.set_icon(Some(&paintable), 0, 0);
+        super::browser::file_drag_content(&[super::browser::search_result_entry(item)])
+    });
+    state.list.add_controller(drag.clone());
+    state.list.add_controller(click.clone());
+    drag.group_with(&click);
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = Rc::downgrade(&state);

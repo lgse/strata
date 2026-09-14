@@ -194,8 +194,8 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata):
     assert len(launch_counter.read_text().splitlines()) == 1
 
 
-@pytest.mark.preferences(browser_mode="columns")
-def test_filtered_columns_result_waits_for_release_before_launching(launch_counter, strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_result_waits_for_release_before_launching(launch_counter, strata, mode):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")

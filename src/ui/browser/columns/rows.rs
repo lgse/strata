@@ -187,6 +187,9 @@ pub(super) fn column_rows(
             let dragged_item = item.downgrade();
             let map_for_drag = map_for_hover.clone();
             let prepare_row = row.downgrade();
+            let search_active_for_drag = search_active_for_factory.clone();
+            let search_results_for_drag = search_results_for_factory.clone();
+            let selection_for_drag = selection_for_rows.clone();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
                 if prepare_row
@@ -198,9 +201,26 @@ pub(super) fn column_rows(
                 source.set_actions(drag_actions_for_modifiers(source.current_event_state()));
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
-                let source_position = map_for_drag.source_position(dragged_item.position())?;
-                let entry = state.browser.entry_at(depth, source_position)?;
-                let selected = state.browser.selected_entries();
+                let position = dragged_item.position();
+                let (entry, selected) = if search_active_for_drag.get() {
+                    let results = search_results_for_drag.borrow();
+                    let entry =
+                        crate::ui::browser::search_result_entry(results.get(position as usize)?);
+                    let selected = crate::ui::browser::collection::bitset_positions(
+                        &selection_for_drag.selection(),
+                    )
+                    .into_iter()
+                    .filter_map(|position| results.get(position as usize))
+                    .map(crate::ui::browser::search_result_entry)
+                    .collect();
+                    (entry, selected)
+                } else {
+                    let source_position = map_for_drag.source_position(position)?;
+                    (
+                        state.browser.entry_at(depth, source_position)?,
+                        state.browser.selected_entries(),
+                    )
+                };
                 let entries = if selected
                     .iter()
                     .any(|selected| selected.location == entry.location)
