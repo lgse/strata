@@ -157,6 +157,77 @@ struct Preferences {
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     custom_icons: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    smart_folders: Option<Vec<SmartFolderDef>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SmartFolderDef {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub query: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<crate::model::SmartQueryRule>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roots: Vec<PathBuf>,
+    #[serde(default)]
+    pub show_hidden: bool,
+}
+
+impl SmartFolderDef {
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.query.trim().is_empty() {
+            parts.push(format!("\"{}\"", self.query.trim()));
+        }
+        for rule in &self.rules {
+            parts.push(rule.summary());
+        }
+        if parts.is_empty() {
+            "All items".to_string()
+        } else {
+            parts.join(" · ")
+        }
+    }
+}
+
+pub fn default_smart_folders() -> Vec<SmartFolderDef> {
+    use crate::model::{DateConstraint, FileCategory, SizeConstraint, SmartQueryRule};
+    vec![
+        SmartFolderDef {
+            id: "recent-documents".into(),
+            name: "Recent Documents".into(),
+            query: String::new(),
+            rules: vec![
+                SmartQueryRule::Kind(FileCategory::Document),
+                SmartQueryRule::DateModified(DateConstraint::WithinPastDays(7)),
+            ],
+            roots: Vec::new(),
+            show_hidden: false,
+        },
+        SmartFolderDef {
+            id: "recent-images".into(),
+            name: "Recent Images".into(),
+            query: String::new(),
+            rules: vec![
+                SmartQueryRule::Kind(FileCategory::Image),
+                SmartQueryRule::DateModified(DateConstraint::WithinPastDays(7)),
+            ],
+            roots: Vec::new(),
+            show_hidden: false,
+        },
+        SmartFolderDef {
+            id: "large-files".into(),
+            name: "Large Files (>100MB)".into(),
+            query: String::new(),
+            rules: vec![SmartQueryRule::FileSize(SizeConstraint::GreaterThan(
+                100_000_000,
+            ))],
+            roots: Vec::new(),
+            show_hidden: false,
+        },
+    ]
 }
 
 impl Default for Preferences {
@@ -201,6 +272,7 @@ impl Default for Preferences {
             default_directory: None,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
+            smart_folders: None,
         }
     }
 }
@@ -301,6 +373,12 @@ pub struct ThemeManager {
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
     persistence_enabled: bool,
+}
+
+fn materialize_smart_folders(preferences: &mut Preferences) -> &mut Vec<SmartFolderDef> {
+    preferences
+        .smart_folders
+        .get_or_insert_with(default_smart_folders)
 }
 
 impl ThemeManager {
@@ -453,6 +531,51 @@ impl ThemeManager {
         }
         self.save_preferences();
         super::thumbnail::refresh_customized_icons(&[path.to_path_buf()]);
+    }
+
+    pub fn smart_folders(&self) -> Vec<SmartFolderDef> {
+        self.preferences
+            .borrow()
+            .smart_folders
+            .clone()
+            .unwrap_or_else(default_smart_folders)
+    }
+
+    pub fn add_smart_folder(&self, definition: SmartFolderDef) {
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let folders = materialize_smart_folders(&mut preferences);
+            folders.retain(|existing| existing.id != definition.id);
+            folders.push(definition);
+        }
+        self.save_preferences();
+    }
+
+    pub fn remove_smart_folder(&self, id: &str) {
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            materialize_smart_folders(&mut preferences).retain(|existing| existing.id != id);
+        }
+        self.save_preferences();
+    }
+
+    pub fn rename_smart_folder(&self, id: &str, new_name: &str) {
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            if let Some(folder) = materialize_smart_folders(&mut preferences)
+                .iter_mut()
+                .find(|folder| folder.id == id)
+            {
+                folder.name = new_name.to_string();
+            }
+        }
+        self.save_preferences();
+    }
+
+    pub fn smart_folder(&self, id: &str) -> Option<SmartFolderDef> {
+        self.smart_folders()
+            .into_iter()
+            .find(|existing| existing.id == id)
     }
 
     pub fn single_click_previews(&self) -> bool {

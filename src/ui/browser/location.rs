@@ -1899,7 +1899,7 @@ impl ViewState {
             let label = if crumb == home {
                 "~".to_owned()
             } else {
-                crumb.display_name()
+                crate::ui::location_display_name(&crumb)
             };
             if index == last {
                 let current = gtk::Box::new(gtk::Orientation::Horizontal, 2);
@@ -1914,6 +1914,7 @@ impl ViewState {
                 copy.add_css_class("copy-path");
                 copy.set_has_frame(false);
                 copy.set_cursor_from_name(Some("pointer"));
+                copy.set_visible(!location.is_smart_folder());
                 let copied_path = copy_path_text(location, true);
                 let feedback_generation = Rc::new(Cell::new(0_u64));
                 copy.connect_clicked(move |button| {

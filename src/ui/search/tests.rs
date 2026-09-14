@@ -910,14 +910,23 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             );
             let window = gtk::Window::builder().child(&dialog.widget()).build();
             window.present();
-            dialog.show(vec![home.clone(), usb.clone()], false);
+            dialog.show(
+                vec![home.clone(), usb.clone()],
+                Some((home.clone(), "Home".to_string())),
+                false,
+            );
+            let scope_bar = dialog
+                .state
+                .field
+                .parent()
+                .expect("search bar")
+                .next_sibling()
+                .expect("scope bar");
+            assert!(scope_bar.has_css_class("search-scope-bar"));
+            let criteria_bar = scope_bar.next_sibling().expect("criteria bar");
+            assert!(criteria_bar.has_css_class("search-criteria-bar"));
             assert_eq!(
-                dialog
-                    .state
-                    .field
-                    .parent()
-                    .expect("search bar")
-                    .next_sibling(),
+                criteria_bar.next_sibling(),
                 Some(dialog.state.results.clone().upcast())
             );
             assert_eq!(
@@ -929,6 +938,19 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             assert!(tooltip.contains(&home.display().to_string()));
             assert!(tooltip.contains(&usb.display().to_string()));
             dialog.state.field.set_text("needle");
+            wait_until(|| dialog.state.visible_results.borrow().len() == 2);
+            assert_eq!(dialog.state.result_count.text(), "2 items");
+            dialog.state.scope_folder.set_active(true);
+            wait_until(|| {
+                !dialog.state.indexing_spinner.is_visible()
+                    && dialog.state.visible_results.borrow().len() == 1
+            });
+            assert_eq!(
+                dialog.state.visible_results.borrow()[0].path,
+                home.join("needle.txt")
+            );
+            assert_eq!(active_search_roots(&dialog.state), vec![home.clone()]);
+            dialog.state.scope_all.set_active(true);
             wait_until(|| dialog.state.visible_results.borrow().len() == 2);
             for (position, item) in dialog.state.visible_results.borrow().iter().enumerate() {
                 let row = dialog
@@ -942,7 +964,11 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
                 );
             }
 
-            dialog.show(vec![home.clone()], false);
+            dialog.show(
+                vec![home.clone()],
+                Some((home.clone(), "Home".to_string())),
+                false,
+            );
             assert!(dialog.state.visible_results.borrow().is_empty());
             let tooltip = dialog
                 .state
@@ -970,7 +996,11 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             assert!(dialog.state.truncated_hint.is_visible());
             assert_eq!(dialog.state.truncated_hint.text(), coverage.message());
 
-            dialog.show(vec![home, usb.clone()], false);
+            dialog.show(
+                vec![home.clone(), usb.clone()],
+                Some((home, "Home".to_string())),
+                false,
+            );
             dialog.state.field.set_text("needle");
             wait_until(|| dialog.state.visible_results.borrow().len() == 2);
             let usb_position = dialog
@@ -1001,4 +1031,35 @@ fn wait_until(condition: impl Fn() -> bool) {
         glib::MainContext::default().iteration(false);
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+#[test]
+fn criteria_dropdowns_activate_save_button_and_filter_results() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::criteria_dropdowns_activate_save_button_and_filter_results",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            assert!(!dialog.state.save_button.is_visible());
+            assert!(!dialog.state.date_row.is_visible());
+            assert!(!dialog.state.size_row.is_visible());
+
+            dialog.state.kind_dropdown.set_selected(2);
+            assert!(dialog.state.save_button.is_visible());
+            assert_eq!(
+                active_rules(&dialog.state),
+                vec![crate::model::SmartQueryRule::Kind(
+                    crate::model::FileCategory::Image
+                )]
+            );
+
+            dialog.state.kind_add.emit_clicked();
+            assert!(dialog.state.date_row.is_visible());
+            assert!(!dialog.state.kind_add.is_visible());
+            assert!(dialog.state.date_add.is_visible());
+            dialog.state.date_dropdown.set_selected(2);
+            assert_eq!(active_rules(&dialog.state).len(), 2);
+
+            window.destroy();
+        },
+    );
 }

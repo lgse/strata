@@ -323,8 +323,14 @@ impl NavigationState {
         entries: Vec<FileEntry>,
     ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
+        let selected_location = column
+            .selected
+            .and_then(|position| column.entries.get(position))
+            .map(|entry| entry.location.clone());
         column.entries = entries;
-        if let Some(selected_location) = column.selection_target.clone() {
+        if let Some(selected_location) =
+            selected_location.or_else(|| column.selection_target.clone())
+        {
             column.selected = column
                 .entries
                 .iter()
@@ -332,8 +338,16 @@ impl NavigationState {
             if column.selected.is_some() {
                 column.selection_target = None;
             }
+        } else {
+            column.selected = None;
         }
         column.restore_pending_selection();
+        column.selected_locations.retain(|location| {
+            column
+                .entries
+                .iter()
+                .any(|entry| &entry.location == location)
+        });
         if column.select_first_on_load && !column.entries.is_empty() {
             column.pending_selection.clear();
             let first_visible = column

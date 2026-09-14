@@ -16,6 +16,76 @@ use crate::{
 };
 
 #[test]
+fn dynamic_smart_folder_scope_uses_current_global_roots() {
+    let fallback = vec![
+        PathBuf::from("/home/fixture"),
+        PathBuf::from("/media/archive"),
+    ];
+    assert_eq!(
+        resolve_smart_folder_roots(Vec::new(), || fallback.clone()),
+        fallback
+    );
+    assert_eq!(
+        resolve_smart_folder_roots(vec![PathBuf::from("/projects")], Vec::new),
+        vec![PathBuf::from("/projects")]
+    );
+}
+
+#[test]
+fn whole_computer_smart_folders_reuse_the_window_index() {
+    let root = tempfile::tempdir().expect("temporary search root");
+    let roots = vec![root.path().to_path_buf()];
+    let browser = Browser::new(Rc::new(FakeFileSource));
+
+    let (first, _events) = browser.smart_search_session(roots.clone(), false, true);
+    {
+        let cache = browser.smart_search_index.borrow();
+        let cached = cache.as_ref().expect("whole-computer index lease");
+        assert!(first.shares_index_with(&cached._lease));
+    }
+    drop(first);
+
+    let (second, _events) = browser.smart_search_session(roots, false, true);
+    let cache = browser.smart_search_index.borrow();
+    let cached = cache.as_ref().expect("reused whole-computer index lease");
+    assert!(second.shares_index_with(&cached._lease));
+}
+
+#[test]
+fn cumulative_smart_folder_results_replace_the_previous_snapshot() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let request_id = RequestId(41);
+    browser
+        .state
+        .borrow_mut()
+        .navigate(Location::smart_folder("documents"), request_id);
+    browser.select_first_on_load(0);
+    let first = batch_entry("first");
+    let second = batch_entry("second");
+
+    browser.publish_smart_folder_entries(request_id, vec![second.clone()], true, false);
+    browser.publish_smart_folder_entries(request_id, vec![second, first], false, false);
+
+    let names = browser.with_entries(0, 0..2, |entries| {
+        entries
+            .iter()
+            .map(|entry| entry.display_name.clone())
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(names, Some(vec!["first".into(), "second".into()]));
+    assert_eq!(
+        browser
+            .focused_item()
+            .map(|(_, _, entry)| entry.display_name),
+        Some("second".into())
+    );
+    assert_eq!(
+        browser.column_snapshot(0).map(|column| column.loading),
+        Some(false)
+    );
+}
+
+#[test]
 fn deleted_trash_entries_refresh_the_trash_root() {
     let entry = FileEntry {
         location: Location::uri("trash:///photo.jpg"),

@@ -776,3 +776,51 @@ fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() 
         );
     }
 }
+
+#[test]
+fn smart_query_filters_by_category_size_and_date() {
+    use crate::model::{FileCategory, SizeConstraint, SmartQueryRule};
+
+    let fixture = unique_fixture_root("smart-query-test");
+    let root = fixture.join("files");
+    fs::create_dir_all(&root).expect("create test fixture");
+
+    let img_path = root.join("photo.png");
+    let doc_path = root.join("invoice.pdf");
+    let code_path = root.join("script.py");
+    fs::write(&img_path, vec![0u8; 50_000]).expect("write img");
+    fs::write(&doc_path, vec![0u8; 5_000]).expect("write doc");
+    fs::write(&code_path, vec![0u8; 1_000]).expect("write code");
+
+    let (search, events) = index_tree(root.clone(), false);
+
+    // 1. Query for Image category
+    search.smart_query("", vec![SmartQueryRule::Kind(FileCategory::Image)]);
+    let SearchEvent::Results { items, .. } =
+        wait_for_results(&events).expect("results for image category");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "photo.png");
+
+    // 2. Query for Documents with size > 2000
+    search.smart_query(
+        "",
+        vec![
+            SmartQueryRule::Kind(FileCategory::Document),
+            SmartQueryRule::FileSize(SizeConstraint::GreaterThan(2000)),
+        ],
+    );
+    let SearchEvent::Results { items, .. } =
+        wait_for_results(&events).expect("results for document size");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "invoice.pdf");
+
+    // 3. Combined text query + rule
+    search.smart_query("script", vec![SmartQueryRule::Kind(FileCategory::Code)]);
+    let SearchEvent::Results { items, .. } =
+        wait_for_results(&events).expect("results for code text query");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].name, "script.py");
+
+    drop(search);
+    fs::remove_dir_all(&fixture).expect("clean test fixture");
+}

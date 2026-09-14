@@ -611,6 +611,60 @@ headerbar menubutton.header-action > button:focus-visible {
   color: @theme_accent;
 }
 
+.search-scope-bar {
+  background: alpha(@theme_bg, 0.2);
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+  min-height: 34px;
+  padding: 4px 16px;
+}
+
+.search-scope-label {
+  color: @theme_dim_text;
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.search-scope-switcher {
+  background: alpha(@theme_border, 0.2);
+  border: 1px solid alpha(@theme_border, 0.45);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.search-scope-option {
+  background: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_dim_text;
+  font-size: 0.8em;
+  font-weight: 500;
+  min-height: 22px;
+  padding: 1px 10px;
+  transition: background 140ms ease-out, color 140ms ease-out, transform 100ms ease-out;
+}
+
+.search-scope-option:hover {
+  background: alpha(@theme_text, 0.07);
+  color: @theme_text;
+}
+
+.search-scope-option:checked {
+  background: alpha(@theme_accent, 0.9);
+  color: @theme_bg;
+  font-weight: 650;
+}
+
+.search-scope-option:active {
+  transform: scale(0.97);
+}
+
+.search-scope-option:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 1px;
+}
+
 .search-status {
   color: @theme_dim_text;
   padding: 28px 24px;
@@ -677,15 +731,245 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 0 18px;
 }
 
+.search-result-count,
 .search-hint {
   color: @theme_text;
   font-size: 0.78em;
   opacity: 0.72;
 }
 
+.search-result-count {
+  font-weight: 600;
+  min-width: 66px;
+}
+
 .search-hint-warning {
   color: @theme_accent;
   opacity: 0.9;
+}
+
+menubutton.search-save-button {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+menubutton.search-save-button > button {
+  background: alpha(@theme_accent, 0.14);
+  background-image: none;
+  border: 1px solid alpha(@theme_accent, 0.45);
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_accent;
+  font-size: 0.82em;
+  font-weight: 600;
+  min-height: 26px;
+  padding: 3px 12px;
+  transition: background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out;
+}
+
+menubutton.search-save-button > button:hover {
+  background: alpha(@theme_accent, 0.24);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+menubutton.search-save-button > button:active,
+menubutton.search-save-button > button:checked {
+  background: alpha(@theme_accent, 0.35);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+menubutton.search-save-button > button:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 1px;
+}
+
+.search-criteria-bar {
+  background: alpha(@theme_bg, 0.35);
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+  padding: 4px 16px;
+}
+
+.search-criterion-row {
+  min-height: 32px;
+}
+
+.search-criterion-property {
+  color: @theme_text;
+  font-size: 0.82em;
+  font-weight: 600;
+  min-width: 92px;
+}
+
+.search-criterion-operator {
+  color: @theme_dim_text;
+  font-size: 0.82em;
+  min-width: 54px;
+}
+
+.search-criterion-action {
+  background: alpha(@theme_border, 0.22);
+  background-image: none;
+  border: 1px solid alpha(@theme_border, 0.55);
+  border-radius: 5px;
+  box-shadow: none;
+  min-height: 22px;
+  min-width: 22px;
+  padding: 2px;
+  transition: background 120ms ease-out, border-color 120ms ease-out, transform 100ms ease-out;
+}
+
+.search-criterion-action:hover {
+  background: alpha(@theme_accent, 0.16);
+  border-color: alpha(@theme_accent, 0.62);
+}
+
+.search-criterion-action:active {
+  background: alpha(@theme_accent, 0.26);
+  transform: scale(0.94);
+}
+
+.search-criterion-action:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 1px;
+}
+
+.search-criterion-action image {
+  opacity: 1;
+  -gtk-icon-size: 13px;
+}
+
+menubutton.search-criteria-dropdown {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+menubutton.search-criteria-dropdown > button {
+  background: transparent;
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_text;
+  font-size: 0.82em;
+  font-weight: 500;
+  min-height: 26px;
+  padding: 3px 9px;
+  transition: background 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out;
+}
+
+menubutton.search-criteria-dropdown > button:hover {
+  background: alpha(@theme_accent, 0.15);
+  border-color: transparent;
+  color: @theme_text;
+}
+
+menubutton.search-criteria-dropdown > button:active,
+menubutton.search-criteria-dropdown > button:checked {
+  background: alpha(@theme_accent, 0.22);
+  border-color: transparent;
+  color: @theme_text;
+}
+
+menubutton.search-criteria-dropdown > button:focus-visible {
+  border-color: @theme_accent;
+  outline: 2px solid @theme_accent;
+  outline-offset: 1px;
+}
+
+menubutton.search-criteria-dropdown.active-filter > button {
+  background: alpha(@theme_accent, 0.16);
+  border-color: alpha(@theme_accent, 0.5);
+  color: @theme_accent;
+  font-weight: 600;
+}
+
+menubutton.search-criteria-dropdown.active-filter > button:hover {
+  background: alpha(@theme_accent, 0.25);
+  border-color: alpha(@theme_accent, 0.7);
+  color: @theme_accent;
+}
+
+menubutton.search-criteria-dropdown.active-filter > button:active,
+menubutton.search-criteria-dropdown.active-filter > button:checked {
+  background: alpha(@theme_accent, 0.32);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.search-criteria-chevron {
+  opacity: 1;
+  -gtk-icon-size: 14px;
+  transition: transform 160ms ease-out;
+}
+
+menubutton.search-criteria-dropdown image,
+menubutton.search-criteria-dropdown > button image,
+menubutton.search-criteria-dropdown > button:hover image,
+menubutton.search-criteria-dropdown > button:active image,
+menubutton.search-criteria-dropdown > button:checked image {
+  opacity: 1;
+  -gtk-icon-size: 14px;
+}
+
+menubutton.search-save-button image,
+menubutton.search-save-button > button image,
+menubutton.search-save-button > button:hover image,
+menubutton.search-save-button > button:active image,
+menubutton.search-save-button > button:checked image {
+  opacity: 1;
+  -gtk-icon-size: 14px;
+}
+
+menubutton.search-criteria-dropdown > button:checked .search-criteria-chevron {
+  transform: rotate(180deg);
+}
+
+.smart-folder-save-box,
+.smart-folder-rename-box {
+  background: @theme_surface;
+  border-radius: 9px;
+  min-width: 250px;
+  padding: 14px 16px;
+}
+
+.save-smart-folder-action {
+  background: @theme_accent;
+  border: none;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px alpha(@theme_glow, 0.2);
+  color: @theme_bg;
+  font-size: 0.82em;
+  font-weight: 600;
+  padding: 6px 14px;
+  transition: background 160ms ease-out, box-shadow 160ms ease-out, transform 100ms ease-out;
+}
+
+.save-smart-folder-action:hover {
+  background: alpha(@theme_accent, 0.88);
+  box-shadow: 0 0 8px alpha(@theme_accent, 0.3);
+}
+
+.save-smart-folder-action:active {
+  background: alpha(@theme_accent, 0.72);
+  transform: scale(0.98);
+}
+
+.save-smart-folder-action:focus-visible {
+  outline: 2px solid @theme_highlight;
+}
+
+.smart-folder-save-summary {
+  color: @theme_dim_text;
+  font-size: 0.8em;
+  line-height: 1.35;
 }
 
 .settings-backdrop {

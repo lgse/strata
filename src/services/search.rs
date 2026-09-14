@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::model::{EntryKind, MetadataValue};
+use crate::model::{EntryKind, MetadataValue, SmartQueryRule};
 use unicode_normalization::UnicodeNormalization;
 
 use super::{is_hidden_name, native_hidden_names, native_kind};
@@ -60,6 +60,8 @@ pub struct SearchItem {
     pub is_directory: bool,
     pub kind: EntryKind,
     pub mode: MetadataValue<u32>,
+    pub size_bytes: u64,
+    pub modified_secs: u64,
     search_path: String,
     search_name_start: usize,
     depth: u8,
@@ -82,16 +84,32 @@ impl SearchItem {
         } else {
             EntryKind::File
         };
-        Self::with_metadata(path, root, is_directory, kind, MetadataValue::Unknown)
+        Self::with_metadata(path, root, is_directory, kind, MetadataValue::Unknown, 0, 0)
     }
 
     fn from_native(path: PathBuf, root: &Path, is_directory: bool, kind: EntryKind) -> Self {
         use std::os::unix::fs::MetadataExt;
 
-        let mode = std::fs::metadata(&path)
-            .map(|metadata| MetadataValue::Known(metadata.mode()))
-            .unwrap_or(MetadataValue::Unknown);
-        Self::with_metadata(path, root, is_directory, kind, mode)
+        let (mode, size_bytes, modified_secs) = std::fs::metadata(&path)
+            .map(|metadata| {
+                let mtime = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                (MetadataValue::Known(metadata.mode()), metadata.len(), mtime)
+            })
+            .unwrap_or((MetadataValue::Unknown, 0, 0));
+        Self::with_metadata(
+            path,
+            root,
+            is_directory,
+            kind,
+            mode,
+            size_bytes,
+            modified_secs,
+        )
     }
 
     fn with_metadata(
@@ -100,6 +118,8 @@ impl SearchItem {
         is_directory: bool,
         kind: EntryKind,
         mode: MetadataValue<u32>,
+        size_bytes: u64,
+        modified_secs: u64,
     ) -> Self {
         let name = path
             .file_name()
@@ -124,6 +144,8 @@ impl SearchItem {
             is_directory,
             kind,
             mode,
+            size_bytes,
+            modified_secs,
             search_path,
             search_name_start,
             depth,
@@ -177,6 +199,7 @@ impl SearchCoverage {
 pub enum SearchEvent {
     Results {
         query: String,
+        rules: Vec<SmartQueryRule>,
         items: Vec<SearchItem>,
         indexing: bool,
         coverage: SearchCoverage,
@@ -185,6 +208,10 @@ pub enum SearchEvent {
 
 enum SearchCommand {
     Query(String),
+    SmartQuery {
+        query: String,
+        rules: Vec<SmartQueryRule>,
+    },
     IndexChanged,
 }
 
@@ -192,6 +219,8 @@ enum SearchCommand {
 struct WalkProgress {
     query: String,
     normalized_query: String,
+    rules: Vec<SmartQueryRule>,
+    is_smart: bool,
     matches: Vec<(i64, SearchItem)>,
 }
 
@@ -301,11 +330,33 @@ pub struct SearchHandle {
     subscriber_id: usize,
 }
 
+pub(crate) struct SearchIndexLease {
+    index: Arc<SharedIndex>,
+}
+
+impl Drop for SearchIndexLease {
+    fn drop(&mut self) {
+        self.index.release();
+    }
+}
+
 impl SearchHandle {
     pub fn query(&self, query: &str) {
         let _sent = self
             .commands
             .send(SearchCommand::Query(query.trim().to_owned()));
+    }
+
+    pub fn smart_query(&self, query: &str, rules: Vec<SmartQueryRule>) {
+        let _sent = self.commands.send(SearchCommand::SmartQuery {
+            query: query.trim().to_owned(),
+            rules,
+        });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shares_index_with(&self, lease: &SearchIndexLease) -> bool {
+        Arc::ptr_eq(&self.index, &lease.index)
     }
 }
 
@@ -344,12 +395,24 @@ pub fn index_trees(
     index_scoped(roots, show_hidden, true, fuzzy_score_normalized)
 }
 
+/// Keeps a completed or in-progress tree index reusable without starting a query session.
+pub(crate) fn retain_index_trees(roots: Vec<PathBuf>, show_hidden: bool) -> SearchIndexLease {
+    SearchIndexLease {
+        index: acquire_index(roots, show_hidden, true),
+    }
+}
+
 fn index_scoped(
     roots: Vec<PathBuf>,
     show_hidden: bool,
     recursive: bool,
     scorer: SearchScorer,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
+    let index = acquire_index(roots, show_hidden, recursive);
+    start_search_session(index, scorer)
+}
+
+fn acquire_index(roots: Vec<PathBuf>, show_hidden: bool, recursive: bool) -> Arc<SharedIndex> {
     let mut seen = HashSet::new();
     let roots: Vec<_> = roots
         .into_iter()
@@ -382,7 +445,7 @@ fn index_scoped(
         index
     };
     drop(registry);
-    start_search_session(index, scorer)
+    index
 }
 
 #[cfg(test)]
@@ -485,26 +548,51 @@ fn run_search_session(
         let mut index_changed = false;
         for command in std::iter::once(first).chain(commands.try_iter()) {
             match command {
-                SearchCommand::Query(query) => next_query = Some(query),
+                SearchCommand::Query(query) => {
+                    next_query = Some((query, Vec::new(), false));
+                }
+                SearchCommand::SmartQuery { query, rules } => {
+                    next_query = Some((query, rules, true));
+                }
                 SearchCommand::IndexChanged => index_changed = true,
             }
         }
         let query_changed = next_query.is_some();
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         let state = index
             .state
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(query) = next_query {
+        if let Some((query, rules, is_smart)) = next_query {
             progress.normalized_query = fold_for_search(&query);
             progress.query = query;
-            progress.matches = if progress.normalized_query.is_empty() {
+            progress.rules = rules;
+            progress.is_smart = is_smart;
+            progress.matches = if progress.normalized_query.is_empty() && !progress.is_smart {
                 Vec::new()
             } else {
-                score_index(&state.items, &progress.normalized_query, scorer)
+                score_index_smart(
+                    &state.items,
+                    &progress.normalized_query,
+                    &progress.rules,
+                    progress.is_smart,
+                    now_secs,
+                    scorer,
+                )
             };
-        } else if index_changed && !progress.normalized_query.is_empty() {
+        } else if index_changed && (!progress.normalized_query.is_empty() || progress.is_smart) {
             for item in &state.items[indexed_items..] {
-                if let Some(score) = scorer(item, &progress.normalized_query) {
+                if let Some(score) = evaluate_smart_item(
+                    item,
+                    &progress.normalized_query,
+                    &progress.rules,
+                    progress.is_smart,
+                    now_secs,
+                    scorer,
+                ) {
                     insert_match(&mut progress.matches, score, item);
                 }
             }
@@ -514,7 +602,9 @@ fn run_search_session(
         let indexing = state.indexing;
         let coverage = state.coverage;
         drop(state);
-        if query_changed || (index_changed && (!progress.query.is_empty() || !indexing)) {
+        if query_changed
+            || (index_changed && (!progress.query.is_empty() || progress.is_smart || !indexing))
+        {
             publish(events, &progress, indexing, coverage);
         }
     }
@@ -879,16 +969,67 @@ fn append_index_items(
 
 type RankedPosition = Reverse<(i64, Reverse<usize>)>;
 
+fn evaluate_smart_item(
+    item: &SearchItem,
+    normalized_query: &str,
+    rules: &[SmartQueryRule],
+    is_smart: bool,
+    now_secs: u64,
+    scorer: SearchScorer,
+) -> Option<i64> {
+    for rule in rules {
+        if !rule.matches(
+            &item.path,
+            &item.name,
+            item.is_directory,
+            item.size_bytes,
+            item.modified_secs,
+            now_secs,
+        ) {
+            return None;
+        }
+    }
+    if !normalized_query.is_empty() {
+        scorer(item, normalized_query)
+    } else if is_smart {
+        let base_score = (item.modified_secs as i64).max(0);
+        let depth_penalty = i64::from(item.depth) * 10;
+        Some(base_score.saturating_sub(depth_penalty))
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
 fn score_index(
     index: &[SearchItem],
     normalized_query: &str,
+    scorer: SearchScorer,
+) -> Vec<(i64, SearchItem)> {
+    score_index_smart(index, normalized_query, &[], false, 0, scorer)
+}
+
+fn score_index_smart(
+    index: &[SearchItem],
+    normalized_query: &str,
+    rules: &[SmartQueryRule],
+    is_smart: bool,
+    now_secs: u64,
     scorer: SearchScorer,
 ) -> Vec<(i64, SearchItem)> {
     let worker_count = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(4);
     let best = if index.len() < 50_000 || worker_count == 1 {
-        score_range(index, normalized_query, 0, scorer)
+        score_range(
+            index,
+            normalized_query,
+            rules,
+            is_smart,
+            now_secs,
+            0,
+            scorer,
+        )
     } else {
         let chunk_size = index.len().div_ceil(worker_count);
         std::thread::scope(|scope| {
@@ -897,7 +1038,15 @@ fn score_index(
                 .enumerate()
                 .map(|(chunk, items)| {
                     scope.spawn(move || {
-                        score_range(items, normalized_query, chunk * chunk_size, scorer)
+                        score_range(
+                            items,
+                            normalized_query,
+                            rules,
+                            is_smart,
+                            now_secs,
+                            chunk * chunk_size,
+                            scorer,
+                        )
                     })
                 })
                 .collect::<Vec<_>>();
@@ -928,12 +1077,17 @@ fn score_index(
 fn score_range(
     index: &[SearchItem],
     normalized_query: &str,
+    rules: &[SmartQueryRule],
+    is_smart: bool,
+    now_secs: u64,
     position_offset: usize,
     scorer: SearchScorer,
 ) -> BinaryHeap<RankedPosition> {
     let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
     for (position, item) in index.iter().enumerate() {
-        let Some(score) = scorer(item, normalized_query) else {
+        let Some(score) =
+            evaluate_smart_item(item, normalized_query, rules, is_smart, now_secs, scorer)
+        else {
             continue;
         };
         retain_candidate(&mut best, (score, Reverse(position_offset + position)));
@@ -966,6 +1120,7 @@ fn publish(
 ) {
     let _sent = sender.send(SearchEvent::Results {
         query: progress.query.clone(),
+        rules: progress.rules.clone(),
         items: progress
             .matches
             .iter()

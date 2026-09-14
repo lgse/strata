@@ -282,3 +282,98 @@ fn children_reject_names_that_would_escape_the_parent() {
         "a root has no name to carry into a destination"
     );
 }
+
+#[test]
+fn smart_folder_locations_round_trip_ids() {
+    let location = Location::smart_folder("recent-pdfs");
+    assert!(location.is_smart_folder());
+    assert_eq!(location.smart_folder_id(), Some("recent-pdfs"));
+    assert_eq!(location.uri_value(), Some("strata-search://recent-pdfs"));
+    assert_eq!(location.display_name(), "recent-pdfs");
+    assert_eq!(location.parent(), None);
+    assert_eq!(location.breadcrumbs(), vec![location.clone()]);
+}
+
+#[test]
+fn empty_smart_folder_id_is_not_a_smart_folder() {
+    let location = Location::smart_folder("");
+    assert!(!location.is_smart_folder());
+    assert_eq!(location.smart_folder_id(), None);
+}
+
+#[test]
+fn non_smart_folder_uris_are_not_smart_folders() {
+    assert!(!Location::uri("trash:///").is_smart_folder());
+    assert!(!Location::uri("smb://server/share").is_smart_folder());
+    assert!(!Location::local("/tmp").is_smart_folder());
+}
+
+#[test]
+fn file_category_matches_extensions_and_directories() {
+    use super::FileCategory;
+    use std::path::Path;
+
+    assert!(FileCategory::Folder.matches(Path::new("/home/user/docs"), true));
+    assert!(!FileCategory::Folder.matches(Path::new("/home/user/doc.pdf"), false));
+
+    assert!(FileCategory::Document.matches(Path::new("report.pdf"), false));
+    assert!(FileCategory::Document.matches(Path::new("notes.md"), false));
+    assert!(FileCategory::Document.matches(Path::new("sheet.xlsx"), false));
+    assert!(!FileCategory::Document.matches(Path::new("photo.jpg"), false));
+
+    assert!(FileCategory::Image.matches(Path::new("photo.png"), false));
+    assert!(FileCategory::Image.matches(Path::new("art.SVG"), false));
+    assert!(!FileCategory::Image.matches(Path::new("song.mp3"), false));
+
+    assert!(FileCategory::Audio.matches(Path::new("track.flac"), false));
+    assert!(FileCategory::Video.matches(Path::new("movie.mkv"), false));
+    assert!(FileCategory::Archive.matches(Path::new("backup.tar.gz"), false));
+    assert!(FileCategory::Code.matches(Path::new("main.rs"), false));
+    assert!(FileCategory::Code.matches(Path::new("script.py"), false));
+    assert!(FileCategory::Any.matches(Path::new("anything.bin"), false));
+}
+
+#[test]
+fn date_and_size_constraints_match_accurately() {
+    use super::{DateConstraint, SizeConstraint};
+
+    let now = 10_000_000u64;
+    let day_secs = 86400;
+
+    let recent = now - day_secs * 2;
+    let old = now - day_secs * 60;
+
+    assert!(DateConstraint::WithinPastDays(7).matches(recent, now));
+    assert!(!DateConstraint::WithinPastDays(7).matches(old, now));
+    assert!(DateConstraint::OlderThanDays(30).matches(old, now));
+    assert!(!DateConstraint::OlderThanDays(30).matches(recent, now));
+
+    assert!(SizeConstraint::GreaterThan(1_000_000).matches(5_000_000, false));
+    assert!(!SizeConstraint::GreaterThan(1_000_000).matches(500_000, false));
+    assert!(SizeConstraint::LessThan(10_000_000).matches(5_000_000, false));
+    assert!(!SizeConstraint::LessThan(10_000_000).matches(50_000_000, false));
+    assert!(!SizeConstraint::GreaterThan(100).matches(1_000_000, true)); // directories do not match file size
+}
+
+#[test]
+fn smart_query_rule_evaluates_combination() {
+    use super::{DateConstraint, FileCategory, SizeConstraint, SmartQueryRule};
+    use std::path::Path;
+
+    let now = 10_000_000u64;
+    let path = Path::new("/home/user/Pictures/wallpaper.png");
+    let name = "wallpaper.png";
+
+    let rule_kind = SmartQueryRule::Kind(FileCategory::Image);
+    let rule_name = SmartQueryRule::NameContains("paper".into());
+    let rule_size = SmartQueryRule::FileSize(SizeConstraint::GreaterThan(1000));
+    let rule_date = SmartQueryRule::DateModified(DateConstraint::WithinPastDays(7));
+
+    assert!(rule_kind.matches(path, name, false, 5000, now - 3600, now));
+    assert!(rule_name.matches(path, name, false, 5000, now - 3600, now));
+    assert!(rule_size.matches(path, name, false, 5000, now - 3600, now));
+    assert!(rule_date.matches(path, name, false, 5000, now - 3600, now));
+
+    let failing_name = SmartQueryRule::NameContains("photo".into());
+    assert!(!failing_name.matches(path, name, false, 5000, now - 3600, now));
+}

@@ -57,6 +57,16 @@ fn non_default_preferences() -> Preferences {
             "/fixture/folder".into(),
             crate::assets::icons::HOME.into(),
         )]),
+        smart_folders: Some(vec![SmartFolderDef {
+            id: "smart-fixture".into(),
+            name: "Fixture Search".into(),
+            query: "pdf".into(),
+            rules: vec![crate::model::SmartQueryRule::Kind(
+                crate::model::FileCategory::Document,
+            )],
+            roots: vec![PathBuf::from("/tmp")],
+            show_hidden: true,
+        }]),
     }
 }
 
@@ -427,6 +437,12 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.custom_icon(Path::new("/fixture/folder")).as_deref(),
                 Some(crate::assets::icons::HOME)
             );
+            assert_eq!(
+                manager.smart_folders(),
+                non_default_preferences()
+                    .smart_folders
+                    .expect("custom smart folders")
+            );
         },
     );
 }
@@ -531,6 +547,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
                 |m| m.set_follow_omarchy(true),
                 |m| m.select_theme("azure-glow"),
+                |m| m.remove_smart_folder("smart-fixture"),
             ];
             let mut previous = toml::Table::try_from(&*manager.preferences.borrow())
                 .expect("preference inventory");
@@ -570,4 +587,74 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
             );
         },
     );
+}
+
+#[test]
+fn smart_folder_definitions_round_trip_through_preferences() {
+    gtk_test("smart_folder_round_trip", || {
+        let definition = SmartFolderDef {
+            id: "smart-round-trip".into(),
+            name: "Round Trip".into(),
+            query: "invoice".into(),
+            rules: vec![crate::model::SmartQueryRule::Kind(
+                crate::model::FileCategory::Document,
+            )],
+            roots: vec![PathBuf::from("/home"), PathBuf::from("/tmp")],
+            show_hidden: false,
+        };
+        let manager = ThemeManager::shared();
+        manager.add_smart_folder(definition.clone());
+        assert_eq!(manager.smart_folder("smart-round-trip"), Some(definition));
+        manager.rename_smart_folder("smart-round-trip", "Renamed Invoices");
+        assert_eq!(
+            manager.smart_folder("smart-round-trip").map(|f| f.name),
+            Some("Renamed Invoices".to_string())
+        );
+        manager.remove_smart_folder("smart-round-trip");
+        assert_eq!(manager.smart_folder("smart-round-trip"), None);
+    });
+}
+
+#[test]
+fn removing_every_default_smart_folder_does_not_restore_them() {
+    gtk_test("remove_default_smart_folders", || {
+        let manager = ThemeManager::shared();
+        let defaults = manager.smart_folders();
+        assert!(!defaults.is_empty());
+        for folder in defaults {
+            manager.remove_smart_folder(&folder.id);
+        }
+        assert!(manager.smart_folders().is_empty());
+        let saved = read_preferences().expect("saved preferences");
+        assert_eq!(saved.smart_folders, Some(Vec::new()));
+    });
+}
+
+#[test]
+fn adding_smart_folder_with_existing_id_replaces_it() {
+    gtk_test("smart_folder_replace", || {
+        let manager = ThemeManager::shared();
+        let original = SmartFolderDef {
+            id: "smart-replace".into(),
+            name: "Original".into(),
+            query: "old".into(),
+            rules: vec![],
+            roots: vec![],
+            show_hidden: false,
+        };
+        manager.add_smart_folder(original);
+        let updated = SmartFolderDef {
+            id: "smart-replace".into(),
+            name: "Updated".into(),
+            query: "new".into(),
+            rules: vec![crate::model::SmartQueryRule::Kind(
+                crate::model::FileCategory::Image,
+            )],
+            roots: vec![],
+            show_hidden: true,
+        };
+        manager.add_smart_folder(updated.clone());
+        assert_eq!(manager.smart_folder("smart-replace"), Some(updated));
+        manager.remove_smart_folder("smart-replace");
+    });
 }
