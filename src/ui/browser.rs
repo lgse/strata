@@ -28,6 +28,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 mod archive;
+pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;

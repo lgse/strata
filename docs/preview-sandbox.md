@@ -81,6 +81,13 @@ Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded
 in-memory cache, never the persistent thumbnail cache. AFC and MTP file-list
 thumbnails are not enabled by this path.
 
+Complete Photos scans yield between batches to give visible thumbnails a bounded
+turn on the camera connection. If the viewport is at the top, incoming batches
+leave it there instead of following the old first photo down the sorted list.
+After the user scrolls, normal viewport anchoring applies; background selection updates do
+not reveal the selected photo. The initial folder listing still depends on GVfs
+finishing that folder's enumeration before it publishes entries.
+
 ## Media metadata
 
 File Properties shows available source-media details: image

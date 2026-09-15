@@ -88,6 +88,13 @@ impl ModeViews {
                     .location_at(*depth)
                     .is_some_and(|location| location.is_camera_photo_root());
                 self.update_panes(*depth, |pane| {
+                    let top = camera
+                        .then(|| {
+                            crate::ui::browser::camera_scroll::CameraTopAnchor::capture(
+                                &pane.section.view,
+                            )
+                        })
+                        .flatten();
                     pane.insert_rows(insertions);
                     if camera && pane.model.n_items() > 0 {
                         reconnect_pane_model(pane);
@@ -95,6 +102,9 @@ impl ModeViews {
                             section.syncing.set(false);
                         }
                         show_count(pane);
+                    }
+                    if let Some(top) = top {
+                        top.restore();
                     }
                 });
             }
@@ -229,6 +239,7 @@ impl ModeViews {
         let Some(model) = pane.section.view_model.downcast_ref::<gtk::SortListModel>() else {
             return;
         };
+        let top = crate::ui::browser::camera_scroll::CameraTopAnchor::capture(&pane.section.view);
         let was_syncing = pane.section.syncing.replace(true);
         // Remove section widgets before changing their model. Re-enable them only
         // after the complete camera snapshot is sorted. Keep the existing view,
@@ -242,6 +253,9 @@ impl ModeViews {
         }
         pane.group_by_type = grouped;
         pane.section.syncing.set(was_syncing);
+        if let Some(top) = top {
+            top.restore();
+        }
     }
 
     fn handle_selection_event(&self, event: &BrowserEvent) {
