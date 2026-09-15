@@ -8,6 +8,8 @@ use std::{
 
 use super::*;
 
+#[path = "directory_changes/tests.rs"]
+mod directory_changes;
 #[path = "operation_events/tests.rs"]
 mod operation_events;
 #[path = "sorting/tests.rs"]
