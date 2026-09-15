@@ -1327,7 +1327,9 @@ impl BrowserView {
 
     pub fn confirm_delete(&self, permanent: bool) -> bool {
         self.state.sync_mode_selection();
-        let entries = if self.view_mode() == BrowserMode::Columns {
+        let entries = if let Some(entries) = self.selected_search_results() {
+            entries
+        } else if self.view_mode() == BrowserMode::Columns {
             self.state.browser.selected_entries()
         } else {
             self.state.browser.deletion_entries()

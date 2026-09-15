@@ -251,4 +251,9 @@ impl ThumbnailSlot {
     pub(crate) fn resize_calls(&self) -> u32 {
         self.imp().resize_calls.get()
     }
+
+    #[cfg(test)]
+    pub(crate) fn fallback_texture(&self) -> Option<gdk::Texture> {
+        self.imp().fallback.borrow().clone()
+    }
 }

@@ -232,9 +232,12 @@ fn append_follow_omarchy_option(content: &gtk::Box, manager: &ThemeManager) -> g
         "Use the active Omarchy Quattro theme and switch when the system theme changes.",
         manager.follows_omarchy(),
     );
-    if manager.is_omarchy_available() {
-        content.append(&row);
-    }
+    content.append(&row);
+    manager.bind_preference(
+        &row,
+        ThemeManager::is_omarchy_available,
+        super::search::set_available,
+    );
     follow
 }
 

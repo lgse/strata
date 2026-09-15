@@ -455,7 +455,18 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool, stack_text_size: bool) {
     {
         row.set_end_align(!compact);
     }
-    if widget.has_css_class("theme-appearance-filter") {
+    if widget.has_css_class("settings-integration-actions")
+        && let Some(actions) = widget.downcast_ref::<gtk::Box>()
+    {
+        actions.set_orientation(if compact {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
+    }
+    if widget.has_css_class("theme-appearance-filter")
+        || widget.has_css_class("settings-integration-actions")
+    {
         widget.set_halign(if compact {
             gtk::Align::Fill
         } else {
@@ -2196,10 +2207,8 @@ fn aur_update_action_label() -> &'static str {
     }
 }
 
-fn aur_update_command(helper: &str, package: &str) -> Command {
-    let mut command = terminal::command();
-    command.args(["--", helper, "-Syu", package]);
-    command
+fn aur_update_command(terminal: &terminal::Terminal, helper: &str, package: &str) -> Command {
+    terminal.exec_command(&[helper, "-Syu", package])
 }
 
 fn launch_aur_update() -> Result<&'static str, String> {
@@ -2207,10 +2216,13 @@ fn launch_aur_update() -> Result<&'static str, String> {
         .managed()
         .ok_or_else(|| "missing package metadata".to_owned())?;
     if let Some((helper, package)) = managed.aur_update_target() {
-        return aur_update_command(helper, package)
+        let Some(terminal) = terminal::Terminal::resolve() else {
+            return Err(terminal::no_terminal_message());
+        };
+        return aur_update_command(&terminal, helper, package)
             .spawn()
             .map(|_child| "AUR update opened in your terminal.")
-            .map_err(|error| terminal::launch_failure(&error));
+            .map_err(|error| terminal.launch_failure(&error));
     }
     let package = managed
         .package()
@@ -2221,17 +2233,18 @@ fn launch_aur_update() -> Result<&'static str, String> {
         .map_err(|error| error.to_string())
 }
 
-fn omarchy_update_command() -> Command {
-    let mut command = terminal::command();
-    command.args(["--", "omarchy", "update"]);
-    command
+fn omarchy_update_command(terminal: &terminal::Terminal) -> Command {
+    terminal.exec_command(&["omarchy", "update"])
 }
 
 fn launch_omarchy_update() -> Result<(), String> {
-    omarchy_update_command()
+    let Some(terminal) = terminal::Terminal::resolve() else {
+        return Err(terminal::no_terminal_message());
+    };
+    omarchy_update_command(&terminal)
         .spawn()
         .map(|_child| ())
-        .map_err(|error| terminal::launch_failure(&error))
+        .map_err(|error| terminal.launch_failure(&error))
 }
 
 fn or_unknown(value: Option<String>) -> String {

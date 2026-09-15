@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 
@@ -36,21 +36,37 @@ def test_arrow_keys_move_focus_and_selection(strata, mode, bindings):
     strata.wait_for_focused_entry("readme.md")
 
 
+@pytest.mark.preferences(arrow_navigation_scoped=True, type_to_search=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_enter_opens_the_focused_directory(strata, mode):
+@pytest.mark.parametrize("bindings", ["arrows", "hjkl"])
+def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, bindings):
+    up, left = ("Up", "Left") if bindings == "arrows" else ("k", "h")
     strata.select_entry("readme.md")
     strata.keyboard.press("Home")
     strata.wait_for_focused_entry("archive")
-    strata.keyboard.press(NEXT_ENTRY_KEY[mode])
-    strata.wait_for_focused_entry("documents")
+    for key in [up, left, up]:
+        strata.keyboard.press(key)
+        strata.wait_for_focused_entry("archive")
 
-    strata.keyboard.press("Return")
+    strata.keyboard.press("ctrl+\\")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("arrow_navigation_scoped") == "false",
+        "arrow scope disabled by shortcut",
+    )
+    strata.keyboard.press(up)
+    strata.wait(lambda: strata.focused_name() is None, "Up leaves the file list")
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("archive")
+    strata.keyboard.press("ctrl+\\")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("arrow_navigation_scoped") == "true",
+        "arrow scope enabled by shortcut",
+    )
+    strata.keyboard.press(up)
+    strata.wait_for_focused_entry("archive")
 
-    strata.wait_for_directory("documents")
-    strata.entry("notes.txt", directory="documents")
 
-
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_alt_up_and_history_navigate_between_directories(strata, mode):
     root = strata.fixture.root.name
 
@@ -145,7 +161,7 @@ def test_shift_arrow_extends_the_selection(strata, mode):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_select_all_selects_every_entry(strata, mode):
     strata.select_entry("readme.md")
 

@@ -47,23 +47,56 @@ fn parent_surface_controller_exists_only_while_the_popover_is_mapped() {
             let button = gtk::MenuButton::builder().popover(&popover).build();
             let window = gtk::Window::builder().child(&button).build();
             window.present();
-            let controllers = window.observe_controllers();
-            let baseline = controllers.n_items();
             for _ in 0..3 {
+                let before = scroll_controllers(&window);
                 popover.popup();
                 assert!(popover.is_mapped());
-                assert_eq!(controllers.n_items(), baseline + 1);
+                let added: Vec<_> = scroll_controllers(&window)
+                    .into_iter()
+                    .filter(|controller| !before.iter().any(|existing| existing == controller))
+                    .collect();
+                assert!(
+                    !added.is_empty(),
+                    "mapping installs a parent surface controller"
+                );
+                let weaks: Vec<_> = added
+                    .iter()
+                    .map(glib::object::ObjectExt::downgrade)
+                    .collect();
                 popover.popdown();
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
                 while popover.is_mapped() {
                     assert!(std::time::Instant::now() < deadline);
                     glib::MainContext::default().iteration(false);
                 }
-                assert_eq!(controllers.n_items(), baseline);
+                let remaining = scroll_controllers(&window);
+                assert!(
+                    added
+                        .iter()
+                        .all(|controller| !remaining.iter().any(|kept| kept == controller)),
+                    "popdown removes the parent surface controller"
+                );
+                drop(added);
+                assert!(
+                    weaks.iter().all(|weak| weak.upgrade().is_none()),
+                    "the parent surface controller must be dropped after popdown"
+                );
             }
             window.close();
         },
     );
+}
+
+fn scroll_controllers(window: &gtk::Window) -> Vec<gtk::EventControllerScroll> {
+    let controllers = window.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|position| {
+            controllers
+                .item(position)?
+                .downcast::<gtk::EventControllerScroll>()
+                .ok()
+        })
+        .collect()
 }
 
 #[test]

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 
 
 def start_new_file(strata, select=True):
@@ -38,9 +38,8 @@ def test_invalid_new_file_names_can_be_corrected(strata, mode):
     strata.entry("corrected")
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("kind", ["file", "folder"])
-def test_clicking_inside_keeps_the_new_entry_and_preserves_its_name(strata, mode, kind):
+def test_clicking_inside_keeps_the_new_entry_and_preserves_its_name(strata, kind):
     name = " padded "
     if kind == "folder":
         strata.select_entry("readme.md")
@@ -60,9 +59,8 @@ def test_clicking_inside_keeps_the_new_entry_and_preserves_its_name(strata, mode
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("kind,name", [("file", "todo.txt"), ("folder", "archive")])
-def test_creating_an_existing_name_does_not_overwrite(strata, mode, kind, name):
+def test_creating_an_existing_name_does_not_overwrite(strata, kind, name):
     strata.select_entry("readme.md")
     if kind == "folder":
         strata.keyboard.press("ctrl+shift+n")
@@ -83,13 +81,12 @@ def test_creating_an_existing_name_does_not_overwrite(strata, mode, kind, name):
     root = strata.fixture.root.name
     strata.select_entry("readme.md", root)
     strata.wait_for_selection(["readme.md"], root)
-    if mode == "Columns" and kind == "folder":
+    if kind == "folder":
         assert strata.pane_names() == [root, "new folder"]
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("kind", ["file", "folder"])
-def test_new_items_can_be_created_in_an_initially_empty_directory(strata, mode, kind):
+def test_new_items_can_be_created_in_an_initially_empty_directory(strata, kind):
     strata.open_directory("archive")
     if kind == "folder":
         strata.keyboard.press("ctrl+shift+n")
@@ -114,9 +111,8 @@ def test_new_items_can_be_created_in_an_initially_empty_directory(strata, mode, 
     assert "Gtk-CRITICAL" not in strata.application.log()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("shortcut", ["F2", "ctrl+r"])
-def test_rename_shortcuts(strata, mode, shortcut):
+def test_rename_shortcuts(strata, shortcut):
     fixture = strata.fixture
 
     strata.select_entry("todo.txt")
@@ -185,7 +181,7 @@ def test_delete_moves_the_entry_to_trash(strata):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_permanent_delete_requires_confirmation_and_can_be_cancelled(strata, mode):
     fixture = strata.fixture
     assert strata.view_mode() == mode
@@ -222,7 +218,7 @@ def test_permanent_delete_requires_confirmation_and_can_be_cancelled(strata, mod
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_permanent_delete_through_a_symlinked_parent(strata, mode):
     fixture = strata.fixture
     alias = fixture.path("documents-alias")

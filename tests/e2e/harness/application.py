@@ -15,7 +15,7 @@ from .process import ManagedProcess, terminate
 
 APPLICATION_NAME = "strata"
 # GtkListView reports "list"; GtkGridView reports "layered pane".
-ENTRY_CONTAINER_ROLES = ("list", "layered pane", "table")
+ENTRY_CONTAINER_ROLES = frozenset({"list", "layered pane", "table"})
 WINDOW_TITLE = "Strata"
 LAUNCH_TIMEOUT = 60.0
 
@@ -37,10 +37,9 @@ def binary_path() -> Path:
 
 
 def _entry_container(frame: "tree.Node") -> "tree.Node | None":
-    for role in ENTRY_CONTAINER_ROLES:
-        found = frame.find(role=role)
-        if found is not None:
-            return found
+    for _, node in frame.walk():
+        if node.role in ENTRY_CONTAINER_ROLES and node.is_rendered():
+            return node
     return None
 
 
@@ -69,6 +68,7 @@ class Application:
     environment: TestEnvironment
     location: Path
     process: ManagedProcess | None = None
+    _frame: tree.Node | None = None
 
     def start(self) -> "Application":
         variables = process_environment()
@@ -106,7 +106,7 @@ class Application:
             # The browser only becomes drivable once a pane has entries.
             return frame if _entry_container(frame) else None
 
-        tree.wait_until(
+        self._frame = tree.wait_until(
             window,
             message="the Strata window to be ready",
             timeout=LAUNCH_TIMEOUT,
@@ -115,12 +115,15 @@ class Application:
 
     @property
     def root(self) -> tree.Node:
+        if self._frame is not None and self._frame.alive:
+            return self._frame
         application = tree.find_application(APPLICATION_NAME)
         if application is None:
             raise AssertionError("the Strata application is not on the a11y bus")
         frame = application.find(role="frame", name=WINDOW_TITLE)
         if frame is None:
             raise AssertionError("the Strata window is gone")
+        self._frame = frame
         return frame
 
     @property
@@ -143,6 +146,7 @@ class Application:
         return application.dump()
 
     def stop(self) -> None:
+        self._frame = None
         if self.process is not None:
             terminate(self.process.popen)
             self.process = None

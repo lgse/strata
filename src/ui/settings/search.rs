@@ -30,6 +30,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing checkbox checkboxes multi select multiple selection list files",
     },
     Target {
+        id: "arrow-scope",
+        page: "general",
+        title: "Keep arrows in file list",
+        aliases: "browsing keyboard navigation focus sidebar toolbar",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",
