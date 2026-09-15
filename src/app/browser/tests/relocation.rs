@@ -2,6 +2,9 @@
 
 use super::*;
 
+#[path = "../operation_updates/tests.rs"]
+mod operation_updates;
+
 struct TreeSource {
     root: Location,
     renamed: Cell<bool>,

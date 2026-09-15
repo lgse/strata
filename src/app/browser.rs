@@ -23,6 +23,7 @@ use crate::{
 
 mod loading;
 mod operation_events;
+mod operation_updates;
 mod publication;
 mod remote;
 mod sorting;
@@ -2785,95 +2786,6 @@ impl Browser {
             take_focus: true,
         });
         true
-    }
-
-    fn flush_deferred_file_operation_changes(
-        self: &Rc<Self>,
-        changes: DeferredDirectoryChanges,
-        prefer_refresh: bool,
-    ) -> bool {
-        if changes.is_empty() {
-            return false;
-        }
-        let mut batches: Vec<_> = changes.into_iter().collect();
-        batches.sort_by_key(|(depth, _)| *depth);
-        if prefer_refresh {
-            // Monitor batches may cover only some of the operation's source directories.
-            self.refresh_all();
-            return true;
-        }
-
-        for (depth, changes) in batches {
-            if changes
-                .iter()
-                .any(|(_, change)| matches!(change, DirectoryChange::Rescan))
-            {
-                self.refresh_column(depth);
-                continue;
-            }
-            let relocates_open_path = changes.iter().any(|(_, change)| {
-                matches!(change, DirectoryChange::Move { .. })
-                    && self
-                        .state
-                        .borrow()
-                        .path_after_external_change(depth, change)
-                        .is_some()
-            });
-            if relocates_open_path {
-                for (watched, change) in changes {
-                    self.handle_directory_change(depth, &watched, change);
-                }
-                continue;
-            }
-            let path_update = {
-                let state = self.state.borrow();
-                changes
-                    .iter()
-                    .find_map(|(_, change)| state.path_after_external_change(depth, change))
-            };
-            if let Some(path) = path_update {
-                self.restore_path(path);
-                continue;
-            }
-
-            self.drain_publish(depth);
-            let application = {
-                let mut state = self.state.borrow_mut();
-                let mut splices = Vec::new();
-                let mut selected = None;
-                for (watched, change) in changes {
-                    if let Some((mut next, next_selected)) =
-                        state.apply_directory_change(depth, &watched, change)
-                    {
-                        splices.append(&mut next);
-                        selected = next_selected;
-                    }
-                }
-                (!splices.is_empty()).then(|| {
-                    let positions = state.selected_positions(depth);
-                    (splices, selected, positions)
-                })
-            };
-            let Some((splices, selected, positions)) = application else {
-                continue;
-            };
-            self.emit(BrowserEvent::EntriesSpliced { depth, splices });
-            if let Some(focused) = selected {
-                self.emit(BrowserEvent::SelectionSetChanged {
-                    depth,
-                    positions,
-                    focused,
-                    take_focus: false,
-                });
-            }
-            if self.active_depth() == Some(depth) {
-                self.emit(BrowserEvent::FocusChanged {
-                    depth,
-                    position: selected,
-                });
-            }
-        }
-        false
     }
 
     fn handle_directory_change(
