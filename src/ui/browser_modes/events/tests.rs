@@ -166,6 +166,47 @@ fn assert_attached(pane: &Pane, attached: bool) {
 }
 
 #[test]
+fn camera_device_order_does_not_enable_saved_type_grouping_at_completion() {
+    gtk_test(
+        "ui::browser_modes::events::tests::camera_device_order_does_not_enable_saved_type_grouping_at_completion",
+        || {
+            use crate::model::SortKey;
+            let mut fixture = Fixture::new(BrowserMode::List, true);
+            fixture.browser.navigate(Location::uri("gphoto2://camera/"));
+            fixture.views.prepare_list();
+            fixture.views.handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            });
+            assert!(!fixture.pane().group_by_type);
+            fixture.browser.set_sort_key(0, SortKey::Name);
+            pump_until(|| {
+                fixture
+                    .browser
+                    .column_preferences(0)
+                    .is_some_and(|preferences| preferences.sort_key == SortKey::Name)
+            });
+            fixture
+                .views
+                .handle(&BrowserEvent::SortingFinished { depth: 0 });
+            assert!(fixture.pane().group_by_type);
+            fixture.browser.set_sort_key(0, SortKey::DeviceOrder);
+            fixture
+                .views
+                .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+            fixture.views.handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            });
+            assert!(!fixture.pane().group_by_type);
+            fixture.browser.navigate(Location::local("/fixture"));
+            fixture.views.prepare_list();
+            assert!(fixture.pane().group_by_type);
+        },
+    );
+}
+
+#[test]
 fn reload_retains_views_until_terminal_reconnects_models() {
     gtk_test(
         "ui::browser_modes::events::tests::reload_retains_views_until_terminal_reconnects_models",

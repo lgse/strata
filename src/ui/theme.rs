@@ -951,18 +951,21 @@ impl ThemeManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        stored.sort_key = match preferences.sort_key {
-            SortKey::Name => "name",
-            SortKey::Size => "size",
-            SortKey::Modified => "modified",
-            SortKey::Type => "type",
+        let sort_key = match preferences.sort_key {
+            SortKey::DeviceOrder => None,
+            SortKey::Name => Some("name"),
+            SortKey::Size => Some("size"),
+            SortKey::Modified => Some("modified"),
+            SortKey::Type => Some("type"),
+        };
+        if let Some(sort_key) = sort_key {
+            stored.sort_key = sort_key.to_owned();
+            stored.sort_direction = match preferences.sort_direction {
+                SortDirection::Ascending => "ascending",
+                SortDirection::Descending => "descending",
+            }
+            .to_owned();
         }
-        .to_owned();
-        stored.sort_direction = match preferences.sort_direction {
-            SortDirection::Ascending => "ascending",
-            SortDirection::Descending => "descending",
-        }
-        .to_owned();
         drop(stored);
         self.save_preferences();
     }

@@ -1002,6 +1002,25 @@ impl Browser {
     }
 
     pub fn set_sort_key(self: &Rc<Self>, depth: usize, sort_key: SortKey) {
+        if sort_key == SortKey::DeviceOrder {
+            let mut state = self.state.borrow_mut();
+            if !state
+                .columns
+                .get(depth)
+                .is_some_and(|column| column.location.is_camera_photo_root())
+            {
+                return;
+            }
+            let Some(mut preferences) = state.column_preferences(depth) else {
+                return;
+            };
+            preferences.sort_key = SortKey::DeviceOrder;
+            state.apply_sort_preferences(depth, preferences);
+            drop(state);
+            // A previously sorted list no longer carries its enumeration order.
+            self.refresh_column(depth);
+            return;
+        }
         self.apply_column_preferences(depth, move |preferences| preferences.sort_key = sort_key);
     }
 
@@ -1011,6 +1030,10 @@ impl Browser {
         sort_key: SortKey,
         sort_direction: SortDirection,
     ) {
+        if sort_key == SortKey::DeviceOrder {
+            self.set_sort_key(depth, sort_key);
+            return;
+        }
         self.apply_column_preferences(depth, move |preferences| {
             preferences.sort_key = sort_key;
             preferences.sort_direction = sort_direction;
@@ -1116,7 +1139,12 @@ impl Browser {
                 return;
             }
             let result = state.apply_sort_preferences(depth, preferences);
-            self.preferences.set(preferences);
+            let mut defaults = preferences;
+            if defaults.sort_key == SortKey::DeviceOrder {
+                defaults.sort_key = self.preferences.get().sort_key;
+                defaults.sort_direction = self.preferences.get().sort_direction;
+            }
+            self.preferences.set(defaults);
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
             result.and_then(|(focused, positions)| {

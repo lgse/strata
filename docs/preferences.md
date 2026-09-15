@@ -51,7 +51,7 @@ control that might be midway through synchronization.
 | Hidden files | Shared across existing browsers and new columns. |
 | Open folder after dropping files | Drop dispatch reads the saved choice (off by default), including confirmation of cross-device drops. Successful drops reveal the destination only when enabled and the user is still at the transfer origin. Paste and Move/Copy to remain unchanged. |
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
-| Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Sorting a column updates the persisted defaults. |
+| Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Explicit field sorting updates the persisted defaults. Camera Photos libraries instead open in column-local Device order (see below). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
 | Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
 | Element glow | Shared semantic glow color is applied by the manager before Settings opens and updated live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
@@ -73,6 +73,23 @@ own stores and are not fields in the application preferences schema.
 Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.
+
+## Camera Photos ordering
+
+The flattened **Photos** view for iPhones and other camera devices opens in
+**Device order**, regardless of the saved folder sort. Incoming photos append in
+discovery order, with no automatic reshuffle when loading finishes. Newer
+date-named folders are visited first, but files within them are not guaranteed
+chronological order; this is not a creation-date or capture-date sort.
+
+Choose **Name**, **Size**, **Modified**, or **Type** from the pane's sort menu
+(or a sortable List heading) to explicitly sort. Later batches then follow that
+sort. Choose **Device order** again to reload the library in discovery order.
+Refresh retains the current column's ordering choice; reopening the Photos
+library starts in Device order. The direction button and List type grouping are
+disabled in Device order; the saved grouping choice is retained for explicitly
+sorted, fully loaded libraries and ordinary folders. Camera subfolders and saved
+folder defaults are not changed by entering Device order.
 
 ## Text size and display scaling
 

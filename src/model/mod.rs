@@ -268,6 +268,8 @@ impl Location {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortKey {
+    /// Camera-library-local streaming order; never a saved folder default.
+    DeviceOrder,
     Name,
     Type,
     Size,

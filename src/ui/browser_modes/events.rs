@@ -180,8 +180,22 @@ impl ModeViews {
     }
 
     fn handle_loading_event(&mut self, event: &BrowserEvent, defer_empty: bool) -> bool {
+        if let BrowserEvent::SortingFinished { depth } | BrowserEvent::ColumnReloaded { depth } =
+            event
+        {
+            self.update_panes(*depth, |pane| {
+                if let Some(button) = &pane.sort_direction_button {
+                    super::super::browser::sync_column_sort_direction(
+                        &self.browser,
+                        *depth,
+                        button,
+                    );
+                }
+            });
+        }
         let changed_depth = match event {
             BrowserEvent::ColumnReloaded { depth }
+            | BrowserEvent::SortingFinished { depth }
             | BrowserEvent::LoadFinished { depth, .. }
             | BrowserEvent::LoadFailed { depth, .. } => Some(*depth),
             _ => None,
@@ -190,10 +204,11 @@ impl ModeViews {
             && self.mode == BrowserMode::List
             && let Some(snapshot) = self.browser.column_snapshot(depth)
             && self.list_pane.as_ref().is_some_and(|pane| {
-                pane.depth == depth && pane.group_by_type != self.grouping_for_snapshot(&snapshot)
+                pane.depth == depth
+                    && pane.group_by_type != self.grouping_for_snapshot(depth, &snapshot)
             })
         {
-            self.update_camera_grouping(self.grouping_for_snapshot(&snapshot));
+            self.update_camera_grouping(self.grouping_for_snapshot(depth, &snapshot));
         }
         match event {
             BrowserEvent::SortingStarted { depth } => {

@@ -218,6 +218,11 @@ impl ViewState {
             BrowserEvent::SortingFinished { depth } => {
                 self.overlay.set_cursor(None::<&gtk::gdk::Cursor>);
                 if let Some(column) = self.columns.borrow().get(*depth) {
+                    super::pane_header::sync_column_sort_direction(
+                        &self.browser,
+                        *depth,
+                        &column.sort_direction_button,
+                    );
                     stop_column_spinner(column);
                     column.spinner.set_tooltip_text(None);
                     set_column_busy(column, false);
@@ -278,6 +283,11 @@ impl ViewState {
             }
             BrowserEvent::ColumnReloaded { depth } => {
                 if let Some(column) = self.columns.borrow().get(*depth) {
+                    super::pane_header::sync_column_sort_direction(
+                        &self.browser,
+                        *depth,
+                        &column.sort_direction_button,
+                    );
                     column.search_handle.borrow_mut().take();
                     column
                         .search_generation

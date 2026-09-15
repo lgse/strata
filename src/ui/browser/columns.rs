@@ -78,6 +78,7 @@ pub(super) struct ColumnView {
     pub(super) map: ViewMap,
     pub(super) model_generation: Rc<Cell<u64>>,
     pub(super) header_actions: gtk::Box,
+    pub(super) sort_direction_button: gtk::Button,
     pub(super) header_actions_stack: gtk::Stack,
     pub(super) filter_entry: gtk::Entry,
     pub(super) filter_button: gtk::ToggleButton,
@@ -639,7 +640,8 @@ impl ViewState {
             header_actions.append(&pane_new_folder_button(Rc::downgrade(self), depth));
         }
         header_actions.append(&pane_refresh_button(&self.browser, depth));
-        header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
+        let sort_direction_button = column_sort_direction_toggle(&self.browser, depth);
+        header_actions.append(&sort_direction_button);
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
         let (filter_entry, filter_revealer, filter_button) =
@@ -1382,6 +1384,7 @@ impl ViewState {
             map,
             model_generation: self.source_generation.clone(),
             header_actions,
+            sort_direction_button,
             header_actions_stack,
             filter_entry,
             filter_button,

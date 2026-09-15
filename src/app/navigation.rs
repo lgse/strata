@@ -175,6 +175,7 @@ impl NavigationState {
             .into_iter()
             .zip(request_ids)
             .map(|(location, request_id)| ColumnState {
+                preferences: preferences_for_location(preferences, &location),
                 location,
                 entries: Vec::new(),
                 selected: None,
@@ -186,7 +187,6 @@ impl NavigationState {
                 truncated: false,
                 can_trash: None,
                 can_delete: None,
-                preferences,
                 request_id,
                 select_first_on_load: false,
                 load_cursor: None,
@@ -247,6 +247,7 @@ impl NavigationState {
 
     fn push_column(&mut self, location: Location, request_id: RequestId) {
         self.columns.push(ColumnState {
+            preferences: preferences_for_location(self.preferences, &location),
             location,
             entries: Vec::new(),
             selected: None,
@@ -258,7 +259,6 @@ impl NavigationState {
             truncated: false,
             can_trash: None,
             can_delete: None,
-            preferences: self.preferences,
             request_id,
             select_first_on_load: false,
             load_cursor: None,
@@ -594,8 +594,10 @@ impl NavigationState {
         if depth >= self.columns.len() {
             return None;
         }
-        self.preferences.sort_key = preferences.sort_key;
-        self.preferences.sort_direction = preferences.sort_direction;
+        if preferences.sort_key != SortKey::DeviceOrder {
+            self.preferences.sort_key = preferences.sort_key;
+            self.preferences.sort_direction = preferences.sort_direction;
+        }
         self.preferences.folders_first = preferences.folders_first;
         let column = &mut self.columns[depth];
         let selected_location = column
@@ -603,10 +605,11 @@ impl NavigationState {
             .and_then(|position| column.entries.get(position))
             .map(|entry| entry.location.clone());
         column.preferences = preferences;
-        // Unstable: tie-breakers in `compare_entries` keep distinct entries ordered.
-        column
-            .entries
-            .sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+        if preferences.sort_key != SortKey::DeviceOrder {
+            column
+                .entries
+                .sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+        }
         column.selected = selected_location.and_then(|location| {
             column
                 .entries
@@ -1271,11 +1274,29 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
     changed
 }
 
+fn preferences_for_location(
+    mut preferences: ViewPreferences,
+    location: &Location,
+) -> ViewPreferences {
+    if location.is_camera_photo_root() {
+        preferences.sort_key = SortKey::DeviceOrder;
+    }
+    preferences
+}
+
 fn merge_entries(
     mut existing: Vec<FileEntry>,
     mut incoming: Vec<FileEntry>,
     preferences: ViewPreferences,
 ) -> (Vec<FileEntry>, Vec<EntryInsertion>) {
+    if preferences.sort_key == SortKey::DeviceOrder {
+        let insertion = EntryInsertion {
+            position: existing.len(),
+            entries: incoming.clone(),
+        };
+        existing.append(&mut incoming);
+        return (existing, vec![insertion]);
+    }
     incoming.sort_unstable_by(|left, right| compare_entries(left, right, preferences));
     if existing.is_empty() {
         let insertion = EntryInsertion {
@@ -1328,7 +1349,9 @@ pub(crate) fn sort_entries(
     mut entries: Vec<FileEntry>,
     preferences: ViewPreferences,
 ) -> Vec<FileEntry> {
-    entries.sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+    if preferences.sort_key != SortKey::DeviceOrder {
+        entries.sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+    }
     entries
 }
 
@@ -1386,9 +1409,13 @@ fn insert_monitored_entry(
     preferences: ViewPreferences,
     splices: &mut Vec<EntrySplice>,
 ) {
-    let position = entries
-        .binary_search_by(|current| compare_entries(current, &entry, preferences))
-        .unwrap_or_else(|position| position);
+    let position = if preferences.sort_key == SortKey::DeviceOrder {
+        entries.len()
+    } else {
+        entries
+            .binary_search_by(|current| compare_entries(current, &entry, preferences))
+            .unwrap_or_else(|position| position)
+    };
     entries.insert(position, entry.clone());
     splices.push(EntrySplice {
         position,
@@ -1398,6 +1425,9 @@ fn insert_monitored_entry(
 }
 
 fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPreferences) -> Ordering {
+    if preferences.sort_key == SortKey::DeviceOrder {
+        return Ordering::Equal;
+    }
     if preferences.folders_first {
         let directory_order = right.is_directory().cmp(&left.is_directory());
         if directory_order != Ordering::Equal {
@@ -1406,6 +1436,7 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
     }
 
     let ordering = match preferences.sort_key {
+        SortKey::DeviceOrder => Ordering::Equal,
         SortKey::Name => compare_display_names(&left.display_name, &right.display_name),
         SortKey::Type => left.kind.cmp(&right.kind),
         SortKey::Size => compare_metadata(&left.size, &right.size),

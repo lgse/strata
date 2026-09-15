@@ -221,6 +221,7 @@ struct Pane {
     location: Option<Location>,
     group_by_type: bool,
     sorting: Option<ListSorting>,
+    sort_direction_button: Option<gtk::Button>,
     shell: gtk::Box,
     header: gtk::Box,
     model: gtk::StringList,
@@ -928,10 +929,15 @@ impl ModeViews {
         self.rebuild_icons();
     }
 
-    fn grouping_for_snapshot(&self, snapshot: &BrowserColumnSnapshot) -> bool {
-        // GTK 4.22 can abort in gtk_list_item_manager_ensure_items when a
-        // sectioned list receives interleaved camera batches while scrolling.
-        self.group_by_type && !(snapshot.loading && snapshot.location.is_camera_photo_root())
+    fn grouping_for_snapshot(&self, depth: usize, snapshot: &BrowserColumnSnapshot) -> bool {
+        // GTK 4.22 cannot safely section interleaved camera batches. Device order
+        // must also remain ungrouped after completion rather than reshuffling rows.
+        let device_order = self
+            .browser
+            .column_preferences(depth)
+            .is_some_and(|preferences| preferences.sort_key == SortKey::DeviceOrder);
+        self.group_by_type
+            && !(snapshot.location.is_camera_photo_root() && (snapshot.loading || device_order))
     }
 
     fn prepare_list(&mut self) {
@@ -945,7 +951,7 @@ impl ModeViews {
         if let Some(pane) = self.list_pane.as_ref()
             && pane.depth == depth
             && pane.location.as_ref() == Some(&snapshot.location)
-            && pane.group_by_type == self.grouping_for_snapshot(&snapshot)
+            && pane.group_by_type == self.grouping_for_snapshot(depth, &snapshot)
             && pane.sorting.as_ref().map(|sorting| sorting.get())
                 == self
                     .browser
@@ -1447,7 +1453,7 @@ impl ModeViews {
             ListOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
-                group_by_type: self.grouping_for_snapshot(&snapshot),
+                group_by_type: self.grouping_for_snapshot(depth, &snapshot),
             },
             depth,
             &snapshot.location.display_name(),
@@ -1567,6 +1573,7 @@ fn install_mode_rename_handlers(
 }
 
 struct IconsControls {
+    sort_direction_button: gtk::Button,
     leading: gtk::Box,
     actions: gtk::Box,
     filter_entry: gtk::Entry,
@@ -1673,14 +1680,14 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     actions.append(&empty_trash);
     actions.append(&super::browser::pane_refresh_button(browser, depth));
     actions.append(&thumbnail_menu);
-    actions.append(&super::browser::column_sort_direction_toggle(
-        browser, depth,
-    ));
+    let sort_direction_button = super::browser::column_sort_direction_toggle(browser, depth);
+    actions.append(&sort_direction_button);
     actions.append(&super::browser::column_sort_menu(browser, depth));
 
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter icons (Ctrl+F)");
     actions.append(&filter_button);
     IconsControls {
+        sort_direction_button,
         leading,
         actions,
         filter_entry,
@@ -1933,6 +1940,7 @@ fn build_icons_pane(
         filter_entry: Some(controls.filter_entry),
         filter_button: Some(controls.filter_button),
         empty_trash_button: controls.empty_trash_button,
+        sort_direction_button: Some(controls.sort_direction_button),
         show_hidden,
         filter: filter_for_pane,
         filter_query,
@@ -2579,6 +2587,12 @@ fn build_list_pane(
         ));
     }
     actions.append(&super::browser::pane_refresh_button(&browser, depth));
+    if browser
+        .location_at(depth)
+        .is_some_and(|location| location.is_camera_photo_root())
+    {
+        actions.append(&super::browser::column_sort_menu(&browser, depth));
+    }
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter list (Ctrl+F)");
     actions.append(&filter_button);
     let columns = ListColumnLayout::new();
@@ -2796,6 +2810,7 @@ fn build_list_pane(
         filter_entry: Some(filter_entry),
         filter_button: Some(filter_button),
         empty_trash_button: is_trash.then_some(empty_trash),
+        sort_direction_button: None,
         show_hidden,
         filter: filter_for_pane,
         filter_query,

@@ -349,6 +349,49 @@ fn active_path_is_independent_from_the_parent_highlight() {
 }
 
 #[test]
+fn camera_device_order_monitor_changes_preserve_existing_positions() {
+    let mut state = NavigationState::default();
+    let watched = Location::uri("gphoto2://camera/");
+    state.navigate(watched.clone(), RequestId(1));
+    let photo = |name: &str| FileEntry {
+        location: Location::uri(format!("gphoto2://camera/202609_a/{name}")),
+        kind: EntryKind::File,
+        ..named_entry("/unused", name)
+    };
+    state.apply_batch(RequestId(1), vec![photo("z.jpg"), photo("m.jpg")]);
+    state.set_selection(0, &[1], Some(1));
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(photo("a.jpg")))
+        .expect("new photo appended");
+    assert_eq!(splices[0].position, 2);
+    let mut updated = photo("m.jpg");
+    updated.display_name = "b.jpg".into();
+    updated.size = MetadataValue::Known(99);
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(updated))
+        .expect("existing photo updated");
+    assert_eq!(splices.len(), 1);
+    assert_eq!(splices[0].position, 1);
+    assert_eq!(splices[0].removed, 1);
+    assert_eq!(state.selected_positions(0), [1]);
+    assert_eq!(
+        state.columns[0]
+            .entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["z.jpg", "b.jpg", "a.jpg"]
+    );
+    state.apply_directory_change(
+        0,
+        &watched,
+        DirectoryChange::Remove(photo("z.jpg").location),
+    );
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.columns[0].entries[0].size, MetadataValue::Known(99));
+}
+
+#[test]
 fn monitor_insertions_follow_the_active_sort_order() {
     let mut state = NavigationState::default();
     let watched = location("/home");
