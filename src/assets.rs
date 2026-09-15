@@ -115,6 +115,14 @@ pub mod icons {
             .any(|(icon_name, _)| *icon_name == name)
             || custom_emoji(name).is_some()
     }
+
+    /// Icons user file actions may name. Unknown names fall back to `EXTERNAL_LINK`.
+    pub fn is_bundled_action_icon(name: &str) -> bool {
+        matches!(
+            name,
+            COPY | DOWNLOADS | EXTERNAL_LINK | FOLDER | GLOBE | HARD_DRIVE | NETWORK
+        ) || is_customization_choice(name)
+    }
 }
 
 const FONT_VERSION: &str = "2.304";

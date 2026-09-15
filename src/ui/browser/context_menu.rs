@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::chooser_context;
+use crate::adapters::file_actions::{self, ActionKind, FileAction};
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::ArchiveFormat;
@@ -13,9 +14,11 @@ use crate::ui::browser::paths::{
 };
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::browser_modes::BrowserMode;
+use crate::ui::modal::show_error_dialog;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
+use std::path::Path;
 use std::rc::Rc;
 
 mod keyboard;
@@ -265,6 +268,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     content.append(&new_file);
     content.append(&open_with);
     content.append(&open_terminal);
+    let folder_action_buttons = append_folder_file_actions(&content, &location);
     if !in_trash {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     }
@@ -435,6 +439,10 @@ pub(in crate::ui) fn install_folder_context_menu(
         }));
         select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location_for_trigger));
+        let folder_action_visible = !in_trash && location_for_trigger.native_path().is_some();
+        for (action, button) in &folder_action_buttons {
+            button.set_visible(folder_action_visible && action.matches(&[ActionKind::Folder], 1));
+        }
         let hidden_files_shown = browser_for_trigger.preferences().show_hidden;
         toggle_hidden_label.set_text(if hidden_files_shown {
             "Hide Hidden Files"
@@ -602,6 +610,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
     single.append(&open);
     single.append(&open_with);
+    let single_file_actions = append_item_file_actions(&single);
     single.append(&run);
     single.append(&open_terminal);
     single.append(&preview);
@@ -662,6 +671,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
     multiple.append(&open_multiple);
     multiple.append(&open_with_multiple);
+    let multiple_file_actions = append_item_file_actions(&multiple);
     multiple.append(&restore_multiple);
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
@@ -686,6 +696,15 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     bind_column_context_owner(state, &popover, depth);
 
     let target = Rc::new(RefCell::new(None::<ContextTarget>));
+    for (action, button) in single_file_actions
+        .iter()
+        .chain(multiple_file_actions.iter())
+    {
+        let action = action.clone();
+        connect_selection_action(button, &popover, state, &target, move |state, entries| {
+            run_file_action(&action, &entries, &state.overlay);
+        });
+    }
     let open_with_selection = Rc::new(RefCell::new(None::<OpenWithSelection>));
     let open_with_generation = Rc::new(Cell::new(0_u64));
     let generation_for_close = open_with_generation.clone();
@@ -1157,6 +1176,12 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         extract_to.set_visible(can_extract);
         customize
             .set_visible(!in_trash && entries.len() == 1 && entry.location.native_path().is_some());
+        for (action, button) in single_file_actions
+            .iter()
+            .chain(multiple_file_actions.iter())
+        {
+            button.set_visible(!in_trash && file_action_matches(action, &entries));
+        }
         if entries.len() > 1 {
             heading.set_text(&format!("{} items selected", entries.len()));
             summary.set_text(&selected_items_summary(&entries));
@@ -1557,6 +1582,82 @@ fn context_menu_toggle_option(
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
     (button, icon, title)
+}
+
+fn append_folder_file_actions(
+    content: &gtk::Box,
+    location: &Location,
+) -> Vec<(FileAction, gtk::Button)> {
+    let mut buttons = Vec::new();
+    for action in file_actions::configured_actions() {
+        let button = context_menu_option(&action.icon, &action.label, "");
+        let action_for_click = action.clone();
+        let folder = location.clone();
+        button.connect_clicked(move |button| {
+            if let Some(popover) = button
+                .ancestor(gtk::Popover::static_type())
+                .and_downcast::<gtk::Popover>()
+            {
+                popover.popdown();
+            }
+            if let Some(path) = folder.native_path() {
+                run_file_action_paths(&action_for_click, &[path], button);
+            }
+        });
+        content.append(&button);
+        buttons.push((action.clone(), button));
+    }
+    buttons
+}
+
+fn append_item_file_actions(parent: &gtk::Box) -> Vec<(FileAction, gtk::Button)> {
+    file_actions::configured_actions()
+        .iter()
+        .map(|action| {
+            let button = item_context_option(&action.icon, &action.label, "");
+            parent.append(&button);
+            (action.clone(), button)
+        })
+        .collect()
+}
+
+fn file_action_matches(action: &FileAction, entries: &[FileEntry]) -> bool {
+    let paths: Vec<&Path> = entries
+        .iter()
+        .filter_map(|entry| entry.location.native_path())
+        .collect();
+    if paths.len() != entries.len() {
+        return false;
+    }
+    let kinds: Vec<ActionKind> = entries
+        .iter()
+        .map(|entry| {
+            if entry.is_directory() {
+                ActionKind::Folder
+            } else {
+                ActionKind::File
+            }
+        })
+        .collect();
+    action.matches(&kinds, paths.len())
+}
+
+fn run_file_action(action: &FileAction, entries: &[FileEntry], parent: &impl IsA<gtk::Widget>) {
+    let paths: Vec<&Path> = entries
+        .iter()
+        .filter_map(|entry| entry.location.native_path())
+        .collect();
+    run_file_action_paths(action, &paths, parent);
+}
+
+fn run_file_action_paths(action: &FileAction, paths: &[&Path], parent: &impl IsA<gtk::Widget>) {
+    if let Err(error) = file_actions::launch(action, paths) {
+        show_error_dialog(
+            parent,
+            &format!("Unable to run {}", action.label),
+            &error.dialog_detail(),
+        );
+    }
 }
 
 /// In Trash this shared action deletes permanently, so `can_trash` is irrelevant.

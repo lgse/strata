@@ -320,6 +320,7 @@ Start with stable data-driven customization:
 - Keybinding configuration
 - Search exclusions
 - Preview enablement and limits
+- User file actions (`$XDG_CONFIG_HOME/strata/actions.toml`; see [file actions](file-actions.md))
 
 Internally, search, preview, and theme implementations should be registries so built-in providers remain modular. This does **not** require exposing an unsafe public plugin ABI in the first release.
 

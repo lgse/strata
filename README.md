@@ -52,6 +52,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. File Properties shows available media resolution, duration, bitrate, codecs, and audio/video rates.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
+- **User file actions:** optional context-menu commands from `~/.config/strata/actions.toml`, launched out of process (for example LocalSend or Resilio “Sync to this device”). See [file actions](docs/file-actions.md).
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
@@ -524,6 +525,7 @@ mise run check            # format, compile, Clippy, tests, and policy checks
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
 - [Architecture principles](docs/architecture.md)
+- [User file actions](docs/file-actions.md)
 - [Preview sandbox](docs/preview-sandbox.md)
 - [Performance baseline](docs/performance-baseline.md)
 - [Themes and Omarchy integration](docs/themes.md)

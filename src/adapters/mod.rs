@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pub(crate) mod directory_summary;
+pub(crate) mod file_actions;
 mod file_manager1;
 mod gio_location;
 mod local_files;
