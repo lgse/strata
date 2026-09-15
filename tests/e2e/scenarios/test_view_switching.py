@@ -89,6 +89,32 @@ def test_switching_preserves_directory_selection_and_sort(strata):
     strata.wait_for_focused_entry("diagram.txt")
 
 
+def test_switching_preserves_the_pane_filter(strata):
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("todo")
+    strata.wait(lambda: field.text == "todo", "the filter query to be typed")
+    strata.wait(
+        lambda: strata.matches() == ["todo.txt"],
+        "the filter to narrow the listing",
+    )
+
+    for mode in ["Icons", "List", "Columns"]:
+        strata.keyboard.press(MODE_SHORTCUTS[mode])
+        strata.wait_for_view(mode)
+        strata.wait(
+            lambda: any(
+                node.text == "todo"
+                for node in strata.window.find_all(role="text", states={"editable"})
+            ),
+            "the filter query to survive the switch",
+        )
+        strata.wait(
+            lambda: strata.matches() == ["todo.txt"],
+            "the narrowed listing to survive the switch",
+        )
+
+
 def test_list_column_resize_tracks_the_pointer_without_an_initial_jump(strata):
     strata.switch_view("List")
     for label in ["Name", "Mode", "Size", "Type", "Modified"]:

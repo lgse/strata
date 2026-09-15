@@ -65,6 +65,9 @@ fn rename_handlers_do_not_keep_the_active_editor_alive_after_the_view_drops() {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             };
             let active = Rc::new(RefCell::new(Some(ActiveModeRename {
                 entry,

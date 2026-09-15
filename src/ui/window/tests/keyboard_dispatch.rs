@@ -212,6 +212,26 @@ fn modal_ownership_precedes_window_shortcuts() {
 }
 
 #[test]
+fn view_shortcuts_work_from_the_pane_filter() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::view_shortcuts_work_from_the_pane_filter",
+        || {
+            let fixture = KeyboardFixture::new();
+            for (key, mode) in [
+                (Key::_2, BrowserMode::Icons),
+                (Key::_3, BrowserMode::List),
+                (Key::_1, BrowserMode::Columns),
+            ] {
+                assert!(fixture.view.show_filter_with_query("a"));
+                wait_until(|| fixture.view.filter_has_focus());
+                assert!(fixture.press(key, ModifierType::CONTROL_MASK));
+                assert_eq!(fixture.view.view_mode(), mode);
+            }
+        },
+    );
+}
+
+#[test]
 fn inline_editing_and_location_edit_own_filter_and_global_search_keys() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::inline_editing_and_location_edit_own_filter_and_global_search_keys",

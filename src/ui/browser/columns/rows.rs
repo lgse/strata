@@ -772,7 +772,7 @@ pub(super) fn column_rows(
             {
                 state
                     .browser
-                    .request_metadata_fill(depth, position, entry.location.clone());
+                    .request_metadata_fill(depth, position, entry.location.clone(), false);
             }
         } else {
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);

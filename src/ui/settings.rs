@@ -3,7 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     process::Command,
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::{OnceLock, mpsc::TryRecvError},
     time::{Duration, Instant},
 };
@@ -42,7 +42,10 @@ use super::{
     theme::ThemeManager,
 };
 
-pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String, UpdateMethod)>)>;
+type AvailableUpdate = (ReleaseMetadata, String, UpdateMethod);
+type CachedUpdate = Option<AvailableUpdate>;
+pub(super) type UpdateNoticeHandler = Rc<dyn Fn(CachedUpdate)>;
+type WeakUpdateNoticeHandler = Weak<dyn Fn(CachedUpdate)>;
 
 struct UpdateCheckRow {
     row: gtk::Box,
@@ -95,6 +98,16 @@ thread_local! {
     /// Shared by the due scheduler so every window uses one TTL.
     static LAST_COMPLETED_CHECK: Cell<Option<Instant>> = const { Cell::new(None) };
     static CHECK_IN_FLIGHT: Cell<bool> = const { Cell::new(false) };
+    static CHECK_GENERATION: Cell<u64> = const { Cell::new(0) };
+    static LAST_UPDATE_RESULT: RefCell<CachedUpdate> = const { RefCell::new(None) };
+    static UPDATE_NOTICE_HANDLERS: RefCell<Vec<WeakUpdateNoticeHandler>> = const { RefCell::new(Vec::new()) };
+}
+
+fn next_check_generation() -> u64 {
+    CHECK_IN_FLIGHT.set(true);
+    let next = CHECK_GENERATION.get().saturating_add(1);
+    CHECK_GENERATION.set(next);
+    next
 }
 
 /// Detection spawns a package-manager child, so it resolves asynchronously
@@ -149,7 +162,7 @@ fn force_due_update_check(last: Option<Instant>) -> bool {
     last.is_none()
 }
 
-pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &UpdateNoticeHandler) {
+pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>) {
     if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
         return;
     }
@@ -158,11 +171,13 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
         return;
     }
     let force = force_due_update_check(last_completed);
-    CHECK_IN_FLIGHT.set(true);
+    let generation = next_check_generation();
     let channel = manager.release_channel();
     let weak_manager = Rc::downgrade(manager);
-    let notice = notice.clone();
     resolve_update_method_async(move |method| {
+        if is_stale_check(generation, CHECK_GENERATION.get()) {
+            return;
+        }
         let receiver = services::check_for_updates(
             channel,
             crate::build_info::installed_version(),
@@ -170,34 +185,92 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
             force,
         );
         glib::timeout_add_local(Duration::from_millis(100), move || {
+            if is_stale_check(generation, CHECK_GENERATION.get()) {
+                return glib::ControlFlow::Break;
+            }
             match receiver.try_recv() {
                 Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                 Err(TryRecvError::Disconnected) => {
                     CHECK_IN_FLIGHT.set(false);
                     glib::ControlFlow::Break
                 }
-                Ok(UpdateCheck::Available {
-                    release,
-                    download_url,
-                }) => {
-                    CHECK_IN_FLIGHT.set(false);
-                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
-                    if weak_manager.upgrade().is_some_and(|manager| {
-                        manager.checks_for_updates() && manager.release_channel() == channel
-                    }) {
-                        notice(Some((release, download_url, method)));
-                    }
-                    glib::ControlFlow::Break
-                }
-                Ok(_) => {
-                    // Failed stays uncached so the next launch retries on transient errors.
-                    CHECK_IN_FLIGHT.set(false);
-                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+                Ok(result) => {
+                    complete_due_update_check(&weak_manager, channel, result, method, generation);
                     glib::ControlFlow::Break
                 }
             }
         });
     });
+}
+
+fn complete_due_update_check(
+    manager: &Weak<ThemeManager>,
+    channel: Channel,
+    result: UpdateCheck,
+    method: UpdateMethod,
+    generation: u64,
+) {
+    if is_stale_check(generation, CHECK_GENERATION.get()) {
+        return;
+    }
+    CHECK_IN_FLIGHT.set(false);
+    if !manager
+        .upgrade()
+        .is_some_and(|manager| manager.checks_for_updates() && manager.release_channel() == channel)
+    {
+        return;
+    }
+    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+    if let UpdateCheck::Available {
+        release,
+        download_url,
+    } = result
+    {
+        publish_update_notice(Some((release, download_url, method)));
+    }
+}
+
+pub(super) fn register_update_notice(notice: &UpdateNoticeHandler) {
+    UPDATE_NOTICE_HANDLERS.with(|handlers| {
+        handlers.borrow_mut().push(Rc::downgrade(notice));
+    });
+    LAST_UPDATE_RESULT.with(|cache| {
+        if let Some(result) = cache.borrow().clone() {
+            notice(Some(result));
+        }
+    });
+}
+
+fn publish_update_notice(result: CachedUpdate) {
+    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = result.clone());
+    UPDATE_NOTICE_HANDLERS.with(|handlers| {
+        handlers.borrow_mut().retain(|notice| {
+            let Some(notice) = notice.upgrade() else {
+                return false;
+            };
+            notice(result.clone());
+            true
+        });
+    });
+}
+
+pub(super) fn clear_cached_update_notice() {
+    LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = None);
+}
+
+#[cfg(test)]
+pub(super) fn publish_update_notice_for_test(result: CachedUpdate) {
+    publish_update_notice(result);
+}
+
+#[cfg(test)]
+pub(super) fn current_check_generation() -> u64 {
+    CHECK_GENERATION.get()
+}
+
+#[cfg(test)]
+pub(super) fn next_check_generation_for_test() -> u64 {
+    next_check_generation()
 }
 
 const DIALOG_WIDTH: i32 = 1400;
@@ -678,6 +751,7 @@ pub fn build_layer(
                         let _ = stack;
                         let search_state = search_state.clone();
                         resolve_update_method_async(move |method| {
+                            maybe_run_due_update_check(&themes);
                             let (updates, actions) =
                                 updates_page(themes, update_notice, install_guard, method);
                             while let Some(child) = container.first_child() {
@@ -815,7 +889,6 @@ fn updates_page(
         install_underway,
     } = update_check_row(
         manager.clone(),
-        update_notice.clone(),
         available_notes.clone(),
         install_guard.clone(),
         update_method,
@@ -1326,7 +1399,6 @@ fn offer_still_eligible(channel: Channel, kind: BuildKind) -> bool {
 
 fn update_check_row(
     manager: Rc<ThemeManager>,
-    update_notice: UpdateNoticeHandler,
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
@@ -1378,6 +1450,7 @@ fn update_check_row(
     row.append(&available_notes.container);
 
     let checking = Rc::new(Cell::new(false));
+    let row_generation = Rc::new(Cell::new(0u64));
     // Set once a check finds an update this platform can install; consumed by the
     // button's next click instead of re-running a check.
     let pending_download = Rc::new(RefCell::new(None::<PendingInstall>));
@@ -1390,37 +1463,28 @@ fn update_check_row(
         move || installed.get() || installing.get()
     });
     let managed_update_available = Rc::new(Cell::new(false));
-    // The generation of the most recently started check. Each call to
-    // `run_check` captures the next value and compares against this when its
-    // result arrives; a mismatch means a newer check (e.g. from a channel
-    // toggle mid-flight) has since superseded it. Without this, a Preview
-    // fetch still in flight when the user flips back to Stable could land
-    // after the flip and offer an RC to a Stable user -- exactly the bug
-    // `is_stale_check` exists to prevent. See its doc comment.
-    let generation = Rc::new(Cell::new(0_u64));
-
     let run_check: Rc<dyn Fn(bool)> = Rc::new({
         let title = title.clone();
         let status_icon = status_icon.clone();
         let checking = checking.clone();
-        let generation = generation.clone();
         let status = status.clone();
         let button = button.clone();
-        let update_notice = update_notice.clone();
         let pending_download = pending_download.clone();
         let installed = installed.clone();
         let managed_update_available = managed_update_available.clone();
         let progress = progress.clone();
         let available_notes = available_notes.clone();
         let manager = manager.clone();
+        let row_generation = row_generation.clone();
         move |force: bool| {
             // Always start a fresh check rather than dropping it: a channel
             // toggle must never be silently ignored just because a previous
             // check (for the old channel) is still in flight. The stale
             // check's own result is discarded below instead, once its
             // generation no longer matches.
-            let my_generation = generation.get().saturating_add(1);
-            generation.set(my_generation);
+            let my_generation = next_check_generation();
+            let my_row_generation = row_generation.get().saturating_add(1);
+            row_generation.set(my_row_generation);
             checking.set(true);
             *pending_download.borrow_mut() = None;
             installed.set(false);
@@ -1437,7 +1501,7 @@ fn update_check_row(
             // this check's own result lands: otherwise the sidebar keeps
             // showing a (possibly prerelease) offer from before the channel
             // was switched for the whole duration of this check.
-            update_notice(None);
+            publish_update_notice(None);
             button.set_sensitive(false);
             // Read the channel now, not once when the row was built: a
             // mid-session channel toggle must be reflected by the very next
@@ -1452,23 +1516,26 @@ fn update_check_row(
             let title = title.clone();
             let status_icon = status_icon.clone();
             let checking = checking.clone();
-            let generation = generation.clone();
             let status = status.clone();
             let button = button.clone();
-            let update_notice = update_notice.clone();
             let pending_download = pending_download.clone();
             let managed_update_available = managed_update_available.clone();
             let available_notes = available_notes.clone();
+            let row_generation = row_generation.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
-                if is_stale_check(my_generation, generation.get()) {
-                    // A newer check has since started; that one owns
-                    // `checking`, `status`, and every other piece of shared
-                    // state this closure would otherwise touch. Stop polling
-                    // without applying this result.
+                if is_stale_check(my_generation, CHECK_GENERATION.get()) {
+                    // Only a newer check on this row owns its disabled button.
+                    if is_stale_check(my_row_generation, row_generation.get()) {
+                        return glib::ControlFlow::Break;
+                    }
+                    button.set_sensitive(true);
+                    checking.set(false);
                     return glib::ControlFlow::Break;
                 }
                 match receiver.try_recv() {
                     Ok(result) => {
+                        CHECK_IN_FLIGHT.set(false);
+                        LAST_COMPLETED_CHECK.set(Some(Instant::now()));
                         crate::assets::set_primary_icon(
                             &status_icon,
                             match &result {
@@ -1515,12 +1582,14 @@ fn update_check_row(
                             UpdateCheck::Available {
                                 release,
                                 download_url,
-                            } => update_notice(Some((
+                            } => publish_update_notice(Some((
                                 release.clone(),
                                 download_url.clone(),
                                 update_method,
                             ))),
-                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => update_notice(None),
+                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {
+                                publish_update_notice(None)
+                            }
                         }
                         match &result {
                             UpdateCheck::Available {
@@ -1559,6 +1628,7 @@ fn update_check_row(
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
+                        CHECK_IN_FLIGHT.set(false);
                         title.set_text("Couldn’t check for updates");
                         crate::assets::set_primary_icon(&status_icon, icons::TRIANGLE_ALERT);
                         status.set_markup(

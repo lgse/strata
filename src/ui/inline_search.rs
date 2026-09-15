@@ -220,6 +220,24 @@ impl InlineSearch {
             update_rows(state, pruned, &state.root, recursive);
         }
     }
+
+    pub fn show_directory_listing(&self) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        show_directory_listing(state);
+    }
+}
+
+fn show_directory_listing(state: &State) {
+    state.generation.set(state.generation.get().wrapping_add(1));
+    state.handle.borrow_mut().take();
+    state.items.borrow_mut().clear();
+    state.positions.borrow_mut().clear();
+    state.selection_rows.remove_all();
+    state.anchor.set(None);
+    clear_rows(&state.list);
+    state.stack.set_visible_child_name("files");
 }
 
 /// Keeps the view's normal presentation intact when the recursive query is dismissed.
@@ -435,7 +453,7 @@ pub(super) fn wrap(
             }
             return glib::Propagation::Stop;
         }
-        if super::browser::recursive_search_activation_key(key)
+        if matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
             && super::browser::activate_recursive_search_result(
                 &weak_browser,
                 &state.items,
@@ -491,14 +509,7 @@ pub(super) fn wrap(
         }
         let query = text.trim();
         if query.is_empty() {
-            state.generation.set(state.generation.get().wrapping_add(1));
-            state.handle.borrow_mut().take();
-            state.items.borrow_mut().clear();
-            state.positions.borrow_mut().clear();
-            state.selection_rows.remove_all();
-            state.anchor.set(None);
-            clear_rows(&state.list);
-            state.stack.set_visible_child_name("files");
+            show_directory_listing(&state);
             return;
         }
         state.stack.set_visible_child_name("search");

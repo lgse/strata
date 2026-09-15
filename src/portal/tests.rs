@@ -34,6 +34,9 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -256,6 +259,9 @@ fn open_selection_validates_kind_cardinality_and_locality() {
     );
     let remote = FileEntry {
         location: Location::uri("smb://server/share/file"),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..folder
     };
     assert!(open_selection(&[remote], &current, true, false).is_err());

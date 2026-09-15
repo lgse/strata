@@ -28,6 +28,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 mod archive;
+pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;
@@ -60,9 +61,9 @@ pub(crate) use crate::ui::browser::clipboard::{
 };
 pub(super) use crate::ui::browser::clipboard::{file_drag_content, set_cut_result_style};
 pub(crate) use crate::ui::browser::collection::{
-    activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
+    ActivePaneFilter, activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
-    notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
+    notify_filter_query, prepare_collection_inline_edit, restore_filter_controls,
     reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
@@ -825,12 +826,22 @@ impl BrowserView {
         if mode == previous {
             return;
         }
+        let filter = match previous {
+            BrowserMode::Columns => self.state.capture_active_column_filter(),
+            BrowserMode::Icons | BrowserMode::List => {
+                self.state.mode_views.borrow().capture_active_filter()
+            }
+        };
         self.state.mode_views.borrow().show_mode(mode);
         self.state.mode_views.borrow_mut().prepare_mode(mode);
         if mode == BrowserMode::Columns {
-            self.state.rebuild_columns();
-        } else if let Some(depth) = self.state.browser.active_depth() {
-            self.state.mode_views.borrow().focus_visible_pane(depth);
+            self.state.rebuild_columns_from(0);
+            self.state.restore_active_column_filter(&filter);
+        } else {
+            self.state
+                .mode_views
+                .borrow()
+                .restore_active_filter(&filter);
         }
         match previous {
             BrowserMode::Columns => self.state.truncate(0),
@@ -839,6 +850,11 @@ impl BrowserView {
                 .mode_views
                 .borrow_mut()
                 .clear_inactive_mode(previous),
+        }
+        if mode == BrowserMode::Columns {
+            self.state.focus_rebuilt_active_column();
+        } else if let Some(depth) = self.state.browser.active_depth() {
+            self.state.mode_views.borrow().focus_visible_pane(depth);
         }
     }
 
@@ -1384,15 +1400,21 @@ impl BrowserView {
     }
 
     pub fn filter_has_focus(&self) -> bool {
-        let focused = self.state.overlay.root().and_then(|root| root.focus());
-        self.state.mode_views.borrow().filter_has_focus()
-            || self.state.columns.borrow().iter().any(|column| {
-                column.filter_entry.has_focus()
-                    || focused.as_ref().is_some_and(|focused| {
-                        focused == column.filter_entry.upcast_ref::<gtk::Widget>()
-                            || focused.is_ancestor(&column.filter_entry)
-                    })
-            })
+        match self.view_mode() {
+            BrowserMode::Columns => {
+                let focused = self.state.overlay.root().and_then(|root| root.focus());
+                self.state.columns.borrow().iter().any(|column| {
+                    column.filter_entry.has_focus()
+                        || focused.as_ref().is_some_and(|focused| {
+                            focused == column.filter_entry.upcast_ref::<gtk::Widget>()
+                                || focused.is_ancestor(&column.filter_entry)
+                        })
+                })
+            }
+            BrowserMode::Icons | BrowserMode::List => {
+                self.state.mode_views.borrow().filter_has_focus()
+            }
+        }
     }
 
     /// Recursive results have their own selection, independent of the directory's selection.

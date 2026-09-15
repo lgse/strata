@@ -169,6 +169,69 @@ fn request(root: PathBuf) -> ChooserRequest {
 }
 
 #[test]
+fn directory_confirmation_distinguishes_load_cursor_from_explicit_selection() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::directory_confirmation_distinguishes_load_cursor_from_explicit_selection",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                ThemeManager::shared().set_browser_mode(mode);
+                for explicit in [false, true] {
+                    let root = tempfile::tempdir().expect("fixture");
+                    let child = root.path().join("child");
+                    std::fs::create_dir(&child).expect("child folder");
+                    let result = Rc::new(RefCell::new(None));
+                    let received = result.clone();
+                    let mut chooser_request = request(root.path().to_path_buf());
+                    chooser_request.kind = ChooserKind::Open {
+                        directory: true,
+                        multiple: false,
+                    };
+                    let state = build_chooser(
+                        chooser_request,
+                        Arc::new(AtomicBool::new(false)),
+                        move |value| {
+                            received.replace(Some(value));
+                        },
+                    )
+                    .expect("chooser");
+                    let browser = state.view.browser();
+                    wait_until(|| {
+                        browser
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading && column.count == 1)
+                    });
+                    assert!(browser.selection_is_load_cursor(), "{mode:?}");
+                    if explicit {
+                        browser.select(0, 0);
+                        assert!(!browser.selection_is_load_cursor(), "{mode:?}");
+                    }
+                    state.accept_button.emit_clicked();
+                    wait_until(|| result.borrow().is_some());
+                    let selected = result
+                        .borrow_mut()
+                        .take()
+                        .expect("result")
+                        .expect("accepted");
+                    let expected = if explicit {
+                        child.as_path()
+                    } else {
+                        root.path()
+                    };
+                    assert_eq!(selected.uris().len(), 1, "{mode:?}, explicit={explicit}");
+                    assert_eq!(
+                        selected.uris()[0].to_string(),
+                        gio::File::for_path(expected).uri(),
+                        "{mode:?}, explicit={explicit}"
+                    );
+                    state.window.close();
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn filter_dropdown_select_file_click_open_accepts_filtered_file() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::filter_dropdown_select_file_click_open_accepts_filtered_file",

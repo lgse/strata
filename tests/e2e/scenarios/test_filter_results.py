@@ -152,6 +152,16 @@ def test_filtered_keyboard_clipboard_keeps_status_visible(strata, mode, shortcut
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
 
 
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filter_right_arrow_moves_the_text_cursor(strata, mode):
+    strata.switch_view(mode)
+    field = filter_results(strata)
+    strata.keyboard.press("Home")
+    strata.keyboard.press("Right")
+    strata.keyboard.type_text("X")
+    strata.wait(lambda: field.text == "mXatch-note", "Right to move the filter caret")
+
+
 def test_filter_text_selection_uses_the_active_theme(strata, tmp_path):
     field = filter_results(strata)
     strata.keyboard.press("ctrl+a")
