@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::model::{SortDirection, SortKey};
 
 fn scroll_lists(widget: &impl IsA<gtk::Widget>, to_end: bool) {
     if let Some(scroll) = widget.as_ref().downcast_ref::<gtk::ScrolledWindow>() {
@@ -57,6 +58,8 @@ fn camera_batches_keep_the_top_until_the_user_scrolls() {
                 window.present();
                 let browser = view.browser();
                 browser.navigate(Location::uri("gphoto2://camera/"));
+                // Preserve prepend coverage independently of the append-only default.
+                browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
                 let publish = |start| {
                     let request = source.0.borrow();
                     let request = request.as_ref().expect("camera request");
@@ -193,6 +196,8 @@ fn camera_streaming_interleaved_names_survives_scrolling() {
                 window.present();
                 let browser = view.browser();
                 browser.navigate(Location::uri("gphoto2://camera/"));
+                // This regression exercises sorted inserts and post-load grouping.
+                browser.set_sort(0, SortKey::Name, SortDirection::Ascending);
                 settle();
                 if mode == BrowserMode::List {
                     assert!(
