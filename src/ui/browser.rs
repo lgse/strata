@@ -64,8 +64,7 @@ pub(crate) use crate::ui::browser::collection::{
     ActivePaneFilter, activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
     notify_filter_query, prepare_collection_inline_edit, restore_filter_controls,
-    reveal_collection_after_layout, scroll_collection_when_allocated,
-    search_result_entry,
+    reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
