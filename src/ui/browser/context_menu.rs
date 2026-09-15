@@ -1374,9 +1374,24 @@ fn selected_items_summary(entries: &[FileEntry]) -> String {
 }
 
 pub(super) fn context_entries(
-    state: &ViewState,
+    state: &Rc<ViewState>,
     target: &RefCell<Option<ContextTarget>>,
 ) -> Vec<FileEntry> {
+    if let Some((_, entry)) = target.borrow().as_ref()
+        && let Some(entries) = (super::BrowserView {
+            state: state.clone(),
+        })
+        .selected_search_results()
+    {
+        return if entries
+            .iter()
+            .any(|selected| selected.location == entry.location)
+        {
+            entries
+        } else {
+            vec![entry.clone()]
+        };
+    }
     if let Some((None, entry)) = target.borrow().as_ref() {
         return vec![entry.clone()];
     }

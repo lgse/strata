@@ -1270,7 +1270,9 @@ impl BrowserView {
             {
                 self.state.select_all(depth);
             }
-        } else if let Some(depth) = self.state.browser.active_depth() {
+        } else if !self.state.mode_views.borrow().select_all_search_results()
+            && let Some(depth) = self.state.browser.active_depth()
+        {
             self.state.browser.select_all(depth);
         }
     }

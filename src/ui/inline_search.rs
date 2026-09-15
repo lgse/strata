@@ -22,6 +22,10 @@ struct State {
     stack: gtk::Stack,
     list: gtk::ListBox,
     status: gtk::Label,
+    selection: gtk::MultiSelection,
+    selection_rows: gtk::gio::ListStore,
+    syncing_selection: Cell<bool>,
+    anchor: glib::WeakRef<gtk::ListBoxRow>,
     items: RefCell<Vec<SearchItem>>,
     positions: RefCell<HashMap<gtk::ListBoxRow, usize>>,
     handle: RefCell<Option<SearchHandle>>,
@@ -29,6 +33,31 @@ struct State {
     root: PathBuf,
     recursive: Cell<bool>,
     context_menu_trigger: RefCell<Option<super::browser::ContextMenuTrigger>>,
+}
+
+impl State {
+    fn current_row(&self) -> Option<gtk::ListBoxRow> {
+        self.list
+            .root()
+            .and_then(|root| root.focus())
+            .and_then(|focus| result_at_widget(self, &focus))
+            .or_else(|| self.list.selected_rows().into_iter().next())
+    }
+
+    fn sync_selection(&self) {
+        if self.syncing_selection.replace(true) {
+            return;
+        }
+        let selected = gtk::Bitset::new_empty();
+        for row in self.list.selected_rows() {
+            selected.add(row.index() as u32);
+        }
+        self.selection.set_selection(
+            &selected,
+            &gtk::Bitset::new_range(0, self.selection.n_items()),
+        );
+        self.syncing_selection.set(false);
+    }
 }
 
 #[derive(Clone)]
@@ -57,7 +86,10 @@ impl InlineSearch {
                 .borrow()
                 .get(row.index() as usize)
                 .map(super::browser::search_result_entry)?;
-            state.list.select_row(Some(&row));
+            if !row.is_selected() {
+                state.list.unselect_all();
+                state.list.select_row(Some(&row));
+            }
             Some((None, entry))
         });
         let trigger = super::browser::install_resolved_item_context_menu(
@@ -71,7 +103,7 @@ impl InlineSearch {
 
     pub fn context_menu_target(&self) -> Option<super::browser::ContextMenuTarget> {
         let state = self.state.as_ref()?;
-        let row = state.list.selected_row()?;
+        let row = state.current_row()?;
         let bounds = row.compute_bounds(&state.list)?;
         Some((
             state.context_menu_trigger.borrow().as_ref()?.clone(),
@@ -101,17 +133,29 @@ impl InlineSearch {
         }
         let entries = state
             .list
-            .selected_row()
-            .and_then(|row| {
+            .selected_rows()
+            .into_iter()
+            .filter_map(|row| {
                 state
                     .items
                     .borrow()
                     .get(row.index() as usize)
                     .map(super::browser::search_result_entry)
             })
-            .into_iter()
             .collect();
         Some(entries)
+    }
+
+    pub fn select_all(&self) -> bool {
+        let Some(state) = self
+            .state
+            .as_ref()
+            .filter(|state| state.stack.visible_child_name().as_deref() == Some("search"))
+        else {
+            return false;
+        };
+        state.list.select_all();
+        true
     }
 
     pub fn focus_result(&self, path: &Path) -> bool {
@@ -130,7 +174,10 @@ impl InlineSearch {
         else {
             return false;
         };
-        state.list.select_row(Some(&row));
+        if !row.is_selected() {
+            state.list.unselect_all();
+            state.list.select_row(Some(&row));
+        }
         row.set_focusable(true);
         row.grab_focus()
     }
@@ -179,20 +226,28 @@ pub(super) fn wrap(
     list.add_css_class("file-list");
     super::accessibility::set_label(&list, SEARCH_RESULTS_LABEL);
     list.set_activate_on_single_click(false);
-    list.set_selection_mode(gtk::SelectionMode::Single);
+    list.set_selection_mode(gtk::SelectionMode::Multiple);
     let scroll = gtk::ScrolledWindow::builder()
         .child(&list)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
-    results.append(&scroll);
+    let overlay = gtk::Overlay::new();
+    overlay.set_child(Some(&scroll));
+    results.append(&overlay);
     stack.add_named(&results, Some("search"));
+    let selection_rows = gtk::gio::ListStore::new::<gtk::ListBoxRow>();
+    let selection = gtk::MultiSelection::new(Some(selection_rows.clone()));
     let state = Rc::new(State {
         entry: entry.downgrade(),
         stack: stack.clone(),
         list,
         status,
+        selection,
+        selection_rows,
+        syncing_selection: Cell::new(false),
+        anchor: glib::WeakRef::new(),
         items: RefCell::new(Vec::new()),
         positions: RefCell::new(HashMap::new()),
         handle: RefCell::new(None),
@@ -201,6 +256,7 @@ pub(super) fn wrap(
         recursive: Cell::new(false),
         context_menu_trigger: RefCell::new(None),
     });
+    install_selection(&state, &scroll, &overlay);
     let weak = Rc::downgrade(&state);
     state.list.set_sort_func(move |left, right| {
         let Some(state) = weak.upgrade() else {
@@ -229,13 +285,30 @@ pub(super) fn wrap(
         let Some(row) = state.list.row_at_y(y as i32) else {
             return;
         };
-        let control = gesture
-            .current_event_state()
-            .contains(gtk::gdk::ModifierType::CONTROL_MASK);
-        if control && state.list.selected_row().as_ref() == Some(&row) {
-            state.list.unselect_all();
+        let modifiers = gesture.current_event_state();
+        if modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+            let anchor = state.anchor.upgrade().unwrap_or_else(|| row.clone());
+            if !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+                state.list.unselect_all();
+            }
+            for index in anchor.index().min(row.index())..=anchor.index().max(row.index()) {
+                if let Some(row) = state.list.row_at_index(index) {
+                    state.list.select_row(Some(&row));
+                }
+            }
+        } else if modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+            state.anchor.set(Some(&row));
+            if row.is_selected() {
+                state.list.unselect_row(&row);
+            } else {
+                state.list.select_row(Some(&row));
+            }
         } else {
-            state.list.select_row(Some(&row));
+            state.anchor.set(Some(&row));
+            if !row.is_selected() {
+                state.list.unselect_all();
+                state.list.select_row(Some(&row));
+            }
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
     });
@@ -256,6 +329,9 @@ pub(super) fn wrap(
         let Some(row) = state.list.row_at_y(y as i32) else {
             return;
         };
+        if state.list.selected_rows().len() > 1 {
+            return;
+        }
         let Some(browser) = weak_browser.upgrade() else {
             return;
         };
@@ -283,13 +359,21 @@ pub(super) fn wrap(
         let state = weak.upgrade()?;
         let row = state.list.row_at_y(y as i32)?;
         let items = state.items.borrow();
-        let item = items.get(row.index() as usize)?;
+        let entries: Vec<_> = if row.is_selected() {
+            state.list.selected_rows()
+        } else {
+            vec![row.clone()]
+        }
+        .into_iter()
+        .filter_map(|row| items.get(row.index() as usize))
+        .map(super::browser::search_result_entry)
+        .collect();
         source.set_actions(super::browser::drag_actions_for_modifiers(
             source.current_event_state(),
         ));
         let paintable = gtk::WidgetPaintable::new(Some(&row));
         source.set_icon(Some(&paintable), 0, 0);
-        super::browser::file_drag_content(&[super::browser::search_result_entry(item)])
+        super::browser::file_drag_content(&entries)
     });
     state.list.add_controller(drag.clone());
     state.list.add_controller(click.clone());
@@ -312,12 +396,13 @@ pub(super) fn wrap(
         {
             return glib::Propagation::Proceed;
         }
-        let current = state.list.selected_row().map(|row| row.index() as u32);
+        let current = state.current_row().map(|row| row.index() as u32);
         if key == gtk::gdk::Key::Up {
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::Down {
             if let Some(row) = state.list.row_at_index(current.unwrap_or(0) as i32) {
+                state.list.unselect_all();
                 state.list.select_row(Some(&row));
                 if let Some(window) = state.list.root().and_downcast::<gtk::Window>() {
                     window.set_focus_visible(true);
@@ -352,10 +437,7 @@ pub(super) fn wrap(
                     | gtk::gdk::ModifierType::ALT_MASK
                     | gtk::gdk::ModifierType::SUPER_MASK,
             )
-            || !state
-                .list
-                .selected_row()
-                .is_some_and(|row| row.index() == 0)
+            || !state.current_row().is_some_and(|row| row.index() == 0)
             || state
                 .list
                 .root()
@@ -389,6 +471,8 @@ pub(super) fn wrap(
             state.handle.borrow_mut().take();
             state.items.borrow_mut().clear();
             state.positions.borrow_mut().clear();
+            state.selection_rows.remove_all();
+            state.anchor.set(None);
             clear_rows(&state.list);
             state.stack.set_visible_child_name("files");
             return;
@@ -453,6 +537,59 @@ pub(super) fn wrap(
     search
 }
 
+fn install_selection(state: &Rc<State>, scroll: &gtk::ScrolledWindow, overlay: &gtk::Overlay) {
+    let weak = Rc::downgrade(state);
+    state.list.connect_selected_rows_changed(move |_| {
+        if let Some(state) = weak.upgrade() {
+            state.sync_selection();
+        }
+    });
+    let weak = Rc::downgrade(state);
+    state
+        .selection
+        .connect_selection_changed(move |selection, _, _| {
+            let Some(state) = weak.upgrade() else { return };
+            if state.syncing_selection.replace(true) {
+                return;
+            }
+            state.list.unselect_all();
+            for position in 0..selection.n_items() {
+                if selection.is_selected(position)
+                    && let Some(row) = state.list.row_at_index(position as i32)
+                {
+                    state.list.select_row(Some(&row));
+                }
+            }
+            state.syncing_selection.set(false);
+        });
+    let weak = Rc::downgrade(state);
+    let targets = Rc::new(RefCell::new(vec![super::marquee::MarqueeTarget {
+        selection: state.selection.clone(),
+        visit_items: Rc::new(move |visit| {
+            let Some(state) = weak.upgrade() else { return };
+            for position in 0..state.selection.n_items() {
+                if let Some(row) = state.list.row_at_index(position as i32) {
+                    visit(position, row.upcast_ref());
+                }
+            }
+        }),
+    }]));
+    let weak = Rc::downgrade(state);
+    super::marquee::install(super::marquee::MarqueeSetup {
+        view: state.list.clone().upcast(),
+        surface: scroll.clone().upcast(),
+        scroll: scroll.clone(),
+        overlay: overlay.clone(),
+        targets: targets.clone(),
+        is_item: super::marquee::item_bounds_predicate(targets),
+        clear_selection: Rc::new(move || {
+            if let Some(state) = weak.upgrade() {
+                state.list.unselect_all();
+            }
+        }),
+    });
+}
+
 pub(super) fn search_path_present(path: &Path) -> bool {
     // Preserve dangling symlinks and uncertain paths; only confirmed absence removes a hit.
     path.symlink_metadata().map_or_else(
@@ -475,12 +612,20 @@ fn result_at_widget(state: &State, picked: &gtk::Widget) -> Option<gtk::ListBoxR
 }
 
 fn update_rows(state: &State, items: Vec<SearchItem>, root: &Path, recursive: bool) {
-    let selected = state.list.selected_row().map(|row| row.index() as usize);
+    let selected: Vec<_> = state
+        .list
+        .selected_rows()
+        .into_iter()
+        .map(|row| row.index() as usize)
+        .collect();
     let focused = state.list.root().and_then(|root| root.focus());
     let old = state.items.replace(items);
-    let selected_path = selected
-        .and_then(|index| old.get(index))
-        .map(|item| &item.path);
+    let selected_paths: Vec<_> = selected
+        .iter()
+        .filter_map(|index| old.get(*index))
+        .map(|item| &item.path)
+        .collect();
+    state.syncing_selection.set(true);
     let mut retained: HashMap<_, _> = old
         .iter()
         .enumerate()
@@ -526,17 +671,27 @@ fn update_rows(state: &State, items: Vec<SearchItem>, root: &Path, recursive: bo
     );
     // GTK sorts in place, keeping rows rooted, selected, and their thumbnail work alive.
     state.list.invalidate_sort();
-    let next = selected_path
-        .and_then(|path| items.iter().position(|item| &item.path == path))
-        .or_else(|| {
-            selected
-                .filter(|_| !items.is_empty())
-                .map(|index| index.min(items.len() - 1))
-        });
-    state.list.select_row(
-        next.and_then(|index| state.list.row_at_index(index as i32))
-            .as_ref(),
-    );
+    state
+        .selection_rows
+        .splice(0, state.selection_rows.n_items(), &rows);
+    state.list.unselect_all();
+    for (index, item) in items.iter().enumerate() {
+        if selected_paths.contains(&&item.path) {
+            state
+                .list
+                .select_row(state.list.row_at_index(index as i32).as_ref());
+        }
+    }
+    if state.list.selected_rows().is_empty()
+        && let Some(index) = selected.first().filter(|_| !items.is_empty())
+    {
+        let index = (*index).min(items.len() - 1);
+        state
+            .list
+            .select_row(state.list.row_at_index(index as i32).as_ref());
+    }
+    state.syncing_selection.set(false);
+    state.sync_selection();
     if let Some(focused) = focused {
         if focused.root().is_some() {
             if state.list.root().and_then(|root| root.focus()).as_ref() != Some(&focused) {
