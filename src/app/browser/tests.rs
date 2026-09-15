@@ -8,6 +8,8 @@ use std::{
 
 use super::*;
 
+#[path = "operation_events/tests.rs"]
+mod operation_events;
 #[path = "sorting/tests.rs"]
 mod staged_sort;
 use crate::{
