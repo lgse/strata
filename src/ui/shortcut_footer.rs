@@ -75,7 +75,10 @@ impl ShortcutFooter {
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .build();
         summary.add_css_class("shortcut-footer-summary");
-        root.append(&summary);
+        let hints = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        hints.set_hexpand(true);
+        hints.append(&summary);
+        root.append(&hints);
         let paste = gtk::Label::new(Some("Files on clipboard"));
         paste.add_css_class("shortcut-footer-paste");
         paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
