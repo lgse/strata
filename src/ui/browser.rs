@@ -862,6 +862,7 @@ impl BrowserView {
             .mode_views
             .borrow()
             .set_checkbox_selection(enabled);
+        columns::set_columns_checkbox_visible(&self.state, enabled);
     }
 
     pub fn activate_focused(&self) {

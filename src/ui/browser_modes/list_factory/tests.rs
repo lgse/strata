@@ -76,6 +76,7 @@ struct Fixture {
     factory: gtk::SignalListItemFactory,
     view: gtk::ListView,
     window: gtk::Window,
+    columns: ListColumnLayout,
 }
 
 impl Fixture {
@@ -146,6 +147,7 @@ impl Fixture {
             factory,
             view,
             window,
+            columns,
         };
         pump_until(|| fixture.item_at(0).is_some());
         fixture
@@ -233,20 +235,12 @@ fn checkboxes_follow_current_bound_positions_and_initial_visibility() {
         "ui::browser_modes::list_factory::tests::checkboxes_follow_current_bound_positions_and_initial_visibility",
         || {
             let fixture = Fixture::with_checkbox_selection(true);
-            let selection = fixture.selection();
             let (_, first) = fixture.row_at(0).expect("first row");
             let (_, second) = fixture.row_at(1).expect("second row");
             assert!(first.checkbox.get_visible());
             assert!(second.checkbox.get_visible());
-
-            first.checkbox.set_active(true);
-            second.checkbox.set_active(true);
-            assert!(selection.is_selected(0));
-            assert!(selection.is_selected(1));
-
-            first.checkbox.set_active(false);
-            assert!(!selection.is_selected(0));
-            assert!(selection.is_selected(1));
+            assert!(!first.checkbox.is_active());
+            assert!(!second.checkbox.is_active());
         },
     );
 }

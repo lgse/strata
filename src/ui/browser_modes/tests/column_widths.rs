@@ -11,6 +11,13 @@ fn settle() {
     }
 }
 
+fn assert_aligned(heading: &gtk::Widget, mode: &gtk::Label, table: &gtk::Box) {
+    let heading = heading.compute_bounds(table).expect("heading bounds");
+    let mode = mode.compute_bounds(table).expect("Mode bounds");
+    assert_eq!(heading.x(), mode.x());
+    assert_eq!(heading.width(), mode.width());
+}
+
 #[test]
 fn resizing_starts_at_the_visible_header_not_the_loading_placeholder() {
     crate::test_support::gtk_test(

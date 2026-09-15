@@ -3548,6 +3548,23 @@ colorchooser colorswatch overlay {
   opacity: 0.45;
 }
 
+/* Floating marker over the icon's top-left; keeps the thumbnail centered
+   when the optional checkbox preference is toggled. */
+.icons-checkbox {
+  margin: 2px 0 0 2px;
+}
+
+/* Miller-column rows prepend the checkbox like List rows do. */
+.column-checkbox {
+  margin-left: 8px;
+  margin-right: 0;
+}
+
+/* Match the row's 5px list margin so the header checkbox lines up. */
+.column-select-all {
+  margin-left: 5px;
+}
+
 .icons-card {
   outline: 1px solid transparent;
   outline-offset: -1px;

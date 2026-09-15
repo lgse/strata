@@ -98,22 +98,52 @@ impl ListFactory {
                 true,
             ),
         );
-        let selection = self.selection.clone();
-        let item = item.downgrade();
-        row.checkbox.connect_toggled(move |check| {
-            let Some(item) = item.upgrade() else {
+        // Handle all checkbox clicks in a capture-phase gesture; connect_toggled
+        // corrects any residual internal toggle from the CheckButton.
+        let checkbox_click = gtk::GestureClick::new();
+        checkbox_click.set_button(1);
+        checkbox_click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let selection_for_click = self.selection.clone();
+        let browser_for_click = self.browser.clone();
+        let depth = self.depth;
+        let positions_for_click = self.positions.clone();
+        let item_for_click = item.downgrade();
+        let syncing = Rc::new(Cell::new(false));
+        super::checkbox_sync_toggled(&row.checkbox, &item_for_click, &self.selection, &syncing);
+        checkbox_click.connect_pressed(move |gesture, _, _, _| {
+            let Some(item) = item_for_click.upgrade() else {
                 return;
             };
             let position = item.position();
             if position == gtk::INVALID_LIST_POSITION {
                 return;
             }
-            if check.is_active() {
-                selection.select_item(position, false);
+            let modifiers = gesture.current_event_state();
+            let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            if shift {
+                let Some(browser) = browser_for_click.upgrade() else {
+                    return;
+                };
+                let anchor = browser
+                    .selection_anchor_position(depth)
+                    .and_then(|anchor| positions_for_click.view_position(anchor))
+                    .unwrap_or(position);
+                let start = anchor.min(position);
+                let count = anchor.max(position).saturating_sub(start) + 1;
+                selection_for_click.select_range(start, count, true);
             } else {
-                selection.unselect_item(position);
+                if let Some(browser) = browser_for_click.upgrade() {
+                    super::anchor_at(&browser, depth, &positions_for_click, position);
+                }
+                if selection_for_click.is_selected(position) {
+                    selection_for_click.unselect_item(position);
+                } else {
+                    selection_for_click.select_item(position, false);
+                }
             }
+            gesture.set_state(gtk::EventSequenceState::Claimed);
         });
+        row.checkbox.add_controller(checkbox_click);
     }
 
     fn binding(&self, item: &gtk::ListItem) -> Option<ListBinding> {
