@@ -27,6 +27,8 @@ impl KeyboardFixture {
     fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
         ThemeManager::seed_saved_preferences_for_test();
         let preferences = ThemeManager::shared();
+        // Keyboard focus-return scenarios need a place to focus; the saved fixture hides all places.
+        preferences.set_sidebar_show_home(true);
         let directory = tempfile::tempdir().expect("fixture");
         for name in ["a.txt", "b.txt", "c.txt"] {
             std::fs::write(directory.path().join(name), b"preview").expect("fixture file");
@@ -207,6 +209,26 @@ fn modal_ownership_precedes_window_shortcuts() {
             );
             assert!(!fixture.press(Key::_2, ModifierType::CONTROL_MASK));
             assert_eq!(fixture.view.view_mode(), BrowserMode::Columns);
+        },
+    );
+}
+
+#[test]
+fn view_shortcuts_work_from_the_pane_filter() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::view_shortcuts_work_from_the_pane_filter",
+        || {
+            let fixture = KeyboardFixture::new();
+            for (key, mode) in [
+                (Key::_2, BrowserMode::Icons),
+                (Key::_3, BrowserMode::List),
+                (Key::_1, BrowserMode::Columns),
+            ] {
+                assert!(fixture.view.show_filter_with_query("a"));
+                wait_until(|| fixture.view.filter_has_focus());
+                assert!(fixture.press(key, ModifierType::CONTROL_MASK));
+                assert_eq!(fixture.view.view_mode(), mode);
+            }
         },
     );
 }

@@ -12,7 +12,9 @@ pub(super) use crate::ui::browser::columns::COLUMN_WIDTH;
 use crate::ui::browser::columns::ColumnView;
 use crate::ui::browser::desktop::selected_terminal_location;
 use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
-use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
+use crate::ui::browser::location::{
+    MountCredentials, UnlockProgressSlot, is_breadcrumb_button_target,
+};
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
 use crate::ui::browser::progress::FileProgressView;
@@ -26,6 +28,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 mod archive;
+pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;
@@ -52,15 +55,15 @@ mod transfer;
 mod trash;
 
 pub(in crate::ui) use crate::ui::browser::clipboard::drag_icon_with_count;
-pub(super) use crate::ui::browser::clipboard::file_drag_content;
 pub(crate) use crate::ui::browser::clipboard::{
     PreparedFileDrop, drag_actions_for_modifiers, file_drop_action, file_drop_commit,
     locations_from_file_list_value, prepare_file_drop_target,
 };
+pub(super) use crate::ui::browser::clipboard::{file_drag_content, set_cut_result_style};
 pub(crate) use crate::ui::browser::collection::{
-    activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
+    ActivePaneFilter, activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
-    notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
+    notify_filter_query, prepare_collection_inline_edit, restore_filter_controls,
     reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
@@ -71,15 +74,15 @@ pub(super) use crate::ui::browser::context_menu::{
 };
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location};
 pub(super) use crate::ui::browser::entry::{
-    FOLDER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value, format_file_size,
-    metadata_needs_fill, model_type_group, rounded_size_and_unit,
+    FOLDER_TYPE_GROUP, OTHER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value,
+    format_file_size, metadata_needs_fill, model_type_group, rounded_size_and_unit,
 };
 pub(super) use crate::ui::browser::inline_edit::{
     queue_rename, rename_stem_end, reveal_rename_row, update_basename_validation,
 };
 pub(super) use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
-    pane_refresh_button,
+    pane_refresh_button, sync_column_sort_direction,
 };
 pub(super) use crate::ui::browser::paths::is_trash_root;
 pub use crate::ui::browser::peek::PeekBehavior;
@@ -198,6 +201,7 @@ pub(super) struct ViewState {
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
+    unlock_slots: RefCell<Vec<UnlockProgressSlot>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
     trash_button: RefCell<Option<gtk::Button>>,
     browser: Rc<Browser>,
@@ -510,6 +514,7 @@ impl BrowserView {
             pending_trash_lookup: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
+            unlock_slots: RefCell::new(Vec::new()),
             auto_refresh: RefCell::new(None),
             trash_button: RefCell::new(None),
             browser,
@@ -821,12 +826,22 @@ impl BrowserView {
         if mode == previous {
             return;
         }
+        let filter = match previous {
+            BrowserMode::Columns => self.state.capture_active_column_filter(),
+            BrowserMode::Icons | BrowserMode::List => {
+                self.state.mode_views.borrow().capture_active_filter()
+            }
+        };
         self.state.mode_views.borrow().show_mode(mode);
         self.state.mode_views.borrow_mut().prepare_mode(mode);
         if mode == BrowserMode::Columns {
-            self.state.rebuild_columns();
-        } else if let Some(depth) = self.state.browser.active_depth() {
-            self.state.mode_views.borrow().focus_visible_pane(depth);
+            self.state.rebuild_columns_from(0);
+            self.state.restore_active_column_filter(&filter);
+        } else {
+            self.state
+                .mode_views
+                .borrow()
+                .restore_active_filter(&filter);
         }
         match previous {
             BrowserMode::Columns => self.state.truncate(0),
@@ -835,6 +850,11 @@ impl BrowserView {
                 .mode_views
                 .borrow_mut()
                 .clear_inactive_mode(previous),
+        }
+        if mode == BrowserMode::Columns {
+            self.state.focus_rebuilt_active_column();
+        } else if let Some(depth) = self.state.browser.active_depth() {
+            self.state.mode_views.borrow().focus_visible_pane(depth);
         }
     }
 
@@ -1203,8 +1223,10 @@ impl BrowserView {
     }
 
     pub fn copy_selection(&self) -> bool {
-        self.state.sync_mode_selection();
-        let entries = self.state.browser.selected_entries();
+        let entries = self.selected_search_results().unwrap_or_else(|| {
+            self.state.sync_mode_selection();
+            self.state.browser.selected_entries()
+        });
         if entries.is_empty() {
             return false;
         }
@@ -1223,8 +1245,10 @@ impl BrowserView {
     }
 
     pub fn cut_selection(&self) -> bool {
-        self.state.sync_mode_selection();
-        let entries = self.state.browser.selected_entries();
+        let entries = self.selected_search_results().unwrap_or_else(|| {
+            self.state.sync_mode_selection();
+            self.state.browser.selected_entries()
+        });
         if entries.is_empty() {
             return false;
         }
@@ -1274,7 +1298,9 @@ impl BrowserView {
             {
                 self.state.select_all(depth);
             }
-        } else if let Some(depth) = self.state.browser.active_depth() {
+        } else if !self.state.mode_views.borrow().select_all_search_results()
+            && let Some(depth) = self.state.browser.active_depth()
+        {
             self.state.browser.select_all(depth);
         }
     }
@@ -1382,15 +1408,21 @@ impl BrowserView {
     }
 
     pub fn filter_has_focus(&self) -> bool {
-        let focused = self.state.overlay.root().and_then(|root| root.focus());
-        self.state.mode_views.borrow().filter_has_focus()
-            || self.state.columns.borrow().iter().any(|column| {
-                column.filter_entry.has_focus()
-                    || focused.as_ref().is_some_and(|focused| {
-                        focused == column.filter_entry.upcast_ref::<gtk::Widget>()
-                            || focused.is_ancestor(&column.filter_entry)
-                    })
-            })
+        match self.view_mode() {
+            BrowserMode::Columns => {
+                let focused = self.state.overlay.root().and_then(|root| root.focus());
+                self.state.columns.borrow().iter().any(|column| {
+                    column.filter_entry.has_focus()
+                        || focused.as_ref().is_some_and(|focused| {
+                            focused == column.filter_entry.upcast_ref::<gtk::Widget>()
+                                || focused.is_ancestor(&column.filter_entry)
+                        })
+                })
+            }
+            BrowserMode::Icons | BrowserMode::List => {
+                self.state.mode_views.borrow().filter_has_focus()
+            }
+        }
     }
 
     /// Recursive results have their own selection, independent of the directory's selection.
@@ -1399,42 +1431,76 @@ impl BrowserView {
             return self.state.mode_views.borrow().selected_search_result();
         }
         let focused = self.state.overlay.root()?.focus()?;
-        self.state.columns.borrow().iter().find_map(|column| {
-            if column.search_handle.borrow().is_none()
-                || !(focused.is_ancestor(&column.filter_entry)
+        self.state
+            .columns
+            .borrow()
+            .iter()
+            .enumerate()
+            .find_map(|(depth, column)| {
+                if !(focused.is_ancestor(&column.filter_entry)
                     || focused == column.filter_entry.clone().upcast::<gtk::Widget>()
                     || focused.is_ancestor(&column.list)
                     || focused == column.list.clone().upcast::<gtk::Widget>())
-            {
-                return None;
-            }
-            let selected = column.selection.selection();
-            if selected.is_empty() {
-                return None;
-            }
-            column
-                .search_results
-                .borrow()
-                .get(selected.maximum() as usize)
-                .map(search_result_entry)
-        })
+                {
+                    return None;
+                }
+                if column.search_handle.borrow().is_some() {
+                    let selected = column.selection.selection();
+                    if selected.is_empty() {
+                        return None;
+                    }
+                    return column
+                        .search_results
+                        .borrow()
+                        .get(selected.maximum() as usize)
+                        .map(search_result_entry);
+                }
+                if column.map.has_query() {
+                    let selected = column.selection.selection();
+                    if selected.is_empty() {
+                        return None;
+                    }
+                    let source_position = column.map.source_position(selected.maximum())?;
+                    return self.state.browser.entry_at(depth, source_position);
+                }
+                None
+            })
     }
 
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
         if self.view_mode() != BrowserMode::Columns {
             return self.state.mode_views.borrow().selected_search_results();
         }
-        let depth = self.state.destination_depth()?;
         let columns = self.state.columns.borrow();
-        let column = columns.get(depth)?;
-        column.search_handle.borrow().as_ref()?;
-        let results = column.search_results.borrow();
-        Some(
-            collection::bitset_positions(&column.selection.selection())
-                .into_iter()
-                .filter_map(|position| results.get(position as usize).map(search_result_entry))
-                .collect(),
-        )
+        let depth = self.state.destination_depth();
+        let (depth, column) = depth
+            .and_then(|depth| columns.get(depth).map(|column| (depth, column)))
+            .filter(|(_, column)| column.search_handle.borrow().is_some() || column.map.has_query())
+            .or_else(|| {
+                columns.iter().enumerate().find(|(_, column)| {
+                    column.search_handle.borrow().is_some() || column.map.has_query()
+                })
+            })?;
+        if column.search_handle.borrow().is_some() {
+            let results = column.search_results.borrow();
+            return Some(
+                collection::bitset_positions(&column.selection.selection())
+                    .into_iter()
+                    .filter_map(|position| results.get(position as usize).map(search_result_entry))
+                    .collect(),
+            );
+        }
+        if column.map.has_query() {
+            let positions = collection::bitset_positions(&column.selection.selection());
+            let mapped = column.map.source_positions(&positions);
+            return Some(
+                mapped
+                    .into_iter()
+                    .filter_map(|(_, source_pos)| self.state.browser.entry_at(depth, source_pos))
+                    .collect(),
+            );
+        }
+        None
     }
 
     pub fn item_view_has_focus(&self) -> bool {

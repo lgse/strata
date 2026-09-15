@@ -12,6 +12,12 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "default-directory",
+        page: "general",
+        title: "Default directory",
+        aliases: "startup launch home folder reset",
+    },
+    Target {
         id: "peeking",
         page: "general",
         title: "Folder peeking",
@@ -52,6 +58,12 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Open search results directly",
         aliases: "launch files quick preview",
+    },
+    Target {
+        id: "sidebar-places",
+        page: "general",
+        title: "Items shown in sidebar",
+        aliases: "sidebar places hide show home trash network shares desktop documents downloads pictures videos folder",
     },
     Target {
         id: "opening",
@@ -128,8 +140,8 @@ const TARGETS: &[Target] = &[
     Target {
         id: "hints",
         page: "keybindings",
-        title: "Show keybinding hints",
-        aliases: "keyboard shortcuts footer navigation paste",
+        title: "Show F1 Shortcuts button",
+        aliases: "keyboard keybinding hints shortcuts footer navigation paste",
     },
     Target {
         id: "shortcuts",

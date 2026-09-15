@@ -2,6 +2,8 @@
 
 use std::{fs, time::Duration};
 
+mod remote_preview;
+
 use super::*;
 use crate::services::{MediaPreviewSize, PreviewContent};
 
@@ -99,6 +101,9 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                         modified_unix_seconds: MetadataValue::Known(1),
                         mode: MetadataValue::Unknown,
                         is_hidden: false,
+                        image_dimensions: MetadataValue::Unknown,
+                        child_count: MetadataValue::Unknown,
+                        duration_seconds: MetadataValue::Unknown,
                     },
                     text_byte_limit: 1024,
                     pdf_page: 0,
@@ -324,6 +329,9 @@ fn cancelled_in_flight_pdf_renders_keep_the_permit_and_emit_no_stale_events() {
                     modified_unix_seconds: MetadataValue::Unknown,
                     mode: MetadataValue::Unknown,
                     is_hidden: false,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 text_byte_limit: 1024,
                 pdf_page: 1,
@@ -437,6 +445,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
             path: "clip.mp4".into(),
             size: MediaPreviewSize::new(520, 800),
             backend: MediaPreviewBackend::Software,
+            input_owner: None,
         },
     };
     cache.insert(key.clone(), content.clone());
@@ -465,7 +474,8 @@ fn preview_content_size_computes_accurately() {
             media: SandboxedMedia {
                 path: "clip.mp4".into(),
                 size: MediaPreviewSize::new(520, 800),
-                backend: MediaPreviewBackend::Software
+                backend: MediaPreviewBackend::Software,
+                input_owner: None,
             },
         }),
         0
@@ -523,6 +533,9 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
                 is_hidden: false,
             },
             text_byte_limit: 1024,

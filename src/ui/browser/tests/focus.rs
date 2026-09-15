@@ -365,8 +365,8 @@ fn filter_dismisses_only_when_focus_leaves_its_own_column() {
                 (columns[0].clone(), columns[1].clone())
             };
             wait_until(|| {
-                first.list.width() > 0
-                    && second.list.width() > 0
+                first.list.is_mapped()
+                    && second.list.is_mapped()
                     && !second.bound_rows.borrow().is_empty()
             });
             let root_focus_is = |widget: &gtk::Widget| {
@@ -375,19 +375,25 @@ fn filter_dismisses_only_when_focus_leaves_its_own_column() {
             };
 
             first.filter_button.set_active(true);
-            first.filter_entry.set_text("alpha");
-            wait_until(|| root_focus_is(first.filter_entry.upcast_ref()));
+            first.filter_entry.set_text("Child");
+            wait_until(|| {
+                root_focus_is(first.filter_entry.upcast_ref())
+                    && first.search_model.n_items() > 0
+                    && !first.bound_rows.borrow().is_empty()
+            });
 
-            first.list.grab_focus();
-            wait_until(|| !root_focus_is(first.filter_entry.upcast_ref()));
+            assert!(first.list.grab_focus());
+            wait_until(|| root_focus_is(first.list.upcast_ref()));
             settle();
+            assert!(root_focus_is(first.list.upcast_ref()));
             assert!(
                 first.filter_button.is_active(),
                 "focus moving within the same column must not dismiss its filter"
             );
-            assert_eq!(first.filter_entry.text(), "alpha");
+            assert_eq!(first.filter_entry.text(), "Child");
 
-            second.list.grab_focus();
+            assert!(second.list.grab_focus());
+            wait_until(|| root_focus_is(second.list.upcast_ref()));
             wait_until(|| !first.filter_button.is_active());
             assert_eq!(first.filter_entry.text(), "");
             window.close();
@@ -651,7 +657,8 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
                 view.state.pointer_navigation();
                 assert_column_header_actions(&view, hovered.unwrap_or(2));
             }
-            view.state.rebuild_columns();
+            view.state.rebuild_columns_from(0);
+            view.state.focus_rebuilt_active_column();
             assert_column_header_actions(&view, 2);
             let adjustment = view.state.scroller.hadjustment();
             wait_until(|| adjustment.value() > 100.0);

@@ -82,10 +82,11 @@ fn composition_initializes_live_preferences_before_settings_in_two_windows() {
                     .content
                     .browser
                     .assert_saved_preferences(&fixture.preferences);
-                assert_eq!(
-                    fixture.content.footer.shortcuts.widget().is_visible(),
-                    fixture.preferences.show_keybinding_hints()
-                );
+                fixture
+                    .content
+                    .footer
+                    .shortcuts
+                    .assert_hints_visible(fixture.preferences.show_keybinding_hints());
             }
             first.preferences.set_show_keybinding_hints(false);
             first.preferences.set_browser_mode(BrowserMode::List);
@@ -95,12 +96,12 @@ fn composition_initializes_live_preferences_before_settings_in_two_windows() {
                     .browser
                     .assert_saved_preferences(&fixture.preferences);
                 assert_eq!(fixture.content.browser.view_mode(), BrowserMode::List);
-                assert!(!fixture.content.footer.shortcuts.widget().is_visible());
+                fixture.content.footer.shortcuts.assert_hints_visible(false);
                 assert!(fixture.layer("settings-backdrop").is_none());
             }
             first.preferences.set_show_keybinding_hints(true);
             for fixture in [&first, &second] {
-                assert!(fixture.content.footer.shortcuts.widget().is_visible());
+                fixture.content.footer.shortcuts.assert_hints_visible(true);
                 assert!(fixture.layer("settings-backdrop").is_none());
             }
             first.close();
@@ -266,6 +267,61 @@ fn update_notices_clear_in_both_windows_without_opening_settings() {
             }
             first.close();
             second.close();
+        },
+    );
+}
+
+#[test]
+fn update_notice_reaches_open_and_later_windows() {
+    gtk_test(
+        "ui::window::composition::tests::update_notice_reaches_open_and_later_windows",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            crate::ui::settings::clear_cached_update_notice();
+            let first = Fixture::new();
+            let second = Fixture::new();
+            let release = ReleaseMetadata {
+                version: "9.0.0".into(),
+                url: "https://example.test/release".into(),
+                notes: String::new(),
+                note_blocks: Vec::new(),
+                kind: BuildKind::Stable,
+                tag: "v9.0.0".into(),
+                published_at: None,
+                commit: None,
+            };
+            crate::ui::settings::publish_update_notice_for_test(Some((
+                release,
+                "https://example.test/download".into(),
+                UpdateMethod::InPlace,
+            )));
+            for fixture in [&first, &second] {
+                assert!(fixture.content.sidebar.update_area.is_visible());
+                assert_eq!(
+                    fixture
+                        .content
+                        .sidebar
+                        .update_notice
+                        .tooltip_text()
+                        .as_deref(),
+                    Some("Install Strata v9.0.0")
+                );
+            }
+
+            let third = Fixture::new();
+            assert!(third.content.sidebar.update_area.is_visible());
+            first
+                .preferences
+                .set_checks_for_updates(!first.preferences.checks_for_updates());
+            for fixture in [&first, &second, &third] {
+                assert!(!fixture.content.sidebar.update_area.is_visible());
+            }
+            let fourth = Fixture::new();
+            assert!(!fourth.content.sidebar.update_area.is_visible());
+            first.close();
+            second.close();
+            third.close();
+            fourth.close();
         },
     );
 }

@@ -401,6 +401,7 @@ pub(in crate::ui) fn install_folder_context_menu(
             vec![file],
             recommended_apps,
             other_apps,
+            crate::ui::open_with::OpenWithContext::Explicit,
             Rc::new(move || {
                 if let Some(browser) = browser.upgrade() {
                     browser.focus_active();
@@ -784,6 +785,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 selection.files,
                 selection.recommended_apps,
                 selection.other_apps,
+                crate::ui::open_with::OpenWithContext::Explicit,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();
@@ -813,6 +815,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 selection.files,
                 selection.recommended_apps,
                 selection.other_apps,
+                crate::ui::open_with::OpenWithContext::Explicit,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();
@@ -1374,9 +1377,24 @@ fn selected_items_summary(entries: &[FileEntry]) -> String {
 }
 
 pub(super) fn context_entries(
-    state: &ViewState,
+    state: &Rc<ViewState>,
     target: &RefCell<Option<ContextTarget>>,
 ) -> Vec<FileEntry> {
+    if let Some((_, entry)) = target.borrow().as_ref()
+        && let Some(entries) = (super::BrowserView {
+            state: state.clone(),
+        })
+        .selected_search_results()
+    {
+        return if entries
+            .iter()
+            .any(|selected| selected.location == entry.location)
+        {
+            entries
+        } else {
+            vec![entry.clone()]
+        };
+    }
     if let Some((None, entry)) = target.borrow().as_ref() {
         return vec![entry.clone()];
     }

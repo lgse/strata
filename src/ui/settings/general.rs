@@ -24,7 +24,9 @@ pub(super) fn general_page(
     manager: Rc<ThemeManager>,
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
+
     append_browsing_options(&preferences, &manager);
+    append_sidebar_options(&preferences, &manager);
 
     append_heading(&preferences, "OPENING ITEMS");
     let description = gtk::Label::new(Some("How many clicks open a file or folder in each view."));
@@ -54,6 +56,9 @@ pub(super) fn general_page(
     let portal_row = crate::ui::portal_preferences::settings_row();
     super::search::tag(&portal_row, "Desktop integration");
     preferences.append(&portal_row);
+
+    let startup = super::settings_group(&preferences, "STARTUP");
+    append_default_directory_option(&startup, &manager);
 
     (
         scrollable_page(&preferences, None),
@@ -136,6 +141,188 @@ fn append_preference_switch(
         super::indent_row(&row);
     }
     content.append(&row);
+}
+
+fn append_default_directory_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let choose = gtk::Button::with_label(&default_directory_text(manager.default_directory()));
+    choose.set_valign(gtk::Align::Center);
+    choose.add_css_class("form-control");
+    choose.add_css_class("settings-choice");
+    choose.set_tooltip_text(Some("Select default directory"));
+    super::super::accessibility::set_label(&choose, "Default directory");
+
+    let reset = gtk::Button::with_label("Reset");
+    reset.add_css_class("form-control");
+    reset.set_valign(gtk::Align::Center);
+    reset.set_sensitive(manager.default_directory().is_some());
+    reset.set_tooltip_text(Some("Restore the home directory as default"));
+
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    controls.append(&choose);
+    controls.append(&reset);
+
+    let row = super::control_row(
+        "Default directory",
+        "Open this folder when launching Strata without a target.",
+        &controls,
+    );
+    content.append(&row);
+
+    manager.bind_preference(
+        &choose,
+        ThemeManager::default_directory,
+        move |widget, value| {
+            if let Some(button) = widget.downcast_ref::<gtk::Button>() {
+                button.set_label(&default_directory_text(value));
+            }
+        },
+    );
+    let manager_for_reset = manager.clone();
+    reset.connect_clicked(move |_| {
+        manager_for_reset.set_default_directory(None);
+    });
+    manager.bind_preference(
+        &reset,
+        ThemeManager::default_directory,
+        move |widget, value| {
+            if let Some(button) = widget.downcast_ref::<gtk::Button>() {
+                button.set_sensitive(value.is_some());
+            }
+        },
+    );
+
+    let manager = manager.clone();
+    choose.connect_clicked(move |button| {
+        let Some(window) = button.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        let dialog = gtk::FileDialog::builder()
+            .title("Select default directory")
+            .modal(true)
+            .build();
+        let manager = manager.clone();
+        dialog.select_folder(Some(&window), gio::Cancellable::NONE, move |result| {
+            let Ok(file) = result else {
+                return;
+            };
+            if let Some(path) = file.path() {
+                manager.set_default_directory(Some(path));
+            }
+        });
+    });
+}
+
+fn default_directory_text(path: Option<std::path::PathBuf>) -> String {
+    match path {
+        Some(path) => abbreviate_home(&path),
+        None => "Home directory".to_owned(),
+    }
+}
+
+fn abbreviate_home(path: &std::path::Path) -> String {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    if let Some(home) = home
+        && let Ok(rest) = path.strip_prefix(&home)
+    {
+        format!("~/{}", rest.display())
+    } else {
+        path.display().to_string()
+    }
+}
+
+fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let sidebar = super::settings_group(content, "SIDEBAR");
+    let chips = super::wrap::WrapRow::new(8);
+    let row = super::control_row(
+        "Items shown in sidebar",
+        "Toggle which locations appear in the sidebar.",
+        &chips,
+    );
+    row.add_css_class("settings-sidebar-places");
+    row.set_orientation(gtk::Orientation::Vertical);
+    row.set_spacing(18);
+    sidebar.append(&row);
+    use crate::assets::icons;
+    let icons = [
+        icons::HOME,
+        icons::TRASH,
+        icons::GLOBE,
+        icons::MONITOR,
+        icons::DOCUMENTS,
+        icons::DOWNLOADS,
+        icons::PICTURES,
+        icons::VIDEOS,
+    ];
+    for (switch, icon) in [
+        PreferenceSwitch {
+            title: "Show Home in sidebar",
+            description: "Show the Home folder in the sidebar.",
+            read: ThemeManager::sidebar_show_home,
+            write: ThemeManager::set_sidebar_show_home,
+        },
+        PreferenceSwitch {
+            title: "Show Trash in sidebar",
+            description: "Show Trash in the sidebar.",
+            read: ThemeManager::sidebar_show_trash,
+            write: ThemeManager::set_sidebar_show_trash,
+        },
+        PreferenceSwitch {
+            title: "Show Network in sidebar",
+            description: "Show Network in the sidebar.",
+            read: ThemeManager::sidebar_show_network,
+            write: ThemeManager::set_sidebar_show_network,
+        },
+        PreferenceSwitch {
+            title: "Show Desktop in sidebar",
+            description: "Show the Desktop folder in the sidebar.",
+            read: ThemeManager::sidebar_show_desktop,
+            write: ThemeManager::set_sidebar_show_desktop,
+        },
+        PreferenceSwitch {
+            title: "Show Documents in sidebar",
+            description: "Show the Documents folder in the sidebar.",
+            read: ThemeManager::sidebar_show_documents,
+            write: ThemeManager::set_sidebar_show_documents,
+        },
+        PreferenceSwitch {
+            title: "Show Downloads in sidebar",
+            description: "Show the Downloads folder in the sidebar.",
+            read: ThemeManager::sidebar_show_downloads,
+            write: ThemeManager::set_sidebar_show_downloads,
+        },
+        PreferenceSwitch {
+            title: "Show Pictures in sidebar",
+            description: "Show the Pictures folder in the sidebar.",
+            read: ThemeManager::sidebar_show_pictures,
+            write: ThemeManager::set_sidebar_show_pictures,
+        },
+        PreferenceSwitch {
+            title: "Show Videos in sidebar",
+            description: "Show the Videos folder in the sidebar.",
+            read: ThemeManager::sidebar_show_videos,
+            write: ThemeManager::set_sidebar_show_videos,
+        },
+    ]
+    .into_iter()
+    .zip(icons)
+    {
+        let label = switch
+            .title
+            .trim_start_matches("Show ")
+            .trim_end_matches(" in sidebar");
+        let button = gtk::ToggleButton::new();
+        button.add_css_class("sidebar-place-chip");
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        content.append(&crate::assets::primary_icon(icon, 16));
+        content.append(&gtk::Label::new(Some(label)));
+        button.set_child(Some(&content));
+        button.update_property(&[
+            gtk::accessible::Property::Label(switch.title),
+            gtk::accessible::Property::Description(switch.description),
+        ]);
+        super::bindings::bind_toggle(manager, &button, switch.read, switch.write);
+        chips.append(&button);
+    }
 }
 
 fn append_cross_volume_drop_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {

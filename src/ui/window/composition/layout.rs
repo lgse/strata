@@ -207,6 +207,7 @@ impl FooterBinding {
     ) -> Self {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
+        shortcuts.observe_browser(&browser.browser());
         let clipboard = window.clipboard();
         let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
         root.append(shortcuts.widget());

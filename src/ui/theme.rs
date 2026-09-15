@@ -127,6 +127,22 @@ struct Preferences {
     list_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
+    #[serde(default = "default_enabled")]
+    sidebar_show_home: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_trash: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_network: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_desktop: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_documents: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_downloads: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_pictures: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_videos: bool,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default)]
@@ -153,6 +169,8 @@ struct Preferences {
     open_folder_after_drop: bool,
     #[serde(default = "default_release_channel")]
     release_channel: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_directory: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -186,6 +204,14 @@ impl Default for Preferences {
             list_file_clicks: default_file_clicks(),
             list_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
+            sidebar_show_home: true,
+            sidebar_show_trash: true,
+            sidebar_show_network: true,
+            sidebar_show_desktop: true,
+            sidebar_show_documents: true,
+            sidebar_show_downloads: true,
+            sidebar_show_pictures: true,
+            sidebar_show_videos: true,
             show_hidden: false,
             text_size: TextSize::default(),
             folders_first: true,
@@ -199,6 +225,7 @@ impl Default for Preferences {
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
             release_channel: default_release_channel(),
+            default_directory: None,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
         }
@@ -631,6 +658,15 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn default_directory(&self) -> Option<PathBuf> {
+        self.preferences.borrow().default_directory.clone()
+    }
+
+    pub fn set_default_directory(&self, path: Option<PathBuf>) {
+        self.preferences.borrow_mut().default_directory = path;
+        self.save_preferences();
+    }
+
     pub fn open_folder_after_drop(&self) -> bool {
         self.preferences.borrow().open_folder_after_drop
     }
@@ -833,6 +869,92 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn sidebar_show_home(&self) -> bool {
+        self.preferences.borrow().sidebar_show_home
+    }
+
+    pub fn set_sidebar_show_home(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_home = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_trash(&self) -> bool {
+        self.preferences.borrow().sidebar_show_trash
+    }
+
+    pub fn set_sidebar_show_trash(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_trash = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_network(&self) -> bool {
+        self.preferences.borrow().sidebar_show_network
+    }
+
+    pub fn set_sidebar_show_network(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_network = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_desktop(&self) -> bool {
+        self.preferences.borrow().sidebar_show_desktop
+    }
+
+    pub fn set_sidebar_show_desktop(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_desktop = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_documents(&self) -> bool {
+        self.preferences.borrow().sidebar_show_documents
+    }
+
+    pub fn set_sidebar_show_documents(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_documents = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_downloads(&self) -> bool {
+        self.preferences.borrow().sidebar_show_downloads
+    }
+
+    pub fn set_sidebar_show_downloads(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_downloads = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_pictures(&self) -> bool {
+        self.preferences.borrow().sidebar_show_pictures
+    }
+
+    pub fn set_sidebar_show_pictures(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_pictures = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_videos(&self) -> bool {
+        self.preferences.borrow().sidebar_show_videos
+    }
+
+    pub fn set_sidebar_show_videos(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_videos = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_places_visibility(&self) -> [bool; 8] {
+        let preferences = self.preferences.borrow();
+        [
+            preferences.sidebar_show_home,
+            preferences.sidebar_show_trash,
+            preferences.sidebar_show_network,
+            preferences.sidebar_show_desktop,
+            preferences.sidebar_show_documents,
+            preferences.sidebar_show_downloads,
+            preferences.sidebar_show_pictures,
+            preferences.sidebar_show_videos,
+        ]
+    }
+
     pub fn sort_preferences(&self) -> ViewPreferences {
         sort_preferences(&self.preferences.borrow())
     }
@@ -841,18 +963,21 @@ impl ThemeManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        stored.sort_key = match preferences.sort_key {
-            SortKey::Name => "name",
-            SortKey::Size => "size",
-            SortKey::Modified => "modified",
-            SortKey::Type => "type",
+        let sort_key = match preferences.sort_key {
+            SortKey::DeviceOrder => None,
+            SortKey::Name => Some("name"),
+            SortKey::Size => Some("size"),
+            SortKey::Modified => Some("modified"),
+            SortKey::Type => Some("type"),
+        };
+        if let Some(sort_key) = sort_key {
+            stored.sort_key = sort_key.to_owned();
+            stored.sort_direction = match preferences.sort_direction {
+                SortDirection::Ascending => "ascending",
+                SortDirection::Descending => "descending",
+            }
+            .to_owned();
         }
-        .to_owned();
-        stored.sort_direction = match preferences.sort_direction {
-            SortDirection::Ascending => "ascending",
-            SortDirection::Descending => "descending",
-        }
-        .to_owned();
         drop(stored);
         self.save_preferences();
     }

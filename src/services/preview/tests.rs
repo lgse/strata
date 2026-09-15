@@ -2,7 +2,8 @@
 
 use super::{
     MediaPreviewSize, PreviewContent, content_family, has_plain_text_extension,
-    is_extensionless_dotfile, is_non_executable_extensionless_dotfile,
+    is_extensionless_dotfile, is_image_path, is_media_path,
+    is_non_executable_extensionless_dotfile,
 };
 
 #[test]
@@ -19,6 +20,15 @@ fn media_viewport_sizes_follow_display_scale_without_exceeding_the_pixel_budget(
         MediaPreviewSize::for_viewport(i32::MAX, i32::MAX, 2),
         MediaPreviewSize::new(1280, 1280)
     );
+}
+
+#[test]
+fn recognizes_image_paths_for_metadata_probes() {
+    assert!(is_image_path(std::path::Path::new("photo.PNG")));
+    assert!(!is_image_path(std::path::Path::new("notes.txt")));
+    assert!(is_media_path(std::path::Path::new("movie.mp4")));
+    assert!(is_media_path(std::path::Path::new("song.flac")));
+    assert!(!is_media_path(std::path::Path::new("photo.png")));
 }
 
 #[test]

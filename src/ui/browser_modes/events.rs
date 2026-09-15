@@ -4,7 +4,7 @@ use gtk::{gio, prelude::*};
 
 use super::{
     BrowserMode, ModeViews, Pane, pane_holds_keyboard_focus, reconnect_pane_model, replace_entries,
-    set_selections, show_count, update_bound_list_metadata,
+    set_selections, show_count, update_bound_icons_metadata, update_bound_list_metadata,
 };
 use crate::{
     app::{Browser, BrowserEvent, EntryInsertion, EntrySplice},
@@ -83,7 +83,30 @@ impl ModeViews {
     fn handle_rows_event(&self, event: &BrowserEvent, defer_empty: bool) -> bool {
         match event {
             BrowserEvent::EntriesInserted { depth, insertions } => {
-                self.update_panes(*depth, |pane| pane.insert_rows(insertions));
+                let camera = self
+                    .browser
+                    .location_at(*depth)
+                    .is_some_and(|location| location.is_camera_photo_root());
+                self.update_panes(*depth, |pane| {
+                    let top = camera
+                        .then(|| {
+                            crate::ui::browser::camera_scroll::CameraTopAnchor::capture(
+                                &pane.section.view,
+                            )
+                        })
+                        .flatten();
+                    pane.insert_rows(insertions);
+                    if camera && pane.model.n_items() > 0 {
+                        reconnect_pane_model(pane);
+                        for section in pane.all_sections() {
+                            section.syncing.set(false);
+                        }
+                        show_count(pane);
+                    }
+                    if let Some(top) = top {
+                        top.restore();
+                    }
+                });
             }
             BrowserEvent::EntriesReplaced { depth, count } => {
                 self.update_panes(*depth, |pane| {
@@ -147,6 +170,8 @@ impl ModeViews {
             BrowserEvent::MetadataFilled { depth, updates } => {
                 if self.mode == BrowserMode::List {
                     self.update_panes(*depth, |pane| update_bound_list_metadata(pane, updates));
+                } else if self.mode == BrowserMode::Icons {
+                    self.update_panes(*depth, |pane| update_bound_icons_metadata(pane, updates));
                 }
             }
             _ => return false,
@@ -154,7 +179,37 @@ impl ModeViews {
         true
     }
 
-    fn handle_loading_event(&self, event: &BrowserEvent, defer_empty: bool) -> bool {
+    fn handle_loading_event(&mut self, event: &BrowserEvent, defer_empty: bool) -> bool {
+        if let BrowserEvent::SortingFinished { depth } | BrowserEvent::ColumnReloaded { depth } =
+            event
+        {
+            self.update_panes(*depth, |pane| {
+                if let Some(button) = &pane.sort_direction_button {
+                    super::super::browser::sync_column_sort_direction(
+                        &self.browser,
+                        *depth,
+                        button,
+                    );
+                }
+            });
+        }
+        let changed_depth = match event {
+            BrowserEvent::ColumnReloaded { depth }
+            | BrowserEvent::SortingFinished { depth }
+            | BrowserEvent::LoadFinished { depth, .. }
+            | BrowserEvent::LoadFailed { depth, .. } => Some(*depth),
+            _ => None,
+        };
+        if let Some(depth) = changed_depth
+            && self.mode == BrowserMode::List
+            && let Some(snapshot) = self.browser.column_snapshot(depth)
+            && self.list_pane.as_ref().is_some_and(|pane| {
+                pane.depth == depth
+                    && pane.group_by_type != self.grouping_for_snapshot(depth, &snapshot)
+            })
+        {
+            self.update_camera_grouping(self.grouping_for_snapshot(depth, &snapshot));
+        }
         match event {
             BrowserEvent::SortingStarted { depth } => {
                 self.update_panes(*depth, Pane::start_sorting)
@@ -189,6 +244,36 @@ impl ModeViews {
             _ => return false,
         }
         true
+    }
+
+    fn update_camera_grouping(&mut self, grouped: bool) {
+        let Some(pane) = self.list_pane.as_mut() else {
+            return;
+        };
+        let Some(list) = pane.section.view.downcast_ref::<gtk::ListView>() else {
+            return;
+        };
+        let Some(model) = pane.section.view_model.downcast_ref::<gtk::SortListModel>() else {
+            return;
+        };
+        let top = crate::ui::browser::camera_scroll::CameraTopAnchor::capture(&pane.section.view);
+        let was_syncing = pane.section.syncing.replace(true);
+        // Remove section widgets before changing their model. Re-enable them only
+        // after the complete camera snapshot is sorted. Keep the existing view,
+        // selection model and both scrollers instead of resetting the viewport.
+        list.set_header_factory(None::<&gtk::ListItemFactory>);
+        let sorter =
+            grouped.then(|| super::pane_type_group_sorter(&self.browser, pane.depth, &pane.model));
+        model.set_section_sorter(sorter.as_ref());
+        model.set_sorter(sorter.as_ref());
+        if grouped {
+            list.set_header_factory(Some(&super::type_group_header_factory()));
+        }
+        pane.group_by_type = grouped;
+        pane.section.syncing.set(was_syncing);
+        if let Some(top) = top {
+            top.restore();
+        }
     }
 
     fn handle_selection_event(&self, event: &BrowserEvent) {
@@ -229,7 +314,13 @@ impl ModeViews {
             .iter()
             .any(|pane| pane_holds_keyboard_focus(pane));
         self.update_panes(depth, |pane| set_selections(pane, positions));
-        if take_focus || (view_has_focus && !positions.is_empty()) {
+        let camera_loading = self
+            .browser
+            .column_snapshot(depth)
+            .is_some_and(|snapshot| snapshot.loading && snapshot.location.is_camera_photo_root());
+        // Incoming photos shift source positions without a user selection change.
+        // Re-focusing on every such update pulls scrolling back to the selected row.
+        if take_focus || (view_has_focus && !positions.is_empty() && !camera_loading) {
             self.focus_visible_pane(depth);
         }
     }

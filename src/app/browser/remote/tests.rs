@@ -35,6 +35,9 @@ fn entry(index: usize) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -75,6 +78,63 @@ fn inserted_rows(events: &[BrowserEvent]) -> usize {
             _ => 0,
         })
         .sum()
+}
+
+#[test]
+fn camera_backlogs_yield_to_input_and_publish_small_chunks() {
+    let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
+    let context = gio::glib::MainContext::default();
+    let _owner = context.acquire().expect("main context");
+    let browser = Browser::new(Rc::new(PendingSource));
+    browser.navigate(Location::uri("gphoto2://camera/"));
+    let request = browser
+        .state
+        .borrow()
+        .request_id_for_depth(0)
+        .expect("request");
+    let camera_entry = |index| {
+        let mut entry = entry(index);
+        entry.location = Location::uri(format!("gphoto2://camera/202606/photo-{index}.jpg"));
+        entry
+    };
+    browser.handle_directory_event(DirectoryEvent::Batch {
+        request_id: request,
+        entries: (0..128).map(camera_entry).collect(),
+    });
+    browser.handle_directory_event(DirectoryEvent::Batch {
+        request_id: request,
+        entries: (128..128 + super::super::COALESCE_ENTRIES)
+            .map(camera_entry)
+            .collect(),
+    });
+    assert_eq!(
+        browser.column_snapshot(0).expect("camera").count,
+        super::super::CAMERA_FLUSH_CAP,
+        "neither the first batch nor a full queue may monopolize the producer callback"
+    );
+    let input = Rc::new(std::cell::Cell::new(false));
+    let fired = input.clone();
+    gio::glib::idle_add_local_full(gio::glib::Priority::DEFAULT, move || {
+        fired.set(true);
+        gio::glib::ControlFlow::Break
+    });
+    // Make both sources ready without dispatching either, then exercise priority ordering.
+    std::thread::sleep(super::super::REMOTE_FLUSH_DELAY + std::time::Duration::from_millis(5));
+    context.iteration(false);
+    assert!(
+        input.get(),
+        "input-priority work must run ahead of a ready camera flush"
+    );
+    assert_eq!(
+        browser.column_snapshot(0).expect("camera").count,
+        super::super::CAMERA_FLUSH_CAP
+    );
+    browser.flush_coalesced_capped(Some(0));
+    assert_eq!(
+        browser.column_snapshot(0).expect("camera").count,
+        2 * super::super::CAMERA_FLUSH_CAP
+    );
+    browser.cancel_remote_timer();
 }
 
 #[test]

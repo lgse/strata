@@ -54,8 +54,8 @@ const TOOLS: &[Shortcut] = &[
 #[derive(Clone)]
 pub(super) struct ShortcutFooter {
     root: gtk::Box,
-    summary: gtk::Label,
     paste: gtk::Label,
+    count: gtk::Label,
     show_hints: Rc<Cell<bool>>,
     pending_popup: Rc<Cell<bool>>,
     more: gtk::MenuButton,
@@ -68,19 +68,15 @@ impl ShortcutFooter {
     pub fn new(mode: BrowserMode) -> Self {
         let root = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         root.add_css_class("shortcut-footer");
-        let summary = gtk::Label::builder()
-            .xalign(0.0)
-            .hexpand(true)
-            .single_line_mode(true)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
-            .build();
-        summary.add_css_class("shortcut-footer-summary");
-        root.append(&summary);
+        let count = gtk::Label::new(None);
+        count.add_css_class("shortcut-footer-count");
+        count.set_visible(false);
         let paste = gtk::Label::new(Some("Files on clipboard"));
         paste.add_css_class("shortcut-footer-paste");
         paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
         root.append(&paste);
+        root.append(&count);
         let show_hints = Rc::new(Cell::new(true));
         let pending_popup = Rc::new(Cell::new(false));
 
@@ -88,10 +84,13 @@ impl ShortcutFooter {
         more.set_child(Some(&gtk::Label::new(Some("F1  Shortcuts"))));
         more.add_css_class("shortcut-footer-button");
         more.set_tooltip_text(Some("Show all file-view shortcuts (F1)"));
-        root.append(&more);
+        root.prepend(&more);
+        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        root.insert_child_after(&spacer, Some(&more));
         let popover = gtk::Popover::builder()
             .position(gtk::PositionType::Top)
-            .halign(gtk::Align::End)
+            .halign(gtk::Align::Start)
             .has_arrow(false)
             .build();
         popover.add_css_class("shortcut-popover");
@@ -148,7 +147,6 @@ impl ShortcutFooter {
             Rc::new(RefCell::new(None));
         let restored_focus = focus_before.clone();
         let weak_more = more.downgrade();
-        let weak_root = root.downgrade();
         let closed_hints = show_hints.clone();
         let closed_pending = pending_popup.clone();
         let weak_popover = popover.downgrade();
@@ -156,7 +154,6 @@ impl ShortcutFooter {
             let restored_focus = restored_focus.clone();
             let closed_pending = closed_pending.clone();
             let weak_more = weak_more.clone();
-            let weak_root = weak_root.clone();
             let closed_hints = closed_hints.clone();
             let weak_popover = weak_popover.clone();
             // MenuButton restores its own focus after ::closed; wait without overriding a newer focus move.
@@ -185,15 +182,32 @@ impl ShortcutFooter {
                 {
                     previous.grab_focus();
                 }
-                if let Some(root) = weak_root.upgrade() {
-                    root.set_visible(closed_hints.get());
-                }
+                more.set_visible(closed_hints.get());
             });
         });
+        let status_widgets = [
+            paste.clone().upcast::<gtk::Widget>(),
+            count.clone().upcast(),
+            more.clone().upcast(),
+        ];
+        for widget in &status_widgets {
+            let root = root.downgrade();
+            let statuses = status_widgets.each_ref().map(gtk::Widget::downgrade);
+            widget.connect_visible_notify(move |_| {
+                if let Some(root) = root.upgrade() {
+                    // Ignore ancestor visibility so a hidden footer can reveal itself.
+                    root.set_visible(
+                        statuses.iter().any(|status| {
+                            status.upgrade().is_some_and(|status| status.get_visible())
+                        }),
+                    );
+                }
+            });
+        }
         let footer = Self {
             root,
-            summary,
             paste,
+            count,
             show_hints,
             pending_popup,
             more,
@@ -213,17 +227,20 @@ impl ShortcutFooter {
         let show_hints = self.show_hints.clone();
         let pending = self.pending_popup.clone();
         let weak_popover = self.popover.downgrade();
-        manager.on_keybinding_hints_changed(&self.root, move |root, enabled| {
+        let more = self.more.downgrade();
+        manager.on_keybinding_hints_changed(&self.root, move |_, enabled| {
             show_hints.set(enabled);
             if !enabled {
                 pending.set(false);
             }
-            root.set_visible(
-                enabled
-                    || weak_popover
-                        .upgrade()
-                        .is_some_and(|popover| popover.is_visible()),
-            );
+            if let Some(more) = more.upgrade() {
+                more.set_visible(
+                    enabled
+                        || weak_popover
+                            .upgrade()
+                            .is_some_and(|popover| popover.is_visible()),
+                );
+            }
         });
     }
 
@@ -236,28 +253,20 @@ impl ShortcutFooter {
         })
     }
 
+    pub fn observe_browser(&self, browser: &Rc<crate::app::Browser>) {
+        update_item_count(&self.count, browser);
+        let label = self.count.downgrade();
+        let weak_browser = Rc::downgrade(browser);
+        browser.observe(move |_| {
+            if let Some(label) = label.upgrade()
+                && let Some(browser) = weak_browser.upgrade()
+            {
+                update_item_count(&label, &browser);
+            }
+        });
+    }
+
     pub fn set_mode(&self, mode: BrowserMode) {
-        let shortcuts = summary_shortcuts(mode);
-        self.summary.set_markup(
-            &shortcuts
-                .iter()
-                .map(|(key, action)| {
-                    format!(
-                        "<b>{}</b>  {}",
-                        glib::markup_escape_text(key),
-                        glib::markup_escape_text(action)
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("     "),
-        );
-        self.summary.set_tooltip_text(Some(
-            &shortcuts
-                .iter()
-                .map(|(key, action)| format!("{key}  {action}"))
-                .collect::<Vec<_>>()
-                .join("  ·  "),
-        ));
         while let Some(child) = self.reference.first_child() {
             self.reference.remove(&child);
         }
@@ -294,7 +303,7 @@ impl ShortcutFooter {
                     self.more.popdown();
                 } else {
                     self.focus_before.take();
-                    self.root.set_visible(self.show_hints.get());
+                    self.more.set_visible(self.show_hints.get());
                 }
             } else {
                 if self.focus_before.borrow().is_none() {
@@ -305,14 +314,14 @@ impl ShortcutFooter {
                             .map(|widget| widget.downgrade()),
                     );
                 }
-                if self.root.is_visible() && self.more.width() > 0 {
+                if self.more.is_mapped() && self.more.width() > 0 {
                     self.more.popup();
                 } else {
                     self.pending_popup.set(true);
-                    self.root.set_visible(true);
+                    self.more.set_visible(true);
                     let pending = self.pending_popup.clone();
                     let weak_more = self.more.downgrade();
-                    // A hidden footer needs an allocation before its popover can be positioned.
+                    // A hidden shortcut button needs an allocation before positioning the popover.
                     self.root.add_tick_callback(move |_, _| {
                         let Some(more) = weak_more.upgrade() else {
                             return glib::ControlFlow::Break;
@@ -335,7 +344,7 @@ impl ShortcutFooter {
             if key == gdk::Key::Escape {
                 self.pending_popup.set(false);
                 self.focus_before.take();
-                self.root.set_visible(self.show_hints.get());
+                self.more.set_visible(self.show_hints.get());
             }
             return Some(glib::Propagation::Stop);
         }
@@ -374,6 +383,78 @@ impl ShortcutFooter {
     }
 }
 
+fn update_item_count(label: &gtk::Label, browser: &Rc<crate::app::Browser>) {
+    let Some(depth) = browser.active_depth() else {
+        label.set_visible(false);
+        return;
+    };
+    let counts = browser.column_entry_counts(depth).unwrap_or_default();
+    let selected = browser.selected_entries();
+    for position in browser.selected_positions(depth) {
+        if let Some(entry) = browser.entry_at(depth, position)
+            && !entry.is_directory()
+            && entry.size == crate::model::MetadataValue::Unknown
+        {
+            browser.request_metadata_fill(depth, position, entry.location, false);
+        }
+    }
+    let noun = if counts.total == 1 { "item" } else { "items" };
+    if !selected.is_empty() {
+        label.set_label(&selection_details(&selected));
+        label.set_tooltip_text(Some(&format!(
+            "{} of {} {noun} selected. Size includes selected files only; folder contents are not counted.",
+            selected.len(), counts.total
+        )));
+    } else {
+        label.set_label(&format!("{} {noun}", counts.total));
+        let files = if counts.files == 1 { "file" } else { "files" };
+        let folders = if counts.folders == 1 {
+            "folder"
+        } else {
+            "folders"
+        };
+        label.set_tooltip_text(Some(&format!(
+            "{} {files}, {} {folders}",
+            counts.files, counts.folders
+        )));
+    }
+    label.set_visible(true);
+}
+
+fn selection_details(entries: &[crate::model::FileEntry]) -> String {
+    let folders = entries.iter().filter(|entry| entry.is_directory()).count();
+    let files = entries.len() - folders;
+    let mut parts = Vec::new();
+    if folders > 0 {
+        let noun = if folders == 1 { "folder" } else { "folders" };
+        parts.push(format!("{folders} {noun}"));
+    }
+    if files > 0 {
+        let noun = if files == 1 { "file" } else { "files" };
+        parts.push(format!("{files} {noun}"));
+    }
+    let mut text = format!("{} selected", parts.join(", "));
+    if files > 0 {
+        let mut bytes = 0u64;
+        let mut known = 0;
+        for entry in entries.iter().filter(|entry| !entry.is_directory()) {
+            if let crate::model::MetadataValue::Known(size) = entry.size {
+                bytes = bytes.saturating_add(size);
+                known += 1;
+            }
+        }
+        let size = super::browser::format_file_size(bytes);
+        if known == files {
+            text.push_str(&format!(" ({size})"));
+        } else if known > 0 {
+            text.push_str(&format!(" ({size} known; size incomplete)"));
+        } else {
+            text.push_str(" (size unavailable)");
+        }
+    }
+    text
+}
+
 fn refresh_paste_availability(
     clipboard: &gdk::Clipboard,
     label: &glib::WeakRef<gtk::Label>,
@@ -407,35 +488,6 @@ fn refresh_paste_availability(
             label.set_visible(available);
         }
     });
-}
-
-fn summary_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
-    let mut shortcuts = vec![match mode {
-        BrowserMode::Columns => ("↑↓ ←→", "Navigate"),
-        BrowserMode::Icons => ("↑↓←→", "Move"),
-        BrowserMode::List => ("↑↓", "Move"),
-    }];
-    shortcuts.push(match mode {
-        BrowserMode::Columns => ("← at first pane", "Sidebar"),
-        BrowserMode::Icons => ("← at edge", "Sidebar"),
-        BrowserMode::List => ("←", "Sidebar"),
-    });
-    shortcuts.extend_from_slice(&[
-        ("↑ at top", "Header"),
-        ("Enter", "Open"),
-        (
-            "Space",
-            if mode == BrowserMode::Columns {
-                "Open / preview"
-            } else {
-                "Preview"
-            },
-        ),
-        ("Ctrl+F", "Filter"),
-        ("Ctrl+C / X", "Copy / cut"),
-        ("Del", "Trash"),
-    ]);
-    shortcuts
 }
 
 fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {

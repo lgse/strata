@@ -16,6 +16,9 @@ fn render_text(drawer: &PreviewDrawer) {
             modified_unix_seconds: crate::model::MetadataValue::Unknown,
             mode: crate::model::MetadataValue::Unknown,
             is_hidden: false,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         },
         content_type: "text/plain".into(),
         content: crate::services::PreviewContent::Text {

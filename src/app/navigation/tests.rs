@@ -27,6 +27,9 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -343,6 +346,49 @@ fn active_path_is_independent_from_the_parent_highlight() {
 
     assert_eq!(state.active_child_position(0), Some(0));
     assert_eq!(state.columns[0].selected, Some(1));
+}
+
+#[test]
+fn camera_device_order_monitor_changes_preserve_existing_positions() {
+    let mut state = NavigationState::default();
+    let watched = Location::uri("gphoto2://camera/");
+    state.navigate(watched.clone(), RequestId(1));
+    let photo = |name: &str| FileEntry {
+        location: Location::uri(format!("gphoto2://camera/202609_a/{name}")),
+        kind: EntryKind::File,
+        ..named_entry("/unused", name)
+    };
+    state.apply_batch(RequestId(1), vec![photo("z.jpg"), photo("m.jpg")]);
+    state.set_selection(0, &[1], Some(1));
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(photo("a.jpg")))
+        .expect("new photo appended");
+    assert_eq!(splices[0].position, 2);
+    let mut updated = photo("m.jpg");
+    updated.display_name = "b.jpg".into();
+    updated.size = MetadataValue::Known(99);
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(updated))
+        .expect("existing photo updated");
+    assert_eq!(splices.len(), 1);
+    assert_eq!(splices[0].position, 1);
+    assert_eq!(splices[0].removed, 1);
+    assert_eq!(state.selected_positions(0), [1]);
+    assert_eq!(
+        state.columns[0]
+            .entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["z.jpg", "b.jpg", "a.jpg"]
+    );
+    state.apply_directory_change(
+        0,
+        &watched,
+        DirectoryChange::Remove(photo("z.jpg").location),
+    );
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.columns[0].entries[0].size, MetadataValue::Known(99));
 }
 
 #[test]
@@ -828,6 +874,9 @@ fn hidden_entry(path: &str, name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: true,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1264,6 +1313,9 @@ fn file_entry(path: &str, name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1273,6 +1325,9 @@ fn metadata_update(path: &str, size: u64, modified: i64) -> MetadataUpdate {
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Known(modified),
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1404,6 +1459,9 @@ fn fill_updates_never_clobber_known_fields() {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Known(300),
             mode: MetadataValue::Known(0o100640),
+            image_dimensions: MetadataValue::Known((1920, 1080)),
+            child_count: MetadataValue::Known(4),
+            duration_seconds: MetadataValue::Known(83),
         }],
     );
     assert!(matches!(applied, Some((0, ref positions)) if positions == &[0]));
@@ -1416,6 +1474,18 @@ fn fill_updates_never_clobber_known_fields() {
         state.columns[0].entries[0].mode,
         MetadataValue::Known(0o100640)
     );
+    assert_eq!(
+        state.columns[0].entries[0].image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert_eq!(
+        state.columns[0].entries[0].child_count,
+        MetadataValue::Known(4)
+    );
+    assert_eq!(
+        state.columns[0].entries[0].duration_seconds,
+        MetadataValue::Known(83)
+    );
 
     let applied = state.apply_metadata(
         RequestId(1),
@@ -1424,9 +1494,24 @@ fn fill_updates_never_clobber_known_fields() {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     );
     assert_eq!(applied, None);
+    assert_eq!(
+        state.columns[0].entries[0].image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert_eq!(
+        state.columns[0].entries[0].child_count,
+        MetadataValue::Known(4)
+    );
+    assert_eq!(
+        state.columns[0].entries[0].duration_seconds,
+        MetadataValue::Known(83)
+    );
 }
 
 #[test]
@@ -1496,5 +1581,200 @@ fn the_range_anchor_is_readable_and_replaceable_by_position() {
     assert_eq!(
         state.extend_visual_selection(0, 1, &[0, 1, 2]),
         Some(vec![1, 2])
+    );
+}
+
+fn typed_entry(name: &str, kind: EntryKind) -> FileEntry {
+    FileEntry {
+        thumbnail_path: None,
+        location: location(&format!("/fixture/{name}")),
+        native_name: OsString::from(name),
+        display_name: name.into(),
+        kind,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+    }
+}
+
+#[test]
+fn type_sorting_orders_by_mime_descriptions_with_folders_first() {
+    let mut entries = [
+        typed_entry("z_other.qqqqq", EntryKind::File),
+        typed_entry("b_notes.json", EntryKind::File),
+        typed_entry("a_notes.json", EntryKind::File),
+        typed_entry("folder_z", EntryKind::Directory),
+        typed_entry("folder_a", EntryKind::Directory),
+        typed_entry("a_other.qqqqq", EntryKind::File),
+        typed_entry("doc.pdf", EntryKind::File),
+        typed_entry("script.py", EntryKind::File),
+    ];
+
+    let preferences_asc = ViewPreferences {
+        folders_first: true,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Ascending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_asc));
+    let names_asc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_asc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_notes.json",
+            "b_notes.json",
+            "doc.pdf",
+            "script.py",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+        ]
+    );
+
+    let preferences_desc = ViewPreferences {
+        folders_first: true,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Descending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_desc));
+    let names_desc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_desc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+            "script.py",
+            "doc.pdf",
+            "a_notes.json",
+            "b_notes.json",
+        ]
+    );
+}
+
+#[test]
+fn type_sorting_orders_by_mime_descriptions_without_folders_first() {
+    let mut entries = [
+        typed_entry("z_other.qqqqq", EntryKind::File),
+        typed_entry("b_notes.json", EntryKind::File),
+        typed_entry("a_notes.json", EntryKind::File),
+        typed_entry("folder_z", EntryKind::Directory),
+        typed_entry("folder_a", EntryKind::Directory),
+        typed_entry("a_other.qqqqq", EntryKind::File),
+        typed_entry("doc.pdf", EntryKind::File),
+        typed_entry("script.py", EntryKind::File),
+    ];
+
+    let preferences_asc = ViewPreferences {
+        folders_first: false,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Ascending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_asc));
+    let names_asc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_asc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_notes.json",
+            "b_notes.json",
+            "doc.pdf",
+            "script.py",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+        ]
+    );
+
+    let preferences_desc = ViewPreferences {
+        folders_first: false,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Descending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_desc));
+    let names_desc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_desc,
+        [
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+            "script.py",
+            "doc.pdf",
+            "a_notes.json",
+            "b_notes.json",
+            "folder_a",
+            "folder_z",
+        ]
+    );
+}
+
+#[test]
+fn column_entry_counts_breakdown_and_hidden() {
+    let mut state = NavigationState::default();
+    assert_eq!(state.column_entry_counts(0), None);
+
+    state.navigate(location("/fixture"), RequestId(1));
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 0,
+            files: 0,
+            folders: 0,
+        })
+    );
+
+    let mut folder = named_entry("/fixture/folder1", "folder1");
+    folder.kind = EntryKind::Directory;
+
+    let mut file1 = named_entry("/fixture/file1.txt", "file1.txt");
+    file1.kind = EntryKind::File;
+
+    let mut file2 = named_entry("/fixture/file2.txt", "file2.txt");
+    file2.kind = EntryKind::File;
+
+    let mut hidden_file = named_entry("/fixture/.hidden", ".hidden");
+    hidden_file.kind = EntryKind::File;
+    hidden_file.is_hidden = true;
+
+    state.apply_batch(RequestId(1), vec![folder, file1, file2, hidden_file]);
+
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 3,
+            files: 2,
+            folders: 1,
+        })
+    );
+
+    state.set_show_hidden(true);
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 4,
+            files: 3,
+            folders: 1,
+        })
     );
 }

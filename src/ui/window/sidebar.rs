@@ -114,6 +114,7 @@ impl SidebarState {
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
         let place_order = resolve_place_order(&theme_manager.sidebar_order());
+        let places_visibility = theme_manager.sidebar_places_visibility();
         Rc::new(Self {
             widget,
             browser: view.browser(),
@@ -122,6 +123,7 @@ impl SidebarState {
             mount_monitor: gio_unix::MountMonitor::get(),
             theme_manager,
             place_order: RefCell::new(place_order),
+            places_visibility: RefCell::new(places_visibility),
             pinned_places: Rc::new(RefCell::new(load_pinned_places().unwrap_or_default())),
             place_rows: RefCell::new(Vec::new()),
             trash_contents: Cell::new(TrashContents::Unknown),
@@ -130,6 +132,9 @@ impl SidebarState {
             trash_probe_running: Cell::new(false),
             trash_probe_pending: Cell::new(false),
             local_only,
+            pending_scroll: Cell::new(None),
+            rebuild_queued: Cell::new(false),
+            scroll_restore_queued: Cell::new(false),
         })
     }
 
@@ -145,6 +150,19 @@ impl SidebarState {
                         state.place_order.replace(order);
                         state.rebuild();
                     }
+                }
+            },
+        );
+        let weak = Rc::downgrade(self);
+        self.theme_manager.bind_preference(
+            &self.widget,
+            ThemeManager::sidebar_places_visibility,
+            move |_, visibility| {
+                if let Some(state) = weak.upgrade()
+                    && *state.places_visibility.borrow() != visibility
+                {
+                    state.places_visibility.replace(visibility);
+                    state.rebuild();
                 }
             },
         );
@@ -222,11 +240,14 @@ fn connect_device_changes(
         monitor.connect_volume_added(rebuild_on_change(state)),
         monitor.connect_volume_removed(rebuild_on_change(state)),
         monitor.connect_volume_changed(rebuild_on_change(state)),
+        monitor.connect_drive_connected(rebuild_on_change(state)),
+        monitor.connect_drive_disconnected(rebuild_on_change(state)),
+        monitor.connect_drive_changed(rebuild_on_change(state)),
     ];
     let weak = Rc::downgrade(state);
     let mount_handler = state.mount_monitor.connect_mounts_changed(move |_| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.queue_rebuild();
         }
     });
     (handlers, mount_handler)
@@ -238,7 +259,7 @@ fn rebuild_on_change<T: 'static>(
     let weak = Rc::downgrade(state);
     move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.queue_rebuild();
         }
     }
 }

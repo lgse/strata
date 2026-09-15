@@ -52,10 +52,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
     let content = crate::services::content_family(&content_type);
     if entry.location.native_path().is_none()
-        && matches!(
-            content,
-            PreviewContent::Image | PreviewContent::Pdf { .. } | PreviewContent::Media
-        )
+        && (matches!(content, PreviewContent::Pdf { .. })
+            || (matches!(content, PreviewContent::Media)
+                && !crate::services::supports_remote_video(&entry.native_name)))
     {
         return false;
     }
@@ -284,23 +283,6 @@ impl PreviewDrawer {
             }
         });
         let weak = Rc::downgrade(&state);
-        open.connect_clicked(move |_| {
-            let Some(state) = weak.upgrade() else {
-                return;
-            };
-            let location = state
-                .current
-                .borrow()
-                .as_ref()
-                .map(|entry| entry.location.clone());
-            if let Some(location) = location {
-                if let Some(stream) = state.media.borrow().as_ref() {
-                    stream.set_playing(false);
-                }
-                super::browser::open_location(&location, &state.pane);
-            }
-        });
-        let weak = Rc::downgrade(&state);
         print.connect_clicked(move |_| {
             if let Some(state) = weak.upgrade() {
                 if let Some(stream) = state.media.borrow().as_ref() {
@@ -337,6 +319,26 @@ impl PreviewDrawer {
     }
 
     pub fn observe_browser(&self, browser: &Rc<Browser>) {
+        let weak_state = Rc::downgrade(&self.state);
+        let weak_browser = Rc::downgrade(browser);
+        self.state.open.connect_clicked(move |_| {
+            let (Some(state), Some(browser)) = (weak_state.upgrade(), weak_browser.upgrade())
+            else {
+                return;
+            };
+            let Some(location) = state
+                .current
+                .borrow()
+                .as_ref()
+                .map(|entry| entry.location.clone())
+            else {
+                return;
+            };
+            if let Some(stream) = state.media.borrow().as_ref() {
+                stream.set_playing(false);
+            }
+            super::browser::open_location(&location, &state.pane, &browser);
+        });
         let preview = self.clone();
         let weak_browser = Rc::downgrade(browser);
         browser.observe(move |event| {

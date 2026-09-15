@@ -22,6 +22,8 @@ pub struct DirectoryRequest {
     /// memory on an adversarially large or unbounded directory.
     pub max_entries: usize,
     /// Caps how long a single load may run before it is reported as truncated.
+    /// Complete camera Photos scans use `Duration::MAX` to disable the deadline;
+    /// their `max_entries` is `usize::MAX`. Bounded peeks retain finite limits.
     pub time_budget: Duration,
 }
 
@@ -239,6 +241,9 @@ pub struct MetadataUpdate {
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
+    pub image_dimensions: MetadataValue<(u32, u32)>,
+    pub child_count: MetadataValue<u64>,
+    pub duration_seconds: MetadataValue<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -248,6 +253,8 @@ pub struct MetadataRequest {
     pub entries: Vec<Location>,
     /// When true, stat the whole list (a sort's full pass); otherwise a viewport window.
     pub full: bool,
+    /// Keep false for full sort passes to avoid probing off-screen media.
+    pub include_icon_details: bool,
     pub time_budget: Duration,
 }
 

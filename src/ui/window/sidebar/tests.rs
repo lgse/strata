@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use super::super::{browser_for_window, home_directory, save_pinned_places, sidebar_button};
+use std::time::{Duration, Instant};
+
+use super::super::{
+    browser_for_window, home_directory, save_pinned_places, should_show_standard_place,
+    sidebar_button, standard_place,
+};
 use super::*;
 use crate::{
     services::{DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError},
@@ -205,7 +210,7 @@ fn device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly() {
         "ui::window::sidebar::tests::device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly",
         || {
             let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
-            assert_eq!(sidebar.handlers.borrow().len(), 6);
+            assert_eq!(sidebar.handlers.borrow().len(), 9);
             let callback = rebuild_on_change::<()>(&sidebar.state);
             let monitor = sidebar.state.volume_monitor.clone();
             let initial = sidebar
@@ -214,12 +219,14 @@ fn device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly() {
                 .first_child()
                 .expect("initial Home row");
             callback(&monitor, &());
+            drain_main_context();
             let before = sidebar.state.widget.first_child().expect("Home row");
             assert_ne!(initial, before);
             sidebar
                 .state
                 .mount_monitor
                 .emit_by_name::<()>("mounts-changed", &[]);
+            drain_main_context();
             let rebuilt = sidebar
                 .state
                 .widget
@@ -240,6 +247,214 @@ fn device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly() {
             drop(sidebar);
             assert!(weak.upgrade().is_none());
             callback(&monitor, &());
+        },
+    );
+}
+
+#[test]
+fn rebuild_preserves_scrolled_offset() {
+    gtk_test(
+        "ui::window::sidebar::tests::rebuild_preserves_scrolled_offset",
+        || {
+            let pins = (0..30)
+                .map(|index| {
+                    (
+                        Location::local(home_directory().join(format!("pin-{index}"))),
+                        format!("Pin {index}"),
+                    )
+                })
+                .collect::<Vec<_>>();
+            save_pinned_places(&pins).expect("seed bookmarks");
+            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), false);
+            let window = gtk::Window::builder()
+                .child(&sidebar.widget)
+                .default_width(240)
+                .default_height(140)
+                .build();
+            window.present();
+            let scroller = sidebar_scroller(&sidebar);
+            wait_until(|| {
+                let adjustment = scroller.vadjustment();
+                adjustment.upper() > adjustment.page_size() + 80.0
+            });
+            let requested = 80.0;
+            scroller.vadjustment().set_value(requested);
+            settle_mapped(&window);
+            assert!(
+                (scroller.vadjustment().value() - requested).abs() < 1.0,
+                "seeded scroll offset"
+            );
+            let callback = rebuild_on_change::<()>(&sidebar.state);
+            let monitor = sidebar.state.volume_monitor.clone();
+            callback(&monitor, &());
+            callback(&monitor, &());
+            settle_mapped(&window);
+            assert!(
+                (scroller.vadjustment().value() - requested).abs() < 1.0,
+                "kept scroll offset after device rebuild, got {}",
+                scroller.vadjustment().value()
+            );
+            sidebar.disconnect();
+            sidebar.state.browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+fn sidebar_scroller(sidebar: &SidebarView) -> gtk::ScrolledWindow {
+    sidebar
+        .widget
+        .first_child()
+        .and_downcast()
+        .expect("sidebar scroller")
+}
+
+fn drain_main_context() {
+    while glib::MainContext::default().iteration(false) {}
+}
+
+fn settle_mapped(window: &gtk::Window) {
+    let frames = Rc::new(Cell::new(0));
+    let observed = frames.clone();
+    window.add_tick_callback(move |_, _| {
+        observed.set(observed.get() + 1);
+        if observed.get() >= 3 {
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+    wait_until(|| frames.get() >= 3);
+    drain_main_context();
+}
+
+fn wait_until(condition: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !condition() {
+        assert!(Instant::now() < deadline, "sidebar layout timed out");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+fn has_location(sidebar: &SidebarView, location: &Location) -> bool {
+    sidebar
+        .state
+        .place_rows
+        .borrow()
+        .iter()
+        .any(|(candidate, _)| candidate == location)
+}
+
+fn standard_location(id: &str) -> Option<Location> {
+    let (_, _, directory) = standard_place(id)?;
+    let path = glib::user_special_dir(directory)?;
+    if !should_show_standard_place(id, &path, &home_directory()) {
+        return None;
+    }
+    Some(Location::local(path))
+}
+
+fn context_action(widget: &gtk::Widget, title: &str) -> Option<gtk::Button> {
+    if let Some(label) = widget.downcast_ref::<gtk::Label>()
+        && label.text() == title
+    {
+        return widget.ancestor(gtk::Button::static_type()).and_downcast();
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(button) = context_action(&widget, title) {
+            return Some(button);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+#[test]
+fn sidebar_visibility_prefs_hide_and_restore_default_places_across_windows() {
+    gtk_test(
+        "ui::window::sidebar::tests::sidebar_visibility_prefs_hide_and_restore_default_places_across_windows",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::shared();
+            assert_eq!(
+                manager.sidebar_places_visibility(),
+                [false, false, false, false, false, false, false, false]
+            );
+            let sidebars = [
+                build_sidebar(browser_for_window(), manager.clone(), false),
+                build_sidebar(browser_for_window(), manager.clone(), false),
+            ];
+            let home = Location::local(home_directory());
+            let trash = Location::uri("trash:///");
+            let network = Location::uri("network:///");
+            let standard_ids = ["desktop", "documents", "downloads", "pictures", "videos"];
+            let standards: Vec<(&str, Location)> = standard_ids
+                .into_iter()
+                .filter_map(|id| standard_location(id).map(|location| (id, location)))
+                .collect();
+            for sidebar in &sidebars {
+                assert!(!has_location(sidebar, &home));
+                assert!(!has_location(sidebar, &trash));
+                assert!(!has_location(sidebar, &network));
+                for (_, location) in &standards {
+                    assert!(!has_location(sidebar, location));
+                }
+            }
+            manager.set_sidebar_show_home(true);
+            manager.set_sidebar_show_trash(true);
+            manager.set_sidebar_show_network(true);
+            manager.set_sidebar_show_desktop(true);
+            manager.set_sidebar_show_documents(true);
+            manager.set_sidebar_show_downloads(true);
+            manager.set_sidebar_show_pictures(true);
+            manager.set_sidebar_show_videos(true);
+            for sidebar in &sidebars {
+                assert!(has_location(sidebar, &home));
+                assert!(has_location(sidebar, &trash));
+                assert!(has_location(sidebar, &network));
+                for (_, location) in &standards {
+                    assert!(has_location(sidebar, location));
+                }
+            }
+            let chooser = build_sidebar(browser_for_window(), manager.clone(), true);
+            assert!(has_location(&chooser, &home));
+            assert!(!has_location(&chooser, &trash));
+            assert!(!has_location(&chooser, &network));
+            for (index, location) in [&home, &trash, &network]
+                .into_iter()
+                .chain(standards.iter().map(|(_, location)| location))
+                .enumerate()
+            {
+                let place = row(&sidebars[index % 2], location);
+                assert!(context_action(place.upcast_ref(), "Properties").is_some());
+                context_action(place.upcast_ref(), "Unpin")
+                    .expect("default place Unpin action")
+                    .emit_clicked();
+                for sidebar in &sidebars {
+                    assert!(!has_location(sidebar, location));
+                }
+            }
+            assert!(!manager.sidebar_show_home());
+            assert!(!manager.sidebar_show_trash());
+            assert!(!manager.sidebar_show_network());
+            for sidebar in sidebars.iter().chain(std::iter::once(&chooser)) {
+                assert!(!has_location(sidebar, &home));
+                for (_, location) in &standards {
+                    assert!(!has_location(sidebar, location));
+                }
+            }
+            for sidebar in &sidebars {
+                assert!(!has_location(sidebar, &trash));
+                assert!(!has_location(sidebar, &network));
+            }
+            for sidebar in sidebars {
+                sidebar.disconnect();
+                sidebar.state.browser.clear_observer();
+            }
+            chooser.disconnect();
+            chooser.state.browser.clear_observer();
         },
     );
 }

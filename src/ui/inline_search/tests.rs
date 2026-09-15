@@ -211,7 +211,7 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
                 items.clone(),
             ] {
                 update_rows(state, update, fixture.path(), true);
-                assert_eq!(state.list.selected_row(), Some(selected.clone()));
+                assert_eq!(state.list.selected_rows(), vec![selected.clone()]);
                 assert_eq!(
                     search.selected_entry().expect("selected entry").location,
                     Location::local(&items[1].path)
@@ -236,7 +236,7 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
                 fixture.path(),
                 false,
             );
-            assert_eq!(state.list.selected_row(), Some(selected.clone()));
+            assert_eq!(state.list.selected_rows(), vec![selected.clone()]);
             assert_eq!(
                 search
                     .selected_entry()
@@ -258,6 +258,30 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
             assert!(search.is_item_target(icon.upcast_ref()));
             assert!(!search.is_item_target(state.list.upcast_ref()));
             assert!(!search.is_item_target(state.status.upcast_ref()));
+            state.list.select_row(state.list.row_at_index(0).as_ref());
+            update_rows(state, items.clone(), fixture.path(), true);
+            let selected_paths: Vec<_> = search
+                .selected_entries()
+                .expect("results")
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect();
+            assert_eq!(
+                selected_paths,
+                vec![
+                    Location::local(&items[1].path),
+                    Location::local(&items[2].path),
+                ]
+            );
+            assert_eq!(state.selection.selection().size(), 2);
+            state.selection.unselect_item(2);
+            assert_eq!(state.list.selected_rows(), vec![selected.clone()]);
+            update_rows(
+                state,
+                vec![items[2].clone(), items[1].clone(), items[0].clone()],
+                fixture.path(),
+                true,
+            );
             update_rows(
                 state,
                 vec![items[2].clone(), items[0].clone()],

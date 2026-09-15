@@ -39,6 +39,14 @@ fn non_default_preferences() -> Preferences {
             "documents".into(),
             "desktop".into(),
         ],
+        sidebar_show_home: false,
+        sidebar_show_trash: false,
+        sidebar_show_network: false,
+        sidebar_show_desktop: false,
+        sidebar_show_documents: false,
+        sidebar_show_downloads: false,
+        sidebar_show_pictures: false,
+        sidebar_show_videos: false,
         show_hidden: true,
         text_size: TextSize::new(24),
         folders_first: false,
@@ -52,6 +60,7 @@ fn non_default_preferences() -> Preferences {
         cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
         open_folder_after_drop: true,
         release_channel: "nightly".into(),
+        default_directory: Some("/fixture/default".into()),
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
         custom_icons: HashMap::from([(
             "/fixture/folder".into(),
@@ -395,6 +404,18 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.sidebar_order(),
                 non_default_preferences().sidebar_order
             );
+            assert!(!manager.sidebar_show_home());
+            assert!(!manager.sidebar_show_trash());
+            assert!(!manager.sidebar_show_network());
+            assert!(!manager.sidebar_show_desktop());
+            assert!(!manager.sidebar_show_documents());
+            assert!(!manager.sidebar_show_downloads());
+            assert!(!manager.sidebar_show_pictures());
+            assert!(!manager.sidebar_show_videos());
+            assert_eq!(
+                manager.sidebar_places_visibility(),
+                [false, false, false, false, false, false, false, false]
+            );
             assert_eq!(manager.text_size(), TextSize::new(24));
             assert_eq!(
                 manager.sort_preferences(),
@@ -414,6 +435,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(
                 manager.cross_volume_drop_strategy(),
                 CrossVolumeDropStrategy::Move
+            );
+            assert_eq!(
+                manager.default_directory(),
+                Some(std::path::PathBuf::from("/fixture/default"))
             );
             assert_eq!(
                 manager.folder_color(Path::new("/fixture/folder")),
@@ -513,6 +538,14 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                     )
                 },
                 |m| m.set_sidebar_order(default_sidebar_order()),
+                |m| m.set_sidebar_show_home(true),
+                |m| m.set_sidebar_show_trash(true),
+                |m| m.set_sidebar_show_network(true),
+                |m| m.set_sidebar_show_desktop(true),
+                |m| m.set_sidebar_show_documents(true),
+                |m| m.set_sidebar_show_downloads(true),
+                |m| m.set_sidebar_show_pictures(true),
+                |m| m.set_sidebar_show_videos(true),
                 |m| m.set_sort_preferences(ViewPreferences::default()),
                 |m| m.set_text_size(TextSize::new(11)),
                 |m| m.set_checks_for_updates(true),
@@ -522,6 +555,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_text_wrap(false),
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
+                |m| m.set_default_directory(None),
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),

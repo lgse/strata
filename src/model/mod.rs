@@ -207,7 +207,26 @@ impl Location {
         }
     }
 
+    pub fn is_camera_photo_root(&self) -> bool {
+        self.uri_value().is_some_and(|uri| {
+            let file = gio::File::for_uri(uri);
+            file.has_uri_scheme("gphoto2") && file.parent().is_none()
+        })
+    }
+
+    pub fn contains_camera_photo_location(&self, location: &Self) -> bool {
+        self.is_camera_photo_root()
+            && self.uri_value().is_some_and(|uri| {
+                // GIO's fallback URI implementation distinguishes a trailing root slash.
+                location.is_within(self)
+                    || location.is_within(&Self::uri(uri.trim_end_matches('/')))
+            })
+    }
+
     pub fn display_name(&self) -> String {
+        if self.is_camera_photo_root() {
+            return "Photos".into();
+        }
         match &self.kind {
             LocationKind::Native(path) => path
                 .file_name()
@@ -249,6 +268,8 @@ impl Location {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortKey {
+    /// Camera-library-local streaming order; never a saved folder default.
+    DeviceOrder,
     Name,
     Type,
     Size,
@@ -308,6 +329,9 @@ pub struct FileEntry {
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
+    pub image_dimensions: MetadataValue<(u32, u32)>,
+    pub child_count: MetadataValue<u64>,
+    pub duration_seconds: MetadataValue<u64>,
     pub is_hidden: bool,
 }
 

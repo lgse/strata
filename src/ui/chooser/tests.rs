@@ -26,6 +26,9 @@ fn entry(name: &str, kind: EntryKind) -> FileEntry {
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -123,6 +126,7 @@ fn chooser_fills_metadata_for_the_current_browser_views() {
             id: RequestId(1),
             entries: vec![Location::local(&path)],
             full: false,
+            include_icon_details: false,
             time_budget: Duration::from_secs(2),
         },
         Rc::new(move |event| received.borrow_mut().push(event)),

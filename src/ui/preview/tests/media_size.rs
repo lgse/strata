@@ -39,6 +39,9 @@ pub(in crate::ui::preview) fn entry(name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Known(1),
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -152,6 +155,7 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                     path: "/synthetic-video.mp4".into(),
                     size: MediaPreviewSize::new(320, 180),
                     backend: crate::sandbox::MediaPreviewBackend::Software,
+                    input_owner: None,
                 };
                 let drawer = PreviewDrawer::new(
                     Rc::new(RecordingProvider(Rc::new(RefCell::new(Vec::new())))),

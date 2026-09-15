@@ -15,6 +15,7 @@ use crate::{
     sandbox::{Cancellation, ParseOperation},
 };
 
+mod camera;
 mod slot;
 pub(crate) use slot::ThumbnailSlot;
 
@@ -319,6 +320,7 @@ impl ThumbnailQueue {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ThumbnailKind {
+    Camera,
     Image,
     RawImage,
     Pdf,
@@ -333,7 +335,24 @@ pub(super) fn set_thumbnail_or_icon(
     thumbnail_size: i32,
 ) {
     let Some(path) = entry.local_thumbnail_path() else {
-        show_fallback_icon(image, fallback_icon, icon_size);
+        if entry.location.backend_name() == "gphoto2"
+            && !entry.is_directory()
+            && thumbnail_kind(Path::new(&entry.native_name)).is_some()
+        {
+            set_thumbnail_for_path(ThumbnailRequest {
+                image,
+                path: Path::new(entry.location.uri_value().unwrap_or_default()),
+                kind: Some(ThumbnailKind::Camera),
+                modified: known_metadata(&entry.modified_unix_seconds),
+                file_size: known_metadata(&entry.size),
+                fallback_icon,
+                icon_size,
+                thumbnail_size,
+                wait_for_metadata: false,
+            });
+        } else {
+            show_fallback_icon(image, fallback_icon, icon_size);
+        }
         return;
     };
     set_thumbnail_for_path(ThumbnailRequest {
@@ -387,13 +406,16 @@ struct ThumbnailRequest<'a> {
 }
 
 fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
-    let has_custom_icon = super::theme::ThemeManager::shared()
-        .custom_icon(request.path)
-        .is_some();
+    let customization_path = (request.kind != Some(ThumbnailKind::Camera)).then_some(request.path);
+    let has_custom_icon = customization_path.is_some_and(|path| {
+        super::theme::ThemeManager::shared()
+            .custom_icon(path)
+            .is_some()
+    });
     if has_custom_icon {
         set_fallback_icon(
             request.image,
-            Some(request.path),
+            customization_path,
             request.fallback_icon,
             request.icon_size,
         );
@@ -404,7 +426,7 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
     let Some(kind) = request.kind else {
         set_fallback_icon(
             request.image,
-            Some(request.path),
+            customization_path,
             request.fallback_icon,
             request.icon_size,
         );
@@ -431,7 +453,7 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
         Some(CacheHit::Failed) => {
             set_fallback_icon(
                 request.image,
-                Some(request.path),
+                customization_path,
                 request.fallback_icon,
                 request.icon_size,
             );
@@ -441,7 +463,7 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
     }
     let (image_id, request_id) = set_fallback_icon(
         request.image,
-        Some(request.path),
+        customization_path,
         request.fallback_icon,
         request.icon_size,
     );
@@ -538,7 +560,11 @@ fn park_thumbnail(
     if let Some(viewport) = viewport {
         hook_viewport(group, &viewport);
     }
-    fire_view_group(group);
+    if kind == ThumbnailKind::Camera {
+        request_group_fire(group);
+    } else {
+        fire_view_group(group);
+    }
 }
 
 #[cfg(test)]
@@ -569,6 +595,15 @@ fn request_group_fire(group: usize) {
         if settle.pending.is_empty() {
             return;
         }
+        let camera = settle
+            .pending
+            .iter()
+            .any(|park| park.kind == ThumbnailKind::Camera);
+        // New camera batches must not debounce previews until the scan's I/O
+        // pause expires. Collect one frame's binds, then admit the visible wave.
+        if camera && settle.timer.is_some() {
+            return;
+        }
         let overdue = settle
             .first_park
             .is_some_and(|first| first.elapsed() >= MAX_SETTLE_WAIT);
@@ -577,6 +612,8 @@ fn request_group_fire(group: usize) {
         }
         let delay = if overdue {
             Duration::ZERO
+        } else if camera {
+            Duration::from_millis(16)
         } else {
             THUMBNAIL_SETTLE_DELAY
         };
@@ -687,7 +724,13 @@ fn apply_live_thumbnail(target: PendingTarget, texture: gdk::Texture, path: Path
     crate::metrics::mark_thumbnail_applied();
 }
 
-fn fire_parks(drained: Vec<SettledPark>, viewport: Option<&gtk::ScrolledWindow>) {
+fn fire_parks(mut drained: Vec<SettledPark>, viewport: Option<&gtk::ScrolledWindow>) {
+    if drained
+        .iter()
+        .any(|park| park.kind == ThumbnailKind::Camera)
+    {
+        drained.sort_by_cached_key(|park| camera::priority(park.kind, &park.target));
+    }
     let mut eligible = 0;
     let mut started = false;
     for park in drained {
@@ -851,7 +894,13 @@ fn schedule_thumbnail(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTar
 }
 
 fn start_thumbnail_jobs() {
-    while let Some(key) = THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().begin_next()) {
+    while let Some(key) = THUMBNAIL_QUEUE.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        if queue.running < MAX_THUMBNAIL_WORKERS {
+            camera::prioritize_queue(&mut queue.queued);
+        }
+        queue.begin_next()
+    }) {
         let job = PENDING_THUMBNAILS.with(|pending| {
             pending.borrow().get(&key).map(|pending| ThumbnailJob {
                 id: pending.id,
@@ -870,29 +919,39 @@ fn start_thumbnail_jobs() {
 }
 
 async fn run_thumbnail_job(job: ThumbnailJob) {
+    let preview_turn = (job.kind == ThumbnailKind::Camera)
+        .then(|| crate::services::camera_preview::begin(&job.key.path.to_string_lossy()));
     let job_id = job.id;
     let key = job.key.clone();
     let path = key.path.clone();
-    let result = gio::spawn_blocking(move || {
-        if let Some(mtime) = job.key.modified
-            && let Some(png) = super::thumbnail_cache::lookup(&job.key.path, mtime)
-        {
-            return Ok((png, false));
-        }
-        render_thumbnail(
-            &job.key.path,
-            job.kind,
-            super::thumbnail_cache::CANONICAL_MAX_EDGE,
-            &job.cancellation,
-        )
-        .map(|png| (png, true))
-    })
-    .await;
+    let result = if job.kind == ThumbnailKind::Camera {
+        camera::render(&job.key.path, &job.cancellation)
+            .await
+            .map(|png| (png, false))
+    } else {
+        gio::spawn_blocking(move || {
+            if let Some(mtime) = job.key.modified
+                && let Some(png) = super::thumbnail_cache::lookup(&job.key.path, mtime)
+            {
+                return Ok((png, false));
+            }
+            render_thumbnail(
+                &job.key.path,
+                job.kind,
+                super::thumbnail_cache::CANONICAL_MAX_EDGE,
+                &job.cancellation,
+            )
+            .map(|png| (png, true))
+        })
+        .await
+        .map_err(|_| "Thumbnail worker failed".to_owned())
+        .and_then(|result| result)
+    };
     let targets = take_pending_targets(&key, job_id);
     THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().finish());
     if let Some(targets) = targets {
         match result {
-            Ok(Ok((png, rendered))) => {
+            Ok((png, rendered)) => {
                 crate::metrics::mark_thumbnail_completed();
                 let texture = gdk::Texture::from_bytes(&glib::Bytes::from_owned(png.clone())).ok();
                 if let Some(texture) = texture {
@@ -906,13 +965,14 @@ async fn run_thumbnail_job(job: ThumbnailJob) {
                     enqueue_persist(key.path.clone(), mtime, png);
                 }
             }
-            Ok(Err(_)) | Err(_) => {
+            Err(_) => {
                 crate::metrics::mark_thumbnail_cancelled();
                 THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert_failure(key));
                 finish_thumbnail_targets(targets, None, &path);
             }
         }
     }
+    drop(preview_turn);
     start_thumbnail_jobs();
     retry_deferred_thumbnails();
     let counts = crate::metrics::thumbnail_counts();
@@ -934,7 +994,16 @@ fn retry_deferred_thumbnails() {
                         (*image_id, active.id, active.image.clone(), deferred.clone())
                     })
                 })
-                .min_by_key(|(_, request, _, _)| *request)
+                .min_by_key(|(image_id, request, image, deferred)| {
+                    camera::priority(
+                        deferred.kind,
+                        &PendingTarget {
+                            image_id: *image_id,
+                            request: *request,
+                            image: image.clone(),
+                        },
+                    )
+                })
         });
         let Some((image_id, request, image, deferred)) = deferred else {
             break;
@@ -1321,7 +1390,7 @@ fn cancel_thumbnail(image_id: usize) {
             queue.cancel(&key);
         }
     });
-    retry_deferred_thumbnails();
+    camera::retry_after_cancel();
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
@@ -1347,6 +1416,7 @@ fn render_thumbnail(
     cancellation: &Cancellation,
 ) -> Result<Vec<u8>, String> {
     let operation = match kind {
+        ThumbnailKind::Camera => return Err("Camera thumbnails require their preview icon".into()),
         ThumbnailKind::Image => ParseOperation::ThumbnailImage,
         ThumbnailKind::RawImage => ParseOperation::ThumbnailRaw,
         ThumbnailKind::Pdf => ParseOperation::ThumbnailPdf,
@@ -1395,4 +1465,4 @@ pub(super) fn clear_thumbnail_runtime() {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

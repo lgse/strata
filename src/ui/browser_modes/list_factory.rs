@@ -253,7 +253,7 @@ impl ListRow {
             .set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
         set_label_if_changed(&self.mode, &entry_mode(entry));
         set_label_if_changed(&self.size, &entry_size(entry));
-        set_label_if_changed(&self.kind, entry_type(entry));
+        set_label_if_changed(&self.kind, &entry_type(entry));
         accessibility::describe_entry(
             item,
             pending_name.unwrap_or(&entry.display_name),
@@ -295,9 +295,15 @@ impl ListBinding {
             18,
             18,
         );
-        if let Some(position) = metadata_fill_position(Some(self.position), &self.entry, true) {
-            self.browser
-                .request_metadata_fill(self.depth, position, self.entry.location.clone());
+        if let Some(position) =
+            metadata_fill_position(Some(self.position), &self.entry, true, false)
+        {
+            self.browser.request_metadata_fill(
+                self.depth,
+                position,
+                self.entry.location.clone(),
+                false,
+            );
         }
         crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
     }

@@ -32,7 +32,7 @@ mod top_bar_navigation;
 mod window;
 
 pub(crate) use chooser::{cancel_chooser, present_chooser};
-pub(crate) use window::home_directory;
+pub(crate) use window::default_save_folder;
 pub use window::{present, present_open, present_reveal};
 
 pub(crate) fn prepare_portal_ui() {

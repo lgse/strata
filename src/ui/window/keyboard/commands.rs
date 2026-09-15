@@ -24,15 +24,16 @@ use crate::{
 
 impl Dispatcher {
     pub(super) fn window_commands(&self, event: &KeyEvent) -> KeyResult {
-        if event.text_has_focus() {
-            return None;
-        }
         if event.control()
+            && (!event.text_has_focus() || self.view.filter_has_focus())
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && let Some(mode) = browser_mode_for_digit(event.key)
         {
             apply_browser_mode(&self.view, &crate::ui::theme::ThemeManager::shared(), mode);
             return Some(Propagation::Stop);
+        }
+        if event.text_has_focus() {
+            return None;
         }
         if event.control() && matches!(event.key, Key::k | Key::K) {
             if let Err(error) =
@@ -188,7 +189,7 @@ impl Dispatcher {
             .or_else(|| self.browser_commands(browser, event))
     }
 
-    fn clipboard_command(&self, event: &KeyEvent) -> KeyResult {
+    pub(super) fn clipboard_command(&self, event: &KeyEvent) -> KeyResult {
         if !event.control() || event.shift() {
             return None;
         }

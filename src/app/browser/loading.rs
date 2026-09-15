@@ -97,7 +97,20 @@ impl Browser {
             .map(|(_, count)| count)
             .unwrap_or(0);
         if entry_count == 0 {
+            let mut entries = entries;
+            let remainder = if self
+                .location_at(depth)
+                .is_some_and(|location| location.is_camera_photo_root())
+                && entries.len() > super::CAMERA_FLUSH_CAP
+            {
+                entries.split_off(super::CAMERA_FLUSH_CAP)
+            } else {
+                Vec::new()
+            };
             self.apply_owned_batch(request_id, entries);
+            if !remainder.is_empty() {
+                self.accumulate_batch(request_id, depth, remainder);
+            }
         } else {
             self.accumulate_batch(request_id, depth, entries);
         }
