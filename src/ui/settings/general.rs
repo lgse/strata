@@ -232,6 +232,7 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         "Toggle which locations appear in the sidebar.",
         &chips,
     );
+    row.add_css_class("settings-sidebar-places");
     row.set_orientation(gtk::Orientation::Vertical);
     row.set_spacing(18);
     sidebar.append(&row);

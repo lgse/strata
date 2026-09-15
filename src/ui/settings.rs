@@ -518,8 +518,11 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool, stack_text_size: bool) {
         } else {
             gtk::Orientation::Horizontal
         };
-        // The update status card owns a vertical release-notes body.
-        if !row.has_css_class("settings-update-status") && row.orientation() != orientation {
+        // Release notes and sidebar chips always stay below their row's copy.
+        if !row.has_css_class("settings-update-status")
+            && !row.has_css_class("settings-sidebar-places")
+            && row.orientation() != orientation
+        {
             row.set_orientation(orientation);
         }
     }
