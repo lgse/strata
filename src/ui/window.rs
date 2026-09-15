@@ -35,9 +35,11 @@ mod devices;
 mod keyboard;
 mod open_argument;
 mod sidebar;
+mod unlock_argument;
 mod volume_password;
 
 pub use open_argument::present_open;
+pub use unlock_argument::{UnlockTarget, present_unlock};
 
 use sidebar::PlaceNavigation;
 pub(super) use sidebar::build_sidebar;

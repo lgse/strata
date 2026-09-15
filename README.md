@@ -32,6 +32,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - [Usage and desktop integration](#usage-and-desktop-integration)
   - [Desktop entry](#desktop-entry)
   - [Make Strata the Omarchy file manager](#make-strata-the-omarchy-file-manager)
+  - [Unlock encrypted volumes on Omarchy](#unlock-encrypted-volumes-on-omarchy)
   - [Network shares](#network-shares)
 - [Theming](#theming)
   - [Follow Omarchy Quattro](#follow-omarchy-quattro)
@@ -56,6 +57,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
 - **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
+- **Encrypted-volume unlock:** opt in through the installer, **Settings → General → Desktop integration** on Omarchy, or `strata --install-udiskie-unlock`; restore with `strata --uninstall-udiskie-unlock` (Settings **Restore default** on Omarchy only).
 
 ## Installation
 
@@ -66,7 +68,8 @@ Arch Linux and Omarchy are the primary supported environments. Current binaries 
 The interactive installer detects the Linux architecture, glibc version, Arch
 Linux, and Omarchy 3 or 4. It installs the latest verified stable release and
 offers optional desktop-menu, default-folder-handler, "Open file location", system
-file chooser, SMB, broader image/RAW, and Omarchy keybind integration:
+file chooser, encrypted-volume unlock, SMB, broader image/RAW, and Omarchy keybind
+integration:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh | bash
@@ -88,7 +91,8 @@ curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh \
       --with-raw \
       --with-desktop-entry \
       --with-folder-association \
-      --with-omarchy-keybinds
+      --with-omarchy-keybinds \
+      --with-udiskie-unlock
 ```
 
 Each `--with-*` flag implies `--non-interactive`, and folder association implies
@@ -97,6 +101,13 @@ to enable only "Open file location" integration. File chooser replacement is
 separate: use `--with-file-chooser` to opt in, or `--without-file-chooser` to keep
 your current chooser and dismiss the one-time in-app offer. Neither folder
 association nor an unattended install enables the chooser automatically.
+Encrypted-volume unlock is offered on Omarchy 3 or 4 (the installer asks; default
+No), and on generic Arch only when `udiskie` is already on `PATH`. The installer
+never installs the `udiskie` package. Unattended installs need
+`--with-udiskie-unlock`; `--non-interactive` alone and other `--with-*` flags
+leave it declined. Restore on Arch with `strata --uninstall-udiskie-unlock`, not
+Settings.
+
 Non-interactive package installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
 Phone backends are not installed by the script. For optional iPhone/iPad or Android
@@ -141,6 +152,9 @@ Then:
   yes, verify no other per-user service provides org.freedesktop.FileManager1,
   then install the archive's io.github.lgse.Strata.FileManager1.service under
   ~/.local/share/dbus-1/services with Exec pointing at the installed binary.
+- Ask before editing udiskie config to use Strata for encrypted-volume unlock.
+  Do not install the udiskie package. Do not send Arch users to Settings for
+  this row; restore on Arch with `strata --uninstall-udiskie-unlock`.
 - Launch `strata`, report its installed version/source release, and verify the
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
@@ -212,7 +226,7 @@ Download the matching `strata-<version>-<target>.debug` asset from the same rele
 
 #### 3. Update or uninstall
 
-For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
+For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation, run `strata --uninstall-udiskie-unlock` before deleting the binary if you opted into encrypted-volume unlock, then:
 
 ```bash
 rm -f ~/.local/bin/strata \
@@ -230,9 +244,12 @@ User preferences and custom themes remain under the XDG configuration directorie
 Launch Strata with an optional local directory:
 
 ```bash
-strata                 # home directory
-strata ~/Documents     # a specific directory
-strata --version       # print the installed version
+strata                      # home directory
+strata ~/Documents          # a specific directory
+strata --unlock-volume DEVICE  # unlock an encrypted volume
+strata --install-udiskie-unlock   # install Strata as the udiskie unlock handler
+strata --uninstall-udiskie-unlock # restore the previous udiskie configuration
+strata --version            # print the installed version
 ```
 
 Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest move or move to Trash, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
@@ -331,6 +348,21 @@ omarchy menu keybindings --print | grep -i "file manager"
 ```
 
 `hyprctl configerrors` should produce no errors. These user overrides survive Omarchy updates; do not edit files under `/usr/share/omarchy/`.
+
+### Unlock encrypted volumes on Omarchy
+
+On Omarchy 3 or 4, the installer asks whether to use Strata for encrypted-volume unlock (default No). **Settings → General → Desktop integration** includes **Unlock encrypted volumes**. Choose **Use Strata** so plugging in an encrypted drive opens Strata's password prompt instead of udiskie's dialog. **Restore default** returns udiskie to its previous configuration.
+
+On generic Arch, the installer offers the same step only when `udiskie` is already on `PATH`. Restore there with `strata --uninstall-udiskie-unlock`; Settings for this row stays Omarchy-only.
+
+The same setup is available unattended:
+
+```bash
+strata --install-udiskie-unlock
+strata --uninstall-udiskie-unlock
+```
+
+This edits `~/.config/udiskie/config.yml` and records restore state in `~/.local/share/strata/udiskie-install/state.toml`. It is not a saved Strata preference. The Settings row appears only when Omarchy is detected and `udiskie` is on your `PATH`; the CLI flags are unattended and are not Omarchy-gated. Unattended installer opt-in is `--with-udiskie-unlock`.
 
 ### Connecting phones
 
