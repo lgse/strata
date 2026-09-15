@@ -323,7 +323,7 @@ pub(super) fn wrap(
             }
             return glib::Propagation::Stop;
         }
-        if super::browser::recursive_search_activation_key(key)
+        if matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
             && super::browser::activate_recursive_search_result(
                 &weak_browser,
                 &state.items,
