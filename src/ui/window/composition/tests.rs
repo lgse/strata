@@ -82,10 +82,11 @@ fn composition_initializes_live_preferences_before_settings_in_two_windows() {
                     .content
                     .browser
                     .assert_saved_preferences(&fixture.preferences);
-                assert_eq!(
-                    fixture.content.footer.shortcuts.widget().is_visible(),
-                    fixture.preferences.show_keybinding_hints()
-                );
+                fixture
+                    .content
+                    .footer
+                    .shortcuts
+                    .assert_hints_visible(fixture.preferences.show_keybinding_hints());
             }
             first.preferences.set_show_keybinding_hints(false);
             first.preferences.set_browser_mode(BrowserMode::List);
@@ -95,12 +96,12 @@ fn composition_initializes_live_preferences_before_settings_in_two_windows() {
                     .browser
                     .assert_saved_preferences(&fixture.preferences);
                 assert_eq!(fixture.content.browser.view_mode(), BrowserMode::List);
-                assert!(!fixture.content.footer.shortcuts.widget().is_visible());
+                fixture.content.footer.shortcuts.assert_hints_visible(false);
                 assert!(fixture.layer("settings-backdrop").is_none());
             }
             first.preferences.set_show_keybinding_hints(true);
             for fixture in [&first, &second] {
-                assert!(fixture.content.footer.shortcuts.widget().is_visible());
+                fixture.content.footer.shortcuts.assert_hints_visible(true);
                 assert!(fixture.layer("settings-backdrop").is_none());
             }
             first.close();

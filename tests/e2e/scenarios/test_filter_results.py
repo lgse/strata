@@ -117,6 +117,41 @@ def test_filtered_control_selection_operates_on_the_selected_group(strata, mode,
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
 
 
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("shortcut", ["ctrl+c", "ctrl+x"])
+@pytest.mark.parametrize("hints", [
+    pytest.param(False, marks=pytest.mark.preferences(show_keybinding_hints=False)),
+    pytest.param(True, marks=pytest.mark.preferences(show_keybinding_hints=True)),
+])
+def test_filtered_keyboard_clipboard_keeps_status_visible(strata, mode, shortcut, hints):
+    filter_results(strata, query="match", count=5)
+    for path in ["beta/only-match.txt", "match-note-other.md"]:
+        row = result(strata, path)
+        assert row is not None
+        strata.pointer.click(row, modifiers=("ctrl",))
+    strata.keyboard.press(shortcut)
+    strata.wait(
+        lambda: strata.window.find(role="label", name="Files on clipboard"),
+        "the file clipboard status badge",
+    )
+    assert bool(strata.window.find(role="button", name="F1  Shortcuts")) == hints
+    assert strata.fixture.path("beta/only-match.txt").exists()
+    assert strata.fixture.path("match-note-other.md").exists()
+    strata.keyboard.press("ctrl+l")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(strata.fixture.path("destination")))
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("destination")
+    strata.keyboard.press("ctrl+v")
+    for path, contents in [("beta/only-match.txt", "beta source\n"),
+                           ("match-note-other.md", "other match\n")]:
+        destination = strata.fixture.path(f"destination/{Path(path).name}")
+        strata.wait(lambda: destination.exists(), "the clipboard file to arrive")
+        assert destination.read_text() == contents
+        assert strata.fixture.path(path).exists() == (shortcut == "ctrl+c")
+    assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
+
+
 def test_filter_text_selection_uses_the_active_theme(strata, tmp_path):
     field = filter_results(strata)
     strata.keyboard.press("ctrl+a")

@@ -3781,6 +3781,7 @@ fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {
 }
 
 fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
+    pane.search.refresh_cut_rows();
     for section in pane.item_sections() {
         section.bound_items.borrow_mut().retain(|bound| {
             let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade()) else {

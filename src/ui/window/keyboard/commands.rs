@@ -188,7 +188,7 @@ impl Dispatcher {
             .or_else(|| self.browser_commands(browser, event))
     }
 
-    fn clipboard_command(&self, event: &KeyEvent) -> KeyResult {
+    pub(super) fn clipboard_command(&self, event: &KeyEvent) -> KeyResult {
         if !event.control() || event.shift() {
             return None;
         }

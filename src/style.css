@@ -3554,6 +3554,12 @@ colorchooser colorswatch overlay {
   margin-top: 4px;
 }
 
+.file-row.cut,
+.list-row.cut,
+.icons-card.cut {
+  opacity: 0.65;
+}
+
 .file-row.dragging {
   opacity: 0.48;
 }

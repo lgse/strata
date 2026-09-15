@@ -182,6 +182,25 @@ impl InlineSearch {
         row.grab_focus()
     }
 
+    pub fn refresh_cut_rows(&self) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        for (position, item) in state.items.borrow().iter().enumerate() {
+            if let Some(line) = state
+                .list
+                .row_at_index(position as i32)
+                .and_then(|row| row.child())
+                .and_downcast::<gtk::Box>()
+            {
+                super::browser::set_cut_result_style(
+                    &line,
+                    &crate::model::Location::local(&item.path),
+                );
+            }
+        }
+    }
+
     pub fn prune_missing(&self) {
         let Some(state) = self.state.as_ref() else {
             return;
@@ -309,6 +328,11 @@ pub(super) fn wrap(
                 state.list.unselect_all();
                 state.list.select_row(Some(&row));
             }
+        }
+        if modifiers
+            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
+        {
+            row.grab_focus();
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
     });
@@ -753,6 +777,7 @@ fn result_row(
             17,
         );
     }
+    super::browser::set_cut_result_style(&line, &crate::model::Location::local(&item.path));
     row
 }
 

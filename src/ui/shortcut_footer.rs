@@ -148,7 +148,6 @@ impl ShortcutFooter {
             Rc::new(RefCell::new(None));
         let restored_focus = focus_before.clone();
         let weak_more = more.downgrade();
-        let weak_root = root.downgrade();
         let closed_hints = show_hints.clone();
         let closed_pending = pending_popup.clone();
         let weak_popover = popover.downgrade();
@@ -156,7 +155,6 @@ impl ShortcutFooter {
             let restored_focus = restored_focus.clone();
             let closed_pending = closed_pending.clone();
             let weak_more = weak_more.clone();
-            let weak_root = weak_root.clone();
             let closed_hints = closed_hints.clone();
             let weak_popover = weak_popover.clone();
             // MenuButton restores its own focus after ::closed; wait without overriding a newer focus move.
@@ -185,9 +183,7 @@ impl ShortcutFooter {
                 {
                     previous.grab_focus();
                 }
-                if let Some(root) = weak_root.upgrade() {
-                    root.set_visible(closed_hints.get());
-                }
+                more.set_visible(closed_hints.get());
             });
         });
         let footer = Self {
@@ -213,17 +209,24 @@ impl ShortcutFooter {
         let show_hints = self.show_hints.clone();
         let pending = self.pending_popup.clone();
         let weak_popover = self.popover.downgrade();
-        manager.on_keybinding_hints_changed(&self.root, move |root, enabled| {
+        let summary = self.summary.downgrade();
+        let more = self.more.downgrade();
+        manager.on_keybinding_hints_changed(&self.root, move |_, enabled| {
             show_hints.set(enabled);
             if !enabled {
                 pending.set(false);
             }
-            root.set_visible(
-                enabled
-                    || weak_popover
-                        .upgrade()
-                        .is_some_and(|popover| popover.is_visible()),
-            );
+            if let Some(summary) = summary.upgrade() {
+                summary.set_visible(enabled);
+            }
+            if let Some(more) = more.upgrade() {
+                more.set_visible(
+                    enabled
+                        || weak_popover
+                            .upgrade()
+                            .is_some_and(|popover| popover.is_visible()),
+                );
+            }
         });
     }
 
@@ -294,7 +297,7 @@ impl ShortcutFooter {
                     self.more.popdown();
                 } else {
                     self.focus_before.take();
-                    self.root.set_visible(self.show_hints.get());
+                    self.more.set_visible(self.show_hints.get());
                 }
             } else {
                 if self.focus_before.borrow().is_none() {
@@ -305,14 +308,14 @@ impl ShortcutFooter {
                             .map(|widget| widget.downgrade()),
                     );
                 }
-                if self.root.is_visible() && self.more.width() > 0 {
+                if self.more.is_mapped() && self.more.width() > 0 {
                     self.more.popup();
                 } else {
                     self.pending_popup.set(true);
-                    self.root.set_visible(true);
+                    self.more.set_visible(true);
                     let pending = self.pending_popup.clone();
                     let weak_more = self.more.downgrade();
-                    // A hidden footer needs an allocation before its popover can be positioned.
+                    // A hidden shortcut button needs an allocation before positioning the popover.
                     self.root.add_tick_callback(move |_, _| {
                         let Some(more) = weak_more.upgrade() else {
                             return glib::ControlFlow::Break;
@@ -335,7 +338,7 @@ impl ShortcutFooter {
             if key == gdk::Key::Escape {
                 self.pending_popup.set(false);
                 self.focus_before.take();
-                self.root.set_visible(self.show_hints.get());
+                self.more.set_visible(self.show_hints.get());
             }
             return Some(glib::Propagation::Stop);
         }
