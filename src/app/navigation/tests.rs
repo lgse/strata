@@ -27,6 +27,9 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -828,6 +831,9 @@ fn hidden_entry(path: &str, name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: true,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1264,6 +1270,9 @@ fn file_entry(path: &str, name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1273,6 +1282,9 @@ fn metadata_update(path: &str, size: u64, modified: i64) -> MetadataUpdate {
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Known(modified),
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1404,6 +1416,9 @@ fn fill_updates_never_clobber_known_fields() {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Known(300),
             mode: MetadataValue::Known(0o100640),
+            image_dimensions: MetadataValue::Known((1920, 1080)),
+            child_count: MetadataValue::Known(4),
+            duration_seconds: MetadataValue::Known(83),
         }],
     );
     assert!(matches!(applied, Some((0, ref positions)) if positions == &[0]));
@@ -1416,6 +1431,18 @@ fn fill_updates_never_clobber_known_fields() {
         state.columns[0].entries[0].mode,
         MetadataValue::Known(0o100640)
     );
+    assert_eq!(
+        state.columns[0].entries[0].image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert_eq!(
+        state.columns[0].entries[0].child_count,
+        MetadataValue::Known(4)
+    );
+    assert_eq!(
+        state.columns[0].entries[0].duration_seconds,
+        MetadataValue::Known(83)
+    );
 
     let applied = state.apply_metadata(
         RequestId(1),
@@ -1424,9 +1451,24 @@ fn fill_updates_never_clobber_known_fields() {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     );
     assert_eq!(applied, None);
+    assert_eq!(
+        state.columns[0].entries[0].image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert_eq!(
+        state.columns[0].entries[0].child_count,
+        MetadataValue::Known(4)
+    );
+    assert_eq!(
+        state.columns[0].entries[0].duration_seconds,
+        MetadataValue::Known(83)
+    );
 }
 
 #[test]

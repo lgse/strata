@@ -47,6 +47,9 @@ impl FileSource for MenuSource {
                     0o644
                 }),
                 is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             })
             .collect();
             emit(DirectoryEvent::Batch {

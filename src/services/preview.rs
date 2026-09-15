@@ -109,6 +109,19 @@ pub trait PreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle;
 }
 
+fn content_type_for_path(path: &Path) -> glib::GString {
+    gio::content_type_guess(Some(path), None::<&[u8]>).0
+}
+
+pub(crate) fn is_image_path(path: &Path) -> bool {
+    content_type_for_path(path).starts_with("image/")
+}
+
+pub(crate) fn is_media_path(path: &Path) -> bool {
+    let content_type = content_type_for_path(path);
+    content_type.starts_with("audio/") || content_type.starts_with("video/")
+}
+
 pub(crate) fn supports_remote_video(name: &OsStr) -> bool {
     Path::new(name)
         .extension()

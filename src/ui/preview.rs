@@ -283,23 +283,6 @@ impl PreviewDrawer {
             }
         });
         let weak = Rc::downgrade(&state);
-        open.connect_clicked(move |_| {
-            let Some(state) = weak.upgrade() else {
-                return;
-            };
-            let location = state
-                .current
-                .borrow()
-                .as_ref()
-                .map(|entry| entry.location.clone());
-            if let Some(location) = location {
-                if let Some(stream) = state.media.borrow().as_ref() {
-                    stream.set_playing(false);
-                }
-                super::browser::open_location(&location, &state.pane);
-            }
-        });
-        let weak = Rc::downgrade(&state);
         print.connect_clicked(move |_| {
             if let Some(state) = weak.upgrade() {
                 if let Some(stream) = state.media.borrow().as_ref() {
@@ -336,6 +319,26 @@ impl PreviewDrawer {
     }
 
     pub fn observe_browser(&self, browser: &Rc<Browser>) {
+        let weak_state = Rc::downgrade(&self.state);
+        let weak_browser = Rc::downgrade(browser);
+        self.state.open.connect_clicked(move |_| {
+            let (Some(state), Some(browser)) = (weak_state.upgrade(), weak_browser.upgrade())
+            else {
+                return;
+            };
+            let Some(location) = state
+                .current
+                .borrow()
+                .as_ref()
+                .map(|entry| entry.location.clone())
+            else {
+                return;
+            };
+            if let Some(stream) = state.media.borrow().as_ref() {
+                stream.set_playing(false);
+            }
+            super::browser::open_location(&location, &state.pane, &browser);
+        });
         let preview = self.clone();
         let weak_browser = Rc::downgrade(browser);
         browser.observe(move |event| {

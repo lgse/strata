@@ -29,6 +29,9 @@ fn camera_thumbnail_bindings_keep_duplicate_names_distinct_and_discard_stale_res
                         modified_unix_seconds: MetadataValue::Unknown,
                         mode: MetadataValue::Unavailable,
                         is_hidden: false,
+                        image_dimensions: MetadataValue::Unknown,
+                        child_count: MetadataValue::Unknown,
+                        duration_seconds: MetadataValue::Unknown,
                     };
                     set_thumbnail_or_icon(image, &entry, crate::assets::icons::PICTURES, 32, 64);
                 }

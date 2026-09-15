@@ -4,7 +4,7 @@ use gtk::{gio, prelude::*};
 
 use super::{
     BrowserMode, ModeViews, Pane, pane_holds_keyboard_focus, reconnect_pane_model, replace_entries,
-    set_selections, show_count, update_bound_list_metadata,
+    set_selections, show_count, update_bound_icons_metadata, update_bound_list_metadata,
 };
 use crate::{
     app::{Browser, BrowserEvent, EntryInsertion, EntrySplice},
@@ -170,6 +170,8 @@ impl ModeViews {
             BrowserEvent::MetadataFilled { depth, updates } => {
                 if self.mode == BrowserMode::List {
                     self.update_panes(*depth, |pane| update_bound_list_metadata(pane, updates));
+                } else if self.mode == BrowserMode::Icons {
+                    self.update_panes(*depth, |pane| update_bound_icons_metadata(pane, updates));
                 }
             }
             _ => return false,

@@ -70,6 +70,9 @@ impl HeldSource {
                 modified_unix_seconds: crate::model::MetadataValue::Unknown,
                 mode: crate::model::MetadataValue::Unknown,
                 is_hidden: false,
+                image_dimensions: crate::model::MetadataValue::Unknown,
+                child_count: crate::model::MetadataValue::Unknown,
+                duration_seconds: crate::model::MetadataValue::Unknown,
             }],
         });
     }

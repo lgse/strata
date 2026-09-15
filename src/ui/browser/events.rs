@@ -551,7 +551,7 @@ impl ViewState {
             }
             BrowserEvent::OpenRequested { location } => {
                 if self.interactive {
-                    open_location(location, &self.overlay);
+                    open_location(location, &self.overlay, &self.browser);
                 }
             }
             BrowserEvent::EntryCreated { location } => {

@@ -27,6 +27,9 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
     assert_eq!(
@@ -337,6 +340,9 @@ impl FileSource for WatchingFileSource {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -415,6 +421,9 @@ impl FileSource for RetryFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 }],
             });
             emit(DirectoryEvent::Finished {
@@ -474,6 +483,9 @@ impl FileSource for FilePreviewSource {
                 modified_unix_seconds: MetadataValue::Known(1),
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -507,6 +519,9 @@ impl FileSource for ArchiveFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::local("/fixture/notes.txt"),
@@ -518,6 +533,9 @@ impl FileSource for ArchiveFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::uri("sftp://example.com/remote-archive.zip"),
@@ -529,6 +547,9 @@ impl FileSource for ArchiveFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
             ],
         });
@@ -560,6 +581,9 @@ impl FileSource for OpenChildBesideFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::local("/fixture/example.conf"),
@@ -571,6 +595,9 @@ impl FileSource for OpenChildBesideFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
             ]
         } else {
@@ -606,6 +633,9 @@ impl FileSource for RestoredSortingSource {
             modified_unix_seconds: MetadataValue::Unknown,
             is_hidden: false,
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         };
         emit(DirectoryEvent::Batch {
             request_id: request.id,
@@ -639,6 +669,9 @@ impl FileSource for FakeFileSource {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -671,6 +704,9 @@ impl FileSource for TrashFileSource {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -1118,6 +1154,9 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
     browser.extract(entry, Location::local("/fixture"), None);
 
@@ -1174,6 +1213,9 @@ fn fixture_entry(path: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1192,6 +1234,9 @@ fn a_completed_trash_operation_can_be_undone_once() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
     browser.delete(vec![entry], false);
@@ -1220,6 +1265,9 @@ fn another_browser_can_undo_the_latest_trash_operation() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
     deleting_browser.delete(vec![entry], false);
@@ -1789,12 +1837,18 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
     let permanently_deleted = FileEntry {
         location: Location::local("/fixture/draft.txt"),
         native_name: OsString::from("draft.txt"),
         thumbnail_path: None,
         display_name: "draft.txt".into(),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..trashed.clone()
     };
 
@@ -1859,6 +1913,9 @@ fn create_and_rename_refresh_remote_columns_but_not_local_monitors() {
                         modified_unix_seconds: MetadataValue::Unknown,
                         is_hidden: false,
                         mode: MetadataValue::Unknown,
+                        image_dimensions: MetadataValue::Unknown,
+                        child_count: MetadataValue::Unknown,
+                        duration_seconds: MetadataValue::Unknown,
                     },
                     "new-name.txt".to_owned(),
                 );
@@ -2038,6 +2095,9 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         modified_unix_seconds: MetadataValue::Known(1),
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }));
 
     assert!(
@@ -3171,12 +3231,18 @@ fn batch_entry(name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
 fn trash_entry(name: &str) -> FileEntry {
     FileEntry {
         location: Location::uri(format!("trash:///{name}")),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..batch_entry(name)
     }
 }
@@ -3269,6 +3335,9 @@ impl FileSource for SortFillSource {
                         size: MetadataValue::Known(size),
                         modified_unix_seconds: MetadataValue::Unknown,
                         mode: MetadataValue::Unknown,
+                        image_dimensions: MetadataValue::Unknown,
+                        child_count: MetadataValue::Unknown,
+                        duration_seconds: MetadataValue::Unknown,
                     }
                 })
                 .collect(),
@@ -3586,6 +3655,9 @@ impl ScriptedSource {
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             is_hidden: name.starts_with('.'),
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }
     }
     fn answer(
@@ -3607,6 +3679,9 @@ impl ScriptedSource {
                     size: MetadataValue::Known(*size),
                     modified_unix_seconds: MetadataValue::Known(7),
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 })
                 .collect(),
         };
@@ -3909,6 +3984,9 @@ fn navigation_cancels_an_awaiting_sort_without_stale_commit() {
             size: MetadataValue::Known(1),
             modified_unix_seconds: MetadataValue::Known(7),
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     });
     old_emit(DirectoryEvent::MetadataFinished {
@@ -3970,10 +4048,12 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             ViewportTarget {
                 position: 0,
                 location: Location::local("/fixture/alpha"),
+                include_icon_details: false,
             },
             ViewportTarget {
                 position: 1,
                 location: Location::local("/fixture/beta"),
+                include_icon_details: false,
             },
         ],
     );
@@ -3999,6 +4079,9 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             size: MetadataValue::Known(30),
             modified_unix_seconds: MetadataValue::Known(7),
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     });
     viewport_emit(DirectoryEvent::MetadataFinished {
@@ -4017,12 +4100,18 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 size: MetadataValue::Known(30),
                 modified_unix_seconds: MetadataValue::Known(7),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/beta"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(7),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
         ],
     });
@@ -4169,7 +4258,7 @@ fn settle_timer_restarts_while_rows_keep_arriving() {
         vec![FillAnswer::Never],
     ));
     browser.navigate(Location::local("/fixture"));
-    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"));
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
     let pump_until_elapsed = |millis: u64, start: std::time::Instant| {
         while start.elapsed() < std::time::Duration::from_millis(millis) {
             gtk::glib::MainContext::default().iteration(false);
@@ -4178,7 +4267,7 @@ fn settle_timer_restarts_while_rows_keep_arriving() {
     };
     let start = std::time::Instant::now();
     pump_until_elapsed(80, start);
-    browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"));
+    browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
     pump_until_elapsed(140, start);
     assert!(source.fill_calls.borrow().is_empty());
     pump_until_elapsed(400, start);
@@ -4201,6 +4290,7 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
         vec![ViewportTarget {
             position: 1,
             location: Location::local("/fixture/beta"),
+            include_icon_details: false,
         }],
     );
     browser.flush_metadata_fills();
@@ -4218,6 +4308,9 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
             size: MetadataValue::Known(10),
             modified_unix_seconds: MetadataValue::Known(7),
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     });
     assert_eq!(replaced_count(&events), 1);
@@ -4254,10 +4347,12 @@ fn remote_name_listing_fills_visible_metadata() {
             ViewportTarget {
                 position: 1,
                 location: Location::uri("sftp://host/share/photo.jpg"),
+                include_icon_details: false,
             },
             ViewportTarget {
                 position: 0,
                 location: Location::uri("sftp://host/share/notes.txt"),
+                include_icon_details: false,
             },
         ],
     );
@@ -4305,12 +4400,18 @@ fn modified_sort_fills_directory_mtimes() {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Known(200),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/b.txt"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(100),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
         ],
     });
@@ -4428,6 +4529,9 @@ fn staged_entry(name: &str, kind: EntryKind, size: MetadataValue<u64>, modified:
         modified_unix_seconds: MetadataValue::Known(modified),
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -4918,6 +5022,9 @@ impl FileSource for MixedPeekFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: true,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::local("/fixture/normal.txt"),
@@ -4929,6 +5036,9 @@ impl FileSource for MixedPeekFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
             ],
         });

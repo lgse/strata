@@ -57,12 +57,18 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
 fn directory_entry(path: &std::path::Path) -> FileEntry {
     FileEntry {
         kind: EntryKind::Directory,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..file_entry(path)
     }
 }

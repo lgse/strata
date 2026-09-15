@@ -215,6 +215,9 @@ fn camera_streaming_interleaved_names_survives_scrolling() {
                                 modified_unix_seconds: crate::model::MetadataValue::Known(1),
                                 mode: crate::model::MetadataValue::Unavailable,
                                 is_hidden: false,
+                                image_dimensions: crate::model::MetadataValue::Unknown,
+                                child_count: crate::model::MetadataValue::Unknown,
+                                duration_seconds: crate::model::MetadataValue::Unknown,
                             }
                         })
                         .collect();

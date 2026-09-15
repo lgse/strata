@@ -9,6 +9,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
+    path::Path,
     rc::{Rc, Weak},
 };
 
@@ -1934,6 +1935,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
         let Some((icon, rename_label)) = super::icons_cell::parts(&card) else {
             return;
         };
+        install_icons_content_hover(&card);
         install_preview_click(
             &card,
             item,
@@ -2012,10 +2014,10 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 state.as_deref(),
             );
             if !scrolling_for_bind.get()
-                && let Some(position) = metadata_fill_position(source_position, &entry, false)
+                && let Some(position) = metadata_fill_position(source_position, &entry, false, true)
                 && let Some(browser) = browser.as_ref()
             {
-                browser.request_metadata_fill(depth, position, entry.location.clone());
+                browser.request_metadata_fill(depth, position, entry.location.clone(), true);
             }
         }
     });
@@ -3004,6 +3006,32 @@ fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widge
     None
 }
 
+fn set_icons_content_hover(card: &gtk::Box, x: f64, y: f64) {
+    if super::pointer::hits_icon_card_content(card.upcast_ref(), x, y) {
+        card.add_css_class("content-hover");
+    } else {
+        card.remove_css_class("content-hover");
+    }
+}
+
+fn update_icons_content_hover(controller: &gtk::EventControllerMotion, x: f64, y: f64) {
+    if let Some(card) = controller.widget().and_downcast::<gtk::Box>() {
+        set_icons_content_hover(&card, x, y);
+    }
+}
+
+fn install_icons_content_hover(card: &gtk::Box) {
+    let motion = gtk::EventControllerMotion::new();
+    motion.connect_enter(update_icons_content_hover);
+    motion.connect_motion(update_icons_content_hover);
+    motion.connect_leave(|controller| {
+        if let Some(card) = controller.widget() {
+            card.remove_css_class("content-hover");
+        }
+    });
+    card.add_controller(motion);
+}
+
 fn install_icons_peek(
     card: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
@@ -3129,7 +3157,7 @@ fn install_list_drag_drop(
             {
                 return None;
             }
-        } else if !super::pointer::hits_item_content(&prepare_row, x, y) {
+        } else if !super::pointer::hits_icon_card_content(&prepare_row, x, y) {
             return None;
         }
         source.set_actions(super::browser::drag_actions_for_modifiers(
@@ -3369,7 +3397,7 @@ fn install_modified_selection_click(
             return;
         }
         if let Some(widget) = gesture.widget()
-            && super::pointer::hits_item_content(&widget, x, y)
+            && super::pointer::hits_icon_card_content(&widget, x, y)
             && let Some(item_widget) = widget.parent()
         {
             item_widget.grab_focus();
@@ -3409,11 +3437,23 @@ fn metadata_fill_position(
     position: Option<usize>,
     entry: &FileEntry,
     include_mode: bool,
+    include_icon_details: bool,
 ) -> Option<usize> {
     position.filter(|_| {
         super::browser::metadata_needs_fill(entry)
             || (include_mode && entry.mode == MetadataValue::Unknown)
+            || (include_icon_details && icon_details_need_fill(entry))
     })
+}
+
+fn icon_details_need_fill(entry: &FileEntry) -> bool {
+    let path = Path::new(&entry.native_name);
+    (entry.is_directory() && entry.child_count == MetadataValue::Unknown)
+        || (!entry.is_directory()
+            && ((entry.image_dimensions == MetadataValue::Unknown
+                && crate::services::is_image_path(path))
+                || (entry.duration_seconds == MetadataValue::Unknown
+                    && crate::services::is_media_path(path))))
 }
 
 fn view_position_for_source(
@@ -3461,7 +3501,7 @@ fn activate_filtered_item(
     };
     if browser.is_chooser_mode() && !entry.is_directory() {
         browser.open_location(entry.location);
-    } else {
+    } else if !is_trash_location(&entry.location) || entry.is_directory() {
         browser.activate_in_place(depth, source_position);
     }
 }
@@ -3515,8 +3555,15 @@ fn install_preview_click(
             gesture.set_state(gtk::EventSequenceState::Claimed);
             if press_count == 1 {
                 browser.select(depth, position);
-                if !browser.is_chooser_mode() {
+                if !browser.is_chooser_mode()
+                    && (!is_trash_location(&entry.location) || entry.is_directory())
+                {
                     browser.activate_in_place(depth, position);
+                } else if enabled.get()
+                    && !entry.is_directory()
+                    && super::preview::entry_supports_quick_preview(&entry)
+                {
+                    browser.preview(depth, position);
                 }
             }
             return;
@@ -3951,6 +3998,7 @@ fn apply_icons_entry(
     let Some((icon, label)) = super::icons_cell::parts(card) else {
         return;
     };
+    set_icons_entry_details(card, entry);
     label.set_visible(true);
     if let Some(field) = super::icons_cell::rename_field(card) {
         field.set_visible(false);
@@ -3969,6 +4017,9 @@ fn apply_icons_entry(
         icon.set_hidden(entry.is_hidden);
         icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+        if let Some(details) = super::icons_cell::details_label(card) {
+            details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+        }
     } else {
         super::thumbnail::set_thumbnail_or_icon(
             &icon,
@@ -4002,6 +4053,9 @@ fn refresh_icons_card_chrome(
     icon.set_hidden(entry.is_hidden);
     icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
     label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+    if let Some(details) = super::icons_cell::details_label(card) {
+        details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+    }
 }
 
 fn refresh_icons_section(
@@ -4035,8 +4089,8 @@ fn refresh_icons_section(
             icon.slot_size(),
             icon.slot_size(),
         );
-        if let Some(position) = metadata_fill_position(Some(position), &entry, false) {
-            browser.request_metadata_fill(depth, position, entry.location.clone());
+        if let Some(position) = metadata_fill_position(Some(position), &entry, false, true) {
+            browser.request_metadata_fill(depth, position, entry.location.clone(), true);
         }
     });
 }
@@ -4111,6 +4165,79 @@ fn update_bound_list_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
             crate::util::set_modified_date(&modified, Some(entry), "—");
             true
         });
+    }
+}
+
+fn update_bound_icons_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
+    let updates: HashMap<usize, &FileEntry> = updates
+        .iter()
+        .map(|(position, entry)| (*position, entry))
+        .collect();
+    for section in pane.item_sections() {
+        section.bound_items.borrow_mut().retain(|bound| {
+            let (Some(item), Some(card)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
+                return false;
+            };
+            let Some(position) = source_position_for_view(
+                &pane.source_index,
+                Some(&section.view_model),
+                item.position(),
+            ) else {
+                return true;
+            };
+            let Some(entry) = updates.get(&position) else {
+                return true;
+            };
+            let Some(card) = card.downcast::<gtk::Box>().ok() else {
+                return true;
+            };
+            set_icons_entry_details(&card, entry);
+            true
+        });
+    }
+}
+
+fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
+    let Some(label) = super::icons_cell::details_label(card) else {
+        return;
+    };
+    if let Some(details) = entry_icons_item_info(entry) {
+        set_label_if_changed(&label, &details);
+        label.set_visible(true);
+    } else {
+        label.set_visible(false);
+    }
+}
+
+fn format_duration(seconds: u64) -> String {
+    let hours = seconds / 3_600;
+    let minutes = (seconds % 3_600) / 60;
+    let seconds = seconds % 60;
+    if hours == 0 {
+        format!("{minutes}:{seconds:02}")
+    } else {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    }
+}
+
+fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
+    if entry.is_directory() {
+        return match entry.child_count {
+            MetadataValue::Known(0) => Some("No items".to_owned()),
+            MetadataValue::Known(1) => Some("1 item".to_owned()),
+            MetadataValue::Known(count) => Some(format!("{count} items")),
+            MetadataValue::Unknown | MetadataValue::Unavailable => None,
+        };
+    }
+    if let MetadataValue::Known(seconds) = entry.duration_seconds {
+        return Some(format_duration(seconds));
+    }
+    if let MetadataValue::Known((width, height)) = entry.image_dimensions {
+        return Some(format!("{width}×{height}"));
+    }
+    match entry.size {
+        MetadataValue::Known(bytes) => Some(super::browser::format_file_size(bytes)),
+        MetadataValue::Unknown | MetadataValue::Unavailable => None,
     }
 }
 

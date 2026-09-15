@@ -5,7 +5,7 @@ use crate::model::{FileEntry, Location};
 use std::path::Path;
 
 #[test]
-fn executable_fallback_requires_regular_executable_and_missing_handler()
+fn regular_executable_requires_regular_file_and_execute_bit()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::PermissionsExt;
 
@@ -13,19 +13,12 @@ fn executable_fallback_requires_regular_executable_and_missing_handler()
     let program = fixture.path().join("program");
     std::fs::write(&program, b"#!/bin/sh\n")?;
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))?;
-    let no_handler = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler");
-    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "denied");
 
-    assert!(executable_without_handler(Some(&program), &no_handler));
-    assert!(!executable_without_handler(Some(&program), &denied));
-    assert!(!executable_without_handler(
-        Some(fixture.path()),
-        &no_handler
-    ));
-    assert!(!executable_without_handler(None, &no_handler));
+    assert!(is_regular_executable(&program));
+    assert!(!is_regular_executable(fixture.path()));
 
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o644))?;
-    assert!(!executable_without_handler(Some(&program), &no_handler));
+    assert!(!is_regular_executable(&program));
     Ok(())
 }
 
@@ -41,6 +34,9 @@ fn entry_executable_policy_accepts_regular_files_and_file_links() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Known(mode),
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     assert!(entry_is_regular_executable(&entry(
@@ -90,6 +86,9 @@ fn terminal_shortcut_prefers_one_selected_directory() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let directory = entry("selected", crate::model::EntryKind::Directory);
     let file = entry("notes.txt", crate::model::EntryKind::File);
@@ -101,4 +100,18 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[directory, file.clone()]), None);
     assert_eq!(selected_terminal_location(&[file]), None);
     assert_eq!(selected_terminal_location(&[]), None);
+}
+
+#[test]
+fn open_location_rejects_trash_locations() {
+    crate::test_support::gtk_test(
+        "ui::browser::desktop::tests::open_location_rejects_trash_locations",
+        || {
+            let overlay = gtk::Overlay::new();
+            let location = Location::uri("trash:///test.png");
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            open_location(&location, &overlay, &browser);
+            assert!(overlay.last_child().is_some());
+        },
+    );
 }

@@ -239,9 +239,15 @@ impl ListBinding {
             18,
             18,
         );
-        if let Some(position) = metadata_fill_position(Some(self.position), &self.entry, true) {
-            self.browser
-                .request_metadata_fill(self.depth, position, self.entry.location.clone());
+        if let Some(position) =
+            metadata_fill_position(Some(self.position), &self.entry, true, false)
+        {
+            self.browser.request_metadata_fill(
+                self.depth,
+                position,
+                self.entry.location.clone(),
+                false,
+            );
         }
         crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
     }

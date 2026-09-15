@@ -115,6 +115,7 @@ fn bind_update_notice_preferences(
             if !initial.replace(false)
                 && let Some(notice) = notice.upgrade()
             {
+                super::settings::clear_cached_update_notice();
                 notice(None);
             }
         },
@@ -151,10 +152,10 @@ pub(super) fn present_target(
         .build();
 
     let content = composition::WindowContent::new(&window, &theme_manager);
-    let update_notice = content.bind(&window, &theme_manager);
+    content.bind(&window, &theme_manager);
     let browser = content.browser.clone();
     browser.connect_navigation_cleanup(window.upcast_ref());
-    schedule_after_first_paint(&window, &content.sidebar);
+    schedule_after_first_paint(&window, &content.sidebar, &theme_manager);
     content.connect_cleanup(&window);
     window.present();
     crate::metrics::mark_window_presented();
@@ -173,12 +174,16 @@ pub(super) fn present_target(
             );
         });
     }
-    schedule_due_update_check(&theme_manager, &update_notice);
     browser
 }
 
-fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &SidebarView) {
+fn schedule_after_first_paint(
+    window: &gtk::ApplicationWindow,
+    sidebar: &SidebarView,
+    manager: &Rc<ThemeManager>,
+) {
     let state = sidebar.state.clone();
+    let manager = manager.clone();
     let armed = Cell::new(false);
     window.connect_map(move |window| {
         if armed.get() {
@@ -191,6 +196,7 @@ fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &Sidebar
         let handler = Rc::new(RefCell::new(None));
         let handler_for_paint = handler.clone();
         let state = state.clone();
+        let manager = manager.clone();
         let id = clock.connect_after_paint(move |clock| {
             if let Some(id) = handler_for_paint.borrow_mut().take() {
                 clock.disconnect(id);
@@ -198,23 +204,15 @@ fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &Sidebar
             crate::metrics::mark_first_themed_frame();
             let state = state.clone();
             glib::idle_add_local_once(move || state.rebuild());
+            let manager = manager.clone();
+            glib::idle_add_local_once(move || {
+                super::settings::maybe_run_due_update_check(&manager);
+            });
         });
         handler.replace(Some(id));
     });
 }
 
-fn schedule_due_update_check(
-    manager: &Rc<ThemeManager>,
-    notice: &super::settings::UpdateNoticeHandler,
-) {
-    let manager = manager.clone();
-    let notice = notice.clone();
-    glib::timeout_add_local_once(std::time::Duration::from_secs(8), move || {
-        glib::idle_add_local_once(move || {
-            super::settings::maybe_run_due_update_check(&manager, &notice);
-        });
-    });
-}
 pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
     ThemeManager::shared().bind_interface_scale(paned, |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
@@ -3086,6 +3084,10 @@ pub(crate) fn home_directory() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+pub(crate) fn default_save_folder() -> PathBuf {
+    glib::user_special_dir(glib::UserDirectory::Downloads).unwrap_or_else(home_directory)
 }
 
 fn startup_location(manager: &ThemeManager) -> Location {

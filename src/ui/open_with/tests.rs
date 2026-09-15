@@ -245,6 +245,7 @@ fn empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal() {
                 vec![],
                 vec![],
                 vec![],
+                OpenWithContext::Explicit,
                 Rc::new(move || result.set(result.get() + 1)),
             );
             let layer = overlay
@@ -267,11 +268,31 @@ fn empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal() {
                 }
                 None
             }
+            fn has_label(widget: &gtk::Widget, text: &str) -> bool {
+                if widget
+                    .downcast_ref::<gtk::Label>()
+                    .is_some_and(|label| label.text() == text)
+                {
+                    return true;
+                }
+                let mut child = widget.first_child();
+                while let Some(widget) = child {
+                    if has_label(&widget, text) {
+                        return true;
+                    }
+                    child = widget.next_sibling();
+                }
+                false
+            }
             assert!(
                 !find_open(layer.upcast_ref())
                     .expect("Open button")
                     .is_sensitive()
             );
+            assert!(has_label(
+                layer.upcast_ref(),
+                "No compatible applications were found."
+            ));
             dismiss_modal_layer(&layer, &overlay, None);
             let deadline = Instant::now() + Duration::from_secs(3);
             while closed.get() == 0 {
@@ -308,6 +329,7 @@ fn search_filtering_and_empty_state_and_keyboard_navigation() {
                 vec![],
                 vec![text_editor.clone()],
                 vec![image_viewer.clone(), web_browser.clone()],
+                OpenWithContext::Explicit,
                 Rc::new(move || result.set(result.get() + 1)),
             );
             let layer = overlay

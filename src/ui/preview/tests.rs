@@ -239,6 +239,9 @@ fn remote_images_and_supported_video_are_quick_preview_targets() {
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             is_hidden: false,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         };
         assert_eq!(
             preview_target(Some(entry.clone())).is_some(),
@@ -266,6 +269,9 @@ fn preview_drag_entries_contains_only_the_loaded_entry() {
         modified_unix_seconds: crate::model::MetadataValue::Known(1),
         mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let dragged = preview_drag_entries(Some(&entry));
     assert_eq!(dragged, Some(vec![entry]));

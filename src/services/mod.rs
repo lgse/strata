@@ -33,8 +33,8 @@ pub use preview::{
     PreviewRequestId, SandboxedMedia,
 };
 pub(crate) use preview::{
-    content_family, has_plain_text_extension, is_extensionless_dotfile,
-    is_non_executable_extensionless_dotfile, supports_remote_video,
+    content_family, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
+    is_media_path, is_non_executable_extensionless_dotfile, supports_remote_video,
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,

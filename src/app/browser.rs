@@ -444,6 +444,7 @@ type BatchSelectionState = HashMap<usize, (RequestId, Vec<usize>, usize)>;
 struct ViewportTarget {
     position: usize,
     location: Location,
+    include_icon_details: bool,
 }
 
 /// Routing for one metadata request: own ids, validated against the owning
@@ -2789,6 +2790,7 @@ impl Browser {
         depth: usize,
         position: usize,
         location: Location,
+        include_icon_details: bool,
     ) {
         // Defer to the provider instead of rejecting remote locations owner-side:
         // unsupported sources answer `Unsupported`.
@@ -2798,10 +2800,14 @@ impl Browser {
         {
             let mut pending = self.metadata_pending.borrow_mut();
             let queued = pending.entry(depth).or_default();
-            if queued.len() < MAX_PENDING_FILL_LOCATIONS
-                && !queued.iter().any(|target| target.location == location)
-            {
-                queued.push(ViewportTarget { position, location });
+            if let Some(target) = queued.iter_mut().find(|target| target.location == location) {
+                target.include_icon_details |= include_icon_details;
+            } else if queued.len() < MAX_PENDING_FILL_LOCATIONS {
+                queued.push(ViewportTarget {
+                    position,
+                    location,
+                    include_icon_details,
+                });
             }
         }
         if let Some(source) = self.metadata_timer.borrow_mut().take() {
@@ -2847,6 +2853,7 @@ impl Browser {
                 id: fill_request,
                 entries: targets.into_iter().map(|(_, location)| location).collect(),
                 full: true,
+                include_icon_details: false,
                 time_budget: DIRECTORY_LOAD_TIME_BUDGET,
             },
             emit,
@@ -3058,6 +3065,7 @@ impl Browser {
                 .iter()
                 .map(|target| (target.position, target.location.clone()))
                 .collect();
+            let include_icon_details = targets.iter().any(|target| target.include_icon_details);
             // Stored before the provider runs: synchronous fills answer inside the call.
             self.fill_tokens
                 .borrow_mut()
@@ -3076,6 +3084,7 @@ impl Browser {
                     id: fill_request,
                     entries: targets.into_iter().map(|target| target.location).collect(),
                     full: false,
+                    include_icon_details,
                     time_budget: METADATA_FILL_TIME_BUDGET,
                 },
                 emit,
