@@ -28,6 +28,7 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 mod archive;
+mod batch_rename;
 pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
@@ -1368,6 +1369,9 @@ impl BrowserView {
     }
 
     pub fn undo_last_operation(&self) -> bool {
+        if let Some((generation, records)) = self.state.browser.pending_undo_rename() {
+            return self.state.undo_rename(generation, records);
+        }
         if let Some((generation, records)) = self.state.browser.pending_undo_move() {
             return self.state.undo_move(generation, records);
         }

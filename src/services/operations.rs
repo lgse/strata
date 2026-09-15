@@ -33,6 +33,30 @@ pub struct RenameRequest {
     pub new_name: String,
 }
 
+/// One item of a batched rename: location-based so undo can replay renames
+/// without resolving entries from possibly-closed columns.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenameBatchItem {
+    pub location: Location,
+    pub new_name: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct RenameBatchRequest {
+    pub id: OperationRequestId,
+    pub items: Vec<RenameBatchItem>,
+}
+
+/// A completed rename: where an item started and where it ended up.
+/// `original_name` is the pre-rename basename so undo can replay the rename
+/// without parsing it back out of locations.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenameRecord {
+    pub original: Location,
+    pub current: Location,
+    pub original_name: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct CreateDirectoryRequest {
     pub id: OperationRequestId,
@@ -194,6 +218,12 @@ pub enum OperationEvent {
     Renamed {
         request_id: OperationRequestId,
     },
+    RenamedBatch {
+        request_id: OperationRequestId,
+        renamed: Vec<RenameRecord>,
+        /// Per-item failures; the batch still publishes every success.
+        errors: Vec<String>,
+    },
     Created {
         request_id: OperationRequestId,
     },
@@ -281,6 +311,11 @@ pub enum OperationEvent {
 
 pub trait OperationProvider {
     fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    fn rename_batch(
+        &self,
+        request: RenameBatchRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle;
     fn create_directory(
         &self,
         request: CreateDirectoryRequest,

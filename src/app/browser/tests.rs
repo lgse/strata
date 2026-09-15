@@ -946,6 +946,41 @@ impl OperationProvider for ImmediateOperationProvider {
         LoadHandle::new(|| {})
     }
 
+    fn rename_batch(
+        &self,
+        request: RenameBatchRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        let mut renamed = Vec::new();
+        let mut errors = Vec::new();
+        for item in &request.items {
+            let original_name = item
+                .location
+                .native_path()
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "item".to_owned());
+            match item
+                .location
+                .parent()
+                .and_then(|parent| parent.child(OsStr::new(&item.new_name)))
+            {
+                Some(current) => renamed.push(RenameRecord {
+                    original: item.location.clone(),
+                    current,
+                    original_name,
+                }),
+                None => errors.push(format!("{original_name}: bad name")),
+            }
+        }
+        emit(OperationEvent::RenamedBatch {
+            request_id: request.id,
+            renamed,
+            errors,
+        });
+        LoadHandle::new(|| {})
+    }
+
     fn create_directory(
         &self,
         request: CreateDirectoryRequest,
@@ -1083,6 +1118,14 @@ struct HeldExtractProvider {
 impl OperationProvider for HeldExtractProvider {
     fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         ImmediateOperationProvider.rename(request, emit)
+    }
+
+    fn rename_batch(
+        &self,
+        request: RenameBatchRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.rename_batch(request, emit)
     }
 
     fn create_directory(
@@ -2377,6 +2420,150 @@ fn completed_deletions_remove_entries_without_reloading_the_column() {
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
     );
+}
+
+#[test]
+fn rename_many_publishes_one_batch_and_skips_no_ops() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("alpha")));
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("bravo")));
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("charlie")));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let request_id = browser.rename_many(vec![
+        (batch_entry("alpha"), "alpha 1".to_owned()),
+        (batch_entry("bravo"), "bravo 1".to_owned()),
+        (batch_entry("charlie"), "charlie".to_owned()),
+        (batch_entry("alpha"), "alpha 1".to_owned()),
+        (batch_entry("bravo"), String::new()),
+    ]);
+
+    assert!(request_id.is_some());
+    let completed = events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, BrowserEvent::RenameCompleted { .. }))
+        .count();
+    assert_eq!(completed, 1, "one provider call completes once");
+    let splices = events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+        .count();
+    assert_eq!(splices, 1, "both renames publish in a single update");
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::OperationFailed { .. })),
+        "skipped items must not produce a failure summary"
+    );
+}
+
+#[test]
+fn rename_many_with_nothing_to_do_returns_none() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+
+    assert!(
+        browser
+            .rename_many(vec![(batch_entry("alpha"), "alpha".to_owned())])
+            .is_none()
+    );
+}
+
+#[test]
+fn batch_rename_summary_counts_successes_and_failures() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    let emit = browser.operation_callback(request_id, true, HashSet::new());
+
+    emit(OperationEvent::RenamedBatch {
+        request_id,
+        renamed: vec![RenameRecord {
+            original: Location::local("/fixture/alpha"),
+            current: Location::local("/fixture/alpha 1"),
+            original_name: "alpha".to_owned(),
+        }],
+        errors: vec!["bravo: File exists".to_owned()],
+    });
+
+    assert!(
+        events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::OperationFailed { message }
+                if message.contains("Renamed 1 of 2 items")
+                    && message.contains("bravo: File exists")
+        )),
+        "batch failures should collapse into one summary"
+    );
+}
+
+#[test]
+fn single_rename_records_undo_and_replays_it() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("alpha")));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    assert!(
+        browser
+            .rename(batch_entry("alpha"), "alpha 1".to_owned())
+            .is_some()
+    );
+    let Some((generation, records)) = browser.pending_undo_rename() else {
+        panic!("completed rename should record undo");
+    };
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].original_name, "alpha");
+
+    assert!(browser.undo_rename(generation, records));
+    assert!(browser.pending_undo_rename().is_none());
+    let completed = events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, BrowserEvent::RenameCompleted { .. }))
+        .count();
+    assert_eq!(completed, 2, "rename and its undo each complete once");
+}
+
+#[test]
+fn rename_many_records_one_undo_for_the_whole_batch() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("alpha")));
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("bravo")));
+
+    assert!(
+        browser
+            .rename_many(vec![
+                (batch_entry("alpha"), "alpha 1".to_owned()),
+                (batch_entry("bravo"), "bravo 1".to_owned()),
+            ])
+            .is_some()
+    );
+    let Some((generation, records)) = browser.pending_undo_rename() else {
+        panic!("completed batch should record undo");
+    };
+    assert_eq!(records.len(), 2);
+
+    assert!(browser.undo_rename(generation, records));
+    assert!(browser.pending_undo_rename().is_none());
 }
 
 #[test]

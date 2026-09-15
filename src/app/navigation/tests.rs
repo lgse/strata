@@ -223,6 +223,28 @@ fn extending_from_no_selection_starts_at_a_single_edge_entry() {
 }
 
 #[test]
+fn selection_order_starts_from_the_anchor() {
+    let mut state = NavigationState::default();
+    listing_without_a_load_cursor(&mut state);
+    assert!(state.select(0, 2));
+    assert_eq!(
+        state.extend_selection(-1).map(|(_, _, range)| range),
+        Some(vec![1, 2])
+    );
+    assert_eq!(
+        state.extend_selection(-1).map(|(_, _, range)| range),
+        Some(vec![0, 1, 2])
+    );
+
+    let ordered: Vec<_> = state
+        .selected_entries_in_selection_order()
+        .iter()
+        .map(|entry| entry.display_name.clone())
+        .collect();
+    assert_eq!(ordered, vec!["charlie", "alpha", "bravo"]);
+}
+
+#[test]
 fn extending_from_an_escape_cleared_cursor_starts_on_that_entry() {
     let mut state = NavigationState::default();
     listing_with_the_first_entry_selected(&mut state);
