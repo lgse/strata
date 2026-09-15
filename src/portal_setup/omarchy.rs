@@ -121,6 +121,10 @@ pub(super) fn restore(context: &SetupContext) -> Result<(), String> {
     replace_bindings(&path, &original, &updated, reload)
 }
 
+pub(crate) fn omarchy_is_present() -> bool {
+    detected_major().is_some()
+}
+
 fn detected_major() -> Option<u8> {
     if let Ok(output) = Command::new("omarchy").arg("version").output()
         && output.status.success()

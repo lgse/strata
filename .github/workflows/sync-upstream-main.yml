@@ -1,0 +1,68 @@
+name: Sync upstream main
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Hard-reset main to lgse/strata
+    if: github.repository == 'wmfeht/strata'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Hard-reset main to upstream
+        env:
+          UPSTREAM_REPO: https://github.com/lgse/strata.git
+          WORKFLOW_FILE: .github/workflows/sync-upstream-main.yml
+        run: |
+          set -euo pipefail
+
+          # GITHUB_TOKEN (contents: write) can force-push `main` only while no
+          # branch protection or ruleset blocks it. github-actions[bot] cannot
+          # be a ruleset bypass actor; this workflow does not use a PAT.
+          # If a later rule rejects the push, allow force-pushes on `main`
+          # (Settings → Rules / Branches) instead of adding a secret.
+          #
+          # Fetch upstream by URL with no push remote so this job cannot update
+          # lgse/strata. Restore this workflow after the hard-reset; otherwise
+          # the first successful sync would delete it from default-branch history.
+
+          saved="${RUNNER_TEMP}/sync-upstream-main.yml"
+          cp "${WORKFLOW_FILE}" "${saved}"
+
+          git fetch --prune origin "+refs/heads/main:refs/remotes/origin/main"
+          git fetch --prune "${UPSTREAM_REPO}" "+refs/heads/main:refs/remotes/upstream/main"
+          upstream="$(git rev-parse refs/remotes/upstream/main)"
+
+          git checkout --force -B main origin/main
+          git reset --hard "${upstream}"
+          mkdir -p "$(dirname "${WORKFLOW_FILE}")"
+          cp "${saved}" "${WORKFLOW_FILE}"
+          git add -- "${WORKFLOW_FILE}"
+
+          if git diff --quiet origin/main && git diff --quiet --cached origin/main; then
+            echo "main already matches ${UPSTREAM_REPO} main plus this workflow"
+            exit 0
+          fi
+
+          if ! git diff --quiet --cached; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit --message 'ci: restore upstream sync workflow'
+          fi
+
+          git push --force origin HEAD:refs/heads/main
