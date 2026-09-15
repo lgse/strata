@@ -189,6 +189,25 @@ impl ShortcutFooter {
                 more.set_visible(closed_hints.get());
             });
         });
+        let status_widgets = [
+            summary.clone().upcast::<gtk::Widget>(),
+            paste.clone().upcast(),
+            more.clone().upcast(),
+        ];
+        for widget in &status_widgets {
+            let root = root.downgrade();
+            let statuses = status_widgets.each_ref().map(gtk::Widget::downgrade);
+            widget.connect_visible_notify(move |_| {
+                if let Some(root) = root.upgrade() {
+                    // Ignore ancestor visibility so a hidden footer can reveal itself.
+                    root.set_visible(
+                        statuses.iter().any(|status| {
+                            status.upgrade().is_some_and(|status| status.get_visible())
+                        }),
+                    );
+                }
+            });
+        }
         let footer = Self {
             root,
             summary,

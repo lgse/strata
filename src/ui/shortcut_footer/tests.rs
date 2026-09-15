@@ -154,9 +154,9 @@ fn footer_tracks_modes_and_shields_files_while_open() {
 
 impl ShortcutFooter {
     pub(crate) fn assert_hints_visible(&self, visible: bool) {
-        assert!(
+        assert_eq!(
             self.widget().is_visible(),
-            "status feedback remains available"
+            visible || self.paste.is_visible()
         );
         assert_eq!(self.summary.is_visible(), visible);
         assert_eq!(self.more.is_visible(), visible);
@@ -195,9 +195,11 @@ fn paste_availability_tracks_file_clipboard() {
                 footer.paste.is_visible(),
                 "existing files on the clipboard enable paste"
             );
+            assert!(footer.widget().is_visible());
             clipboard.set_text("plain text is not a file clipboard");
             settle();
             assert!(!footer.paste.is_visible());
+            assert!(!footer.widget().is_visible());
             let uri = gdk::ContentProvider::for_bytes(
                 "text/uri-list",
                 &glib::Bytes::from_static(b"file:///tmp/strata-clipboard-fixture.txt\r\n"),
@@ -208,6 +210,7 @@ fn paste_availability_tracks_file_clipboard() {
                 footer.paste.is_visible(),
                 "external URI lists also enable paste"
             );
+            assert!(footer.widget().is_visible());
             clipboard
                 .set_content(Some(&provider))
                 .expect("pending file clipboard");
@@ -227,6 +230,7 @@ fn paste_availability_tracks_file_clipboard() {
                 !footer.paste.is_visible(),
                 "consuming a cut clears paste availability"
             );
+            assert!(!footer.widget().is_visible());
             let empty: Option<gdk::FileList> = None;
             clipboard
                 .set_content(Some(&gdk::ContentProvider::for_value(&empty.to_value())))
