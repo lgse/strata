@@ -271,3 +271,35 @@ def test_starting_a_drag_cancels_a_folder_peek(strata):
         )
     finally:
         strata.pointer.connection.button(1, False)
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_dragging_from_a_clipped_column_in_a_narrow_window(strata):
+    """A row in a horizontally clipped column must still start a drag.
+
+    When the window is narrow enough that two columns overflow, the newer
+    column is clipped and a reveal-button overlay covers its visible strip.
+    That overlay must not swallow the press meant for the row's DragSource.
+    """
+
+    fixture = strata.fixture
+    strata.open_directory("documents")
+
+    bounds = strata.window.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 600, bounds.height)
+    strata.wait(lambda: strata.window.window_bounds().width == 600, "a narrow window")
+
+    # documents is the clipped column; its visible strip sits under the
+    # reveal-button overlay. Drag from it to the sidebar, whose drop target
+    # is independent of the column overlay.
+    source = strata.entry("notes.txt", directory="documents")
+    destination = strata.environment.home / "notes.txt"
+
+    strata.pointer.drag(source, strata.sidebar_button("Home"))
+
+    strata.wait(lambda: destination.exists(), "the dragged file to arrive in Home")
+    strata.wait(
+        lambda: not fixture.path("documents/notes.txt").exists(),
+        "the dragged file to leave the clipped column",
+    )
+    assert destination.read_text() == "notes\n"

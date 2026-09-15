@@ -1352,6 +1352,11 @@ impl ViewState {
         reveal_button.add_css_class("column-peek-target");
         reveal_button.set_focusable(false);
         reveal_button.set_focus_on_click(false);
+        // Overlay strips must never intercept row presses: reveal is driven by
+        // the scroller gesture, which tells rows apart from background. A
+        // targetable overlay would win `pick()` over the row beneath it and
+        // silently break drag-and-drop on clipped columns.
+        reveal_button.set_can_target(false);
         reveal_button.set_cursor_from_name(Some("pointer"));
         reveal_button.set_visible(false);
         crate::ui::accessibility::set_label(
