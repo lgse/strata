@@ -271,8 +271,9 @@ fn type_groups_name_folders_and_broken_links_directly() {
 
 #[test]
 fn files_of_an_unrecognized_type_share_one_group() {
-    assert_eq!(model_type_group("fv\tblob.qqqqq"), "File");
-    assert_eq!(model_type_group("fv\tarchive-index"), "File");
+    assert_eq!(model_type_group("fv\tblob.qqqqq"), "Other");
+    assert_eq!(model_type_group("fv\tarchive-index"), "Other");
+    assert_eq!(model_type_group("ov\tsocket.json"), "Other");
 }
 
 #[test]
@@ -290,5 +291,5 @@ fn repeated_lookups_of_one_suffix_agree() {
     let second = model_type_group("fv\ttwo.py");
 
     assert_eq!(first, second);
-    assert_ne!(first, "File");
+    assert_ne!(first, "Other");
 }

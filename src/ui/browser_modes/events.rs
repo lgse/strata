@@ -247,7 +247,8 @@ impl ModeViews {
         // after the complete camera snapshot is sorted. Keep the existing view,
         // selection model and both scrollers instead of resetting the viewport.
         list.set_header_factory(None::<&gtk::ListItemFactory>);
-        let sorter = grouped.then(super::type_group_sorter);
+        let sorter =
+            grouped.then(|| super::pane_type_group_sorter(&self.browser, pane.depth, &pane.model));
         model.set_section_sorter(sorter.as_ref());
         model.set_sorter(sorter.as_ref());
         if grouped {
