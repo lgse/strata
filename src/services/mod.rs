@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+pub(crate) mod camera_preview;
 mod file_source;
 mod install_source;
 mod native_fs;

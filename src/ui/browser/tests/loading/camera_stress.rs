@@ -18,6 +18,124 @@ fn scroll_lists(widget: &impl IsA<gtk::Widget>, to_end: bool) {
     }
 }
 
+fn listing_scroll(widget: &impl IsA<gtk::Widget>) -> Option<gtk::ScrolledWindow> {
+    if let Some(scroll) = widget.as_ref().downcast_ref::<gtk::ScrolledWindow>()
+        && scroll.has_css_class("browser-listing-scroll")
+        && scroll.is_mapped()
+    {
+        return Some(scroll.clone());
+    }
+    let mut child = widget.as_ref().first_child();
+    while let Some(widget) = child {
+        if let Some(scroll) = listing_scroll(&widget) {
+            return Some(scroll);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+#[test]
+fn camera_batches_keep_the_top_until_the_user_scrolls() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::loading::camera_stress::camera_batches_keep_the_top_until_the_user_scrolls",
+        || {
+            for (mode, user_scroll) in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns]
+                .into_iter()
+                .flat_map(|mode| [false, true].map(|user_scroll| (mode, user_scroll)))
+            {
+                let source = Rc::new(HeldSource::default());
+                let view = BrowserView::new(source.clone(), PeekBehavior::default());
+                view.set_view_mode(mode);
+                view.set_group_by_type(true);
+                crate::ui::thumbnail::hold_thumbnail_workers();
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(700)
+                    .default_height(500)
+                    .build();
+                window.present();
+                let browser = view.browser();
+                browser.navigate(Location::uri("gphoto2://camera/"));
+                let publish = |start| {
+                    let request = source.0.borrow();
+                    let request = request.as_ref().expect("camera request");
+                    (request.emit)(DirectoryEvent::Batch {
+                        request_id: request.id,
+                        entries: (start..start + 32)
+                            .map(|index| {
+                                let name = format!("IMG_{index:04}.JPG");
+                                FileEntry {
+                                    location: Location::uri(format!(
+                                        "gphoto2://camera/DCIM/{name}"
+                                    )),
+                                    native_name: name.clone().into(),
+                                    display_name: name,
+                                    thumbnail_path: None,
+                                    kind: crate::model::EntryKind::File,
+                                    size: crate::model::MetadataValue::Known(100),
+                                    modified_unix_seconds: crate::model::MetadataValue::Known(1),
+                                    mode: crate::model::MetadataValue::Unavailable,
+                                    is_hidden: false,
+                                }
+                            })
+                            .collect(),
+                    });
+                    settle();
+                };
+                settle();
+                publish(128);
+                let scroll = listing_scroll(&view.widget()).expect("camera viewport");
+                let adjustment = scroll.vadjustment();
+                assert!(
+                    adjustment.value() < 1.0,
+                    "{mode:?}: first batch starts at the top: {}",
+                    adjustment.value()
+                );
+                publish(0);
+                assert!(
+                    adjustment.value() < 1.0,
+                    "{mode:?}: a prepended batch must not pull the top down: {}",
+                    adjustment.value()
+                );
+                assert!(browser.column_snapshot(0).expect("camera").loading);
+                if user_scroll {
+                    adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                    settle();
+                    assert!(
+                        adjustment.value() > 0.0,
+                        "the user must be able to scroll during indexing"
+                    );
+                }
+                let user_position = adjustment.value();
+                publish(160);
+                assert!(
+                    (adjustment.value() - user_position).abs() < 1.0,
+                    "{mode:?}: appended results must not move the user's viewport"
+                );
+                source.finish();
+                settle();
+                if user_scroll {
+                    assert!(
+                        adjustment.value() > 0.0,
+                        "finishing must not pin the user back to the top"
+                    );
+                } else {
+                    assert!(
+                        adjustment.value() < 1.0,
+                        "{mode:?}: finishing/grouping must keep the untouched viewport at the top: {}",
+                        adjustment.value()
+                    );
+                }
+                browser.clear_observer();
+                crate::ui::thumbnail::cancel_thumbnails_in(&view.widget());
+                window.destroy();
+                crate::ui::thumbnail::clear_thumbnail_runtime();
+            }
+        },
+    );
+}
+
 fn horizontal_scroll(widget: &impl IsA<gtk::Widget>) -> Option<gtk::Adjustment> {
     if let Some(scroll) = widget.as_ref().downcast_ref::<gtk::ScrolledWindow>() {
         let adjustment = scroll.hadjustment();
