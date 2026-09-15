@@ -618,6 +618,7 @@ impl ViewState {
         heading.set_max_width_chars(1);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
+        truncated_hint.add_css_class("column-truncated-hint");
         truncated_hint.set_tooltip_text(Some(
             "This directory has more entries than could be loaded; showing a partial listing.",
         ));

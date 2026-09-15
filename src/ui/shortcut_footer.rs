@@ -54,8 +54,8 @@ const TOOLS: &[Shortcut] = &[
 #[derive(Clone)]
 pub(super) struct ShortcutFooter {
     root: gtk::Box,
-    summary: gtk::Label,
     paste: gtk::Label,
+    count: gtk::Label,
     show_hints: Rc<Cell<bool>>,
     pending_popup: Rc<Cell<bool>>,
     more: gtk::MenuButton,
@@ -68,22 +68,15 @@ impl ShortcutFooter {
     pub fn new(mode: BrowserMode) -> Self {
         let root = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         root.add_css_class("shortcut-footer");
-        let summary = gtk::Label::builder()
-            .xalign(0.0)
-            .hexpand(true)
-            .single_line_mode(true)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
-            .build();
-        summary.add_css_class("shortcut-footer-summary");
-        let hints = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        hints.set_hexpand(true);
-        hints.append(&summary);
-        root.append(&hints);
+        let count = gtk::Label::new(None);
+        count.add_css_class("shortcut-footer-count");
+        count.set_visible(false);
         let paste = gtk::Label::new(Some("Files on clipboard"));
         paste.add_css_class("shortcut-footer-paste");
         paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
         root.append(&paste);
+        root.append(&count);
         let show_hints = Rc::new(Cell::new(true));
         let pending_popup = Rc::new(Cell::new(false));
 
@@ -91,10 +84,13 @@ impl ShortcutFooter {
         more.set_child(Some(&gtk::Label::new(Some("F1  Shortcuts"))));
         more.add_css_class("shortcut-footer-button");
         more.set_tooltip_text(Some("Show all file-view shortcuts (F1)"));
-        root.append(&more);
+        root.prepend(&more);
+        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        root.insert_child_after(&spacer, Some(&more));
         let popover = gtk::Popover::builder()
             .position(gtk::PositionType::Top)
-            .halign(gtk::Align::End)
+            .halign(gtk::Align::Start)
             .has_arrow(false)
             .build();
         popover.add_css_class("shortcut-popover");
@@ -190,8 +186,8 @@ impl ShortcutFooter {
             });
         });
         let status_widgets = [
-            summary.clone().upcast::<gtk::Widget>(),
-            paste.clone().upcast(),
+            paste.clone().upcast::<gtk::Widget>(),
+            count.clone().upcast(),
             more.clone().upcast(),
         ];
         for widget in &status_widgets {
@@ -210,8 +206,8 @@ impl ShortcutFooter {
         }
         let footer = Self {
             root,
-            summary,
             paste,
+            count,
             show_hints,
             pending_popup,
             more,
@@ -231,15 +227,11 @@ impl ShortcutFooter {
         let show_hints = self.show_hints.clone();
         let pending = self.pending_popup.clone();
         let weak_popover = self.popover.downgrade();
-        let summary = self.summary.downgrade();
         let more = self.more.downgrade();
         manager.on_keybinding_hints_changed(&self.root, move |_, enabled| {
             show_hints.set(enabled);
             if !enabled {
                 pending.set(false);
-            }
-            if let Some(summary) = summary.upgrade() {
-                summary.set_visible(enabled);
             }
             if let Some(more) = more.upgrade() {
                 more.set_visible(
@@ -261,28 +253,20 @@ impl ShortcutFooter {
         })
     }
 
+    pub fn observe_browser(&self, browser: &Rc<crate::app::Browser>) {
+        update_item_count(&self.count, browser);
+        let label = self.count.downgrade();
+        let weak_browser = Rc::downgrade(browser);
+        browser.observe(move |_| {
+            if let Some(label) = label.upgrade()
+                && let Some(browser) = weak_browser.upgrade()
+            {
+                update_item_count(&label, &browser);
+            }
+        });
+    }
+
     pub fn set_mode(&self, mode: BrowserMode) {
-        let shortcuts = summary_shortcuts(mode);
-        self.summary.set_markup(
-            &shortcuts
-                .iter()
-                .map(|(key, action)| {
-                    format!(
-                        "<b>{}</b>  {}",
-                        glib::markup_escape_text(key),
-                        glib::markup_escape_text(action)
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("     "),
-        );
-        self.summary.set_tooltip_text(Some(
-            &shortcuts
-                .iter()
-                .map(|(key, action)| format!("{key}  {action}"))
-                .collect::<Vec<_>>()
-                .join("  ·  "),
-        ));
         while let Some(child) = self.reference.first_child() {
             self.reference.remove(&child);
         }
@@ -399,6 +383,78 @@ impl ShortcutFooter {
     }
 }
 
+fn update_item_count(label: &gtk::Label, browser: &Rc<crate::app::Browser>) {
+    let Some(depth) = browser.active_depth() else {
+        label.set_visible(false);
+        return;
+    };
+    let counts = browser.column_entry_counts(depth).unwrap_or_default();
+    let selected = browser.selected_entries();
+    for position in browser.selected_positions(depth) {
+        if let Some(entry) = browser.entry_at(depth, position)
+            && !entry.is_directory()
+            && entry.size == crate::model::MetadataValue::Unknown
+        {
+            browser.request_metadata_fill(depth, position, entry.location, false);
+        }
+    }
+    let noun = if counts.total == 1 { "item" } else { "items" };
+    if !selected.is_empty() {
+        label.set_label(&selection_details(&selected));
+        label.set_tooltip_text(Some(&format!(
+            "{} of {} {noun} selected. Size includes selected files only; folder contents are not counted.",
+            selected.len(), counts.total
+        )));
+    } else {
+        label.set_label(&format!("{} {noun}", counts.total));
+        let files = if counts.files == 1 { "file" } else { "files" };
+        let folders = if counts.folders == 1 {
+            "folder"
+        } else {
+            "folders"
+        };
+        label.set_tooltip_text(Some(&format!(
+            "{} {files}, {} {folders}",
+            counts.files, counts.folders
+        )));
+    }
+    label.set_visible(true);
+}
+
+fn selection_details(entries: &[crate::model::FileEntry]) -> String {
+    let folders = entries.iter().filter(|entry| entry.is_directory()).count();
+    let files = entries.len() - folders;
+    let mut parts = Vec::new();
+    if folders > 0 {
+        let noun = if folders == 1 { "folder" } else { "folders" };
+        parts.push(format!("{folders} {noun}"));
+    }
+    if files > 0 {
+        let noun = if files == 1 { "file" } else { "files" };
+        parts.push(format!("{files} {noun}"));
+    }
+    let mut text = format!("{} selected", parts.join(", "));
+    if files > 0 {
+        let mut bytes = 0u64;
+        let mut known = 0;
+        for entry in entries.iter().filter(|entry| !entry.is_directory()) {
+            if let crate::model::MetadataValue::Known(size) = entry.size {
+                bytes = bytes.saturating_add(size);
+                known += 1;
+            }
+        }
+        let size = super::browser::format_file_size(bytes);
+        if known == files {
+            text.push_str(&format!(" ({size})"));
+        } else if known > 0 {
+            text.push_str(&format!(" ({size} known; size incomplete)"));
+        } else {
+            text.push_str(" (size unavailable)");
+        }
+    }
+    text
+}
+
 fn refresh_paste_availability(
     clipboard: &gdk::Clipboard,
     label: &glib::WeakRef<gtk::Label>,
@@ -432,35 +488,6 @@ fn refresh_paste_availability(
             label.set_visible(available);
         }
     });
-}
-
-fn summary_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
-    let mut shortcuts = vec![match mode {
-        BrowserMode::Columns => ("↑↓ ←→", "Navigate"),
-        BrowserMode::Icons => ("↑↓←→", "Move"),
-        BrowserMode::List => ("↑↓", "Move"),
-    }];
-    shortcuts.push(match mode {
-        BrowserMode::Columns => ("← at first pane", "Sidebar"),
-        BrowserMode::Icons => ("← at edge", "Sidebar"),
-        BrowserMode::List => ("←", "Sidebar"),
-    });
-    shortcuts.extend_from_slice(&[
-        ("↑ at top", "Header"),
-        ("Enter", "Open"),
-        (
-            "Space",
-            if mode == BrowserMode::Columns {
-                "Open / preview"
-            } else {
-                "Preview"
-            },
-        ),
-        ("Ctrl+F", "Filter"),
-        ("Ctrl+C / X", "Copy / cut"),
-        ("Del", "Trash"),
-    ]);
-    shortcuts
 }
 
 fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {

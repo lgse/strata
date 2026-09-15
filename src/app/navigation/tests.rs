@@ -1728,3 +1728,53 @@ fn type_sorting_orders_by_mime_descriptions_without_folders_first() {
         ]
     );
 }
+
+#[test]
+fn column_entry_counts_breakdown_and_hidden() {
+    let mut state = NavigationState::default();
+    assert_eq!(state.column_entry_counts(0), None);
+
+    state.navigate(location("/fixture"), RequestId(1));
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 0,
+            files: 0,
+            folders: 0,
+        })
+    );
+
+    let mut folder = named_entry("/fixture/folder1", "folder1");
+    folder.kind = EntryKind::Directory;
+
+    let mut file1 = named_entry("/fixture/file1.txt", "file1.txt");
+    file1.kind = EntryKind::File;
+
+    let mut file2 = named_entry("/fixture/file2.txt", "file2.txt");
+    file2.kind = EntryKind::File;
+
+    let mut hidden_file = named_entry("/fixture/.hidden", ".hidden");
+    hidden_file.kind = EntryKind::File;
+    hidden_file.is_hidden = true;
+
+    state.apply_batch(RequestId(1), vec![folder, file1, file2, hidden_file]);
+
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 3,
+            files: 2,
+            folders: 1,
+        })
+    );
+
+    state.set_show_hidden(true);
+    assert_eq!(
+        state.column_entry_counts(0),
+        Some(ColumnEntryCounts {
+            total: 4,
+            files: 3,
+            folders: 1,
+        })
+    );
+}

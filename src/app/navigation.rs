@@ -32,6 +32,13 @@ pub struct EntrySplice {
     pub entries: Vec<FileEntry>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ColumnEntryCounts {
+    pub total: usize,
+    pub files: usize,
+    pub folders: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct ColumnState {
     pub location: Location,
@@ -1137,6 +1144,29 @@ impl NavigationState {
 
     pub fn entry_at(&self, depth: usize, position: usize) -> Option<FileEntry> {
         self.columns.get(depth)?.entries.get(position).cloned()
+    }
+
+    pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
+        let column = self.columns.get(depth)?;
+        let show_hidden = column.preferences.show_hidden;
+        let mut folders = 0;
+        let mut files = 0;
+        let mut total = 0;
+        for entry in &column.entries {
+            if show_hidden || !entry.is_hidden {
+                total += 1;
+                if entry.is_directory() {
+                    folders += 1;
+                } else {
+                    files += 1;
+                }
+            }
+        }
+        Some(ColumnEntryCounts {
+            total,
+            files,
+            folders,
+        })
     }
 
     pub fn active_child_position(&self, depth: usize) -> Option<usize> {

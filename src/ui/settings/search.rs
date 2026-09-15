@@ -134,8 +134,8 @@ const TARGETS: &[Target] = &[
     Target {
         id: "hints",
         page: "keybindings",
-        title: "Show keybinding hints",
-        aliases: "keyboard shortcuts footer navigation paste",
+        title: "Show F1 Shortcuts button",
+        aliases: "keyboard keybinding hints shortcuts footer navigation paste",
     },
     Target {
         id: "shortcuts",

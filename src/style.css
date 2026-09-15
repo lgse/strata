@@ -2476,17 +2476,19 @@ entry.preview-command-entry selection {
   font-size: 0.85em;
 }
 
+.shortcut-footer-count {
+  color: @theme_text;
+  font-weight: normal;
+}
+
 .shortcut-footer-paste {
   color: @theme_accent;
   background-color: alpha(@theme_accent, 0.10);
   border: 1px solid alpha(@theme_accent, 0.35);
   border-radius: 4px;
+  margin: 2px 0;
   padding: 1px 6px;
   font-weight: bold;
-}
-
-.shortcut-footer-summary {
-  color: @theme_text;
 }
 
 .shortcut-footer-button > button,
@@ -2662,6 +2664,14 @@ entry.preview-command-entry selection {
   min-height: 31px;
   /* Balance the three-pixel top indicator against the one-pixel bottom border. */
   padding: 2px 5px 4px 12px;
+}
+
+.column-truncated-hint {
+  opacity: 0;
+}
+
+.directory-column:hover .column-truncated-hint {
+  opacity: 1;
 }
 
 .column-heading {
