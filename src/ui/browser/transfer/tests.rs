@@ -168,6 +168,9 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let first = entry("/fixture/selected/first.txt");
     let second = entry("/fixture/selected/second.txt");
@@ -187,6 +190,9 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
     for uri in ["trash:///file.txt", "trash:///folder/file.txt"] {
         let trashed = FileEntry {
             location: Location::uri(uri),
+            image_dimensions: crate::model::MetadataValue::Unknown,
+            child_count: crate::model::MetadataValue::Unknown,
+            duration_seconds: crate::model::MetadataValue::Unknown,
             ..entry("file.txt")
         };
         assert_eq!(duplicate_transfer(&[trashed]), None);
@@ -662,6 +668,158 @@ fn undo_move_keeps_skip_visible_for_a_partial_restore() {
                 b"blocker",
                 "a skipped conflict must not be overwritten"
             );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn drop_open_preference_applies_before_settings_and_live_across_views() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::drop_open_preference_applies_before_settings_and_live_across_views",
+        || {
+            use crate::ui::browser_modes::BrowserMode;
+            crate::ui::theme::ThemeManager::seed_saved_preferences_for_test();
+            let manager = crate::ui::theme::ThemeManager::shared();
+            assert!(manager.open_folder_after_drop());
+            let views: Vec<_> = (0..2)
+                .map(|_| {
+                    let view = crate::ui::browser::BrowserView::new(
+                        Rc::new(crate::adapters::LocalFileSource),
+                        crate::ui::browser::PeekBehavior::default(),
+                    );
+                    view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+                    view
+                })
+                .collect();
+            for enabled in [true, false, true] {
+                manager.set_open_folder_after_drop(enabled);
+                for mode in [BrowserMode::List, BrowserMode::Columns] {
+                    for (index, view) in views.iter().enumerate() {
+                        view.set_view_mode(mode);
+                        let fixture = tempfile::tempdir().expect("drop fixture");
+                        let destination = fixture.path().join("destination");
+                        std::fs::create_dir(&destination).expect("drop destination");
+                        let source = fixture.path().join("file.txt");
+                        std::fs::write(&source, b"dropped").expect("drop source");
+                        view.navigate_location(Location::local(fixture.path()));
+                        let events = Rc::new(RefCell::new(Vec::new()));
+                        let observed = events.clone();
+                        view.browser()
+                            .observe(move |event| observed.borrow_mut().push(event.clone()));
+                        let commit = if index == 0 {
+                            DropCommit::Copy
+                        } else {
+                            DropCommit::Move
+                        };
+                        view.state.commit_file_drop(
+                            Location::local(&destination),
+                            vec![Location::local(&source)],
+                            commit,
+                        );
+                        wait_until(
+                            || {
+                                events.borrow().iter().any(|event| {
+                                    matches!(
+                                        event,
+                                        crate::app::BrowserEvent::TransferFinished { .. }
+                                    )
+                                })
+                            },
+                            "drop completion",
+                        );
+                        assert_eq!(
+                            std::fs::read(destination.join("file.txt")).expect("dropped file"),
+                            b"dropped"
+                        );
+                        assert_eq!(source.exists(), index == 0);
+                        assert_eq!(
+                            events.borrow().iter().any(|event| matches!(
+                                event,
+                                crate::app::BrowserEvent::TransferReveal { .. }
+                            )),
+                            enabled
+                        );
+                        let expected = if enabled {
+                            Location::local(&destination)
+                        } else {
+                            Location::local(fixture.path())
+                        };
+                        assert_eq!(view.browser().active_location(), Some(expected));
+                        if enabled && mode == BrowserMode::Columns {
+                            assert_eq!(
+                                view.browser().location_at(0),
+                                Some(Location::local(fixture.path()))
+                            );
+                            assert_eq!(
+                                view.browser().location_at(1),
+                                Some(Location::local(&destination))
+                            );
+                        }
+                    }
+                }
+            }
+        },
+    );
+}
+
+#[test]
+fn cross_device_confirmation_reads_the_live_drop_open_preference() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::cross_device_confirmation_reads_the_live_drop_open_preference",
+        || {
+            let manager = crate::ui::theme::ThemeManager::shared();
+            assert!(!manager.open_folder_after_drop());
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            view.set_view_mode(crate::ui::browser_modes::BrowserMode::List);
+            let root = crate::ui::blur::BlurBin::new(&view.widget());
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            for (button, enabled) in [("Copy", true), ("Move", false)] {
+                let fixture = tempfile::tempdir().expect("confirmed drop fixture");
+                let destination = fixture.path().join("destination");
+                std::fs::create_dir(&destination).expect("confirmed destination");
+                let source = fixture.path().join("file.txt");
+                std::fs::write(&source, b"confirmed").expect("confirmed source");
+                view.navigate_location(Location::local(fixture.path()));
+                let finished = Rc::new(Cell::new(false));
+                let observed = finished.clone();
+                view.browser().observe(move |event| {
+                    if matches!(event, crate::app::BrowserEvent::TransferFinished { .. }) {
+                        observed.set(true);
+                    }
+                });
+                manager.set_open_folder_after_drop(!enabled);
+                view.state.commit_file_drop(
+                    Location::local(&destination),
+                    vec![Location::local(&source)],
+                    DropCommit::Ask {
+                        default: TransferKind::Copy,
+                        volume: VolumeRelation::Different,
+                    },
+                );
+                assert!(wait_for_modal_layer(&overlay));
+                manager.set_open_folder_after_drop(enabled);
+                click_button(&overlay, button);
+                wait_until(|| finished.get(), "confirmed drop completion");
+                assert_eq!(
+                    std::fs::read(destination.join("file.txt")).expect("confirmed file"),
+                    b"confirmed"
+                );
+                assert_eq!(source.exists(), button == "Copy");
+                let expected = if enabled {
+                    Location::local(&destination)
+                } else {
+                    Location::local(fixture.path())
+                };
+                assert_eq!(view.browser().active_location(), Some(expected));
+            }
             window.destroy();
         },
     );

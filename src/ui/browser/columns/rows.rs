@@ -429,6 +429,16 @@ pub(super) fn column_rows(
                             .and_then(|source_position| {
                                 let entry = state.browser.entry_at(depth, source_position)?;
                                 state.browser.select(depth, source_position);
+                                if is_trash_location(&entry.location) && !entry.is_directory() {
+                                    if state.single_click_previews.get() {
+                                        return Some((
+                                            source_position,
+                                            entry.location,
+                                            PendingActivationKind::Standard { preview: true },
+                                        ));
+                                    }
+                                    return None;
+                                }
                                 Some((
                                     source_position,
                                     entry.location,
@@ -680,6 +690,9 @@ pub(super) fn column_rows(
                 .as_ref()
                 .and_then(|state| state.pending_rename_name(entry));
             label.set_label(pending_name.as_deref().unwrap_or(&entry.display_name));
+            label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+        } else {
+            label.set_opacity(1.0);
         }
         let origin = entry
             .as_ref()
@@ -729,7 +742,8 @@ pub(super) fn column_rows(
             } else {
                 crate::ui::thumbnail::show_fallback_icon(&icon, entry_icon(entry), 17);
             }
-            icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+            icon.set_hidden(entry.is_hidden);
+            icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
             chevron.set_visible(entry.is_directory());
             if mode_active
                 && let Some(state) = state.as_ref()
@@ -738,11 +752,13 @@ pub(super) fn column_rows(
             {
                 state
                     .browser
-                    .request_metadata_fill(depth, position, entry.location.clone());
+                    .request_metadata_fill(depth, position, entry.location.clone(), false);
             }
         } else {
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);
-            icon.set_opacity(0.72);
+            icon.set_hidden(false);
+            icon.set_cut(false);
+            icon.set_base_opacity(0.72);
             chevron.set_visible(false);
         }
         let size_text = column_size_text(entry.as_ref());

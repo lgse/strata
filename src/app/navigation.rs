@@ -1252,6 +1252,22 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         entry.mode = update.mode.clone();
         changed = true;
     }
+    if update.image_dimensions != MetadataValue::Unknown
+        && entry.image_dimensions != update.image_dimensions
+    {
+        entry.image_dimensions = update.image_dimensions.clone();
+        changed = true;
+    }
+    if update.child_count != MetadataValue::Unknown && entry.child_count != update.child_count {
+        entry.child_count = update.child_count.clone();
+        changed = true;
+    }
+    if update.duration_seconds != MetadataValue::Unknown
+        && entry.duration_seconds != update.duration_seconds
+    {
+        entry.duration_seconds = update.duration_seconds.clone();
+        changed = true;
+    }
     changed
 }
 

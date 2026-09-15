@@ -426,6 +426,9 @@ const COALESCE_ENTRIES: usize = 2048;
 /// Bounds one remote progressive flush: a slow link must not turn one timer
 /// fire into a multi-frame GTK mutation.
 const REMOTE_FLUSH_CAP: usize = 512;
+// Camera folders repeat filenames, creating many interleaved insertions rather
+// than one cheap append. Keep each publication small enough for input/frame work.
+const CAMERA_FLUSH_CAP: usize = 32;
 /// Latency bound so later remote batches flush on the next idle/frame.
 const REMOTE_FLUSH_DELAY: Duration = Duration::from_millis(50);
 /// Snapshots at or below this size sort synchronously; larger ones sort in a
@@ -441,6 +444,7 @@ type BatchSelectionState = HashMap<usize, (RequestId, Vec<usize>, usize)>;
 struct ViewportTarget {
     position: usize,
     location: Location,
+    include_icon_details: bool,
 }
 
 /// Routing for one metadata request: own ids, validated against the owning
@@ -523,6 +527,10 @@ pub struct Browser {
     restoration_operation: Cell<bool>,
     archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
+    /// Whether a completed transfer should navigate to/reveal its destination.
+    /// A drop onto a folder row moves or copies the file without leaving the
+    /// source listing; a paste or explicit "move to" still shows where it landed.
+    transfer_reveal: Cell<bool>,
     created_locations: RefCell<Vec<Location>>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
@@ -573,6 +581,7 @@ impl Browser {
             restoration_operation: Cell::new(false),
             archive_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
+            transfer_reveal: Cell::new(true),
             created_locations: RefCell::new(Vec::new()),
             undo_claim: RefCell::new(None),
             next_request: Cell::new(1),
@@ -1446,6 +1455,7 @@ impl Browser {
         destination: Location,
         items: Vec<PasteItem>,
         move_sources: bool,
+        reveal: bool,
     ) {
         if items.is_empty() {
             return;
@@ -1459,6 +1469,7 @@ impl Browser {
         let request_id = self.begin_operation();
         self.transfer_operation.set(Some(move_sources));
         self.transfer_destination.replace(Some(destination.clone()));
+        self.transfer_reveal.set(reveal);
         self.emit(BrowserEvent::TransferStarted {
             total: items.len(),
             moving: move_sources,
@@ -1901,6 +1912,7 @@ impl Browser {
             let restoring = browser.restoration_operation.replace(false);
             let archiving = browser.archive_operation.replace(false);
             let destination = browser.transfer_destination.replace(None);
+            let reveal = browser.transfer_reveal.replace(true);
             let deferred_file_operation_changes = if deleting || restoring {
                 browser.deferred_file_operation_changes.take()
             } else {
@@ -2036,9 +2048,7 @@ impl Browser {
                     browser.emit(BrowserEvent::OperationFailed { message });
                 }
                 OperationEvent::TransferFailed { message, .. } => {
-                    for location in &refresh_locations {
-                        browser.refresh_columns_at(location);
-                    }
+                    browser.refresh_columns_at_many(&refresh_locations);
                     browser.emit(BrowserEvent::OperationFailed { message });
                 }
                 OperationEvent::CompletedWithErrors {
@@ -2103,11 +2113,11 @@ impl Browser {
                 OperationEvent::Renamed { .. } => {
                     browser.emit(BrowserEvent::RenameCompleted { request_id });
                     // Remote locations have no monitor to publish the authoritative rename.
-                    for location in &refresh_locations {
-                        if location.native_path().is_none() {
-                            browser.refresh_columns_at(location);
-                        }
-                    }
+                    browser.refresh_columns_at_many(
+                        refresh_locations
+                            .iter()
+                            .filter(|location| location.native_path().is_none()),
+                    );
                 }
                 OperationEvent::Compressed { archive_name, .. } => {
                     browser.emit(BrowserEvent::ArchiveCompleted {
@@ -2120,12 +2130,13 @@ impl Browser {
                     });
                 }
                 OperationEvent::Pasted { .. } => {
-                    for location in &refresh_locations {
-                        if location.native_path().is_none() {
-                            browser.refresh_columns_at(location);
-                        }
-                    }
-                    if undoing.is_none()
+                    browser.refresh_columns_at_many(
+                        refresh_locations
+                            .iter()
+                            .filter(|location| location.native_path().is_none()),
+                    );
+                    if reveal
+                        && undoing.is_none()
                         && browser.validation_generation.get() == navigation_generation
                         && browser.active_location() == origin
                         && !reveal_locations.is_empty()
@@ -2142,18 +2153,18 @@ impl Browser {
                     if browser.validation_generation.get() == navigation_generation {
                         browser.emit(BrowserEvent::EntryCreated { location });
                     }
-                    for location in &refresh_locations {
-                        if location.native_path().is_none() {
-                            browser.refresh_columns_at(location);
-                        }
-                    }
+                    browser.refresh_columns_at_many(
+                        refresh_locations
+                            .iter()
+                            .filter(|location| location.native_path().is_none()),
+                    );
                 }
                 OperationEvent::Created { .. } => {
-                    for location in &refresh_locations {
-                        if location.native_path().is_none() {
-                            browser.refresh_columns_at(location);
-                        }
-                    }
+                    browser.refresh_columns_at_many(
+                        refresh_locations
+                            .iter()
+                            .filter(|location| location.native_path().is_none()),
+                    );
                 }
                 OperationEvent::TransferProgress { .. }
                 | OperationEvent::DeleteProgress { .. }
@@ -2245,7 +2256,7 @@ impl Browser {
             return;
         };
         if entry.is_directory() {
-            self.navigate_with_selection(entry.location, select_first);
+            self.navigate_location(entry.location, select_first);
         } else if self.should_extract_on_activate(&entry) {
             self.emit(BrowserEvent::ExtractRequested { entry });
         } else {
@@ -2779,6 +2790,7 @@ impl Browser {
         depth: usize,
         position: usize,
         location: Location,
+        include_icon_details: bool,
     ) {
         // Defer to the provider instead of rejecting remote locations owner-side:
         // unsupported sources answer `Unsupported`.
@@ -2788,10 +2800,14 @@ impl Browser {
         {
             let mut pending = self.metadata_pending.borrow_mut();
             let queued = pending.entry(depth).or_default();
-            if queued.len() < MAX_PENDING_FILL_LOCATIONS
-                && !queued.iter().any(|target| target.location == location)
-            {
-                queued.push(ViewportTarget { position, location });
+            if let Some(target) = queued.iter_mut().find(|target| target.location == location) {
+                target.include_icon_details |= include_icon_details;
+            } else if queued.len() < MAX_PENDING_FILL_LOCATIONS {
+                queued.push(ViewportTarget {
+                    position,
+                    location,
+                    include_icon_details,
+                });
             }
         }
         if let Some(source) = self.metadata_timer.borrow_mut().take() {
@@ -2837,6 +2853,7 @@ impl Browser {
                 id: fill_request,
                 entries: targets.into_iter().map(|(_, location)| location).collect(),
                 full: true,
+                include_icon_details: false,
                 time_budget: DIRECTORY_LOAD_TIME_BUDGET,
             },
             emit,
@@ -3048,6 +3065,7 @@ impl Browser {
                 .iter()
                 .map(|target| (target.position, target.location.clone()))
                 .collect();
+            let include_icon_details = targets.iter().any(|target| target.include_icon_details);
             // Stored before the provider runs: synchronous fills answer inside the call.
             self.fill_tokens
                 .borrow_mut()
@@ -3066,6 +3084,7 @@ impl Browser {
                     id: fill_request,
                     entries: targets.into_iter().map(|target| target.location).collect(),
                     full: false,
+                    include_icon_details,
                     time_budget: METADATA_FILL_TIME_BUDGET,
                 },
                 emit,
@@ -3136,26 +3155,42 @@ impl Browser {
             .map(|preferences| preferences.sort_key)
             .unwrap_or_else(|| self.preferences.get().sort_key);
         let include_metadata = matches!(sort_key, SortKey::Size | SortKey::Modified);
+        let (max_entries, time_budget) = if location.is_camera_photo_root() {
+            (usize::MAX, Duration::MAX)
+        } else {
+            (MAX_DIRECTORY_ENTRIES, DIRECTORY_LOAD_TIME_BUDGET)
+        };
         self.source.enumerate(
             DirectoryRequest {
                 id: request_id,
                 location,
                 batch_size,
                 include_metadata,
-                max_entries: MAX_DIRECTORY_ENTRIES,
-                time_budget: DIRECTORY_LOAD_TIME_BUDGET,
+                max_entries,
+                time_budget,
             },
             emit,
         )
     }
 
     pub(crate) fn refresh_columns_at(self: &Rc<Self>, location: &Location) {
+        self.refresh_columns_at_many([location]);
+    }
+
+    fn refresh_columns_at_many<'a>(
+        self: &Rc<Self>,
+        locations: impl IntoIterator<Item = &'a Location>,
+    ) {
+        let locations: Vec<_> = locations.into_iter().collect();
         let depths = {
             let state = self.state.borrow();
             let mut depths = Vec::new();
             let mut depth = 0;
             while let Some(open_location) = state.location_at(depth) {
-                if &open_location == location {
+                if locations.iter().any(|location| {
+                    &open_location == *location
+                        || open_location.contains_camera_photo_location(location)
+                }) {
                     depths.push(depth);
                 }
                 depth += 1;
@@ -3183,7 +3218,11 @@ impl Browser {
             locations
         };
         for (depth, location) in open_locations {
-            if location_or_ancestor_is_affected(&location, roots) {
+            if location_or_ancestor_is_affected(&location, roots)
+                || roots
+                    .iter()
+                    .any(|root| location.contains_camera_photo_location(root))
+            {
                 self.refresh_column(depth);
             }
         }
@@ -3195,9 +3234,7 @@ impl Browser {
                 .iter()
                 .filter_map(deletion_parent_location)
                 .collect();
-            for parent in parents {
-                self.refresh_columns_at(&parent);
-            }
+            self.refresh_columns_at_many(&parents);
             return;
         }
         for location in locations {
@@ -3209,17 +3246,19 @@ impl Browser {
                 let mut depths = Vec::new();
                 let mut depth = 0;
                 while let Some(open_location) = state.location_at(depth) {
-                    if open_location == parent {
-                        depths.push(depth);
+                    if open_location == parent
+                        || open_location.contains_camera_photo_location(location)
+                    {
+                        depths.push((depth, open_location));
                     }
                     depth += 1;
                 }
                 depths
             };
-            for depth in depths {
+            for (depth, watched) in depths {
                 self.handle_directory_change(
                     depth,
-                    &parent,
+                    &watched,
                     DirectoryChange::Remove(location.clone()),
                 );
             }
@@ -3303,6 +3342,20 @@ impl Browser {
         depth: usize,
         matches: impl Fn(&FileEntry) -> bool,
     ) -> bool {
+        let has_hidden_match = self
+            .state
+            .borrow()
+            .columns
+            .get(depth)
+            .is_some_and(|column| {
+                column
+                    .entries
+                    .iter()
+                    .any(|entry| matches(entry) && entry.is_hidden)
+            });
+        if has_hidden_match && !self.preferences.get().show_hidden {
+            self.toggle_hidden();
+        }
         let state = self.state.borrow();
         let Some(column) = state.columns.get(depth) else {
             return false;

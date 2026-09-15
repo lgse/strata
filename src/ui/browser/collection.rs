@@ -320,7 +320,10 @@ pub(crate) fn bind_filter_query(
 }
 
 pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterChange {
-    if settled.starts_with(previous) && settled.len() > previous.len() {
+    // Adding/removing a star can broaden or re-anchor the match, not just narrow it.
+    if previous.contains('*') || settled.contains('*') {
+        gtk::FilterChange::Different
+    } else if settled.starts_with(previous) && settled.len() > previous.len() {
         gtk::FilterChange::MoreStrict
     } else if previous.starts_with(settled) && previous.len() > settled.len() {
         gtk::FilterChange::LessStrict
@@ -507,21 +510,20 @@ impl ViewMap {
 }
 
 pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::model::FileEntry {
-    use crate::model::{EntryKind, FileEntry, MetadataValue};
+    use crate::model::{FileEntry, MetadataValue};
     FileEntry {
         location: Location::local(item.path.clone()),
         native_name: item.path.file_name().unwrap_or_default().to_os_string(),
         thumbnail_path: None,
         display_name: item.name.clone(),
-        kind: if item.is_directory {
-            EntryKind::Directory
-        } else {
-            EntryKind::File
-        },
+        kind: item.kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
-        mode: MetadataValue::Unknown,
+        mode: item.mode.clone(),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 

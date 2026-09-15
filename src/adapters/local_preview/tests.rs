@@ -2,6 +2,8 @@
 
 use std::{fs, time::Duration};
 
+mod remote_preview;
+
 use super::*;
 use crate::services::{MediaPreviewSize, PreviewContent};
 
@@ -99,6 +101,9 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                         modified_unix_seconds: MetadataValue::Known(1),
                         mode: MetadataValue::Unknown,
                         is_hidden: false,
+                        image_dimensions: MetadataValue::Unknown,
+                        child_count: MetadataValue::Unknown,
+                        duration_seconds: MetadataValue::Unknown,
                     },
                     text_byte_limit: 1024,
                     pdf_page: 0,
@@ -324,6 +329,9 @@ fn cancelled_in_flight_pdf_renders_keep_the_permit_and_emit_no_stale_events() {
                     modified_unix_seconds: MetadataValue::Unknown,
                     mode: MetadataValue::Unknown,
                     is_hidden: false,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 text_byte_limit: 1024,
                 pdf_page: 1,
@@ -437,6 +445,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
             path: "clip.mp4".into(),
             size: MediaPreviewSize::new(520, 800),
             backend: MediaPreviewBackend::Software,
+            input_owner: None,
         },
     };
     cache.insert(key.clone(), content.clone());
@@ -465,7 +474,8 @@ fn preview_content_size_computes_accurately() {
             media: SandboxedMedia {
                 path: "clip.mp4".into(),
                 size: MediaPreviewSize::new(520, 800),
-                backend: MediaPreviewBackend::Software
+                backend: MediaPreviewBackend::Software,
+                input_owner: None,
             },
         }),
         0
@@ -478,4 +488,81 @@ fn preview_content_size_computes_accurately() {
         5
     );
     assert_eq!(preview_content_size(&PreviewContent::Unsupported), 0);
+}
+
+#[test]
+fn uncertain_file_names_resolve_their_preview_from_the_content() {
+    use crate::{
+        model::{EntryKind, FileEntry, Location, MetadataValue},
+        services::PreviewRequestId,
+    };
+
+    let _main_context = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main context lock");
+    let directory = tempfile::tempdir().expect("preview fixture directory");
+    let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+    let context = glib::MainContext::default();
+    let _owner = context.acquire().expect("main context owner");
+
+    for (name, bytes, expected) in [
+        (
+            "some notes",
+            &b"hello\nworld\n"[..],
+            PreviewContent::Text {
+                content: "hello\nworld\n".to_owned(),
+                truncated: false,
+            },
+        ),
+        (
+            "some data",
+            &[0_u8, 159, 146, 150, 0, 255, 0, 1][..],
+            PreviewContent::Unsupported,
+        ),
+    ] {
+        let path = directory.path().join(name);
+        fs::write(&path, bytes).expect("preview fixture");
+        let request = PreviewRequest {
+            id: PreviewRequestId(1),
+            entry: FileEntry {
+                location: Location::local(&path),
+                thumbnail_path: None,
+                native_name: name.into(),
+                display_name: name.into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+            },
+            text_byte_limit: 1024,
+            pdf_page: 0,
+            media_size: MediaPreviewSize::new(640, 800),
+        };
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let events_for_emit = events.clone();
+        let _handle = provider.load_with_renderer(
+            request,
+            Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+            |_, _, _, _, _| -> Result<crate::sandbox::ParseOutput, String> {
+                panic!("text and unsupported files must not reach the sandbox")
+            },
+        );
+        context.block_on(async {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while events.borrow().is_empty() && std::time::Instant::now() < deadline {
+                glib::timeout_future(Duration::from_millis(1)).await;
+            }
+        });
+
+        let events = events.borrow();
+        assert_eq!(events.len(), 1, "{name}");
+        let PreviewEvent::Ready(preview) = &events[0] else {
+            panic!("{name} preview failed");
+        };
+        assert_eq!(preview.content, expected, "{name}");
+    }
 }

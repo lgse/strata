@@ -19,6 +19,7 @@ impl PreviewProvider for MediaPreview {
                     path: "/synthetic-video.mp4".into(),
                     size: request.media_size,
                     backend: crate::sandbox::MediaPreviewBackend::Software,
+                    input_owner: None,
                 },
             },
         }));

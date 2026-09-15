@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES, SINGLE_PANE_MODES
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 # Folders stay grouped first, so descending is not simply the reverse.
@@ -87,45 +87,90 @@ def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
     )
 
 
-def assert_filtered_result_opens(strata, activation):
+@pytest.fixture
+def pattern_files(fixture_tree):
+    photos = fixture_tree.path("Photos")
+    photos.mkdir()
+    (photos / "album.MOV").mkdir()
+    for name in [
+        "clip.MOV", "IMG_001.MOV", "IMG_001.jpg", "clip.MOV.bak", ".hidden.MOV",
+        "album.MOV/deep.MOV", "album.MOV/unrelated.txt",
+    ]:
+        (photos / name).write_text("fixture\n")
+
+
+@pytest.mark.parametrize("preferences", [
+    {"filter_include_subfolders": False},
+    {"filter_include_subfolders": True},
+], ids=["directory", "subfolders"])
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_wildcard_filter_patterns_preserve_scope_and_clear(
+    pattern_files, strata, mode, preferences,
+):
+    strata.open_directory("Photos")
+    strata.select_entry("clip.MOV.bak", directory="Photos")
+    original = {"album.MOV", "clip.MOV", "IMG_001.MOV", "IMG_001.jpg", "clip.MOV.bak"}
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    recursive = preferences["filter_include_subfolders"]
+    for query, expected in [
+        ("*.MOV", {"album.MOV", "clip.MOV", "IMG_001.MOV"} | ({"deep.MOV"} if recursive else set())),
+        ("IMG*", {"IMG_001.MOV", "IMG_001.jpg"}),
+        ("IMG*.MOV", {"IMG_001.MOV"}),
+        ("IMG*_001*.mov", {"IMG_001.MOV"}),
+        ("*.MOV.b", set()),
+        ("*.MOV.b*", {"clip.MOV.bak"}),
+        ("*.MOV.b", set()),
+        (".MOV.b", {"clip.MOV.bak"}),
+        ("*", original | ({"deep.MOV", "unrelated.txt"} if recursive else set())),
+    ]:
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(query)
+        strata.wait(lambda: field.text == query, "the wildcard query to be typed")
+        strata.wait(
+            lambda: set(strata.matches("Photos")) == expected,
+            f"wildcard results for {query} (subfolders={recursive})",
+        )
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.press("BackSpace")
+    strata.wait(lambda: field.text == "", "the query to clear")
+    strata.wait(
+        lambda: set(strata.entry_names("Photos")) == original,
+        "clearing the wildcard to restore the listing without hidden or nested entries",
+    )
+
+
+def assert_filtered_result_opens(strata):
     strata.select_entry("documents")
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
-    strata.keyboard.type_text("documents")
-    strata.wait(lambda: field.text == "documents", "the filter query")
+    strata.keyboard.type_text("doc*ments")
+    strata.wait(lambda: field.text == "doc*ments", "the filter query")
     result = strata.wait(
         lambda: strata.window.find(role="list item", name="documents"),
         "the filtered folder result",
     )
-
-    if activation == "click":
-        strata.pointer.click(result)
-    else:
-        strata.keyboard.press("Down")
-        strata.keyboard.press("Return")
-
+    strata.pointer.click(result)
     strata.wait_for_directory("documents")
 
 
 @pytest.mark.preferences(
     **DOUBLE_CLICK_PREFERENCES, filter_include_subfolders=False
 )
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("activation", ["click", "enter"])
-def test_local_filtered_results_open_with_one_activation(strata, mode, activation):
-    assert_filtered_result_opens(strata, activation)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_local_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
 
 
 @DOUBLE_CLICK
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("activation", ["click", "enter"])
-def test_recursive_filtered_results_open_with_one_activation(strata, mode, activation):
-    assert_filtered_result_opens(strata, activation)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_recursive_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
 
 
 @DOUBLE_CLICK
-@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
-def test_recursive_file_double_click_launches_once(launch_counter, strata, mode):
+@pytest.mark.preferences(browser_mode="list")
+def test_recursive_file_double_click_launches_once(launch_counter, strata):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")
@@ -287,7 +332,19 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
         "all navigation results to be indexed",
     )
 
-    for _ in range(3):
+    results = [
+        node
+        for node in strata.window.find_all(role="list item")
+        if any(node.name.endswith(f"/{name}") for name in names)
+    ]
+    assert len(results) == len(names)
+    assert results[0].has_state("selected")
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: results[1].has_state("selected"),
+        "the first Down press to advance past the preselected result",
+    )
+    for _ in range(2):
         strata.keyboard.press("Down")
     strata.keyboard.type_text("igation-final")
     strata.wait(

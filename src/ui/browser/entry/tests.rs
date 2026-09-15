@@ -27,6 +27,12 @@ fn entry_matching_uses_the_display_name_and_hidden_flag() {
         ),
         ("plain name", false, "name", true),
         ("fv\tAlpha.txt", true, "beta", false),
+        ("fv\tAlpha.txt", false, "*.TXT", true),
+        ("fv\tAlpha.txt.bak", false, "*.txt", false),
+        ("fh\t.secret.txt", false, "*", false),
+        ("fh\t.secret.txt", true, "*.txt", true),
+        ("dv\tPhotos", false, "Photo*", true),
+        ("fv\tAlpha.txt", false, "fv*", false),
     ] {
         assert_eq!(
             entry_matches(value, show_hidden, &fold(query)),
@@ -64,6 +70,9 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let mut folder = file.clone();
     folder.kind = crate::model::EntryKind::Directory;
@@ -88,6 +97,9 @@ fn quick_preview_is_offered_only_for_supported_files() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
@@ -101,6 +113,14 @@ fn quick_preview_is_offered_only_for_supported_files() {
     assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
         ".steampath",
         crate::model::EntryKind::File,
+    )));
+    assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
+        "some notes",
+        crate::model::EntryKind::File,
+    )));
+    assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
+        "some notes",
+        crate::model::EntryKind::Directory,
     )));
     assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
         "archive.zip",
@@ -132,6 +152,9 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     for name in [
@@ -140,6 +163,7 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         "settings.toml",
         "photo.png",
         "guide.pdf",
+        "some notes",
     ] {
         assert!(entry_supports_printing(&entry(
             name,
@@ -147,20 +171,23 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         )));
     }
 
-    for (name, supported) in [
-        ("notes.txt", true),
-        ("main.rs", true),
-        ("photo.png", false),
-        ("guide.pdf", false),
+    for (name, printable, previewable) in [
+        ("notes.txt", true, true),
+        ("main.rs", true, true),
+        ("photo.png", false, true),
+        ("guide.pdf", false, false),
     ] {
         let trashed = FileEntry {
             location: Location::uri(format!("trash:///{name}")),
+            image_dimensions: crate::model::MetadataValue::Unknown,
+            child_count: crate::model::MetadataValue::Unknown,
+            duration_seconds: crate::model::MetadataValue::Unknown,
             ..entry(name, crate::model::EntryKind::File)
         };
-        assert_eq!(entry_supports_printing(&trashed), supported, "{name}");
+        assert_eq!(entry_supports_printing(&trashed), printable, "{name}");
         assert_eq!(
             crate::ui::preview::entry_supports_quick_preview(&trashed),
-            supported,
+            previewable,
             "{name}"
         );
     }
@@ -178,6 +205,10 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
 fn file_names_map_to_specific_lucide_icons() {
     assert_eq!(icon_for_name("setup.sh"), crate::assets::icons::TERMINAL);
     assert_eq!(icon_for_name("photo.webp"), crate::assets::icons::PICTURES);
+    assert_eq!(
+        icon_for_name("IMG_0001.HEIC"),
+        crate::assets::icons::PICTURES
+    );
     assert_eq!(icon_for_name("movie.mkv"), crate::assets::icons::VIDEOS);
     assert_eq!(icon_for_name("source.rs"), crate::assets::icons::FILE_CODE);
     assert_eq!(
@@ -199,6 +230,9 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let hidden = FileEntry {
         location: Location::local("/fixture/.config"),
@@ -210,6 +244,9 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: true,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     let encoded_visible = entry_model_value(&visible);

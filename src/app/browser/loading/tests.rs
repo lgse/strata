@@ -71,6 +71,9 @@ impl Fixture {
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             is_hidden: name.starts_with('.'),
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }
     }
 

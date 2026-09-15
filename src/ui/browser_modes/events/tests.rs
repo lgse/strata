@@ -48,6 +48,9 @@ fn entry(name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Known(1),
         mode: MetadataValue::Known(0o100644),
         is_hidden: name.starts_with('.'),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -712,6 +715,37 @@ fn bound_row(pane: &Pane, source: usize) -> Option<gtk::Box> {
             .then(|| bound.widget.upgrade()?.downcast::<gtk::Box>().ok())
             .flatten()
     })
+}
+
+#[test]
+fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
+    gtk_test(
+        "ui::browser_modes::events::tests::icons_metadata_updates_bound_cards_without_replacing_the_model",
+        || {
+            for grouped in [false, true] {
+                let mut fixture = Fixture::new(BrowserMode::Icons, grouped);
+                fixture.show();
+                let pane = fixture.pane();
+                pump_until(|| bound_row(&pane, 1).is_some());
+                let card = bound_row(&pane, 1).expect("bound card");
+                let details = crate::ui::icons_cell::details_label(&card).expect("details label");
+                assert_eq!(details.label(), "10 B");
+                let changed = Rc::new(Cell::new(false));
+                let observed = changed.clone();
+                pane.model
+                    .connect_items_changed(move |_, _, _, _| observed.set(true));
+                let mut update = entry("b.png");
+                update.image_dimensions = MetadataValue::Known((1920, 1080));
+                fixture.views.handle(&BrowserEvent::MetadataFilled {
+                    depth: 0,
+                    updates: vec![(1, update)],
+                });
+                assert!(details.is_visible());
+                assert_eq!(details.label(), "1920×1080");
+                assert!(!changed.get());
+            }
+        },
+    );
 }
 
 #[test]

@@ -133,8 +133,19 @@ impl Dispatcher {
             .or_else(|| self.context_menu_command(&event))
             .or_else(|| {
                 // Search rows own navigation; directory commands must not act on hidden selections.
-                (self.view.selected_search_results().is_some() && !event.text_has_focus())
-                    .then_some(Propagation::Proceed)
+                if self.view.selected_search_results().is_some()
+                    && !event.text_has_focus()
+                    && event.key != Key::Delete
+                {
+                    if event.vim_navigation {
+                        crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
+                        Some(Propagation::Stop)
+                    } else {
+                        Some(Propagation::Proceed)
+                    }
+                } else {
+                    None
+                }
             })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
@@ -173,6 +184,10 @@ impl Dispatcher {
 
     fn inline_editing_active(&self) -> bool {
         self.view.rename_is_active() || self.view.new_entry_is_active()
+    }
+
+    fn arrows_scoped_to_content(&self) -> bool {
+        self.type_to_search.preferences.arrow_navigation_scoped()
     }
 }
 

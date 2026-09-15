@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::model::EntryKind;
+use crate::model::{EntryKind, MetadataValue};
 use unicode_normalization::UnicodeNormalization;
 
 use super::{is_hidden_name, native_hidden_names, native_kind};
@@ -58,6 +58,8 @@ pub struct SearchItem {
     pub path: PathBuf,
     pub name: String,
     pub is_directory: bool,
+    pub kind: EntryKind,
+    pub mode: MetadataValue<u32>,
     search_path: String,
     search_name_start: usize,
     depth: u8,
@@ -73,7 +75,32 @@ impl SearchItem {
         )
     }
 
+    #[cfg(test)]
     fn new(path: PathBuf, root: &Path, is_directory: bool) -> Self {
+        let kind = if is_directory {
+            EntryKind::Directory
+        } else {
+            EntryKind::File
+        };
+        Self::with_metadata(path, root, is_directory, kind, MetadataValue::Unknown)
+    }
+
+    fn from_native(path: PathBuf, root: &Path, is_directory: bool, kind: EntryKind) -> Self {
+        use std::os::unix::fs::MetadataExt;
+
+        let mode = std::fs::metadata(&path)
+            .map(|metadata| MetadataValue::Known(metadata.mode()))
+            .unwrap_or(MetadataValue::Unknown);
+        Self::with_metadata(path, root, is_directory, kind, mode)
+    }
+
+    fn with_metadata(
+        path: PathBuf,
+        root: &Path,
+        is_directory: bool,
+        kind: EntryKind,
+        mode: MetadataValue<u32>,
+    ) -> Self {
         let name = path
             .file_name()
             .unwrap_or_default()
@@ -95,6 +122,8 @@ impl SearchItem {
             name,
             path,
             is_directory,
+            kind,
+            mode,
             search_path,
             search_name_start,
             depth,
@@ -256,6 +285,11 @@ impl SharedIndex {
 }
 
 mod directory;
+mod pattern;
+
+pub(crate) use pattern::filter_name_matches;
+
+type SearchScorer = fn(&SearchItem, &str) -> Option<i64>;
 
 type IndexRegistry = HashMap<(Vec<PathBuf>, bool, bool), Weak<SharedIndex>>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
@@ -293,7 +327,12 @@ pub fn index_filter(
     show_hidden: bool,
     include_subfolders: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(vec![root], show_hidden, include_subfolders)
+    index_scoped(
+        vec![root],
+        show_hidden,
+        include_subfolders,
+        filter_score_normalized,
+    )
 }
 
 /// Concurrent sessions share a snapshot until the last handle is dropped.
@@ -302,13 +341,14 @@ pub fn index_trees(
     roots: Vec<PathBuf>,
     show_hidden: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_scoped(roots, show_hidden, true)
+    index_scoped(roots, show_hidden, true, fuzzy_score_normalized)
 }
 
 fn index_scoped(
     roots: Vec<PathBuf>,
     show_hidden: bool,
     recursive: bool,
+    scorer: SearchScorer,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
     let mut seen = HashSet::new();
     let roots: Vec<_> = roots
@@ -342,7 +382,7 @@ fn index_scoped(
         index
     };
     drop(registry);
-    start_search_session(index)
+    start_search_session(index, scorer)
 }
 
 #[cfg(test)]
@@ -387,10 +427,13 @@ fn index_trees_with_scheduler_budget(
             max_pending_directories,
         },
     );
-    start_search_session(index)
+    start_search_session(index, fuzzy_score_normalized)
 }
 
-fn start_search_session(index: Arc<SharedIndex>) -> (SearchHandle, Receiver<SearchEvent>) {
+fn start_search_session(
+    index: Arc<SharedIndex>,
+    scorer: SearchScorer,
+) -> (SearchHandle, Receiver<SearchEvent>) {
     let (command_sender, command_receiver) = mpsc::channel();
     let (event_sender, event_receiver) = mpsc::channel();
     let cancelled = Arc::new(AtomicBool::new(false));
@@ -405,6 +448,7 @@ fn start_search_session(index: Arc<SharedIndex>) -> (SearchHandle, Receiver<Sear
                 &worker_cancelled,
                 &command_receiver,
                 &event_sender,
+                scorer,
             );
         });
     if let Err(error) = worker {
@@ -427,6 +471,7 @@ fn run_search_session(
     cancelled: &AtomicBool,
     commands: &Receiver<SearchCommand>,
     events: &Sender<SearchEvent>,
+    scorer: SearchScorer,
 ) {
     let mut progress = WalkProgress::default();
     let mut indexed_items = 0;
@@ -455,11 +500,11 @@ fn run_search_session(
             progress.matches = if progress.normalized_query.is_empty() {
                 Vec::new()
             } else {
-                score_index(&state.items, &progress.normalized_query)
+                score_index(&state.items, &progress.normalized_query, scorer)
             };
         } else if index_changed && !progress.normalized_query.is_empty() {
             for item in &state.items[indexed_items..] {
-                if let Some(score) = fuzzy_score_normalized(item, &progress.normalized_query) {
+                if let Some(score) = scorer(item, &progress.normalized_query) {
                     insert_match(&mut progress.matches, score, item);
                 }
             }
@@ -717,7 +762,8 @@ fn build_index(
             if entry.error().is_some() {
                 coverage.unreadable = true;
             }
-            let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
+            let file_type = entry.file_type();
+            let is_directory = file_type.is_some_and(|kind| kind.is_dir());
             // Structural entries are cheap within a branch so nested documents progress
             // before dense runs of regular files consume the shared entry budget.
             slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
@@ -726,6 +772,7 @@ fn build_index(
                 continue;
             }
             let path = entry.into_path();
+            let kind = file_type.map_or(EntryKind::Other, |kind| native_kind(kind, &path));
             match admit_path(&mut indexed_paths, &path, max_entries) {
                 PathAdmission::Duplicate => continue,
                 PathAdmission::EntryLimit => {
@@ -735,7 +782,12 @@ fn build_index(
                 PathAdmission::Unique => {}
             }
             let entry_depth = directory.depth.saturating_add(1);
-            pending_items.push(SearchItem::new(path.clone(), &directory.root, is_directory));
+            pending_items.push(SearchItem::from_native(
+                path.clone(),
+                &directory.root,
+                is_directory,
+                kind,
+            ));
             indexed_entries += 1;
             if is_directory {
                 // Keep one queue slot available for this slice's continuation. A child that
@@ -827,12 +879,16 @@ fn append_index_items(
 
 type RankedPosition = Reverse<(i64, Reverse<usize>)>;
 
-fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, SearchItem)> {
+fn score_index(
+    index: &[SearchItem],
+    normalized_query: &str,
+    scorer: SearchScorer,
+) -> Vec<(i64, SearchItem)> {
     let worker_count = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(4);
     let best = if index.len() < 50_000 || worker_count == 1 {
-        score_range(index, normalized_query, 0)
+        score_range(index, normalized_query, 0, scorer)
     } else {
         let chunk_size = index.len().div_ceil(worker_count);
         std::thread::scope(|scope| {
@@ -840,7 +896,9 @@ fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, Search
                 .chunks(chunk_size)
                 .enumerate()
                 .map(|(chunk, items)| {
-                    scope.spawn(move || score_range(items, normalized_query, chunk * chunk_size))
+                    scope.spawn(move || {
+                        score_range(items, normalized_query, chunk * chunk_size, scorer)
+                    })
                 })
                 .collect::<Vec<_>>();
             let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
@@ -871,10 +929,11 @@ fn score_range(
     index: &[SearchItem],
     normalized_query: &str,
     position_offset: usize,
+    scorer: SearchScorer,
 ) -> BinaryHeap<RankedPosition> {
     let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
     for (position, item) in index.iter().enumerate() {
-        let Some(score) = fuzzy_score_normalized(item, normalized_query) else {
+        let Some(score) = scorer(item, normalized_query) else {
             continue;
         };
         retain_candidate(&mut best, (score, Reverse(position_offset + position)));
@@ -915,6 +974,14 @@ fn publish(
         indexing,
         coverage,
     });
+}
+
+fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
+    if !query.contains('*') {
+        return fuzzy_score_normalized(item, query);
+    }
+    filter_name_matches(item.search_name(), query)
+        .then_some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
 }
 
 fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {

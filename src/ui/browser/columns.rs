@@ -356,6 +356,12 @@ pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     } else {
         row.remove_css_class("cut");
     }
+    if let Some(icon) = row
+        .first_child()
+        .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+    {
+        icon.set_cut(cut);
+    }
 }
 
 fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {
@@ -500,7 +506,12 @@ impl ViewState {
                 cancel_column_spinner(column);
                 column.spinner.set_visible(true);
                 column.spinner.start();
-                column.presentation.show_loading();
+                if snapshot.count > 0 && snapshot.location.is_camera_photo_root() {
+                    column.presentation.show_content();
+                    set_column_busy(column, false);
+                } else {
+                    column.presentation.show_loading();
+                }
             } else {
                 // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
                 stop_column_spinner(column);
@@ -774,6 +785,7 @@ impl ViewState {
         let search_active_for_changed = recursive_search_active.clone();
         let selection_for_search = selection.clone();
         let syncing_for_search = syncing_selection.clone();
+        let filter_query_for_search = filter_query.clone();
         let weak_filter_entry = filter_entry.downgrade();
         bind_filter_query(&filter_entry, move |text, recursive, restart| {
             if restart {
@@ -791,7 +803,7 @@ impl ViewState {
                 apply_filter_query(
                     &filtered_model_for_search,
                     &filter,
-                    &filter_query,
+                    &filter_query_for_search,
                     fold_for_search(&text),
                 );
                 deactivate_recursive_search(
@@ -803,10 +815,34 @@ impl ViewState {
                 );
                 return;
             }
-            *filter_query.borrow_mut() = fold_for_search(&text);
+            let Some(state) = weak_state_for_search.upgrade() else {
+                return;
+            };
+            let Some(path) = state
+                .browser
+                .location_at(depth_for_search)
+                .and_then(|loc| loc.native_path().map(Path::to_path_buf))
+            else {
+                search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
+                search_handle_for_changed.borrow_mut().take();
+                deactivate_recursive_search(
+                    &search_active_for_changed,
+                    &search_results_for_changed,
+                    &search_model_for_changed,
+                    &filtered_model_for_search,
+                    &model_for_search,
+                );
+                apply_filter_query(
+                    &filtered_model_for_search,
+                    &filter,
+                    &filter_query_for_search,
+                    fold_for_search(&text),
+                );
+                return;
+            };
+            *filter_query_for_search.borrow_mut() = fold_for_search(&text);
             search_active_for_changed.set(true);
             let weak_entry = weak_filter_entry.clone();
-            let weak_state = weak_state_for_search.clone();
             let filtered = filtered_model_for_search.clone();
             let sm = search_model_for_changed.clone();
             let results = search_results_for_changed.clone();
@@ -815,16 +851,6 @@ impl ViewState {
             let selection_for_poll = selection_for_search.clone();
             let syncing_for_poll = syncing_for_search.clone();
             if handle.borrow().is_none() {
-                let Some(state) = weak_state.upgrade() else {
-                    return;
-                };
-                let Some(path) = state
-                    .browser
-                    .location_at(depth_for_search)
-                    .and_then(|loc| loc.native_path().map(Path::to_path_buf))
-                else {
-                    return;
-                };
                 search_gen.set(search_gen.get().saturating_add(1));
                 let poll_gen = search_gen.get();
                 let show_hidden = state
@@ -908,6 +934,9 @@ impl ViewState {
         let search_navigation = gtk::EventControllerKey::new();
         search_navigation.set_propagation_phase(gtk::PropagationPhase::Capture);
         let search_active_for_navigation = recursive_search_active.clone();
+        let query_for_navigation = filter_query.clone();
+        let map_for_navigation = map.clone();
+        let depth_for_navigation = depth;
         let selection_for_navigation = selection.clone();
         let syncing_for_navigation = syncing_selection.clone();
         let list_for_navigation = list.clone();
@@ -915,7 +944,9 @@ impl ViewState {
         let results_for_navigation = search_results.clone();
         let navigation_state = Rc::downgrade(self);
         search_navigation.connect_key_pressed(move |_, key, _, modifiers| {
-            if !search_active_for_navigation.get()
+            let filter_active = search_active_for_navigation.get()
+                || !query_for_navigation.borrow().trim().is_empty();
+            if !filter_active
                 || modifiers.intersects(
                     gtk::gdk::ModifierType::CONTROL_MASK
                         | gtk::gdk::ModifierType::ALT_MASK
@@ -929,13 +960,24 @@ impl ViewState {
                 .last()
                 .copied();
             if recursive_search_activation_key(key) {
-                return if current.is_some_and(|position| {
-                    activate_recursive_search_result(
-                        &browser_for_navigation,
-                        &results_for_navigation,
-                        position,
-                    )
-                }) {
+                if search_active_for_navigation.get() {
+                    return if current.is_some_and(|position| {
+                        activate_recursive_search_result(
+                            &browser_for_navigation,
+                            &results_for_navigation,
+                            position,
+                        )
+                    }) {
+                        glib::Propagation::Stop
+                    } else {
+                        glib::Propagation::Proceed
+                    };
+                }
+                return if let Some(position) = current
+                    && let Some(browser) = browser_for_navigation.upgrade()
+                    && let Some(source_position) = map_for_navigation.source_position(position)
+                {
+                    browser.activate(depth_for_navigation, source_position);
                     glib::Propagation::Stop
                 } else {
                     glib::Propagation::Proceed
@@ -951,10 +993,15 @@ impl ViewState {
             }) else {
                 return glib::Propagation::Stop;
             };
-            syncing_for_navigation.set(true);
+            let is_recursive = search_active_for_navigation.get();
+            if is_recursive {
+                syncing_for_navigation.set(true);
+            }
             list_for_navigation.grab_focus();
             selection_for_navigation.select_item(next, true);
-            syncing_for_navigation.set(false);
+            if is_recursive {
+                syncing_for_navigation.set(false);
+            }
             list_for_navigation.scroll_to(next, gtk::ListScrollFlags::FOCUS, None);
             if let Some(state) = navigation_state.upgrade() {
                 super::BrowserView { state }.keyboard_navigation();
@@ -966,11 +1013,13 @@ impl ViewState {
         let return_to_filter = gtk::EventControllerKey::new();
         return_to_filter.set_propagation_phase(gtk::PropagationPhase::Capture);
         let search_active = recursive_search_active.clone();
+        let query_for_return = filter_query.clone();
         let result_selection = selection.clone();
         let query = filter_entry.downgrade();
         let navigation_state = Rc::downgrade(self);
         return_to_filter.connect_key_pressed(move |controller, key, _, modifiers| {
-            if !search_active.get()
+            let filter_active = search_active.get() || !query_for_return.borrow().trim().is_empty();
+            if !filter_active
                 || !matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
                 || modifiers.intersects(
                     gtk::gdk::ModifierType::CONTROL_MASK
@@ -1176,6 +1225,49 @@ impl ViewState {
         column.append(&destination_hint);
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+
+        // Focus may be unset during transfer; inspect its destination at idle.
+        let filter_button_for_blur = filter_button.clone();
+        let shell_for_blur = shell.downgrade();
+        let weak_browser_for_blur = Rc::downgrade(&self.browser);
+        let filter_focus = gtk::EventControllerFocus::new();
+        filter_focus.connect_leave(move |controller| {
+            let Some(widget) = controller.widget() else {
+                return;
+            };
+            let shell_for_blur = shell_for_blur.clone();
+            let filter_button_for_blur = filter_button_for_blur.clone();
+            let weak_browser = weak_browser_for_blur.clone();
+            glib::idle_add_local_once(move || {
+                let Some(shell) = shell_for_blur.upgrade() else {
+                    return;
+                };
+                let Some(root) = widget.root() else {
+                    return;
+                };
+                // Result dialogs must retain the query for restoration after dismissal.
+                if root
+                    .downcast_ref::<gtk::Window>()
+                    .is_some_and(|window| crate::ui::window::visible_modal_layer(window).is_some())
+                {
+                    return;
+                }
+                let left_column = root.focus().is_some_and(|focused| {
+                    !focused.is_ancestor(&shell)
+                        && focused != shell.clone().upcast::<gtk::Widget>()
+                        && focused.ancestor(gtk::Popover::static_type()).is_none()
+                });
+                if left_column
+                    && weak_browser
+                        .upgrade()
+                        .is_some_and(|browser| !browser.is_chooser_mode())
+                {
+                    filter_button_for_blur.set_active(false);
+                }
+            });
+        });
+        shell.add_controller(filter_focus);
+
         shell.set_size_request(COLUMN_WIDTH, -1);
         let previous_scale = Cell::new(1.0);
         crate::ui::theme::ThemeManager::shared().bind_interface_scale(

@@ -62,6 +62,7 @@ const SHORTCUTS: &[(&str, &str, &str, &str)] = &[
     ("Application", "Refresh", "", "F5"),
     ("Application", "Open settings", "", "Ctrl + ,"),
     ("Application", "Shortcut reference", "", "F1"),
+    ("Application", "Toggle arrow-key scope", "", "Ctrl + \\"),
 ];
 
 pub(super) fn search_text() -> String {

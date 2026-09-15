@@ -17,6 +17,7 @@ fn non_default_preferences() -> Preferences {
         video_preview_backend: "vulkan".into(),
         search_open_files_directly: true,
         type_to_search: false,
+        arrow_navigation_scoped: true,
         filter_include_subfolders: false,
         show_keybinding_hints: false,
         reduce_motion: true,
@@ -48,7 +49,9 @@ fn non_default_preferences() -> Preferences {
         preview_text_wrap: true,
         auto_refresh_interval: 600,
         cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
+        open_folder_after_drop: true,
         release_channel: "nightly".into(),
+        default_directory: Some("/fixture/default".into()),
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
         custom_icons: HashMap::from([(
             "/fixture/folder".into(),
@@ -82,14 +85,16 @@ impl ThemeManager {
 }
 
 #[test]
-fn older_preferences_keep_recursive_filtering_enabled() {
+fn older_preferences_keep_backward_compatible_behavior_defaults() {
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     saved.remove("filter_include_subfolders");
+    saved.remove("open_folder_after_drop");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
         Preferences {
             filter_include_subfolders: true,
+            open_folder_after_drop: false,
             ..non_default_preferences()
         }
     );
@@ -337,6 +342,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             );
             assert!(manager.search_open_files_directly());
             assert!(!manager.type_to_search());
+            assert!(manager.arrow_navigation_scoped());
             assert!(!manager.filter_include_subfolders());
             assert!(!manager.show_keybinding_hints());
             assert!(manager.reduce_motion());
@@ -410,6 +416,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 CrossVolumeDropStrategy::Move
             );
             assert_eq!(
+                manager.default_directory(),
+                Some(std::path::PathBuf::from("/fixture/default"))
+            );
+            assert_eq!(
                 manager.folder_color(Path::new("/fixture/folder")),
                 FolderColorValue::parse("red")
             );
@@ -477,6 +487,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),
                 |m| m.set_type_to_search(true),
+                |m| m.set_arrow_navigation_scoped(false),
                 |m| m.set_filter_include_subfolders(true),
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_reduce_motion(false),
@@ -514,6 +525,8 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_text_wrap(false),
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
+                |m| m.set_default_directory(None),
+                |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
                 |m| m.set_follow_omarchy(true),

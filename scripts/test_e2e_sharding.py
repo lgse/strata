@@ -53,7 +53,7 @@ class ShardingTests(unittest.TestCase):
                            len(make_plan(inventory(100), {})["shards"]))
 
     def test_tighter_worker_budget_adds_runners_without_dropping_tests(self):
-        tests = inventory(60)
+        tests = inventory(18)
         normal = make_plan(tests, {}, target=40)
         tighter = make_plan(tests, {}, target=30)
         self.assertGreater(len(tighter["shards"]), len(normal["shards"]))
@@ -61,7 +61,7 @@ class ShardingTests(unittest.TestCase):
         self.assertTrue(all(shard["estimated_seconds"] <= 30 for shard in tighter["shards"]))
 
     def test_new_tests_receive_a_nonzero_conservative_weight(self):
-        tests = inventory(50)
+        tests = inventory(60)
         self.assertGreater(len(make_plan(tests, {})["shards"]),
                            len(make_plan(tests, {test["nodeid"]: 0.1 for test in tests})["shards"]))
 
@@ -80,7 +80,7 @@ class ShardingTests(unittest.TestCase):
                 make_plan(tests, times)
 
     def test_oversized_serial_group_remains_intact_above_soft_target(self):
-        tests = inventory(20)
+        tests = inventory(30)
         for test in tests:
             test["group"] = "serial"
         plan = make_plan(tests, {})
@@ -92,22 +92,24 @@ class ShardingTests(unittest.TestCase):
         tests = inventory(100)
         plan = make_plan(tests, {})
         validate_plan(plan, tests)
-        self.assertEqual(TARGET_SECONDS, 90)
-        self.assertEqual(MAX_SHARDS, 8)
         self.assertEqual(plan["workers"], 2)
-        self.assertEqual(len(plan["shards"]), 4)
+        self.assertEqual(len(plan["shards"]), 2)
+        self.assertTrue(all(shard["estimated_seconds"] <= TARGET_SECONDS
+                            for shard in plan["shards"]))
 
     def test_growth_above_cap_extends_runtime_without_dropping_tests(self):
-        for count in (224, 225, 1000):
+        for count in (168, 169, 1000):
             with self.subTest(count=count):
                 tests = inventory(count)
                 plan = make_plan(tests, {})
                 validate_plan(plan, tests)
                 self.assertEqual(len(plan["shards"]), MAX_SHARDS)
                 self.assertEqual(plan["target_seconds"], TARGET_SECONDS)
-                if count > 224:
-                    self.assertGreater(max(shard["estimated_seconds"]
-                                           for shard in plan["shards"]), TARGET_SECONDS)
+                longest = max(shard["estimated_seconds"] for shard in plan["shards"])
+                if count > 168:
+                    self.assertGreater(longest, TARGET_SECONDS)
+                else:
+                    self.assertLessEqual(longest, TARGET_SECONDS)
                 self.assertEqual(len(verify_reports(plan, passing_reports(plan))), count)
 
     def test_single_worker_over_budget_still_covers_every_test(self):

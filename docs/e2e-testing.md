@@ -172,18 +172,19 @@ CI's **Quality build and lint** job runs formatting and Clippy, then compiles
 `cargo test --locked --all-targets --all-features --no-run` once. It exports only
 test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
 each libtest inventory, including the explicitly ignored tests, and assigns every
-entry to one of four shards. Timing hints in `scripts/quality-durations.json`
+entry to one of two shards. Timing hints in `scripts/quality-durations.json`
 come from successful GTK child runs in
 [run 34560353003](https://github.com/lgse/strata/actions/runs/34560353003).
-Shard 0 is reserved exclusively for
-`ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset`.
-Every other test is balanced longest-first across shards 1–3; unknown tests
-receive a one-second weight and always participate. Timing hints are not an
-allowlist and cannot put another test into shard 0. Validation rejects mixed
-assignments or a missing, duplicated, or ignored isolated test, so renaming or
-removing it requires updating `ISOLATED_TEST` and the reservation policy.
-The roughly 160-second deferred-scroll regression remains unchanged and limits
-the possible speedup; sharding does not shorten an individual test.
+Tests are balanced longest-first across both shards; unknown tests receive a
+one-second weight and always participate. Timing hints are not an allowlist.
+The deferred-scroll timing was refreshed to 1.32 seconds from
+[run 34811363582](https://github.com/lgse/strata/actions/runs/34811363582).
+`ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset`
+runs in its own libtest process before the other tests assigned to its shard,
+not on a dedicated runner. Each process must pass its complete selection before
+an aggregate shard receipt is written. Validation rejects a missing, duplicated,
+or ignored isolated test; renaming or removing it requires updating `ISOLATED_TEST`.
+Sharding does not shorten an individual test.
 
 Each **Rust tests shard N** verifies the checkout revision, application/Rust-test source
 fingerprint, image inputs, executable checksums, and the entire libtest inventory
@@ -207,7 +208,7 @@ To reproduce the handoff locally using the same pinned container:
 
 ```bash
 STRATA_QUALITY_TASK=build ./scripts/quality.sh test
-for shard in 0 1 2 3; do
+for shard in 0 1; do
   STRATA_QUALITY_TASK=shard STRATA_QUALITY_SHARD="$shard" ./scripts/quality.sh test
 done
 python3 scripts/quality_ci.py verify
@@ -217,7 +218,7 @@ The example runs shards sequentially for convenient local diagnosis; CI runs the
 in parallel on separate runners. These environment variables are CI handoff modes,
 not test filters; ordinary `./scripts/quality.sh test` still runs the complete
 unsharded suite. Rebuild the bundle after changing source or checkout revision.
-The four-shard matrix and `SHARDS` constant must be updated together if tuning
+The two-shard matrix and `SHARDS` constant must be updated together if tuning
 fan-out. Each shard has a ten-minute hang bound; timing is otherwise informational.
 
 ### Hardware-aware parallelism
@@ -365,10 +366,13 @@ def test_something(strata):
 
 `test_inline_renaming.py` checks immediate default-file/folder creation, collision
 numbering, selected default names, valid-name commits on click-away, and retaining
-the original name on Escape or representative invalid input. It exercises existing and newly
-created items in all three views, verifies file contents, and covers repeated
-renames with folder-wide or file-stem selection. `test_entry_management.py` also
-covers reopening invalid edits, inside-field clicks, name conflicts, and empty
+the original name on Escape or representative invalid input. Enter and sidebar
+commits still run existing and newly created files and folders in all three views;
+the four shared click-away targets run in Columns and List on an existing file.
+Invalid names keep one Enter and one real click-away; correction/reopen still runs in all three views.
+Escape cancellation is kind × new in the default Columns view. Repeated renames
+keep file-stem vs folder-name selection in Columns and List. `test_entry_management.py`
+also covers reopening invalid edits, inside-field clicks, name conflicts, and empty
 directories.
 
 ```bash
@@ -463,13 +467,16 @@ workflow fail:
 ./scripts/e2e-mutation-check.sh clipboard    # one of them
 ```
 
-Each patch breaks a single critical workflow — drag and drop, clipboard,
-keyboard navigation, click modes, view switching, filtered quick preview. The unmodified scenarios
-must pass first; only a failed scenario assertion in the mutated run counts as
-detection, not a startup/collection error or killed process. Logs and JUnit
-reports are saved in `target/e2e-mutations`. The script restores source changes
-afterwards. Run it after changing the harness, and when adding a scenario for
-a workflow that does not have a mutation yet.
+Each patch breaks a single critical workflow and maps to the scenario that
+hits the mutated line, not every test in that file: drop onto a folder,
+Ctrl+V paste, arrow-key selection, single-click activation, the appearance
+menu, filtered Space preview, filter-row updates, popover outside-wheel,
+and the long-name caret. The unmodified scenarios must pass first; only a failed
+scenario assertion in the mutated run counts as detection, not a
+startup/collection error or killed process. Logs and JUnit reports are
+saved in `target/e2e-mutations`. The script restores source changes
+afterwards. Run it after changing the harness, and when adding a scenario
+for a workflow that does not have a mutation yet.
 
 ## In CI
 
@@ -503,17 +510,18 @@ a workflow that does not have a mutation yet.
 
 The matrix is generated from `harness/sharding.py`, not a fixed runner count or
 file list. Tests are scheduled longest-first using committed setup+call+teardown
-CI measurements from `tests/e2e/durations.json`, with 25% headroom and a 90-second
-soft target per worker (two workers per runner). New tests automatically receive a
-conservative five-second weight. More tests or longer measured durations add runners
-up to a maximum of eight shards, reducing duplicated runtime setup and bounding
+CI measurements from `tests/e2e/durations.json`, with 25% headroom and a 180-second
+soft target per worker (two workers per runner). This leaves room for runner setup
+within an approximately three-to-four-minute shard job; actual timings may vary.
+New tests automatically receive a conservative five-second weight. More tests or longer measured durations add runners
+up to a maximum of three shards, reducing duplicated runtime setup and bounding
 fan-out. At the cap, shards run longer rather than failing planning or dropping tests.
 Baselines stay in one serial scheduling group, even when that group exceeds the soft
 target. Estimated time alone never fails the gate; hang-protection timeouts still apply.
 Tune `TARGET_SECONDS` and `MAX_SHARDS` in `tests/e2e/harness/sharding.py` manually as
 runtime and cost needs change. The shard cap is not a spending cap: longer runs still
 consume more runner-minutes. There is no `max-parallel` throttle; the runner provider
-must have enough concurrent capacity for up to eight shards. Runner queues affect
+must have enough concurrent capacity for up to three shards. Runner queues affect
 reported timing, not test correctness.
 
 Shards validate their entire collection against the plan before selecting tests.
@@ -722,13 +730,14 @@ Review and commit the changes. Reports must cover every test and shard; partial 
 failed runs cannot overwrite scheduling measurements. Durations are scheduling
 hints, never an allowlist: new tests always participate without editing this file.
 
-### Coverage audit (#837)
+### Maintaining behavioral coverage
 
-The [test-suite audit](test-suite-audit.md) records the subsequent reduction from
-812 to 770 collected pytest cases (766 to 724 GUI scenarios; 46 harness cases
-unchanged), plus 43 fewer Rust test functions. It maps each consolidation to its
-retained behavioral owner and distinguishes retired cosmetic assertions from
-functional layout, input-routing and lifecycle regressions.
+Before consolidating tests, identify the retained behavioral owner for every
+assertion. Fewer test functions or collected cases do not establish a runtime
+improvement. Preserve functional layout, input-routing, filesystem-safety,
+live-preference and lifecycle regressions, even when they share fixtures.
+Record task-specific inventories and consolidation decisions in the issue or PR,
+not in a committed audit report.
 
 ### Coverage audit (#607)
 
@@ -738,15 +747,17 @@ nightly-only, or changed-files-only suite.
 
 | Removed/reduced coverage | Retained owner |
 | --- | --- |
-| Six invalid strings × mode × kind × new/existing × completion, reduced to `bad/name` (120 cases removed) | `src/services/operations/tests.rs::basenames_reject_empty_reserved_nested_absolute_and_nul_names` (no GTK/display requirement); GUI retains every mode/kind/lifecycle and both Enter and real click-away |
+| Six invalid strings × mode × kind × new/existing × completion, reduced to `bad/name` (120 cases removed) | `src/services/operations/tests.rs::basenames_reject_empty_reserved_nested_absolute_and_nul_names` (no GTK/display requirement); GUI keeps one Enter and one real click-away |
 | Four invalid names in correction/reopen workflow, reduced to one (9) | Same validation tests; correction/reopen still runs in all three views |
-| Four accepted-name variants in inside-field click workflow, reduced to ` padded ` (18) | `basenames_accept_single_native_and_unicode_components`; GUI still checks exact untrimmed names for files/folders in every view |
-| Standalone new-folder Escape and existing-file cancellation tests (4) | `test_inline_renaming.py::test_escape_preserves_the_original_name`, covering both lifecycles, kinds, and every view |
+| Four accepted-name variants in inside-field click workflow, reduced to ` padded ` (18) | `basenames_accept_single_native_and_unicode_components`; GUI still checks exact untrimmed names for files and folders |
+| Standalone new-folder Escape and existing-file cancellation tests (4) | `test_inline_renaming.py::test_escape_preserves_the_original_name`, covering both lifecycles and kinds |
 | Standalone invalid rename in dialogs suite (1) | Stronger synchronized `test_invalid_names_retain_the_original`, including filesystem contents and GTK-critical checks |
 | Separate preview metadata/list-preservation launches (2) | Assertions consolidated into `test_space_opens_and_closes_the_quick_preview` in all three views |
 
-All 72 valid rename focus-exit combinations remain: GTK's real in-flight focus walk
-is not covered by emitting a controller signal in Rust. Real drag/XTEST routing,
+All six valid-rename dismiss targets remain as real XTEST focus walks: GTK's in-flight
+focus walk is not covered by emitting a controller signal in Rust. Enter and sidebar
+still run across modes, kinds, and new vs existing items; the four shared click-away
+targets run in Columns and List on an existing file. Real drag/XTEST routing,
 caret visibility, clipboard selection/undo, multi-window preferences, accessibility
 semantics, and all six visual baselines also remain. The removed validation vectors
 are covered by unconditional, display-independent Rust tests—not by tests that

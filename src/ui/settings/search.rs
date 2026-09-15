@@ -12,6 +12,12 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "default-directory",
+        page: "general",
+        title: "Default directory",
+        aliases: "startup launch home folder reset",
+    },
+    Target {
         id: "peeking",
         page: "general",
         title: "Folder peeking",
@@ -22,6 +28,12 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Single-click file previews",
         aliases: "browsing quick preview selecting supported files",
+    },
+    Target {
+        id: "arrow-scope",
+        page: "general",
+        title: "Keep arrows in file list",
+        aliases: "browsing keyboard navigation focus sidebar toolbar",
     },
     Target {
         id: "type-search",
@@ -52,6 +64,12 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Drag & drop to another device",
         aliases: "file transfers copy move ask drive share cross volume",
+    },
+    Target {
+        id: "open-after-drop",
+        page: "general",
+        title: "Open folder after dropping files",
+        aliases: "file transfers drag drop destination navigate reveal copy move",
     },
     Target {
         id: "refresh",

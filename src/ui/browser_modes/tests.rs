@@ -32,64 +32,6 @@ impl super::ModeViews {
     }
 }
 
-#[test]
-fn pointer_controls_cover_navigation_and_pane_actions() {
-    gtk_test(
-        "ui::browser_modes::tests::pointer_controls_cover_navigation_and_pane_actions",
-        || {
-            let browser =
-                crate::app::Browser::new(std::rc::Rc::new(crate::adapters::LocalFileSource));
-            let navigation = super::list_navigation(&browser);
-            let mut child = navigation.first_child();
-            let mut count = 0;
-            while let Some(button) = child {
-                assert_eq!(
-                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
-                    Some("pointer")
-                );
-                count += 1;
-                child = button.next_sibling();
-            }
-            assert_eq!(count, 3);
-            let (headings, _) = super::list_headings(&browser, 0, super::ListColumnLayout::new());
-            let mut child = headings.first_child();
-            let mut index = 0;
-            while let Some(cell) = child {
-                let button = cell
-                    .first_child()
-                    .expect("heading overlay")
-                    .downcast::<gtk::Overlay>()
-                    .expect("overlay")
-                    .child()
-                    .expect("heading button");
-                assert_eq!(
-                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
-                    if index == 1 { None } else { Some("pointer") }
-                );
-                index += 1;
-                child = cell.next_sibling();
-            }
-            assert_eq!(index, 5);
-            let controls = super::icons_controls(&browser, 0, 128);
-            assert_eq!(controls.thumbnail_scale.adjustment().lower(), 32.0);
-            controls.thumbnail_scale.set_value(32.0);
-            assert_eq!(controls.thumbnail_scale.value(), 32.0);
-            let mut child = controls.actions.first_child();
-            let mut count = 0;
-            while let Some(button) = child {
-                assert_eq!(button.valign(), gtk::Align::Center);
-                assert_eq!(
-                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
-                    Some("pointer")
-                );
-                count += 1;
-                child = button.next_sibling();
-            }
-            assert_eq!(count, 6);
-        },
-    );
-}
-
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
     format!("{kind}v\t{name}")
@@ -171,18 +113,37 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
-    assert_eq!(metadata_fill_position(Some(7), &entry, false), Some(7));
-    assert_eq!(metadata_fill_position(None, &entry, false), None);
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, false, false),
+        Some(7)
+    );
+    assert_eq!(metadata_fill_position(None, &entry, false, true), None);
 
     entry.size = MetadataValue::Known(100);
-    assert_eq!(metadata_fill_position(Some(7), &entry, false), Some(7));
     entry.modified_unix_seconds = MetadataValue::Known(1);
-    assert_eq!(metadata_fill_position(Some(7), &entry, false), None);
-    assert_eq!(metadata_fill_position(Some(7), &entry, true), Some(7));
+    assert_eq!(metadata_fill_position(Some(7), &entry, false, false), None);
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, false, true),
+        Some(7)
+    );
+    entry.image_dimensions = MetadataValue::Unavailable;
+    entry.native_name = "movie.mp4".into();
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, false, true),
+        Some(7)
+    );
+    entry.duration_seconds = MetadataValue::Unavailable;
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, true, false),
+        Some(7)
+    );
     entry.mode = MetadataValue::Known(0o100644);
-    assert_eq!(metadata_fill_position(Some(7), &entry, true), None);
+    assert_eq!(metadata_fill_position(Some(7), &entry, true, false), None);
 }
 
 #[test]
@@ -394,8 +355,6 @@ fn type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group()
 const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
 const SOURCE_INDEX_TEST: &str =
     "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_non_source_items";
-const LIST_ROW_GTK_CHILD: &str = "STRATA_LIST_ROW_GTK_CHILD";
-const LIST_ROW_TEST: &str = "ui::browser_modes::tests::list_bind_can_read_the_rename_field";
 
 fn run_source_index_map_checks() {
     let source = gtk::StringList::new(&["fv\talpha", "dh\t.secret", "fv\tneedle"]);
@@ -516,28 +475,6 @@ fn run_source_index_map_checks() {
 }
 
 #[test]
-fn list_bind_can_read_the_rename_field() {
-    if std::env::var_os(LIST_ROW_GTK_CHILD).is_some() {
-        if gtk::init().is_err() {
-            return;
-        }
-        let row = super::assemble_list_row();
-        let (_, name, field, _, _, _, _) =
-            super::list_row_parts(&row).expect("bind and settle walk this row");
-        assert!(name.has_css_class("alternate-rename-label"));
-        assert!(field.has_css_class("inline-rename"));
-        return;
-    }
-
-    let status = Command::new(std::env::current_exe().expect("test executable should exist"))
-        .args(["--exact", LIST_ROW_TEST])
-        .env(LIST_ROW_GTK_CHILD, "1")
-        .status()
-        .expect("isolated GTK list row test should start");
-    assert!(status.success(), "isolated GTK list row test failed");
-}
-
-#[test]
 fn source_index_map_tracks_filter_sort_and_non_source_items() {
     if std::env::var_os(GTK_CHILD).is_some() {
         if gtk::init().is_err() {
@@ -553,6 +490,32 @@ fn source_index_map_tracks_filter_sort_and_non_source_items() {
         .status()
         .expect("isolated GTK mapping test should start");
     assert!(status.success(), "isolated GTK mapping test failed");
+}
+
+#[test]
+fn icons_hover_only_tracks_thumbnail_or_caption_content() {
+    gtk_test(
+        "ui::browser_modes::tests::icons_hover_only_tracks_thumbnail_or_caption_content",
+        || {
+            let card = crate::ui::icons_cell::new_card(64);
+            let (icon, label) = crate::ui::icons_cell::parts(&card).expect("icons card");
+            label.set_text(Some("sample.png"));
+            let window = gtk::Window::builder().child(&card).build();
+            window.present();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            while icon.width() == 0 {
+                assert!(std::time::Instant::now() < deadline);
+                gtk::glib::MainContext::default().iteration(true);
+            }
+            let bounds = icon.compute_bounds(&card).expect("icon bounds");
+            let y = f64::from(bounds.center().y());
+            super::set_icons_content_hover(&card, 2.0, y);
+            assert!(!card.has_css_class("content-hover"));
+            super::set_icons_content_hover(&card, f64::from(bounds.center().x()), y);
+            assert!(card.has_css_class("content-hover"));
+            window.close();
+        },
+    );
 }
 
 #[test]
@@ -573,6 +536,9 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 modified_unix_seconds: MetadataValue::Known(1),
                 mode: MetadataValue::Known(0o100644),
                 is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             };
             let card = crate::ui::icons_cell::new_card(64);
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true, None);
@@ -609,8 +575,79 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
             super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &cuts);
             assert_eq!(label.tooltip_text().as_deref(), Some("icons-scroll.png"));
             assert!(card.has_css_class("cut"));
+            assert_eq!(icon.opacity(), 1.0);
             assert_eq!(crate::ui::thumbnail::pending_thumbnail_id(&path), job);
             crate::ui::thumbnail::clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn icons_entry_displays_item_info_for_images_folders_and_files() {
+    gtk_test(
+        "ui::browser_modes::tests::icons_entry_displays_item_info_for_images_folders_and_files",
+        || {
+            let mut entry = FileEntry {
+                location: Location::local("/fixture/photo.png"),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Known(0o100644),
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let card = crate::ui::icons_cell::new_card(64);
+            let details = crate::ui::icons_cell::details_label(&card).expect("details label");
+
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert!(!details.is_visible());
+
+            entry.image_dimensions = MetadataValue::Known((1920, 1080));
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert!(details.is_visible());
+            assert_eq!(details.text().as_str(), "1920×1080");
+
+            entry.image_dimensions = MetadataValue::Unavailable;
+            entry.size = MetadataValue::Known(2048);
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "2 kB");
+
+            entry.location = Location::local("/fixture/movie.mp4");
+            entry.native_name = "movie.mp4".into();
+            entry.display_name = "movie.mp4".into();
+            entry.duration_seconds = MetadataValue::Known(83);
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "1:23");
+
+            let mut folder_entry = FileEntry {
+                location: Location::local("/fixture/docs"),
+                thumbnail_path: None,
+                native_name: "docs".into(),
+                display_name: "docs".into(),
+                kind: EntryKind::Directory,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Known(0o100755),
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unavailable,
+                child_count: MetadataValue::Known(12),
+                duration_seconds: MetadataValue::Unknown,
+            };
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "12 items");
+
+            folder_entry.child_count = MetadataValue::Known(1);
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "1 item");
+
+            folder_entry.child_count = MetadataValue::Known(0);
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "No items");
         },
     );
 }

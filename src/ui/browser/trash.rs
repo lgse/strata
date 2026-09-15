@@ -833,10 +833,10 @@ impl ViewState {
                 confirmed_root.as_ref(),
                 move || {
                     if let Some(ui) = weak_ui.upgrade() {
+                        ui.clear_delete_animation();
                         let dissolve = ui.delete_animation_source().and_then(|source| {
                             super::dissolve_delete::prepare_dissolve(&source, &entries_for_dissolve)
                         });
-                        ui.clear_delete_animation();
                         if let (Some(depth), Some(dissolve)) = (ui.browser.active_depth(), dissolve)
                         {
                             ui.pending_delete_dissolve.replace(Some((depth, dissolve)));

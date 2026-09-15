@@ -812,6 +812,13 @@ impl ViewState {
         false
     }
 
+    pub(super) fn duplicate_entries(self: &Rc<Self>, entries: &[FileEntry]) {
+        let Some((destination, sources)) = super::transfer::duplicate_transfer(entries) else {
+            return;
+        };
+        self.start_transfer(destination, sources, false);
+    }
+
     fn clear_cut(&self) {
         clear_shared_cut();
     }

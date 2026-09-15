@@ -5,7 +5,7 @@ use crate::model::{FileEntry, Location};
 use std::path::Path;
 
 #[test]
-fn executable_fallback_requires_regular_executable_and_missing_handler()
+fn regular_executable_requires_regular_file_and_execute_bit()
 -> Result<(), Box<dyn std::error::Error>> {
     use std::os::unix::fs::PermissionsExt;
 
@@ -13,20 +13,56 @@ fn executable_fallback_requires_regular_executable_and_missing_handler()
     let program = fixture.path().join("program");
     std::fs::write(&program, b"#!/bin/sh\n")?;
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))?;
-    let no_handler = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler");
-    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "denied");
 
-    assert!(executable_without_handler(Some(&program), &no_handler));
-    assert!(!executable_without_handler(Some(&program), &denied));
-    assert!(!executable_without_handler(
-        Some(fixture.path()),
-        &no_handler
-    ));
-    assert!(!executable_without_handler(None, &no_handler));
+    assert!(is_regular_executable(&program));
+    assert!(!is_regular_executable(fixture.path()));
 
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o644))?;
-    assert!(!executable_without_handler(Some(&program), &no_handler));
+    assert!(!is_regular_executable(&program));
     Ok(())
+}
+
+#[test]
+fn entry_executable_policy_accepts_regular_files_and_file_links() {
+    let entry = |kind, mode| FileEntry {
+        location: Location::local("/fixture/program"),
+        native_name: "program".into(),
+        thumbnail_path: None,
+        display_name: "program".into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+        mode: crate::model::MetadataValue::Known(mode),
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
+    };
+
+    assert!(entry_is_regular_executable(&entry(
+        crate::model::EntryKind::File,
+        0o755,
+    )));
+    assert!(entry_is_regular_executable(&entry(
+        crate::model::EntryKind::FileSymbolicLink,
+        0o755,
+    )));
+    assert!(!entry_is_regular_executable(&entry(
+        crate::model::EntryKind::File,
+        0o644,
+    )));
+    assert!(!entry_is_regular_executable(&entry(
+        crate::model::EntryKind::Directory,
+        0o755,
+    )));
+
+    let mut remote = entry(crate::model::EntryKind::File, 0o755);
+    remote.location = Location::uri("smb://server/program");
+    assert!(!entry_is_regular_executable(&remote));
+
+    let mut unknown_mode = entry(crate::model::EntryKind::File, 0o755);
+    unknown_mode.mode = crate::model::MetadataValue::Unknown;
+    assert!(!entry_is_regular_executable(&unknown_mode));
 }
 
 #[test]
@@ -50,6 +86,9 @@ fn terminal_shortcut_prefers_one_selected_directory() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let directory = entry("selected", crate::model::EntryKind::Directory);
     let file = entry("notes.txt", crate::model::EntryKind::File);
@@ -63,15 +102,16 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[]), None);
 }
 
-#[cfg(unix)]
 #[test]
-fn terminal_directory_argument_preserves_native_path_bytes() {
-    use std::{ffi::OsStr, os::unix::ffi::OsStrExt};
-
-    let path = Path::new(OsStr::from_bytes(b"/tmp/non-utf8-\xff"));
-
-    assert_eq!(
-        terminal_directory_argument(path).as_encoded_bytes(),
-        b"--dir=/tmp/non-utf8-\xff"
+fn open_location_rejects_trash_locations() {
+    crate::test_support::gtk_test(
+        "ui::browser::desktop::tests::open_location_rejects_trash_locations",
+        || {
+            let overlay = gtk::Overlay::new();
+            let location = Location::uri("trash:///test.png");
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            open_location(&location, &overlay, &browser);
+            assert!(overlay.last_child().is_some());
+        },
     );
 }

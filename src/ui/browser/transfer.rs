@@ -99,8 +99,8 @@ impl ViewState {
             return;
         }
         match commit {
-            DropCommit::Copy => self.start_transfer(destination, sources, false),
-            DropCommit::Move => self.start_transfer(destination, sources, true),
+            DropCommit::Copy => self.start_drop_transfer(destination, sources, false),
+            DropCommit::Move => self.start_drop_transfer(destination, sources, true),
             DropCommit::Ask { volume, .. } => {
                 self.confirm_cross_volume_drop(destination, sources, volume);
             }
@@ -178,7 +178,7 @@ impl ViewState {
             let chosen_sources = sources.clone();
             button.connect_clicked(move |_| {
                 dismiss_modal_layer(&chosen_layer, &chosen_overlay, chosen_root.as_ref());
-                chosen_state.start_transfer(
+                chosen_state.start_drop_transfer(
                     chosen_destination.clone(),
                     chosen_sources.clone(),
                     move_sources,
@@ -209,6 +209,28 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
+        self.start_transfer_with_reveal(destination, sources, move_sources, true);
+    }
+
+    fn start_drop_transfer(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        move_sources: bool,
+    ) {
+        let reveal = crate::ui::theme::ThemeManager::shared().open_folder_after_drop();
+        self.start_transfer_with_reveal(destination, sources, move_sources, reveal);
+    }
+
+    /// Paste and explicit "move/copy to" reveal their result independently of
+    /// the drop preference, which is captured when the transfer starts.
+    pub(super) fn start_transfer_with_reveal(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        move_sources: bool,
+        reveal: bool,
+    ) {
         if is_trash_location(&destination)
             || (move_sources && sources.iter().any(|source| !can_remove_location(source)))
         {
@@ -233,7 +255,7 @@ impl ViewState {
                 });
             }
         }
-        self.resolve_transfer_collisions(destination, collisions, accepted, move_sources);
+        self.resolve_transfer_collisions(destination, collisions, accepted, move_sources, reveal);
     }
 
     fn resolve_transfer_collisions(
@@ -242,9 +264,11 @@ impl ViewState {
         mut collisions: Vec<Location>,
         accepted: Vec<PasteItem>,
         move_sources: bool,
+        reveal: bool,
     ) {
         if collisions.is_empty() {
-            self.browser.transfer(destination, accepted, move_sources);
+            self.browser
+                .transfer(destination, accepted, move_sources, reveal);
             return;
         }
         let source = collisions.remove(0);
@@ -299,6 +323,7 @@ impl ViewState {
                     remaining,
                     accepted,
                     move_sources,
+                    reveal,
                 );
             }),
         );

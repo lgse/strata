@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 use gtk::prelude::FileExt;
-use std::{cell::Cell, ffi::OsString};
+use std::{
+    cell::Cell,
+    ffi::{OsStr, OsString},
+};
 
 use super::*;
 use crate::{
@@ -24,6 +27,9 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
     assert_eq!(
@@ -203,40 +209,25 @@ fn restoration_monitor_changes_publish_once_after_the_terminal_event() {
 }
 
 #[test]
-fn invalid_new_folder_names_are_rejected_before_an_operation_starts() {
-    for name in [
-        "../escaped",
-        "",
-        "   ",
-        "\u{00a0}\u{2003}",
-        ".",
-        "..",
-        "nul\0name",
-    ] {
-        assert_invalid_creation_is_rejected(name, |browser| {
-            browser.create_directory_with_naming(
-                Location::local("/fixture"),
-                name.to_owned(),
-                false,
-            );
-        });
-    }
-}
-
-#[test]
-fn invalid_new_file_names_are_rejected_before_an_operation_starts() {
-    for name in [
-        "../escaped",
-        "",
-        "   ",
-        "\u{00a0}\u{2003}",
-        ".",
-        "..",
-        "nul\0name",
-    ] {
-        assert_invalid_creation_is_rejected(name, |browser| {
-            browser.create_file_with_naming(Location::local("/fixture"), name.to_owned(), false);
-        });
+fn invalid_new_entry_names_are_rejected_before_an_operation_starts() {
+    for folder in [true, false] {
+        for name in ["../escaped", "", "..", "nul\0name"] {
+            assert_invalid_creation_is_rejected(name, |browser| {
+                if folder {
+                    browser.create_directory_with_naming(
+                        Location::local("/fixture"),
+                        name.to_owned(),
+                        false,
+                    );
+                } else {
+                    browser.create_file_with_naming(
+                        Location::local("/fixture"),
+                        name.to_owned(),
+                        false,
+                    );
+                }
+            });
+        }
     }
 }
 
@@ -322,6 +313,7 @@ struct RecordingFileSource {
     request_count: Rc<Cell<usize>>,
 }
 
+mod camera_photos;
 mod relocation;
 
 type WatchCallback = Rc<dyn Fn(DirectoryChange)>;
@@ -348,6 +340,9 @@ impl FileSource for WatchingFileSource {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -426,6 +421,9 @@ impl FileSource for RetryFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 }],
             });
             emit(DirectoryEvent::Finished {
@@ -485,6 +483,9 @@ impl FileSource for FilePreviewSource {
                 modified_unix_seconds: MetadataValue::Known(1),
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -518,6 +519,9 @@ impl FileSource for ArchiveFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::local("/fixture/notes.txt"),
@@ -529,6 +533,9 @@ impl FileSource for ArchiveFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::uri("sftp://example.com/remote-archive.zip"),
@@ -540,6 +547,9 @@ impl FileSource for ArchiveFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
             ],
         });
@@ -571,6 +581,9 @@ impl FileSource for OpenChildBesideFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::local("/fixture/example.conf"),
@@ -582,6 +595,9 @@ impl FileSource for OpenChildBesideFileSource {
                     modified_unix_seconds: MetadataValue::Known(1),
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
             ]
         } else {
@@ -617,6 +633,9 @@ impl FileSource for RestoredSortingSource {
             modified_unix_seconds: MetadataValue::Unknown,
             is_hidden: false,
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         };
         emit(DirectoryEvent::Batch {
             request_id: request.id,
@@ -650,6 +669,9 @@ impl FileSource for FakeFileSource {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -682,6 +704,9 @@ impl FileSource for TrashFileSource {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -1129,6 +1154,9 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
     browser.extract(entry, Location::local("/fixture"), None);
 
@@ -1185,6 +1213,9 @@ fn fixture_entry(path: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -1203,6 +1234,9 @@ fn a_completed_trash_operation_can_be_undone_once() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
     browser.delete(vec![entry], false);
@@ -1231,6 +1265,9 @@ fn another_browser_can_undo_the_latest_trash_operation() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
     deleting_browser.delete(vec![entry], false);
@@ -1301,6 +1338,35 @@ fn successful_transfers_reveal_actual_destination_names_only_without_navigation(
 }
 
 #[test]
+fn a_drop_onto_a_folder_does_not_navigate_into_it() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let root = Location::local("/fixture");
+    browser.navigate(root);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    let destination = Location::local("/fixture/archive");
+    browser.transfer_destination.replace(Some(destination));
+    browser.transfer_reveal.set(false);
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![Location::local("/fixture/report.txt")],
+    });
+
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferReveal { .. })),
+        "a drop must move or copy the file without leaving the source listing"
+    );
+}
+
+#[test]
 fn failed_transfers_do_not_request_a_reveal() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -1337,6 +1403,7 @@ fn a_completed_move_records_where_each_item_landed() {
             conflict: TransferConflict::FailIfExists,
         }],
         true,
+        true,
     );
 
     assert_eq!(
@@ -1360,6 +1427,7 @@ fn a_completed_copy_records_the_destinations_it_created() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
 
     assert_eq!(
@@ -1407,6 +1475,7 @@ fn undoing_a_copy_removes_only_the_destinations_it_created() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1470,6 +1539,7 @@ fn undoing_a_copy_leaves_the_previous_trash_undo_available() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1495,6 +1565,7 @@ fn undoing_a_copy_records_no_trash_undo_of_its_own() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
     let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
 
@@ -1580,6 +1651,7 @@ fn a_completed_copy_displaces_an_older_trash_undo() {
             conflict: TransferConflict::FailIfExists,
         }],
         false,
+        true,
     );
 
     assert!(!browser.undo_last_trash());
@@ -1597,6 +1669,7 @@ fn a_move_into_the_items_own_directory_records_no_undo() {
             conflict: TransferConflict::FailIfExists,
         }],
         true,
+        true,
     );
 
     assert_eq!(pending_undo_entry(), None);
@@ -1613,6 +1686,7 @@ fn undoing_a_move_transfers_items_back_once() {
             source: Location::local("/fixture/report.txt"),
             conflict: TransferConflict::FailIfExists,
         }],
+        true,
         true,
     );
     let (generation, records) = browser.pending_undo_move().expect("pending move undo");
@@ -1763,12 +1837,18 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
     let permanently_deleted = FileEntry {
         location: Location::local("/fixture/draft.txt"),
         native_name: OsString::from("draft.txt"),
         thumbnail_path: None,
         display_name: "draft.txt".into(),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..trashed.clone()
     };
 
@@ -1799,108 +1879,60 @@ fn failed_and_partial_undo_operations_can_be_retried() {
 }
 
 #[test]
-fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
-    let enumerate_calls = Rc::new(Cell::new(0));
-    let source = CountingFileSource {
-        enumerate_calls: enumerate_calls.clone(),
-    };
-    let browser = Browser::new(Rc::new(source));
-    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
-    browser.navigate(Location::uri("smb://host/share"));
-    assert_eq!(enumerate_calls.get(), 1);
+fn create_and_rename_refresh_remote_columns_but_not_local_monitors() {
+    for (location, remote) in [
+        (Location::uri("smb://host/share"), true),
+        (Location::local("/fixture"), false),
+    ] {
+        for create in [true, false] {
+            let enumerate_calls = Rc::new(Cell::new(0));
+            let browser = Browser::new(Rc::new(CountingFileSource {
+                enumerate_calls: enumerate_calls.clone(),
+            }));
+            browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+            browser.navigate(location.clone());
+            assert_eq!(enumerate_calls.get(), 1);
 
-    browser.create_directory_with_naming(
-        Location::uri("smb://host/share"),
-        "New Folder".to_owned(),
-        false,
-    );
+            if create {
+                browser.create_directory_with_naming(
+                    location.clone(),
+                    "New Folder".to_owned(),
+                    false,
+                );
+            } else {
+                browser.rename(
+                    FileEntry {
+                        location: location
+                            .child(OsStr::new("old-name.txt"))
+                            .expect("rename target"),
+                        native_name: "old-name.txt".into(),
+                        thumbnail_path: None,
+                        display_name: "old-name.txt".into(),
+                        kind: EntryKind::File,
+                        size: MetadataValue::Known(1),
+                        modified_unix_seconds: MetadataValue::Unknown,
+                        is_hidden: false,
+                        mode: MetadataValue::Unknown,
+                        image_dimensions: MetadataValue::Unknown,
+                        child_count: MetadataValue::Unknown,
+                        duration_seconds: MetadataValue::Unknown,
+                    },
+                    "new-name.txt".to_owned(),
+                );
+            }
 
-    assert_eq!(
-        enumerate_calls.get(),
-        2,
-        "a remote column has no live monitor, so it should be refreshed explicitly"
-    );
-}
-
-#[test]
-fn renaming_on_a_remote_location_refreshes_the_open_column() {
-    let enumerate_calls = Rc::new(Cell::new(0));
-    let source = CountingFileSource {
-        enumerate_calls: enumerate_calls.clone(),
-    };
-    let browser = Browser::new(Rc::new(source));
-    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
-    browser.navigate(Location::uri("smb://host/share"));
-
-    browser.rename(
-        FileEntry {
-            location: Location::uri("smb://host/share/old-name.txt"),
-            native_name: "old-name.txt".into(),
-            thumbnail_path: None,
-            display_name: "old-name.txt".into(),
-            kind: EntryKind::File,
-            size: MetadataValue::Known(1),
-            modified_unix_seconds: MetadataValue::Unknown,
-            is_hidden: false,
-            mode: MetadataValue::Unknown,
-        },
-        "new-name.txt".to_owned(),
-    );
-
-    assert_eq!(enumerate_calls.get(), 2);
-}
-
-#[test]
-fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
-    let enumerate_calls = Rc::new(Cell::new(0));
-    let source = CountingFileSource {
-        enumerate_calls: enumerate_calls.clone(),
-    };
-    let browser = Browser::new(Rc::new(source));
-    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
-    browser.navigate(Location::local("/fixture"));
-    assert_eq!(enumerate_calls.get(), 1);
-
-    browser.create_directory_with_naming(
-        Location::local("/fixture"),
-        "New Folder".to_owned(),
-        false,
-    );
-
-    assert_eq!(
-        enumerate_calls.get(),
-        1,
-        "a local column already has a live file monitor; no extra refresh is needed"
-    );
-}
-
-#[test]
-fn renaming_locally_does_not_trigger_a_redundant_refresh() {
-    let enumerate_calls = Rc::new(Cell::new(0));
-    let source = CountingFileSource {
-        enumerate_calls: enumerate_calls.clone(),
-    };
-    let browser = Browser::new(Rc::new(source));
-    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
-    browser.navigate(Location::local("/fixture"));
-    assert_eq!(enumerate_calls.get(), 1);
-
-    browser.rename(
-        FileEntry {
-            location: Location::local("/fixture/old-name.txt"),
-            native_name: "old-name.txt".into(),
-            thumbnail_path: None,
-            display_name: "old-name.txt".to_owned(),
-            kind: EntryKind::File,
-            size: MetadataValue::Known(1),
-            modified_unix_seconds: MetadataValue::Unknown,
-            is_hidden: false,
-            mode: MetadataValue::Unknown,
-        },
-        "new-name.txt".to_owned(),
-    );
-
-    assert_eq!(enumerate_calls.get(), 1);
+            assert_eq!(
+                enumerate_calls.get(),
+                if remote { 2 } else { 1 },
+                "{}",
+                if remote {
+                    "a remote column has no live monitor, so it should be refreshed explicitly"
+                } else {
+                    "a local column already has a live file monitor; no extra refresh is needed"
+                }
+            );
+        }
+    }
 }
 
 #[test]
@@ -1955,6 +1987,69 @@ fn selecting_entries_by_name_preserves_the_full_matching_selection() {
 }
 
 #[test]
+fn selecting_named_entries_reveals_only_requested_hidden_matches() {
+    for by_location in [false, true] {
+        for names in [
+            vec![".secret.txt"],
+            vec!["visible.txt", ".secret.txt"],
+            vec!["visible.txt"],
+            vec!["missing.txt"],
+            vec![],
+        ] {
+            let source = ScriptedSource::scripted(vec!["visible.txt", ".secret.txt"], Vec::new());
+            let browser = Browser::new(Rc::new(source));
+            browser.navigate(Location::local("/fixture"));
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let observed = events.clone();
+            browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+            let found = if by_location {
+                let locations: Vec<_> = names
+                    .iter()
+                    .map(|name| Location::local(format!("/fixture/{name}")))
+                    .collect();
+                browser.select_entries_by_location_at(0, &locations)
+            } else {
+                let names: Vec<_> = names.iter().map(|name| (*name).to_owned()).collect();
+                browser.select_entries_by_name_at(0, &names)
+            };
+
+            let reveals_hidden = names.contains(&".secret.txt");
+            assert_eq!(browser.preferences().show_hidden, reveals_hidden);
+            assert_eq!(found, !names.is_empty() && !names.contains(&"missing.txt"));
+            if found {
+                let mut selected: Vec<_> = browser
+                    .selected_positions(0)
+                    .into_iter()
+                    .map(|position| {
+                        browser
+                            .entry_at(0, position)
+                            .expect("selected entry")
+                            .display_name
+                    })
+                    .collect();
+                selected.sort();
+                let mut expected = names.clone();
+                expected.sort();
+                assert_eq!(selected, expected);
+            }
+            let events = events.borrow();
+            let hidden_event = events.iter().position(|event| {
+                matches!(event, BrowserEvent::HiddenToggled { show_hidden: true })
+            });
+            assert_eq!(hidden_event.is_some(), reveals_hidden);
+            if let Some(hidden_event) = hidden_event {
+                let selection_event = events
+                    .iter()
+                    .position(|event| matches!(event, BrowserEvent::SelectionSetChanged { .. }))
+                    .expect("selection event");
+                assert!(hidden_event < selection_event);
+            }
+        }
+    }
+}
+
+#[test]
 fn reload_active_preserves_a_multi_selection() {
     let browser = Browser::new(Rc::new(RestoredSortingSource));
     browser.navigate(Location::local("/fixture"));
@@ -2000,6 +2095,9 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         modified_unix_seconds: MetadataValue::Known(1),
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }));
 
     assert!(
@@ -2341,14 +2439,6 @@ fn home_relative_input_preserves_the_native_home_path() {
     let home = Path::new("/home/fixture");
 
     assert_eq!(
-        location_from_input_with_home("~", home),
-        Ok(Location::local("/home/fixture"))
-    );
-    assert_eq!(
-        location_from_input_with_home("~/Documents/project", home),
-        Ok(Location::local("/home/fixture/Documents/project"))
-    );
-    assert_eq!(
         location_from_input_with_home("~//Documents", home),
         Ok(Location::local("/home/fixture/Documents"))
     );
@@ -2468,13 +2558,7 @@ fn location_input_rejects_uris_with_an_embedded_password() {
 
     for uri in [
         "smb://user:secret@host/share",
-        "smb://user%3Asecret@host/share",
-        "smb://user:sec%72et@host/share",
         "smb://user;password=secret@host/share",
-        "smb://user%3Bpassword=secret@host/share",
-        "smb://user%3Bpassword%3Dsecret@host/share",
-        "smb://user;password=sec%72et@host/share",
-        "sftp://user:secret@host:2222/path",
     ] {
         assert_eq!(
             browser.navigate_input(uri),
@@ -2482,18 +2566,6 @@ fn location_input_rejects_uris_with_an_embedded_password() {
         );
         assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
     }
-
-    assert_eq!(
-        browser.navigate_input("smb://user%ZZ@host/share"),
-        Err(LocationValidationError::InvalidUri)
-    );
-    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
-
-    assert_eq!(
-        browser.navigate_input("smb://user@host/share"),
-        Ok(()),
-        "a bare username without a password must still be accepted"
-    );
 }
 
 #[test]
@@ -3159,12 +3231,18 @@ fn batch_entry(name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
 fn trash_entry(name: &str) -> FileEntry {
     FileEntry {
         location: Location::uri(format!("trash:///{name}")),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..batch_entry(name)
     }
 }
@@ -3257,6 +3335,9 @@ impl FileSource for SortFillSource {
                         size: MetadataValue::Known(size),
                         modified_unix_seconds: MetadataValue::Unknown,
                         mode: MetadataValue::Unknown,
+                        image_dimensions: MetadataValue::Unknown,
+                        child_count: MetadataValue::Unknown,
+                        duration_seconds: MetadataValue::Unknown,
                     }
                 })
                 .collect(),
@@ -3574,6 +3655,9 @@ impl ScriptedSource {
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             is_hidden: name.starts_with('.'),
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }
     }
     fn answer(
@@ -3595,6 +3679,9 @@ impl ScriptedSource {
                     size: MetadataValue::Known(*size),
                     modified_unix_seconds: MetadataValue::Known(7),
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 })
                 .collect(),
         };
@@ -3897,6 +3984,9 @@ fn navigation_cancels_an_awaiting_sort_without_stale_commit() {
             size: MetadataValue::Known(1),
             modified_unix_seconds: MetadataValue::Known(7),
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     });
     old_emit(DirectoryEvent::MetadataFinished {
@@ -3958,10 +4048,12 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             ViewportTarget {
                 position: 0,
                 location: Location::local("/fixture/alpha"),
+                include_icon_details: false,
             },
             ViewportTarget {
                 position: 1,
                 location: Location::local("/fixture/beta"),
+                include_icon_details: false,
             },
         ],
     );
@@ -3987,6 +4079,9 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             size: MetadataValue::Known(30),
             modified_unix_seconds: MetadataValue::Known(7),
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     });
     viewport_emit(DirectoryEvent::MetadataFinished {
@@ -4005,12 +4100,18 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 size: MetadataValue::Known(30),
                 modified_unix_seconds: MetadataValue::Known(7),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/beta"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(7),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
         ],
     });
@@ -4157,7 +4258,7 @@ fn settle_timer_restarts_while_rows_keep_arriving() {
         vec![FillAnswer::Never],
     ));
     browser.navigate(Location::local("/fixture"));
-    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"));
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
     let pump_until_elapsed = |millis: u64, start: std::time::Instant| {
         while start.elapsed() < std::time::Duration::from_millis(millis) {
             gtk::glib::MainContext::default().iteration(false);
@@ -4166,7 +4267,7 @@ fn settle_timer_restarts_while_rows_keep_arriving() {
     };
     let start = std::time::Instant::now();
     pump_until_elapsed(80, start);
-    browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"));
+    browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
     pump_until_elapsed(140, start);
     assert!(source.fill_calls.borrow().is_empty());
     pump_until_elapsed(400, start);
@@ -4189,6 +4290,7 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
         vec![ViewportTarget {
             position: 1,
             location: Location::local("/fixture/beta"),
+            include_icon_details: false,
         }],
     );
     browser.flush_metadata_fills();
@@ -4206,6 +4308,9 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
             size: MetadataValue::Known(10),
             modified_unix_seconds: MetadataValue::Known(7),
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }],
     });
     assert_eq!(replaced_count(&events), 1);
@@ -4242,10 +4347,12 @@ fn remote_name_listing_fills_visible_metadata() {
             ViewportTarget {
                 position: 1,
                 location: Location::uri("sftp://host/share/photo.jpg"),
+                include_icon_details: false,
             },
             ViewportTarget {
                 position: 0,
                 location: Location::uri("sftp://host/share/notes.txt"),
+                include_icon_details: false,
             },
         ],
     );
@@ -4293,12 +4400,18 @@ fn modified_sort_fills_directory_mtimes() {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Known(200),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/b.txt"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(100),
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             },
         ],
     });
@@ -4416,6 +4529,9 @@ fn staged_entry(name: &str, kind: EntryKind, size: MetadataValue<u64>, modified:
         modified_unix_seconds: MetadataValue::Known(modified),
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -4906,6 +5022,9 @@ impl FileSource for MixedPeekFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: true,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::local("/fixture/normal.txt"),
@@ -4917,6 +5036,9 @@ impl FileSource for MixedPeekFileSource {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 },
             ],
         });

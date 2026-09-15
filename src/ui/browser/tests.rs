@@ -63,6 +63,9 @@ fn paste_prefers_only_a_single_selected_directory() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let folder = entry("folder", crate::model::EntryKind::Directory);
     let file = entry("file.txt", crate::model::EntryKind::File);
@@ -99,6 +102,9 @@ fn paste_prefers_only_a_single_selected_directory() {
         }
         let folder = FileEntry {
             location,
+            image_dimensions: crate::model::MetadataValue::Unknown,
+            child_count: crate::model::MetadataValue::Unknown,
+            duration_seconds: crate::model::MetadataValue::Unknown,
             ..entry("folder", crate::model::EntryKind::Directory)
         };
         assert_eq!(
