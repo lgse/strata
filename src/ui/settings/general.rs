@@ -91,6 +91,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             write: ThemeManager::set_single_click_previews,
         },
         PreferenceSwitch {
+            title: "Checkbox selection",
+            description: "Show a checkbox on each file to select multiple items without holding Ctrl or Shift.",
+            read: ThemeManager::checkbox_selection,
+            write: ThemeManager::set_checkbox_selection,
+        },
+        PreferenceSwitch {
             title: "Keep arrows in file list",
             description: "Stop arrow keys from leaving the file list. Use Ctrl + Shift + B to focus the sidebar, or use the mouse.",
             read: ThemeManager::arrow_navigation_scoped,

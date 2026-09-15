@@ -65,6 +65,9 @@ pub(super) fn column_rows(
     let weak_state = Rc::downgrade(state);
     let modified_selection_for_rows = modified_selection.clone();
     let selection_for_rows = selection.clone();
+    let selection_for_setup = selection_for_rows.clone();
+    let selection_for_bind = selection_for_rows.clone();
+    let selection_for_sync = selection_for_rows.clone();
     let map_for_hover = map.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -72,6 +75,14 @@ pub(super) fn column_rows(
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("file-row");
+        // Optional checkbox selection (Settings → BROWSING, off by default).
+        // Prepended like List rows; hidden unless the preference is enabled.
+        let checkbox = gtk::CheckButton::new();
+        checkbox.add_css_class("row-checkbox");
+        checkbox.add_css_class("column-checkbox");
+        crate::ui::accessibility::set_label(&checkbox, "Select item");
+        checkbox.set_valign(gtk::Align::Center);
+        checkbox.set_visible(crate::ui::theme::ThemeManager::shared().checkbox_selection());
         let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
         let drag_icon = icon.clone();
@@ -141,9 +152,55 @@ pub(super) fn column_rows(
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
         chevron.set_valign(gtk::Align::Center);
+        row.append(&checkbox);
         row.append(&icon);
         row.append(&middle);
         row.append(&chevron);
+        // Handle all checkbox clicks in a capture-phase gesture so we control
+        // the selection before the CheckButton's internal toggle fires. The
+        // sync handler (selection_changed → set_active) keeps the visual state
+        // correct; connect_toggled corrects any residual internal toggle.
+        let checkbox_click = gtk::GestureClick::new();
+        checkbox_click.set_button(1);
+        checkbox_click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let selection_for_click = selection_for_setup.clone();
+        let weak_state_for_click = weak_state.clone();
+        let map_for_click = map_for_hover.clone();
+        let checkbox_item = item.downgrade();
+        let syncing = Rc::new(Cell::new(false));
+        crate::ui::browser_modes::checkbox_sync_toggled(
+            &checkbox,
+            &checkbox_item,
+            &selection_for_setup,
+            &syncing,
+        );
+        checkbox_click.connect_pressed(move |gesture, _, _, _| {
+            let Some(item) = checkbox_item.upgrade() else {
+                return;
+            };
+            let position = item.position();
+            if position == gtk::INVALID_LIST_POSITION {
+                return;
+            }
+            let modifiers = gesture.current_event_state();
+            let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            if shift {
+                let anchor =
+                    anchored_row(&weak_state_for_click, depth, &map_for_click).unwrap_or(position);
+                let start = anchor.min(position);
+                let count = anchor.max(position).saturating_sub(start) + 1;
+                selection_for_click.select_range(start, count, true);
+            } else {
+                anchor_at(&weak_state_for_click, depth, &map_for_click, position);
+                if selection_for_click.is_selected(position) {
+                    selection_for_click.unselect_item(position);
+                } else {
+                    selection_for_click.select_item(position, false);
+                }
+            }
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        });
+        checkbox.add_controller(checkbox_click);
         let motion = gtk::EventControllerMotion::new();
         let list_item = item.downgrade();
         let weak_state_for_enter = weak_state.clone();
@@ -194,7 +251,11 @@ pub(super) fn column_rows(
                 let prepare_row = prepare_row.upgrade()?;
                 if prepare_row
                     .pick(x, y, gtk::PickFlags::DEFAULT)
-                    .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+                    .is_some_and(|target| {
+                        target.is::<gtk::CheckButton>()
+                            || target.ancestor(gtk::CheckButton::static_type()).is_some()
+                            || crate::ui::focus_navigation::editable(&target)
+                    })
                 {
                     return None;
                 }
@@ -353,7 +414,7 @@ pub(super) fn column_rows(
         selection_click.set_button(1);
         selection_click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let clicked_item = item.downgrade();
-        let selection_for_click = selection_for_rows.clone();
+        let selection_for_click = selection_for_setup.clone();
         let modified_for_click = modified_selection_for_rows.clone();
         let map_for_click = map_for_hover.clone();
         let search_active_for_click = search_active_for_factory.clone();
@@ -369,7 +430,11 @@ pub(super) fn column_rows(
             if gesture
                 .widget()
                 .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
-                .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+                .is_some_and(|target| {
+                    target.is::<gtk::CheckButton>()
+                        || target.ancestor(gtk::CheckButton::static_type()).is_some()
+                        || crate::ui::focus_navigation::editable(&target)
+                })
             {
                 return;
             }
@@ -636,10 +701,19 @@ pub(super) fn column_rows(
         let Some(row) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(icon) = row
-            .first_child()
-            .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
-        else {
+        let checkbox = column_row_checkbox(&row);
+        let Some(icon) = row.first_child().and_then(|first| {
+            first
+                .clone()
+                .downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+                .ok()
+                .or_else(|| {
+                    first
+                        .next_sibling()?
+                        .downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+                        .ok()
+                })
+        }) else {
             return;
         };
         let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
@@ -784,11 +858,60 @@ pub(super) fn column_rows(
         let size_text = column_size_text(entry.as_ref());
         size.set_label(&size_text);
         size.set_visible(!size_text.is_empty());
+        if let Some(checkbox) = checkbox {
+            checkbox.set_visible(crate::ui::theme::ThemeManager::shared().checkbox_selection());
+            let selected = selection_for_bind.is_selected(item.position());
+            if checkbox.is_active() != selected {
+                checkbox.set_active(selected);
+            }
+            if let Some(entry) = entry.as_ref() {
+                crate::ui::accessibility::set_label(
+                    &checkbox,
+                    &format!("Select {}", entry.display_name),
+                );
+            }
+        }
         crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
     });
+    // Keep checkboxes in sync with marquee / Ctrl+A / Esc, which change the
+    // selection without rebinding rows (mirrors List's connect_selection sync).
+    {
+        let rows = bound_rows.clone();
+        let selection = selection_for_sync.clone();
+        selection.connect_selection_changed(move |selection, _, _| {
+            for bound in rows.borrow().iter() {
+                let Some(item) = bound.item.upgrade() else {
+                    continue;
+                };
+                let selected = selection.is_selected(item.position());
+                if let Some(row) = bound.row.upgrade()
+                    && let Some(checkbox) = column_row_checkbox(&row)
+                    && checkbox.is_active() != selected
+                {
+                    checkbox.set_active(selected);
+                }
+            }
+        });
+    }
     factory.connect_unbind(|_, item| crate::ui::thumbnail::cancel_list_item_thumbnails(item));
     ColumnRows {
         factory,
         bound_rows,
+    }
+}
+
+/// First child once the optional selection checkbox is prepended.
+pub(crate) fn column_row_checkbox(row: &gtk::Box) -> Option<gtk::CheckButton> {
+    row.first_child()?.downcast::<gtk::CheckButton>().ok()
+}
+
+/// Toggle every bound row's checkbox when the preference changes.
+pub(crate) fn set_column_checkboxes_visible(rows: &Rc<RefCell<Vec<BoundRow>>>, visible: bool) {
+    for bound in rows.borrow().iter() {
+        if let Some(row) = bound.row.upgrade()
+            && let Some(checkbox) = column_row_checkbox(&row)
+        {
+            checkbox.set_visible(visible);
+        }
     }
 }

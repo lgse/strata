@@ -800,7 +800,7 @@ fn list_metadata_updates_bound_rows_without_replacing_the_model() {
                 let pane = fixture.pane();
                 pump_until(|| bound_row(&pane, 1).is_some());
                 let row = bound_row(&pane, 1).expect("bound row");
-                let (_, _, _, mode, size, _, _) =
+                let (_, _, _, mode, size, _, _, _) =
                     super::super::list_row_parts(&row).expect("list labels");
                 let changed = Rc::new(Cell::new(false));
                 let observed = changed.clone();

@@ -111,6 +111,8 @@ struct Preferences {
     browser_density: String,
     #[serde(default)]
     group_by_type: bool,
+    #[serde(default)]
+    checkbox_selection: bool,
     #[serde(default = "default_file_clicks", rename = "list_file_clicks")]
     columns_file_clicks: u8,
     #[serde(default = "default_folder_clicks", rename = "list_folder_clicks")]
@@ -194,6 +196,7 @@ impl Default for Preferences {
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
             group_by_type: false,
+            checkbox_selection: false,
             columns_file_clicks: default_file_clicks(),
             columns_folder_clicks: default_folder_clicks(),
             icons_file_clicks: default_file_clicks(),
@@ -792,6 +795,15 @@ impl ThemeManager {
 
     pub fn set_group_by_type(&self, enabled: bool) {
         self.preferences.borrow_mut().group_by_type = enabled;
+        self.save_preferences();
+    }
+
+    pub fn checkbox_selection(&self) -> bool {
+        self.preferences.borrow().checkbox_selection
+    }
+
+    pub fn set_checkbox_selection(&self, enabled: bool) {
+        self.preferences.borrow_mut().checkbox_selection = enabled;
         self.save_preferences();
     }
 

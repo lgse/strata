@@ -33,9 +33,19 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     icon.add_css_class("icons-card-icon");
     icon.set_halign(gtk::Align::Center);
     icon.set_valign(gtk::Align::Center);
-    let icon_frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    let checkbox = gtk::CheckButton::new();
+    checkbox.add_css_class("row-checkbox");
+    checkbox.add_css_class("icons-checkbox");
+    crate::ui::accessibility::set_label(&checkbox, "Select item");
+    checkbox.set_halign(gtk::Align::Start);
+    checkbox.set_valign(gtk::Align::Start);
+    checkbox.set_visible(false);
+    // Overlay floats the checkbox over the icon's top-left like Windows/Dolphin
+    // hover markers, so the thumbnail stays centered when the pref is toggled.
+    let icon_frame = gtk::Overlay::new();
     icon_frame.add_css_class("icons-card-icon-frame");
-    icon_frame.append(&icon);
+    icon_frame.set_child(Some(&icon));
+    icon_frame.add_overlay(&checkbox);
 
     let label = gtk::Inscription::new(None);
     label.add_css_class("icons-card-label");
@@ -64,14 +74,33 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
 pub(super) fn parts(
     card: &impl IsA<gtk::Widget>,
 ) -> Option<(super::thumbnail::ThumbnailSlot, gtk::Inscription)> {
-    let icon = card
-        .first_child()?
-        .first_child()?
-        .downcast::<super::thumbnail::ThumbnailSlot>()
-        .ok()?;
+    let frame = card.first_child()?;
+    let icon = if let Ok(overlay) = frame.clone().downcast::<gtk::Overlay>() {
+        overlay
+            .child()?
+            .downcast::<super::thumbnail::ThumbnailSlot>()
+            .ok()?
+    } else {
+        frame
+            .first_child()?
+            .downcast::<super::thumbnail::ThumbnailSlot>()
+            .ok()?
+    };
     let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let label = labels.first_child()?.downcast::<gtk::Inscription>().ok()?;
     Some((icon, label))
+}
+
+pub(super) fn checkbox(card: &impl IsA<gtk::Widget>) -> Option<gtk::CheckButton> {
+    let overlay = card.first_child()?.downcast::<gtk::Overlay>().ok()?;
+    let mut sibling = overlay.first_child();
+    while let Some(widget) = sibling {
+        sibling = widget.next_sibling();
+        if let Ok(check) = widget.downcast::<gtk::CheckButton>() {
+            return Some(check);
+        }
+    }
+    None
 }
 
 pub(super) fn details_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> {

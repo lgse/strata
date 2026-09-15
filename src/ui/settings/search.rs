@@ -30,6 +30,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing quick preview selecting supported files",
     },
     Target {
+        id: "checkbox-selection",
+        page: "general",
+        title: "Checkbox selection",
+        aliases: "browsing checkbox checkboxes multi select multiple selection list files",
+    },
+    Target {
         id: "arrow-scope",
         page: "general",
         title: "Keep arrows in file list",

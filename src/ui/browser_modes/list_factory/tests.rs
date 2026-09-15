@@ -79,10 +79,15 @@ struct Fixture {
     factory: gtk::SignalListItemFactory,
     view: gtk::ListView,
     window: gtk::Window,
+    columns: ListColumnLayout,
 }
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_checkbox_selection(false)
+    }
+
+    fn with_checkbox_selection(checkbox_selection: bool) -> Self {
         crate::ui::theme::ThemeManager::shared();
         thumbnail::hold_thumbnail_workers();
         let entries = vec![entry("a.txt", 100), entry("b.png", 200), entry("c.rs", 300)];
@@ -125,6 +130,7 @@ impl Fixture {
             bound_items: items.clone(),
             state: None,
             filter_query: Rc::new(RefCell::new(String::new())),
+            checkbox_selection: Rc::new(Cell::new(checkbox_selection)),
         }
         .build();
         let view = gtk::ListView::new(Some(selection), Some(factory.clone()));
@@ -144,6 +150,7 @@ impl Fixture {
             factory,
             view,
             window,
+            columns,
         };
         pump_until(|| fixture.item_at(0).is_some());
         fixture
@@ -165,6 +172,14 @@ impl Fixture {
 
     fn first(&self) -> (gtk::ListItem, ListRow) {
         self.row_at(0).expect("bound first item")
+    }
+
+    fn selection(&self) -> gtk::MultiSelection {
+        self.view
+            .model()
+            .expect("selection model")
+            .downcast()
+            .expect("multi selection")
     }
 
     fn bind(&self, item: &gtk::ListItem) {
@@ -218,6 +233,101 @@ fn setup_and_binding_follow_source_positions_and_shared_column_widths() {
 }
 
 #[test]
+fn checkboxes_follow_current_bound_positions_and_initial_visibility() {
+    gtk_test(
+        "ui::browser_modes::list_factory::tests::checkboxes_follow_current_bound_positions_and_initial_visibility",
+        || {
+            let fixture = Fixture::with_checkbox_selection(true);
+            let (_, first) = fixture.row_at(0).expect("first row");
+            let (_, second) = fixture.row_at(1).expect("second row");
+            assert!(first.checkbox.get_visible());
+            assert!(second.checkbox.get_visible());
+            assert!(!first.checkbox.is_active());
+            assert!(!second.checkbox.is_active());
+        },
+    );
+}
+
+#[test]
+fn checkbox_press_does_not_collapse_existing_selection() {
+    gtk_test(
+        "ui::browser_modes::list_factory::tests::checkbox_press_does_not_collapse_existing_selection",
+        || {
+            let fixture = Fixture::with_checkbox_selection(true);
+            let selection = fixture.selection();
+            let (_, row) = fixture.first();
+            pump_until(|| row.checkbox.width() > 0);
+            selection.select_item(1, false);
+            let bounds = row
+                .checkbox
+                .compute_bounds(&row.widget)
+                .expect("checkbox bounds");
+            let controllers = row.widget.observe_controllers();
+            let selection_click = (0..controllers.n_items())
+                .find_map(|position| {
+                    controllers
+                        .item(position)?
+                        .downcast::<gtk::GestureClick>()
+                        .ok()
+                        .filter(|gesture| {
+                            gesture.propagation_phase() == gtk::PropagationPhase::Capture
+                        })
+                })
+                .expect("selection click gesture");
+
+            selection_click.emit_by_name::<()>(
+                "pressed",
+                &[
+                    &1i32,
+                    &f64::from(bounds.center().x()),
+                    &f64::from(bounds.center().y()),
+                ],
+            );
+
+            assert!(!selection.is_selected(0));
+            assert!(selection.is_selected(1));
+        },
+    );
+}
+
+#[test]
+fn header_and_row_checkboxes_share_horizontal_alignment() {
+    gtk_test(
+        "ui::browser_modes::list_factory::tests::header_and_row_checkboxes_share_horizontal_alignment",
+        || {
+            crate::ui::prepare_portal_ui();
+            let fixture = Fixture::with_checkbox_selection(true);
+            let selection = fixture.selection();
+            let (headings, _, select_all, _) = super::super::list_headings(
+                fixture.browser.as_ref().expect("browser"),
+                0,
+                fixture.columns.clone(),
+                selection,
+            );
+            select_all.set_visible(true);
+            fixture.view.add_css_class("file-list-mode");
+            fixture.window.set_child(None::<&gtk::Widget>);
+            let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            table.add_css_class("mode-list");
+            table.append(&headings);
+            table.append(&fixture.view);
+            fixture.window.set_child(Some(&table));
+            let (_, row) = fixture.first();
+            pump_until(|| select_all.width() > 0 && row.checkbox.width() > 0);
+
+            let header_bounds = select_all
+                .compute_bounds(&table)
+                .expect("header checkbox bounds");
+            let row_bounds = row
+                .checkbox
+                .compute_bounds(&table)
+                .expect("row checkbox bounds");
+            assert_eq!(header_bounds.x().round(), row_bounds.x().round());
+        },
+    );
+}
+
+#[test]
 fn scrolling_defers_details_and_settling_preserves_rename_state() {
     gtk_test(
         "ui::browser_modes::list_factory::tests::scrolling_defers_details_and_settling_preserves_rename_state",
@@ -254,6 +364,8 @@ fn scrolling_defers_details_and_settling_preserves_rename_state() {
                 syncing: Rc::new(Cell::new(false)),
                 visit: super::super::bound_item_visitor(fixture.items.clone()),
                 item_context_trigger: Rc::new(|_, _| {}),
+                select_all: None,
+                select_all_guard: None,
             };
             refresh_list_section(
                 fixture.browser.as_ref().expect("browser"),

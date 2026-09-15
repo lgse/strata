@@ -35,6 +35,7 @@ pub(super) struct ListFactory {
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     pub(super) state: Option<Weak<crate::ui::browser::ViewState>>,
     pub(super) filter_query: Rc<RefCell<String>>,
+    pub(super) checkbox_selection: Rc<Cell<bool>>,
 }
 
 impl ListFactory {
@@ -56,6 +57,7 @@ impl ListFactory {
         let Some(row) = ListRow::from_widget(widget) else {
             return;
         };
+        row.checkbox.set_visible(self.checkbox_selection.get());
         row.register_columns(&self.columns);
         self.install_interactions(item, &row);
         item.set_child(Some(&row.widget));
@@ -96,6 +98,52 @@ impl ListFactory {
                 true,
             ),
         );
+        // Handle all checkbox clicks in a capture-phase gesture; connect_toggled
+        // corrects any residual internal toggle from the CheckButton.
+        let checkbox_click = gtk::GestureClick::new();
+        checkbox_click.set_button(1);
+        checkbox_click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let selection_for_click = self.selection.clone();
+        let browser_for_click = self.browser.clone();
+        let depth = self.depth;
+        let positions_for_click = self.positions.clone();
+        let item_for_click = item.downgrade();
+        let syncing = Rc::new(Cell::new(false));
+        super::checkbox_sync_toggled(&row.checkbox, &item_for_click, &self.selection, &syncing);
+        checkbox_click.connect_pressed(move |gesture, _, _, _| {
+            let Some(item) = item_for_click.upgrade() else {
+                return;
+            };
+            let position = item.position();
+            if position == gtk::INVALID_LIST_POSITION {
+                return;
+            }
+            let modifiers = gesture.current_event_state();
+            let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            if shift {
+                let Some(browser) = browser_for_click.upgrade() else {
+                    return;
+                };
+                let anchor = browser
+                    .selection_anchor_position(depth)
+                    .and_then(|anchor| positions_for_click.view_position(anchor))
+                    .unwrap_or(position);
+                let start = anchor.min(position);
+                let count = anchor.max(position).saturating_sub(start) + 1;
+                selection_for_click.select_range(start, count, true);
+            } else {
+                if let Some(browser) = browser_for_click.upgrade() {
+                    super::anchor_at(&browser, depth, &positions_for_click, position);
+                }
+                if selection_for_click.is_selected(position) {
+                    selection_for_click.unselect_item(position);
+                } else {
+                    selection_for_click.select_item(position, false);
+                }
+            }
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        });
+        row.checkbox.add_controller(checkbox_click);
     }
 
     fn binding(&self, item: &gtk::ListItem) -> Option<ListBinding> {
@@ -133,6 +181,12 @@ impl ListFactory {
             .and_then(Weak::upgrade)
             .and_then(|state| state.pending_rename_name(&binding.entry));
         row.bind_labels(item, &binding.entry, pending_name.as_deref());
+        accessibility::set_label(
+            &row.checkbox,
+            &format!("Select {}", binding.entry.display_name),
+        );
+        let selected = self.selection.is_selected(item.position());
+        row.checkbox.set_active(selected);
         if self.scrolling.get() {
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
@@ -155,11 +209,12 @@ struct ListRow {
     size: gtk::Label,
     kind: gtk::Label,
     modified: gtk::Label,
+    checkbox: gtk::CheckButton,
 }
 
 impl ListRow {
     fn from_widget(widget: gtk::Box) -> Option<Self> {
-        let (icon, name, field, mode, size, kind, modified) = list_row_parts(&widget)?;
+        let (icon, name, field, mode, size, kind, modified, checkbox) = list_row_parts(&widget)?;
         let name_cell = widget.first_child()?;
         Some(Self {
             widget,
@@ -171,6 +226,7 @@ impl ListRow {
             size,
             kind,
             modified,
+            checkbox,
         })
     }
 
