@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    app::navigation::{EntryInsertion, EntrySplice, NavigationPath, NavigationState, sort_entries},
+    app::navigation::{EntryInsertion, EntrySplice, NavigationPath, NavigationState},
     model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
     services::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
@@ -24,8 +24,8 @@ use crate::{
 mod loading;
 mod publication;
 mod remote;
+mod sorting;
 
-use loading::LoadCompletion;
 use publication::{PublicationPlan, PublishTerminal, StagedPublish};
 use remote::RemoteState;
 
@@ -431,9 +431,6 @@ const REMOTE_FLUSH_CAP: usize = 512;
 const CAMERA_FLUSH_CAP: usize = 32;
 /// Latency bound so later remote batches flush on the next idle/frame.
 const REMOTE_FLUSH_DELAY: Duration = Duration::from_millis(50);
-/// Snapshots at or below this size sort synchronously; larger ones sort in a
-/// blocking worker.
-const SORT_INLINE_LIMIT: usize = 2048;
 
 /// Last selection emitted per depth on the batch path, keyed by request so a
 /// new load re-emits; lets background batches skip redundant refreshes.
@@ -480,16 +477,6 @@ struct StagingLoad {
 struct SortingLoad {
     request_id: RequestId,
     deltas: Vec<(Location, DirectoryChange)>,
-}
-
-#[derive(Clone, Copy)]
-struct SortPlan {
-    ordering_preferences: ViewPreferences,
-    staged_preferences: ViewPreferences,
-    retry_metadata: bool,
-    truncated: bool,
-    can_trash: Option<bool>,
-    can_delete: Option<bool>,
 }
 
 pub struct Browser {
@@ -2551,237 +2538,6 @@ impl Browser {
             slot.entries = entries;
         } else {
             slot.entries.extend(entries);
-        }
-    }
-
-    /// Sorts a staged snapshot off-thread, then installs, reconciles, and publishes
-    /// it with the loading state up throughout: no provisional list is exposed.
-    fn finish_staged_load(
-        self: &Rc<Self>,
-        depth: usize,
-        request_id: RequestId,
-        completion: LoadCompletion,
-    ) {
-        let LoadCompletion {
-            truncated,
-            can_trash,
-            can_delete,
-        } = completion;
-        let staging = self.staging.borrow_mut().remove(&depth);
-        let Some(staging) = staging.filter(|staged| staged.request_id == request_id) else {
-            return;
-        };
-        let preferences = self
-            .state
-            .borrow()
-            .column_preferences(depth)
-            .unwrap_or_else(|| self.preferences.get());
-        let removed = staging.removed;
-        let mut entries = staging.entries;
-        entries.retain(|entry| !removed.contains(&entry.location));
-        let retry_metadata = staging.metadata_incomplete
-            && matches!(preferences.sort_key, SortKey::Size | SortKey::Modified);
-        let ordering_preferences = if retry_metadata {
-            ViewPreferences {
-                sort_key: SortKey::Name,
-                ..preferences
-            }
-        } else {
-            preferences
-        };
-        let deltas = staging.deltas;
-        self.sorting
-            .borrow_mut()
-            .insert(depth, SortingLoad { request_id, deltas });
-        self.run_sort_task(
-            depth,
-            request_id,
-            entries,
-            SortPlan {
-                ordering_preferences,
-                staged_preferences: preferences,
-                retry_metadata,
-                truncated,
-                can_trash,
-                can_delete,
-            },
-        );
-    }
-
-    /// Small snapshots sort synchronously; large ones sort in a blocking worker
-    /// with completion back on the main thread.
-    fn run_sort_task(
-        self: &Rc<Self>,
-        depth: usize,
-        request_id: RequestId,
-        entries: Vec<FileEntry>,
-        plan: SortPlan,
-    ) {
-        if entries.len() <= SORT_INLINE_LIMIT {
-            let sorted = sort_entries(entries, plan.ordering_preferences);
-            self.finish_staged_sort(depth, request_id, sorted, plan);
-            return;
-        }
-        let weak: Weak<Self> = Rc::downgrade(self);
-        glib::MainContext::default().spawn_local(async move {
-            let sorted =
-                gio::spawn_blocking(move || sort_entries(entries, plan.ordering_preferences)).await;
-            let Some(browser) = weak.upgrade() else {
-                return;
-            };
-            match sorted {
-                Ok(sorted) => browser.finish_staged_sort(depth, request_id, sorted, plan),
-                Err(_) => browser.fail_staged_sort(depth, request_id),
-            }
-        });
-    }
-
-    fn finish_staged_sort(
-        self: &Rc<Self>,
-        depth: usize,
-        request_id: RequestId,
-        sorted: Vec<FileEntry>,
-        plan: SortPlan,
-    ) {
-        let staged_preferences = plan.staged_preferences;
-        let truncated = plan.truncated;
-        let can_trash = plan.can_trash;
-        let can_delete = plan.can_delete;
-        let retry_metadata = plan.retry_metadata;
-        let sorting = self.sorting.borrow_mut().remove(&depth);
-        let Some(sorting) = sorting.filter(|sorting| sorting.request_id == request_id) else {
-            return;
-        };
-        if self.state.borrow().request_id_for_depth(depth) != Some(request_id) {
-            return;
-        }
-        if self
-            .state
-            .borrow_mut()
-            .install_snapshot(request_id, sorted)
-            .is_none()
-        {
-            return;
-        }
-        // Reconcile silently: the UI model is still empty, so delta events would
-        // splice invalid positions; one staged publication carries the result.
-        for (watched, change) in sorting.deltas {
-            if matches!(change, DirectoryChange::Rescan) {
-                continue;
-            }
-            let _applied = self
-                .state
-                .borrow_mut()
-                .apply_directory_change(depth, &watched, change);
-        }
-        let current = self
-            .state
-            .borrow()
-            .column_preferences(depth)
-            .unwrap_or_else(|| self.preferences.get());
-        if current != staged_preferences {
-            // Resorted mid-load: re-sort with the current preferences; the loading
-            // terminal fires exactly once, on whichever path finishes the load.
-            if matches!(current.sort_key, SortKey::Size | SortKey::Modified)
-                && self.state.borrow().column_unknown_metadata(depth).is_some()
-            {
-                self.state
-                    .borrow_mut()
-                    .finish(request_id, truncated, can_trash, can_delete);
-                self.emit(BrowserEvent::LoadFinished { depth, truncated });
-                self.ensure_sorted_after_load(depth);
-            } else {
-                self.resort_installed_column(
-                    depth, request_id, current, truncated, can_trash, can_delete,
-                );
-            }
-            return;
-        }
-        let focused = self
-            .state
-            .borrow()
-            .columns
-            .get(depth)
-            .and_then(|column| column.selected);
-        let positions = self.state.borrow().selected_positions(depth);
-        let total = self
-            .state
-            .borrow()
-            .columns
-            .get(depth)
-            .map(|column| column.entries.len())
-            .unwrap_or(0);
-        self.state
-            .borrow_mut()
-            .finish(request_id, truncated, can_trash, can_delete);
-        self.publish_staged(
-            depth,
-            PublicationPlan {
-                request_id,
-                total,
-                focused,
-                positions,
-                terminal: PublishTerminal::LoadFinished {
-                    truncated,
-                    retry_metadata,
-                },
-            },
-        );
-    }
-
-    fn resort_installed_column(
-        self: &Rc<Self>,
-        depth: usize,
-        request_id: RequestId,
-        preferences: ViewPreferences,
-        truncated: bool,
-        can_trash: Option<bool>,
-        can_delete: Option<bool>,
-    ) {
-        let Some(entries) = self
-            .state
-            .borrow()
-            .columns
-            .get(depth)
-            .map(|column| column.entries.clone())
-        else {
-            return;
-        };
-        self.sorting.borrow_mut().insert(
-            depth,
-            SortingLoad {
-                request_id,
-                deltas: Vec::new(),
-            },
-        );
-        self.run_sort_task(
-            depth,
-            request_id,
-            entries,
-            SortPlan {
-                ordering_preferences: preferences,
-                staged_preferences: preferences,
-                retry_metadata: false,
-                truncated,
-                can_trash,
-                can_delete,
-            },
-        );
-    }
-
-    /// Fails a staged load whose sort task died, so no spinner hangs.
-    fn fail_staged_sort(self: &Rc<Self>, depth: usize, request_id: RequestId) {
-        self.sorting.borrow_mut().remove(&depth);
-        let mut state = self.state.borrow_mut();
-        if state
-            .fail(request_id, "Sorting the directory failed.".to_owned())
-            .is_some()
-        {
-            drop(state);
-            self.emit(BrowserEvent::LoadFailed {
-                depth,
-                message: "Sorting the directory failed.".to_owned(),
-            });
         }
     }
 

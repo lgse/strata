@@ -7,6 +7,9 @@ use std::{
 };
 
 use super::*;
+
+#[path = "sorting/tests.rs"]
+mod staged_sort;
 use crate::{
     model::{EntryKind, MetadataValue},
     services::{
@@ -4977,17 +4980,21 @@ fn resort_after_mid_load_preference_change_republishes() {
         ..ViewPreferences::default()
     };
     browser.finish_staged_sort(
-        0,
-        request_id,
-        sorted,
-        SortPlan {
-            ordering_preferences: staged_preferences,
-            staged_preferences,
-            retry_metadata: false,
-            truncated: false,
-            can_trash: None,
-            can_delete: None,
+        sorting::SortTask {
+            depth: 0,
+            request_id,
+            plan: sorting::SortPlan {
+                ordering_preferences: staged_preferences,
+                staged_preferences,
+                retry_metadata: false,
+                completion: loading::LoadCompletion {
+                    truncated: false,
+                    can_trash: None,
+                    can_delete: None,
+                },
+            },
         },
+        sorted,
     );
     assert_eq!(
         column_names(&browser, 0),
