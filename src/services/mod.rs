@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+pub(crate) mod batch_rename;
 pub(crate) mod camera_preview;
 mod file_source;
 mod install_source;
@@ -13,6 +14,7 @@ mod transfer_action;
 mod update_check;
 mod update_install;
 
+pub use batch_rename::{BatchRenameMode, FormatStyle, plan_batch_rename};
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
@@ -29,9 +31,9 @@ pub(crate) use native_fs::{is_hidden_name, native_hidden_names, native_kind};
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
-    OperationRequestId, PasteItem, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
-    RestoreTrashItem, TransferConflict, UndoCopyRequest, UndoMoveItem, UndoMoveRequest,
-    validate_basename,
+    OperationRequestId, PasteItem, PasteRequest, RenameBatchItem, RenameBatchRequest, RenameRecord,
+    RenameRequest, RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict,
+    UndoCopyRequest, UndoMoveItem, UndoMoveRequest, validate_basename,
 };
 pub use preview::{
     MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,

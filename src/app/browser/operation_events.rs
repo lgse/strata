@@ -7,6 +7,7 @@ use crate::{
     services::{OperationEvent, OperationRequestId},
 };
 
+use super::operation_updates::rename_batch_error_summary;
 use super::{
     Browser, BrowserEvent, MAX_INCREMENTAL_OPERATION_UPDATES, UndoEntry, finish_undo,
     mark_undo_item_completed, move_records, push_pending_undo,
@@ -26,6 +27,7 @@ struct OperationCompletion {
     deletion_permanent: bool,
     restoring: bool,
     archiving: bool,
+    renaming_batch: bool,
     destination: Option<Location>,
     reveal: bool,
     file_operation_refreshed: bool,
@@ -41,6 +43,7 @@ impl OperationCompletion {
             deletion_permanent: browser.deletion_permanent.replace(false),
             restoring: browser.restoration_operation.replace(false),
             archiving: browser.archive_operation.replace(false),
+            renaming_batch: browser.rename_batch_operation.replace(false),
             destination: browser.transfer_destination.replace(None),
             reveal: browser.transfer_reveal.replace(true),
             file_operation_refreshed: false,
@@ -76,6 +79,32 @@ impl OperationCompletion {
             }
             Some(false) => push_pending_undo(UndoEntry::Copy(created)),
             None => {}
+        }
+    }
+
+    /// Records one undo entry per rename operation, whether it renamed a
+    /// single item or a whole batch. Batch terminals contribute their own
+    /// records; single renames collect theirs when the rename publishes.
+    fn record_rename_undo(&self, event: &OperationEvent, browser: &Browser) {
+        if let OperationEvent::RenamedBatch { renamed, .. } = event {
+            browser
+                .pending_rename_records
+                .borrow_mut()
+                .extend(renamed.iter().cloned());
+        }
+        if self.undoing {
+            browser.pending_rename_records.borrow_mut().clear();
+            return;
+        }
+        if !matches!(
+            event,
+            OperationEvent::Renamed { .. } | OperationEvent::RenamedBatch { .. }
+        ) {
+            return;
+        }
+        let records = std::mem::take(&mut *browser.pending_rename_records.borrow_mut());
+        if !records.is_empty() {
+            push_pending_undo(UndoEntry::Rename(records));
         }
     }
 }
@@ -193,6 +222,7 @@ impl Browser {
         }
         completion.undoing = undoing.is_some();
         completion.record_trash_undo(&event);
+        completion.record_rename_undo(&event, self);
         self.finish_transfer(&mut completion, &event);
         if completion.deleting {
             self.emit(BrowserEvent::DeletionFinished {
@@ -211,7 +241,7 @@ impl Browser {
         completion: &OperationCompletion,
         event: &OperationEvent,
     ) -> bool {
-        if !completion.deleting && !completion.restoring {
+        if !completion.deleting && !completion.restoring && !completion.renaming_batch {
             return false;
         }
         let changes = self.deferred_file_operation_changes.take();
@@ -308,6 +338,23 @@ impl Browser {
                 self.emit(BrowserEvent::RenameCompleted {
                     request_id: context.request_id,
                 });
+                self.refresh_unmonitored_operation_locations(context);
+            }
+            OperationEvent::RenamedBatch {
+                ref renamed,
+                ref errors,
+                ..
+            } => {
+                self.publish_rename_batch(renamed);
+                self.emit(BrowserEvent::RenameCompleted {
+                    request_id: context.request_id,
+                });
+                if !errors.is_empty() {
+                    let total = renamed.len() + errors.len();
+                    self.emit(BrowserEvent::OperationFailed {
+                        message: rename_batch_error_summary(total, errors),
+                    });
+                }
                 self.refresh_unmonitored_operation_locations(context);
             }
             OperationEvent::Compressed { archive_name, .. } => {
@@ -420,6 +467,7 @@ impl Browser {
 fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
     match event {
         OperationEvent::Renamed { request_id }
+        | OperationEvent::RenamedBatch { request_id, .. }
         | OperationEvent::Created { request_id }
         | OperationEvent::EntryCreated { request_id, .. }
         | OperationEvent::Pasted { request_id, .. }
@@ -445,6 +493,7 @@ fn completed_change_count(event: &OperationEvent) -> usize {
         OperationEvent::Deleted { locations, .. } | OperationEvent::Restored { locations, .. } => {
             locations.len()
         }
+        OperationEvent::RenamedBatch { renamed, .. } => renamed.len(),
         OperationEvent::CompletedWithErrors {
             deleted_locations, ..
         } => deleted_locations.len(),
@@ -472,6 +521,11 @@ fn finish_claimed_undo(generation: u64, entry: &UndoEntry, event: &OperationEven
     let completed = match (entry, event) {
         (UndoEntry::Trash(_), _) => Vec::new(),
         (UndoEntry::Move(_), _) => moved_locations(event),
+        (UndoEntry::Rename(_), OperationEvent::RenamedBatch { renamed, .. }) => renamed
+            .iter()
+            .map(|record| record.current.clone())
+            .collect(),
+        (UndoEntry::Rename(_), _) => Vec::new(),
         (
             UndoEntry::Copy(_),
             OperationEvent::CompletedWithErrors {
@@ -488,6 +542,10 @@ fn finish_claimed_undo(generation: u64, entry: &UndoEntry, event: &OperationEven
         UndoEntry::Trash(_) => matches!(event, OperationEvent::Restored { .. }),
         UndoEntry::Move(_) => matches!(event, OperationEvent::Pasted { .. }),
         UndoEntry::Copy(_) => matches!(event, OperationEvent::Deleted { .. }),
+        UndoEntry::Rename(_) => matches!(
+            event,
+            OperationEvent::RenamedBatch { errors, .. } if errors.is_empty()
+        ),
     };
     finish_undo(generation, succeeded);
 }

@@ -38,8 +38,9 @@ use crate::{
     services::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
         DeleteRequest, ExtractRequest, LoadHandle, OperationEvent, OperationProvider,
-        OperationRequestId, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
-        TransferConflict, UndoCopyRequest, UndoMoveRequest, validate_basename,
+        OperationRequestId, PasteRequest, RenameBatchRequest, RenameRecord, RenameRequest,
+        RestoreRequest, RestoreSource, TransferConflict, UndoCopyRequest, UndoMoveRequest,
+        validate_basename,
     },
 };
 
@@ -2748,6 +2749,21 @@ fn cancelled_event(
     }
 }
 
+/// Best-effort basename for error messages and rename records.
+fn location_basename(location: &Location) -> String {
+    if let Some(name) = location
+        .native_path()
+        .and_then(|path| path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+    {
+        return name;
+    }
+    gio_file_for_location(location)
+        .basename()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "item".to_owned())
+}
+
 #[derive(Default)]
 pub struct LocalOperationProvider;
 
@@ -2814,6 +2830,107 @@ impl OperationProvider for LocalOperationProvider {
                     message: error.to_string(),
                 }),
             }
+        });
+        cancellation_handle(cancellable)
+    }
+
+    fn rename_batch(
+        &self,
+        request: RenameBatchRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        let cancellable = gio::Cancellable::new();
+        let operation_cancellable = cancellable.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let mut renamed = Vec::new();
+            let mut errors = Vec::new();
+            let mut failed = Vec::new();
+            let mut affected_locations = HashSet::new();
+            for (index, item) in request.items.iter().enumerate() {
+                if operation_cancellable.is_cancelled() {
+                    emit(cancelled_event(
+                        request.id,
+                        renamed
+                            .iter()
+                            .map(|record: &RenameRecord| record.current.clone())
+                            .collect(),
+                        failed,
+                        request.items[index..]
+                            .iter()
+                            .map(|item| item.location.clone())
+                            .collect(),
+                        affected_locations,
+                    ));
+                    return;
+                }
+                if let Some(parent) = item.location.parent() {
+                    affected_locations.insert(parent);
+                }
+                let original_name = location_basename(&item.location);
+                if let Err(message) = validate_basename(&item.new_name) {
+                    errors.push(format!("{original_name}: {message}"));
+                    failed.push(item.location.clone());
+                    continue;
+                }
+                let file = gio_file_for_location(&item.location);
+                let new_name = item.new_name.clone();
+                let current = item
+                    .location
+                    .parent()
+                    .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)));
+                let Some(current) = current else {
+                    errors.push(format!(
+                        "{original_name}: could not resolve the new location"
+                    ));
+                    failed.push(item.location.clone());
+                    continue;
+                };
+                match await_cancellable(
+                    &file,
+                    &operation_cancellable,
+                    move |file, cancellable, result| {
+                        file.set_display_name_async(
+                            &new_name,
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            move |output| result.resolve(output),
+                        );
+                    },
+                )
+                .await
+                {
+                    Ok(_) => renamed.push(RenameRecord {
+                        original: item.location.clone(),
+                        current,
+                        original_name,
+                    }),
+                    Err(error) if was_cancelled(&error) => {
+                        emit(cancelled_event(
+                            request.id,
+                            renamed
+                                .iter()
+                                .map(|record: &RenameRecord| record.current.clone())
+                                .collect(),
+                            failed,
+                            request.items[index..]
+                                .iter()
+                                .map(|item| item.location.clone())
+                                .collect(),
+                            affected_locations,
+                        ));
+                        return;
+                    }
+                    Err(error) => {
+                        errors.push(format!("{original_name}: {error}"));
+                        failed.push(item.location.clone());
+                    }
+                }
+            }
+            emit(OperationEvent::RenamedBatch {
+                request_id: request.id,
+                renamed,
+                errors,
+            });
         });
         cancellation_handle(cancellable)
     }
