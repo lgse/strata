@@ -218,7 +218,7 @@ fn launch_program(location: &Location) -> std::io::Result<()> {
             "program is not a local file",
         )
     })?;
-    let mut child = program_command(path).spawn()?;
+    let mut child = program_command(path, terminal::Terminal::resolve)?.spawn()?;
     std::thread::spawn(move || {
         if let Err(error) = child.wait() {
             tracing::warn!(%error, "unable to reap program");
@@ -227,14 +227,38 @@ fn launch_program(location: &Location) -> std::io::Result<()> {
     Ok(())
 }
 
-fn program_command(path: &Path) -> Command {
+fn program_command(
+    path: &Path,
+    resolve_terminal: impl FnOnce() -> Option<terminal::Terminal>,
+) -> std::io::Result<Command> {
+    if path.extension().is_some_and(|extension| extension == "sh") {
+        let terminal = resolve_terminal().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                terminal::no_terminal_message(),
+            )
+        })?;
+        // Pass the path as data, preserving the script's shebang and avoiding shell injection.
+        let mut command = terminal.exec_command(&[
+            std::ffi::OsStr::new("/bin/sh"),
+            std::ffi::OsStr::new("-c"),
+            std::ffi::OsStr::new(
+                "cd -- \"$2\" && \"$1\"; status=$?; printf '\\nProcess exited with status %s. Press Enter to close…' \"$status\"; IFS= read -r answer; exit \"$status\"",
+            ),
+            std::ffi::OsStr::new("strata-run"),
+            path.as_os_str(),
+            path.parent().unwrap_or_else(|| Path::new(".")).as_os_str(),
+        ]);
+        command.current_dir(path.parent().unwrap_or_else(|| Path::new(".")));
+        return Ok(command);
+    }
     let mut command = Command::new(path);
     command
         .current_dir(path.parent().unwrap_or_else(|| Path::new(".")))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    command
+    Ok(command)
 }
 
 pub(super) fn can_open_terminal(location: &Location) -> bool {
