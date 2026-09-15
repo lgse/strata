@@ -1583,3 +1583,148 @@ fn the_range_anchor_is_readable_and_replaceable_by_position() {
         Some(vec![1, 2])
     );
 }
+
+fn typed_entry(name: &str, kind: EntryKind) -> FileEntry {
+    FileEntry {
+        thumbnail_path: None,
+        location: location(&format!("/fixture/{name}")),
+        native_name: OsString::from(name),
+        display_name: name.into(),
+        kind,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+    }
+}
+
+#[test]
+fn type_sorting_orders_by_mime_descriptions_with_folders_first() {
+    let mut entries = [
+        typed_entry("z_other.qqqqq", EntryKind::File),
+        typed_entry("b_notes.json", EntryKind::File),
+        typed_entry("a_notes.json", EntryKind::File),
+        typed_entry("folder_z", EntryKind::Directory),
+        typed_entry("folder_a", EntryKind::Directory),
+        typed_entry("a_other.qqqqq", EntryKind::File),
+        typed_entry("doc.pdf", EntryKind::File),
+        typed_entry("script.py", EntryKind::File),
+    ];
+
+    let preferences_asc = ViewPreferences {
+        folders_first: true,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Ascending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_asc));
+    let names_asc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_asc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_notes.json",
+            "b_notes.json",
+            "doc.pdf",
+            "script.py",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+        ]
+    );
+
+    let preferences_desc = ViewPreferences {
+        folders_first: true,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Descending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_desc));
+    let names_desc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_desc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+            "script.py",
+            "doc.pdf",
+            "a_notes.json",
+            "b_notes.json",
+        ]
+    );
+}
+
+#[test]
+fn type_sorting_orders_by_mime_descriptions_without_folders_first() {
+    let mut entries = [
+        typed_entry("z_other.qqqqq", EntryKind::File),
+        typed_entry("b_notes.json", EntryKind::File),
+        typed_entry("a_notes.json", EntryKind::File),
+        typed_entry("folder_z", EntryKind::Directory),
+        typed_entry("folder_a", EntryKind::Directory),
+        typed_entry("a_other.qqqqq", EntryKind::File),
+        typed_entry("doc.pdf", EntryKind::File),
+        typed_entry("script.py", EntryKind::File),
+    ];
+
+    let preferences_asc = ViewPreferences {
+        folders_first: false,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Ascending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_asc));
+    let names_asc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_asc,
+        [
+            "folder_a",
+            "folder_z",
+            "a_notes.json",
+            "b_notes.json",
+            "doc.pdf",
+            "script.py",
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+        ]
+    );
+
+    let preferences_desc = ViewPreferences {
+        folders_first: false,
+        sort_key: SortKey::Type,
+        sort_direction: SortDirection::Descending,
+        show_hidden: false,
+    };
+    entries.sort_by(|left, right| compare_entries(left, right, preferences_desc));
+    let names_desc: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
+    assert_eq!(
+        names_desc,
+        [
+            "a_other.qqqqq",
+            "z_other.qqqqq",
+            "script.py",
+            "doc.pdf",
+            "a_notes.json",
+            "b_notes.json",
+            "folder_a",
+            "folder_z",
+        ]
+    );
+}

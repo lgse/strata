@@ -3,6 +3,7 @@
 pub(crate) mod camera_preview;
 mod file_source;
 mod install_source;
+mod mime_type;
 mod native_fs;
 mod operations;
 mod preview;
@@ -20,6 +21,10 @@ pub use file_source::{
 };
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
+pub use mime_type::{
+    BROKEN_LINK_TYPE_NAME, EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type,
+    entry_type_description, mime_description_for_name,
+};
 pub(crate) use native_fs::{is_hidden_name, native_hidden_names, native_kind};
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,

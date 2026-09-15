@@ -1792,7 +1792,7 @@ fn build_icons_pane(
     let view_model = if options.group_by_type {
         let sorted =
             gtk::SortListModel::new(Some(filtered_model.clone()), None::<gtk::CustomSorter>);
-        let sorter = type_group_sorter();
+        let sorter = pane_type_group_sorter(&context.browser, depth, &model);
         sorted.set_sorter(Some(&sorter));
         sorted.upcast::<gio::ListModel>()
     } else {
@@ -2625,7 +2625,7 @@ fn build_list_pane(
     let view_model =
         gtk::SortListModel::new(Some(filtered_model.clone()), None::<gtk::CustomSorter>);
     if options.group_by_type {
-        let sorter = type_group_sorter();
+        let sorter = pane_type_group_sorter(&browser, depth, &model);
         view_model.set_sorter(Some(&sorter));
         view_model.set_section_sorter(Some(&sorter));
     }
@@ -4177,16 +4177,8 @@ fn entry_size(entry: &FileEntry) -> String {
     }
 }
 
-fn entry_type(entry: &FileEntry) -> &'static str {
-    use crate::model::EntryKind;
-    match entry.kind {
-        EntryKind::Directory => "Folder",
-        EntryKind::DirectorySymbolicLink => "Folder link",
-        EntryKind::File => "File",
-        EntryKind::FileSymbolicLink => "File link",
-        EntryKind::SymbolicLink => "Broken link",
-        EntryKind::Other => "Other",
-    }
+fn entry_type(entry: &FileEntry) -> String {
+    crate::services::entry_type_description(entry)
 }
 
 fn entry_mode(entry: &FileEntry) -> String {
@@ -4303,13 +4295,12 @@ fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
     }
 }
 
-/// Orders empty model values first, then folders and the remaining type labels
-/// alphabetically, independently of which entries have loaded.
 fn compare_type_groups(left: &str, right: &str) -> std::cmp::Ordering {
     fn rank(label: &str) -> u8 {
         match label {
             "" => 0,
             super::browser::FOLDER_TYPE_GROUP => 1,
+            super::browser::OTHER_TYPE_GROUP => 3,
             _ => 2,
         }
     }
@@ -4332,17 +4323,66 @@ fn value_type_group(value: &str) -> String {
     super::browser::model_type_group(value)
 }
 
-/// Sorts entries into their file-type groups. `GtkSortListModel` sorts stably, so
-/// entries keep the pane's own sort order inside each group. List also uses this
-/// sorter as `section_sorter` so headings mark where one type ends and the next begins.
-fn type_group_sorter() -> gtk::CustomSorter {
-    gtk::CustomSorter::new(|left, right| {
-        compare_type_groups(
+// GTK's stable sort preserves the pane's filename ordering within each type.
+fn type_group_sorter(
+    preferences: impl Fn() -> crate::model::ViewPreferences + 'static,
+) -> gtk::CustomSorter {
+    gtk::CustomSorter::new(move |left, right| {
+        compare_type_groups_for_preferences(
             &value_type_group(&model_value(left)),
             &value_type_group(&model_value(right)),
+            preferences(),
         )
         .into()
     })
+}
+
+fn pane_type_group_sorter(
+    browser: &Rc<Browser>,
+    depth: usize,
+    model: &gtk::StringList,
+) -> gtk::CustomSorter {
+    let browser = Rc::downgrade(browser);
+    let sorter = type_group_sorter(move || {
+        browser
+            .upgrade()
+            .and_then(|browser| browser.column_preferences(depth))
+            .unwrap_or_default()
+    });
+    let weak_sorter = sorter.downgrade();
+    model.connect_items_changed(move |_, _, _, _| {
+        if let Some(sorter) = weak_sorter.upgrade() {
+            sorter.changed(gtk::SorterChange::Different);
+        }
+    });
+    sorter
+}
+
+fn compare_type_groups_for_preferences(
+    left: &str,
+    right: &str,
+    preferences: crate::model::ViewPreferences,
+) -> std::cmp::Ordering {
+    if preferences.sort_key != SortKey::Type {
+        return compare_type_groups(left, right);
+    }
+    if left.is_empty() || right.is_empty() {
+        return left.cmp(right);
+    }
+    if preferences.folders_first {
+        let folders = (right == super::browser::FOLDER_TYPE_GROUP)
+            .cmp(&(left == super::browser::FOLDER_TYPE_GROUP));
+        if folders != std::cmp::Ordering::Equal {
+            return folders;
+        }
+    }
+    let order = (left == super::browser::OTHER_TYPE_GROUP)
+        .cmp(&(right == super::browser::OTHER_TYPE_GROUP))
+        .then_with(|| crate::app::compare_display_names(left, right));
+    match preferences.sort_direction {
+        SortDirection::Ascending => order,
+        SortDirection::Descending => order.reverse(),
+    }
 }
 
 #[cfg(test)]

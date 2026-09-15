@@ -212,7 +212,7 @@ fn setup_and_binding_follow_source_positions_and_shared_column_widths() {
             assert_eq!(row.name.label(), expected.display_name);
             assert_eq!(row.size.label(), entry_size(expected));
             assert_eq!(row.mode.label(), entry_mode(expected));
-            assert_eq!(row.kind.label(), "File");
+            assert_eq!(row.kind.label(), entry_type(expected));
         },
     );
 }
