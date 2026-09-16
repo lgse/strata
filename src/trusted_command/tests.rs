@@ -74,14 +74,11 @@ fn resolve_requires_final_path_under_a_trusted_directory() {
 #[test]
 fn host_helpers_use_absolute_allowlisted_paths() {
     for name in ["sh", "tar"] {
-        match resolve(name) {
-            Ok(path) => {
-                assert!(path.is_absolute());
-                assert_eq!(path.file_name().and_then(|n| n.to_str()), Some(name));
-                let program = command(name).expect("command").get_program().to_owned();
-                assert_eq!(program, path.as_os_str());
-            }
-            Err(_) => {}
+        if let Ok(path) = resolve(name) {
+            assert!(path.is_absolute());
+            assert_eq!(path.file_name().and_then(|n| n.to_str()), Some(name));
+            let program = command(name).expect("command").get_program().to_owned();
+            assert_eq!(program, path.as_os_str());
         }
     }
     assert!(command("strata-missing-trusted-helper").is_err());
