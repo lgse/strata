@@ -13,7 +13,7 @@ from .display import HeadlessDisplay
 from .environment import TestEnvironment, process_environment
 from .process import ManagedProcess, terminate
 
-APPLICATION_NAME = "strata"
+APPLICATION_NAME = "io.github.lgse.Strata"
 # GtkListView reports "list"; GtkGridView reports "layered pane".
 ENTRY_CONTAINER_ROLES = frozenset({"list", "layered pane", "table"})
 WINDOW_TITLE = "Strata"

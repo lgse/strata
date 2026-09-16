@@ -2077,11 +2077,14 @@ paned > separator {
   padding-right: 9px;
 }
 
-.sidebar-split > separator {
-  padding: 0 2px 0 0;
+.sidebar-split > separator.wide {
+  min-width: 1px;
+  margin: 0;
+  padding: 0;
   border: none;
-  background: @theme_surface;
-  box-shadow: inset 1px 0 alpha(@theme_border, 0.6);
+  background: alpha(@theme_border, 0.6);
+  background-image: none;
+  box-shadow: none;
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */
