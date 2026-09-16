@@ -71,6 +71,14 @@ stable for `scripts/benchmark-delete.sh`. For example,
 selects replacement safety cases. Preserve independently named filesystem races,
 symlink, non-UTF8, cancellation, and conflict scenarios when sharing setup.
 
+Window regressions have policy owners under `src/ui/window/tests/` for keyboard
+classification, sidebar places, bookmarks, devices, and trash. Startup and live
+preference cases stay in `preferences`; real key-routing scenarios stay in
+`keyboard_dispatch` and `type_to_search`. The `ui::window::` filter covers these
+owners and the adjacent window modules. When moving a GTK case, update its
+`gtk_test` subprocess name to match its compiled test path and verify that the
+child actually executes the case; an unchanged outer test count is not enough.
+
 A filter must collect at least one test; use Cargo's output or a collection
 check to verify that it did. `scripts/quality.sh` only accepts `all`, `fmt`,
 `clippy`, or `test` and does **not** forward test filters, so it cannot be used
