@@ -59,6 +59,11 @@ pub enum DocumentBlock {
     },
     Rule,
     ContainerBoundary,
+    Image {
+        destination: String,
+        alt: String,
+        list_depth: Option<usize>,
+    },
     TableRow {
         cells: Vec<DocumentTableCell>,
     },
@@ -122,7 +127,17 @@ pub enum DocumentUnitKind {
         list_depth: Option<usize>,
         rows: Vec<Vec<DocumentTableCellLayout>>,
     },
+    Media {
+        source: DocumentMedia,
+        list_depth: Option<usize>,
+    },
     Gap,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DocumentMedia {
+    Image(String),
+    Mermaid(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -382,6 +397,9 @@ fn parse_markdown_bounded(
     let mut table_cell: Option<String> = None;
     let mut table_depth = None;
     let mut raw_html = false;
+    let mut blocked_images = false;
+    let mut image = None::<(String, String)>;
+    let mut pending_images = Vec::new();
     let mut completed_markup = 0usize;
     let mut completed_blocks = 0;
     let mut options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
@@ -393,6 +411,13 @@ fn parse_markdown_bounded(
         budget.event()?;
         if matches!(event, Event::Start(_)) {
             budget.enter()?;
+        }
+        if let Some((_, alt)) = image.as_mut() {
+            match &event {
+                Event::Text(text) | Event::Code(text) => alt.push_str(text),
+                Event::SoftBreak | Event::HardBreak => alt.push(' '),
+                _ => {}
+            }
         }
         match &event {
             Event::Start(Tag::Heading { level, .. }) => {
@@ -596,12 +621,31 @@ fn parse_markdown_bounded(
                     "</u>"
                 },
             ),
-            Event::Start(Tag::Image { .. }) => {
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                if document_features && table_cell.is_none() {
+                    if !dest_url.contains(':') && !dest_url.starts_with('/') {
+                        image = Some((dest_url.to_string(), String::new()));
+                    } else {
+                        blocked_images = true;
+                    }
+                }
                 append_markup(&mut active, &mut table_cell, "[Image: ");
             }
-            Event::End(TagEnd::Image) => append_markup(&mut active, &mut table_cell, "]"),
+            Event::End(TagEnd::Image) => {
+                append_markup(&mut active, &mut table_cell, "]");
+                if let Some((destination, alt)) = image.take() {
+                    pending_images.push(DocumentBlock::Image {
+                        destination,
+                        alt,
+                        list_depth: list_items.last().copied(),
+                    });
+                }
+            }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = markdown_code_language(kind);
+                if language == Some("mermaid") {
+                    finish_block(&mut active, &mut blocks);
+                }
                 if matches!(
                     active,
                     Some(
@@ -680,7 +724,28 @@ fn parse_markdown_bounded(
         if matches!(event, Event::End(_)) {
             budget.leave();
         }
-        completed_markup += blocks[completed_blocks..]
+        if !pending_images.is_empty()
+            && (blocks.len() > completed_blocks
+                || matches!(
+                    event,
+                    Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item)
+                ))
+        {
+            if matches!(
+                event,
+                Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item)
+            ) {
+                finish_block(&mut active, &mut blocks);
+            }
+            if let [DocumentBlock::Image { alt, .. }] = pending_images.as_slice()
+                && let Some(DocumentBlock::Paragraph(markup)) = blocks.last()
+                && *markup == format!("[Image: {}]", glib::markup_escape_text(alt))
+            {
+                blocks.pop();
+            }
+            blocks.append(&mut pending_images);
+        }
+        completed_markup += blocks[completed_blocks.min(blocks.len())..]
             .iter()
             .map(block_markup_bytes)
             .sum::<usize>();
@@ -691,7 +756,8 @@ fn parse_markdown_bounded(
         {
             return Err("Rendered preview exceeded the 512-cell limit for one table".to_owned());
         }
-        let pending_markup = active.as_ref().map_or(0, |block| block.markup().len())
+        let pending_markup = pending_images.iter().map(block_markup_bytes).sum::<usize>()
+            + active.as_ref().map_or(0, |block| block.markup().len())
             + table_cell.as_ref().map_or(0, String::len)
             + table_row.as_ref().map_or(0, |row| {
                 row.iter().map(|cell| cell.markup.len()).sum::<usize>()
@@ -703,10 +769,10 @@ fn parse_markdown_bounded(
     finish_block(&mut active, &mut blocks);
     Ok(ParsedDocument {
         document: Document { blocks },
-        warnings: raw_html
-            .then(|| "Raw HTML is shown as inert text in Markdown previews.".to_owned())
-            .into_iter()
-            .collect(),
+        warnings: [
+            raw_html.then(|| "Raw HTML is shown as inert text in Markdown previews.".to_owned()),
+            blocked_images.then(|| "Remote and absolute image URLs are not loaded. Use images inside the document's folder.".to_owned()),
+        ].into_iter().flatten().collect(),
     })
 }
 
@@ -1457,6 +1523,24 @@ fn layout_document_bounded(
                 None,
                 &budget,
             )?,
+            DocumentBlock::Image {
+                destination,
+                alt,
+                list_depth,
+            } => {
+                units.push(DocumentUnit {
+                    kind: DocumentUnitKind::Media {
+                        source: DocumentMedia::Image(destination),
+                        list_depth,
+                    },
+                    text: alt.clone(),
+                    copy_text: format!("[Image: {alt}]\n"),
+                    spans: Vec::new(),
+                    wrap: true,
+                    first: true,
+                    last: true,
+                });
+            }
             DocumentBlock::Rule => units.push(rule_unit(None)),
             DocumentBlock::ListRule { depth } => units.push(rule_unit(Some(depth))),
             DocumentBlock::ContainerBoundary => {
@@ -1503,8 +1587,42 @@ fn layout_document_bounded(
         }
     }
 
+    let mut rendered_units = Vec::with_capacity(units.len());
+    let mut units = units.into_iter().peekable();
+    while let Some(mut unit) = units.next() {
+        if let DocumentUnitKind::Code {
+            list_depth,
+            language: Some("mermaid"),
+        } = unit.kind
+        {
+            let mut source_units = vec![unit.clone()];
+            while !unit.last {
+                let Some(continuation) = units.next() else {
+                    break;
+                };
+                unit.text.push_str(&continuation.text);
+                unit.copy_text.push_str(&continuation.copy_text);
+                unit.last = continuation.last;
+                source_units.push(continuation);
+            }
+            if unit.copy_text.len() > super::document_media::DIAGRAM_INPUT_LIMIT
+                || unit.copy_text.lines().count() > 256
+            {
+                rendered_units.extend(source_units);
+                continue;
+            }
+            unit.kind = DocumentUnitKind::Media {
+                source: DocumentMedia::Mermaid(unit.copy_text.clone()),
+                list_depth,
+            };
+        }
+        rendered_units.push(unit);
+        budget.check()?;
+    }
     budget.check()?;
-    Ok(DocumentLayout { units })
+    Ok(DocumentLayout {
+        units: rendered_units,
+    })
 }
 
 struct LayoutBudget<'a> {
@@ -1883,6 +2001,7 @@ fn block_has_balanced_markup(block: &DocumentBlock) -> bool {
         | DocumentBlock::ListChild { markup, .. }
         | DocumentBlock::Quote(markup)
         | DocumentBlock::Code { markup, .. } => has_balanced_markup(markup),
+        DocumentBlock::Image { .. } => true,
         DocumentBlock::TableRow { cells } | DocumentBlock::ListTableRow { cells, .. } => {
             cells.iter().all(|cell| has_balanced_markup(&cell.markup))
         }
@@ -1927,6 +2046,9 @@ fn block_markup_bytes(block: &DocumentBlock) -> usize {
         | DocumentBlock::ListChild { markup, .. }
         | DocumentBlock::Quote(markup)
         | DocumentBlock::Code { markup, .. } => markup.len(),
+        DocumentBlock::Image {
+            destination, alt, ..
+        } => destination.len() + alt.len(),
         DocumentBlock::TableRow { cells } | DocumentBlock::ListTableRow { cells, .. } => {
             cells.iter().map(|cell| cell.markup.len()).sum()
         }
@@ -1972,6 +2094,7 @@ fn code_language(hint: &str) -> Option<&'static str> {
         "lua" => Some("lua"),
         "make" | "makefile" => Some("makefile"),
         "markdown" | "md" => Some("markdown"),
+        "mermaid" => Some("mermaid"),
         "php" => Some("php"),
         "powershell" | "ps1" => Some("powershell"),
         "py" | "python" | "python3" => Some("python3"),

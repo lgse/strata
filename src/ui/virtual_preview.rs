@@ -48,7 +48,7 @@ impl PreviewUnit {
     fn selection_len(&self) -> usize {
         match self {
             Self::Document(DocumentUnit {
-                kind: DocumentUnitKind::Table { .. },
+                kind: DocumentUnitKind::Table { .. } | DocumentUnitKind::Media { .. },
                 ..
             }) => 1,
             _ => self
@@ -113,19 +113,21 @@ pub(super) struct VirtualPreviewState {
     drag_generation: Cell<u64>,
     hovered: Cell<Option<(usize, usize)>>,
     pressed_link: RefCell<Option<String>>,
+    media_cache: Rc<super::document_media::MediaCache>,
 }
 
 pub(super) fn rendered_document(
     layout: DocumentLayout,
     warnings: Vec<String>,
     wrapped: bool,
+    document_path: Option<std::path::PathBuf>,
 ) -> (gtk::Box, Rc<VirtualPreviewState>) {
     let units = layout
         .units
         .into_iter()
         .map(PreviewUnit::Document)
         .collect();
-    virtual_preview(units, warnings, false, wrapped)
+    virtual_preview(units, warnings, false, wrapped, document_path)
 }
 
 pub(super) fn source_document(
@@ -136,7 +138,7 @@ pub(super) fn source_document(
     let content = normalize_preview_text(content);
     let (source, split_lines) = source_units(&content);
     let units = source.into_iter().map(PreviewUnit::Source).collect();
-    let (container, state) = virtual_preview(units, Vec::new(), true, wrapped);
+    let (container, state) = virtual_preview(units, Vec::new(), true, wrapped, None);
     if truncated || split_lines {
         let message = match (truncated, split_lines) {
             (true, true) => {
@@ -169,6 +171,7 @@ fn virtual_preview(
     warnings: Vec<String>,
     source: bool,
     wrapped: bool,
+    document_path: Option<std::path::PathBuf>,
 ) -> (gtk::Box, Rc<VirtualPreviewState>) {
     let state = Rc::new(VirtualPreviewState {
         units: Rc::new(units),
@@ -181,6 +184,7 @@ fn virtual_preview(
         drag_generation: Cell::new(0),
         hovered: Cell::new(None),
         pressed_link: RefCell::new(None),
+        media_cache: super::document_media::MediaCache::new(document_path),
     });
     let model = gtk::StringList::new(&vec![""; state.units.len()]);
     let selection = gtk::NoSelection::new(Some(model.clone()));
@@ -210,15 +214,32 @@ fn virtual_preview(
         let Some(unit) = state_for_bind.units.get(index) else {
             return;
         };
-        let bound = bind_unit(
-            &row,
-            unit,
-            index,
-            state_for_bind.units.len(),
-            state_for_bind.units.clone(),
-            document_tags_for_bind.as_ref(),
-            state_for_bind.wrapped.get(),
-        );
+        let bound = if let PreviewUnit::Document(DocumentUnit {
+            kind: DocumentUnitKind::Media { source, list_depth },
+            text,
+            ..
+        }) = unit
+        {
+            clear_box(&row);
+            row.set_margin_start(16 + list_indent(*list_depth));
+            row.set_margin_end(16);
+            row.set_margin_top(8);
+            row.set_margin_bottom(12);
+            state_for_bind.media_cache.bind(index, source, text, &row);
+            let bound = BoundRow::default();
+            bound.root.set(Some(&row));
+            bound
+        } else {
+            bind_unit(
+                &row,
+                unit,
+                index,
+                state_for_bind.units.len(),
+                state_for_bind.units.clone(),
+                document_tags_for_bind.as_ref(),
+                state_for_bind.wrapped.get(),
+            )
+        };
         if !source && let Some(view) = bound.view.upgrade() {
             schedule_document_view_size(&view, row.width());
         }
@@ -852,7 +873,10 @@ fn apply_document_unit_tags(buffer: &gtk::TextBuffer, unit: &DocumentUnit) {
                 apply(&format!("document-list-child-{}", depth.min(&32)));
             }
         }
-        DocumentUnitKind::Paragraph | DocumentUnitKind::Table { .. } | DocumentUnitKind::Gap => {}
+        DocumentUnitKind::Paragraph
+        | DocumentUnitKind::Table { .. }
+        | DocumentUnitKind::Media { .. }
+        | DocumentUnitKind::Gap => {}
     }
 
     for span in &unit.spans {

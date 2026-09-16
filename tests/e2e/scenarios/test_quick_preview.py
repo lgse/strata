@@ -216,7 +216,21 @@ def test_preview_hides_on_shift_range_folder_focus(strata):
     strata.wait(lambda: strata.preview_shows("alpha"), "preview to resume after the folder")
 
 
-def test_preview_renders_markdown(strata):
+def test_preview_renders_markdown(strata, fixture_tree):
+    from PIL import Image
+
+    Image.new("RGB", (80, 32), "green").save(fixture_tree.path("folder/local image.png"))
+    fixture_tree.path("folder/shapes.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="32">'
+        '<circle cx="16" cy="16" r="12" fill="red"/></svg>'
+    )
+    fixture_tree.path("page.md").write_text(
+        "# Heading\n\nBody text.\n\n"
+        "![Local PNG](folder/local%20image.png)\n\n"
+        "![Local SVG](folder/shapes.svg)\n\n"
+        "```mermaid\nflowchart LR\nA[Open] --> B[Preview]\n```\n\n"
+        "![Missing fixture](folder/missing.png)\n"
+    )
     strata.select_entry_with_keyboard("page.md")
     strata.keyboard.press("space")
 
@@ -224,6 +238,22 @@ def test_preview_renders_markdown(strata):
         lambda: strata.preview_shows("Body text."),
         "the markdown preview to render its body",
     )
+    for name in ("Local PNG", "Local SVG", "Mermaid diagram"):
+        strata.wait(
+            lambda name=name: strata.preview().find(role="image", description=name) is not None,
+            f"the sandboxed Markdown media to render: {name}",
+        )
+    strata.wait(lambda: strata.preview_shows("Missing fixture"), "missing-image fallback")
+    strata.pointer.click(strata.preview().find(role="button", name="View source"))
+    strata.wait(lambda: strata.preview_shows("flowchart LR"), "original Mermaid source")
+    strata.pointer.click(strata.preview().find(role="button", name="View rendered"))
+    strata.wait(
+        lambda: strata.preview().find(role="image", description="Mermaid diagram") is not None,
+        "the cached diagram after switching back to rendered view",
+    )
+    strata.select_entry("notes.txt")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "next preview")
+    assert strata.preview().find(role="image", description="Mermaid diagram") is None
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)

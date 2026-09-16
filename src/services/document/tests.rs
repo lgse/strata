@@ -1289,6 +1289,107 @@ fn document_layout_keeps_tables_atomic_and_copyable_as_tsv() {
 }
 
 #[test]
+fn markdown_media_preserves_image_order_lists_and_diagram_source() {
+    use super::DocumentMedia;
+    let cancellation = Cancellation::default();
+    let parsed = parse_document(DocumentKind::Markdown,
+        "Before\n\n![bars](images/bars.png)\n\nAfter\n\n- Item ![nested](nested.svg)\n\n```mermaid\nflowchart LR\nA-->B\n```\n\n```text\nA-->B\n```", &cancellation).expect("parse media");
+    let layout = layout_document(parsed.document, &cancellation).expect("layout media");
+    assert_eq!(layout.units[0].text, "Before");
+    assert!(
+        matches!(&layout.units[1].kind, DocumentUnitKind::Media { source: DocumentMedia::Image(path), list_depth: None } if path == "images/bars.png")
+    );
+    assert_eq!(layout.units[1].text, "bars");
+    assert_eq!(layout.units[2].text, "After");
+    assert!(layout.units.iter().any(|unit| matches!(&unit.kind, DocumentUnitKind::Media { source: DocumentMedia::Image(path), list_depth: Some(0) } if path == "nested.svg")));
+    let diagram = layout
+        .units
+        .iter()
+        .find(|unit| {
+            matches!(
+                unit.kind,
+                DocumentUnitKind::Media {
+                    source: DocumentMedia::Mermaid(_),
+                    ..
+                }
+            )
+        })
+        .expect("diagram");
+    assert_eq!(diagram.text, "flowchart LR\nA-->B");
+    assert_eq!(diagram.copy_text, "flowchart LR\nA-->B\n");
+    assert!(
+        matches!(&diagram.kind, DocumentUnitKind::Media { source: DocumentMedia::Mermaid(source), .. } if source == &diagram.copy_text)
+    );
+    assert!(layout.units.iter().any(|unit| matches!(
+        unit.kind,
+        DocumentUnitKind::Code {
+            language: Some("text"),
+            ..
+        } | DocumentUnitKind::Code { language: None, .. }
+    )));
+}
+
+#[test]
+fn markdown_media_keeps_nested_content_and_large_code_fallbacks() {
+    use super::DocumentMedia;
+    let cancellation = Cancellation::default();
+    let parsed = parse_document(DocumentKind::Markdown,
+        "- Parent ![parent](parent.png)\n  - Child\n\n> ```mermaid\n> flowchart LR\n> A-->B\n> ```\n\n| Picture |\n|---|\n| ![table](table.png) |", &cancellation).expect("nested media");
+    let layout = layout_document(parsed.document, &cancellation).expect("nested layout");
+    let image = layout
+        .units
+        .iter()
+        .position(|unit| {
+            matches!(
+                &unit.kind,
+                DocumentUnitKind::Media {
+                    source: DocumentMedia::Image(_),
+                    ..
+                }
+            )
+        })
+        .expect("parent image");
+    let child = layout
+        .units
+        .iter()
+        .position(|unit| unit.text.contains("Child"))
+        .expect("child text");
+    assert!(image < child, "parent media stays before the nested item");
+    assert!(layout.units.iter().any(|unit| matches!(
+        &unit.kind,
+        DocumentUnitKind::Media {
+            source: DocumentMedia::Mermaid(_),
+            ..
+        }
+    )));
+    assert!(
+        layout
+            .units
+            .iter()
+            .any(|unit| unit.copy_text.contains("[Image: table]"))
+    );
+
+    let source = format!("```mermaid\nflowchart LR\n{}```", "A-->B\n".repeat(300));
+    let parsed =
+        parse_document(DocumentKind::Markdown, &source, &cancellation).expect("large code");
+    let layout = layout_document(parsed.document, &cancellation).expect("large code layout");
+    assert!(
+        layout
+            .units
+            .iter()
+            .all(|unit| matches!(unit.kind, DocumentUnitKind::Code { .. }))
+    );
+    assert_eq!(
+        layout
+            .units
+            .iter()
+            .map(|unit| unit.copy_text.as_str())
+            .collect::<String>(),
+        format!("flowchart LR\n{}", "A-->B\n".repeat(300))
+    );
+}
+
+#[test]
 fn cancelled_document_layout_stops_before_publishing_units() {
     let cancellation = Cancellation::default();
     cancellation.cancel();

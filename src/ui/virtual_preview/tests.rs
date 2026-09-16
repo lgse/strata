@@ -94,6 +94,7 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
         source("last line", "last line"),
     ]);
     let mut state = VirtualPreviewState {
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         units,
         wrapped: std::cell::Cell::new(false),
         selection: std::cell::Cell::new(Some(DocumentSelection {
@@ -148,6 +149,7 @@ fn selection_does_not_invent_newlines_between_line_chunks() {
             anchor: SelectionPoint { unit: 0, offset: 2 },
             focus: SelectionPoint { unit: 1, offset: 1 },
         })),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         bound: std::cell::RefCell::default(),
         dragging: std::cell::Cell::new(false),
         press: std::cell::Cell::new((0.0, 0.0)),
@@ -186,6 +188,7 @@ fn table_selection_is_atomic_and_copies_tsv() {
             anchor: SelectionPoint { unit: 0, offset: 0 },
             focus: SelectionPoint { unit: 0, offset: 1 },
         })),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         bound: std::cell::RefCell::default(),
         dragging: std::cell::Cell::new(false),
         press: std::cell::Cell::new((0.0, 0.0)),
@@ -543,6 +546,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 },
                 Vec::new(),
                 false,
+                None,
             )
             .0;
             let weak = root.downgrade();
@@ -579,7 +583,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
             let (source, _) = source_units(&content);
             let units = source.into_iter().map(PreviewUnit::Source).collect();
             let (source_root, source_state) =
-                super::virtual_preview(units, Vec::new(), true, false);
+                super::virtual_preview(units, Vec::new(), true, false, None);
             stack.add_named(&source_root, Some("source"));
             stack.set_visible_child_name("source");
             while gtk::glib::MainContext::default().pending() {
@@ -616,6 +620,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 vec!["Unsupported content omitted".to_owned()],
                 false,
                 false,
+                None,
             );
             stack.add_named(&rendered_root, Some("rendered-again"));
             stack.set_visible_child_name("rendered-again");
@@ -677,6 +682,7 @@ fn wrap_toggle_reflows_bound_rendered_and_source_rows() {
                 },
                 Vec::new(),
                 false,
+                None,
             );
             stack.add_named(&rendered, Some("rendered"));
             stack.set_visible_child_name("rendered");
