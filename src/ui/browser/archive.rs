@@ -288,7 +288,13 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        replace.grab_focus();
+        let initial_focus = replace.clone();
+        glib::idle_add_local_once(move || {
+            initial_focus.grab_focus();
+            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+        });
     }
 
     /// Opens the compress dialog for the selected `entries`.

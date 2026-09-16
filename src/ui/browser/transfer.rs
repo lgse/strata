@@ -531,7 +531,13 @@ impl ViewState {
             }
         });
         layer.add_controller(escape);
-        replace.grab_focus();
+        let initial_focus = replace.clone();
+        glib::idle_add_local_once(move || {
+            initial_focus.grab_focus();
+            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+        });
     }
 
     pub(super) fn show_transfer_dialog(
