@@ -5,27 +5,54 @@ use std::{
     process::Command,
 };
 
-const TRUSTED_DIRECTORIES: [&str; 4] = ["/usr/bin", "/usr/sbin", "/bin", "/sbin"];
+/// Where a helper basename may appear. Admin-managed; never `$HOME` or `PATH`.
+/// NixOS `security.wrappers` is first so setuid wrappers win over store
+/// symlinks.
+pub(crate) const SEARCH_ROOTS: &[&str] = &[
+    "/run/wrappers/bin",
+    "/usr/bin",
+    "/usr/sbin",
+    "/bin",
+    "/sbin",
+    "/run/current-system/sw/bin",
+    "/run/current-system/profile/bin",
+];
+
+/// Where canonicalize of a search hit may land. Wrapper dirs stay here
+/// because NixOS wrappers are regular files, not `/nix/store` symlinks.
+pub(crate) const TRUST_ROOTS: &[&str] = &[
+    "/usr/bin",
+    "/usr/sbin",
+    "/bin",
+    "/sbin",
+    "/run/wrappers/bin",
+    "/nix/store",
+    "/gnu/store",
+];
 
 #[cfg(test)]
 mod tests;
 
 pub(crate) fn resolve(name: &str) -> Result<PathBuf, String> {
-    let dirs: [&Path; 4] = TRUSTED_DIRECTORIES.map(Path::new);
-    resolve_in(name, &dirs)
+    let search: Vec<&Path> = SEARCH_ROOTS.iter().copied().map(Path::new).collect();
+    let trust: Vec<&Path> = TRUST_ROOTS.iter().copied().map(Path::new).collect();
+    resolve_in(name, &search, &trust)
 }
 
 pub(crate) fn command(name: &str) -> Result<Command, String> {
     Ok(Command::new(resolve(name)?))
 }
 
-pub(crate) fn resolve_in(name: &str, dirs: &[&Path]) -> Result<PathBuf, String> {
+pub(crate) fn resolve_in(
+    name: &str,
+    search_roots: &[&Path],
+    trust_roots: &[&Path],
+) -> Result<PathBuf, String> {
     if !is_single_basename(name) {
         return Err("helper name must be a single basename".to_owned());
     }
 
-    let roots = canonical_directories(dirs);
-    for dir in dirs {
+    for dir in search_roots {
         let candidate = dir.join(name);
         if !candidate.is_file() {
             continue;
@@ -33,8 +60,10 @@ pub(crate) fn resolve_in(name: &str, dirs: &[&Path]) -> Result<PathBuf, String> 
         let Ok(canonical) = candidate.canonicalize() else {
             continue;
         };
-        if roots.iter().any(|root| canonical.starts_with(root)) {
-            return Ok(canonical);
+        if sits_under(&canonical, trust_roots) {
+            // Exec the search hit, not the store target, so argv0 stays the
+            // profile path for busybox/coreutils and Nix wrappers.
+            return Ok(found_path(candidate));
         }
     }
 
@@ -53,8 +82,21 @@ fn is_single_basename(name: &str) -> bool {
     )
 }
 
-fn canonical_directories(dirs: &[&Path]) -> Vec<PathBuf> {
-    dirs.iter()
-        .filter_map(|dir| dir.canonicalize().ok())
-        .collect()
+fn sits_under(canonical: &Path, trust_roots: &[&Path]) -> bool {
+    trust_roots.iter().any(|root| {
+        let root = match root.canonicalize() {
+            Ok(path) => path,
+            Err(_) if root.is_absolute() => (*root).to_path_buf(),
+            Err(_) => return false,
+        };
+        canonical.starts_with(root)
+    })
+}
+
+fn found_path(candidate: PathBuf) -> PathBuf {
+    if candidate.is_absolute() {
+        candidate
+    } else {
+        std::path::absolute(&candidate).unwrap_or(candidate)
+    }
 }

@@ -2,12 +2,12 @@
 
 Narrow set. Defense-in-depth: assert lookup and hashing behavior. Do not plant substitute helpers, rewrite PATH as an attack, or add an E2E hijack scenario. Code review treats excess/tautological tests as blockers.
 
-## 1. Resolver uses only allowlisted directories
+## 1. Resolver uses only search roots
 
-- **Purpose:** Host helpers resolve by basename under the injected directory list, never inherited `PATH`.
-- **Setup:** `resolve_in` with two fixture dirs. Put a regular file `bwrap` only in the first. Optionally set `PATH` to a third fixture dir that also contains a `bwrap` file so the test proves `PATH` is unused (the third dir is not in the allowlist).
-- **Steps:** `resolve_in("bwrap", &[first, second])`.
-- **Expected:** `Ok` path is `first/bwrap` (absolute). Not the `PATH` dir. Not a relative name.
+- **Purpose:** Host helpers resolve by basename under the injected search-root list, never inherited `PATH`.
+- **Setup:** `resolve_in` with two fixture search dirs (same dirs as trust roots for this case). Put a regular file `bwrap` only in the first. Optionally set `PATH` to a third fixture dir that also contains a `bwrap` file so the test proves `PATH` is unused (the third dir is not in the search list).
+- **Steps:** `resolve_in("bwrap", &[first, second], &[first, second])`.
+- **Expected:** `Ok` path is `first/bwrap` (the search hit, absolute). Not the `PATH` dir. Not a relative name. Not a rewritten canonical target.
 - **Automation:** `src/trusted_command/tests.rs`.
 
 ## 2. Resolver rejects bad names and misses
@@ -18,11 +18,11 @@ Narrow set. Defense-in-depth: assert lookup and hashing behavior. Do not plant s
 - **Expected:** All `Err`. No panic.
 - **Automation:** Same module. One test function is enough.
 
-## 3. Final path stays under a trusted directory
+## 3. Canonical target stays under a trust root; exec the search hit
 
-- **Purpose:** After following links, the chosen path must still be under an allowlisted directory (merged-usr: `/bin` → `/usr/bin` is acceptable when both are allowlisted).
-- **Setup:** Fixture allowlist. A regular file inside it. A link whose final target is outside the allowlist must not be selected.
-- **Expected:** In-allowlist file accepted; out-of-allowlist final path rejected.
+- **Purpose:** Search roots and trust roots are separate lists. After following links, the canonical path must sit under a trust root. The executed path is the search hit (profile path), not the store target. Merged-usr `/bin` → `/usr/bin` is acceptable when both are FHS trust roots.
+- **Setup:** (a) Fixture search=trust. A regular file inside it. A link whose final target is outside the trust list must not be selected. (b) Fixture search=`sw/bin`, trust=`nix/store`. `sw/bin/bwrap` is a symlink into the store file.
+- **Expected:** (a) In-trust file accepted as the search path; out-of-trust final path rejected. (b) `Ok` is `sw/bin/bwrap`, not the store target; basename remains `bwrap`.
 - **Automation:** Same module. Skip the link case if the platform cannot create it; then note in `code-notes.md` and keep cases 1–2.
 
 ## 4. Preview sandbox command program is an absolute bubblewrap path
@@ -45,7 +45,7 @@ Narrow set. Defense-in-depth: assert lookup and hashing behavior. Do not plant s
 
 - **Purpose:** Remaining listed execs use `trusted_command` (or the resolved `Path`) rather than bare names.
 - **Setup:** If call sites go through `trusted_command::command("tar")` etc., assert `get_program()` is absolute and a basename of `tar` / `sh` / `xdg-mime` (one example each, or inspect a small extracted builder). Prefer checking the resolved path on a fixture via `resolve_in` plus a smoke that production call sites compile against `resolve`/`command` — do not spawn `systemctl` in unit tests.
-- **Expected:** Program is an absolute path under the allowlist when the helper exists on the test host; `Err` when absent. No relative `"tar"` / `"sh"`.
+- **Expected:** Program is an absolute search-root path whose basename is still `tar` / `sh` when the helper exists on the test host (not a rewritten `dash`/`busybox` target); canonical of that path sits under a trust root; `Err` when absent. No relative `"tar"` / `"sh"`.
 - **Automation:** `trusted_command` tests plus, if a relaunch command builder is extracted from `settings.rs` `restart`, one `get_program()` assertion in `src/ui/settings/tests.rs`. Skip live `systemctl`/`hyprctl` spawns.
 
 ## Out of scope
