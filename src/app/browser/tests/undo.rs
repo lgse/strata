@@ -545,3 +545,288 @@ fn failed_and_partial_undo_operations_can_be_retried() {
     finish_undo(retry_generation, true);
     assert_eq!(pending_undo_entry(), None);
 }
+
+fn rename_undo_entry() -> UndoEntry {
+    let entry = fixture_entry("/fixture/original.txt");
+    UndoEntry::Rename(RenameRecord {
+        original: entry.location.clone(),
+        current: Location::local("/fixture/renamed.txt"),
+        native_name: entry.native_name,
+        display_name: entry.display_name,
+        is_hidden: entry.is_hidden,
+    })
+}
+
+#[test]
+fn rename_undo_records_the_exact_original_and_current_locations() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let entry = fixture_entry("/fixture/original.txt");
+
+    browser.rename(entry.clone(), "renamed.txt".to_owned());
+
+    let Some(UndoEntry::Rename(RenameRecord {
+        original,
+        current,
+        native_name,
+        display_name,
+        is_hidden,
+    })) = pending_undo_entry()
+    else {
+        panic!("expected a Rename undo entry");
+    };
+    assert_eq!(original, entry.location);
+    assert_eq!(current, Location::local("/fixture/renamed.txt"));
+    assert_eq!(native_name, entry.native_name);
+    assert_eq!(display_name, entry.display_name);
+    assert_eq!(is_hidden, entry.is_hidden);
+}
+
+#[test]
+fn rename_undo_excludes_failed_cancelled_or_invalid_forward_rename() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let previous = UndoEntry::Trash(vec![Location::local("/fixture/previous.txt")]);
+    push_pending_undo(previous.clone());
+    let entry = fixture_entry("/fixture/original.txt");
+
+    assert!(
+        browser
+            .rename(entry.clone(), "bad/name".to_owned())
+            .is_none()
+    );
+    assert_eq!(pending_undo_entry(), Some(previous.clone()));
+
+    FORWARD_RENAME_OUTCOME.with(|outcome| outcome.set(Some(ForwardRenameOutcome::Failed)));
+    browser.rename(entry.clone(), "renamed.txt".to_owned());
+    assert_eq!(pending_undo_entry(), Some(previous.clone()));
+
+    FORWARD_RENAME_OUTCOME.with(|outcome| outcome.set(Some(ForwardRenameOutcome::Cancelled)));
+    browser.rename(entry, "renamed.txt".to_owned());
+    assert_eq!(pending_undo_entry(), Some(previous));
+}
+
+#[test]
+fn rename_undo_rejects_a_stale_generation() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    push_pending_undo(rename_undo_entry());
+    let (stale_generation, _, _) = browser.pending_undo_rename().expect("pending Rename undo");
+    let newer = Location::local("/fixture/newer.txt");
+    push_pending_undo(UndoEntry::Trash(vec![newer.clone()]));
+
+    assert!(!browser.undo_rename(stale_generation));
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Trash(vec![newer])));
+}
+
+#[test]
+fn rename_undo_preserves_mixed_latest_operation_order() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.delete(vec![fixture_entry("/fixture/trashed.txt")], false);
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/moved.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+        true,
+    );
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/copied.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+        true,
+    );
+    browser.rename(
+        fixture_entry("/fixture/original.txt"),
+        "renamed.txt".to_owned(),
+    );
+
+    let (rename_generation, _, _) = browser.pending_undo_rename().expect("Rename undo");
+    assert!(browser.undo_rename(rename_generation));
+    let (copy_generation, copied) = browser.pending_undo_copy().expect("Copy undo");
+    assert!(browser.undo_copy(copy_generation, copied));
+    let (move_generation, moved) = browser.pending_undo_move().expect("Move undo");
+    assert!(
+        browser.undo_move(
+            move_generation,
+            moved
+                .iter()
+                .cloned()
+                .map(|record| UndoMoveItem {
+                    record,
+                    conflict: TransferConflict::FailIfExists,
+                })
+                .collect(),
+        )
+    );
+    assert!(browser.undo_last_trash());
+    assert_eq!(pending_undo_entry(), None);
+}
+
+#[test]
+fn rename_undo_consumes_only_the_latest_rename_entry() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    UNDO_RENAME_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    let older = Location::local("/fixture/older.txt");
+    browser.delete(vec![fixture_entry("/fixture/older.txt")], false);
+    let entry = fixture_entry("/fixture/original.txt");
+    browser.rename(entry, "renamed.txt".to_owned());
+    let (generation, current, original) =
+        browser.pending_undo_rename().expect("pending Rename undo");
+
+    assert!(browser.undo_rename(generation));
+    assert_eq!(
+        UNDO_RENAME_REQUESTS.with(|requests| requests.borrow().clone()),
+        vec![(current, original)]
+    );
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Trash(vec![older])));
+}
+
+#[test]
+fn rename_undo_preserves_current_metadata_after_the_forward_rename() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let parent = Location::local("/fixture");
+    let mut original = fixture_entry("/fixture/original");
+    original.kind = EntryKind::Directory;
+    {
+        let mut state = browser.state.borrow_mut();
+        state.navigate(parent.clone(), RequestId(1));
+        state
+            .apply_batch(RequestId(1), vec![original.clone()])
+            .expect("initial directory batch");
+    }
+
+    browser.descend(0, original.location.clone());
+    browser.rename(original.clone(), "renamed".to_owned());
+    let current = Location::local("/fixture/renamed");
+    assert!(browser.entry_at_location(&original.location).is_none());
+    let mut updated = browser
+        .entry_at_location(&current)
+        .expect("forward rename published current entry");
+    updated.size = MetadataValue::Known(99);
+    updated.modified_unix_seconds = MetadataValue::Known(2);
+    updated.mode = MetadataValue::Known(0o640);
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(updated));
+    let current_entry = browser
+        .entry_at_location(&current)
+        .expect("current entry after metadata update");
+    assert_eq!(current_entry.location, current);
+    assert_eq!(current_entry.size, MetadataValue::Known(99));
+    assert_eq!(current_entry.modified_unix_seconds, MetadataValue::Known(2));
+    assert_eq!(current_entry.mode, MetadataValue::Known(0o640));
+
+    let (generation, _, _) = browser.pending_undo_rename().expect("pending Rename undo");
+    assert!(browser.undo_rename(generation));
+
+    let restored = browser
+        .entry_at_location(&original.location)
+        .expect("restored entry");
+    assert_eq!(restored.location, original.location);
+    assert_eq!(restored.size, MetadataValue::Known(99));
+    assert_eq!(restored.modified_unix_seconds, MetadataValue::Known(2));
+    assert_eq!(restored.mode, MetadataValue::Known(0o640));
+}
+
+#[test]
+fn rename_undo_does_not_publish_historical_metadata_when_current_entry_is_unavailable() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let parent = Location::local("/fixture");
+    let mut original = fixture_entry("/fixture/original");
+    original.kind = EntryKind::Directory;
+    original.size = MetadataValue::Known(7);
+    original.modified_unix_seconds = MetadataValue::Known(1);
+    original.mode = MetadataValue::Known(0o600);
+    let current = Location::local("/fixture/renamed");
+
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(
+        0,
+        &parent,
+        DirectoryChange::Remove(Location::local("/fixture/child")),
+    );
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(original.clone()));
+    browser.descend(0, original.location.clone());
+    browser.rename(original.clone(), "renamed".to_owned());
+
+    let mut updated = browser
+        .entry_at_location(&current)
+        .expect("forward rename published current entry");
+    updated.size = MetadataValue::Known(99);
+    updated.modified_unix_seconds = MetadataValue::Known(2);
+    updated.mode = MetadataValue::Known(0o640);
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(updated));
+    assert_eq!(
+        browser
+            .entry_at_location(&current)
+            .expect("current entry after metadata update")
+            .size,
+        MetadataValue::Known(99)
+    );
+
+    browser.refresh_column(0);
+    assert!(browser.entry_at_location(&original.location).is_none());
+    assert!(browser.entry_at_location(&current).is_none());
+    assert_eq!(browser.location_at(1), Some(current.clone()));
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let (generation, _, _) = browser.pending_undo_rename().expect("pending Rename undo");
+
+    assert!(browser.undo_rename(generation));
+    assert!(browser.entry_at_location(&original.location).is_none());
+    assert_eq!(browser.location_at(1), Some(original.location.clone()));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+    );
+}
+
+#[test]
+fn failed_rename_undo_releases_its_claim_and_remains_retryable() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let expected = rename_undo_entry();
+    push_pending_undo(expected.clone());
+    let (generation, claimed) = claim_pending_undo(None).expect("Rename undo claim");
+    let request_id = browser.begin_operation();
+    browser.undo_claim.replace(Some((generation, claimed)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Failed {
+        request_id,
+        message: "occupied".to_owned(),
+    });
+
+    assert_eq!(pending_undo_entry(), Some(expected));
+    assert!(browser.pending_undo_rename().is_some());
+}
+
+#[test]
+fn cancelled_rename_undo_releases_its_claim_and_remains_retryable() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let expected = rename_undo_entry();
+    push_pending_undo(expected.clone());
+    let (generation, claimed) = claim_pending_undo(None).expect("Rename undo claim");
+    let request_id = browser.begin_operation();
+    browser.undo_claim.replace(Some((generation, claimed)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation::default(),
+    });
+
+    assert_eq!(pending_undo_entry(), Some(expected));
+    assert!(browser.pending_undo_rename().is_some());
+}

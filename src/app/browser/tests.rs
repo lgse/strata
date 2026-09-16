@@ -506,15 +506,33 @@ impl FileSource for CountingFileSource {
 thread_local! {
     static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
     static UNDO_COPY_REQUESTS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
+    static UNDO_RENAME_REQUESTS: RefCell<Vec<(Location, Location)>> = const { RefCell::new(Vec::new()) };
+    static FORWARD_RENAME_OUTCOME: Cell<Option<ForwardRenameOutcome>> = const { Cell::new(None) };
+}
+
+#[derive(Clone, Copy)]
+enum ForwardRenameOutcome {
+    Failed,
+    Cancelled,
 }
 
 struct ImmediateOperationProvider;
 
 impl OperationProvider for ImmediateOperationProvider {
     fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
-        emit(OperationEvent::Renamed {
-            request_id: request.id,
-        });
+        match FORWARD_RENAME_OUTCOME.with(Cell::take) {
+            Some(ForwardRenameOutcome::Failed) => emit(OperationEvent::Failed {
+                request_id: request.id,
+                message: "rename failed".to_owned(),
+            }),
+            Some(ForwardRenameOutcome::Cancelled) => emit(OperationEvent::Cancelled {
+                request_id: request.id,
+                result: Default::default(),
+            }),
+            None => emit(OperationEvent::Renamed {
+                request_id: request.id,
+            }),
+        }
         LoadHandle::new(|| {})
     }
 
@@ -594,6 +612,22 @@ impl OperationProvider for ImmediateOperationProvider {
                 .into_iter()
                 .map(|item| item.record.current)
                 .collect(),
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn undo_rename(
+        &self,
+        request: UndoRenameRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        UNDO_RENAME_REQUESTS.with(|requests| {
+            requests
+                .borrow_mut()
+                .push((request.current.clone(), request.original.clone()))
+        });
+        emit(OperationEvent::Renamed {
+            request_id: request.id,
         });
         LoadHandle::new(|| {})
     }
@@ -679,6 +713,14 @@ impl OperationProvider for HeldExtractProvider {
 
     fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         ImmediateOperationProvider.undo_move(request, emit)
+    }
+
+    fn undo_rename(
+        &self,
+        request: UndoRenameRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.undo_rename(request, emit)
     }
 
     fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {

@@ -39,7 +39,7 @@ use crate::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
         DeleteRequest, ExtractRequest, LoadHandle, OperationEvent, OperationProvider,
         OperationRequestId, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
-        TransferConflict, UndoCopyRequest, UndoMoveRequest, validate_basename,
+        TransferConflict, UndoCopyRequest, UndoMoveRequest, UndoRenameRequest, validate_basename,
     },
 };
 
@@ -3183,6 +3183,50 @@ impl OperationProvider for LocalOperationProvider {
                 request_id: request.id,
                 locations: completed,
             });
+        });
+        cancellation_handle(cancellable)
+    }
+
+    fn undo_rename(
+        &self,
+        request: UndoRenameRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        let cancellable = gio::Cancellable::new();
+        let operation_cancellable = cancellable.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let current = request.current.clone();
+            let original = request.original.clone();
+            let mut affected_locations = HashSet::new();
+            for location in [&current, &original] {
+                affected_locations.insert(location.clone());
+                if let Some(parent) = location.parent() {
+                    affected_locations.insert(parent);
+                }
+            }
+            let result = move_local(
+                gio_file_for_location(&current),
+                gio_file_for_location(&original),
+                operation_cancellable,
+                None,
+            )
+            .await;
+            match result {
+                Ok(()) => emit(OperationEvent::Renamed {
+                    request_id: request.id,
+                }),
+                Err(error) if was_cancelled(&error) => emit(cancelled_event(
+                    request.id,
+                    Vec::new(),
+                    Vec::new(),
+                    vec![current],
+                    affected_locations,
+                )),
+                Err(error) => emit(OperationEvent::Failed {
+                    request_id: request.id,
+                    message: error.to_string(),
+                }),
+            }
         });
         cancellation_handle(cancellable)
     }

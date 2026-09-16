@@ -13,6 +13,7 @@ fn non_default_preferences() -> Preferences {
         theme: "nord".into(),
         folder_peeking: false,
         single_click_previews: false,
+        render_documents_by_default: false,
         hardware_accelerated_video_previews: Some(false),
         video_preview_backend: "vulkan".into(),
         search_open_files_directly: true,
@@ -503,6 +504,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
             let setters: &[fn(&ThemeManager)] = &[
                 |m| m.set_folder_peeking(true),
                 |m| m.set_single_click_previews(true),
+                |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),

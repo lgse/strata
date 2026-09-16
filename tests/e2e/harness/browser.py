@@ -571,10 +571,9 @@ class Strata:
         preview = self.preview()
         if preview is None:
             return False
-        for role in ("label", "text"):
-            for node in preview.find_all(role=role, rendered=False):
-                if text in node.name or text in node.text:
-                    return True
+        for node in preview.find_all(rendered=False):
+            if text in node.name or text in node.text:
+                return True
         return False
 
     def dialog(self) -> Node | None:
