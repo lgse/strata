@@ -545,5 +545,12 @@ fn restart_waiter_uses_absolute_sh() {
     };
     let program = Path::new(command.get_program());
     assert!(program.is_absolute());
-    assert_eq!(program.file_name().and_then(|n| n.to_str()), Some("sh"));
+    assert!(
+        ["/usr/bin", "/usr/sbin", "/bin", "/sbin"]
+            .into_iter()
+            .filter_map(|dir| Path::new(dir).canonicalize().ok())
+            .any(|root| program.starts_with(root)),
+        "restart waiter program {}",
+        program.display()
+    );
 }

@@ -76,7 +76,15 @@ fn host_helpers_use_absolute_allowlisted_paths() {
     for name in ["sh", "tar"] {
         if let Ok(path) = resolve(name) {
             assert!(path.is_absolute());
-            assert_eq!(path.file_name().and_then(|n| n.to_str()), Some(name));
+            let roots: Vec<_> = ["/usr/bin", "/usr/sbin", "/bin", "/sbin"]
+                .into_iter()
+                .filter_map(|dir| Path::new(dir).canonicalize().ok())
+                .collect();
+            assert!(
+                roots.iter().any(|root| path.starts_with(root)),
+                "{name} resolved to {}",
+                path.display()
+            );
             let program = command(name).expect("command").get_program().to_owned();
             assert_eq!(program, path.as_os_str());
         }
