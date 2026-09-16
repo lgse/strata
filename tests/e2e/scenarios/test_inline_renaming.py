@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: MIT
 """Immediate creation and consistent file/folder rename finalization."""
 
+import time
+
 import pytest
 
 from harness.artifacts import ArtifactCollector
@@ -96,6 +98,25 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
     wait_for_edit_closed(strata)
     assert strata.fixture.path(name).read_text() == "keep\n"
     assert not strata.fixture.path(name + "-final").exists()
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_slow_click_rename_respects_escape_and_selects_the_stem(strata, mode):
+    strata.select_entry_with_keyboard("todo.txt")
+    strata.pointer.click(strata.entry("todo.txt"))
+    strata.keyboard.press("Escape")
+    # Outlast GTK's 400ms double-click interval to detect a stale timeout.
+    time.sleep(0.6)
+    assert strata.window.find(role="text", name="Rename", states={"editable"}) is None
+
+    strata.select_entry_with_keyboard("todo.txt")
+    strata.pointer.click(strata.entry("todo.txt"))
+    field = rename_field(strata)
+    text = Atspi.Accessible.get_text_iface(field.accessible)
+    selection = Atspi.Text.get_selection(text, 0)
+    assert (selection.start_offset, selection.end_offset) == (0, len("todo"))
+    assert field.text == "todo.txt"
+    assert strata.fixture.path("todo.txt").exists()
 
 
 def rename_field(strata):
