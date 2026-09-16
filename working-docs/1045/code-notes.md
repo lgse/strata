@@ -1,24 +1,24 @@
-# Code notes: #1045 round 1
+# Code notes: #1045 round 2
 
-Agent: `bc-91ed4417-8d89-5141-91b4-addf8f99e9e0`
+Agent: `bc-9abf8ffd-b5b0-5611-83f1-958a6fe11409`
 
 ## What changed
 
-Host helpers are resolved by basename under `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin` only. Lookup never reads `PATH`. The chosen path is canonicalized and must still sit under an allowlisted directory (merged-usr `/bin` → `/usr/bin` is accepted). Invalid names and misses return `Err`.
+Host helpers still never read inherited `PATH`. Lookup now uses two lists:
 
-`sha256sum` is gone. Update archives are hashed in-process with `sha2` 0.11.0 (already in `Cargo.lock`; promoted to a direct dependency). Published `.sha256` first-token compare is unchanged.
+- **Search roots** (basename may appear): `/run/wrappers/bin` first, then `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, `/run/current-system/sw/bin` (NixOS), `/run/current-system/profile/bin` (Guix). Never `$HOME` or user nix/guix profiles.
+- **Trust roots** (canonicalize may land): FHS dirs, `/run/wrappers/bin` (NixOS wrappers are regular files, not store symlinks), `/nix/store`, `/gnu/store`.
 
-Jail-internal `Command::new("ffprobe"|…)` in `sandbox_helper` is unchanged.
+`resolve` returns the search hit (e.g. `/run/current-system/sw/bin/bwrap` or `/usr/bin/sh`), not the canonical store/`dash` target, so argv0 stays intact. A search hit whose canonical path is outside trust roots is skipped.
+
+Jail-internal `Command::new("ffprobe"|…)` is unchanged. In-process SHA-256 is unchanged.
 
 ## Files
 
-- `src/trusted_command.rs` + `src/trusted_command/tests.rs` — resolver and `command(name)`
-- `src/sandbox.rs`, `src/sandbox/media.rs`, `src/sandbox/tests.rs` — `sandbox_command` takes a bubblewrap `&Path`; runtime `parse` / media `render` resolve `"bwrap"` and fail with `Unable to start the preview sandbox: …`
-- `src/services/update_install.rs` — in-process SHA-256; `tar` / desktop-cache helpers via `trusted_command`
-- `src/ui/settings.rs` — `restart_waiter` resolves `sh`; missing helper skips spawn (no relative `"sh"`)
-- `src/portal_setup.rs`, `src/portal_setup/omarchy.rs` — `xdg-mime`, `gdbus`, `systemctl`, `omarchy`, `hyprctl`. Failed `omarchy` resolve falls through to version files
-- `docs/preview-sandbox.md` — host starts bubblewrap from a trusted absolute path
-- `Cargo.toml` / `Cargo.lock` — direct `sha2 = "0.11.0"`
+- `src/trusted_command.rs` + `src/trusted_command/tests.rs` — two-list resolver; store-profile fixture; live `sh`/`tar` keep their basename
+- `src/ui/settings/tests.rs` — `restart_waiter` program is a search-root path named `sh`
+- `docs/preview-sandbox.md` — search hit vs trust-root canonical target
+- `working-docs/1045/plan.md`, `test-cases.md` — round 2 rule
 
 ## Tests run
 
@@ -26,25 +26,29 @@ Private Xvfb, never `DISPLAY=:1`:
 
 ```text
 cargo fmt --all --check
-CXX=g++ cargo clippy --all-targets --all-features -- -D warnings
+CXX=g++ LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/13 \
+  cargo clippy --all-targets --all-features -- -D warnings
 xvfb-run -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11 GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-  cargo test --all-targets --all-features <filter>
+  cargo test --all-targets --all-features -- <filter> --test-threads=1
 ```
 
 | Filter | Result |
 | --- | --- |
-| `trusted_command::tests` | 4 passed |
+| `trusted_command::tests` | 5 passed |
 | `sandbox::tests` | 24 passed |
 | `services::update_install::tests` | 26 passed |
 | `portal_setup::tests` | 23 passed |
 | `restart_waiter` | 1 passed |
-| `omarchy::tests` (extra, omarchy call site) | 4 passed |
+| `omarchy::tests` | 4 passed |
+| `sandbox_helper::tests` (adjacent) | 10 passed |
 
-Collection was nonzero (82 selected across those filters). `quality.sh` / `e2e.sh` not run: spawn program path only; `--unshare-all` / `--clearenv` / jail `PATH=/usr/bin` argv unchanged. `cargo-deny` / `typos` not on this image.
+Collection was nonzero (83 selected across the planned filters; 10 adjacent). `quality.sh` / `e2e.sh` not run: spawn program path only; isolation argv unchanged. `cargo-deny` / `typos` not on this image.
 
 ## Gaps / notes
 
-- Case 1 did not mutate `PATH` (`env::set_var` is unsafe in Rust 2024; this crate denies `unsafe_code`). A third fixture dir with `bwrap` is omitted from the allowlist instead.
-- Canonical `sh` on this Ubuntu host is `dash`. Tests assert the path is absolute and under the allowlist, not that the final file name is still `sh`.
-- `sandbox_command` has 8 arguments; `#[expect(clippy::too_many_arguments)]` with reason, matching existing GTK helpers.
+- `/run/wrappers/bin` is a trust root as well as the first search root. Without that, NixOS `security.wrappers` binaries would fail the canonical-target check because they are not store symlinks.
+- Case 1 still does not mutate `PATH` (`env::set_var` is unsafe; crate denies `unsafe_code`). Extra fixture dir omitted from search roots is enough.
+- Live Ubuntu `sh` is now `/usr/bin/sh` (search hit), not canonical `dash`.
+- Installed `libgstreamer1.0-dev` and `libgstreamer-plugins-base1.0-dev` on this VM so clippy/tests could compile `gstreamer-*-sys`. Host linker still needs `CXX=g++` and `LIBRARY_PATH` for `unrar_sys`.
 - Did not undraft, squash, or send to Origin. `working-docs/1045/` left in place.
+- `ManagePullRequest` could not update the lgse/strata PR description (workspace origin is `wmfeht/strata`). Branch push still moved the existing draft head.
