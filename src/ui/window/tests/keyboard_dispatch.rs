@@ -69,10 +69,14 @@ impl KeyboardFixture {
                 shortcuts: ShortcutFooter::new(BrowserMode::Columns),
             },
         );
-        let keys = window
-            .observe_controllers()
-            .item(0)
-            .and_downcast::<gtk::EventControllerKey>()
+        let controllers = window.observe_controllers();
+        let keys = (0..controllers.n_items())
+            .filter_map(|index| {
+                controllers
+                    .item(index)
+                    .and_downcast::<gtk::EventControllerKey>()
+            })
+            .next()
             .expect("key controller");
         window.present();
         view.browser().navigate(Location::local(directory.path()));
