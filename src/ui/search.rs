@@ -703,7 +703,7 @@ fn close_result_menu(state: &SearchState) {
     }
 }
 
-fn reveal_result(state: &Rc<SearchState>, item: SearchItem) {
+fn reveal_result(state: &SearchState, item: SearchItem) {
     let reveal = state.reveal.clone();
     hide_then(state, move || reveal(item));
 }
