@@ -1394,6 +1394,9 @@ impl BrowserView {
     }
 
     pub fn undo_last_operation(&self) -> bool {
+        if let Some((generation, _, _)) = self.state.browser.pending_undo_rename() {
+            return self.state.browser.undo_rename(generation);
+        }
         if let Some((generation, records)) = self.state.browser.pending_undo_move() {
             return self.state.undo_move(generation, records);
         }

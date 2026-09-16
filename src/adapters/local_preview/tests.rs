@@ -106,6 +106,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                         duration_seconds: MetadataValue::Unknown,
                     },
                     text_byte_limit: 1024,
+                    render_document: false,
                     pdf_page: 0,
                     media_size: MediaPreviewSize::new(640, 800),
                 };
@@ -334,6 +335,7 @@ fn cancelled_in_flight_pdf_renders_keep_the_permit_and_emit_no_stale_events() {
                     duration_seconds: MetadataValue::Unknown,
                 },
                 text_byte_limit: 1024,
+                render_document: false,
                 pdf_page: 1,
                 media_size: MediaPreviewSize::new(640, 800),
             },
@@ -539,6 +541,7 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
                 is_hidden: false,
             },
             text_byte_limit: 1024,
+            render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
         };

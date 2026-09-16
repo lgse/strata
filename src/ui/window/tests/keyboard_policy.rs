@@ -415,3 +415,21 @@ fn default_accels_never_bind_one_chord_twice() {
         },
     );
 }
+
+#[test]
+fn native_editing_shortcuts_are_left_to_the_focused_widget() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+
+    for key in [
+        gtk::gdk::Key::a,
+        gtk::gdk::Key::c,
+        gtk::gdk::Key::v,
+        gtk::gdk::Key::x,
+    ] {
+        assert!(is_native_editing_shortcut(key, control));
+    }
+    assert!(!is_native_editing_shortcut(
+        gtk::gdk::Key::c,
+        control | gtk::gdk::ModifierType::SHIFT_MASK
+    ));
+}

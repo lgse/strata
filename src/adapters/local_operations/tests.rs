@@ -53,7 +53,7 @@ use crate::{
     services::{
         DeleteRequest, LoadHandle, MoveRecord, OperationEvent, OperationProvider,
         OperationRequestId, PasteItem, PasteRequest, RestoreRequest, RestoreSource,
-        RestoreTrashItem, TransferConflict, UndoMoveItem, UndoMoveRequest,
+        RestoreTrashItem, TransferConflict, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
     },
 };
 

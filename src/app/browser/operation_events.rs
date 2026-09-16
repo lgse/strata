@@ -480,6 +480,7 @@ fn finish_claimed_undo(generation: u64, entry: &UndoEntry, event: &OperationEven
         ) => deleted_locations.clone(),
         (UndoEntry::Copy(_), OperationEvent::Cancelled { result, .. }) => result.completed.clone(),
         (UndoEntry::Copy(_), _) => Vec::new(),
+        (UndoEntry::Rename(_), _) => Vec::new(),
     };
     for location in &completed {
         mark_undo_item_completed(generation, location);
@@ -488,6 +489,7 @@ fn finish_claimed_undo(generation: u64, entry: &UndoEntry, event: &OperationEven
         UndoEntry::Trash(_) => matches!(event, OperationEvent::Restored { .. }),
         UndoEntry::Move(_) => matches!(event, OperationEvent::Pasted { .. }),
         UndoEntry::Copy(_) => matches!(event, OperationEvent::Deleted { .. }),
+        UndoEntry::Rename(_) => matches!(event, OperationEvent::Renamed { .. }),
     };
     finish_undo(generation, succeeded);
 }

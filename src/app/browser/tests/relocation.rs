@@ -150,6 +150,25 @@ fn successful_open_directory_rename_preserves_parent_and_descendant_selections()
             );
             assert!(!source.cancelled_watches.borrow().contains(&source.root));
             assert!(source.watches.borrow().contains(&renamed));
+
+            let (generation, _, _) = browser.pending_undo_rename().expect("pending Rename undo");
+            source.renamed.set(false);
+            assert!(browser.undo_rename(generation));
+
+            let restored = child(&source.root, "old");
+            assert_eq!(browser.location_at(1), Some(restored.clone()));
+            assert_eq!(browser.location_at(2), Some(child(&restored, "nested")));
+            assert_eq!(browser.active_depth(), Some(0));
+            assert_eq!(
+                browser.selected_entries()[0].display_name,
+                if sibling_selected {
+                    "sibling.txt"
+                } else {
+                    "old"
+                }
+            );
+            assert_eq!(browser.selected_positions(1), [0]);
+            assert_eq!(browser.selected_positions(2), [0]);
         }
     }
 }

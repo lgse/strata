@@ -237,6 +237,30 @@ def test_leaving_a_valid_name_commits_it(strata, mode, kind, new, target):
         assert not (strata.environment.home / "renamed.item").exists()
 
 
+@pytest.mark.parametrize("kind", KINDS)
+def test_rename_and_undo_restores_the_original_item(strata, kind):
+    if kind == "folder":
+        strata.fixture.path("archive/marker.txt").write_text("keep\n")
+    field, original = begin_edit(strata, kind, False)
+    original_path = strata.fixture.path(original)
+    strata.keyboard.type_text("undo-target")
+    strata.wait(lambda: field.text == "undo-target", "the replacement name")
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    renamed_path = strata.fixture.path("undo-target")
+    strata.wait(renamed_path.exists, "the renamed item")
+
+    strata.keyboard.press("ctrl+z")
+    strata.wait(
+        lambda: original_path.exists() and not renamed_path.exists(),
+        "Ctrl+Z to restore the original item",
+    )
+    if kind == "file":
+        assert original_path.read_text() == "todo\n"
+    else:
+        assert (original_path / "marker.txt").read_text() == "keep\n"
+
+
 @pytest.mark.parametrize("action", ["enter", "click"])
 def test_invalid_names_retain_the_original(strata, action):
     name = "bad/name"

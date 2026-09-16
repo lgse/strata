@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashSet, path::PathBuf, rc::Rc};
+use std::{collections::HashSet, ffi::OsString, path::PathBuf, rc::Rc};
 
 use crate::model::{FileEntry, Location};
 
@@ -62,6 +62,15 @@ pub struct MoveRecord {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenameRecord {
+    pub original: Location,
+    pub current: Location,
+    pub native_name: OsString,
+    pub display_name: String,
+    pub is_hidden: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UndoMoveItem {
     pub record: MoveRecord,
     pub conflict: TransferConflict,
@@ -71,6 +80,13 @@ pub struct UndoMoveItem {
 pub struct UndoMoveRequest {
     pub id: OperationRequestId,
     pub items: Vec<UndoMoveItem>,
+}
+
+#[derive(Clone, Debug)]
+pub struct UndoRenameRequest {
+    pub id: OperationRequestId,
+    pub current: Location,
+    pub original: Location,
 }
 
 #[derive(Clone, Debug)]
@@ -294,6 +310,11 @@ pub trait OperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     /// Moves completed transfers back to their original locations.
     fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    fn undo_rename(
+        &self,
+        request: UndoRenameRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle;
     fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;

@@ -28,7 +28,7 @@ use super::{
     browser_for_window, browser_mode_for_digit, build_sidebar, confirm_forget_cached_password,
     continue_encrypted_lock, device_row_actions, event_changes_trash_contents, gio_icon_names,
     home_directory, is_browser_navigation_key, is_context_menu_shortcut, is_open_terminal_shortcut,
-    is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut, is_smb_location,
+    is_native_editing_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut, is_smb_location,
     is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
     load_pinned_places, media_release_label, mouse_history_action, page_direction,
     parse_pinned_drag_source, parse_pinned_places, pin_status, pinned_places_path,

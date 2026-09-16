@@ -2,6 +2,17 @@
 
 use super::*;
 
+fn drive_until_rename_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    wait_for_operation(events, |event| {
+        matches!(
+            event,
+            OperationEvent::Renamed { .. }
+                | OperationEvent::Failed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    });
+}
+
 #[test]
 fn undoing_a_move_returns_each_item_to_its_original_directory() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -139,5 +150,137 @@ fn a_confirmed_undo_conflict_replaces_the_newer_item() -> Result<(), Box<dyn Err
     ));
     assert!(!moved.exists());
     assert_eq!(fs::read(&original)?, b"moved");
+    Ok(())
+}
+
+#[test]
+fn rename_undo_restores_a_native_name_byte_for_byte() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let original_parent = root.path().join("original");
+    let current_parent = root.path().join("current");
+    fs::create_dir_all(&original_parent)?;
+    fs::create_dir_all(&current_parent)?;
+    let original_name = OsString::from_vec(b"original-\xff.txt".to_vec());
+    let original = original_parent.join(&original_name);
+    let current = current_parent.join("renamed.txt");
+    fs::write(&current, b"contents")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_rename(
+        UndoRenameRequest {
+            id: OperationRequestId(43),
+            current: Location::local(&current),
+            original: Location::local(&original),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    drive_until_rename_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Renamed { .. })
+    ));
+    assert!(!current.exists());
+    assert_eq!(fs::read(&original)?, b"contents");
+    assert_eq!(
+        original_name.as_encoded_bytes(),
+        original
+            .file_name()
+            .expect("original test path should have a file name")
+            .as_encoded_bytes()
+    );
+    Ok(())
+}
+
+#[test]
+fn rename_undo_refuses_an_occupied_destination_and_can_retry() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let original_parent = root.path().join("original");
+    let current_parent = root.path().join("current");
+    fs::create_dir_all(&original_parent)?;
+    fs::create_dir_all(&current_parent)?;
+    let original = original_parent.join("item.txt");
+    let current = current_parent.join("renamed.txt");
+    fs::write(&original, b"occupant")?;
+    fs::write(&current, b"renamed")?;
+    let request = || UndoRenameRequest {
+        id: OperationRequestId(44),
+        current: Location::local(&current),
+        original: Location::local(&original),
+    };
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    {
+        let _operation = LocalOperationProvider.undo_rename(
+            request(),
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+        );
+        drive_until_rename_settles(&events);
+    }
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Failed { .. })
+    ));
+    assert_eq!(fs::read(&original)?, b"occupant");
+    assert_eq!(fs::read(&current)?, b"renamed");
+
+    fs::remove_file(&original)?;
+    events.borrow_mut().clear();
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_rename(
+        request(),
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    drive_until_rename_settles(&events);
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Renamed { .. })
+    ));
+    assert!(!current.exists());
+    assert_eq!(fs::read(&original)?, b"renamed");
+    Ok(())
+}
+
+#[test]
+fn cancelled_rename_undo_reports_cancellation_without_moving_the_item() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let original_parent = root.path().join("original");
+    let current_parent = root.path().join("current");
+    fs::create_dir_all(&original_parent)?;
+    fs::create_dir_all(&current_parent)?;
+    let original = original_parent.join("item.txt");
+    let current = current_parent.join("renamed.txt");
+    fs::write(&current, b"renamed")?;
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let operation = LocalOperationProvider.undo_rename(
+        UndoRenameRequest {
+            id: OperationRequestId(45),
+            current: Location::local(&current),
+            original: Location::local(&original),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    drop(operation);
+    drive_until_rename_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Cancelled { .. })
+    ));
+    assert!(current.exists());
+    assert!(!original.exists());
     Ok(())
 }
