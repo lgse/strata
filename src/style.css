@@ -2072,11 +2072,6 @@ paned > separator {
   border-right: none;
 }
 
-.sidebar-split .sidebar-update {
-  padding-left: 9px;
-  padding-right: 9px;
-}
-
 .sidebar-split > separator.wide {
   min-width: 1px;
   margin: 0;
