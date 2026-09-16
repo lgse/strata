@@ -130,8 +130,6 @@ impl ViewState {
             }
             let target = weak.upgrade().and_then(|state| {
                 let target = state.clipped_column(x, y)?;
-                // Presses on actual rows belong to selection and drag; peek
-                // claims only empty/header areas of a clipped column.
                 let surface = gesture.widget()?;
                 let picked = surface.pick(x, y, gtk::PickFlags::DEFAULT)?;
                 (!is_file_row_target(picked)).then_some(target)
