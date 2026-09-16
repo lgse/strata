@@ -1,23 +1,23 @@
 # Pipeline status
 
 - issue: https://github.com/lgse/strata/issues/1045
-- staging_pr: pending
+- staging_pr: https://github.com/lgse/strata/pull/1055
 - staging_branch: fix/1045-trusted-helper-paths
 - folder: working-docs/1045
 - round: 1
-- stage: staging PR in progress; working-docs only
+- stage: staging draft open; ready for code
 - review_verdict: n/a
 - qa_verdict: n/a
-- head_sha: n/a
+- head_sha: n/a (working-docs only)
 - agent_id: bc-4766d826-7f2d-53dc-b627-f33ecdfdd8db
 - recommended_branch: fix/1045-trusted-helper-paths
-- notes: Staging draft only. No product/runtime code. Labels left `security`+`P1`. Assignee left `wmfeht`. Did not send to Origin. Fork head is `wmfeht/strata`; did not open a fork PR. Implementation comes next. `working-docs/1045/` left for William.
+- notes: Staging draft only. No product/runtime code. Labels left `security`+`P1` on the issue; no P-band labels added to the PR. Assignee left `wmfeht`. Did not send to Origin. Fork head is `wmfeht/strata`; did not open a fork PR. Left draft. Implementation comes next. `working-docs/1045/` left for William.
 
 ## History
 
 - plan: complete (bc-60f05de0-8e0c-55aa-9990-c5e5cb01a1fc, 2026-09-16)
-- staging: in progress (bc-4766d826-7f2d-53dc-b627-f33ecdfdd8db, 2026-09-16)
-- round 1 code: pending (after staging PR URL is recorded)
+- staging: https://github.com/lgse/strata/pull/1055 (bc-4766d826-7f2d-53dc-b627-f33ecdfdd8db, 2026-09-16)
+- round 1 code: pending
 
 ## Code-stage validation (when implementing)
 
