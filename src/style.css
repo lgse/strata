@@ -2053,7 +2053,7 @@ scrollbar slider:active {
 }
 
 .sidebar-update-separator {
-  margin: 0 4px;
+  margin: 0;
 }
 
 .sidebar-heading {
@@ -2073,13 +2073,8 @@ paned > separator {
 }
 
 .sidebar-split .sidebar-update {
-  margin-left: 4px;
   padding-left: 9px;
   padding-right: 9px;
-}
-
-.sidebar-split .sidebar-update-separator {
-  margin-right: 0;
 }
 
 .sidebar-split > separator {
