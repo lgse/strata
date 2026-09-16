@@ -276,7 +276,7 @@ def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(s
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
-def test_closing_preview_does_not_move_the_columns(strata):
+def test_closing_preview_columns_reclaim_the_released_space(strata):
     strata.open_directory("folder")
     strata.select_entry_with_keyboard("inner.txt")
     strata.keyboard.press("space")
@@ -289,7 +289,12 @@ def test_closing_preview_does_not_move_the_columns(strata):
     strata.pointer.click(close)
     strata.wait(lambda: strata.preview() is None, "the preview to close")
     strata.wait(lambda: scroller.screen_bounds().width > viewport_width, "the browser to use the released space")
-    assert abs(strata.pane("folder").screen_bounds().x - before.x) <= 1
+    strata.wait(
+        lambda: abs(strata.pane("folder").screen_bounds().x - scroller.screen_bounds().x - before.width) <= 3,
+        "the second column to slide back to its unscrolled position",
+    )
+    assert strata.pane("folder").screen_bounds().x > before.x
+    strata.select_entry("nested-notes.txt")
     strata.select_entry("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the preview to reopen")
