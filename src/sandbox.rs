@@ -97,6 +97,7 @@ pub(crate) enum ParseOperation {
     ThumbnailRaw,
     ThumbnailPdf,
     ThumbnailVideo,
+    ThumbnailAppImage,
     PreviewImage,
     MediaMetadata,
     PreviewPdf(PdfRenderSize),
@@ -110,6 +111,7 @@ impl ParseOperation {
             Self::ThumbnailRaw => "thumbnail-raw",
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
+            Self::ThumbnailAppImage => "thumbnail-appimage",
             Self::PreviewImage => "preview-image",
             Self::MediaMetadata => "media-metadata",
             Self::PreviewPdf(_) => "preview-pdf",
@@ -136,7 +138,8 @@ impl ParseOperation {
             Self::ThumbnailImage
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
-            | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
+            | Self::ThumbnailVideo
+            | Self::ThumbnailAppImage => Some((256, 256, 256 * 256)),
             Self::PreviewImage => Some((800, 800, 800 * 800)),
             Self::PreviewPdf(size) => Some(size.image_limits()),
             Self::PreviewMedia(_) | Self::MediaMetadata => None,
@@ -150,7 +153,10 @@ impl ParseOperation {
             | Self::ThumbnailPdf
             | Self::PreviewImage
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
-            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata => None,
+            Self::ThumbnailVideo
+            | Self::ThumbnailAppImage
+            | Self::PreviewMedia(_)
+            | Self::MediaMetadata => None,
         }
     }
 }

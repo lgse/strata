@@ -18,6 +18,7 @@ use crate::{
     services::MediaPreviewSize,
 };
 
+mod appimage;
 mod media;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -61,6 +62,10 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             None,
         ),
         "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
+        "thumbnail-appimage" => (
+            appimage::render(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
         "preview-image" => (render_raw(input, 800)?, None),
         "preview-pdf" => {
             let (page, size) = pdf_render_request(value)?;
