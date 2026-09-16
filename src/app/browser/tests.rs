@@ -8,6 +8,8 @@ use std::{
 
 use super::*;
 
+#[path = "deferred/tests.rs"]
+mod deferred;
 #[path = "directory_changes/tests.rs"]
 mod directory_changes;
 #[path = "operation_events/tests.rs"]
@@ -322,6 +324,7 @@ struct RecordingFileSource {
 
 mod camera_photos;
 mod relocation;
+mod undo_refresh;
 
 type WatchCallback = Rc<dyn Fn(DirectoryChange)>;
 
@@ -2379,6 +2382,82 @@ fn completed_deletions_remove_entries_without_reloading_the_column() {
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
     );
+}
+
+#[test]
+fn removals_preserve_neighbor_selection_without_refocusing_unrelated_entries() {
+    for (names, focused, removed, expected, focus_changed) in [
+        (vec!["alpha", "bravo", "charlie"], 1, "bravo", Some(1), true),
+        (
+            vec!["alpha", "bravo", "charlie"],
+            2,
+            "charlie",
+            Some(1),
+            true,
+        ),
+        (vec!["alpha"], 0, "alpha", None, true),
+        (
+            vec!["alpha", "bravo", "charlie"],
+            1,
+            "alpha",
+            Some(0),
+            false,
+        ),
+        (
+            vec!["alpha", "bravo", "charlie"],
+            0,
+            "charlie",
+            Some(0),
+            false,
+        ),
+    ] {
+        let browser = Browser::new(Rc::new(FakeFileSource));
+        let parent = Location::local("/fixture");
+        browser.navigate(parent.clone());
+        browser.handle_directory_change(
+            0,
+            &parent,
+            DirectoryChange::Remove(Location::local("/fixture/child")),
+        );
+        for name in names {
+            browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry(name)));
+        }
+        browser.select(0, focused);
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+        browser.handle_directory_change(
+            0,
+            &parent,
+            DirectoryChange::Remove(Location::local(format!("/fixture/{removed}"))),
+        );
+
+        assert_eq!(
+            browser.selected_positions(0),
+            expected.into_iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            browser.focused_item().map(|(_, position, _)| position),
+            expected
+        );
+        let notifications: Vec<_> = events
+            .borrow()
+            .iter()
+            .filter_map(|event| match event {
+                BrowserEvent::FocusChanged { depth: 0, position } => Some(*position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            notifications,
+            if focus_changed {
+                vec![expected]
+            } else {
+                vec![]
+            }
+        );
+    }
 }
 
 #[test]

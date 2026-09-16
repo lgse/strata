@@ -958,7 +958,7 @@ impl ViewState {
         }
     }
 
-    fn reveal_focused_entry(self: &Rc<Self>) {
+    pub(super) fn reveal_focused_entry(self: &Rc<Self>) {
         let Some((depth, position, _)) = self.browser.focused_item() else {
             return;
         };

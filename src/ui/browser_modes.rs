@@ -797,6 +797,15 @@ impl ModeViews {
         self.single_pane()?.search.selected_entries()
     }
 
+    pub(in crate::ui) fn filter_active(&self) -> bool {
+        self.selected_search_results().is_some()
+            || self
+                .visible_panes()
+                .into_iter()
+                .filter_map(|pane| pane.filter_entry.as_ref())
+                .any(|entry| !entry.text().trim().is_empty())
+    }
+
     pub fn item_view_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
         self.icons_panes
