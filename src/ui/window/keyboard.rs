@@ -76,18 +76,16 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         if controller
             .current_event()
             .and_then(|event| event.position())
-            .and_then(|(x, y)| {
-                window_for_wheel.pick(x, y, gtk::PickFlags::DEFAULT)
-            })
+            .and_then(|(x, y)| window_for_wheel.pick(x, y, gtk::PickFlags::DEFAULT))
             .is_some_and(inside_pdf_list)
         {
             return Propagation::Proceed;
         }
-        preferences.set_text_size(preferences.text_size().stepped(if dy < 0.0 {
-            1
-        } else {
-            -1
-        }));
+        preferences.set_text_size(
+            preferences
+                .text_size()
+                .stepped(if dy < 0.0 { 1 } else { -1 }),
+        );
         Propagation::Stop
     });
     window.add_controller(wheel);
