@@ -8,6 +8,8 @@ use std::{
 
 use super::*;
 
+#[path = "deferred/tests.rs"]
+mod deferred;
 #[path = "directory_changes/tests.rs"]
 mod directory_changes;
 #[path = "operation_events/tests.rs"]
@@ -322,6 +324,7 @@ struct RecordingFileSource {
 
 mod camera_photos;
 mod relocation;
+mod undo_refresh;
 
 type WatchCallback = Rc<dyn Fn(DirectoryChange)>;
 
