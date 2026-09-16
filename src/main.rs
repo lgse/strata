@@ -15,6 +15,7 @@ mod services;
 mod storage;
 #[cfg(test)]
 mod test_support;
+mod trusted_command;
 mod ui;
 mod util;
 
