@@ -152,3 +152,30 @@ fn reveal_target_can_scroll_back_to_an_earlier_column() {
         252.0
     );
 }
+
+#[test]
+fn column_select_all_checkbox_controls_and_reflects_selection() {
+    crate::test_support::gtk_test(
+        "ui::browser::columns::tests::column_select_all_checkbox_controls_and_reflects_selection",
+        || {
+            let model = gtk::StringList::new(&["a", "b", "c"]);
+            let selection = gtk::MultiSelection::new(Some(model));
+            let (select_all, guard) = column_select_all(&selection);
+
+            select_all.set_active(true);
+            assert_eq!(selection.selection().size(), 3);
+            select_all.set_active(false);
+            assert!(selection.selection().is_empty());
+
+            selection.select_item(1, false);
+            sync_select_all_button(&select_all, &guard, &selection);
+            assert!(select_all.is_inconsistent());
+            assert!(!select_all.is_active());
+
+            selection.select_all();
+            sync_select_all_button(&select_all, &guard, &selection);
+            assert!(!select_all.is_inconsistent());
+            assert!(select_all.is_active());
+        },
+    );
+}

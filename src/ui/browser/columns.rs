@@ -82,6 +82,8 @@ pub(super) struct ColumnView {
     pub(super) header_actions_stack: gtk::Stack,
     pub(super) filter_entry: gtk::Entry,
     pub(super) filter_button: gtk::ToggleButton,
+    pub(super) select_all: gtk::CheckButton,
+    pub(super) select_all_guard: Rc<Cell<bool>>,
     pub(super) selection: gtk::MultiSelection,
     pub(super) syncing_selection: Rc<Cell<bool>>,
     pub(super) list: gtk::ListView,
@@ -271,6 +273,62 @@ pub(super) fn set_column_selections(column: &ColumnView, positions: &[u32]) {
         positions,
     );
     column.syncing_selection.set(false);
+    sync_select_all_button(
+        &column.select_all,
+        &column.select_all_guard,
+        &column.selection,
+    );
+}
+
+pub(super) fn column_select_all(
+    selection: &gtk::MultiSelection,
+) -> (gtk::CheckButton, Rc<Cell<bool>>) {
+    let select_all = gtk::CheckButton::new();
+    select_all.add_css_class("row-checkbox");
+    select_all.add_css_class("column-select-all");
+    select_all.set_tooltip_text(Some("Select all"));
+    crate::ui::accessibility::set_label(&select_all, "Select all");
+    select_all.set_valign(gtk::Align::Center);
+    select_all.set_visible(crate::ui::theme::ThemeManager::shared().checkbox_selection());
+    let guard = Rc::new(Cell::new(false));
+    {
+        let selection = selection.clone();
+        let guard = guard.clone();
+        select_all.connect_toggled(move |check| {
+            if guard.get() {
+                return;
+            }
+            if check.is_active() {
+                selection.select_all();
+            } else {
+                selection.unselect_all();
+            }
+        });
+    }
+    (select_all, guard)
+}
+
+pub(super) fn sync_select_all_button(
+    select_all: &gtk::CheckButton,
+    guard: &Rc<Cell<bool>>,
+    selection: &gtk::MultiSelection,
+) {
+    let total = selection.n_items();
+    let selected = selection.selection().size() as u32;
+    guard.set(true);
+    select_all.set_inconsistent(false);
+    select_all.set_active(selected > 0 && selected == total);
+    if selected > 0 && selected < total {
+        select_all.set_inconsistent(true);
+    }
+    guard.set(false);
+}
+
+pub(super) fn set_columns_checkbox_visible(state: &ViewState, visible: bool) {
+    for column in state.columns.borrow().iter() {
+        column.select_all.set_visible(visible);
+        rows::set_column_checkboxes_visible(&column.bound_rows, visible);
+    }
 }
 
 fn should_activate_single_click(
@@ -305,6 +363,7 @@ pub(super) fn is_column_background(surface: &gtk::Widget, picked: &gtk::Widget) 
             return true;
         }
         if widget.is::<gtk::Button>()
+            || widget.is::<gtk::CheckButton>()
             || widget.is::<gtk::MenuButton>()
             || widget.is::<gtk::Editable>()
             || widget.is::<gtk::Range>()
@@ -351,16 +410,28 @@ fn set_active_path_style(row: &gtk::Box, active: bool) {
     }
 }
 
+/// Thumbnail slot, skipping the prepended selection checkbox when enabled.
+pub(super) fn column_row_icon(row: &gtk::Box) -> Option<crate::ui::thumbnail::ThumbnailSlot> {
+    let first = row.first_child()?;
+    first
+        .clone()
+        .downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+        .ok()
+        .or_else(|| {
+            first
+                .next_sibling()?
+                .downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+                .ok()
+        })
+}
+
 pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     if cut {
         row.add_css_class("cut");
     } else {
         row.remove_css_class("cut");
     }
-    if let Some(icon) = row
-        .first_child()
-        .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
-    {
+    if let Some(icon) = column_row_icon(row) {
         icon.set_cut(cut);
     }
 }
@@ -714,6 +785,8 @@ impl ViewState {
             None,
         );
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
+        let (select_all, select_all_guard) = column_select_all(&selection);
+        header.prepend(&select_all);
         let recursive_search_active = Rc::new(Cell::new(false));
         let syncing_selection = Rc::new(Cell::new(false));
         let modified_selection = Rc::new(Cell::new(false));
@@ -725,6 +798,8 @@ impl ViewState {
         let multiple_selection = self.multiple_selection.clone();
         let filter_for_column = filter.clone();
         let search_active_for_selection = recursive_search_active.clone();
+        let select_all_for_sync = select_all.clone();
+        let select_all_guard_for_sync = select_all_guard.clone();
         selection.connect_selection_changed(move |selection, position, count| {
             if syncing_selection_changed.get() || search_active_for_selection.get() {
                 return;
@@ -769,6 +844,7 @@ impl ViewState {
                     .set_selection(depth, &source_positions, focused_source);
                 state.refresh_destination_style();
             }
+            sync_select_all_button(&select_all_for_sync, &select_all_guard_for_sync, selection);
         });
         let search_results: Rc<RefCell<Vec<crate::services::SearchItem>>> =
             Rc::new(RefCell::new(Vec::new()));
@@ -1395,6 +1471,8 @@ impl ViewState {
             header_actions_stack,
             filter_entry,
             filter_button,
+            select_all: select_all.clone(),
+            select_all_guard: select_all_guard.clone(),
             selection,
             syncing_selection,
             list,

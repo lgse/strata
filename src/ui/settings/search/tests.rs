@@ -7,6 +7,8 @@ use crate::ui::{blur::BlurBin, theme::ThemeManager};
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),
+        ("checkbox", "general", "checkbox-selection"),
+        ("multi-select", "general", "checkbox-selection"),
         ("Items shown in sidebar", "general", "sidebar-places"),
         ("sidebar downloads", "general", "sidebar-places"),
         ("show network", "general", "sidebar-places"),
@@ -71,6 +73,11 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
             assert!(item(layer.upcast_ref(), "peeking").is_visible());
             assert!(!item(layer.upcast_ref(), "previews").is_visible());
+            assert!(!item(layer.upcast_ref(), "checkbox-selection").is_visible());
+            entry.set_text("checkbox");
+            assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
+            assert!(item(layer.upcast_ref(), "checkbox-selection").is_visible());
+            assert!(!item(layer.upcast_ref(), "peeking").is_visible());
             entry.set_text("tezt size");
             assert_eq!(stack.visible_child_name().as_deref(), Some("theme"));
             assert!(item(layer.upcast_ref(), "text").is_visible());

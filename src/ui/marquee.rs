@@ -277,6 +277,7 @@ fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
             return true;
         }
         if widget.is::<gtk::Button>()
+            || widget.is::<gtk::CheckButton>()
             || widget.is::<gtk::Editable>()
             || widget.is::<gtk::Range>()
             || widget.is::<gtk::Scrollbar>()

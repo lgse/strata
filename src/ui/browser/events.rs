@@ -204,9 +204,7 @@ impl ViewState {
                             let position = column.map.source_position(item.position());
                             if let Some(position) = position
                                 && let Some(&entry) = filled.get(&position)
-                                && let Some(size) = row
-                                    .first_child()
-                                    .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+                                && let Some(size) = super::columns::column_row_icon(&row)
                                     .and_then(|icon| icon.next_sibling())
                                     .and_then(|middle| middle.downcast::<gtk::Overlay>().ok())
                                     .and_then(|middle| middle.last_child())

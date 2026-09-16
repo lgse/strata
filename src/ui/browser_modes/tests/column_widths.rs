@@ -11,6 +11,13 @@ fn settle() {
     }
 }
 
+fn assert_aligned(heading: &gtk::Widget, mode: &gtk::Label, table: &gtk::Box) {
+    let heading = heading.compute_bounds(table).expect("heading bounds");
+    let mode = mode.compute_bounds(table).expect("Mode bounds");
+    assert_eq!(heading.x(), mode.x());
+    assert_eq!(heading.width(), mode.width());
+}
+
 #[test]
 fn resizing_starts_at_the_visible_header_not_the_loading_placeholder() {
     crate::test_support::gtk_test(
@@ -21,7 +28,12 @@ fn resizing_starts_at_the_visible_header_not_the_loading_placeholder() {
             for viewport in [480, 1200] {
                 let columns = ListColumnLayout::new();
                 let loading = list_loading_skeleton(&columns);
-                let (headings, _) = list_headings(&browser, 0, columns.clone());
+                let (headings, _, _, _) = list_headings(
+                    &browser,
+                    0,
+                    columns.clone(),
+                    gtk::MultiSelection::new(Some(gtk::StringList::new(&[]))),
+                );
                 let stack = gtk::Stack::new();
                 stack.add_named(&loading, Some("loading"));
                 stack.add_named(&headings, Some("content"));
@@ -37,7 +49,7 @@ fn resizing_starts_at_the_visible_header_not_the_loading_placeholder() {
                 for index in 0..LIST_COLUMN_WIDTHS.len() {
                     let cell = heading.expect("heading cell");
                     heading = cell.next_sibling();
-                    let overlay = cell.first_child().expect("heading overlay");
+                    let overlay = cell.last_child().expect("heading overlay");
                     let handle = overlay.last_child().expect("resize handle");
                     let controllers = handle.observe_controllers();
                     let drag = (0..controllers.n_items())
@@ -86,7 +98,13 @@ fn mode_fits_default_width_and_remains_resizable() {
                 for density in ["density-compact", "density-airy"] {
                     for width in [480, 1000] {
                         let columns = ListColumnLayout::new();
-                        let (headings, _) = list_headings(&browser, 0, columns.clone());
+                        let (headings, _, select_all, _) = list_headings(
+                            &browser,
+                            0,
+                            columns.clone(),
+                            gtk::MultiSelection::new(Some(gtk::StringList::new(&[]))),
+                        );
+                        select_all.set_visible(true);
                         let row = assemble_list_row();
                         let mut child = row.first_child();
                         for index in 0..5 {
@@ -94,7 +112,9 @@ fn mode_fits_default_width_and_remains_resizable() {
                             register_list_column_cell(&columns, index, &cell);
                             child = cell.next_sibling();
                         }
-                        let (_, name, _, mode, _, _, _) = list_row_parts(&row).expect("row parts");
+                        let (_, name, _, mode, _, _, _, checkbox) =
+                            list_row_parts(&row).expect("row parts");
+                        checkbox.set_visible(true);
                         name.set_label("Permissions");
                         let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
                         table.add_css_class("mode-list");
@@ -122,6 +142,10 @@ fn mode_fits_default_width_and_remains_resizable() {
                             "{size:?}, {density}, viewport {width}: {widest}, cell {}",
                             mode.width()
                         );
+                        let name_heading = headings.first_child().expect("Name heading");
+                        assert_eq!(select_all.parent().as_ref(), Some(&name_heading));
+                        let heading = name_heading.next_sibling().expect("Mode heading");
+                        assert_aligned(&heading, &mode, &table);
                         if width == 480 {
                             assert!(
                                 scroll.hadjustment().upper() > scroll.hadjustment().page_size()

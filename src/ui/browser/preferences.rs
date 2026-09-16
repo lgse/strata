@@ -28,6 +28,11 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
+            ThemeManager::checkbox_selection,
+            Self::set_checkbox_selection,
+        );
+        self.bind_view_preference(
+            manager,
             ThemeManager::auto_refresh_interval,
             Self::set_auto_refresh_interval,
         );

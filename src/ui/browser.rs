@@ -903,6 +903,14 @@ impl BrowserView {
             .set_group_by_type(enabled);
     }
 
+    pub fn set_checkbox_selection(&self, enabled: bool) {
+        self.state
+            .mode_views
+            .borrow()
+            .set_checkbox_selection(enabled);
+        columns::set_columns_checkbox_visible(&self.state, enabled);
+    }
+
     pub fn activate_focused(&self) {
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.activate_focused_in_place();

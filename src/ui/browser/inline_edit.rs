@@ -1048,7 +1048,7 @@ impl ViewState {
         {
             return None;
         }
-        let icon = row.first_child()?;
+        let icon = super::columns::column_row_icon(&row)?;
         let middle = icon.next_sibling().and_downcast::<gtk::Overlay>()?;
         let editor = middle
             .child()
