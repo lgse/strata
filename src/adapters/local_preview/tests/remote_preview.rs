@@ -24,6 +24,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
             duration_seconds: MetadataValue::Unknown,
         },
         text_byte_limit: 1024,
+        render_document: false,
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
     }

@@ -22,7 +22,7 @@ fn render_text(drawer: &PreviewDrawer) {
         },
         content_type: "text/plain".into(),
         content: crate::services::PreviewContent::Text {
-            content: "A long line of preview text. ".repeat(100),
+            content: "A long line of preview text. ".repeat(20),
             truncated: false,
         },
     });

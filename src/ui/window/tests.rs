@@ -22,14 +22,15 @@ use super::{
     accepts_sidebar_reorder_payload, begin_media_release, browser_for_window,
     browser_mode_for_digit, build_sidebar, confirm_forget_cached_password, continue_encrypted_lock,
     device_row_actions, event_changes_trash_contents, is_context_menu_shortcut,
-    is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
-    jump_direction, load_pinned_places, media_release_label, mouse_history_action, page_direction,
-    parse_pinned_drag_source, parse_pinned_places, pin_status, pinned_places_path,
-    remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
-    serialize_pinned_places, should_show_standard_place, sidebar_accepts_file_drop,
-    sidebar_update_label, standard_place, trash_contents_from_probe, trash_has_entries,
-    trash_menu_visibility, type_to_search_query, vim_focus_direction, volume_release_action,
+    is_native_editing_shortcut, is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
+    is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, load_pinned_places,
+    media_release_label, mouse_history_action, page_direction, parse_pinned_drag_source,
+    parse_pinned_places, pin_status, pinned_places_path, remove_pinned_place,
+    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
+    should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
+    trash_contents_from_probe, trash_has_entries, trash_menu_visibility, type_to_search_query,
+    vim_focus_direction, volume_release_action,
 };
 
 #[test]
@@ -287,6 +288,24 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::b, control | shift));
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::B, control | shift));
     assert!(!is_sidebar_focus_shortcut(gtk::gdk::Key::b, control));
+}
+
+#[test]
+fn native_editing_shortcuts_are_left_to_the_focused_widget() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+
+    for key in [
+        gtk::gdk::Key::a,
+        gtk::gdk::Key::c,
+        gtk::gdk::Key::v,
+        gtk::gdk::Key::x,
+    ] {
+        assert!(is_native_editing_shortcut(key, control));
+    }
+    assert!(!is_native_editing_shortcut(
+        gtk::gdk::Key::c,
+        control | gtk::gdk::ModifierType::SHIFT_MASK
+    ));
 }
 
 #[test]

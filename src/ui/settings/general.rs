@@ -91,6 +91,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             write: ThemeManager::set_single_click_previews,
         },
         PreferenceSwitch {
+            title: "Render documents by default",
+            description: "Open Markdown and HTML previews in the rendered view instead of source.",
+            read: ThemeManager::render_documents_by_default,
+            write: ThemeManager::set_render_documents_by_default,
+        },
+        PreferenceSwitch {
             title: "Keep arrows in file list",
             description: "Stop arrow keys from leaving the file list. Use Ctrl + Shift + B to focus the sidebar, or use the mouse.",
             read: ThemeManager::arrow_navigation_scoped,
