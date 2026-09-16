@@ -50,6 +50,7 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
             previous: RefCell::new(None),
         },
     };
+    let preferences = dispatcher.type_to_search.preferences.clone();
     keys.connect_key_pressed(move |_, key, _, modifiers| {
         let Some(browser) = weak_browser.upgrade() else {
             return Propagation::Proceed;
@@ -57,6 +58,50 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         dispatcher.handle_key(&browser, key, modifiers)
     });
     window.add_controller(keys);
+
+    // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut. Capture phase so
+    // scrolled windows cannot consume it first; the PDF preview's own zoom is
+    // left alone by passing through scrolls inside its list.
+    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let window_for_wheel = window.clone();
+    wheel.connect_scroll(move |controller, _, dy| {
+        let modifiers = controller.current_event_state();
+        if !modifiers.contains(Modifiers::CONTROL_MASK)
+            || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            || dy == 0.0
+        {
+            return Propagation::Proceed;
+        }
+        if controller
+            .current_event()
+            .and_then(|event| event.position())
+            .and_then(|(x, y)| {
+                window_for_wheel.pick(x, y, gtk::PickFlags::DEFAULT)
+            })
+            .is_some_and(inside_pdf_list)
+        {
+            return Propagation::Proceed;
+        }
+        preferences.set_text_size(preferences.text_size().stepped(if dy < 0.0 {
+            1
+        } else {
+            -1
+        }));
+        Propagation::Stop
+    });
+    window.add_controller(wheel);
+}
+
+fn inside_pdf_list(widget: gtk::Widget) -> bool {
+    let mut current = Some(widget);
+    while let Some(widget) = current {
+        if widget.has_css_class("preview-pdf-list") {
+            return true;
+        }
+        current = widget.parent();
+    }
+    false
 }
 
 struct Dispatcher {
