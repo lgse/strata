@@ -702,18 +702,7 @@ pub(super) fn column_rows(
             return;
         };
         let checkbox = column_row_checkbox(&row);
-        let Some(icon) = row.first_child().and_then(|first| {
-            first
-                .clone()
-                .downcast::<crate::ui::thumbnail::ThumbnailSlot>()
-                .ok()
-                .or_else(|| {
-                    first
-                        .next_sibling()?
-                        .downcast::<crate::ui::thumbnail::ThumbnailSlot>()
-                        .ok()
-                })
-        }) else {
+        let Some(icon) = super::column_row_icon(&row) else {
             return;
         };
         let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {

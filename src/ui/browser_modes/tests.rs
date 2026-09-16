@@ -29,6 +29,10 @@ impl super::ModeViews {
             self.list_click_activation.get(),
             manager.click_activation(BrowserMode::List)
         );
+        assert_eq!(
+            self.checkbox_selection.get(),
+            manager.checkbox_selection()
+        );
     }
 }
 
