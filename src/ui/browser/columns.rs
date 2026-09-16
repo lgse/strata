@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
-const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+pub(super) const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
@@ -1486,6 +1486,7 @@ impl ViewState {
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
+        self.columns_widget.set_margin_end(0);
         let weak = Rc::downgrade(self);
         let measured_shell = shell.downgrade();
         let _tick = self.scroller.add_tick_callback(move |_, _| {

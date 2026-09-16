@@ -33,60 +33,38 @@ fn closing_preserves_column_positions_without_locking_horizontal_scrolling() {
                 assert!(offset > 0.0);
                 fixture.preview.close();
                 wait_until(|| fixture.browser.widget().width() > width);
+                wait_until(|| fixture.columns().margin_end() == 0);
                 fixture.settle();
+                let adjustment = fixture.adjustment();
+                let content = f64::from(fixture.columns().width());
                 assert!(
-                    (fixture.adjustment().value() - offset).abs() <= 1.0,
-                    "chooser={chooser}, reduced={reduced_motion}, offset={offset} -> {}, page={}, upper={}, gap={}",
-                    fixture.adjustment().value(),
-                    fixture.adjustment().page_size(),
-                    fixture.adjustment().upper(),
-                    fixture.columns().margin_end()
+                    adjustment.upper() <= content.max(adjustment.page_size()) + 0.5,
+                    "chooser={chooser}, reduced={reduced_motion}: upper={} keeps preview-sized scroll space beyond content={content}",
+                    adjustment.upper()
+                );
+                assert_eq!(
+                    adjustment.value(),
+                    0.0,
+                    "chooser={chooser}, reduced={reduced_motion}: fitting columns must unscroll, offset={offset} -> {}",
+                    adjustment.value()
                 );
                 assert!(
-                    (last
-                        .compute_bounds(&fixture.split)
+                    last.compute_bounds(&fixture.split)
                         .expect("closed bounds")
                         .x()
-                        - x)
-                        .abs()
-                        <= 1.0,
-                    "chooser={chooser}, reduced={reduced_motion}, column x={x} -> {}",
+                        > x + 1.0,
+                    "chooser={chooser}, reduced={reduced_motion}: column x={x} did not reclaim the freed space, got {}",
                     last.compute_bounds(&fixture.split)
                         .expect("closed bounds")
                         .x()
                 );
 
-                let adjustment = fixture.adjustment();
-                adjustment.set_value(adjustment.upper() - adjustment.page_size());
-                fixture.settle();
-                let drift = Rc::new(Cell::new(0.0_f32));
-                let paints = Rc::new(Cell::new(0));
-                let observed_drift = drift.clone();
-                let observed_paints = paints.clone();
-                let observed_column = last.clone();
-                let observed_split = fixture.split.clone();
-                let clock = fixture.split.frame_clock().expect("frame clock");
-                let handler = clock.connect_after_paint(move |_| {
-                    let current = observed_column
-                        .compute_bounds(&observed_split)
-                        .expect("painted bounds")
-                        .x();
-                    observed_drift.set(observed_drift.get().max((current - x).abs()));
-                    observed_paints.set(observed_paints.get() + 1);
-                });
                 fixture.preview.show(entry("reopened.png"), None);
                 fixture.wait_adjacent();
                 wait_until(|| !fixture.preview.state.animating.get());
                 fixture.settle();
-                clock.disconnect(handler);
-                assert!(paints.get() > 0);
-                assert!(
-                    drift.get() <= 1.0,
-                    "a visible column moved during reopening: chooser={chooser}, reduced={reduced_motion}, drift={}",
-                    drift.get()
-                );
                 fixture.preview.close();
-                wait_until(|| fixture.browser.widget().width() > width);
+                wait_until(|| fixture.columns().margin_end() == 0);
                 fixture.settle();
 
                 fixture.adjustment().set_value(0.0);
@@ -100,6 +78,66 @@ fn closing_preserves_column_positions_without_locking_horizontal_scrolling() {
                 );
                 fixture.preview.show(entry("second.png"), None);
                 fixture.wait_adjacent();
+                fixture.close();
+            }
+        },
+    );
+}
+
+#[test]
+fn closing_the_preview_releases_preserved_column_scroll_space() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::closing_the_preview_releases_preserved_column_scroll_space",
+        || {
+            gtk::Settings::default()
+                .expect("GTK settings")
+                .set_gtk_enable_animations(true);
+            let preferences = ThemeManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            for reduced_motion in [true, false] {
+                preferences.set_reduce_motion(reduced_motion);
+                let fixture = Fixture::new(false);
+                fixture.resize(1200);
+                fixture.enter_descendants(5);
+                wait_until(|| find(&fixture.browser.widget(), "column-entering").is_none());
+                fixture.preview.show(entry("first.png"), None);
+                fixture.wait_adjacent();
+                wait_until(|| !fixture.preview.state.animating.get());
+                let adjustment = fixture.adjustment();
+                assert!(adjustment.value() > 0.0);
+                let content = f64::from(fixture.columns().width());
+                assert!(content > adjustment.page_size());
+                fixture.preview.close();
+                wait_until(|| fixture.columns().margin_end() == 0);
+                fixture.settle();
+                let adjustment = fixture.adjustment();
+                assert!(
+                    adjustment.upper() <= content.max(adjustment.page_size()) + 0.5,
+                    "reduced={reduced_motion}: upper={} keeps preview-sized scroll space beyond content={content}",
+                    adjustment.upper()
+                );
+                assert!(
+                    (adjustment.value() - (adjustment.upper() - adjustment.page_size())).abs()
+                        <= 0.5,
+                    "reduced={reduced_motion}: offset {} must settle at the end of the real range",
+                    adjustment.value()
+                );
+                let last = fixture
+                    .last_column()
+                    .compute_bounds(&fixture.split)
+                    .expect("last column bounds");
+                let browser = fixture
+                    .browser
+                    .widget()
+                    .compute_bounds(&fixture.split)
+                    .expect("browser bounds");
+                assert!(
+                    (last.x() + last.width() - (browser.x() + browser.width())).abs() <= 1.0,
+                    "reduced={reduced_motion}: last column leaves a void in the reclaimed space"
+                );
+                adjustment.set_value(0.0);
+                fixture.settle();
+                assert_eq!(fixture.adjustment().value(), 0.0);
                 fixture.close();
             }
         },
