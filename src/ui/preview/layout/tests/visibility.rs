@@ -238,21 +238,21 @@ fn horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle() {
     );
 }
 
+fn last_column_visible(fixture: &Fixture) -> bool {
+    let Some(column) = fixture.last_column().compute_bounds(&fixture.split) else {
+        return false;
+    };
+    let Some(browser) = fixture.browser.widget().compute_bounds(&fixture.split) else {
+        return false;
+    };
+    column.x() >= browser.x() - 1.0
+        && column.x() + column.width() <= browser.x() + browser.width() + 1.0
+}
+
+// The post-resize scroll correction lands in a deferred idle; wait for it
+// rather than sampling the adjustment a frame early.
 fn assert_last_column_visible(fixture: &Fixture) {
-    let column = fixture
-        .last_column()
-        .compute_bounds(&fixture.split)
-        .expect("last column");
-    let browser = fixture
-        .browser
-        .widget()
-        .compute_bounds(&fixture.split)
-        .expect("browser viewport");
-    assert!(
-        column.x() >= browser.x() - 1.0,
-        "{column:?} outside {browser:?}"
-    );
-    assert!(column.x() + column.width() <= browser.x() + browser.width() + 1.0);
+    wait_until(|| last_column_visible(fixture));
 }
 
 #[test]
