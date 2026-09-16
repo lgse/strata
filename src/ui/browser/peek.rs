@@ -15,6 +15,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const PEEK_WIDTH: i32 = 256;
+pub(super) const PEEK_LABEL: &str = "Folder peek";
 
 const PEEK_GAP: f32 = 8.0;
 
@@ -226,14 +227,23 @@ impl ViewState {
         let source = glib::timeout_add_local_once(self.peek_behavior.open_delay, move || {
             if let Some(state) = weak_state.upgrade() {
                 state.pending_peek.take();
-                state.browser.begin_peek(origin_depth, location);
+                let still_hovered = state.peek_anchor.borrow().as_ref().is_some_and(|anchor| {
+                    anchor
+                        .widget
+                        .state_flags()
+                        .contains(gtk::StateFlags::PRELIGHT)
+                });
+                if still_hovered {
+                    state.browser.begin_peek(origin_depth, location);
+                } else {
+                    state.peek_anchor.take();
+                }
             }
         });
         self.pending_peek.replace(Some(source));
     }
 
     pub(in crate::ui) fn schedule_close_peek(self: &Rc<Self>) {
-        cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
 
         let weak_state = Rc::downgrade(self);
@@ -281,9 +291,13 @@ impl ViewState {
             return;
         };
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .accessible_role(gtk::AccessibleRole::Group)
+            .build();
         content.set_size_request(PEEK_WIDTH, -1);
         content.set_overflow(gtk::Overflow::Hidden);
+        crate::ui::accessibility::set_label(&content, PEEK_LABEL);
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header.add_css_class("column-header");
@@ -382,10 +396,8 @@ impl ViewState {
     }
 
     pub(super) fn close_peek_visual(&self) {
-        cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
         self.overlay.remove_css_class("peek-open");
-        self.peek_anchor.take();
         if let Some(peek) = self.peek.take() {
             peek.anchor.remove_css_class("peek-anchor");
             peek.revealer.set_can_target(false);

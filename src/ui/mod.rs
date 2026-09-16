@@ -6,6 +6,7 @@ mod browser;
 mod browser_modes;
 mod chooser;
 mod controls;
+mod document_view;
 mod entry_list_model;
 mod focus_navigation;
 mod icons_cell;
@@ -13,6 +14,7 @@ mod inline_search;
 mod input_ownership;
 mod loading_skeleton;
 mod marquee;
+mod media;
 mod modal;
 mod motion;
 mod open_with;
@@ -23,16 +25,18 @@ mod scrolling;
 mod search;
 mod settings;
 mod shortcut_footer;
+mod table_view;
 mod terminal;
 mod theme;
 mod thumbnail;
-mod thumbnail_cache;
+pub(crate) mod thumbnail_cache;
 mod top_bar_navigation;
+mod virtual_preview;
 mod window;
 
 pub(crate) use chooser::{cancel_chooser, present_chooser};
-pub(crate) use window::home_directory;
-pub use window::{present, present_location, present_reveal};
+pub(crate) use window::default_save_folder;
+pub use window::{present, present_open, present_reveal};
 
 pub(crate) fn prepare_portal_ui() {
     let _theme = theme::ThemeManager::shared();

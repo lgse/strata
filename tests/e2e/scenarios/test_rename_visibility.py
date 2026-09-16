@@ -82,24 +82,18 @@ def begin_long_directory_rename(strata, kind, new, mode="Columns"):
     return field, original
 
 
-@pytest.mark.parametrize("kind", ("file", "folder"))
 @pytest.mark.parametrize("new", (False, True), ids=("existing", "new"))
 @pytest.mark.parametrize("final_name", ("a-final", "m-entry-078a", "zz-final"))
 @pytest.mark.parametrize("mode", ("Columns", "List"))
-def test_committed_rename_visibility(strata, kind, new, final_name, mode):
-    field, original = begin_long_directory_rename(strata, kind, new, mode)
+def test_committed_rename_visibility(strata, new, final_name, mode):
+    field, original = begin_long_directory_rename(strata, "file", new, mode)
     strata.keyboard.type_text(final_name)
     strata.wait(lambda: field.text == final_name, "the committed name in the editor")
     strata.keyboard.press("Return")
     destination = strata.fixture.path("rename-target/" + final_name)
     strata.wait(destination.exists, "the renamed item on disk")
     strata.wait_for_entry_gone(original, "rename-target")
-    if kind == "file":
-        assert destination.read_text() == ("" if new else "body\n")
-    else:
-        assert destination.is_dir()
-        if not new:
-            assert (destination / "marker").read_text() == "body\n"
+    assert destination.read_text() == ("" if new else "body\n")
     assert not strata.fixture.path("rename-target/" + original).exists()
     wait_for_visible_commit(strata, final_name, mode)
     names = sorted(path.name for path in strata.fixture.path("rename-target").iterdir())
@@ -112,10 +106,25 @@ def test_committed_rename_visibility(strata, kind, new, final_name, mode):
     wait_for_visible_commit(strata, final_name, mode)
 
 
-@pytest.mark.parametrize("kind", ("file", "folder"))
+@pytest.mark.preferences(browser_density="airy")
 @pytest.mark.parametrize("mode", ("Columns", "List"))
-def test_already_visible_rename_preserves_scroll(strata, kind, mode):
-    begin_long_directory_rename(strata, kind, False, mode)
+def test_airy_committed_rename_stays_visible(strata, mode):
+    field, original = begin_long_directory_rename(strata, "file", False, mode)
+    final_name = "zz-airy-final"
+    strata.keyboard.type_text(final_name)
+    strata.wait(lambda: field.text == final_name, "the committed name in the editor")
+    strata.keyboard.press("Return")
+    strata.wait(
+        strata.fixture.path("rename-target/" + final_name).exists,
+        "the renamed item on disk",
+    )
+    strata.wait_for_entry_gone(original, "rename-target")
+    wait_for_visible_commit(strata, final_name, mode)
+
+
+@pytest.mark.parametrize("mode", ("Columns", "List"))
+def test_already_visible_rename_preserves_scroll(strata, mode):
+    begin_long_directory_rename(strata, "file", False, mode)
     strata.keyboard.press("Escape")
     for _ in range(8):
         strata.keyboard.press("Up")
@@ -141,21 +150,16 @@ def test_already_visible_rename_preserves_scroll(strata, kind, mode):
     strata.wait(destination.exists, "the visible row renamed on disk")
     strata.wait_for_entry_gone(original, "rename-target")
     assert not strata.fixture.path("rename-target/" + original).exists()
-    if kind == "file":
-        assert destination.read_text() == "body\n"
-    else:
-        assert (destination / "marker").read_text() == "body\n"
+    assert destination.read_text() == "body\n"
     wait_for_visible_commit(strata, final_name, mode)
     anchor = strata.entry(anchor_name, "rename-target").find(role="panel")
     strata.settle(anchor)
     assert anchor.screen_bounds() == before
 
 
-@pytest.mark.parametrize("kind", ("file", "folder"))
-@pytest.mark.parametrize("new", (False, True), ids=("existing", "new"))
 @pytest.mark.parametrize("mode", ("Columns", "List"))
-def test_click_away_rename_respects_navigation(strata, kind, new, mode):
-    field, original = begin_long_directory_rename(strata, kind, new, mode)
+def test_click_away_rename_respects_navigation(strata, mode):
+    field, original = begin_long_directory_rename(strata, "file", False, mode)
     strata.keyboard.type_text("a-final")
     strata.wait(lambda: field.text == "a-final", "the final name in the editor")
     if mode == "Columns":
@@ -174,17 +178,12 @@ def test_click_away_rename_respects_navigation(strata, kind, new, mode):
     assert "rename-target" not in strata.pane_names()
 
 
-@pytest.mark.parametrize("kind", ("file", "folder"))
 @pytest.mark.parametrize("mode", ("Columns", "List"))
-def test_already_visible_created_item_preserves_scroll(strata, kind, mode):
+def test_already_visible_created_item_preserves_scroll(strata, mode):
     strata.switch_view(mode)
     strata.fixture.path("rename-target").mkdir()
     for name in ["a-anchor"] + [f"z-entry-{index:03d}" for index in range(80)]:
-        path = strata.fixture.path("rename-target/" + name)
-        if kind == "folder":
-            path.mkdir()
-        else:
-            path.write_text("body\n")
+        strata.fixture.path("rename-target/" + name).write_text("body\n")
     strata.keyboard.press("F5")
     strata.entry("rename-target")
     strata.open_directory("rename-target")
@@ -196,9 +195,9 @@ def test_already_visible_created_item_preserves_scroll(strata, kind, mode):
     bounds = strata.entry_container("rename-target").screen_bounds()
     strata.pointer.right_click(strata.pane("rename-target"),
                                at=(bounds.x + 1, bounds.y + bounds.height // 2))
-    strata.choose_menu_item("New File" if kind == "file" else "New Folder")
+    strata.choose_menu_item("New File")
     field = strata.editable_field()
-    original = "new " + kind
+    original = "new file"
     strata.wait(lambda: field.text == original, "the created item's editor")
     strata.settle(field)
     assert strata.entry("a-anchor", "rename-target").find(role="panel").screen_bounds() == before

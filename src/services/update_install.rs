@@ -508,12 +508,7 @@ fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), St
 /// Points the packaged entry's `Exec` line at the running install path, keeping
 /// the packaged field codes so the entry still receives directory arguments.
 fn desktop_entry_with_exec(template: &str, executable: &Path) -> String {
-    let program = executable.display().to_string();
-    let program = if program.contains(char::is_whitespace) {
-        format!("\"{program}\"")
-    } else {
-        program
-    };
+    let program = desktop_exec_argument(&executable.display().to_string());
 
     let mut entry = String::with_capacity(template.len() + program.len());
     for line in template.lines() {
@@ -532,6 +527,33 @@ fn desktop_entry_with_exec(template: &str, executable: &Path) -> String {
         entry.push('\n');
     }
     entry
+}
+
+/// Encodes an Exec argument, then applies desktop-entry string-value escaping.
+fn desktop_exec_argument(argument: &str) -> String {
+    const RESERVED: &[char] = &[
+        ' ', '\t', '\n', '"', '\'', '\\', '>', '<', '~', '|', '&', ';', '$', '*', '?', '#', '(',
+        ')', '`',
+    ];
+    let argument = argument.replace('%', "%%");
+    if !argument.contains(RESERVED) && !argument.contains('\r') {
+        return argument;
+    }
+    let mut quoted = String::with_capacity(argument.len() + 2);
+    quoted.push('"');
+    for character in argument.chars() {
+        if matches!(character, '"' | '`' | '$' | '\\') {
+            quoted.push('\\');
+        }
+        quoted.push(character);
+    }
+    quoted.push('"');
+    // String-value escapes are decoded before Exec argument quoting.
+    quoted
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
+        .replace('\r', "\\r")
 }
 
 fn download_to_file(

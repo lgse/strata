@@ -22,10 +22,37 @@ use super::{
     thumbnail_kind,
 };
 use crate::{
-    model::{EntryKind, FileEntry, Location, MetadataValue},
+    model::{EntryKind, FileEntry, FolderColor, FolderColorValue, Location, MetadataValue},
     test_support::gtk_test,
+    ui::theme::ThemeManager,
 };
 use gtk::prelude::*;
+
+pub(crate) fn complete_pending_thumbnail(path: &Path) {
+    let (key, id) = PENDING_THUMBNAILS.with(|pending| {
+        pending
+            .borrow()
+            .iter()
+            .find(|(key, _)| key.path == path)
+            .map(|(key, pending)| (key.clone(), pending.id))
+            .expect("thumbnail admitted while indexing")
+    });
+    let targets = take_pending_targets(&key, id).expect("pending thumbnail targets");
+    let images = targets
+        .iter()
+        .filter_map(|target| target.image.upgrade())
+        .collect::<Vec<_>>();
+    assert!(!images.is_empty());
+    let pixels = glib::Bytes::from_owned(vec![255u8; 4]);
+    let texture = gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &pixels, 4).upcast();
+    THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().cancel(&key));
+    finish_thumbnail_targets(targets, Some(&texture), path);
+    assert!(
+        images
+            .iter()
+            .all(|image| super::displayed_thumbnail_matches(image, path))
+    );
+}
 
 fn key(index: usize) -> ThumbnailKey {
     ThumbnailKey {
@@ -46,6 +73,17 @@ fn recognizes_mainstream_image_and_video_formats() {
         thumbnail_kind(Path::new("animation.webp")),
         Some(ThumbnailKind::Image)
     );
+    assert_eq!(
+        thumbnail_kind(Path::new("vector.svg")),
+        Some(ThumbnailKind::Image)
+    );
+    for name in ["photo.HEIC", "photo.heif", "photo.avif", "photo.jxl"] {
+        assert_eq!(
+            thumbnail_kind(Path::new(name)),
+            Some(ThumbnailKind::Image),
+            "{name}"
+        );
+    }
     assert_eq!(
         thumbnail_kind(Path::new("capture.CR3")),
         Some(ThumbnailKind::RawImage)
@@ -508,6 +546,9 @@ fn sample_entry(path: &Path) -> FileEntry {
         modified_unix_seconds: MetadataValue::Known(1),
         mode: MetadataValue::Known(0o100644),
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -522,6 +563,20 @@ fn drain_main_loop() {
 
 fn displayed_texture(image: &super::ThumbnailSlot) -> Option<gdk::Texture> {
     image.texture()
+}
+
+fn texture_pixels(texture: &gdk::Texture) -> Vec<u8> {
+    let mut downloader = gdk::TextureDownloader::new(texture);
+    downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+    downloader.download_bytes().0.to_vec()
+}
+
+fn fallback_pixels(slot: &super::ThumbnailSlot) -> Vec<u8> {
+    texture_pixels(
+        &slot
+            .fallback_texture()
+            .expect("customized icon should rasterize"),
+    )
 }
 
 fn bind_thumbnail(image: &super::ThumbnailSlot, entry: &FileEntry) {
@@ -578,6 +633,61 @@ fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
             drain_main_loop();
             refresh_all_customized_icons();
             drain_main_loop();
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+/// Icon resolution reads folder color and custom icon from the manager, and
+/// already-shown slots refresh when those preferences change.
+#[test]
+fn path_customization_refreshes_rendered_icons() {
+    gtk_test(
+        "ui::thumbnail::tests::path_customization_refreshes_rendered_icons",
+        || {
+            let manager = ThemeManager::shared();
+            let customized = Path::new("/fixture/custom-folder");
+            let other = Path::new("/fixture/plain-folder");
+            let color = FolderColorValue::Preset(FolderColor::Red);
+            let default = crate::assets::primary_icon_paintable(crate::assets::icons::FOLDER)
+                .expect("default folder icon");
+            let colored = crate::assets::custom_colored_icon_paintable(
+                crate::assets::icons::FOLDER,
+                color.hex(),
+            )
+            .expect("colored folder icon");
+            let decorated =
+                crate::assets::folder_decoration_paintable(crate::assets::icons::HOME, color.hex())
+                    .expect("decorated folder icon");
+            let default_pixels = texture_pixels(&default);
+            let colored_pixels = texture_pixels(&colored);
+            let decorated_pixels = texture_pixels(&decorated);
+            assert_ne!(default_pixels, colored_pixels);
+            assert_ne!(colored_pixels, decorated_pixels);
+
+            let customized_slot = super::ThumbnailSlot::new(32);
+            let other_slot = super::ThumbnailSlot::new(32);
+            show_customized_icon(
+                &customized_slot,
+                customized,
+                crate::assets::icons::FOLDER,
+                32,
+            );
+            show_customized_icon(&other_slot, other, crate::assets::icons::FOLDER, 32);
+            assert_eq!(fallback_pixels(&customized_slot), default_pixels);
+            assert_eq!(fallback_pixels(&other_slot), default_pixels);
+
+            manager.set_folder_color(customized, Some(color));
+            assert_eq!(fallback_pixels(&customized_slot), colored_pixels);
+            assert_eq!(fallback_pixels(&other_slot), default_pixels);
+
+            manager.set_custom_icon(customized, Some(crate::assets::icons::HOME));
+            assert_eq!(fallback_pixels(&customized_slot), decorated_pixels);
+            assert_eq!(fallback_pixels(&other_slot), default_pixels);
+
+            manager.clear_item_customization(customized);
+            assert_eq!(fallback_pixels(&customized_slot), default_pixels);
+            assert_eq!(fallback_pixels(&other_slot), default_pixels);
             clear_thumbnail_runtime();
         },
     );

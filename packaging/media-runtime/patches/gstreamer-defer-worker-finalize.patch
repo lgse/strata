@@ -1,0 +1,42 @@
+--- a/gst-libs/gst/play/gstplay.c
++++ b/gst-libs/gst/play/gstplay.c
+@@ -159,6 +159,7 @@
+   gchar *suburi;
+ 
+   GThread *thread;
++  gboolean deferred_thread_dispose;
+   GMutex lock;
+   GCond cond;
+   GMainContext *context;
+@@ -474,6 +475,16 @@
+ 
+   if (self->loop) {
+     g_main_loop_quit (self->loop);
++
++    /* An API message can own the last reference on this thread. Keep the
++     * object alive until the main loop and pipeline have finished teardown. */
++    if (self->thread == g_thread_self ()) {
++      if (!self->deferred_thread_dispose) {
++        self->deferred_thread_dispose = TRUE;
++        gst_object_ref (self);
++      }
++      return;
++    }
+ 
+     if (self->thread != g_thread_self ())
+       g_thread_join (self->thread);
+@@ -2714,6 +2725,14 @@
+ 
+   GST_TRACE_OBJECT (self, "Stopped main thread");
+ 
++  if (self->deferred_thread_dispose) {
++    g_clear_pointer (&self->loop, g_main_loop_unref);
++    g_clear_pointer (&self->context, g_main_context_unref);
++    g_clear_pointer (&self->thread, g_thread_unref);
++    self->deferred_thread_dispose = FALSE;
++    gst_object_unref (self);
++  }
++
+   return NULL;
+ }
+ 

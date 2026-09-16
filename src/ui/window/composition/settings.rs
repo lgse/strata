@@ -18,6 +18,9 @@ use super::{
     WindowContent,
 };
 
+#[cfg(test)]
+mod tests;
+
 type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, String, UpdateMethod)>>>;
 
 pub(super) fn install(
@@ -29,6 +32,7 @@ pub(super) fn install(
     // layer, and every other window's update and rollback controls.
     let guard = settings::install_guard();
     let notice = bind_update_notice(window, &content.sidebar, &guard);
+    settings::register_update_notice(&notice);
     bind_update_notice_preferences(window, preferences, &notice);
     let launcher = Rc::new(SettingsLauncher {
         layer: RefCell::new(None),
@@ -85,6 +89,13 @@ impl SettingsLauncher {
     }
 
     fn show(&self) {
+        let mut child = self.overlay.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if widget.is_visible() && widget.has_css_class("app-modal-layer") {
+                return;
+            }
+        }
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.set_visible(true);

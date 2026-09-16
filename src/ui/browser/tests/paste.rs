@@ -203,7 +203,7 @@ fn keep_both_is_offered_only_when_copying_into_a_collision() {
                 wait_until(|| {
                     descendant_buttons(&root_widget)
                         .iter()
-                        .any(|button| button.label().as_deref() == Some("Skip"))
+                        .any(|button| button.label().as_deref() == Some("Replace"))
                 });
 
                 let buttons = descendant_buttons(&root_widget);
@@ -211,6 +211,14 @@ fn keep_both_is_offered_only_when_copying_into_a_collision() {
                     button.label().as_deref() == Some("Keep Both") && button.is_visible()
                 });
                 assert_eq!(has_keep_both, !moving, "moving={moving}");
+
+                let skip_visible = buttons
+                    .iter()
+                    .any(|button| button.label().as_deref() == Some("Skip") && button.is_visible());
+                assert!(
+                    !skip_visible,
+                    "skip is redundant for a single-item conflict"
+                );
 
                 let cancel = buttons
                     .iter()

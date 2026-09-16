@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 
@@ -36,21 +36,37 @@ def test_arrow_keys_move_focus_and_selection(strata, mode, bindings):
     strata.wait_for_focused_entry("readme.md")
 
 
+@pytest.mark.preferences(arrow_navigation_scoped=True, type_to_search=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_enter_opens_the_focused_directory(strata, mode):
+@pytest.mark.parametrize("bindings", ["arrows", "hjkl"])
+def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, bindings):
+    up, left = ("Up", "Left") if bindings == "arrows" else ("k", "h")
     strata.select_entry("readme.md")
     strata.keyboard.press("Home")
     strata.wait_for_focused_entry("archive")
-    strata.keyboard.press(NEXT_ENTRY_KEY[mode])
-    strata.wait_for_focused_entry("documents")
+    for key in [up, left, up]:
+        strata.keyboard.press(key)
+        strata.wait_for_focused_entry("archive")
 
-    strata.keyboard.press("Return")
+    strata.keyboard.press("ctrl+\\")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("arrow_navigation_scoped") == "false",
+        "arrow scope disabled by shortcut",
+    )
+    strata.keyboard.press(up)
+    strata.wait(lambda: strata.focused_name() is None, "Up leaves the file list")
+    strata.keyboard.press("Down")
+    strata.wait_for_focused_entry("archive")
+    strata.keyboard.press("ctrl+\\")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("arrow_navigation_scoped") == "true",
+        "arrow scope enabled by shortcut",
+    )
+    strata.keyboard.press(up)
+    strata.wait_for_focused_entry("archive")
 
-    strata.wait_for_directory("documents")
-    strata.entry("notes.txt", directory="documents")
 
-
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_alt_up_and_history_navigate_between_directories(strata, mode):
     root = strata.fixture.root.name
 
@@ -63,6 +79,67 @@ def test_alt_up_and_history_navigate_between_directories(strata, mode):
 
     strata.keyboard.press("alt+Right")
     strata.wait_for_directory(root)
+
+
+@pytest.mark.preferences(browser_mode="list")
+@pytest.mark.parametrize("return_key", ["alt+Left", "alt+Up"])
+@pytest.mark.parametrize("enter_with", ["keyboard", "pointer"])
+def test_list_return_restores_nested_scroll_selection_and_keyboard_cursor(
+    strata, return_key, enter_with
+):
+    def populate(parent):
+        for index in range(160):
+            (parent / f"folder-{index:03}").mkdir()
+
+    def scroll_and_enter(parent, clicks):
+        container = strata.entry_container()
+        viewport = next(
+            node.screen_bounds()
+            for node in container.ancestors()
+            if node.role == "scroll pane"
+        )
+        strata.pointer.scroll(at=viewport.center, clicks=clicks)
+
+        def middle_entry():
+            visible = [
+                node for node in strata.entries()
+                if viewport.y < node.screen_bounds().y
+                < viewport.y + viewport.height - node.screen_bounds().height
+            ]
+            if visible and visible[0].name != "folder-000":
+                return visible[len(visible) // 2]
+            return None
+
+        marker = strata.wait(middle_entry, "a scrolled directory viewport")
+        name = marker.name
+        populate(parent / name)
+        strata.select_entry(name)
+        strata.wait_for_focused_entry(name)
+        y = strata.settle(strata.entry(name)).screen_bounds().y
+        if enter_with == "keyboard":
+            strata.keyboard.press("Return")
+        else:
+            strata.open_directory(name)
+        strata.wait_for_directory(name)
+        return name, y
+
+    parent = strata.fixture.path("archive")
+    populate(parent)
+    strata.open_directory("archive")
+    first, first_y = scroll_and_enter(parent, 18)
+    second, second_y = scroll_and_enter(parent / first, 10)
+
+    for directory, name, y in [(first, second, second_y), ("archive", first, first_y)]:
+        strata.keyboard.press(return_key)
+        strata.wait_for_directory(directory)
+        strata.wait_for_selection([name])
+        strata.wait_for_focused_entry(name)
+        restored = strata.settle(strata.entry(name))
+        assert abs(restored.screen_bounds().y - y) <= 2, "restore the viewport, not just reveal the selection"
+        next_name = f"folder-{int(name.removeprefix('folder-')) + 1:03}"
+        strata.keyboard.press("Down")
+        strata.wait_for_focused_entry(next_name)
+        strata.wait_for_selection([next_name])
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -84,7 +161,7 @@ def test_shift_arrow_extends_the_selection(strata, mode):
     )
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 def test_select_all_selects_every_entry(strata, mode):
     strata.select_entry("readme.md")
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::adapters::gio_file_for_location;
+use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::paths::is_trash_location;
 use crate::ui::controls::{ModalTone, message_dialog_description, message_dialog_layout};
@@ -8,52 +9,109 @@ use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_d
 use crate::ui::terminal;
 use gtk::gio;
 use gtk::prelude::*;
-use std::ffi::OsString;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::rc::{Rc, Weak};
 
-pub(in crate::ui) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>) {
-    let file = gio_file_for_location(location);
-    if file.is_native() {
-        report_open_result(
-            location,
+pub(in crate::ui) fn open_location(
+    location: &Location,
+    parent: &impl IsA<gtk::Widget>,
+    browser: &Rc<Browser>,
+) {
+    if is_trash_location(location) {
+        show_error_dialog(
             parent,
-            gio::AppInfo::launch_default_for_uri(&file.uri(), None::<&gio::AppLaunchContext>),
+            "Unable to open item",
+            "Items in Trash cannot be opened",
         );
         return;
     }
+    let file = gio_file_for_location(location);
     let parent = parent.as_ref().downgrade();
     let location = location.clone();
+    let browser = Rc::downgrade(browser);
     glib::MainContext::default().spawn_local(async move {
-        let result = launch_uri_default(&file).await;
-        if let Some(parent) = parent.upgrade() {
-            report_open_result(&location, &parent, result);
+        match resolve_default_application(&file).await {
+            Ok((_content_type, Some(app))) => {
+                let result = crate::ui::open_with::launch(
+                    &app,
+                    std::slice::from_ref(&file),
+                    None::<&gio::AppLaunchContext>,
+                );
+                if let Some(parent) = parent.upgrade() {
+                    report_open_result(&location, &parent, result);
+                }
+            }
+            Ok((content_type, None)) => {
+                let Some(parent) = parent.upgrade() else {
+                    return;
+                };
+                if file.is_native() && location.native_path().is_some_and(is_regular_executable) {
+                    confirm_run_program(&location, &parent);
+                } else {
+                    show_open_with_fallback(&parent, file, &content_type, browser);
+                }
+            }
+            Err(error) => {
+                if let Some(parent) = parent.upgrade() {
+                    report_open_result(&location, &parent, Err(error));
+                }
+            }
         }
     });
 }
 
-async fn launch_uri_default(file: &gio::File) -> Result<(), glib::Error> {
+async fn resolve_default_application(
+    file: &gio::File,
+) -> Result<(String, Option<gio::AppInfo>), glib::Error> {
     let info = file
         .query_info_future(
-            "standard::content-type",
+            "standard::type,standard::content-type",
             gio::FileQueryInfoFlags::NONE,
             glib::Priority::DEFAULT,
         )
         .await?;
-    let app = info
+    if info.file_type() == gio::FileType::SymbolicLink {
+        return Err(glib::Error::new(
+            gio::IOErrorEnum::Failed,
+            "Broken symbolic links cannot be opened with an application",
+        ));
+    }
+    let content_type = info
         .content_type()
-        .and_then(|content_type| gio::AppInfo::default_for_type(&content_type, true))
+        .map(|value| value.to_string())
         .ok_or_else(|| {
             glib::Error::new(
-                gio::IOErrorEnum::NotSupported,
-                "No URI-capable application is registered for this file",
+                gio::IOErrorEnum::Failed,
+                "Unable to determine the selected file type",
             )
         })?;
-    crate::ui::open_with::launch(
-        &app,
-        std::slice::from_ref(file),
-        None::<&gio::AppLaunchContext>,
-    )
+    let requires_uris = crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(file));
+    let default = gio::AppInfo::default_for_type(&content_type, requires_uris);
+    Ok((content_type, default))
+}
+
+fn show_open_with_fallback(
+    parent: &impl IsA<gtk::Widget>,
+    file: gio::File,
+    content_type: &str,
+    browser: Weak<Browser>,
+) {
+    let requires_uris = crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(&file));
+    let (recommended_apps, other_apps) =
+        crate::ui::open_with::categorized_apps(content_type, requires_uris);
+    crate::ui::open_with::show(
+        parent,
+        vec![file],
+        recommended_apps,
+        other_apps,
+        crate::ui::open_with::OpenWithContext::ActivationFallback,
+        Rc::new(move || {
+            if let Some(browser) = browser.upgrade() {
+                browser.focus_active();
+            }
+        }),
+    );
 }
 
 fn report_open_result(
@@ -62,10 +120,6 @@ fn report_open_result(
     result: Result<(), glib::Error>,
 ) {
     if let Err(error) = result {
-        if executable_without_handler(location.native_path(), &error) {
-            confirm_run_program(location, parent);
-            return;
-        }
         tracing::warn!(
             backend = %location.backend_name(),
             error_domain = ?error.domain(),
@@ -87,18 +141,23 @@ fn report_open_result(
     }
 }
 
-fn executable_without_handler(path: Option<&Path>, error: &glib::Error) -> bool {
-    error.matches(gio::IOErrorEnum::NotSupported) && path.is_some_and(is_regular_executable)
-}
-
-fn is_regular_executable(path: &Path) -> bool {
+pub(super) fn is_regular_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
         .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
 }
 
-fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Widget>) {
+pub(super) fn entry_is_regular_executable(entry: &FileEntry) -> bool {
+    entry.location.native_path().is_some()
+        && matches!(
+            entry.kind,
+            crate::model::EntryKind::File | crate::model::EntryKind::FileSymbolicLink
+        )
+        && matches!(entry.mode, crate::model::MetadataValue::Known(mode) if mode & 0o111 != 0)
+}
+
+pub(super) fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Widget>) {
     let Some(ModalHost {
         overlay: window_overlay,
         blurred_root,
@@ -159,7 +218,7 @@ fn launch_program(location: &Location) -> std::io::Result<()> {
             "program is not a local file",
         )
     })?;
-    let mut child = program_command(path).spawn()?;
+    let mut child = program_command(path, terminal::Terminal::resolve)?.spawn()?;
     std::thread::spawn(move || {
         if let Err(error) = child.wait() {
             tracing::warn!(%error, "unable to reap program");
@@ -168,14 +227,38 @@ fn launch_program(location: &Location) -> std::io::Result<()> {
     Ok(())
 }
 
-fn program_command(path: &Path) -> Command {
+fn program_command(
+    path: &Path,
+    resolve_terminal: impl FnOnce() -> Option<terminal::Terminal>,
+) -> std::io::Result<Command> {
+    if path.extension().is_some_and(|extension| extension == "sh") {
+        let terminal = resolve_terminal().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                terminal::no_terminal_message(),
+            )
+        })?;
+        // Pass the path as data, preserving the script's shebang and avoiding shell injection.
+        let mut command = terminal.exec_command(&[
+            std::ffi::OsStr::new("/bin/sh"),
+            std::ffi::OsStr::new("-c"),
+            std::ffi::OsStr::new(
+                "cd -- \"$2\" && \"$1\"; status=$?; printf '\\nProcess exited with status %s. Press Enter to close…' \"$status\"; IFS= read -r answer; exit \"$status\"",
+            ),
+            std::ffi::OsStr::new("strata-run"),
+            path.as_os_str(),
+            path.parent().unwrap_or_else(|| Path::new(".")).as_os_str(),
+        ]);
+        command.current_dir(path.parent().unwrap_or_else(|| Path::new(".")));
+        return Ok(command);
+    }
     let mut command = Command::new(path);
     command
         .current_dir(path.parent().unwrap_or_else(|| Path::new(".")))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    command
+    Ok(command)
 }
 
 pub(super) fn can_open_terminal(location: &Location) -> bool {
@@ -187,12 +270,6 @@ pub(super) fn selected_terminal_location(entries: &[FileEntry]) -> Option<Locati
         return None;
     };
     entry.is_directory().then(|| entry.location.clone())
-}
-
-fn terminal_directory_argument(path: &Path) -> OsString {
-    let mut argument = OsString::from("--dir=");
-    argument.push(path);
-    argument
 }
 
 pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk::Widget>) {
@@ -217,15 +294,22 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         location = %location.diagnostic_path(),
         "opening terminal"
     );
-    let result = terminal::command()
-        .arg(terminal_directory_argument(&path))
-        .spawn();
-    if let Err(error) = result {
-        tracing::warn!(%error, launcher = terminal::LAUNCHER, "unable to launch terminal");
+    let Some(terminal) = terminal::Terminal::resolve() else {
+        tracing::warn!("no terminal emulator found on PATH");
         show_error_dialog(
             parent,
             "Unable to open terminal",
-            &terminal::launch_failure(&error),
+            &terminal::no_terminal_message(),
+        );
+        return;
+    };
+    let program = terminal.program().to_string_lossy().into_owned();
+    if let Err(error) = terminal.directory_command(&path).spawn() {
+        tracing::warn!(%error, %program, "unable to launch terminal");
+        show_error_dialog(
+            parent,
+            "Unable to open terminal",
+            &terminal.launch_failure(&error),
         );
     }
 }

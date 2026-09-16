@@ -12,14 +12,17 @@ set -euo pipefail
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mutations="$repository/tests/e2e/mutations"
 
+# Each patch maps to the scenario that hits the mutated line, not the whole
+# workflow file. Shrinking other tests in those files is fine while these fail.
 declare -A SCENARIOS=(
-  [drag-and-drop]="tests/e2e/scenarios/test_drag_and_drop.py"
-  [clipboard]="tests/e2e/scenarios/test_clipboard.py"
-  [keyboard-navigation]="tests/e2e/scenarios/test_keyboard_navigation.py"
-  [click-modes]="tests/e2e/scenarios/test_click_modes.py"
-  [view-switching]="tests/e2e/scenarios/test_view_switching.py"
-  [quick-preview]="tests/e2e/scenarios/test_quick_preview.py"
-  [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py"
+  [drag-and-drop]="tests/e2e/scenarios/test_drag_and_drop.py::test_dragging_a_file_onto_a_folder_moves_it"
+  [clipboard]="tests/e2e/scenarios/test_clipboard.py::test_copy_leaves_the_source_in_place"
+  [keyboard-navigation]="tests/e2e/scenarios/test_keyboard_navigation.py::test_arrow_keys_move_focus_and_selection"
+  [click-modes]="tests/e2e/scenarios/test_click_modes.py::test_single_click_opens_a_directory"
+  [view-switching]="tests/e2e/scenarios/test_view_switching.py::test_appearance_menu_switches_presentation"
+  [quick-preview]="tests/e2e/scenarios/test_quick_preview.py::test_space_previews_a_filtered_result_without_changing_the_query"
+  [filter-results]="tests/e2e/scenarios/test_filter_results.py::test_query_updates_retain_selection_focus_preview_and_background_menu"
+  [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py::test_panel_wheel_routing"
   [rename-caret]="tests/e2e/scenarios/test_inline_renaming.py::test_long_rename_keeps_caret_visible"
 )
 

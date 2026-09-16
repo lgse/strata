@@ -1,11 +1,79 @@
 // SPDX-License-Identifier: MIT
 
-use std::ffi::OsString;
+use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
 use super::{
-    GIO_FALLBACK_BACKENDS, encode_daemon_pids, gvfs_daemon_pids, gvfs_probe_marker_is_fresh_at,
-    gvfs_probe_marker_path_in,
+    LaunchMode, encode_daemon_pids, gvfs_daemon_pids, gvfs_probe_marker_is_fresh_at,
+    gvfs_probe_marker_path_in, launch_mode, run_preview_helper, version_line,
 };
+
+#[test]
+fn launch_mode_treats_non_utf8_arguments_as_an_ordinary_launch() {
+    let program = OsString::from("strata");
+    let non_utf8 = OsString::from_vec(b"/tmp/\xff".to_vec());
+
+    assert_eq!(
+        launch_mode(&[program.clone(), non_utf8]),
+        LaunchMode::Application
+    );
+    assert_eq!(
+        launch_mode(&[program.clone(), OsString::from("--portal")]),
+        LaunchMode::Portal
+    );
+    assert_eq!(launch_mode(&[program]), LaunchMode::Application);
+}
+
+#[test]
+fn launch_mode_recognizes_only_the_first_argument_as_a_mode() {
+    for (flag, mode) in [
+        ("--preview-helper", LaunchMode::PreviewHelper),
+        ("--gvfs-probe", LaunchMode::GvfsProbe),
+        ("--portal", LaunchMode::Portal),
+        ("--install-portal", LaunchMode::InstallPortal),
+        ("--dismiss-portal-prompt", LaunchMode::DismissPortalPrompt),
+        ("--uninstall-portal", LaunchMode::UninstallPortal),
+        ("--version", LaunchMode::Version),
+    ] {
+        assert_eq!(launch_mode(&["strata".into(), flag.into()]), mode);
+        assert_eq!(
+            launch_mode(&["strata".into(), "/tmp".into(), flag.into()]),
+            LaunchMode::Application
+        );
+    }
+}
+
+#[test]
+fn version_line_is_the_package_name_and_installed_version() {
+    let line = version_line();
+    assert!(
+        line.starts_with("strata "),
+        "the --version line should start with the package name"
+    );
+    assert!(
+        line.contains(&crate::build_info::installed_version().to_string()),
+        "the --version line should include the installed version"
+    );
+    assert_eq!(
+        line.lines().count(),
+        1,
+        "the --version line should be a single line"
+    );
+}
+
+#[test]
+fn preview_helper_rejects_non_utf8_instead_of_changing_paths() {
+    let arguments = [
+        "thumbnail-image".into(),
+        OsString::from_vec(b"/tmp/\xff".to_vec()),
+        "/tmp/result.png".into(),
+        "128".into(),
+        "software".into(),
+    ];
+    assert_eq!(
+        run_preview_helper(&arguments),
+        Err("Invalid UTF-8 in preview helper arguments".to_owned())
+    );
+}
 
 fn fake_proc(label: &str, processes: &[(&str, &str)]) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!(
@@ -79,12 +147,4 @@ fn only_a_readable_matching_marker_is_fresh() {
 
     std::fs::write(&marker, [0xff]).expect("the unreadable marker should be written");
     assert!(!gvfs_probe_marker_is_fresh_at(&marker, &proc_root));
-}
-
-#[test]
-fn gvfs_fallback_covers_files_and_volumes() {
-    assert_eq!(
-        GIO_FALLBACK_BACKENDS,
-        [("GIO_USE_VFS", "local"), ("GIO_USE_VOLUME_MONITOR", "unix"),]
-    );
 }

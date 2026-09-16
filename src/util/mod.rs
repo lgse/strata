@@ -100,6 +100,16 @@ fn ensure_modified_date_timer() {
     });
 }
 
+fn calendar_day_difference(modified: &glib::DateTime, now: &glib::DateTime) -> Option<i64> {
+    let midnight = |value: &glib::DateTime| {
+        let (year, month, day) = value.ymd();
+        glib::DateTime::new(&value.timezone(), year, month, day, 0, 0, 0.0).ok()
+    };
+    let span = midnight(now)?.difference(&midnight(modified)?).0;
+    // Rounding maps 23- and 25-hour DST intervals to one civil day.
+    Some((span + 43_200_000_000) / 86_400_000_000)
+}
+
 fn modified_date_at(modified: &glib::DateTime, now: &glib::DateTime) -> String {
     let span = now.difference(modified).0;
     if span < 0 {
@@ -109,7 +119,7 @@ fn modified_date_at(modified: &glib::DateTime, now: &glib::DateTime) -> String {
             .unwrap_or_else(|_| "—".to_owned());
     }
 
-    let day_diff = span / 86_400_000_000;
+    let day_diff = calendar_day_difference(modified, now).unwrap_or(span / 86_400_000_000);
     let same_year = now.year() == modified.year();
 
     if day_diff == 0 {

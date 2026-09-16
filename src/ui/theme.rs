@@ -16,7 +16,7 @@ use sourceview5::prelude::BufferExt as _;
 use crate::{
     model::{FolderColorValue, SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
-    services::Channel,
+    services::{Channel, CrossVolumeDropStrategy},
 };
 
 mod bindings;
@@ -25,8 +25,10 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<ThemeManager>> = const { RefCell::new(std::rc::Weak::new()) };
     static SOURCE_STYLE_PATH_INSTALLED: Cell<bool> = const { Cell::new(false) };
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
+    static DOCUMENT_BUFFERS: RefCell<Vec<glib::WeakRef<gtk::TextBuffer>>> = const { RefCell::new(Vec::new()) };
+    static DOCUMENT_VIEWS: RefCell<Vec<glib::WeakRef<super::document_view::DocumentTextView>>> = const { RefCell::new(Vec::new()) };
     /// Installed on the first source preview buffer, so startup performs no SourceView I/O.
-    static PENDING_STYLE_TOKENS: RefCell<Option<ThemeTokens>> = const { RefCell::new(None) };
+    static PENDING_STYLE_TOKENS: RefCell<Option<(ThemeTokens, Option<SourcePalette>)>> = const { RefCell::new(None) };
     static STYLE_SCHEME_DIRTY: Cell<bool> = const { Cell::new(true) };
 }
 
@@ -60,6 +62,15 @@ pub struct ThemeTokens {
     pub dim_text: String,
 }
 
+#[derive(Clone)]
+struct SourcePalette {
+    statement: String,
+    string: String,
+    constant: String,
+    type_color: String,
+    preprocessor: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct Theme {
     pub id: String,
@@ -87,6 +98,8 @@ struct Preferences {
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default = "default_enabled")]
+    render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hardware_accelerated_video_previews: Option<bool>,
     #[serde(default = "default_video_preview_backend")]
@@ -95,12 +108,16 @@ struct Preferences {
     search_open_files_directly: bool,
     #[serde(default = "default_enabled")]
     type_to_search: bool,
+    #[serde(default)]
+    arrow_navigation_scoped: bool,
     #[serde(default = "default_enabled")]
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
     show_keybinding_hints: bool,
     #[serde(default)]
     reduce_motion: bool,
+    #[serde(default = "default_enabled")]
+    element_glow: bool,
     #[serde(default = "default_browser_mode")]
     browser_mode: String,
     #[serde(default = "default_browser_density")]
@@ -121,10 +138,26 @@ struct Preferences {
     list_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
+    #[serde(default = "default_enabled")]
+    sidebar_show_home: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_trash: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_network: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_desktop: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_documents: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_downloads: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_pictures: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_videos: bool,
     #[serde(default)]
     show_hidden: bool,
-    #[serde(default = "default_text_size")]
-    text_size: String,
+    #[serde(default)]
+    text_size: TextSize,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -138,9 +171,17 @@ struct Preferences {
     #[serde(default = "default_full_volume")]
     preview_volume: f64,
     #[serde(default)]
+    preview_text_wrap: bool,
+    #[serde(default)]
     auto_refresh_interval: u32,
+    #[serde(default = "default_cross_volume_drop_strategy")]
+    cross_volume_drop_strategy: String,
+    #[serde(default)]
+    open_folder_after_drop: bool,
     #[serde(default = "default_release_channel")]
     release_channel: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    default_directory: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -154,13 +195,16 @@ impl Default for Preferences {
             theme: "tokyo-night".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
             type_to_search: true,
+            arrow_navigation_scoped: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             reduce_motion: false,
+            element_glow: true,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
             group_by_type: false,
@@ -171,16 +215,28 @@ impl Default for Preferences {
             list_file_clicks: default_file_clicks(),
             list_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
+            sidebar_show_home: true,
+            sidebar_show_trash: true,
+            sidebar_show_network: true,
+            sidebar_show_desktop: true,
+            sidebar_show_documents: true,
+            sidebar_show_downloads: true,
+            sidebar_show_pictures: true,
+            sidebar_show_videos: true,
             show_hidden: false,
-            text_size: default_text_size(),
+            text_size: TextSize::default(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
             check_for_updates: true,
             preview_muted: false,
             preview_volume: default_full_volume(),
+            preview_text_wrap: false,
             auto_refresh_interval: 0,
+            cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
+            open_folder_after_drop: false,
             release_channel: default_release_channel(),
+            default_directory: None,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
         }
@@ -195,46 +251,8 @@ fn default_release_channel() -> String {
     "stable".to_owned()
 }
 
-fn default_text_size() -> String {
-    TextSize::default().as_str().to_owned()
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum TextSize {
-    Small,
-    #[default]
-    Medium,
-    Large,
-}
-
-impl TextSize {
-    /// The persisted/config-file representation of this size.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            TextSize::Small => "small",
-            TextSize::Medium => "medium",
-            TextSize::Large => "large",
-        }
-    }
-
-    /// Parses a persisted text size value, falling back to [`TextSize::Medium`]
-    /// for anything unrecognised.
-    pub fn parse(value: &str) -> TextSize {
-        match value {
-            "small" => TextSize::Small,
-            "large" => TextSize::Large,
-            _ => TextSize::Medium,
-        }
-    }
-
-    fn root_font_px(self) -> u32 {
-        match self {
-            TextSize::Small => 11,
-            TextSize::Medium => 13,
-            TextSize::Large => 15,
-        }
-    }
-}
+mod text_size;
+pub use text_size::TextSize;
 
 fn default_browser_mode() -> String {
     "columns".to_owned()
@@ -298,6 +316,10 @@ fn default_full_volume() -> f64 {
     1.0
 }
 
+fn default_cross_volume_drop_strategy() -> String {
+    CrossVolumeDropStrategy::Ask.as_str().to_owned()
+}
+
 fn normalized_volume(volume: f64) -> f64 {
     if volume.is_finite() {
         volume.clamp(0.0, 1.0)
@@ -310,12 +332,13 @@ pub struct ThemeManager {
     provider: gtk::CssProvider,
     themes: RefCell<Vec<Theme>>,
     preferences: RefCell<Preferences>,
-    omarchy_available: bool,
-    omarchy_monitor: RefCell<Option<gio::FileMonitor>>,
+    omarchy_available: Cell<bool>,
+    omarchy_monitors: RefCell<Vec<gio::FileMonitor>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     previewing: Cell<bool>,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
+    persistence_enabled: bool,
 }
 
 impl ThemeManager {
@@ -333,7 +356,13 @@ impl ThemeManager {
     fn load() -> Rc<Self> {
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
         let omarchy_available = load_omarchy_theme().is_some();
-        let mut preferences = read_preferences().unwrap_or_default();
+        let loaded = read_preferences();
+        let persistence_enabled = loaded.is_ok();
+        let mut preferences = loaded.unwrap_or_else(|error| {
+            tracing::warn!(%error, path = %settings_path().display(),
+                "unable to load settings; using temporary defaults without saving; fix the file and restart Strata");
+            Preferences::default()
+        });
         preferences.preview_volume = normalized_volume(preferences.preview_volume);
         if !themes.iter().any(|theme| theme.id == preferences.theme) {
             preferences.theme = "azure-glow".to_owned();
@@ -350,9 +379,10 @@ impl ThemeManager {
             themes: RefCell::new(themes),
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
+            persistence_enabled,
             preferences: RefCell::new(preferences),
-            omarchy_available,
-            omarchy_monitor: RefCell::new(None),
+            omarchy_available: Cell::new(omarchy_available),
+            omarchy_monitors: RefCell::new(Vec::new()),
             pending_omarchy_refresh: RefCell::new(None),
             previewing: Cell::new(false),
         });
@@ -368,7 +398,7 @@ impl ThemeManager {
     }
 
     pub fn is_omarchy_available(&self) -> bool {
-        self.omarchy_available
+        self.omarchy_available.get()
     }
 
     pub fn follows_omarchy(&self) -> bool {
@@ -472,6 +502,15 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn render_documents_by_default(&self) -> bool {
+        self.preferences.borrow().render_documents_by_default
+    }
+
+    pub fn set_render_documents_by_default(&self, enabled: bool) {
+        self.preferences.borrow_mut().render_documents_by_default = enabled;
+        self.save_preferences();
+    }
+
     pub fn hardware_accelerated_video_previews(&self) -> bool {
         configured_hardware_acceleration(
             &self.preferences.borrow(),
@@ -536,6 +575,15 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn arrow_navigation_scoped(&self) -> bool {
+        self.preferences.borrow().arrow_navigation_scoped
+    }
+
+    pub fn set_arrow_navigation_scoped(&self, scoped: bool) {
+        self.preferences.borrow_mut().arrow_navigation_scoped = scoped;
+        self.save_preferences();
+    }
+
     pub fn show_keybinding_hints(&self) -> bool {
         self.preferences.borrow().show_keybinding_hints
     }
@@ -551,6 +599,19 @@ impl ThemeManager {
         refresh: impl Fn(&gtk::Widget, bool) + 'static,
     ) {
         self.bind_preference(anchor, Self::show_keybinding_hints, refresh);
+    }
+
+    pub fn element_glow(&self) -> bool {
+        self.preferences.borrow().element_glow
+    }
+
+    pub fn set_element_glow(&self, enabled: bool) {
+        if self.element_glow() == enabled {
+            return;
+        }
+        self.preferences.borrow_mut().element_glow = enabled;
+        self.apply_selected();
+        self.save_preferences();
     }
 
     pub fn reduce_motion(&self) -> bool {
@@ -590,6 +651,15 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn preview_text_wrap(&self) -> bool {
+        self.preferences.borrow().preview_text_wrap
+    }
+
+    pub fn set_preview_text_wrap(&self, wrapped: bool) {
+        self.preferences.borrow_mut().preview_text_wrap = wrapped;
+        self.save_preferences();
+    }
+
     pub fn set_preview_audio(&self, volume: f64, muted: bool) {
         self.preferences.borrow_mut().preview_muted = muted;
         if volume > 0.0 {
@@ -605,6 +675,36 @@ impl ThemeManager {
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
         self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.save_preferences();
+    }
+
+    pub fn default_directory(&self) -> Option<PathBuf> {
+        self.preferences.borrow().default_directory.clone()
+    }
+
+    pub fn set_default_directory(&self, path: Option<PathBuf>) {
+        self.preferences.borrow_mut().default_directory = path;
+        self.save_preferences();
+    }
+
+    pub fn open_folder_after_drop(&self) -> bool {
+        self.preferences.borrow().open_folder_after_drop
+    }
+
+    pub fn set_open_folder_after_drop(&self, enabled: bool) {
+        self.preferences.borrow_mut().open_folder_after_drop = enabled;
+        self.save_preferences();
+    }
+
+    pub fn cross_volume_drop_strategy(&self) -> CrossVolumeDropStrategy {
+        CrossVolumeDropStrategy::parse(&self.preferences.borrow().cross_volume_drop_strategy)
+    }
+
+    pub fn set_cross_volume_drop_strategy(&self, strategy: CrossVolumeDropStrategy) {
+        if self.cross_volume_drop_strategy() == strategy {
+            return;
+        }
+        self.preferences.borrow_mut().cross_volume_drop_strategy = strategy.as_str().to_owned();
         self.save_preferences();
     }
 
@@ -665,13 +765,48 @@ impl ThemeManager {
     }
 
     pub fn text_size(&self) -> TextSize {
-        TextSize::parse(&self.preferences.borrow().text_size)
+        self.preferences.borrow().text_size
     }
 
     pub fn set_text_size(&self, size: TextSize) {
-        self.preferences.borrow_mut().text_size = size.as_str().to_owned();
+        if self.text_size() == size {
+            self.save_preferences();
+            return;
+        }
+        self.preferences.borrow_mut().text_size = size;
         self.apply_selected();
         self.save_preferences();
+    }
+
+    pub fn interface_scale(&self) -> f64 {
+        snapped_root_font_px(self.text_size().root_font_px(), desktop_text_scale_factor()) / 13.0
+    }
+
+    pub fn bind_interface_scale(
+        self: &Rc<Self>,
+        anchor: &impl IsA<gtk::Widget>,
+        apply: impl Fn(&gtk::Widget, f64) + 'static,
+    ) {
+        let apply = Rc::new(apply);
+        let changed = apply.clone();
+        self.bind_preference(anchor, Self::interface_scale, move |widget, scale| {
+            changed(widget, scale)
+        });
+        if let Some(settings) = gtk::Settings::default() {
+            let widget = anchor.downgrade();
+            let manager = Rc::downgrade(self);
+            let handler = settings.connect_gtk_xft_dpi_notify(move |_| {
+                if let (Some(widget), Some(manager)) = (widget.upgrade(), manager.upgrade()) {
+                    apply(widget.upcast_ref(), manager.interface_scale());
+                }
+            });
+            let handler = RefCell::new(Some(handler));
+            anchor.connect_destroy(move |_| {
+                if let Some(handler) = handler.borrow_mut().take() {
+                    settings.disconnect(handler);
+                }
+            });
+        }
     }
 
     pub fn group_by_type(&self) -> bool {
@@ -745,6 +880,92 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn sidebar_show_home(&self) -> bool {
+        self.preferences.borrow().sidebar_show_home
+    }
+
+    pub fn set_sidebar_show_home(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_home = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_trash(&self) -> bool {
+        self.preferences.borrow().sidebar_show_trash
+    }
+
+    pub fn set_sidebar_show_trash(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_trash = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_network(&self) -> bool {
+        self.preferences.borrow().sidebar_show_network
+    }
+
+    pub fn set_sidebar_show_network(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_network = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_desktop(&self) -> bool {
+        self.preferences.borrow().sidebar_show_desktop
+    }
+
+    pub fn set_sidebar_show_desktop(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_desktop = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_documents(&self) -> bool {
+        self.preferences.borrow().sidebar_show_documents
+    }
+
+    pub fn set_sidebar_show_documents(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_documents = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_downloads(&self) -> bool {
+        self.preferences.borrow().sidebar_show_downloads
+    }
+
+    pub fn set_sidebar_show_downloads(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_downloads = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_pictures(&self) -> bool {
+        self.preferences.borrow().sidebar_show_pictures
+    }
+
+    pub fn set_sidebar_show_pictures(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_pictures = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_videos(&self) -> bool {
+        self.preferences.borrow().sidebar_show_videos
+    }
+
+    pub fn set_sidebar_show_videos(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_videos = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_places_visibility(&self) -> [bool; 8] {
+        let preferences = self.preferences.borrow();
+        [
+            preferences.sidebar_show_home,
+            preferences.sidebar_show_trash,
+            preferences.sidebar_show_network,
+            preferences.sidebar_show_desktop,
+            preferences.sidebar_show_documents,
+            preferences.sidebar_show_downloads,
+            preferences.sidebar_show_pictures,
+            preferences.sidebar_show_videos,
+        ]
+    }
+
     pub fn sort_preferences(&self) -> ViewPreferences {
         sort_preferences(&self.preferences.borrow())
     }
@@ -753,18 +974,21 @@ impl ThemeManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        stored.sort_key = match preferences.sort_key {
-            SortKey::Name => "name",
-            SortKey::Size => "size",
-            SortKey::Modified => "modified",
-            SortKey::Type => "type",
+        let sort_key = match preferences.sort_key {
+            SortKey::DeviceOrder => None,
+            SortKey::Name => Some("name"),
+            SortKey::Size => Some("size"),
+            SortKey::Modified => Some("modified"),
+            SortKey::Type => Some("type"),
+        };
+        if let Some(sort_key) = sort_key {
+            stored.sort_key = sort_key.to_owned();
+            stored.sort_direction = match preferences.sort_direction {
+                SortDirection::Ascending => "ascending",
+                SortDirection::Descending => "descending",
+            }
+            .to_owned();
         }
-        .to_owned();
-        stored.sort_direction = match preferences.sort_direction {
-            SortDirection::Ascending => "ascending",
-            SortDirection::Descending => "descending",
-        }
-        .to_owned();
         drop(stored);
         self.save_preferences();
     }
@@ -784,7 +1008,7 @@ impl ThemeManager {
     }
 
     pub fn set_follow_omarchy(&self, enabled: bool) {
-        if enabled && !self.omarchy_available {
+        if enabled && !self.is_omarchy_available() {
             return;
         }
         self.preferences.borrow_mut().mode = if enabled {
@@ -800,7 +1024,7 @@ impl ThemeManager {
     pub fn preview(&self, tokens: &ThemeTokens) {
         if validate_tokens(tokens).is_ok() {
             self.previewing.set(true);
-            self.apply_tokens(tokens);
+            self.apply_tokens(tokens, None);
         }
     }
 
@@ -850,6 +1074,15 @@ impl ThemeManager {
         Ok(id)
     }
 
+    pub fn appearance_tokens(&self) -> ThemeTokens {
+        if self.follows_omarchy()
+            && let Some(tokens) = load_omarchy_theme()
+        {
+            return tokens;
+        }
+        self.starter_tokens()
+    }
+
     pub fn starter_tokens(&self) -> ThemeTokens {
         self.current_tokens().unwrap_or_else(azure_tokens)
     }
@@ -867,12 +1100,13 @@ impl ThemeManager {
     fn apply_selected(&self) {
         if self.follows_omarchy() {
             if let Some(tokens) = load_omarchy_theme() {
-                self.apply_tokens(&tokens);
+                let palette = load_omarchy_source_palette();
+                self.apply_tokens(&tokens, palette.as_ref());
             }
             return;
         }
         if let Some(tokens) = self.current_tokens() {
-            self.apply_tokens(&tokens);
+            self.apply_tokens(&tokens, None);
         }
     }
 
@@ -885,21 +1119,37 @@ impl ThemeManager {
             .map(|theme| theme.tokens.clone())
     }
 
-    fn apply_tokens(&self, tokens: &ThemeTokens) {
+    fn apply_tokens(&self, tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
         let root_font_px =
             snapped_root_font_px(self.text_size().root_font_px(), desktop_text_scale_factor());
-        self.provider
-            .load_from_string(&tokens_css(tokens, root_font_px));
+        let glow = if self.element_glow() {
+            "@theme_accent"
+        } else {
+            "transparent"
+        };
+        self.provider.load_from_string(&format!(
+            "{}\n@define-color theme_glow {glow};\n",
+            tokens_css(tokens, root_font_px)
+        ));
         apply_interface_font(root_font_px);
+        crate::assets::set_interface_icon_scale(root_font_px / 13.0);
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_danger_icon_color(&tokens.danger);
         super::thumbnail::refresh_all_customized_icons();
-        stage_source_style_scheme(tokens);
+        stage_source_style_scheme(tokens, source_palette);
+        style_document_buffers(tokens);
+        style_document_views(tokens);
     }
 
     fn save_preferences(&self) {
         let changed = self.changes.record(&self.preferences.borrow());
         if !changed && !self.persistence_dirty.get() {
+            return;
+        }
+        if !self.persistence_enabled {
+            if changed {
+                self.changes.notify(self);
+            }
             return;
         }
         self.persistence_dirty.set(true);
@@ -937,51 +1187,76 @@ impl ThemeManager {
     }
 
     fn monitor_omarchy(self: &Rc<Self>) {
-        if !self.omarchy_available {
-            return;
+        for monitor in self.omarchy_monitors.take() {
+            monitor.cancel();
         }
-        let file = gio::File::for_path(omarchy_state_dir());
-        let Ok(monitor) =
-            file.monitor_directory(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
-        else {
-            return;
-        };
-        let weak = Rc::downgrade(self);
-        monitor.connect_changed(move |_, file, other_file, _| {
-            if !is_omarchy_theme_event(file)
-                && !other_file
-                    .as_ref()
-                    .is_some_and(|file| is_omarchy_theme_event(file))
-            {
-                return;
+        let state = omarchy_state_dir();
+        let home = glib::home_dir();
+        // Ancestor watches survive moving away or replacing the current state tree.
+        for path in state.ancestors().take_while(|path| path.starts_with(&home)) {
+            if !path.is_dir() {
+                continue;
             }
-            let Some(manager) = weak.upgrade() else {
-                return;
+            let file = gio::File::for_path(path);
+            let Ok(monitor) =
+                file.monitor_directory(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
+            else {
+                continue;
             };
-            if let Some(pending) = manager.pending_omarchy_refresh.borrow_mut().take() {
-                pending.remove();
-            }
-            let weak = weak.clone();
-            let refresh = glib::timeout_add_local_once(Duration::from_millis(75), move || {
+            let weak = Rc::downgrade(self);
+            monitor.connect_changed(move |_, file, other_file, _| {
+                if !is_omarchy_theme_event(file)
+                    && !other_file
+                        .as_ref()
+                        .is_some_and(|file| is_omarchy_theme_event(file))
+                {
+                    return;
+                }
                 let Some(manager) = weak.upgrade() else {
                     return;
                 };
-                manager.pending_omarchy_refresh.borrow_mut().take();
-                if manager.follows_omarchy() && !manager.previewing.get() {
-                    manager.apply_selected();
+                if let Some(pending) = manager.pending_omarchy_refresh.borrow_mut().take() {
+                    pending.remove();
                 }
+                let weak = weak.clone();
+                let refresh = glib::timeout_add_local_once(Duration::from_millis(75), move || {
+                    let Some(manager) = weak.upgrade() else {
+                        return;
+                    };
+                    manager.pending_omarchy_refresh.borrow_mut().take();
+                    manager.monitor_omarchy();
+                    let available = load_omarchy_theme().is_some()
+                        || (manager.is_omarchy_available()
+                            && omarchy_state_dir().join("theme.name").is_file());
+                    let availability_changed =
+                        manager.omarchy_available.replace(available) != available;
+                    if !available && manager.follows_omarchy() {
+                        manager.preferences.borrow_mut().mode = "theme".to_owned();
+                        manager.apply_selected();
+                        manager.save_preferences();
+                        return;
+                    }
+                    if availability_changed {
+                        manager.changes.notify(&manager);
+                        return;
+                    }
+                    if manager.follows_omarchy() && !manager.previewing.get() {
+                        manager.apply_selected();
+                        manager.changes.notify(&manager);
+                    }
+                });
+                manager.pending_omarchy_refresh.replace(Some(refresh));
             });
-            manager.pending_omarchy_refresh.replace(Some(refresh));
-        });
-        self.omarchy_monitor.replace(Some(monitor));
+            self.omarchy_monitors.borrow_mut().push(monitor);
+        }
     }
 }
 
 fn is_omarchy_theme_event(file: &gio::File) -> bool {
-    file.path()
-        .as_deref()
-        .and_then(Path::file_name)
-        .is_some_and(|name| name == "theme" || name == "theme.name")
+    file.path().is_some_and(|path| {
+        let state = omarchy_state_dir();
+        state.starts_with(&path) || path == state.join("theme") || path == state.join("theme.name")
+    })
 }
 
 fn builtins() -> Vec<Theme> {
@@ -1055,8 +1330,44 @@ fn load_custom_themes() -> Vec<Theme> {
     themes
 }
 
-fn read_preferences() -> Option<Preferences> {
-    toml::from_str(&fs::read_to_string(settings_path()).ok()?).ok()
+fn read_preferences() -> io::Result<Preferences> {
+    let contents = match fs::read_to_string(settings_path()) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Preferences::default()),
+        Err(error) => return Err(error),
+    };
+    let table: toml::Table = toml::from_str(&contents)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    match table.clone().try_into() {
+        Ok(preferences) => Ok(preferences),
+        Err(error) => {
+            tracing::warn!(%error, "settings file has invalid entries; keeping the valid ones");
+            Ok(salvage_preferences(table))
+        }
+    }
+}
+
+/// Rebuilds preferences from every entry that deserializes on its own, so one
+/// malformed value does not reset the rest (and, on the next save, overwrite
+/// them with defaults).
+fn salvage_preferences(saved: toml::Table) -> Preferences {
+    let Ok(mut merged) = toml::Table::try_from(Preferences::default()) else {
+        return Preferences::default();
+    };
+    for (key, value) in saved {
+        let previous = merged.insert(key.clone(), value);
+        if merged.clone().try_into::<Preferences>().is_err() {
+            match previous {
+                Some(previous) => {
+                    merged.insert(key, previous);
+                }
+                None => {
+                    merged.remove(&key);
+                }
+            }
+        }
+    }
+    merged.try_into().unwrap_or_default()
 }
 
 fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
@@ -1104,6 +1415,11 @@ fn load_omarchy_theme() -> Option<ThemeTokens> {
     tokens_from_quattro(name.trim(), &colors)
 }
 
+fn load_omarchy_source_palette() -> Option<SourcePalette> {
+    let colors = fs::read_to_string(omarchy_state_dir().join("theme/colors.toml")).ok()?;
+    source_palette_from_quattro(&colors)
+}
+
 fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
     let values: toml::Value = toml::from_str(source).ok()?;
     let get = |key: &str| {
@@ -1128,6 +1444,18 @@ fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
         text,
         accent,
         danger: get("color1").unwrap_or_else(default_danger),
+    })
+}
+
+fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
+    let values: toml::Value = toml::from_str(source).ok()?;
+    let get = |key: &str| values.get(key)?.as_str().map(str::to_owned);
+    Some(SourcePalette {
+        statement: get("magenta").or_else(|| get("blue"))?,
+        string: get("green")?,
+        constant: get("orange").or_else(|| get("yellow"))?,
+        type_color: get("cyan").or_else(|| get("blue"))?,
+        preprocessor: get("yellow")?,
     })
 }
 
@@ -1173,8 +1501,116 @@ pub(super) fn register_source_buffer(buffer: &sourceview5::Buffer) {
     });
 }
 
-fn stage_source_style_scheme(tokens: &ThemeTokens) {
-    PENDING_STYLE_TOKENS.with(|pending| pending.replace(Some(tokens.clone())));
+pub(super) fn register_document_buffer(buffer: &gtk::TextBuffer) {
+    let manager = ThemeManager::shared();
+    let tokens = if manager.follows_omarchy() {
+        load_omarchy_theme()
+    } else {
+        manager.current_tokens()
+    }
+    .unwrap_or_else(azure_tokens);
+    style_document_buffer(buffer, &tokens);
+    DOCUMENT_BUFFERS.with(|buffers| {
+        let mut buffers = buffers.borrow_mut();
+        buffers.retain(|buffer| buffer.upgrade().is_some());
+        let weak = glib::WeakRef::new();
+        weak.set(Some(buffer));
+        buffers.push(weak);
+    });
+}
+
+pub(super) fn register_document_view(view: &super::document_view::DocumentTextView) {
+    let manager = ThemeManager::shared();
+    let tokens = if manager.follows_omarchy() {
+        load_omarchy_theme()
+    } else {
+        manager.current_tokens()
+    }
+    .unwrap_or_else(azure_tokens);
+    style_document_view(view, &tokens);
+    DOCUMENT_VIEWS.with(|views| {
+        let mut views = views.borrow_mut();
+        views.retain(|view| view.upgrade().is_some());
+        let weak = glib::WeakRef::new();
+        weak.set(Some(view));
+        views.push(weak);
+    });
+}
+
+fn style_document_buffers(tokens: &ThemeTokens) {
+    DOCUMENT_BUFFERS.with(|buffers| {
+        buffers.borrow_mut().retain(|buffer| {
+            let Some(buffer) = buffer.upgrade() else {
+                return false;
+            };
+            style_document_buffer(&buffer, tokens);
+            true
+        });
+    });
+}
+
+fn style_document_views(tokens: &ThemeTokens) {
+    DOCUMENT_VIEWS.with(|views| {
+        views.borrow_mut().retain(|view| {
+            let Some(view) = view.upgrade() else {
+                return false;
+            };
+            style_document_view(&view, tokens);
+            true
+        });
+    });
+}
+
+fn style_document_view(view: &super::document_view::DocumentTextView, tokens: &ThemeTokens) {
+    if let (Ok(fill), Ok(border), Ok(selection)) = (
+        gdk::RGBA::parse(blend(&tokens.surface, &tokens.muted, 0.54)),
+        gdk::RGBA::parse(blend(&tokens.surface, &tokens.border, 0.5)),
+        gdk::RGBA::parse(&tokens.accent),
+    ) {
+        view.set_colors(fill, border, selection);
+    }
+}
+
+fn style_document_buffer(buffer: &gtk::TextBuffer, tokens: &ThemeTokens) {
+    let parse = |value: &str| gdk::RGBA::parse(value).ok();
+    let table = buffer.tag_table();
+    if let Some(color) = parse(&tokens.accent) {
+        for name in ["document-accent", "document-link"] {
+            if let Some(tag) = table.lookup(name) {
+                tag.set_foreground_rgba(Some(&color));
+            }
+        }
+    }
+    if let Some(color) = parse(&tokens.dim_text)
+        && let Some(tag) = table.lookup("document-dim")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(color) = parse(&tokens.text)
+        && let Some(tag) = table.lookup("document-link-hover")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(color) = parse(&tokens.background)
+        && let Some(tag) = table.lookup("document-selection")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(mut color) = parse(&tokens.highlight) {
+        color.set_alpha(0.36);
+        if let Some(tag) = table.lookup("document-quote") {
+            tag.set_paragraph_background_rgba(Some(&color));
+        }
+        color.set_alpha(0.5);
+        if let Some(tag) = table.lookup("document-link-hover") {
+            tag.set_background_rgba(Some(&color));
+        }
+    }
+}
+
+fn stage_source_style_scheme(tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
+    PENDING_STYLE_TOKENS
+        .with(|pending| pending.replace(Some((tokens.clone(), source_palette.cloned()))));
     STYLE_SCHEME_DIRTY.with(|dirty| dirty.set(true));
     let live = SOURCE_BUFFERS.with(|buffers| {
         buffers
@@ -1193,12 +1629,12 @@ fn ensure_source_style_scheme_installed() {
         return;
     }
     let pending = PENDING_STYLE_TOKENS.with(|pending| pending.borrow().clone());
-    let Some(tokens) = pending else {
+    let Some((tokens, palette)) = pending else {
         return;
     };
     let directory = glib::user_cache_dir().join("strata").join("source-styles");
     if let Err(error) = fs::create_dir_all(&directory).and_then(|()| {
-        let value = source_style_scheme_xml(&tokens);
+        let value = source_style_scheme_xml(&tokens, palette.as_ref());
         crate::storage::atomic_write(&directory.join("strata-current.xml"), value.as_bytes())
     }) {
         tracing::warn!(%error, "unable to write preview syntax style");
@@ -1225,10 +1661,15 @@ fn ensure_source_style_scheme_installed() {
     });
 }
 
-fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
-    let string = blend(&tokens.accent, &tokens.text, 0.48);
-    let constant = blend(&tokens.accent, &tokens.text, 0.18);
-    let type_color = blend(&tokens.accent, &tokens.text, 0.24);
+fn source_style_scheme_xml(tokens: &ThemeTokens, palette: Option<&SourcePalette>) -> String {
+    let fallback = SourcePalette {
+        statement: tokens.accent.clone(),
+        string: blend(&tokens.accent, &tokens.text, 0.48),
+        constant: blend(&tokens.accent, &tokens.text, 0.18),
+        type_color: blend(&tokens.accent, &tokens.text, 0.24),
+        preprocessor: blend(&tokens.accent, &tokens.text, 0.32),
+    };
+    let palette = palette.unwrap_or(&fallback);
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <style-scheme id="strata-current" _name="Strata Current Theme" version="1.0">
@@ -1236,11 +1677,14 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <color name="surface" value="{}"/>
   <color name="text" value="{}"/>
   <color name="accent" value="{}"/>
+  <color name="danger" value="{}"/>
   <color name="selection" value="{}"/>
   <color name="dim" value="{}"/>
   <color name="string" value="{}"/>
   <color name="constant" value="{}"/>
   <color name="type" value="{}"/>
+  <color name="statement" value="{}"/>
+  <color name="preprocessor" value="{}"/>
   <style name="text" foreground="text" background="surface"/>
   <style name="selection" foreground="background" background="accent"/>
   <style name="cursor" foreground="accent"/>
@@ -1252,23 +1696,26 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <style name="def:constant" foreground="constant"/>
   <style name="def:special-char" foreground="constant"/>
   <style name="def:identifier" foreground="text"/>
-  <style name="def:statement" foreground="accent" bold="true"/>
+  <style name="def:statement" foreground="statement" bold="true"/>
   <style name="def:type" foreground="type" bold="true"/>
-  <style name="def:preprocessor" foreground="type"/>
+  <style name="def:preprocessor" foreground="preprocessor"/>
   <style name="def:heading" foreground="accent" bold="true"/>
   <style name="def:link-destination" foreground="string" underline="single"/>
-  <style name="def:error" foreground="background" background="accent" bold="true"/>
+  <style name="def:error" foreground="background" background="danger" bold="true"/>
 </style-scheme>
 "#,
-        tokens.background,
-        tokens.surface,
-        tokens.text,
-        tokens.accent,
-        tokens.highlight,
-        tokens.dim_text,
-        string,
-        constant,
-        type_color,
+        color_to_hex(&tokens.background),
+        color_to_hex(&tokens.surface),
+        color_to_hex(&tokens.text),
+        color_to_hex(&tokens.accent),
+        color_to_hex(&tokens.danger),
+        color_to_hex(&tokens.highlight),
+        color_to_hex(&tokens.dim_text),
+        color_to_hex(&palette.string),
+        color_to_hex(&palette.constant),
+        color_to_hex(&palette.type_color),
+        color_to_hex(&palette.statement),
+        color_to_hex(&palette.preprocessor),
     )
 }
 
@@ -1301,12 +1748,21 @@ fn snapped_root_font_px(root_font_px: u32, scale_factor: f64) -> f64 {
     if !scale_factor.is_finite() || scale_factor <= 0.0 {
         return f64::from(root_font_px);
     }
-    // Fractional effective pixels can lose hinted glyph rows in GTK's text renderer.
-    (f64::from(root_font_px) * scale_factor).round() / scale_factor
+    // CSS px bypass Xft DPI. Apply desktop text scaling here, once; GTK applies
+    // the surface's monitor scale independently. Keep hinted glyph rows whole.
+    (f64::from(root_font_px) * scale_factor).round()
 }
 
 fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
-    format!(
+    let scale = root_font_px / 13.0;
+    let header = (40.0 * scale).round();
+    // Column headers add six pixels of padding and three extra border pixels.
+    let column_header = header - 9.0;
+    let control = (24.0 * scale).round();
+    let sizing = format!(
+        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n"
+    );
+    let colors = format!(
         "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",
         tokens.background,
         tokens.surface,
@@ -1317,20 +1773,43 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
         tokens.highlight,
         tokens.border,
         tokens.dim_text,
-    )
+    );
+    colors + &sizing
+}
+
+/// Parses colours GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names) into 8-bit
+/// channels. Strata emits these channels as `#rrggbb` in GtkSourceView schemes.
+pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
+    let color = gdk::RGBA::parse(value).ok()?;
+    let channel = |component: f32| (f64::from(component).clamp(0.0, 1.0) * 255.0).round() as u8;
+    Some([
+        channel(color.red()),
+        channel(color.green()),
+        channel(color.blue()),
+    ])
+}
+
+fn hex_from_channels(channels: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", channels[0], channels[1], channels[2])
+}
+
+/// Canonicalizes a colour token to Strata's `#rrggbb` scheme representation.
+pub(crate) fn color_to_hex(value: &str) -> String {
+    parse_rgb_channels(value)
+        .map(hex_from_channels)
+        .unwrap_or_else(|| value.to_owned())
 }
 
 fn blend(left: &str, right: &str, amount: f64) -> String {
-    let parse = |value: &str| u32::from_str_radix(value.trim_start_matches('#'), 16).ok();
-    let (Some(left), Some(right)) = (parse(left), parse(right)) else {
+    let (Some(left), Some(right)) = (parse_rgb_channels(left), parse_rgb_channels(right)) else {
         return right.to_owned();
     };
-    let channel = |shift| {
-        let a = f64::from((left >> shift) & 0xff_u32);
-        let b = f64::from((right >> shift) & 0xff_u32);
+    let channel = |index: usize| {
+        let a = f64::from(left[index]);
+        let b = f64::from(right[index]);
         (a + (b - a) * amount).round() as u32
     };
-    format!("#{:02x}{:02x}{:02x}", channel(16), channel(8), channel(0))
+    format!("#{:02x}{:02x}{:02x}", channel(0), channel(1), channel(2))
 }
 
 fn slugify(name: &str) -> String {

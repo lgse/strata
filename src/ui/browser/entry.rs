@@ -2,29 +2,42 @@
 
 use crate::model::{EntryKind, FileEntry};
 use crate::services::{
-    PreviewContent, content_family, has_plain_text_extension, is_extensionless_dotfile,
+    PreviewContent, content_family, filter_name_matches, fold_for_search, has_plain_text_extension,
+    is_extensionless_dotfile,
 };
 use gtk::gio;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
 pub(in crate::ui) fn format_file_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
-    if bytes < 1_000 {
-        return format!("{bytes} B");
-    }
+    let (value, unit) = rounded_size_and_unit(bytes, &UNITS);
+    let formatted = format!("{value:.1}");
+    format!("{} {}", formatted.trim_end_matches(".0"), UNITS[unit])
+}
 
+/// Divide `bytes` into the largest unit whose threshold it meets after
+/// rounding to one decimal, returning the rounded value and unit index.
+/// Callers that format with zero decimals for values >= 10 still receive
+/// the one-decimal rounded value so they can decide their own precision.
+pub(in crate::ui) fn rounded_size_and_unit(bytes: u64, units: &[&str]) -> (f64, usize) {
+    if bytes < 1_000 {
+        return (bytes as f64, 0);
+    }
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= 1_000.0 && unit < UNITS.len() - 1 {
+    while value >= 1_000.0 && unit < units.len() - 1 {
         value /= 1_000.0;
         unit += 1;
     }
-    let formatted = format!("{value:.1}");
-    format!("{} {}", formatted.trim_end_matches(".0"), UNITS[unit])
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded >= 1_000.0 && unit < units.len() - 1 {
+        (rounded / 1_000.0, unit + 1)
+    } else {
+        (rounded, unit)
+    }
 }
 
 pub(in crate::ui) fn metadata_needs_fill(entry: &FileEntry) -> bool {
@@ -43,9 +56,11 @@ pub(super) fn entry_supports_printing(entry: &FileEntry) -> bool {
         return false;
     }
 
-    let (content_type, _) =
+    let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+    // An uncertain name guess defers to the loader, which resolves the file's content type.
     matches!(content_family(&content_type), PreviewContent::Text { .. })
+        || (uncertain && matches!(content_family(&content_type), PreviewContent::Unsupported))
         || (entry.location.native_path().is_some()
             && matches!(
                 content_family(&content_type),
@@ -63,6 +78,8 @@ pub(in crate::ui) fn entry_model_value(entry: &FileEntry) -> String {
         'd'
     } else if entry.is_symbolic_link() {
         's'
+    } else if entry.kind == EntryKind::Other {
+        'o'
     } else {
         'f'
     };
@@ -92,63 +109,21 @@ fn model_is_broken_link(value: &str) -> bool {
     value.starts_with("x")
 }
 
-/// Directories lead a grouped view, and files whose type the shared MIME database
-/// cannot name fall back to a plain label.
-pub(in crate::ui) const FOLDER_TYPE_GROUP: &str = "Folder";
+pub(in crate::ui) const FOLDER_TYPE_GROUP: &str = crate::services::FOLDER_TYPE_NAME;
+pub(in crate::ui) const OTHER_TYPE_GROUP: &str = crate::services::OTHER_TYPE_NAME;
 
-const UNTYPED_TYPE_GROUP: &str = "File";
-
-/// The user-facing file-type label a model value belongs to when the browser groups
-/// entries by type. Labels come from the shared MIME database, so they read the way
-/// they do elsewhere on the desktop: "JSON document", "Python script", and so on.
 pub(in crate::ui) fn model_type_group(value: &str) -> String {
     if model_is_directory(value) {
         return FOLDER_TYPE_GROUP.to_owned();
     }
     if model_is_broken_link(value) {
-        return "Broken link".to_owned();
+        return crate::services::BROKEN_LINK_TYPE_NAME.to_owned();
+    }
+    if value.starts_with('o') {
+        return OTHER_TYPE_GROUP.to_owned();
     }
     let name = model_display_name(value);
-    TYPE_GROUPS.with_borrow_mut(|cache| {
-        if let Some(label) = cache.get(type_group_key(name)) {
-            return label.clone();
-        }
-        let label = guess_type_group(name);
-        // A directory listing holds far more entries than distinct types, and the
-        // cache is keyed by suffix, so it stays small; clear it if that ever fails.
-        if cache.len() >= TYPE_GROUP_CACHE_LIMIT {
-            cache.clear();
-        }
-        cache.insert(type_group_key(name).to_owned(), label.clone());
-        label
-    })
-}
-
-/// Names sharing a suffix share a type, so the cache is keyed by suffix where there
-/// is one and by the whole name otherwise.
-fn type_group_key(name: &str) -> &str {
-    match name.rfind('.') {
-        Some(position) if position > 0 => &name[position..],
-        _ => name,
-    }
-}
-
-fn guess_type_group(name: &str) -> String {
-    let (content_type, _) = gio::content_type_guess(Some(Path::new(name)), None::<&[u8]>);
-    if content_type.is_empty() || content_type == "application/octet-stream" {
-        return UNTYPED_TYPE_GROUP.to_owned();
-    }
-    let description = gio::content_type_get_description(&content_type);
-    if description.is_empty() {
-        return UNTYPED_TYPE_GROUP.to_owned();
-    }
-    description.to_string()
-}
-
-const TYPE_GROUP_CACHE_LIMIT: usize = 2048;
-
-thread_local! {
-    static TYPE_GROUPS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+    crate::services::mime_description_for_name(name)
 }
 
 pub(in crate::ui) fn entry_filter(
@@ -174,10 +149,11 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
     icon_for_name(&entry.display_name)
 }
 
-/// `query` must already be folded to lowercase by the caller.
+/// `query` must already be folded through `fold_for_search` by the caller.
 pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool {
     (show_hidden || !model_is_hidden(value))
-        && (query.is_empty() || model_display_name(value).to_lowercase().contains(query))
+        && (query.is_empty()
+            || filter_name_matches(&fold_for_search(model_display_name(value)), query))
 }
 
 pub(super) fn icon_for_name(name: &str) -> &'static str {
@@ -187,10 +163,10 @@ pub(super) fn icon_for_name(name: &str) -> &'static str {
     match extension.as_deref() {
         Some("sh" | "bash" | "zsh" | "fish") => crate::assets::icons::TERMINAL,
         Some(
-            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "tif" | "tiff"
-            | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
-            | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
-            | "x3f",
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "heic" | "heif"
+            | "jxl" | "tif" | "tiff" | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf"
+            | "kdc" | "mef" | "mos" | "mrw" | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2"
+            | "rwl" | "sr2" | "srf" | "srw" | "x3f",
         ) => crate::assets::icons::PICTURES,
         Some("mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v") => crate::assets::icons::VIDEOS,
         Some("zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst") => {

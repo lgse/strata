@@ -13,7 +13,7 @@ use crate::services::TransferConflict;
 use gtk::gio;
 use std::{
     ffi::{OsStr, OsString},
-    io,
+    io::{self, Read, Seek, SeekFrom, Write},
     os::{
         fd::AsFd,
         unix::{ffi::OsStringExt, fs::PermissionsExt},
@@ -29,8 +29,9 @@ use std::{
 ///
 /// Creates a `.strata-compression-` tempfile in `destination` with mode `0o600`,
 /// runs `write_archive` on a worker thread, applies the published permissions,
-/// and persists the file according to `conflict`. [`FailIfExists`] refuses to
-/// replace an existing archive; [`ReplaceExisting`] overwrites it and copies
+/// and persists the file according to `conflict`, returning the published filename.
+/// [`FailIfExists`] refuses to replace an existing archive; [`KeepBoth`] tries numbered names atomically
+/// without encoding again; [`ReplaceExisting`] overwrites it and copies
 /// the current destination file's mode when that path is already a regular
 /// file. Otherwise the published mode is `0o666` masked by the process umask.
 ///
@@ -52,16 +53,21 @@ use std::{
 /// [`Failed`]: ArchiveError::Failed
 /// [`FailIfExists`]: TransferConflict::FailIfExists
 /// [`ReplaceExisting`]: TransferConflict::ReplaceExisting
+/// [`KeepBoth`]: TransferConflict::KeepBoth
 pub(super) async fn write_staged_archive<F>(
     destination: &Path,
     archive_path: &Path,
     conflict: TransferConflict,
     cancelled: &AtomicBool,
     write_archive: F,
-) -> Result<(), ArchiveError>
+) -> Result<String, ArchiveError>
 where
     F: FnOnce(std::fs::File) -> Result<(), ArchiveError> + Send + 'static,
 {
+    let requested_name = archive_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or("Archive filename must be UTF-8")?;
     let published_permissions = if conflict == TransferConflict::ReplaceExisting {
         match std::fs::symlink_metadata(archive_path) {
             Ok(metadata) if metadata.file_type().is_file() => Some(metadata.permissions()),
@@ -77,23 +83,45 @@ where
     builder
         .prefix(".strata-compression-")
         .permissions(std::fs::Permissions::from_mode(0o600));
-    let staged = builder.tempfile_in(destination).map_err(archive_failed)?;
+    let mut staged = builder.tempfile_in(destination).map_err(archive_failed)?;
     let file = staged.reopen().map_err(archive_failed)?;
     gio::spawn_blocking(move || write_archive(file))
         .await
         .map_err(|_| archive_failed("Compression task panicked"))??;
+    // The non-Send LoadHandle cancels on this same main context. Keep the
+    // final cancellation check and publication synchronous, without yielding.
     check_archive_cancelled(cancelled)?;
     staged
         .as_file()
         .set_permissions(published_permissions)
         .map_err(archive_failed)?;
-    match conflict {
-        TransferConflict::FailIfExists => staged.persist_noclobber(archive_path),
-        TransferConflict::ReplaceExisting => staged.persist(archive_path),
-        TransferConflict::KeepBoth => staged.persist_noclobber(archive_path),
+    if conflict != TransferConflict::KeepBoth {
+        return match conflict {
+            TransferConflict::ReplaceExisting => staged.persist(archive_path),
+            _ => staged.persist_noclobber(archive_path),
+        }
+        .map(|_| requested_name.to_owned())
+        .map_err(archive_failed);
     }
-    .map(|_| ())
-    .map_err(archive_failed)
+
+    let (stem, extension) = requested_name
+        .strip_suffix(".tar.gz")
+        .map(|stem| (stem, "tar.gz"))
+        .or_else(|| requested_name.rsplit_once('.'))
+        .ok_or("Archive filename must have a format extension")?;
+    let mut candidate_name = requested_name.to_owned();
+    for suffix in 1_u64.. {
+        let candidate = archive_path.with_file_name(&candidate_name);
+        match staged.persist_noclobber(&candidate) {
+            Ok(_) => return Ok(candidate_name),
+            Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {
+                staged = error.file;
+                candidate_name = format!("{stem} ({suffix}).{extension}");
+            }
+            Err(error) => return Err(archive_failed(error)),
+        }
+    }
+    Err(archive_failed("No available archive filename"))
 }
 
 /// Returns `0o666` masked by the process umask from [`process_umask`].
@@ -260,6 +288,63 @@ fn visit_archive_entry<Fd: AsFd>(
     Ok(())
 }
 
+struct CompressionIo<'a, T> {
+    inner: T,
+    cancelled: &'a AtomicBool,
+}
+
+impl<'a, T> CompressionIo<'a, T> {
+    fn new(inner: T, cancelled: &'a AtomicBool) -> Self {
+        Self { inner, cancelled }
+    }
+
+    fn check(&self) -> io::Result<()> {
+        if self.cancelled.load(Ordering::Relaxed) {
+            Err(io::Error::other("Archive operation cancelled"))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl<T: Read> Read for CompressionIo<'_, T> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.check()?;
+        self.inner.read(buffer)
+    }
+}
+
+impl<T: Write> Write for CompressionIo<'_, T> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.check()?;
+        self.inner.write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.check()?;
+        self.inner.flush()
+    }
+}
+
+impl<T: Seek> Seek for CompressionIo<'_, T> {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        self.check()?;
+        self.inner.seek(position)
+    }
+}
+
+fn compression_result(
+    cancelled: &AtomicBool,
+    encode: impl FnOnce() -> Result<(), ArchiveError>,
+) -> Result<(), ArchiveError> {
+    check_archive_cancelled(cancelled)?;
+    let result = encode();
+    // Encoders wrap I/O errors in their own types; cancellation remains a
+    // terminal cancellation event rather than a password/error retry.
+    check_archive_cancelled(cancelled)?;
+    result
+}
+
 /// Writes a ZIP archive of `entries` into `file`.
 ///
 /// Regular files use deflate level 6 unless [`is_incompressible`] selects
@@ -283,84 +368,92 @@ fn visit_archive_entry<Fd: AsFd>(
 /// [`Cancelled`]: ArchiveError::Cancelled
 /// [`Failed`]: ArchiveError::Failed
 pub(super) fn compress_zip(
-    file: std::fs::File,
+    file: impl Write + Seek,
     entries: &[std::path::PathBuf],
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
 ) -> Result<(), ArchiveError> {
-    let writer = std::io::BufWriter::with_capacity(COPY_BUF, file);
-    let mut writer = zip::ZipWriter::new(writer);
-    let deflated = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated)
-        .compression_level(Some(6));
-    let stored =
-        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
-    let deflated = if let Some(pw) = password {
-        deflated.with_aes_encryption(zip::AesMode::Aes256, pw)
-    } else {
-        deflated
-    };
-    let stored = if let Some(pw) = password {
-        stored.with_aes_encryption(zip::AesMode::Aes256, pw)
-    } else {
-        stored
-    };
-    visit_archive_entries(entries, cancelled, &mut |path, source| {
-        let name = path.to_string_lossy();
-        match source {
-            ArchiveSource::Directory(_) => {
-                return writer.add_directory(name, stored).map_err(archive_failed);
+    compression_result(cancelled, || {
+        let writer =
+            std::io::BufWriter::with_capacity(COPY_BUF, CompressionIo::new(file, cancelled));
+        let mut writer = zip::ZipWriter::new(writer);
+        let deflated = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .compression_level(Some(6));
+        let stored = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        let deflated = if let Some(pw) = password {
+            deflated.with_aes_encryption(zip::AesMode::Aes256, pw)
+        } else {
+            deflated
+        };
+        let stored = if let Some(pw) = password {
+            stored.with_aes_encryption(zip::AesMode::Aes256, pw)
+        } else {
+            stored
+        };
+        visit_archive_entries(entries, cancelled, &mut |path, source| {
+            let name = path.to_str().ok_or_else(|| {
+                format!(
+                    "ZIP cannot preserve the non-UTF-8 name of {}. Use TAR instead.",
+                    path.display()
+                )
+            })?;
+            match source {
+                ArchiveSource::Directory(_) => {
+                    return writer.add_directory(name, stored).map_err(archive_failed);
+                }
+                ArchiveSource::Symlink(target) => {
+                    let target = target.to_str().ok_or_else(|| {
+                        format!(
+                            "ZIP cannot preserve the non-UTF-8 link target of {}. Use TAR instead.",
+                            path.display()
+                        )
+                    })?;
+                    writer
+                        .add_symlink(name, target, stored)
+                        .map_err(|error| error.to_string())?;
+                }
+                ArchiveSource::File(file) => {
+                    let options = if is_incompressible(path) {
+                        stored
+                    } else {
+                        deflated
+                    };
+                    writer
+                        .start_file(name, options)
+                        .map_err(|error| error.to_string())?;
+                    copy_with_big_buf(
+                        std::io::BufReader::with_capacity(COPY_BUF, file),
+                        &mut writer,
+                        cancelled,
+                    )?;
+                }
             }
-            ArchiveSource::Symlink(target) => {
-                let target = target.to_str().ok_or_else(|| {
-                    format!(
-                        "ZIP cannot preserve the non-UTF-8 link target of {}. Use TAR instead.",
-                        path.display()
-                    )
-                })?;
-                writer
-                    .add_symlink(name, target, stored)
-                    .map_err(|error| error.to_string())?;
-            }
-            ArchiveSource::File(file) => {
-                let options = if is_incompressible(path) {
-                    stored
-                } else {
-                    deflated
-                };
-                writer
-                    .start_file(name, options)
-                    .map_err(|error| error.to_string())?;
-                copy_with_big_buf(
-                    std::io::BufReader::with_capacity(COPY_BUF, file),
-                    &mut writer,
-                    cancelled,
-                )?;
-            }
-        }
-        progress.fetch_add(1, Ordering::Relaxed);
+            progress.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        })?;
+        check_archive_cancelled(cancelled)?;
+        writer
+            .finish()
+            .map_err(|error| error.to_string())?
+            .into_inner()
+            .map_err(|error| error.to_string())?;
         Ok(())
-    })?;
-    check_archive_cancelled(cancelled)?;
-    writer
-        .finish()
-        .map_err(|error| error.to_string())?
-        .into_inner()
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    })
 }
 
 /// Writes a TAR archive of `entries` into `file`.
 ///
-/// When `gzip` is true, the TAR stream is wrapped in a gzip encoder.
+/// When `gzip` is set, the TAR stream is wrapped in one gzip member at that level.
 /// Symbolic links are preserved as links.
 ///
 /// # Arguments
 ///
 /// * `file` - Staging file that receives the archive bytes
 /// * `entries` - Absolute paths of selected files, directories, and links
-/// * `gzip` - Whether to wrap the TAR stream in gzip
+/// * `gzip` - Stream-wide gzip level, or `None` for uncompressed TAR
 /// * `progress` - Counter incremented once per non-directory member
 /// * `cancelled` - Flag checked between members and during copies
 ///
@@ -372,27 +465,30 @@ pub(super) fn compress_zip(
 /// [`Cancelled`]: ArchiveError::Cancelled
 /// [`Failed`]: ArchiveError::Failed
 pub(super) fn compress_tar(
-    file: std::fs::File,
+    file: impl Write,
     entries: &[std::path::PathBuf],
-    gzip: bool,
+    gzip: Option<flate2::Compression>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
 ) -> Result<(), ArchiveError> {
-    let writer = std::io::BufWriter::with_capacity(COPY_BUF, file);
-    if gzip {
-        let mut encoder = flate2::write::GzEncoder::new(writer, flate2::Compression::default());
-        append_tar_entries(&mut encoder, entries, progress, cancelled)?;
-        encoder
-            .finish()
-            .map_err(|error| error.to_string())?
-            .into_inner()
-            .map_err(|error| error.to_string())?;
-    } else {
-        let mut writer = writer;
-        append_tar_entries(&mut writer, entries, progress, cancelled)?;
-        writer.into_inner().map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    compression_result(cancelled, || {
+        let writer =
+            std::io::BufWriter::with_capacity(COPY_BUF, CompressionIo::new(file, cancelled));
+        if let Some(level) = gzip {
+            let mut encoder = flate2::write::GzEncoder::new(writer, level);
+            append_tar_entries(&mut encoder, entries, progress, cancelled)?;
+            encoder
+                .finish()
+                .map_err(|error| error.to_string())?
+                .into_inner()
+                .map_err(|error| error.to_string())?;
+        } else {
+            let mut writer = writer;
+            append_tar_entries(&mut writer, entries, progress, cancelled)?;
+            writer.into_inner().map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    })
 }
 
 /// Appends `entries` to an already-constructed TAR builder on `writer`.
@@ -417,7 +513,7 @@ fn append_tar_entries(
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
 ) -> Result<(), ArchiveError> {
-    let mut builder = tar::Builder::new(writer);
+    let mut builder = tar::Builder::new(CompressionIo::new(writer, cancelled));
     visit_archive_entries(entries, cancelled, &mut |path, source| {
         let mut header = tar::Header::new_gnu();
         match source {
@@ -453,10 +549,25 @@ fn append_tar_entries(
     Ok(())
 }
 
-/// Counts non-directory members under `entries` for progress totals.
-///
-/// Directories are visited so their children are counted, but the directories
-/// themselves are excluded from the total.
+pub(super) struct ArchiveSources {
+    pub files: usize,
+    has_compressible_files: bool,
+}
+
+impl ArchiveSources {
+    pub fn gzip_level(&self) -> flate2::Compression {
+        if self.has_compressible_files {
+            flate2::Compression::default()
+        } else {
+            // Gzip wraps the entire TAR stream: keep a valid gzip member, using
+            // stored DEFLATE blocks only when every payload is already compressed.
+            flate2::Compression::none()
+        }
+    }
+}
+
+/// Counts non-directory members and selects a stream-wide gzip policy without
+/// reading payloads. Unknown formats retain compression; links are never followed.
 ///
 /// # Errors
 ///
@@ -465,29 +576,34 @@ fn append_tar_entries(
 ///
 /// [`Cancelled`]: ArchiveError::Cancelled
 /// [`Failed`]: ArchiveError::Failed
-pub(super) fn count_archive_files(
+pub(super) fn inspect_archive_sources(
     entries: &[PathBuf],
     cancelled: &AtomicBool,
-) -> Result<usize, ArchiveError> {
-    let mut count = 0;
-    visit_archive_entries(entries, cancelled, &mut |_, source| {
+) -> Result<ArchiveSources, ArchiveError> {
+    let mut sources = ArchiveSources {
+        files: 0,
+        has_compressible_files: false,
+    };
+    visit_archive_entries(entries, cancelled, &mut |path, source| {
         if !matches!(source, ArchiveSource::Directory(_)) {
-            count += 1;
+            sources.files += 1;
+        }
+        if matches!(source, ArchiveSource::File(_)) && !is_incompressible(path) {
+            sources.has_compressible_files = true;
         }
         Ok(())
     })?;
-    Ok(count)
+    Ok(sources)
 }
 
-/// File extensions stored uncompressed by [`compress_zip`].
-///
-/// These formats are already compressed, so deflate spends CPU without shrinking
-/// the archive.
+/// A filename heuristic, not a claim about every possible payload in a container.
+/// Unknown extensions and commonly raw containers (TAR, BMP, WAV, AVI, ISO) retain
+/// compression. ZIP/7Z choose per member; gzip can only choose for the whole TAR.
 const INCOMPRESSIBLE_EXTS: &[&str] = &[
-    "zip", "7z", "gz", "bz2", "xz", "zst", "tar", "rar", "lz", "lz4", "br", "mp4", "mkv", "avi",
-    "mov", "webm", "flv", "wmv", "jpg", "jpeg", "png", "webp", "gif", "heic", "avif", "bmp", "mp3",
-    "flac", "aac", "ogg", "opus", "wma", "m4a", "pdf", "epub", "docx", "xlsx", "pptx", "odt",
-    "ods", "odp", "iso", "dmg", "deb", "rpm", "apk", "jar", "war",
+    "zip", "7z", "gz", "tgz", "bz2", "tbz", "tbz2", "xz", "txz", "zst", "tzst", "rar", "lz", "lz4",
+    "br", "mp4", "mkv", "mov", "webm", "flv", "wmv", "jpg", "jpeg", "png", "webp", "gif", "heic",
+    "avif", "mp3", "flac", "aac", "ogg", "opus", "wma", "m4a", "pdf", "epub", "docx", "xlsx",
+    "pptx", "odt", "ods", "odp", "deb", "rpm", "apk", "jar", "war",
 ];
 
 /// Returns whether `path`'s extension is in [`INCOMPRESSIBLE_EXTS`].
@@ -521,75 +637,98 @@ fn is_incompressible(path: &Path) -> bool {
 /// [`Cancelled`]: ArchiveError::Cancelled
 /// [`Failed`]: ArchiveError::Failed
 pub(super) fn compress_7z(
-    file: std::fs::File,
+    file: impl Write + Seek,
     entries: &[std::path::PathBuf],
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
 ) -> Result<(), ArchiveError> {
     use sevenz_rust2::encoder_options::{AesEncoderOptions, EncoderOptions, Lzma2Options};
-    let mut writer = sevenz_rust2::ArchiveWriter::new(file).map_err(|e| e.to_string())?;
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get() as u32)
-        .unwrap_or(1);
-    let lzma2 =
-        sevenz_rust2::EncoderConfiguration::new(sevenz_rust2::EncoderMethod::LZMA2).with_options(
-            EncoderOptions::Lzma2(Lzma2Options::from_level_mt(6, threads, 1 << 26)),
-        );
-    if let Some(pw) = password {
-        let methods = vec![lzma2, AesEncoderOptions::new(pw.into()).into()];
-        writer.set_content_methods(methods);
-    } else {
-        writer.set_content_methods(vec![lzma2]);
-    }
-    visit_archive_entries(entries, cancelled, &mut |path, source| {
-        let name = path.to_string_lossy();
-        let (mut entry, file) = match source {
-            ArchiveSource::Symlink(_) => {
-                return Err(archive_failed(format!(
-                    "7z compression does not support symbolic links: {}. Use ZIP or TAR instead.",
+    compression_result(cancelled, || {
+        let mut writer = sevenz_rust2::ArchiveWriter::new(CompressionIo::new(file, cancelled))
+            .map_err(|e| e.to_string())?;
+        let lzma2 = sevenz_rust2::EncoderConfiguration::new(sevenz_rust2::EncoderMethod::LZMA2)
+            .with_options(EncoderOptions::Lzma2(Lzma2Options::from_level(6)));
+        let copy = sevenz_rust2::EncoderConfiguration::new(sevenz_rust2::EncoderMethod::COPY);
+        let methods = |codec| {
+            if let Some(pw) = password {
+                // The last coder sees plaintext. Keep AES first for both codecs,
+                // including the final configuration used to encrypt the header.
+                vec![AesEncoderOptions::new(pw.into()).into(), codec]
+            } else {
+                vec![codec]
+            }
+        };
+        let compressed_methods = methods(lzma2);
+        let stored_methods = methods(copy);
+        writer.set_content_methods(compressed_methods.clone());
+        visit_archive_entries(entries, cancelled, &mut |path, source| {
+            let name = path.to_str().ok_or_else(|| {
+                archive_failed(format!(
+                    "7z cannot preserve the non-UTF-8 name of {}. Use TAR instead.",
                     path.display()
-                )));
+                ))
+            })?;
+            let (mut entry, file) = match source {
+                ArchiveSource::Symlink(_) => {
+                    return Err(archive_failed(format!(
+                        "7z compression does not support symbolic links: {}. Use ZIP or TAR instead.",
+                        path.display()
+                    )));
+                }
+                ArchiveSource::Directory(file) => {
+                    (sevenz_rust2::ArchiveEntry::new_directory(name), file)
+                }
+                ArchiveSource::File(file) => (sevenz_rust2::ArchiveEntry::new_file(name), file),
+            };
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            if is_incompressible(path) {
+                writer.set_content_methods(stored_methods.clone());
+            } else {
+                // Members are encoded independently. Avoid a 64 MiB work queue and
+                // detached codec threads; cap the dictionary to the member size.
+                let mut options = Lzma2Options::from_level(6);
+                options.set_dictionary_size(metadata.len().min(8 << 20) as u32);
+                let codec =
+                    sevenz_rust2::EncoderConfiguration::new(sevenz_rust2::EncoderMethod::LZMA2)
+                        .with_options(EncoderOptions::Lzma2(options));
+                writer.set_content_methods(methods(codec));
             }
-            ArchiveSource::Directory(file) => {
-                (sevenz_rust2::ArchiveEntry::new_directory(&name), file)
+            if let Ok(modified) = metadata.modified()
+                && let Ok(date) = sevenz_rust2::NtTime::try_from(modified)
+            {
+                entry.last_modified_date = date;
+                entry.has_last_modified_date = u64::from(date) > 0;
             }
-            ArchiveSource::File(file) => (sevenz_rust2::ArchiveEntry::new_file(&name), file),
-        };
-        let metadata = file.metadata().map_err(|error| error.to_string())?;
-        if let Ok(modified) = metadata.modified()
-            && let Ok(date) = sevenz_rust2::NtTime::try_from(modified)
-        {
-            entry.last_modified_date = date;
-            entry.has_last_modified_date = u64::from(date) > 0;
-        }
-        if let Ok(created) = metadata.created()
-            && let Ok(date) = sevenz_rust2::NtTime::try_from(created)
-        {
-            entry.creation_date = date;
-            entry.has_creation_date = u64::from(date) > 0;
-        }
-        if let Ok(accessed) = metadata.accessed()
-            && let Ok(date) = sevenz_rust2::NtTime::try_from(accessed)
-        {
-            entry.access_date = date;
-            entry.has_access_date = u64::from(date) > 0;
-        }
-        let reader = if matches!(source, ArchiveSource::Directory(_)) {
-            None
-        } else {
-            Some(file)
-        };
-        writer
-            .push_archive_entry(entry, reader)
-            .map_err(archive_failed)?;
+            if let Ok(created) = metadata.created()
+                && let Ok(date) = sevenz_rust2::NtTime::try_from(created)
+            {
+                entry.creation_date = date;
+                entry.has_creation_date = u64::from(date) > 0;
+            }
+            if let Ok(accessed) = metadata.accessed()
+                && let Ok(date) = sevenz_rust2::NtTime::try_from(accessed)
+            {
+                entry.access_date = date;
+                entry.has_access_date = u64::from(date) > 0;
+            }
+            let reader = if matches!(source, ArchiveSource::Directory(_)) {
+                None
+            } else {
+                Some(CompressionIo::new(file, cancelled))
+            };
+            let has_reader = reader.is_some();
+            writer
+                .push_archive_entry(entry, reader)
+                .map_err(archive_failed)?;
+            check_archive_cancelled(cancelled)?;
+            if has_reader {
+                progress.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(())
+        })?;
         check_archive_cancelled(cancelled)?;
-        if reader.is_some() {
-            progress.fetch_add(1, Ordering::Relaxed);
-        }
+        writer.finish().map_err(archive_failed)?;
         Ok(())
-    })?;
-    check_archive_cancelled(cancelled)?;
-    writer.finish().map_err(archive_failed)?;
-    Ok(())
+    })
 }

@@ -6,8 +6,8 @@ REPOSITORY="lgse/strata"
 APP_ID="io.github.lgse.Strata"
 MIN_GLIBC="2.39"
 REQUIRED_PACKAGES=(
-  bubblewrap desktop-file-utils ffmpeg ffmpegthumbnailer fontconfig gst-libav
-  gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib github-cli xdg-utils
+  bubblewrap desktop-file-utils ffmpeg ffmpegthumbnailer fontconfig gst-libav gstreamer
+  gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib xdg-utils
 )
 RAW_PREVIEW_PACKAGES=(imagemagick libraw dcraw)
 
@@ -31,6 +31,22 @@ warn() {
 die() {
   printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
   exit 1
+}
+
+verify_provenance() {
+  local archive=$1
+
+  if ! command -v gh >/dev/null 2>&1; then
+    warn "GitHub CLI is unavailable; continuing after HTTPS download and checksum verification."
+    return
+  fi
+  if ! gh auth status --hostname github.com >/dev/null 2>&1; then
+    warn "GitHub CLI is not authenticated; continuing after HTTPS download and checksum verification."
+    return
+  fi
+
+  info "Verifying GitHub Actions provenance"
+  gh attestation verify "$archive" --repo "$REPOSITORY"
 }
 
 show_banner() {
@@ -154,25 +170,30 @@ detect_target() {
   esac
 }
 
+omarchy_major_from() {
+  if [[ $1 =~ (^|[^0-9.])([34])[.][0-9]+ ]]; then
+    printf '%s\n' "${BASH_REMATCH[2]}"
+    return 0
+  fi
+  return 1
+}
+
 detect_omarchy_major() {
   local output="" version_file
 
   if command -v omarchy >/dev/null 2>&1; then
     output=$(omarchy version 2>/dev/null || true)
+    if omarchy_major_from "$output"; then
+      return 0
+    fi
   fi
 
-  if [[ -z $output ]]; then
-    for version_file in /usr/share/omarchy/version "$HOME/.local/share/omarchy/version"; do
-      if [[ -r $version_file ]]; then
-        output=$(<"$version_file")
-        break
-      fi
-    done
-  fi
+  for version_file in /usr/share/omarchy/version "$HOME/.local/share/omarchy/version"; do
+    if [[ -r $version_file ]] && omarchy_major_from "$(<"$version_file")"; then
+      return 0
+    fi
+  done
 
-  if [[ $output =~ ([34])([.][0-9]+)* ]]; then
-    printf '%s\n' "${BASH_REMATCH[1]}"
-  fi
   return 0
 }
 
@@ -192,13 +213,14 @@ run_pacman() {
     sudo -n pacman -S --needed --noconfirm -- "$@" \
       || die "Non-interactive package installation failed; passwordless sudo or cached credentials may be required."
   else
-    sudo pacman -S --needed -- "$@"
+    sudo pacman -S --needed -- "$@" </dev/tty
   fi
 }
 
 install_arch_dependencies() {
   local missing=() package
   for package in "${REQUIRED_PACKAGES[@]}"; do
+    [[ $package == github-cli ]] && command -v gh >/dev/null 2>&1 && continue
     pacman -Q "$package" >/dev/null 2>&1 || missing+=("$package")
   done
 
@@ -431,7 +453,7 @@ main() {
       || die "Install the runtime dependencies, then run this installer again."
   fi
 
-  for command in curl tar sha256sum gh install sed; do
+  for command in curl tar sha256sum install sed; do
     command -v "$command" >/dev/null 2>&1 || die "Required command not found: $command"
   done
 
@@ -447,9 +469,9 @@ main() {
   curl --fail --location --show-error --progress-bar \
     --output "$TEMP_DIR/$archive.sha256" "$url/$archive.sha256"
 
-  info "Verifying checksum and GitHub Actions provenance"
+  info "Verifying checksum"
   (cd "$TEMP_DIR" && sha256sum --check "$archive.sha256")
-  gh attestation verify "$TEMP_DIR/$archive" --repo "$REPOSITORY"
+  verify_provenance "$TEMP_DIR/$archive"
 
   tar -xzf "$TEMP_DIR/$archive" -C "$TEMP_DIR"
   extracted=$TEMP_DIR/${archive%.tar.gz}

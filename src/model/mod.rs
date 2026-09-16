@@ -113,8 +113,28 @@ impl Location {
     }
 
     pub fn rebase(&self, from: &Self, to: &Self) -> Option<Self> {
-        let suffix = self.native_path()?.strip_prefix(from.native_path()?).ok()?;
-        Some(Self::local(to.native_path()?.join(suffix)))
+        match (&self.kind, &from.kind, &to.kind) {
+            (LocationKind::Native(path), LocationKind::Native(from), LocationKind::Native(to)) => {
+                let suffix = path.strip_prefix(from).ok()?;
+                Some(Self::local(if suffix.as_os_str().is_empty() {
+                    to.clone()
+                } else {
+                    to.join(suffix)
+                }))
+            }
+            (LocationKind::Uri(uri), LocationKind::Uri(from), LocationKind::Uri(to)) => {
+                let file = gio::File::for_uri(uri);
+                let from = gio::File::for_uri(from);
+                let to = gio::File::for_uri(to);
+                let relocated = if file.equal(&from) {
+                    to
+                } else {
+                    to.resolve_relative_path(from.relative_path(&file)?)
+                };
+                Some(Self::uri(relocated.uri()))
+            }
+            _ => None,
+        }
     }
 
     pub fn is_within(&self, other: &Self) -> bool {
@@ -187,7 +207,26 @@ impl Location {
         }
     }
 
+    pub fn is_camera_photo_root(&self) -> bool {
+        self.uri_value().is_some_and(|uri| {
+            let file = gio::File::for_uri(uri);
+            file.has_uri_scheme("gphoto2") && file.parent().is_none()
+        })
+    }
+
+    pub fn contains_camera_photo_location(&self, location: &Self) -> bool {
+        self.is_camera_photo_root()
+            && self.uri_value().is_some_and(|uri| {
+                // GIO's fallback URI implementation distinguishes a trailing root slash.
+                location.is_within(self)
+                    || location.is_within(&Self::uri(uri.trim_end_matches('/')))
+            })
+    }
+
     pub fn display_name(&self) -> String {
+        if self.is_camera_photo_root() {
+            return "Photos".into();
+        }
         match &self.kind {
             LocationKind::Native(path) => path
                 .file_name()
@@ -195,12 +234,17 @@ impl Location {
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
             LocationKind::Uri(uri) if uri == "trash:///" => "Trash".into(),
-            LocationKind::Uri(uri) => uri
-                .trim_end_matches('/')
-                .rsplit('/')
-                .next()
-                .unwrap_or(uri)
-                .into(),
+            LocationKind::Uri(uri) => self
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| {
+                    uri.trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(uri)
+                        .into()
+                }),
         }
     }
 
@@ -224,6 +268,8 @@ impl Location {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SortKey {
+    /// Camera-library-local streaming order; never a saved folder default.
+    DeviceOrder,
     Name,
     Type,
     Size,
@@ -275,7 +321,7 @@ pub enum MetadataValue<T> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileEntry {
     pub location: Location,
-    /// Local thumbnail source for virtual files; `location` remains their operational identity.
+    /// Physical source for virtual entries; `location` remains their operational identity.
     pub thumbnail_path: Option<PathBuf>,
     pub native_name: OsString,
     pub display_name: String,
@@ -283,6 +329,9 @@ pub struct FileEntry {
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
+    pub image_dimensions: MetadataValue<(u32, u32)>,
+    pub child_count: MetadataValue<u64>,
+    pub duration_seconds: MetadataValue<u64>,
     pub is_hidden: bool,
 }
 

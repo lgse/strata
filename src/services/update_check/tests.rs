@@ -6,12 +6,11 @@ use std::{
 };
 
 use super::{
-    BuildKind, CHECK_INTERVAL, Channel, ReleaseNoteBlock, ReleaseResponse, ReleaseSummary,
-    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, cached_releases,
-    check_from_cache, fetch_package_update, from_cached_release, package_update_from_response,
-    parse_markdown, release_metadata, release_page_url, request_error_message,
-    request_json_conditional, select_cached_update, select_update, to_cached_release,
-    to_release_summary,
+    BuildKind, CHECK_INTERVAL, Channel, ReleaseResponse, ReleaseSummary, UpdateCheck,
+    UpdateCheckCache, Version, archive_name, cache_is_fresh, cached_releases, check_from_cache,
+    fetch_package_update, from_cached_release, package_update_from_response, release_metadata,
+    release_page_url, request_error_message, request_json_conditional, select_cached_update,
+    select_update, to_cached_release, to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -60,45 +59,36 @@ fn package_update_accepts_the_stable_release_in_the_repository() {
 }
 
 #[test]
+fn package_update_accepts_the_prerelease_a_prerelease_package_ships() {
+    let asset = matching_asset_json("0.10.0-rc.2");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.10.0-rc.2","draft":false,"prerelease":true,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.10.0-rc.2"), &response),
+        UpdateCheck::Available { .. }
+    ));
+}
+
+#[test]
+fn package_update_still_requires_a_stable_release_for_a_stable_package() {
+    let asset = matching_asset_json("0.8.2");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.8.2","draft":false,"prerelease":true,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.8.2"), &response),
+        UpdateCheck::Failed(_)
+    ));
+}
+
+#[test]
 fn package_check_stays_quiet_when_the_repository_has_no_newer_version() {
     let result = fetch_package_update(&version("0.8.1"), || Ok(version("0.8.1")));
 
     assert_eq!(result, UpdateCheck::UpToDate);
-}
-
-// --- Version::parse migration -------------------------------------------
-//
-// `parse_version`/`is_newer` are gone, replaced by `release_channel::Version`.
-// These migrate the coverage that used to live here rather than dropping it.
-
-#[test]
-fn newer_patch_version_is_detected() {
-    assert!(version("0.2.1") > version("0.2.0"));
-}
-
-#[test]
-fn newer_minor_version_is_detected() {
-    assert!(version("0.3.0") > version("0.2.9"));
-}
-
-#[test]
-fn equal_version_is_not_newer() {
-    assert_eq!(version("0.2.0"), version("0.2.0"));
-}
-
-#[test]
-fn older_version_is_not_newer() {
-    assert!(version("0.1.9") < version("0.2.0"));
-}
-
-/// The old `parse_version` silently zero-filled missing/malformed segments,
-/// which was the exact bug behind issue #61 (a malformed tag could compare
-/// as a real version instead of being rejected). `Version::parse` must
-/// reject these outright rather than falling back to zero.
-#[test]
-fn missing_or_malformed_segments_are_rejected() {
-    assert!(Version::parse("0.2").is_none());
-    assert!(Version::parse("0.2.x").is_none());
 }
 
 // --- ReleaseResponse -> ReleaseSummary conversion ------------------------
@@ -187,20 +177,14 @@ fn release_body_is_retained() {
 }
 
 #[test]
-fn missing_release_body_becomes_empty_notes() {
-    let response =
-        release_response(r#"{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[]}"#);
-    let summary = to_release_summary(&response).expect("tag should parse");
-    assert!(release_metadata(&summary).notes.is_empty());
-}
-
-#[test]
-fn null_release_body_becomes_empty_notes() {
-    let response = release_response(
+fn missing_or_null_release_body_becomes_empty_notes() {
+    for json in [
+        r#"{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[]}"#,
         r#"{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[],"body":null}"#,
-    );
-    let summary = to_release_summary(&response).expect("tag should parse");
-    assert!(release_metadata(&summary).notes.is_empty());
+    ] {
+        let summary = to_release_summary(&release_response(json)).expect("tag should parse");
+        assert!(release_metadata(&summary).notes.is_empty());
+    }
 }
 
 #[test]
@@ -228,34 +212,9 @@ fn release_page_url_uses_the_exact_published_tag() {
 }
 
 // --- channel selection, fixture-driven, no network -----------------------
-
-#[test]
-fn stable_feed_flagged_prerelease_is_never_offered() {
-    let asset = matching_asset_json("0.5.0");
-    let response = release_response(&format!(
-        r#"{{"tag_name":"v0.5.0","draft":false,"prerelease":true,"assets":[{asset}]}}"#
-    ));
-    let summary = to_release_summary(&response).expect("tag should parse");
-    let installed = version("0.4.0");
-    assert_eq!(
-        select_update(Channel::Stable, &installed, &[summary]),
-        UpdateCheck::UpToDate
-    );
-}
-
-#[test]
-fn stable_feed_prerelease_tag_with_false_flag_is_never_offered() {
-    let asset = matching_asset_json("0.5.0-rc.1");
-    let response = release_response(&format!(
-        r#"{{"tag_name":"v0.5.0-rc.1","draft":false,"prerelease":false,"assets":[{asset}]}}"#
-    ));
-    let summary = to_release_summary(&response).expect("tag should parse");
-    let installed = version("0.4.0");
-    assert_eq!(
-        select_update(Channel::Stable, &installed, &[summary]),
-        UpdateCheck::UpToDate
-    );
-}
+//
+// Eligibility and version ordering live in `release_channel`. This module
+// owns JSON → `select_update` wiring.
 
 /// Exercises `fetch_preview`'s exact filtering pipeline against a fixture
 /// list: a draft, an unparsable tag, a release with no asset for this
@@ -290,31 +249,6 @@ fn preview_feed_skips_drafts_unparsable_tags_and_assetless_releases() {
 }
 
 #[test]
-fn preview_offers_final_release_over_an_installed_release_candidate() {
-    let final_asset = matching_asset_json("0.5.0");
-    let rc_asset = matching_asset_json("0.5.0-rc.2");
-    let responses = release_response_list(&format!(
-        r#"[
-            {{"tag_name":"v0.5.0","draft":false,"prerelease":false,"assets":[{final_asset}]}},
-            {{"tag_name":"v0.5.0-rc.2","draft":false,"prerelease":true,"assets":[{rc_asset}]}}
-        ]"#
-    ));
-    let summaries: Vec<_> = responses.iter().filter_map(to_release_summary).collect();
-    let installed = version("0.5.0-rc.2");
-    let result = select_update(Channel::Preview, &installed, &summaries);
-    match result {
-        UpdateCheck::Available {
-            release,
-            download_url,
-        } => {
-            assert_eq!(release.tag, "v0.5.0");
-            assert!(!download_url.is_empty());
-        }
-        other => panic!("expected final 0.5.0 to be offered, got {other:?}"),
-    }
-}
-
-#[test]
 fn selecting_stable_on_a_prerelease_offers_the_latest_final_as_the_channel_transition() {
     let stable_asset = matching_asset_json("0.4.0");
     let response = release_response(&format!(
@@ -327,100 +261,6 @@ fn selecting_stable_on_a_prerelease_offers_the_latest_final_as_the_channel_trans
         UpdateCheck::Available { release, .. } => assert_eq!(release.tag, "v0.4.0"),
         other => panic!("expected the stable channel transition, got {other:?}"),
     }
-}
-
-// --- markdown rendering, untouched by this task ---------------------------
-
-#[test]
-fn release_markdown_renders_supported_formatting_as_blocks() {
-    assert_eq!(
-        parse_markdown("## Changes\n\n- **Fast** and `safe`\n- [Details](https://example.test)"),
-        vec![
-            ReleaseNoteBlock::Heading {
-                level: 2,
-                markup: "Changes".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "•".to_owned(),
-                depth: 0,
-                markup: "<b>Fast</b> and <tt>safe</tt>".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "•".to_owned(),
-                depth: 0,
-                markup: "<a href=\"https://example.test\">Details</a>".to_owned(),
-            },
-        ]
-    );
-}
-
-#[test]
-fn multiline_formatting_and_code_stay_in_balanced_blocks() {
-    assert_eq!(
-        parse_markdown("**first\nsecond**\n\n```text\none < two\n```"),
-        vec![
-            ReleaseNoteBlock::Paragraph("<b>first\nsecond</b>".to_owned()),
-            ReleaseNoteBlock::Code("one &lt; two\n".to_owned()),
-        ]
-    );
-}
-
-#[test]
-fn nested_and_ordered_lists_keep_markers_and_depth() {
-    let blocks = parse_markdown("3. outer\n   - inner\n4. next");
-    assert_eq!(
-        blocks,
-        vec![
-            ReleaseNoteBlock::ListItem {
-                marker: "3.".to_owned(),
-                depth: 0,
-                markup: "outer".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "•".to_owned(),
-                depth: 1,
-                markup: "inner".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "4.".to_owned(),
-                depth: 0,
-                markup: "next".to_owned(),
-            },
-        ]
-    );
-}
-
-#[test]
-fn release_markdown_keeps_html_inert_and_does_not_load_images() {
-    let blocks = parse_markdown(
-        "<script>alert('no')</script>\n\n![tracking](https://example.test/pixel.png)",
-    );
-    let debug = format!("{blocks:?}");
-    assert!(!debug.contains("<script>"));
-    assert!(debug.contains("&lt;script&gt;"));
-    assert!(!debug.contains("pixel.png"));
-    assert!(debug.contains("[Image: tracking]"));
-}
-
-#[test]
-fn release_markdown_does_not_activate_non_web_links() {
-    assert_eq!(
-        parse_markdown("[Run](javascript:alert('no'))"),
-        vec![ReleaseNoteBlock::Paragraph("<u>Run</u>".to_owned())]
-    );
-}
-
-#[test]
-fn malformed_markdown_and_entities_remain_inert() {
-    let blocks = parse_markdown("<broken & **unfinished");
-    let debug = format!("{blocks:?}");
-    assert!(debug.contains("&lt;broken &amp;"));
-    assert!(!debug.contains("<broken"));
-}
-
-#[test]
-fn empty_release_markdown_has_no_blocks() {
-    assert!(parse_markdown("  \n").is_empty());
 }
 
 fn cache(channel: Channel, checked_at: u64) -> UpdateCheckCache {

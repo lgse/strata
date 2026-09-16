@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 mod preferences;
+mod reference;
+mod typography;
 
 use std::rc::Rc;
 
@@ -10,9 +12,8 @@ use crate::services::{
 };
 
 use super::{
-    CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, UPDATE_DUE_INTERVAL, aur_update_command,
-    channel_index, effective_update_channel, force_due_update_check,
+    COMPACT_NAVIGATION_BREAKPOINT, UPDATE_DUE_INTERVAL, aur_update_command,
+    effective_update_channel, force_due_update_check,
     general::{video_preview_backend_label, video_preview_control_state},
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
     managed_install_summary, offer_still_eligible, omarchy_update_command,
@@ -21,19 +22,14 @@ use super::{
     update_check_due, update_check_message, update_dialog_status, update_status_markup,
     uses_compact_navigation,
 };
-use crate::sandbox::MediaPreviewBackend;
-
-#[test]
-fn a_checks_result_is_current_only_for_the_generation_it_was_issued_under() {
-    assert!(!is_stale_check(1, 1));
-    assert!(!is_stale_check(0, 0));
-}
+use crate::{sandbox::MediaPreviewBackend, test_support::gtk_test, ui::theme::ThemeManager};
 
 #[test]
 fn a_checks_result_is_stale_once_a_newer_check_has_started() {
     // The scenario Important 1 fixes: a check issued as generation 1 is
     // still in flight when a channel toggle starts generation 2. Generation
     // 1's eventual result must never be applied.
+    assert!(!is_stale_check(1, 1));
     assert!(is_stale_check(1, 2));
     assert!(is_stale_check(2, 1));
 }
@@ -69,17 +65,6 @@ fn available_release() -> UpdateCheck {
 }
 
 #[test]
-fn settings_dialog_keeps_its_preferred_size_when_space_allows() {
-    assert_eq!(
-        responsive_dialog_size(
-            DIALOG_WIDTH + DIALOG_MARGIN * 2,
-            DIALOG_HEIGHT + DIALOG_MARGIN * 2,
-        ),
-        (DIALOG_WIDTH, DIALOG_HEIGHT)
-    );
-}
-
-#[test]
 fn settings_dialog_shrinks_to_leave_a_margin_in_small_windows() {
     assert_eq!(responsive_dialog_size(640, 480), (592, 432));
 }
@@ -108,6 +93,11 @@ fn theme_appearance_uses_background_luminance() {
     assert!(theme_background_is_light("#ffffff"));
     assert!(theme_background_is_light("#efecf4"));
     assert!(!theme_background_is_light("#1e1d1f"));
+    assert!(theme_background_is_light("rgb(255,255,255)"));
+    assert!(!theme_background_is_light("rgb(30,29,31)"));
+    assert!(theme_background_is_light("#fff"));
+    assert!(theme_background_is_light("white"));
+    assert!(!theme_background_is_light("black"));
     assert!(!theme_background_is_light("invalid"));
 }
 
@@ -122,7 +112,7 @@ fn available_notes_are_shown_only_for_a_newer_release() {
             version: "1.0.0".to_owned(),
             url: "https://example.test/release".to_owned(),
             notes: "Changes".to_owned(),
-            note_blocks: vec![crate::services::ReleaseNoteBlock::Paragraph(
+            note_blocks: vec![crate::services::DocumentBlock::Paragraph(
                 "Changes".to_owned(),
             )],
             kind: BuildKind::Stable,
@@ -225,15 +215,6 @@ fn video_preview_backend_selector_labels_all_options() {
 }
 
 #[test]
-fn release_channel_copy_distinguishes_preview_from_nightly() {
-    assert_eq!(RELEASE_CHANNEL_TITLE, "Release channel");
-    assert_eq!(
-        RELEASE_CHANNEL_DESCRIPTION,
-        "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds."
-    );
-}
-
-#[test]
 fn video_preview_controls_follow_enabled_state() {
     assert_eq!(video_preview_control_state(true), (true, true, true));
     assert_eq!(video_preview_control_state(false), (false, true, false));
@@ -296,7 +277,12 @@ fn package_managed_status_identifies_omarchy() {
 
 #[test]
 fn aur_updates_open_in_the_configured_terminal() {
-    let command = aur_update_command("paru", "strata-bin");
+    let terminal = super::terminal::Terminal::resolve_with(
+        None,
+        Some(std::ffi::OsStr::new("xdg-terminal-exec")),
+    )
+    .expect("explicit terminal resolves");
+    let command = aur_update_command(&terminal, "paru", "strata-bin");
 
     assert_eq!(command.get_program(), "xdg-terminal-exec");
     assert_eq!(
@@ -307,7 +293,12 @@ fn aur_updates_open_in_the_configured_terminal() {
 
 #[test]
 fn omarchy_updates_open_in_the_configured_terminal() {
-    let command = omarchy_update_command();
+    let terminal = super::terminal::Terminal::resolve_with(
+        None,
+        Some(std::ffi::OsStr::new("xdg-terminal-exec")),
+    )
+    .expect("explicit terminal resolves");
+    let command = omarchy_update_command(&terminal);
 
     assert_eq!(command.get_program(), "xdg-terminal-exec");
     assert_eq!(
@@ -377,13 +368,6 @@ fn every_window_installs_behind_one_process_wide_guard() {
 }
 
 #[test]
-fn the_selector_highlights_the_button_for_the_persisted_channel() {
-    for (index, channel) in CHANNEL_ORDER.into_iter().enumerate() {
-        assert_eq!(channel_index(channel), index);
-    }
-}
-
-#[test]
 fn due_check_respects_its_ttl() {
     use std::time::{Duration, Instant};
 
@@ -395,6 +379,127 @@ fn due_check_respects_its_ttl() {
         Some(now - UPDATE_DUE_INTERVAL + Duration::from_secs(1)),
         now
     ));
+}
+
+#[test]
+fn stale_due_result_is_not_published_or_replayed() {
+    gtk_test(
+        "ui::settings::tests::stale_due_result_is_not_published_or_replayed",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            super::clear_cached_update_notice();
+            let manager = ThemeManager::shared();
+            manager.set_checks_for_updates(true);
+            let channel = manager.release_channel();
+            let published = Rc::new(std::cell::Cell::new(0));
+            let observed = published.clone();
+            let notice: super::UpdateNoticeHandler = Rc::new(move |_| {
+                observed.set(observed.get() + 1);
+            });
+            super::register_update_notice(&notice);
+
+            manager.set_checks_for_updates(false);
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                available_release(),
+                UpdateMethod::InPlace,
+                super::current_check_generation(),
+            );
+            assert_eq!(published.get(), 0);
+
+            let replayed = Rc::new(std::cell::Cell::new(0));
+            let observed = replayed.clone();
+            let later: super::UpdateNoticeHandler = Rc::new(move |_| {
+                observed.set(observed.get() + 1);
+            });
+            super::register_update_notice(&later);
+            assert_eq!(replayed.get(), 0);
+        },
+    );
+}
+
+#[test]
+fn due_failed_or_up_to_date_does_not_clear_existing_notice() {
+    gtk_test(
+        "ui::settings::tests::due_failed_or_up_to_date_does_not_clear_existing_notice",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            super::clear_cached_update_notice();
+            let manager = ThemeManager::shared();
+            manager.set_checks_for_updates(true);
+            let channel = manager.release_channel();
+            let notices = Rc::new(std::cell::RefCell::new(Vec::new()));
+            let observed = notices.clone();
+            let notice: super::UpdateNoticeHandler = Rc::new(move |result| {
+                observed.borrow_mut().push(result.is_some());
+            });
+            super::register_update_notice(&notice);
+
+            super::publish_update_notice_for_test(Some((
+                match available_release() {
+                    UpdateCheck::Available { release, .. } => release,
+                    _ => unreachable!(),
+                },
+                "https://example.invalid/strata.tar.gz".to_owned(),
+                UpdateMethod::InPlace,
+            )));
+            assert_eq!(*notices.borrow(), vec![true]);
+
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                UpdateCheck::Failed("network error".into()),
+                UpdateMethod::InPlace,
+                super::current_check_generation(),
+            );
+            assert_eq!(*notices.borrow(), vec![true]);
+
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                UpdateCheck::UpToDate,
+                UpdateMethod::InPlace,
+                super::current_check_generation(),
+            );
+            assert_eq!(*notices.borrow(), vec![true]);
+        },
+    );
+}
+
+#[test]
+fn superseded_due_check_does_not_override_newer_check() {
+    gtk_test(
+        "ui::settings::tests::superseded_due_check_does_not_override_newer_check",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            super::clear_cached_update_notice();
+            let manager = ThemeManager::shared();
+            manager.set_checks_for_updates(true);
+            let channel = manager.release_channel();
+            let notices = Rc::new(std::cell::RefCell::new(Vec::new()));
+            let observed = notices.clone();
+            let notice: super::UpdateNoticeHandler = Rc::new(move |result| {
+                observed.borrow_mut().push(result.is_some());
+            });
+            super::register_update_notice(&notice);
+
+            let older_generation = super::next_check_generation_for_test();
+            let _newer_generation = super::next_check_generation_for_test();
+
+            super::publish_update_notice_for_test(None);
+            assert_eq!(*notices.borrow(), vec![false]);
+
+            super::complete_due_update_check(
+                &Rc::downgrade(&manager),
+                channel,
+                available_release(),
+                UpdateMethod::InPlace,
+                older_generation,
+            );
+            assert_eq!(*notices.borrow(), vec![false]);
+        },
+    );
 }
 
 #[test]

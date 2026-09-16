@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod animation;
+mod search;
 mod spinner;
 
 use super::*;
@@ -50,7 +52,7 @@ fn deferred_pointer_activation_requires_an_unchanged_item_without_drag_motion() 
         location: location.clone(),
         press: (10.0, 20.0),
         moved: false,
-        preview: false,
+        kind: PendingActivationKind::Standard { preview: false },
     };
 
     pending.update(18.0, 12.0, 8);
@@ -69,7 +71,7 @@ fn deferred_pointer_activation_remembers_prior_drag_motion() {
         location: location.clone(),
         press: (10.0, 20.0),
         moved: false,
-        preview: true,
+        kind: PendingActivationKind::Standard { preview: true },
     };
 
     pending.update(10.0, 29.0, 8);
@@ -87,32 +89,66 @@ fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
 }
 
 #[test]
-fn pane_resizing_preserves_the_initial_minimum_width() {
-    assert_eq!(resized_column_width(COLUMN_WIDTH, -80.0), COLUMN_WIDTH);
-    assert_eq!(resized_column_width(COLUMN_WIDTH, 75.0), 375);
-    assert_eq!(resized_column_width(420, -20.0), 400);
-}
-
-#[test]
 fn reveal_target_scrolls_only_enough_to_show_the_new_column() {
     assert_eq!(
-        horizontal_reveal_target(0.0, 900.0, 0.0, 1_200.0, 900.0, 1_200.0),
+        ColumnSpan {
+            left: 900.0,
+            right: 1200.0,
+            total: 1200.0
+        }
+        .reveal_target(0.0, 900.0, 0.0, 1200.0),
         300.0
     );
 }
 
 #[test]
-fn reveal_target_is_stable_when_the_column_is_already_visible() {
+fn reveal_target_moves_only_clipped_columns_with_best_effort_peeks() {
+    let column = ColumnSpan {
+        left: 900.0,
+        right: 1200.0,
+        total: 1500.0,
+    };
+    assert_eq!(column.reveal_target(300.0, 900.0, 0.0, 1500.0), 300.0);
+    assert_eq!(column.reveal_target(250.0, 900.0, 0.0, 1500.0), 348.0);
+}
+
+#[test]
+fn peeks_never_clip_a_fitting_column_or_treat_trailing_space_as_a_neighbor() {
+    let middle = ColumnSpan {
+        left: 300.0,
+        right: 600.0,
+        total: 900.0,
+    };
+    for page in [300.0, 320.0, 348.0, 396.0] {
+        let target = middle.reveal_target(600.0, page, 0.0, 900.0);
+        assert!(target <= middle.left && target + page >= middle.right);
+    }
+    let leaf = ColumnSpan {
+        left: 600.0,
+        right: 900.0,
+        total: 900.0,
+    };
+    assert_eq!(leaf.reveal_target(600.0, 300.0, 0.0, 1500.0), 600.0);
     assert_eq!(
-        horizontal_reveal_target(300.0, 900.0, 0.0, 1_500.0, 900.0, 1_200.0),
-        300.0
+        ColumnSpan {
+            left: 0.0,
+            right: 300.0,
+            total: 900.0
+        }
+        .reveal_target(300.0, 396.0, 0.0, 900.0),
+        0.0
     );
 }
 
 #[test]
 fn reveal_target_can_scroll_back_to_an_earlier_column() {
     assert_eq!(
-        horizontal_reveal_target(600.0, 900.0, 0.0, 1_500.0, 300.0, 600.0),
-        300.0
+        ColumnSpan {
+            left: 300.0,
+            right: 600.0,
+            total: 1500.0
+        }
+        .reveal_target(600.0, 900.0, 0.0, 1500.0),
+        252.0
     );
 }

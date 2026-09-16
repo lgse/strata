@@ -509,13 +509,13 @@ where
 
 async fn accessible_folder(suggestion: Option<PathBuf>) -> ashpd::backend::Result<PathBuf> {
     run_on_main(move || async move {
-        let home = crate::ui::home_directory();
+        let default = crate::ui::default_save_folder();
         let Some(path) = suggestion.filter(|path| path.is_absolute()) else {
-            return home;
+            return default;
         };
         match glib::future_with_timeout(PATH_IO_TIMEOUT, directory_is_accessible(&path)).await {
             Ok(true) => path,
-            Ok(false) | Err(_) => home,
+            Ok(false) | Err(_) => default,
         }
     })
     .await
@@ -538,8 +538,8 @@ async fn save_file_suggestion(
     current_name: Option<String>,
 ) -> ashpd::backend::Result<(PathBuf, Option<OsString>)> {
     run_on_main(move || async move {
-        let home = crate::ui::home_directory();
-        let fallback = (home.clone(), None);
+        let default = crate::ui::default_save_folder();
+        let fallback = (default.clone(), None);
         glib::future_with_timeout(
             PATH_IO_TIMEOUT,
             resolve_save_file_suggestion(current_file, current_folder, current_name),
@@ -556,27 +556,30 @@ async fn resolve_save_file_suggestion(
     current_name: Option<String>,
 ) -> (PathBuf, Option<OsString>) {
     if let Some(file) = current_file {
-        let file_type = if file.is_absolute() {
-            gio::File::for_path(&file)
+        let valid_save_target = if file.is_absolute() {
+            match gio::File::for_path(&file)
                 .query_info_future(
                     gio::FILE_ATTRIBUTE_STANDARD_TYPE,
                     gio::FileQueryInfoFlags::NONE,
                     glib::Priority::DEFAULT,
                 )
                 .await
-                .ok()
-                .map(|info| info.file_type())
+            {
+                Ok(info) => info.file_type() == gio::FileType::Regular,
+                // Qt also supplies current_file for a destination that is new.
+                Err(error) => error.matches(gio::IOErrorEnum::NotFound),
+            }
         } else {
-            None
+            false
         };
-        if file_type == Some(gio::FileType::Regular)
+        if valid_save_target
             && let (Some(parent), Some(name)) = (file.parent(), file.file_name())
             && safe_filename(name)
             && directory_is_accessible(parent).await
         {
             return (parent.to_path_buf(), Some(name.to_owned()));
         }
-        return (crate::ui::home_directory(), None);
+        return (crate::ui::default_save_folder(), None);
     }
 
     let name = current_name
@@ -588,7 +591,7 @@ async fn resolve_save_file_suggestion(
     {
         folder
     } else {
-        crate::ui::home_directory()
+        crate::ui::default_save_folder()
     };
     (folder, name)
 }

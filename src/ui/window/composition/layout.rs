@@ -33,6 +33,7 @@ impl Header {
     pub(super) fn new(
         window: &gtk::ApplicationWindow,
         browser: &BrowserView,
+        preview: &PreviewDrawer,
         preferences: &Rc<ThemeManager>,
     ) -> Self {
         let widget = gtk::HeaderBar::new();
@@ -43,10 +44,12 @@ impl Header {
             .build();
         sidebar_toggle.set_child(Some(&assets::primary_icon(icons::PANEL_LEFT, 17)));
         sidebar_toggle.add_css_class("sidebar-toggle");
+        sidebar_toggle.set_cursor_from_name(Some("pointer"));
         let location = browser.location_widget();
         location.set_hexpand(true);
         let search = header_action(icons::SEARCH, "Search (Ctrl+K)");
-        let appearance = build_appearance_menu(browser, &browser.browser(), preferences.clone());
+        let appearance =
+            build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
         let close = header_action(icons::X, "Close window");
         let closing_window = window.clone();
@@ -78,6 +81,7 @@ fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
     let button = gtk::Button::builder().tooltip_text(tooltip).build();
     button.set_child(Some(&assets::chrome_icon(icon)));
     button.add_css_class("header-action");
+    button.set_cursor_from_name(Some("pointer"));
     button
 }
 
@@ -116,11 +120,7 @@ pub(super) fn browser_layout(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    let measured_browser = browser.clone();
-    preview.attach_split(
-        &preview_split,
-        Rc::new(move || content.position() + measured_browser.preview_occupied_width()),
-    );
+    preview.attach_split(&preview_split, &content, browser);
     root.append(&preview_split);
     root
 }
@@ -150,7 +150,9 @@ fn browser_split(
     toggle: &gtk::ToggleButton,
 ) -> gtk::Paned {
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-    content.set_wide_handle(false);
+    content.add_css_class("sidebar-split");
+    // Wide handles keep GTK's mouse hit area inside the divider allocation.
+    content.set_wide_handle(true);
     content.set_shrink_start_child(false);
     content.set_resize_start_child(false);
     content.set_position(SIDEBAR_WIDTH);
@@ -160,6 +162,7 @@ fn browser_split(
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
     bind_sidebar_toggle(&content, &sidebar.widget, toggle);
+    super::super::bind_sidebar_text_size(&content);
     content
 }
 
@@ -204,6 +207,7 @@ impl FooterBinding {
     ) -> Self {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
+        shortcuts.observe_browser(&browser.browser());
         let clipboard = window.clipboard();
         let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
         root.append(shortcuts.widget());

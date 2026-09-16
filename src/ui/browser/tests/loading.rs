@@ -5,6 +5,8 @@ use crate::services::{
     DirectoryEvent, DirectoryRequest, LoadHandle, LocationValidationError, RequestId,
 };
 
+mod camera_stress;
+
 struct Request {
     id: RequestId,
     emit: Rc<dyn Fn(DirectoryEvent)>,
@@ -49,20 +51,28 @@ impl HeldSource {
     }
 
     fn batch(&self, root: &std::path::Path) {
+        self.batch_at(Location::local(root.join("example.txt")));
+    }
+
+    fn batch_at(&self, location: Location) {
+        let name = location.display_name();
         let request = self.0.borrow();
         let request = request.as_ref().expect("directory request");
         (request.emit)(DirectoryEvent::Batch {
             request_id: request.id,
             entries: vec![FileEntry {
-                location: Location::local(root.join("example.txt")),
+                location,
                 thumbnail_path: None,
-                native_name: "example.txt".into(),
-                display_name: "example.txt".into(),
+                native_name: name.clone().into(),
+                display_name: name,
                 kind: crate::model::EntryKind::File,
                 size: crate::model::MetadataValue::Unknown,
                 modified_unix_seconds: crate::model::MetadataValue::Unknown,
                 mode: crate::model::MetadataValue::Unknown,
                 is_hidden: false,
+                image_dimensions: crate::model::MetadataValue::Unknown,
+                child_count: crate::model::MetadataValue::Unknown,
+                duration_seconds: crate::model::MetadataValue::Unknown,
             }],
         });
     }
@@ -99,47 +109,75 @@ fn settle() {
 }
 
 #[test]
-#[ignore = "captures loading UI; requires STRATA_LOADING_CAPTURE and a private display"]
-fn capture_loading_frame() {
-    gtk::init().expect("private GTK display");
-    crate::assets::prepare().expect("bundled assets");
-    crate::assets::register_icon_theme();
-    let output = std::env::var_os("STRATA_LOADING_CAPTURE").expect("capture path");
-    crate::ui::prepare_portal_ui();
-    let source = Rc::new(HeldSource::default());
-    let view = BrowserView::new(source, PeekBehavior::default());
-    view.set_view_mode(BrowserMode::List);
-    let window = gtk::Window::builder()
-        .title("Directory loading — first frame")
-        .default_width(850)
-        .default_height(450)
-        .child(&view.widget())
-        .build();
-    window.present();
-    settle();
-    view.browser()
-        .navigate(Location::local("/tmp/strata-loading-example"));
-    let started = std::time::Instant::now();
-    while started.elapsed() < std::time::Duration::from_millis(40) {
-        glib::MainContext::default().iteration(false);
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-    let paintable = gtk::WidgetPaintable::new(Some(&window));
-    let snapshot = gtk::Snapshot::new();
-    paintable.snapshot(
-        &snapshot,
-        f64::from(window.width()),
-        f64::from(window.height()),
+fn camera_first_batch_is_visible_before_discovery_finishes_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::loading::camera_first_batch_is_visible_before_discovery_finishes_in_every_view",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                let source = Rc::new(HeldSource::default());
+                let view = BrowserView::new(source.clone(), PeekBehavior::default());
+                view.set_view_mode(mode);
+                crate::ui::thumbnail::hold_thumbnail_workers();
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(900)
+                    .default_height(600)
+                    .build();
+                window.present();
+                let browser = view.browser();
+                browser.navigate(Location::uri("gphoto2://camera/"));
+                let current_stacks = || {
+                    stacks(
+                        &view
+                            .state
+                            .mode_views
+                            .borrow()
+                            .widget()
+                            .visible_child()
+                            .expect("visible browser mode"),
+                    )
+                };
+                for reload in [false, true] {
+                    if reload {
+                        browser.reload_active();
+                    }
+                    settle();
+                    let panes = current_stacks();
+                    assert_page(&panes, "loading");
+                    source.batch_at(Location::uri("gphoto2://camera/202606/IMG_0001.JPG"));
+                    settle();
+                    assert_page(&panes, "content");
+                    assert!(browser.column_snapshot(0).expect("camera root").loading);
+                    crate::ui::thumbnail::tests::complete_pending_thumbnail(std::path::Path::new(
+                        "gphoto2://camera/202606/IMG_0001.JPG",
+                    ));
+                    assert!(browser.column_snapshot(0).expect("camera root").loading);
+                    let alternate = match mode {
+                        BrowserMode::Columns => BrowserMode::List,
+                        BrowserMode::List => BrowserMode::Icons,
+                        BrowserMode::Icons => BrowserMode::Columns,
+                    };
+                    view.set_view_mode(alternate);
+                    settle();
+                    assert_page(&current_stacks(), "content");
+                    view.set_view_mode(mode);
+                    settle();
+                    assert_page(&current_stacks(), "content");
+                    source.batch_at(Location::uri("gphoto2://camera/202605/IMG_0001.JPG"));
+                    settle();
+                    assert_page(&current_stacks(), "content");
+                    assert_eq!(browser.column_snapshot(0).expect("camera root").count, 2);
+                    source.finish();
+                    settle();
+                    assert_page(&current_stacks(), "content");
+                }
+                browser.clear_observer();
+                crate::ui::thumbnail::cancel_thumbnails_in(&view.widget());
+                window.destroy();
+                crate::ui::thumbnail::clear_thumbnail_runtime();
+            }
+        },
     );
-    let node = snapshot.to_node().expect("rendered browser");
-    window
-        .renderer()
-        .expect("renderer")
-        .render_texture(&node, None)
-        .save_to_png(std::path::PathBuf::from(output))
-        .expect("save capture");
-    window.close();
-    view.browser().clear_observer();
 }
 
 #[test]
@@ -176,6 +214,14 @@ fn directory_loading_grace_across_modes() {
                 assert_page(&slow, "pending");
                 settle();
                 assert_page(&slow, "loading");
+                for stack in &slow {
+                    let loading = stack.visible_child().expect("loading placeholder");
+                    assert!(
+                        !loading.can_target(),
+                        "placeholder must not intercept input"
+                    );
+                    assert!(!loading.is_focusable(), "placeholder must not take focus");
+                }
                 source.batch(root.path());
                 source.finish();
                 settle();

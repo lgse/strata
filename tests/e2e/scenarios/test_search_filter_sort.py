@@ -5,11 +5,40 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 # Folders stay grouped first, so descending is not simply the reverse.
 ROOT_ENTRIES_DESCENDING = ["pictures", "documents", "archive", "todo.txt", "readme.md"]
+DOUBLE_CLICK_PREFERENCES = {
+    "list_folder_clicks": 2,
+    "list_file_clicks": 2,
+    "grid_folder_clicks": 2,
+    "grid_file_clicks": 2,
+    "explorer_folder_clicks": 2,
+    "explorer_file_clicks": 2,
+    "single_click_previews": True,
+}
+DOUBLE_CLICK = pytest.mark.preferences(**DOUBLE_CLICK_PREFERENCES)
+
+
+@pytest.fixture
+def launch_counter(test_environment):
+    applications = test_environment.data_home / "applications"
+    applications.mkdir()
+    launches = test_environment.root / "filtered-launches"
+    launcher = test_environment.root / "record-filtered-launch"
+    launcher.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" >> "{launches}"\n')
+    launcher.chmod(0o755)
+    (applications / "strata-filtered.desktop").write_text(
+        "[Desktop Entry]\nType=Application\nName=Filtered Result Viewer\n"
+        f"Exec={launcher} %U\nMimeType=text/csv;\nNoDisplay=true\n"
+    )
+    (test_environment.config_home / "mimeapps.list").write_text(
+        "[Default Applications]\ntext/csv=strata-filtered.desktop;\n"
+        "[Added Associations]\ntext/csv=strata-filtered.desktop;\n"
+    )
+    return launches
 
 
 @pytest.fixture
@@ -56,6 +85,138 @@ def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
         lambda: strata.entry_names(root) == ROOT_ENTRIES,
         "Escape to restore the full listing",
     )
+
+
+@pytest.fixture
+def pattern_files(fixture_tree):
+    photos = fixture_tree.path("Photos")
+    photos.mkdir()
+    (photos / "album.MOV").mkdir()
+    for name in [
+        "clip.MOV", "IMG_001.MOV", "IMG_001.jpg", "clip.MOV.bak", ".hidden.MOV",
+        "album.MOV/deep.MOV", "album.MOV/unrelated.txt",
+    ]:
+        (photos / name).write_text("fixture\n")
+
+
+@pytest.mark.parametrize("preferences", [
+    {"filter_include_subfolders": False},
+    {"filter_include_subfolders": True},
+], ids=["directory", "subfolders"])
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_wildcard_filter_patterns_preserve_scope_and_clear(
+    pattern_files, strata, mode, preferences,
+):
+    strata.open_directory("Photos")
+    strata.select_entry("clip.MOV.bak", directory="Photos")
+    original = {"album.MOV", "clip.MOV", "IMG_001.MOV", "IMG_001.jpg", "clip.MOV.bak"}
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    recursive = preferences["filter_include_subfolders"]
+    for query, expected in [
+        ("*.MOV", {"album.MOV", "clip.MOV", "IMG_001.MOV"} | ({"deep.MOV"} if recursive else set())),
+        ("IMG*", {"IMG_001.MOV", "IMG_001.jpg"}),
+        ("IMG*.MOV", {"IMG_001.MOV"}),
+        ("IMG*_001*.mov", {"IMG_001.MOV"}),
+        ("*.MOV.b", set()),
+        ("*.MOV.b*", {"clip.MOV.bak"}),
+        ("*.MOV.b", set()),
+        (".MOV.b", {"clip.MOV.bak"}),
+        ("*", original | ({"deep.MOV", "unrelated.txt"} if recursive else set())),
+    ]:
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(query)
+        strata.wait(lambda: field.text == query, "the wildcard query to be typed")
+        strata.wait(
+            lambda: set(strata.matches("Photos")) == expected,
+            f"wildcard results for {query} (subfolders={recursive})",
+        )
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.press("BackSpace")
+    strata.wait(lambda: field.text == "", "the query to clear")
+    strata.wait(
+        lambda: set(strata.entry_names("Photos")) == original,
+        "clearing the wildcard to restore the listing without hidden or nested entries",
+    )
+
+
+def assert_filtered_result_opens(strata):
+    strata.select_entry("documents")
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("doc*ments")
+    strata.wait(lambda: field.text == "doc*ments", "the filter query")
+    result = strata.wait(
+        lambda: strata.window.find(role="list item", name="documents"),
+        "the filtered folder result",
+    )
+    strata.pointer.click(result)
+    strata.wait_for_directory("documents")
+
+
+@pytest.mark.preferences(
+    **DOUBLE_CLICK_PREFERENCES, filter_include_subfolders=False
+)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_local_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
+
+
+@DOUBLE_CLICK
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
+def test_recursive_filtered_results_open_with_one_activation(strata, mode):
+    assert_filtered_result_opens(strata)
+
+
+@DOUBLE_CLICK
+@pytest.mark.preferences(browser_mode="list")
+def test_recursive_file_double_click_launches_once(launch_counter, strata):
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("spreadsheet")
+    result = strata.wait(
+        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        "the recursive file result",
+    )
+
+    strata.pointer.double_click(result)
+    strata.wait(
+        lambda: launch_counter.exists() and len(launch_counter.read_text().splitlines()) >= 1,
+        "the file launch",
+    )
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("photo")
+    strata.wait(lambda: field.text == "photo", "the follow-up query")
+    strata.wait(
+        lambda: strata.window.find(role="list item", name="photo.txt") is not None,
+        "the follow-up results",
+    )
+    assert len(launch_counter.read_text().splitlines()) == 1
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_result_waits_for_release_before_launching(launch_counter, strata, mode):
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("spreadsheet")
+    strata.wait(lambda: field.text == "spreadsheet", "the filter query")
+    result = strata.wait(
+        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        "the filtered file result",
+    )
+
+    def assert_not_launched_on_press():
+        assert not launch_counter.exists(), "a held press must not launch the file"
+
+    start = strata.pointer.drag_origin(result)
+    end = (start[0] + 40, start[1] + 40)
+    strata.pointer.drag_points(
+        start, end, release=False, after_press=assert_not_launched_on_press
+    )
+    try:
+        assert not launch_counter.exists(), "crossing the drag threshold must not launch the file"
+    finally:
+        strata.pointer.connection.button(1, False)
 
 
 @pytest.mark.preferences(filter_include_subfolders=False)
@@ -148,6 +309,96 @@ def test_sorting_by_size_reorders_the_files(strata, root):
         lambda: strata.entry_names(root)[-2:] == ["todo.txt", "readme.md"],
         "the files to be ordered by size",
     )
+
+
+def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection(strata):
+    names = [
+        "navigation-alpha",
+        "navigation-beta",
+        "navigation-final",
+        "navigation-gamma",
+    ]
+    for name in names:
+        (strata.environment.home / name).mkdir()
+
+    strata.keyboard.press("ctrl+k")
+    field = strata.editable_field()
+    strata.keyboard.type_text("nav")
+    strata.wait(lambda: field.text == "nav", "the initial global-search query")
+    strata.wait(
+        lambda: all(
+            strata.window.find(role="label", name=name) is not None for name in names
+        ),
+        "all navigation results to be indexed",
+    )
+
+    results = [
+        node
+        for node in strata.window.find_all(role="list item")
+        if any(node.name.endswith(f"/{name}") for name in names)
+    ]
+    assert len(results) == len(names)
+    assert results[0].has_state("selected")
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: results[1].has_state("selected"),
+        "the first Down press to advance past the preselected result",
+    )
+    for _ in range(2):
+        strata.keyboard.press("Down")
+    strata.keyboard.type_text("igation-final")
+    strata.wait(
+        lambda: field.text == "navigation-final",
+        "typing after arrow navigation to extend the query",
+    )
+    result = strata.wait(
+        lambda: next(
+            (
+                node
+                for node in strata.window.find_all(role="list item")
+                if node.name.endswith("/navigation-final")
+            ),
+            None,
+        ),
+        "the refined selected result",
+    )
+    strata.wait(
+        lambda: result.has_state("selected"),
+        "the refined result to be selected",
+    )
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("navigation-final")
+
+
+@pytest.mark.preferences(search_open_files_directly=False)
+def test_global_search_preview_follows_neighbor_when_same_folder_result_is_deleted(strata):
+    folder = strata.environment.home / "preview-deletion"
+    folder.mkdir()
+    previewed = folder / "preview-deletion-fixture.txt"
+    previewed.write_text("search preview deletion fixture\n")
+    (folder / "remaining.txt").write_text("remaining file\n")
+    strata.keyboard.press("ctrl+l")
+    strata.keyboard.type_text(str(folder))
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(folder.name)
+    strata.wait(lambda: "remaining.txt" in strata.entry_names(), "loaded folder")
+    strata.keyboard.press("ctrl+k")
+    strata.keyboard.type_text("preview-deletion-fixture")
+    strata.wait(
+        lambda: strata.window.find(role="label", name=previewed.name) is not None,
+        "indexed search result",
+    )
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.preview_shows("search preview deletion fixture"),
+        "search result preview",
+    )
+    previewed.unlink()
+    strata.wait(
+        lambda: strata.preview_shows("remaining file"),
+        "deleted result preview to follow the remaining file",
+    )
+    assert "remaining.txt" in strata.entry_names()
 
 
 def test_global_search_finds_a_file_under_home(strata, root):

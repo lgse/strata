@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::app::{Browser, BrowserEvent};
+use crate::services::SearchItem;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::glib;
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 #[test]
 fn recursive_search_arrows_select_and_clamp_results() {
@@ -12,6 +15,33 @@ fn recursive_search_arrows_select_and_clamp_results() {
     assert_eq!(search_result_navigation_position(Some(1), 3, 1), Some(2));
     assert_eq!(search_result_navigation_position(Some(2), 3, 1), Some(2));
     assert_eq!(search_result_navigation_position(None, 0, 1), None);
+}
+
+#[test]
+fn recursive_file_activation_emits_open_request() {
+    let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+    let opened = Rc::new(RefCell::new(None));
+    let opened_for_observer = opened.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::OpenRequested { location } = event {
+            opened_for_observer.replace(Some(location.clone()));
+        }
+    });
+    let path = PathBuf::from("/filtered.txt");
+    let results = RefCell::new(vec![SearchItem::for_test(path.clone(), false)]);
+
+    assert!(activate_recursive_search_result(
+        &Rc::downgrade(&browser),
+        &results,
+        0
+    ));
+    assert_eq!(
+        opened
+            .borrow()
+            .as_ref()
+            .and_then(|location| location.native_path()),
+        Some(path.as_path())
+    );
 }
 
 #[test]
@@ -57,6 +87,74 @@ fn filter_queries_keep_matches_near_the_end() {
     assert_eq!(map.forward, vec![2]);
     assert_eq!(map.query, "zu");
     assert_eq!(map.generation, 4);
+}
+
+#[test]
+fn wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync() {
+    crate::test_support::gtk_test(
+        "ui::browser::collection::tests::wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync",
+        || {
+            let source = mapped_source(&[
+                "fv\tclip.MOV.bak",
+                "fv\tclip.MOV",
+                "fh\t.hidden.MOV",
+                "fv\tclip.MOV.backup",
+                "fv\tIMG_001.jpg",
+            ]);
+            let query = Rc::new(RefCell::new(String::new()));
+            let show_hidden = Rc::new(Cell::new(false));
+            let filter = super::super::entry::entry_filter(show_hidden.clone(), query.clone());
+            let model = gtk::FilterListModel::new(Some(source.clone()), Some(filter.clone()));
+            let map = ViewMap::new(
+                query.clone(),
+                show_hidden,
+                Rc::new(Cell::new(1)),
+                source.clone(),
+                model.clone(),
+                None,
+            );
+            // Appending a star broadens an anchored suffix; deleting the first star
+            // changes to substring matching and can both add and remove rows.
+            for (text, expected) in [
+                ("*.MOV", vec![1]),
+                ("*.MOV.b", vec![]),
+                ("*.MOV.b*", vec![0, 3]),
+                ("*.MOV.b", vec![]),
+                (".MOV.b", vec![0, 3]),
+                ("*", vec![0, 1, 3, 4]),
+                ("", vec![0, 1, 3, 4]),
+            ] {
+                notify_filter_query(&filter, &query, text.into());
+                assert_eq!(model.n_items() as usize, expected.len(), "{text}");
+                for (visible, source_position) in expected.iter().enumerate() {
+                    let visible = visible as u32;
+                    assert_eq!(
+                        map.source_position(visible),
+                        Some(*source_position),
+                        "{text}"
+                    );
+                    assert_eq!(map.view_position(*source_position), Some(visible), "{text}");
+                    assert_eq!(
+                        model
+                            .item(visible)
+                            .and_downcast::<gtk::StringObject>()
+                            .expect("visible filename")
+                            .string()
+                            .as_str(),
+                        source
+                            .value(*source_position as u32)
+                            .expect("source filename"),
+                        "{text}",
+                    );
+                }
+                for position in 0..source.n_items() as usize {
+                    if !expected.contains(&position) {
+                        assert_eq!(map.view_position(position), None, "{text}");
+                    }
+                }
+            }
+        },
+    );
 }
 
 #[test]

@@ -71,6 +71,9 @@ impl Fixture {
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             is_hidden: name.starts_with('.'),
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         }
     }
 
@@ -183,8 +186,7 @@ fn stale_loading_events_cannot_mutate_a_replacement_request() {
         assert!(column.error.is_none());
         assert!(fixture.events.borrow().is_empty());
         assert!(fixture.browser.staging.borrow().is_empty());
-        assert!(fixture.browser.remote_terminals.borrow().is_empty());
-        assert!(fixture.browser.coalesce_pending.borrow().is_empty());
+        assert!(fixture.browser.remote.borrow().has_no_work());
         fixture.finish();
         assert!(
             !fixture

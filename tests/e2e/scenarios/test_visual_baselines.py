@@ -11,11 +11,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from harness.fixtures import FixtureTree
 
 BASELINE_FIXTURE = {
-    "documents": {"notes.txt": "notes\n", "report.md": "# Report\n"},
+    "documents": {
+        "notes.txt": "notes\n",
+        "projects": {"release": {"summary.md": "# Release\n"}},
+        "report.md": "# Report\n",
+    },
     "pictures": {},
     "readme.md": "# Fixture\n",
     "todo.txt": "todo\n",
@@ -28,13 +33,35 @@ pytestmark = pytest.mark.baseline
 # baseline scenarios use a fixed directory instead of a randomized one.
 BASELINE_ROOT = Path("/tmp/strata-e2e-baseline")
 BASELINE_ENTRIES = ["documents", "pictures", "readme.md", "todo.txt"]
+ICONS_BASELINE_FIXTURE = {
+    "Applications": {},
+    "DataGripProjects": {},
+    "pictures": {},
+    "readme.md": "# Fixture\n",
+    "todo.txt": "todo\n",
+}
+ICONS_BASELINE_ENTRIES = [
+    "Applications", "DataGripProjects", "pictures", "portrait.png", "readme.md",
+    "todo.txt", "wide.png",
+]
+ICONS_BASELINE_THUMBNAILS = {
+    "portrait.png": ((32, 64), (255, 140, 0)),
+    "wide.png": ((64, 32), (70, 130, 180)),
+}
 
 
 @pytest.fixture
-def fixture_tree():
-    """A fixture whose path, names, and sizes never change."""
+def fixture_tree(request):
+    """Stable names and content, including mixed caption lengths and image shapes."""
 
-    tree = FixtureTree.create_at(BASELINE_ROOT, BASELINE_FIXTURE)
+    preferences = request.node.get_closest_marker("preferences")
+    icons = preferences is not None and preferences.kwargs.get("browser_mode") == "icons"
+    tree = FixtureTree.create_at(
+        BASELINE_ROOT, ICONS_BASELINE_FIXTURE if icons else BASELINE_FIXTURE
+    )
+    if icons:
+        for name, (size, color) in ICONS_BASELINE_THUMBNAILS.items():
+            Image.new("RGB", size, color).save(BASELINE_ROOT / name)
     try:
         yield tree
     finally:
@@ -47,15 +74,46 @@ def test_columns_view_baseline(strata, baseline):
     baseline(strata, "columns-view")
 
 
+@pytest.mark.preferences(browser_mode="columns")
+def test_columns_overflow_baseline(strata, baseline, tmp_path):
+    strata.open_directory("documents")
+    strata.open_directory("projects", "documents")
+    strata.open_directory("release", "projects")
+    _settle(strata, ["summary.md"])
+
+    capture = strata.screenshot(tmp_path / "columns-overflow.png")
+    sidebar = strata.sidebar_button("Home").parent
+    assert sidebar is not None
+    sidebar_bounds = sidebar.screen_bounds()
+    pane_bounds = strata.pane("release").screen_bounds()
+    leading_edge = sidebar_bounds.x + sidebar_bounds.width
+    scrollbar_y = pane_bounds.y + pane_bounds.height + 7
+    with Image.open(capture) as image:
+        pixels = image.convert("RGB")
+        assert pixels.getpixel((leading_edge, scrollbar_y)) == pixels.getpixel(
+            (leading_edge + 20, scrollbar_y)
+        ), "the horizontal scrollbar background should be continuous at its leading edge"
+
+    baseline(strata, "columns-overflow")
+
+
 @pytest.mark.preferences(browser_mode="icons")
-def test_icons_view_baseline(strata, baseline):
-    _settle(strata)
+def test_icons_view_baseline(strata, baseline, tmp_path):
+    _settle_icons(strata, tmp_path)
+    strata.select_entry_with_keyboard("DataGripProjects")
     baseline(strata, "icons-view")
 
 
+@pytest.mark.preferences(browser_mode="icons", browser_density="airy")
+def test_icons_airy_view_baseline(strata, baseline, tmp_path):
+    _settle_icons(strata, tmp_path)
+    strata.select_entry_with_keyboard("Applications")
+    baseline(strata, "icons-airy-view")
+
+
 @pytest.mark.preferences(browser_mode="icons")
-def test_icons_hover_baseline(strata, baseline):
-    _settle(strata)
+def test_icons_hover_baseline(strata, baseline, tmp_path):
+    _settle_icons(strata, tmp_path)
     strata.pointer.move_to(*strata.entry("todo.txt").screen_bounds().center)
     strata.settle(strata.pane())
     baseline(strata, "icons-hover")
@@ -97,13 +155,33 @@ def test_delete_confirmation_baseline(strata, baseline):
     baseline(strata, "delete-confirmation")
 
 
-def _settle(strata) -> None:
+def _settle_icons(strata, tmp_path) -> None:
+    _settle(strata, ICONS_BASELINE_ENTRIES)
+    icons = {
+        name: strata.entry(name).find(role="image")
+        for name in ICONS_BASELINE_THUMBNAILS
+    }
+    assert all(icon is not None for icon in icons.values())
+
+    def thumbnails_ready():
+        capture = strata.screenshot(tmp_path / "thumbnail-readiness.png")
+        with Image.open(capture) as image:
+            pixels = image.convert("RGB")
+            return all(
+                pixels.getpixel(icons[name].screen_bounds().center) == color
+                for name, (_, color) in ICONS_BASELINE_THUMBNAILS.items()
+            )
+
+    strata.wait(thumbnails_ready, "both image shapes to finish rendering")
+
+
+def _settle(strata, entries=BASELINE_ENTRIES) -> None:
     """Park the pointer and wait for the listing before capturing."""
 
     strata.park_pointer()
     strata.wait(
         lambda: strata.entry_names()
-        == BASELINE_ENTRIES,
+        == entries,
         "the fixture listing to be complete",
     )
     strata.settle(strata.pane())

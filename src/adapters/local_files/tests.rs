@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod browse;
 mod trash;
 
 use std::{
@@ -11,6 +12,7 @@ use std::{
         ffi::{OsStrExt, OsStringExt},
         fs::PermissionsExt,
     },
+    process::Command,
     sync::{Arc, Mutex, MutexGuard},
     time::{Instant, SystemTime},
 };
@@ -197,19 +199,6 @@ fn missing_optional_attributes_use_safe_defaults() {
 }
 
 #[test]
-fn unmounted_network_shares_are_treated_as_directories() {
-    let info = gio::FileInfo::new();
-    info.set_file_type(gio::FileType::Mountable);
-    info.set_name("share");
-    info.set_display_name("share");
-
-    let entry = entry_from_info(Location::uri("smb://host/share"), info);
-
-    assert_eq!(entry.kind, EntryKind::Directory);
-    assert!(entry.is_directory());
-}
-
-#[test]
 fn symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 
@@ -260,6 +249,57 @@ fn coalescing_preserves_a_move_when_metadata_follows_it() {
     );
 
     assert!(matches!(change, PendingMonitorChange::Move { .. }));
+}
+
+#[test]
+fn metadata_update_followed_by_move_preserves_source_removal() {
+    let mut pending = HashMap::new();
+    let temp = Location::local("/fixture/file.tmp");
+    let dest = Location::local("/fixture/file");
+    assert!(queue_monitor_change(
+        &mut pending,
+        Some(temp.clone()),
+        PendingMonitorChange::Upsert(temp),
+    ));
+    assert!(queue_monitor_change(
+        &mut pending,
+        Some(dest.clone()),
+        PendingMonitorChange::Move {
+            from: Location::local("/fixture/file.tmp"),
+            to: dest.clone(),
+        },
+    ));
+    assert_eq!(pending.len(), 1);
+    assert!(matches!(
+        pending.get(&Some(dest)),
+        Some(PendingMonitorChange::Move { from, .. })
+            if *from == Location::local("/fixture/file.tmp")
+    ));
+}
+
+#[test]
+fn move_does_not_discard_a_pending_source_removal() {
+    let mut pending = HashMap::new();
+    let from = Location::local("/fixture/source");
+    let to = Location::local("/fixture/destination");
+    queue_monitor_change(
+        &mut pending,
+        Some(from.clone()),
+        PendingMonitorChange::Remove(from.clone()),
+    );
+    queue_monitor_change(
+        &mut pending,
+        Some(to.clone()),
+        PendingMonitorChange::Move {
+            from: from.clone(),
+            to,
+        },
+    );
+    assert!(matches!(
+        pending.get(&Some(from)),
+        Some(PendingMonitorChange::Remove(_))
+    ));
+    assert_eq!(pending.len(), 2);
 }
 
 #[test]
@@ -892,6 +932,7 @@ fn fill_empty_entries_completes_without_chunks() {
         id: RequestId(1),
         entries: Vec::new(),
         full: true,
+        include_icon_details: false,
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
@@ -904,6 +945,7 @@ fn sequential_fill_with_no_time_remaining_is_truncated() {
         id: RequestId(1),
         entries: vec![Location::local("/fixture/file.txt")],
         full: false,
+        include_icon_details: false,
         time_budget: Duration::ZERO,
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Truncated));
@@ -943,6 +985,7 @@ fn fill_all_vanished_entries_reports_failed() {
             Location::local(root.join("gone-1.txt")),
         ],
         full: true,
+        include_icon_details: false,
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Failed));
@@ -954,6 +997,7 @@ fn fill_unreachable_remote_reports_failed() {
         id: RequestId(1),
         entries: vec![Location::uri("sftp://host/share/photo.jpg")],
         full: false,
+        include_icon_details: false,
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Failed));
@@ -972,6 +1016,7 @@ fn fill_file_uri_stats_through_the_uri_form() -> Result<(), Box<dyn Error>> {
         id: RequestId(1),
         entries: vec![Location::uri(uri)],
         full: false,
+        include_icon_details: false,
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
@@ -992,6 +1037,7 @@ fn fill_live_file_completes_with_a_chunk() -> Result<(), Box<dyn Error>> {
         id: RequestId(1),
         entries: vec![Location::local(&path)],
         full: false,
+        include_icon_details: false,
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
@@ -1006,6 +1052,234 @@ fn fill_live_file_completes_with_a_chunk() -> Result<(), Box<dyn Error>> {
         metadata,
         Some((MetadataValue::Known(7), MetadataValue::Known(0o100640)))
     );
+    Ok(())
+}
+
+#[test]
+fn native_viewport_metadata_streams_multiple_chunks() -> Result<(), Box<dyn Error>> {
+    let root = unique_fixture_root("fill-streaming");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    let entries: Vec<_> = (0..20)
+        .map(|index| {
+            let path = root.join(format!("file-{index}.txt"));
+            fs::write(&path, b"content").expect("the fixture file should be written");
+            Location::local(path)
+        })
+        .collect();
+
+    let events = run_fill(MetadataRequest {
+        id: RequestId(1),
+        entries,
+        full: false,
+        include_icon_details: false,
+        time_budget: Duration::from_secs(10),
+    });
+    assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
+    assert!(fill_chunk_count(&events) > 1);
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+    Ok(())
+}
+
+#[test]
+fn icon_details_cache_bounds_revisit_history_and_preserves_lru() {
+    let mut cache = IconDetailsCache::default();
+    let fingerprint = IconDetailsFingerprint {
+        size: 1,
+        modified_seconds: 1,
+        modified_nanoseconds: 0,
+        changed_seconds: 1,
+        changed_nanoseconds: 0,
+    };
+    let details = IconDetails {
+        image_dimensions: MetadataValue::Known((1, 1)),
+        child_count: MetadataValue::Unavailable,
+        duration_seconds: MetadataValue::Unavailable,
+    };
+    for index in 0..MAX_ICON_DETAILS_CACHE_ENTRIES {
+        cache.insert(
+            PathBuf::from(index.to_string()),
+            fingerprint,
+            details.clone(),
+        );
+    }
+    let revisited = Path::new("0");
+    for _ in 0..MAX_ICON_DETAILS_CACHE_ENTRIES * 5 {
+        assert!(cache.get(revisited, fingerprint).is_some());
+    }
+    assert!(cache.recent.len() <= MAX_ICON_DETAILS_CACHE_ENTRIES * 4);
+    cache.insert(PathBuf::from("new"), fingerprint, details);
+    assert!(cache.get(revisited, fingerprint).is_some());
+    assert!(cache.get(Path::new("1"), fingerprint).is_none());
+    assert_eq!(cache.entries.len(), MAX_ICON_DETAILS_CACHE_ENTRIES);
+}
+
+#[test]
+fn fill_image_file_extracts_dimensions() -> Result<(), Box<dyn Error>> {
+    let root = unique_fixture_root("fill-image-dimensions");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    let path = root.join("pixel.png");
+    let png_bytes = [
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+        0x77, 0x53, 0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8,
+        0xff, 0xff, 0x3f, 0x00, 0x05, 0xfe, 0x02, 0xfe, 0xdc, 0xcc, 0x59, 0xe7, 0x00, 0x00, 0x00,
+        0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    fs::write(&path, png_bytes).expect("the fixture file should be written");
+
+    let events = run_fill(MetadataRequest {
+        id: RequestId(1),
+        entries: vec![Location::local(&path)],
+        full: false,
+        include_icon_details: true,
+        time_budget: Duration::from_secs(10),
+    });
+    assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
+    let dimensions = events.iter().find_map(|event| match event {
+        DirectoryEvent::MetadataFilled { updates, .. } => updates
+            .first()
+            .map(|update| update.image_dimensions.clone()),
+        _ => None,
+    });
+    assert_eq!(dimensions, Some(MetadataValue::Known((1, 1))));
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+    Ok(())
+}
+
+#[test]
+fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> {
+    let root = unique_fixture_root("fill-media-duration");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    let path = root.join("clip.mkv");
+    let status = Command::new("ffmpeg")
+        .args([
+            "-nostdin",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=16x16:rate=1:duration=2",
+            "-c:v",
+            "ffv1",
+            "-threads",
+            "1",
+        ])
+        .arg(&path)
+        .status()
+        .expect("ffmpeg should create the media fixture");
+    assert!(status.success());
+
+    let events = run_fill(MetadataRequest {
+        id: RequestId(1),
+        entries: vec![Location::local(&path)],
+        full: false,
+        include_icon_details: true,
+        time_budget: Duration::from_secs(10),
+    });
+    assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
+    let duration = events.iter().find_map(|event| match event {
+        DirectoryEvent::MetadataFilled { updates, .. } => updates
+            .first()
+            .map(|update| update.duration_seconds.clone()),
+        _ => None,
+    });
+    assert_eq!(duration, Some(MetadataValue::Known(2)));
+    assert_eq!(media_metadata_probe_count(&path), 1);
+
+    let revisited_entries = batched_entries(&run_enumerate(DirectoryRequest {
+        id: RequestId(2),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: false,
+        max_entries: 100,
+        time_budget: Duration::from_secs(10),
+    }));
+    assert_eq!(revisited_entries.len(), 1);
+    assert_eq!(
+        revisited_entries[0].duration_seconds,
+        MetadataValue::Known(2)
+    );
+
+    let revisit = run_fill(MetadataRequest {
+        id: RequestId(2),
+        entries: vec![Location::local(&path)],
+        full: false,
+        include_icon_details: true,
+        time_budget: Duration::from_secs(10),
+    });
+    assert_eq!(fill_outcome(&revisit), Some(MetadataOutcome::Complete));
+    let revisited_duration = revisit.iter().find_map(|event| match event {
+        DirectoryEvent::MetadataFilled { updates, .. } => updates
+            .first()
+            .map(|update| update.duration_seconds.clone()),
+        _ => None,
+    });
+    assert_eq!(revisited_duration, Some(MetadataValue::Known(2)));
+    assert_eq!(media_metadata_probe_count(&path), 1);
+
+    let status = Command::new("ffmpeg")
+        .args([
+            "-nostdin",
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=16x16:rate=1:duration=3",
+            "-c:v",
+            "ffv1",
+            "-threads",
+            "1",
+        ])
+        .arg(&path)
+        .status()
+        .expect("ffmpeg should replace the media fixture");
+    assert!(status.success());
+    let changed = run_fill(MetadataRequest {
+        id: RequestId(3),
+        entries: vec![Location::local(&path)],
+        full: false,
+        include_icon_details: true,
+        time_budget: Duration::from_secs(10),
+    });
+    let changed_duration = changed.iter().find_map(|event| match event {
+        DirectoryEvent::MetadataFilled { updates, .. } => updates
+            .first()
+            .map(|update| update.duration_seconds.clone()),
+        _ => None,
+    });
+    assert_eq!(changed_duration, Some(MetadataValue::Known(3)));
+    assert_eq!(media_metadata_probe_count(&path), 2);
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+    Ok(())
+}
+
+#[test]
+fn fill_directory_child_count_extracts_item_count() -> Result<(), Box<dyn Error>> {
+    let root = unique_fixture_root("fill-dir-count");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    fs::write(root.join("file-1.txt"), b"1").expect("file 1");
+    fs::write(root.join("file-2.txt"), b"2").expect("file 2");
+    fs::create_dir_all(root.join("subdir")).expect("subdir");
+
+    let events = run_fill(MetadataRequest {
+        id: RequestId(1),
+        entries: vec![Location::local(&root)],
+        full: false,
+        include_icon_details: true,
+        time_budget: Duration::from_secs(10),
+    });
+    assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
+    let child_count = events.iter().find_map(|event| match event {
+        DirectoryEvent::MetadataFilled { updates, .. } => {
+            updates.first().map(|update| update.child_count.clone())
+        }
+        _ => None,
+    });
+    assert_eq!(child_count, Some(MetadataValue::Known(3)));
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
     Ok(())
 }
 
@@ -1032,6 +1306,7 @@ fn parallel_fill_follows_symlinks_like_enumeration() -> Result<(), Box<dyn Error
             Location::local(&target),
         ],
         full: true,
+        include_icon_details: false,
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
@@ -1054,6 +1329,7 @@ fn parallel_fill_follows_symlinks_like_enumeration() -> Result<(), Box<dyn Error
     );
     let dir_update = by_location(&Location::local(&dir_link)).expect("the dir link should fill");
     assert_eq!(dir_update.size, MetadataValue::Unknown);
+    assert_eq!(dir_update.child_count, MetadataValue::Unknown);
     assert!(matches!(
         dir_update.modified_unix_seconds,
         MetadataValue::Known(_)
@@ -1082,8 +1358,14 @@ fn parallel_fill_cancellation_reports_cancelled_without_chunks() {
         collected.borrow_mut().push(event);
     });
     glib::MainContext::default().block_on(async {
-        let handle =
-            super::fill_parallel_with(8, RequestId(1), entries, Duration::from_secs(60), emit);
+        let handle = super::fill_parallel_with(
+            8,
+            RequestId(1),
+            entries,
+            false,
+            Duration::from_secs(60),
+            emit,
+        );
         let mut yielded = false;
         std::future::poll_fn(|cx| {
             if yielded {

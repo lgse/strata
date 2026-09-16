@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::HashMap,
     ffi::CString,
     fs, io,
-    io::Cursor,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
-use gtk::{gdk, gdk::prelude::GdkCairoContextExt, gio, glib, prelude::WidgetExt};
+use gtk::{gdk, gio, glib, prelude::*};
+
+mod vector;
 
 pub mod icons {
     pub const ARROW_DOWN: &str = "strata-arrow-down";
@@ -36,15 +37,23 @@ pub mod icons {
     pub const FILE_CODE: &str = "strata-file-code";
     pub const FILE_PLUS: &str = "strata-file-plus";
     pub const FOLDER: &str = "strata-folder";
+    pub const FOLDER_OPEN: &str = "strata-folder-open";
     pub const FOLDER_PLUS: &str = "strata-folder-plus";
     pub const HARD_DRIVE: &str = "strata-hard-drive";
     pub const INFO: &str = "strata-info";
+    pub const GLOBE: &str = "strata-globe";
+    pub const CODE_XML: &str = "strata-code-xml";
+    pub const BUG: &str = "strata-bug";
+    pub const SCALE: &str = "strata-scale";
+    pub const CORNER_DOWN_RIGHT: &str = "strata-corner-down-right";
     pub const FUNNEL: &str = "strata-funnel";
     pub const COLUMNS: &str = "strata-columns";
     pub const ICONS: &str = "strata-icons";
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
     pub const LIST_CHECKS: &str = "strata-list-checks";
+    pub const LOCK: &str = "strata-lock";
+    pub const LOCK_OPEN: &str = "strata-lock-open";
     pub const KEY: &str = "strata-key";
     pub const KEYBOARD: &str = "strata-keyboard";
     pub const MONITOR: &str = "strata-monitor";
@@ -55,6 +64,7 @@ pub mod icons {
     pub const PENCIL: &str = "strata-pencil";
     pub const PIN: &str = "strata-pin";
     pub const PLAY: &str = "strata-play";
+    pub const MINUS: &str = "strata-minus";
     pub const PLUS: &str = "strata-plus";
     pub const PRINTER: &str = "strata-printer";
     pub const PICTURES: &str = "strata-image";
@@ -72,6 +82,7 @@ pub mod icons {
     pub const VIDEOS: &str = "strata-video";
     pub const VOLUME_2: &str = "strata-volume-2";
     pub const VOLUME_X: &str = "strata-volume-x";
+    pub const WRAP_TEXT: &str = "strata-wrap-text";
     pub const X: &str = "strata-x";
 
     pub const CUSTOMIZATION_CHOICES: [(&str, &str); 16] = [
@@ -120,6 +131,8 @@ struct PrimaryIcon {
 }
 
 thread_local! {
+    static INTERFACE_ICON_SCALE: Cell<f64> = const { Cell::new(1.0) };
+    static INTERFACE_ICONS: RefCell<Vec<(glib::WeakRef<gtk::Image>, i32)>> = const { RefCell::new(Vec::new()) };
     static PRIMARY_ICON_COLOR: RefCell<String> = RefCell::new("#8bc9eb".to_owned());
     static PRIMARY_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
     static DANGER_ICON_COLOR: RefCell<String> = RefCell::new("#e5484d".to_owned());
@@ -156,15 +169,62 @@ pub fn register_icon_theme() {
 
 pub fn primary_icon(name: &str, pixel_size: i32) -> gtk::Image {
     let image = gtk::Image::new();
-    image.set_pixel_size(pixel_size);
+    register_interface_icon(&image, pixel_size);
     set_primary_icon(&image, name);
     image
+}
+
+pub fn set_interface_icon_scale(scale: f64) {
+    INTERFACE_ICON_SCALE.set(scale);
+    INTERFACE_ICONS.with(|icons| {
+        icons.borrow_mut().retain(|(weak, base)| {
+            let Some(image) = weak.upgrade() else {
+                return false;
+            };
+            image.set_pixel_size((f64::from(*base) * scale).round().max(1.0) as i32);
+            true
+        });
+    });
+}
+
+fn register_interface_icon(image: &gtk::Image, base: i32) {
+    image.set_pixel_size(
+        (f64::from(base) * INTERFACE_ICON_SCALE.get())
+            .round()
+            .max(1.0) as i32,
+    );
+    INTERFACE_ICONS.with(|icons| {
+        let mut icons = icons.borrow_mut();
+        icons.retain(|(image, _)| image.upgrade().is_some());
+        icons.push((image.downgrade(), base));
+    });
+    image.connect_scale_factor_notify(|image| {
+        for (registry, color) in [
+            (&PRIMARY_ICONS, primary_icon_color()),
+            (
+                &DANGER_ICONS,
+                DANGER_ICON_COLOR.with(|color| color.borrow().clone()),
+            ),
+        ] {
+            let name = registry.with(|icons| {
+                icons
+                    .borrow()
+                    .iter()
+                    .find(|icon| icon.image.upgrade().as_ref() == Some(image))
+                    .map(|icon| icon.name.clone())
+            });
+            if let Some(name) = name {
+                apply_primary_icon(image, &name, &color);
+                break;
+            }
+        }
+    });
 }
 
 pub fn chrome_icon(name: &str) -> gtk::Image {
     let image = gtk::Image::new();
     image.add_css_class("chrome-icon");
-    image.set_pixel_size(CHROME_ICON_PX);
+    register_interface_icon(&image, CHROME_ICON_PX);
     set_primary_icon(&image, name);
     // Fill stretches paintables when desktop themes allocate extra button space.
     image.set_halign(gtk::Align::Center);
@@ -250,7 +310,7 @@ pub fn primary_icon_color() -> String {
 
 pub fn danger_icon(name: &str, pixel_size: i32) -> gtk::Image {
     let image = gtk::Image::new();
-    image.set_pixel_size(pixel_size);
+    register_interface_icon(&image, pixel_size);
     let color = DANGER_ICON_COLOR.with(|color| color.borrow().clone());
     apply_primary_icon(&image, name, &color);
     DANGER_ICONS.with(|icons| register_icon(icons, &image, name));
@@ -293,8 +353,12 @@ fn recolor_registered_icons(icons: &RefCell<Vec<PrimaryIcon>>, color: &str) {
 fn apply_primary_icon(image: &gtk::Image, name: &str, color: &str) {
     let texture_px = if image.has_css_class("chrome-icon") {
         texture_px_for_pixel_size(image.pixel_size())
+            .max(image.pixel_size().saturating_mul(image.scale_factor()))
+            .clamp(24, 768)
     } else {
         ICON_TEXTURE_PX
+            .max(image.pixel_size().saturating_mul(image.scale_factor()))
+            .clamp(24, 768)
     };
     if let Some(texture) = primary_icon_texture_at(name, color, texture_px) {
         image.set_paintable(Some(&texture));
@@ -306,7 +370,7 @@ fn apply_primary_icon(image: &gtk::Image, name: &str, color: &str) {
 fn texture_px_for_pixel_size(pixel_size: i32) -> i32 {
     // Avoid excessive downsampling of toolbar strokes while supporting 2× displays.
     if pixel_size > 0 {
-        pixel_size.saturating_mul(2).clamp(24, ICON_TEXTURE_PX)
+        pixel_size.saturating_mul(2).clamp(24, 768)
     } else {
         ICON_TEXTURE_PX
     }
@@ -379,8 +443,7 @@ fn folder_emoji_texture(folder_source: &str, emoji: &str, color: &str) -> Option
     if let Some(texture) = cached_icon_texture(&key) {
         return Some(texture);
     }
-    let folder =
-        gdk_pixbuf::Pixbuf::from_read(Cursor::new(folder_source.as_bytes().to_vec())).ok()?;
+    let folder = vector::surface(folder_source, ICON_TEXTURE_PX)?;
     render_emoji_texture(key, emoji, 52.0, (44.0, 44.0), (48.0, 56.0), Some(&folder))
 }
 
@@ -402,12 +465,12 @@ fn render_emoji_texture(
     preferred_size: f64,
     bounds: (f64, f64),
     center: (f64, f64),
-    background: Option<&gdk_pixbuf::Pixbuf>,
+    background: Option<&cairo::ImageSurface>,
 ) -> Option<gdk::Texture> {
     let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, 96, 96).ok()?;
     let context = cairo::Context::new(&surface).ok()?;
     if let Some(background) = background {
-        context.set_source_pixbuf(background, 0.0, 0.0);
+        context.set_source_surface(background, 0.0, 0.0).ok()?;
         context.paint().ok()?;
     }
 
@@ -419,10 +482,7 @@ fn render_emoji_texture(
     );
     pangocairo::functions::show_layout(&context, &layout);
 
-    let mut png = Vec::new();
-    surface.write_to_png(&mut png).ok()?;
-    let pixbuf = gdk_pixbuf::Pixbuf::from_read(Cursor::new(png)).ok()?;
-    Some(cache_icon_texture(key, gdk::Texture::for_pixbuf(&pixbuf)))
+    Some(cache_icon_texture(key, texture_from_surface(&surface)?))
 }
 
 fn fitted_emoji_layout(
@@ -493,8 +553,30 @@ fn texture_from_svg(
     if let Some(texture) = cached_icon_texture(&key) {
         return Some(texture);
     }
-    let pixbuf = gdk_pixbuf::Pixbuf::from_read(Cursor::new(source.into_bytes())).ok()?;
-    Some(cache_icon_texture(key, gdk::Texture::for_pixbuf(&pixbuf)))
+    let surface = vector::surface(&source, texture_px)?;
+    Some(cache_icon_texture(key, texture_from_surface(&surface)?))
+}
+
+fn texture_from_surface(surface: &cairo::ImageSurface) -> Option<gdk::Texture> {
+    let mut bytes = None;
+    surface
+        .with_data(|data| bytes = Some(glib::Bytes::from_owned(data.to_vec())))
+        .ok()?;
+    let format = if cfg!(target_endian = "little") {
+        gdk::MemoryFormat::B8g8r8a8Premultiplied
+    } else {
+        gdk::MemoryFormat::A8r8g8b8Premultiplied
+    };
+    Some(
+        gdk::MemoryTexture::new(
+            surface.width(),
+            surface.height(),
+            format,
+            &bytes?,
+            surface.stride() as usize,
+        )
+        .upcast(),
+    )
 }
 
 fn cached_icon_texture(key: &(String, String, i32)) -> Option<gdk::Texture> {

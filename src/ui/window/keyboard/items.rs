@@ -32,6 +32,7 @@ impl Dispatcher {
         }
         if event.key == Key::Delete
             && !self.view.filter_has_focus()
+            && !event.text_has_focus()
             && self.view.confirm_delete(event.shift())
         {
             return Some(Propagation::Stop);
@@ -46,7 +47,7 @@ impl Dispatcher {
     }
 
     fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
-        if self.preview.is_open() {
+        if self.preview.is_enabled() {
             self.preview.close();
             return Some(Propagation::Stop);
         }
@@ -83,6 +84,10 @@ impl Dispatcher {
             self.view.at_left_edge(),
             self.top_bar.sidebar_toggle().is_active(),
         )?;
+        let action = match action {
+            SinglePaneArrow::Sidebar if self.arrows_scoped_to_content() => SinglePaneArrow::Stay,
+            other => other,
+        };
         Some(match action {
             SinglePaneArrow::Native => self.native_selection(event),
             SinglePaneArrow::Stay => Propagation::Stop,
@@ -96,13 +101,15 @@ impl Dispatcher {
     fn native_selection(&self, event: &KeyEvent) -> Propagation {
         if event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
             && event.key == Key::Up
+            && !self.arrows_scoped_to_content()
             && self.view.focus_header_from_top_item()
         {
             return Propagation::Stop;
         }
         self.view.commit_selection();
-        if !event.control() {
-            self.view.resume_native_selection();
+        let started_from_empty = !event.control() && self.view.resume_native_selection();
+        if event.shift() && started_from_empty {
+            return Propagation::Stop;
         }
         if event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
             && let Some(direction) = sidebar_focus_direction(event.key)
@@ -134,7 +141,13 @@ impl Dispatcher {
                 self.view.copy_path();
             }
             Key::p | Key::P => self.view.pin_focused(),
-            Key::space => self.preview.toggle(preview_target(browser.focused_entry())),
+            Key::space
+                if event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+                    && self.view.activate_directory_column() => {}
+            Key::space => self.preview.toggle(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            ),
             Key::BackSpace => self.view.navigate_up(),
             _ => return None,
         }
@@ -152,6 +165,7 @@ impl Dispatcher {
         }
         if !event.alt()
             && matches!(event.key, Key::k | Key::Up)
+            && !self.arrows_scoped_to_content()
             && self.view.focus_header_from_top_item()
         {
             return Some(Propagation::Stop);
@@ -182,7 +196,10 @@ impl Dispatcher {
     }
 
     fn navigate_left(&self, event: &KeyEvent) {
-        if self.view.first_column_has_focus() && self.top_bar.sidebar_toggle().is_active() {
+        if self.view.first_column_has_focus()
+            && self.top_bar.sidebar_toggle().is_active()
+            && !self.arrows_scoped_to_content()
+        {
             self.sidebar.enter(&event.focused);
         } else {
             self.view.navigate_left();

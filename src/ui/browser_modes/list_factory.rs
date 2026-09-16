@@ -34,6 +34,7 @@ pub(super) struct ListFactory {
     pub(super) scrolling: Rc<Cell<bool>>,
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     pub(super) state: Option<Weak<crate::ui::browser::ViewState>>,
+    pub(super) filter_query: Rc<RefCell<String>>,
 }
 
 impl ListFactory {
@@ -52,9 +53,6 @@ impl ListFactory {
             return;
         };
         let widget = assemble_list_row();
-        if !self.scrolling.get() {
-            animate_appearance(&widget);
-        }
         let Some(row) = ListRow::from_widget(widget) else {
             return;
         };
@@ -65,22 +63,28 @@ impl ListFactory {
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
+        let slow_click = Rc::new(super::SlowClickRename::default());
         install_preview_click(
             &row.widget,
             item,
             self.browser.clone(),
+            self.state.clone().unwrap_or_default(),
             self.previews.clone(),
             self.activation.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
+            self.filter_query.clone(),
+            slow_click.clone(),
         );
-        install_modified_selection_click(
+        let content_click = install_modified_selection_click(
             &row.widget,
             item,
             self.selection.clone(),
             self.browser.clone(),
+            self.state.clone().unwrap_or_default(),
             self.depth,
             self.positions.clone(),
+            slow_click.clone(),
         );
         install_list_drag_drop(
             &row.widget,
@@ -89,7 +93,13 @@ impl ListFactory {
             self.transfers.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
-            Some(row.name.upcast_ref()),
+            self.state.clone(),
+            (
+                Some(row.name.upcast_ref()),
+                Some(row.icon.upcast_ref()),
+                &content_click,
+                true,
+            ),
         );
     }
 
@@ -131,23 +141,13 @@ impl ListFactory {
         if self.scrolling.get() {
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
-            set_mode_cut_style(
-                &row.widget,
-                self.cuts.borrow().contains(&binding.entry.location),
-            );
+            let is_cut = self.cuts.borrow().contains(&binding.entry.location);
+            set_mode_cut_style(&row.widget, is_cut);
             binding.refresh_details(&row);
         }
+        row.icon.set_hidden(binding.entry.is_hidden);
+        row.icon.set_base_opacity(1.0);
     }
-}
-
-fn animate_appearance(row: &gtk::Box) {
-    row.add_css_class("file-appear");
-    let weak = row.downgrade();
-    glib::idle_add_local_once(move || {
-        if let Some(row) = weak.upgrade() {
-            row.remove_css_class("file-appear");
-        }
-    });
 }
 
 struct ListRow {
@@ -198,9 +198,11 @@ impl ListRow {
         self.name.set_visible(true);
         self.field.set_visible(false);
         set_label_if_changed(&self.name, pending_name.unwrap_or(&entry.display_name));
+        self.name
+            .set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
         set_label_if_changed(&self.mode, &entry_mode(entry));
         set_label_if_changed(&self.size, &entry_size(entry));
-        set_label_if_changed(&self.kind, entry_type(entry));
+        set_label_if_changed(&self.kind, &entry_type(entry));
         accessibility::describe_entry(
             item,
             pending_name.unwrap_or(&entry.display_name),
@@ -209,9 +211,12 @@ impl ListRow {
     }
 
     fn clear(&self) {
-        self.widget.remove_css_class("cut-item");
+        set_mode_cut_style(&self.widget, false);
         thumbnail::show_fallback_icon(&self.icon, crate::assets::icons::DOCUMENTS, 18);
+        self.icon.set_hidden(false);
+        self.icon.set_base_opacity(1.0);
         self.name.set_label("");
+        self.name.set_opacity(1.0);
         self.name.set_visible(true);
         self.field.set_visible(false);
         self.mode.set_label("");
@@ -239,9 +244,15 @@ impl ListBinding {
             18,
             18,
         );
-        if let Some(position) = metadata_fill_position(Some(self.position), &self.entry, true) {
-            self.browser
-                .request_metadata_fill(self.depth, position, self.entry.location.clone());
+        if let Some(position) =
+            metadata_fill_position(Some(self.position), &self.entry, true, false)
+        {
+            self.browser.request_metadata_fill(
+                self.depth,
+                position,
+                self.entry.location.clone(),
+                false,
+            );
         }
         crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
     }
@@ -272,7 +283,10 @@ pub(super) fn refresh_list_section(
         let Some(entry) = browser.entry_at(depth, position) else {
             return;
         };
-        set_mode_cut_style(&row.widget, cuts.contains(&entry.location));
+        let is_cut = cuts.contains(&entry.location);
+        let is_hidden = entry.is_hidden;
+        set_mode_cut_style(&row.widget, is_cut);
+        row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
         ListBinding {
             browser: browser.clone(),
             depth,
@@ -280,6 +294,8 @@ pub(super) fn refresh_list_section(
             entry,
         }
         .refresh_details(&row);
+        row.icon.set_hidden(is_hidden);
+        row.icon.set_base_opacity(1.0);
     });
 }
 

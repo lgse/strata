@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod bounds;
 mod clicks;
 mod scrolling;
 mod virtualization;

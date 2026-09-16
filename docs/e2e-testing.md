@@ -13,6 +13,91 @@ checks both what the window reports and what happened on disk.
 ./scripts/e2e.sh -k "clipboard and columns"
 ```
 
+### Targeted local validation
+
+Choose checks from the behavior and caller mapping, not from changed-file names
+alone. Bounded changes may use a non-empty, relevant selection; broad,
+cross-cutting, shared infrastructure, dependency/build/CI/harness changes, or
+uncertain coverage require the full pinned quality phases and the full canonical
+E2E run. Include relevant views, callers, and preference behavior, and add or
+run the regression test that proves the change. Record the scope rationale,
+commands, results, and intentional omissions in the handoff. After editing,
+rerun affected tests rather than unrelated suites.
+
+Run local lint and formatting checks only before pushing, not during the
+edit/test loop. For Rust changes, run `./scripts/quality.sh fmt` and
+`./scripts/quality.sh clippy` on the final code at that checkpoint; rerun affected
+checks if fixes change the code before the push. Even when full Rust tests are
+needed during iteration, use `./scripts/quality.sh test` and defer lint/format
+phases until pre-push. CI's lint and formatting checks remain unchanged.
+
+The repository owner may explicitly authorize pushing a PR without the normally
+required local tests for the current change/push. A general push request,
+urgency, silence, or consent for another push does not qualify. Record the
+explicit authorization, omitted suites, and known failures or unverified behavior
+in the handoff and PR description; never report skipped tests as passing. This
+exception does not waive lint/format checks, GUI isolation, or required CI/merge
+checks. Renew consent if the authorized scope changes, or run the required tests.
+
+For native Rust selection, `scripts/test-headless.py` starts the private display
+and session buses, then appends its arguments to the fixed
+`cargo test --all-targets --all-features` command. Use module/name filters:
+
+```bash
+./scripts/test-headless.py services::operations::tests
+./scripts/test-headless.py basenames_reject_empty_reserved_nested_absolute_and_nul_names
+```
+
+These select test execution across targets, not compilation to one target.
+Targeted runs can still incur a full test build; Cargo's cache helps subsequent
+iterations. There is no automatic changed-code dependency-to-test mapping.
+
+Controller regressions live under `src/app/browser/tests/`, grouped by navigation,
+location input, selection, monitor updates, preferences, operations, undo, metadata,
+staging, event dispatch, and archive activation. Add cases to the matching owner
+rather than to `src/app/browser/tests.rs`, which holds shared source/provider
+fixtures. Existing adjacent feature test modules retain their ownership. For
+example, `./scripts/test-headless.py app::browser::tests::undo::` selects undo
+history/claim regressions; `app::browser::tests::metadata::` selects metadata-fill
+and sort-terminal regressions. Keep distinct input routes and lifecycle cases
+separate even when they share fixtures.
+
+Local-operation regressions have owners under `src/adapters/local_operations/tests/`
+for path resolution, copying, moving, replacement, conflicts, progress, naming,
+paste results, undo, deletion, and restore safety. Shared fixtures and the manual
+deletion benchmarks remain in the parent `tests.rs`; keep the benchmark names
+stable for `scripts/benchmark-delete.sh`. For example,
+`./scripts/test-headless.py adapters::local_operations::tests::replacement::`
+selects replacement safety cases. Preserve independently named filesystem races,
+symlink, non-UTF8, cancellation, and conflict scenarios when sharing setup.
+
+A filter must collect at least one test; use Cargo's output or a collection
+check to verify that it did. `scripts/quality.sh` only accepts `all`, `fmt`,
+`clippy`, or `test` and does **not** forward test filters, so it cannot be used
+for a targeted test selection.
+
+The E2E runner passes repository-relative paths and normal pytest arguments to
+its configured pytest invocation. Use a file or `-k` expression, then confirm
+collection is nonzero:
+
+```bash
+./scripts/e2e.sh tests/e2e/scenarios/test_inline_renaming.py
+./scripts/e2e.sh -k 'rename and not visual' --collect-only
+```
+
+`./scripts/e2e.sh` is the canonical pinned-container evidence; native
+`scripts/e2e-native.sh` is only for host-toolkit debugging and does not replace
+it. Preserve the verified image provenance and `target/e2e-container` and
+`target/quality-container` caches. CI still runs its complete unchanged gate.
+
+Every GUI or delegated check must clear inherited display variables and use a
+private Xvfb and private D-Bus session. `scripts/test-headless.py` and the E2E
+runners enforce this isolation. Rust tests set `GTK_A11Y=none`, `NO_AT_BRIDGE=1`,
+and `STRATA_REQUIRE_GTK_TESTS=1`; E2E enables accessibility on its private AT-SPI
+bus to drive the application. Other commands must arrange equivalent isolation. A
+missing isolated display or bus is a hard failure. Never run against the desktop
+or an inherited session bus, silently skip GTK tests, or fall back to the desktop.
+
 The runner prefers Podman when available; select an engine explicitly with
 `STRATA_CONTAINER_ENGINE=podman` or `docker`. CI explicitly selects Docker to match
 its runtime archive loader; an image in one engine's store is not visible to the
@@ -42,12 +127,29 @@ from native builds. Artifacts remain in `target/e2e-artifacts` and are owned by
 the invoking user. Minimal generated passwd/group files provide the invoking
 UID/GID to D-Bus, so one published environment works across local user IDs without
 rebuilding it or mounting the host's account database.
+The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
+and GTK's GStreamer media backend with the base/good/libav plugins. Rust media
+regressions exercise actual normalization, playback, and long-source duration
+limits rather than skipping when optional host tools are missing. These packages
+come from the existing dated Ubuntu snapshot; the GTK/GLib baseline and Rust
+compiler are unchanged. This test-only dependency addition does not apply or
+retire the version-specific GTK 4.22.4/GstPlay 1.28.6 patches in
+`packaging/media-runtime/`; that opt-in kit remains unchanged and is not shipped
+by this image update.
+
+Rootless Podman
+runs unmask `/proc/*` inside the test container so bubblewrap can mount its own
+private `/proc`; the decoder's sandbox and the container's seccomp policy remain
+enabled. Docker's outer seccomp/AppArmor profiles and system-path masks must be
+disabled for the nested namespace and mount operations. This applies only to the
+disposable E2E container; Strata still launches its normal bubblewrap decoder
+sandbox. Neither engine uses privileged mode or mounts desktop sockets.
 Updating the image inputs is an intentional rendering
 environment change and requires reviewing the visual baselines.
 
 For explicit host-toolkit debugging only, `./scripts/e2e-native.sh` accepts
-`STRATA_BINARY` and `STRATA_E2E_VENV`. It is not the pre-push E2E gate; a native
-pass does not replace `./scripts/e2e.sh`.
+`STRATA_BINARY` and `STRATA_E2E_VENV`. A native pass does not replace canonical
+`./scripts/e2e.sh` evidence when targeted or full E2E validation is required.
 
 ### Shared environment for formatting, lint, and Rust tests
 
@@ -71,15 +173,72 @@ shown above.
 Quality's Cargo home and build directory are under `target/quality-container`,
 separate from E2E and native builds. Its Actions cache is keyed by environment,
 Cargo manifests, and source revision, with same-environment/manifest restoration.
-Only successful main pushes save caches; PR consumers cannot populate main's
-cache. Cold quality compilation includes test-only and all-feature dependencies,
-so the E2E application dependency cache is not advertised as a full quality hit.
+Only successful quality builds on main pushes save caches; PR consumers cannot
+populate main's cache. These are compilation caches, not evidence of passing tests;
+the aggregate gate separately requires all test shards to pass. Cold quality
+compilation includes test-only and all-feature dependencies, so the E2E application
+dependency cache is not advertised as a full quality hit.
 
 The Rust suite runs with `--all-targets --all-features --locked` inside private
 Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
 GTK initialization failures cannot silently skip tests. Formatting, compiler,
 lint, and test failures remain blocking. Lightweight policy/helper jobs retain
 their existing runners rather than downloading a large GUI image unnecessarily.
+
+### Rust quality shards
+
+CI's **Quality build and lint** job runs formatting and Clippy, then compiles
+`cargo test --locked --all-targets --all-features --no-run` once. It exports only
+test executables and a plan, not Cargo caches. `scripts/quality_ci.py` collects
+each libtest inventory, including the explicitly ignored tests, and assigns every
+entry to one of two shards. Timing hints in `scripts/quality-durations.json`
+come from successful GTK child runs in
+[run 34560353003](https://github.com/lgse/strata/actions/runs/34560353003).
+Tests are balanced longest-first across both shards; unknown tests receive a
+one-second weight and always participate. Timing hints are not an allowlist.
+The deferred-scroll timing was refreshed to 1.32 seconds from
+[run 34811363582](https://github.com/lgse/strata/actions/runs/34811363582).
+`ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset`
+runs in its own libtest process before the other tests assigned to its shard,
+not on a dedicated runner. Each process must pass its complete selection before
+an aggregate shard receipt is written. Validation rejects a missing, duplicated,
+or ignored isolated test; renaming or removing it requires updating `ISOLATED_TEST`.
+Sharding does not shorten an individual test.
+
+Each **Rust tests shard N** verifies the checkout revision, application/Rust-test source
+fingerprint, image inputs, executable checksums, and the entire libtest inventory
+before selecting exact names. Tests share neither a display nor a session bus
+with another shard. The existing per-process GTK serialization still applies.
+The runner checks libtest's actual selection and final passed/ignored counts
+before writing a success receipt; nonzero exits, empty runnable shards, or changed
+inventories fail. Existing `#[ignore]` entries stay explicitly accounted for;
+sharding neither enables them nor silently ignores additional tests. Unsupported
+non-libtest harness inventories fail closed rather than disappearing from coverage.
+
+Published environments are pulled by the build job's exact manifest digest and
+verified again by `quality.sh`. Deliberate unpublished recipe updates transfer
+the same locally built environment as an attempt-scoped artifact instead; shards
+never rebuild it. **Format, lint, and test** retains the required-check name,
+requires successful build/lint and every shard, and verifies no missing, extra,
+duplicate, or stale receipts. Failed shards are not retried, and `fail-fast: false`
+preserves the other shards' results. Reports and logs are attempt-scoped artifacts.
+
+To reproduce the handoff locally using the same pinned container:
+
+```bash
+STRATA_QUALITY_TASK=build ./scripts/quality.sh test
+for shard in 0 1; do
+  STRATA_QUALITY_TASK=shard STRATA_QUALITY_SHARD="$shard" ./scripts/quality.sh test
+done
+python3 scripts/quality_ci.py verify
+```
+
+The example runs shards sequentially for convenient local diagnosis; CI runs them
+in parallel on separate runners. These environment variables are CI handoff modes,
+not test filters; ordinary `./scripts/quality.sh test` still runs the complete
+unsharded suite. Rebuild the bundle after changing source or checkout revision.
+The two-shard matrix and `SHARDS` constant must be updated together if tuning
+fan-out. Each shard has a ten-minute hang bound; timing is otherwise informational.
 
 ### Hardware-aware parallelism
 
@@ -119,17 +278,19 @@ setup or Rust compilation.
 ### Keep Rust test windows off the local desktop
 
 Some Rust tests also create GTK windows when a display is available. Run the
-complete Rust test suite on the same private Xvfb/D-Bus infrastructure with:
+complete suite, or a justified targeted selection, on the same private
+Xvfb/private D-Bus infrastructure with:
 
 ```bash
 ./scripts/test-headless.py
 ./scripts/test-headless.py -- --nocapture
+./scripts/test-headless.py relevant_module_or_test_name
 ```
 
 This requires Xvfb and AT-SPI but not the Python E2E packages. It isolates
 application preferences while retaining access to the installed Cargo/Rust
 toolchains, and disables accessibility bridging for Rust tests. A startup failure
-aborts; it never falls back to the real display.
+aborts; it never falls back to the real display or an inherited session bus.
 The E2E runner likewise clears inherited display variables before startup.
 
 ### Native debugging dependencies
@@ -224,10 +385,13 @@ def test_something(strata):
 
 `test_inline_renaming.py` checks immediate default-file/folder creation, collision
 numbering, selected default names, valid-name commits on click-away, and retaining
-the original name on Escape or representative invalid input. It exercises existing and newly
-created items in all three views, verifies file contents, and covers repeated
-renames with folder-wide or file-stem selection. `test_entry_management.py` also
-covers reopening invalid edits, inside-field clicks, name conflicts, and empty
+the original name on Escape or representative invalid input. Enter and sidebar
+commits still run existing and newly created files and folders in all three views;
+the four shared click-away targets run in Columns and List on an existing file.
+Invalid names keep one Enter and one real click-away; correction/reopen still runs in all three views.
+Escape cancellation is kind × new in the default Columns view. Repeated renames
+keep file-stem vs folder-name selection in Columns and List. `test_entry_management.py`
+also covers reopening invalid edits, inside-field clicks, name conflicts, and empty
 directories.
 
 ```bash
@@ -322,13 +486,16 @@ workflow fail:
 ./scripts/e2e-mutation-check.sh clipboard    # one of them
 ```
 
-Each patch breaks a single critical workflow — drag and drop, clipboard,
-keyboard navigation, click modes, view switching, filtered quick preview. The unmodified scenarios
-must pass first; only a failed scenario assertion in the mutated run counts as
-detection, not a startup/collection error or killed process. Logs and JUnit
-reports are saved in `target/e2e-mutations`. The script restores source changes
-afterwards. Run it after changing the harness, and when adding a scenario for
-a workflow that does not have a mutation yet.
+Each patch breaks a single critical workflow and maps to the scenario that
+hits the mutated line, not every test in that file: drop onto a folder,
+Ctrl+V paste, arrow-key selection, single-click activation, the appearance
+menu, filtered Space preview, filter-row updates, popover outside-wheel,
+and the long-name caret. The unmodified scenarios must pass first; only a failed
+scenario assertion in the mutated run counts as detection, not a
+startup/collection error or killed process. Logs and JUnit reports are
+saved in `target/e2e-mutations`. The script restores source changes
+afterwards. Run it after changing the harness, and when adding a scenario
+for a workflow that does not have a mutation yet.
 
 ## In CI
 
@@ -362,13 +529,19 @@ a workflow that does not have a mutation yet.
 
 The matrix is generated from `harness/sharding.py`, not a fixed runner count or
 file list. Tests are scheduled longest-first using committed setup+call+teardown
-CI measurements from `tests/e2e/durations.json`, with 25% headroom and a 30-second
-estimated worker budget. New tests automatically receive a conservative five-second
-weight. More tests or longer measured durations add runners. Baselines stay in
-one serial scheduling group. An indivisible group over budget or a plan requiring
-more than GitHub's 256 matrix jobs fails explicitly instead of silently extending
-the gate. There is no `max-parallel` throttle; the runner provider must have enough
-concurrent capacity. Runner queues affect reported timing, not test correctness.
+CI measurements from `tests/e2e/durations.json`, with 25% headroom and a 180-second
+soft target per worker (two workers per runner). This leaves room for runner setup
+within an approximately three-to-four-minute shard job; actual timings may vary.
+New tests automatically receive a conservative five-second weight. More tests or longer measured durations add runners
+up to a maximum of three shards, reducing duplicated runtime setup and bounding
+fan-out. At the cap, shards run longer rather than failing planning or dropping tests.
+Baselines stay in one serial scheduling group, even when that group exceeds the soft
+target. Estimated time alone never fails the gate; hang-protection timeouts still apply.
+Tune `TARGET_SECONDS` and `MAX_SHARDS` in `tests/e2e/harness/sharding.py` manually as
+runtime and cost needs change. The shard cap is not a spending cap: longer runs still
+consume more runner-minutes. There is no `max-parallel` throttle; the runner provider
+must have enough concurrent capacity for up to three shards. Runner queues affect
+reported timing, not test correctness.
 
 Shards validate their entire collection against the plan before selecting tests.
 A missing, extra, skipped, failed, or stale result fails the aggregate gate.
@@ -576,6 +749,15 @@ Review and commit the changes. Reports must cover every test and shard; partial 
 failed runs cannot overwrite scheduling measurements. Durations are scheduling
 hints, never an allowlist: new tests always participate without editing this file.
 
+### Maintaining behavioral coverage
+
+Before consolidating tests, identify the retained behavioral owner for every
+assertion. Fewer test functions or collected cases do not establish a runtime
+improvement. Preserve functional layout, input-routing, filesystem-safety,
+live-preference and lifecycle regressions, even when they share fixtures.
+Record task-specific inventories and consolidation decisions in the issue or PR,
+not in a committed audit report.
+
 ### Coverage audit (#607)
 
 154 GUI cases were removed from the 729-test inventory (six new harness tests
@@ -584,15 +766,17 @@ nightly-only, or changed-files-only suite.
 
 | Removed/reduced coverage | Retained owner |
 | --- | --- |
-| Six invalid strings × mode × kind × new/existing × completion, reduced to `bad/name` (120 cases removed) | `src/services/operations/tests.rs::basenames_reject_empty_reserved_nested_absolute_and_nul_names` (no GTK/display requirement); GUI retains every mode/kind/lifecycle and both Enter and real click-away |
+| Six invalid strings × mode × kind × new/existing × completion, reduced to `bad/name` (120 cases removed) | `src/services/operations/tests.rs::basenames_reject_empty_reserved_nested_absolute_and_nul_names` (no GTK/display requirement); GUI keeps one Enter and one real click-away |
 | Four invalid names in correction/reopen workflow, reduced to one (9) | Same validation tests; correction/reopen still runs in all three views |
-| Four accepted-name variants in inside-field click workflow, reduced to ` padded ` (18) | `basenames_accept_single_native_and_unicode_components`; GUI still checks exact untrimmed names for files/folders in every view |
-| Standalone new-folder Escape and existing-file cancellation tests (4) | `test_inline_renaming.py::test_escape_preserves_the_original_name`, covering both lifecycles, kinds, and every view |
+| Four accepted-name variants in inside-field click workflow, reduced to ` padded ` (18) | `basenames_accept_single_native_and_unicode_components`; GUI still checks exact untrimmed names for files and folders |
+| Standalone new-folder Escape and existing-file cancellation tests (4) | `test_inline_renaming.py::test_escape_preserves_the_original_name`, covering both lifecycles and kinds |
 | Standalone invalid rename in dialogs suite (1) | Stronger synchronized `test_invalid_names_retain_the_original`, including filesystem contents and GTK-critical checks |
 | Separate preview metadata/list-preservation launches (2) | Assertions consolidated into `test_space_opens_and_closes_the_quick_preview` in all three views |
 
-All 72 valid rename focus-exit combinations remain: GTK's real in-flight focus walk
-is not covered by emitting a controller signal in Rust. Real drag/XTEST routing,
+All six valid-rename dismiss targets remain as real XTEST focus walks: GTK's in-flight
+focus walk is not covered by emitting a controller signal in Rust. Enter and sidebar
+still run across modes, kinds, and new vs existing items; the four shared click-away
+targets run in Columns and List on an existing file. Real drag/XTEST routing,
 caret visibility, clipboard selection/undo, multi-window preferences, accessibility
 semantics, and all six visual baselines also remain. The removed validation vectors
 are covered by unconditional, display-independent Rust tests—not by tests that

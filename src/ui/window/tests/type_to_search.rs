@@ -99,32 +99,54 @@ fn exercise_type_to_search() {
         );
     }
 
-    for enabled in [true, false] {
-        preferences.set_type_to_search(enabled);
-        for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-            view.set_view_mode(mode);
-            select_entry(&browser, "notes.txt");
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_view_mode(mode);
+        select_entry(&browser, "notes.txt");
+        browser.focus_active();
+        wait_until(|| view.item_view_has_focus());
+        press(&keys, gtk::gdk::Key::space);
+        assert!(preview.is_open(), "Space opens preview: {mode:?}");
+        assert!(!view.filter_has_focus());
+        press(&keys, gtk::gdk::Key::space);
+        assert!(!preview.is_open(), "Space closes preview: {mode:?}");
+        for name in ["folder", "archive.zip"] {
+            select_entry(&browser, name);
             browser.focus_active();
             wait_until(|| view.item_view_has_focus());
             press(&keys, gtk::gdk::Key::space);
             assert!(
-                preview.is_open(),
-                "Space opens preview: {mode:?}, type-to-search={enabled}"
+                !preview.is_open(),
+                "Space must not preview {name}: {mode:?}"
             );
             assert!(!view.filter_has_focus());
-            press(&keys, gtk::gdk::Key::space);
-            assert!(!preview.is_open(), "Space closes preview: {mode:?}");
-            for name in ["folder", "archive.zip"] {
-                select_entry(&browser, name);
-                browser.focus_active();
-                wait_until(|| view.item_view_has_focus());
-                press(&keys, gtk::gdk::Key::space);
-                assert!(
-                    !preview.is_open(),
-                    "Space must not preview {name}: {mode:?}, type-to-search={enabled}"
+            if name == "folder" && mode == BrowserMode::Columns {
+                wait_until(|| {
+                    browser
+                        .column_snapshot(1)
+                        .is_some_and(|column| !column.loading)
+                });
+                assert_eq!(
+                    browser.active_location(),
+                    Some(Location::local(fixture.path().join("folder")))
                 );
-                assert!(!view.filter_has_focus());
+                assert_eq!(
+                    browser.location_at(0),
+                    Some(Location::local(fixture.path()))
+                );
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+            } else {
+                assert_eq!(
+                    browser.active_location(),
+                    Some(Location::local(fixture.path())),
+                    "Space must not navigate: {mode:?}, {name}"
+                );
             }
+            preview.close();
         }
     }
 

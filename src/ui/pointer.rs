@@ -61,6 +61,26 @@ pub(super) fn hits_item_content(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     false
 }
 
+/// Unlike hover, focus, and drag, marquee must treat frame padding as gutter.
+pub(super) fn hits_icon_card_content(card: &gtk::Widget, x: f64, y: f64) -> bool {
+    hits_item_content(card, x, y)
+        || card
+            .pick(x, y, gtk::PickFlags::DEFAULT)
+            .is_some_and(|widget| widget.has_css_class("icons-card-icon-frame"))
+}
+
+/// The full Name column, including row padding, uses content-only hit testing.
+pub(super) fn hits_list_item_content(row: &gtk::Widget, x: f64, y: f64) -> bool {
+    let in_name = row
+        .first_child()
+        .filter(|cell| cell.has_css_class("list-name-cell"))
+        .and_then(|cell| cell.compute_bounds(row))
+        .is_some_and(|bounds| {
+            x >= f64::from(bounds.x()) && x < f64::from(bounds.x() + bounds.width())
+        });
+    !in_name || hits_item_content(row, x, y)
+}
+
 pub(super) fn is_background(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     let mut current = surface.pick(x, y, gtk::PickFlags::DEFAULT);
     while let Some(widget) = current {

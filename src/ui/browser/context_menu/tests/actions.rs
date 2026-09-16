@@ -49,7 +49,7 @@ fn selection_actions_resolve_at_click_time_and_do_not_keep_the_view_alive() {
             );
 
             let fallback = browser.entry_at(0, 0).expect("fallback entry");
-            target.replace(Some((0, fallback.clone())));
+            target.replace(Some((Some(0), fallback.clone())));
             let selection = view.state.columns.borrow()[0].selection.clone();
             selection.unselect_all();
             button.emit_clicked();
@@ -68,14 +68,24 @@ fn selection_actions_resolve_at_click_time_and_do_not_keep_the_view_alive() {
             selection.unselect_all();
             selection.select_item(0, true);
             let direct_target = browser.entry_at(0, 1).expect("direct target");
-            target.replace(Some((1, direct_target.clone())));
+            target.replace(Some((Some(1), direct_target.clone())));
             button.emit_clicked();
-            assert_eq!(received.borrow()[2], vec![direct_target.location]);
+            assert_eq!(received.borrow()[2], vec![direct_target.location.clone()]);
+
+            selection.select_all();
+            target.replace(Some((None, direct_target.clone())));
+            button.emit_clicked();
+            assert_eq!(
+                received.borrow()[3],
+                vec![direct_target.location.clone()],
+                "recursive targets must not inherit the directory multiselection"
+            );
+            assert!(current_context_position(&view.state, 0, Some(0), &direct_target).is_none());
 
             selection.unselect_all();
             target.take();
             button.emit_clicked();
-            assert!(received.borrow()[3].is_empty());
+            assert!(received.borrow()[4].is_empty());
 
             let weak = Rc::downgrade(&view.state);
             browser.clear_observer();
@@ -85,7 +95,7 @@ fn selection_actions_resolve_at_click_time_and_do_not_keep_the_view_alive() {
                 "menu callback must not own the browser view"
             );
             button.emit_clicked();
-            assert_eq!(received.borrow().len(), 4, "a stale action must not run");
+            assert_eq!(received.borrow().len(), 5, "a stale action must not run");
         },
     );
 }

@@ -4,7 +4,7 @@ mod keyboard_dispatch;
 mod preferences;
 mod type_to_search;
 
-use std::{cell::Cell, path::Path};
+use std::{cell::Cell, path::Path, rc::Rc};
 
 use gtk::glib;
 
@@ -17,13 +17,16 @@ use crate::{
 };
 
 use super::{
-    DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
-    TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
-    browser_for_window, browser_mode_for_digit, event_changes_trash_contents,
-    is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
-    jump_direction, media_release_label, mount_release_action, mouse_history_action,
-    page_direction, parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    DEFAULT_ACCELS, EncryptedMediaAction, MediaRelease, MouseHistoryAction, PinStatus,
+    SIDEBAR_WIDTH, STANDARD_PLACE_IDS, TrashContents, TrashMenuVisibility, TypeToSearchQuery,
+    accepts_sidebar_reorder_payload, begin_media_release, browser_for_window,
+    browser_mode_for_digit, build_sidebar, confirm_forget_cached_password, continue_encrypted_lock,
+    device_row_actions, event_changes_trash_contents, is_context_menu_shortcut,
+    is_native_editing_shortcut, is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
+    is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, load_pinned_places,
+    media_release_label, mouse_history_action, page_direction, parse_pinned_drag_source,
+    parse_pinned_places, pin_status, pinned_places_path, remove_pinned_place,
     reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
     should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
     trash_contents_from_probe, trash_has_entries, trash_menu_visibility, type_to_search_query,
@@ -288,6 +291,63 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
 }
 
 #[test]
+fn native_editing_shortcuts_are_left_to_the_focused_widget() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+
+    for key in [
+        gtk::gdk::Key::a,
+        gtk::gdk::Key::c,
+        gtk::gdk::Key::v,
+        gtk::gdk::Key::x,
+    ] {
+        assert!(is_native_editing_shortcut(key, control));
+    }
+    assert!(!is_native_editing_shortcut(
+        gtk::gdk::Key::c,
+        control | gtk::gdk::ModifierType::SHIFT_MASK
+    ));
+}
+
+#[test]
+fn context_menu_shortcut_accepts_menu_key_alone_and_shift_f10() {
+    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    let alt = gtk::gdk::ModifierType::ALT_MASK;
+
+    assert!(is_context_menu_shortcut(
+        gtk::gdk::Key::Menu,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_context_menu_shortcut(gtk::gdk::Key::F10, shift));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, shift));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, control));
+    assert!(!is_context_menu_shortcut(
+        gtk::gdk::Key::F10,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_context_menu_shortcut(
+        gtk::gdk::Key::F10,
+        shift | control
+    ));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::F10, shift | alt));
+    for modifier in [
+        gtk::gdk::ModifierType::SUPER_MASK,
+        gtk::gdk::ModifierType::HYPER_MASK,
+        gtk::gdk::ModifierType::META_MASK,
+    ] {
+        assert!(!is_context_menu_shortcut(
+            gtk::gdk::Key::F10,
+            shift | modifier
+        ));
+        assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, modifier));
+    }
+    assert!(is_context_menu_shortcut(
+        gtk::gdk::Key::Menu,
+        gtk::gdk::ModifierType::LOCK_MASK
+    ));
+}
+
+#[test]
 fn type_to_search_accepts_printable_keys_without_command_modifiers() {
     assert_eq!(
         type_to_search_query(gtk::gdk::Key::a, gtk::gdk::ModifierType::empty()),
@@ -508,7 +568,7 @@ fn only_pinned_drag_payloads_resolve_to_a_pinned_place() {
 #[test]
 fn gtk_bookmarks_become_native_and_remote_pinned_places() {
     let places = parse_pinned_places(
-        "file:///home/user/Projects Work\nsftp://host.example/home/user Remote\nfile:///home/user/Projects Duplicate\n",
+        b"file:///home/user/Projects Work\nsftp://host.example/home/user Remote\nfile:///home/user/Projects Duplicate\n",
     );
 
     assert_eq!(
@@ -525,9 +585,28 @@ fn gtk_bookmarks_become_native_and_remote_pinned_places() {
 }
 
 #[test]
+fn gtk_bookmarks_survive_non_utf8_labels_and_windows_line_endings() {
+    let places = parse_pinned_places(b"file:///tmp/a A\r\nfile:///tmp/b \xff\nfile:///tmp/c C\n");
+
+    assert_eq!(places.len(), 3);
+    assert_eq!(places[0].1, "A");
+    assert_eq!(places[1].1, "\u{FFFD}");
+    assert_eq!(places[2].1, "C");
+}
+
+#[test]
+fn gtk_bookmarks_drop_lines_with_non_utf8_uris() {
+    let places = parse_pinned_places(b"file:///tmp/\xff bad\nfile:///tmp/good Good\n");
+
+    assert_eq!(places.len(), 1);
+    assert_eq!(places[0].0.native_path(), Some(Path::new("/tmp/good")));
+    assert_eq!(places[0].1, "Good");
+}
+
+#[test]
 fn gtk_bookmarks_sanitize_uris_with_credentials() {
     let places = parse_pinned_places(
-        "smb://alice@host/safe Safe\nsmb://alice:secret@host/private Password\nsmb://alice%3Asecret@host/private Encoded password delimiter\nsmb://alice;password=secret@host/private Auth\nsmb://alice%3Bpassword=secret@host/private Encoded auth delimiter\nsmb://alice;password=sec%72et@host/private Encoded value\nsmb://alice%ZZ@host/private Invalid\n",
+        b"smb://alice@host/safe Safe\nsmb://alice:secret@host/private Password\nsmb://alice%3Asecret@host/private Encoded password delimiter\nsmb://alice;password=secret@host/private Auth\nsmb://alice%3Bpassword=secret@host/private Encoded auth delimiter\nsmb://alice;password=sec%72et@host/private Encoded value\nsmb://alice%ZZ@host/private Invalid\n",
     );
 
     assert_eq!(places.len(), 2);
@@ -670,6 +749,9 @@ fn sidebar_sync_runs_only_for_location_changes() {
         &BrowserEvent::ColumnsTruncated { len: 1 }
     ));
     assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::ColumnsRelocated { from_depth: 1 }
+    ));
+    assert!(SidebarState::event_changes_active_place(
         &BrowserEvent::FocusChanged {
             depth: 0,
             position: Some(2),
@@ -730,20 +812,274 @@ fn volume_release_prefers_eject_and_hides_fixed_disks() {
 }
 
 #[test]
-fn mount_release_prefers_eject_and_hides_fixed_disks() {
+fn encrypted_device_actions_share_lock_and_release() {
+    let locked = device_row_actions(true, false, false, false, false);
+    assert_eq!(locked.encrypted, Some(EncryptedMediaAction::Unlock));
+    assert_eq!(locked.release, None);
     assert_eq!(
-        mount_release_action(true, false),
-        Some(MediaRelease::EjectMount)
+        device_row_actions(true, false, true, false, false).release,
+        Some(MediaRelease::EjectVolume)
     );
-    assert_eq!(
-        mount_release_action(true, true),
-        Some(MediaRelease::EjectMount)
+
+    let unlocked = device_row_actions(true, true, false, false, true);
+    assert_eq!(unlocked.encrypted, Some(EncryptedMediaAction::Lock));
+    assert_eq!(unlocked.release, Some(MediaRelease::UnmountMount));
+
+    let usb = device_row_actions(false, true, false, false, true);
+    assert_eq!(usb.encrypted, None);
+    assert_eq!(usb.release, Some(MediaRelease::UnmountMount));
+
+    let shutdown = device_row_actions(false, false, false, false, false);
+    assert_eq!(shutdown.encrypted, None);
+    assert_eq!(shutdown.release, None);
+}
+
+#[test]
+fn forget_password_prompt_routes() {
+    gtk_test("ui::window::tests::forget_password_prompt_routes", || {
+        use gtk::prelude::*;
+
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+        let window = gtk::Window::builder().child(&overlay).build();
+        window.present();
+
+        let locked = Rc::new(Cell::new(false));
+        let cancelled = Rc::new(Cell::new(false));
+        continue_encrypted_lock(
+            overlay.upcast_ref(),
+            "STRATA-537",
+            false,
+            {
+                let locked = locked.clone();
+                move || locked.set(true)
+            },
+            {
+                let cancelled = cancelled.clone();
+                move || cancelled.set(true)
+            },
+        );
+        assert!(locked.get(), "uncached lock should proceed immediately");
+        assert!(!cancelled.get(), "uncached lock should not cancel");
+        assert!(
+            button_with_label(overlay.upcast_ref(), "Forget and lock").is_none(),
+            "uncached lock should not open a confirmation"
+        );
+        window.destroy();
+
+        for confirm in [true, false] {
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let locked = Rc::new(Cell::new(false));
+            let cancelled = Rc::new(Cell::new(false));
+            confirm_forget_cached_password(
+                overlay.upcast_ref(),
+                "STRATA-537",
+                {
+                    let locked = locked.clone();
+                    move || locked.set(true)
+                },
+                {
+                    let cancelled = cancelled.clone();
+                    move || cancelled.set(true)
+                },
+            );
+            let label = if confirm { "Forget and lock" } else { "Cancel" };
+            button_with_label(overlay.upcast_ref(), label)
+                .unwrap_or_else(|| panic!("confirmation should offer {label}"))
+                .emit_clicked();
+            assert_eq!(locked.get(), confirm, "{label} should lock only on confirm");
+            assert_eq!(
+                cancelled.get(),
+                !confirm,
+                "{label} should cancel only on cancel"
+            );
+            window.destroy();
+        }
+    });
+}
+
+fn button_with_label(root: &gtk::Widget, label: &str) -> Option<gtk::Button> {
+    use gtk::prelude::*;
+
+    if let Ok(button) = root.clone().downcast::<gtk::Button>()
+        && button.label().as_deref() == Some(label)
+    {
+        return Some(button);
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if let Some(button) = button_with_label(&widget, label) {
+            return Some(button);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+#[test]
+fn emblemed_padlock_icon_names_include_emblem() {
+    gtk_test(
+        "ui::window::tests::emblemed_padlock_icon_names_include_emblem",
+        || {
+            use gtk::gio;
+            use gtk::prelude::*;
+            let base = gio::ThemedIcon::new("drive-harddisk-usb");
+            let padlock = gio::ThemedIcon::new("changes-prevent");
+            let emblem = gio::Emblem::new(&padlock);
+            let emblemed = gio::EmblemedIcon::new(&base, Some(&emblem));
+            let names = super::gio_icon_names(emblemed.upcast_ref());
+            assert!(
+                names.iter().any(|name| name == "drive-harddisk-usb"),
+                "base drive icon should remain"
+            );
+            assert!(
+                names.iter().any(|name| name == "changes-prevent"),
+                "GVfs padlock emblem should be collected"
+            );
+        },
     );
-    assert_eq!(
-        mount_release_action(false, true),
-        Some(MediaRelease::UnmountMount)
+}
+
+#[test]
+fn device_controls_dispatch_independently() {
+    gtk_test(
+        "ui::window::tests::device_controls_dispatch_independently",
+        || {
+            use gtk::prelude::*;
+
+            let opened = Rc::new(Cell::new(0));
+            let unlocked = Rc::new(Cell::new(0));
+            let ejected = Rc::new(Cell::new(0));
+            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "USB Backup");
+            row.connect_clicked({
+                let opened = opened.clone();
+                move |_| opened.set(opened.get() + 1)
+            });
+            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, {
+                let unlocked = unlocked.clone();
+                move || unlocked.set(unlocked.get() + 1)
+            });
+            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, {
+                let ejected = ejected.clone();
+                move || ejected.set(ejected.get() + 1)
+            });
+            let _shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
+            lock.emit_clicked();
+            assert_eq!((opened.get(), unlocked.get(), ejected.get()), (0, 1, 0));
+            eject.emit_clicked();
+            assert_eq!((opened.get(), unlocked.get(), ejected.get()), (0, 1, 1));
+            row.emit_clicked();
+            assert_eq!((opened.get(), unlocked.get(), ejected.get()), (1, 1, 1));
+        },
     );
-    assert_eq!(mount_release_action(false, false), None);
+}
+
+#[test]
+fn unsupported_unmounted_lock_fails_before_password_lookup() {
+    gtk_test(
+        "ui::window::tests::unsupported_unmounted_lock_fails_before_password_lookup",
+        || {
+            use gtk::prelude::*;
+
+            let view = browser_for_window();
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let in_flight = Rc::new(Cell::new(false));
+            super::request_encrypted_lock(
+                overlay.upcast_ref(),
+                "USB Backup",
+                Some("6e5d75a7-e4e2-4c7d-9c1c-8e5a5e5d75a7".into()),
+                None,
+                None,
+                &view.browser(),
+                &in_flight,
+            );
+            assert!(!in_flight.get());
+            assert!(button_with_label(overlay.upcast_ref(), "Forget and lock").is_none());
+            button_with_label(overlay.upcast_ref(), "Close")
+                .expect("unsupported lock reports an error immediately")
+                .emit_clicked();
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn device_selection_marks_the_full_row_shell() {
+    gtk_test(
+        "ui::window::tests::device_selection_marks_the_full_row_shell",
+        || {
+            use gtk::prelude::*;
+
+            let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            let home = super::sidebar_button(crate::assets::icons::HOME, "Home");
+            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "STRATA-537");
+            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, || {});
+            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, || {});
+            let shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
+            sidebar.append(&home);
+            sidebar.append(&shell);
+
+            super::select_sidebar_row(&sidebar, &row);
+            assert!(row.has_css_class("active"));
+            assert!(shell.has_css_class("active"));
+            assert!(!home.has_css_class("active"));
+
+            super::select_sidebar_row(&sidebar, &home);
+            assert!(home.has_css_class("active"));
+            assert!(!row.has_css_class("active"));
+            assert!(!shell.has_css_class("active"));
+        },
+    );
+}
+
+#[test]
+fn device_focus_marks_the_full_row_shell() {
+    gtk_test(
+        "ui::window::tests::device_focus_marks_the_full_row_shell",
+        || {
+            use std::time::Duration;
+
+            use gtk::prelude::*;
+
+            let row = super::sidebar_button(crate::assets::icons::HARD_DRIVE, "STRATA-537");
+            let lock = super::sidebar_lock_button(EncryptedMediaAction::Unlock, || {});
+            let eject = super::sidebar_eject_button(MediaRelease::EjectVolume, || {});
+            let shell = super::sidebar_device_row(&row, Some(&lock), Some(&eject));
+            let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 2);
+            sidebar.append(&shell);
+            let window = gtk::Window::builder()
+                .default_width(SIDEBAR_WIDTH)
+                .default_height(80)
+                .child(&sidebar)
+                .build();
+            window.present();
+            let main_loop = glib::MainLoop::new(None, false);
+            let stop = main_loop.clone();
+            glib::timeout_add_local_once(Duration::from_millis(100), move || stop.quit());
+            main_loop.run();
+
+            assert!(row.grab_focus(), "device name should take focus");
+            assert!(
+                shell.has_css_class("focused"),
+                "focus outline should use the full device shell"
+            );
+
+            assert!(lock.grab_focus(), "lock action should take focus");
+            assert!(
+                !shell.has_css_class("focused"),
+                "lock focus should not outline the full device row"
+            );
+
+            window.destroy();
+        },
+    );
 }
 
 #[test]
@@ -787,6 +1123,26 @@ fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
 }
 
 #[test]
+fn trash_drops_reject_empty_roots_and_already_trashed_sources() {
+    use crate::ui::browser::BrowserView;
+
+    assert!(BrowserView::can_trash_file_drop(&[
+        Location::local("/home/user/first.txt"),
+        Location::local("/home/user/second.txt"),
+        Location::local("/home/user/third.txt"),
+    ]));
+    assert!(!BrowserView::can_trash_file_drop(&[]));
+    assert!(!BrowserView::can_trash_file_drop(&[Location::local("/")]));
+    assert!(!BrowserView::can_trash_file_drop(&[Location::uri(
+        "trash:///"
+    )]));
+    assert!(!BrowserView::can_trash_file_drop(&[
+        Location::local("/home/user/first.txt"),
+        Location::uri("trash:///second.txt"),
+    ]));
+}
+
+#[test]
 fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_trash() {
     assert_eq!(
         trash_menu_visibility(TrashContents::NonEmpty),
@@ -827,7 +1183,7 @@ fn trash_probe_results_map_to_menu_state() {
 #[test]
 fn trash_mutating_operations_refresh_the_context_menu() {
     assert!(event_changes_trash_contents(
-        &BrowserEvent::DeletionFinished
+        &BrowserEvent::DeletionFinished { succeeded: true }
     ));
     assert!(event_changes_trash_contents(
         &BrowserEvent::RestorationFinished
@@ -890,43 +1246,6 @@ fn control_digits_select_each_browser_presentation() {
 }
 
 #[test]
-fn the_bundled_stylesheet_only_uses_at_rules_gtk_parses() {
-    // GTK's CSS parser rejects anything outside this set with a startup
-    // "Unknown @ rule" warning; `@media` only became valid in GTK 4.20.
-    const SUPPORTED: [&str; 3] = ["define-color", "import", "keyframes"];
-
-    let unsupported: Vec<&str> = include_str!("../../style.css")
-        .lines()
-        .filter_map(|line| line.trim_start().strip_prefix('@'))
-        .map(|rule| {
-            let end = rule
-                .find(|character: char| !character.is_ascii_alphanumeric() && character != '-')
-                .unwrap_or(rule.len());
-            &rule[..end]
-        })
-        .filter(|rule| !SUPPORTED.contains(rule))
-        .collect();
-
-    assert!(
-        unsupported.is_empty(),
-        "the stylesheet uses at-rules GTK 4.12 cannot parse: {unsupported:?}"
-    );
-}
-
-#[test]
-fn chrome_stylesheet_requests_header_bar_icon_size() {
-    let css = include_str!("../../style.css");
-    assert!(
-        css.contains("headerbar image {\n  -gtk-icon-size: 16px;"),
-        "header-bar icons must use GTK's compact 16px size, not large/app sizes"
-    );
-    assert!(
-        !css.contains("-gtk-icon-size: 20px;"),
-        "20px chrome icon size regresses XFCE toolbar density"
-    );
-}
-
-#[test]
 fn rename_shortcut_accepts_f2_and_control_r() {
     let control = gtk::gdk::ModifierType::CONTROL_MASK;
     assert!(is_rename_shortcut(
@@ -968,6 +1287,132 @@ fn refresh_shortcut_keeps_f5_and_releases_control_r() {
         gtk::gdk::Key::r,
         gtk::gdk::ModifierType::CONTROL_MASK
     ));
+}
+
+#[test]
+fn pinned_place_changes_merge_with_the_shared_bookmarks_file() {
+    gtk_test(
+        "ui::window::tests::pinned_place_changes_merge_with_the_shared_bookmarks_file",
+        || {
+            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let existing = Location::local("/tmp/existing");
+            first
+                .state
+                .pin_location(existing.clone(), "Existing".into());
+            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let pinned = Location::local("/tmp/pinned");
+            first.state.pin_location(pinned.clone(), "Pinned".into());
+            second.state.unpin_location(&existing);
+            assert_eq!(
+                load_pinned_places().expect("merged pins"),
+                vec![(pinned, "Pinned".into())]
+            );
+
+            second.state.pin_location(existing, "Existing".into());
+            let path = pinned_places_path();
+            std::fs::write(&path, "file:///tmp/external External\nfile:///tmp/pinned Renamed\nfile:///tmp/existing Existing\n")
+                .expect("external edit");
+            second.state.reorder_pinned_place(1, 0, false);
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("reordered pins"),
+                "file:///tmp/external External\nfile:///tmp/existing Existing\nfile:///tmp/pinned Renamed\n"
+            );
+            std::fs::write(
+                &path,
+                "file:///tmp/external External\nfile:///tmp/pinned Renamed\n",
+            )
+            .expect("external removal");
+            second.state.reorder_pinned_place(1, 2, true);
+            let saved = load_pinned_places().expect("missing source is not resurrected");
+            assert_eq!(saved.len(), 2);
+            assert_eq!(*second.state.pinned_places.borrow(), saved);
+            first.disconnect();
+            second.disconnect();
+        },
+    );
+}
+
+#[test]
+fn pinning_with_a_non_utf8_label_preserves_shared_bookmarks() {
+    gtk_test(
+        "ui::window::tests::pinning_with_a_non_utf8_label_preserves_shared_bookmarks",
+        || {
+            let path = pinned_places_path();
+            std::fs::create_dir_all(path.parent().expect("bookmarks parent"))
+                .expect("create bookmarks parent");
+            std::fs::write(
+                &path,
+                b"file:///fixtures/existing Existing\nfile:///fixtures/lossy \xff\n",
+            )
+            .expect("seed non-UTF-8 bookmark label");
+
+            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let initial = vec![
+                (Location::local("/fixtures/existing"), "Existing".into()),
+                (Location::local("/fixtures/lossy"), "\u{FFFD}".into()),
+            ];
+            assert_eq!(*first.state.pinned_places.borrow(), initial);
+            assert_eq!(*second.state.pinned_places.borrow(), initial);
+
+            first
+                .state
+                .pin_location(Location::local("/fixtures/first"), "First".into());
+            second
+                .state
+                .pin_location(Location::local("/fixtures/second"), "Second".into());
+            assert_eq!(
+                load_pinned_places().expect("saved bookmarks"),
+                vec![
+                    (Location::local("/fixtures/existing"), "Existing".into()),
+                    (Location::local("/fixtures/lossy"), "\u{FFFD}".into()),
+                    (Location::local("/fixtures/first"), "First".into()),
+                    (Location::local("/fixtures/second"), "Second".into()),
+                ]
+            );
+            std::fs::read_to_string(path).expect("saved bookmarks are valid UTF-8");
+            first.disconnect();
+            second.disconnect();
+        },
+    );
+}
+
+#[test]
+fn failed_bookmark_reads_and_saves_preserve_disk_and_window_state() {
+    gtk_test(
+        "ui::window::tests::failed_bookmark_reads_and_saves_preserve_disk_and_window_state",
+        || {
+            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let existing = Location::local("/tmp/existing");
+            sidebar
+                .state
+                .pin_location(existing.clone(), "Existing".into());
+            let original = sidebar.state.pinned_places.borrow().clone();
+            let path = pinned_places_path();
+            std::fs::remove_file(&path).expect("remove seeded bookmarks file");
+            std::fs::create_dir(&path).expect("unreadable bookmarks directory");
+            sidebar
+                .state
+                .pin_location(Location::local("/tmp/new"), "New".into());
+            assert!(path.is_dir());
+            assert_eq!(*sidebar.state.pinned_places.borrow(), original);
+
+            let contents = serialize_pinned_places(&original);
+            std::fs::remove_dir(&path).expect("remove directory fixture");
+            std::fs::write(&path, &contents).expect("restore readable bookmarks");
+            let target = path.with_extension("target");
+            std::fs::rename(&path, &target).expect("move fixture");
+            std::os::unix::fs::symlink(&target, &path).expect("readable but non-replaceable file");
+            sidebar.state.unpin_location(&existing);
+            assert_eq!(
+                std::fs::read_to_string(&target).expect("preserved target"),
+                contents
+            );
+            assert!(path.is_symlink());
+            assert_eq!(*sidebar.state.pinned_places.borrow(), original);
+            sidebar.disconnect();
+        },
+    );
 }
 
 #[test]

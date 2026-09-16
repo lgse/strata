@@ -3,6 +3,123 @@
 use super::super::*;
 
 #[test]
+fn closing_properties_stops_live_measurement() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::progress::closing_properties_stops_live_measurement",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            for index in 0..1000 {
+                std::fs::write(root.path().join(index.to_string()), b"abc").expect("file");
+            }
+            for destroy_window in [false, true] {
+                let view = crate::ui::browser::BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&view.widget()));
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
+                view.state
+                    .show_folder_properties(&Location::local(root.path()));
+                let size = super::size_label(overlay.upcast_ref()).expect("SIZE");
+                let counts = super::row_label(overlay.upcast_ref(), "CONTAINS").expect("CONTAINS");
+                let spinner = size
+                    .next_sibling()
+                    .and_downcast::<gtk::Spinner>()
+                    .expect("spinner");
+                let context = glib::MainContext::default();
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while counts.text() == "0 files, 0 folders" {
+                    assert!(Instant::now() < deadline, "measurement did not start");
+                    context.iteration(false);
+                }
+                assert!(spinner.is_spinning());
+                assert_ne!(counts.text(), "1000 files, 0 folders");
+                let before_size = size.text();
+                let before_counts = counts.text();
+                if destroy_window {
+                    window.destroy();
+                } else {
+                    let layer = overlay
+                        .last_child()
+                        .and_downcast::<gtk::Box>()
+                        .expect("modal");
+                    dismiss_modal_layer(&layer, &overlay, None);
+                }
+                context.block_on(glib::timeout_future(Duration::from_millis(300)));
+                assert_eq!(size.text(), before_size);
+                assert_eq!(counts.text(), before_counts);
+                assert!(
+                    spinner.is_spinning(),
+                    "the cancelled task must not reach completion"
+                );
+                window.destroy();
+                view.browser().clear_observer();
+            }
+        },
+    );
+}
+
+#[test]
+fn measurement_warnings_distinguish_and_combine_incomplete_reasons() {
+    use crate::adapters::directory_summary::MeasurementIssues;
+
+    for (issues, reasons) in [
+        (MeasurementIssues::default(), Vec::new()),
+        (
+            MeasurementIssues {
+                unreadable: true,
+                ..Default::default()
+            },
+            vec!["Some folders or entries couldn't be read."],
+        ),
+        (
+            MeasurementIssues {
+                timed_out: true,
+                ..Default::default()
+            },
+            vec!["The five-minute calculation limit was reached."],
+        ),
+        (
+            MeasurementIssues {
+                depth_limited: true,
+                ..Default::default()
+            },
+            vec!["Some folders exceeded the 64-level nesting limit."],
+        ),
+        (
+            MeasurementIssues {
+                unreadable: true,
+                timed_out: true,
+                depth_limited: true,
+            },
+            vec![
+                "Some folders or entries couldn't be read.",
+                "The five-minute calculation limit was reached.",
+                "Some folders exceeded the 64-level nesting limit.",
+            ],
+        ),
+    ] {
+        let summary = DirectorySummary {
+            issues,
+            ..Default::default()
+        };
+        let warning = measurement_warning_text(&summary);
+        if reasons.is_empty() {
+            assert!(warning.is_none());
+            assert!(!directory_counts_label(&summary).contains('≥'));
+        } else {
+            assert_eq!(
+                warning,
+                Some(format!("Totals are incomplete.\n{}", reasons.join("\n")))
+            );
+            assert_eq!(directory_counts_label(&summary), "≥ 0 files, ≥ 0 folders");
+        }
+    }
+}
+
+#[test]
 fn progress_throttle_reports_the_first_update_and_limits_subsequent_bursts() {
     let throttle = SizeProgressThrottle::default();
     let started = Instant::now();
@@ -16,56 +133,4 @@ fn progress_throttle_reports_the_first_update_and_limits_subsequent_bursts() {
     assert!(throttle.should_update(started + Duration::from_millis(300)));
     assert!(throttle.should_update(started + Duration::from_secs(2)));
     assert!(SizeProgressThrottle::default().should_update(started));
-}
-
-#[test]
-fn size_value_and_spinner_bounds_are_stable_across_digits_and_units() {
-    crate::test_support::gtk_test(
-        "ui::browser::properties::tests::progress::size_value_and_spinner_bounds_are_stable_across_digits_and_units",
-        || {
-            crate::ui::window::load_styles();
-            let _theme = crate::ui::theme::ThemeManager::shared();
-            let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            let spinner = gtk::Spinner::new();
-            spinner.add_css_class("properties-size-spinner");
-            spinner.set_valign(gtk::Align::Center);
-            let size = properties_size_row(&details, "0 B", &spinner);
-            let measurement = details.measure(gtk::Orientation::Horizontal, -1);
-            details.allocate(600, 40, -1, None);
-            let size_bounds = size.compute_bounds(&details).expect("size bounds");
-            let spinner_bounds = spinner.compute_bounds(&details).expect("spinner bounds");
-            assert_eq!(spinner_bounds.x() + spinner_bounds.width(), 600.0);
-            assert!(size_bounds.x() + size_bounds.width() <= spinner_bounds.x());
-            for value in [
-                "9 B",
-                "99 B",
-                "999 B",
-                "1 kB",
-                "111.1 MB",
-                "888.8 MB",
-                "1 GB",
-                "≥ 999.9 GB",
-                "≥ 18446744.1 TB",
-                "Unavailable",
-            ] {
-                size.set_text(value);
-                assert_eq!(
-                    details.measure(gtk::Orientation::Horizontal, -1),
-                    measurement,
-                    "{value}"
-                );
-                details.allocate(600, 40, -1, None);
-                assert_eq!(size.compute_bounds(&details), Some(size_bounds), "{value}");
-                assert_eq!(
-                    spinner.compute_bounds(&details),
-                    Some(spinner_bounds),
-                    "{value}"
-                );
-            }
-            size.set_text("111.1 MB");
-            let narrow_digits = size.layout().pixel_size();
-            size.set_text("888.8 MB");
-            assert_eq!(size.layout().pixel_size(), narrow_digits);
-        },
-    );
 }

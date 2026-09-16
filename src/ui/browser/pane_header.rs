@@ -19,7 +19,7 @@ pub(in crate::ui) fn pane_new_folder_button(
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FOLDER_PLUS,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     button.add_css_class("chooser-new-folder");
     button.update_property(&[gtk::accessible::Property::Label("New Folder")]);
     button.connect_clicked(move |_| {
@@ -37,7 +37,7 @@ pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) ->
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::REFRESH,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |_| {
         if let Some(browser) = weak_browser.upgrade() {
@@ -66,13 +66,23 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     popover.add_css_class("column-popover");
     crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let popover_weak = popover.downgrade();
+    let camera_photos = browser
+        .location_at(depth)
+        .is_some_and(|location| location.is_camera_photo_root());
     for (label, key) in [
+        ("Device order", SortKey::DeviceOrder),
         ("Name", SortKey::Name),
         ("Size", SortKey::Size),
         ("Modified", SortKey::Modified),
         ("Type", SortKey::Type),
     ] {
+        if key == SortKey::DeviceOrder && !camera_photos {
+            continue;
+        }
         let (option, check) = menu_option(label, preferences.sort_key == key);
+        if key == SortKey::DeviceOrder {
+            option.set_tooltip_text(Some("Append photos as the device lists them; not necessarily chronological. Selecting this reloads the library."));
+        }
         selected_checks.borrow_mut().push((key, check));
         let checks = selected_checks.clone();
         let weak_browser = Rc::downgrade(browser);
@@ -162,7 +172,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SETTINGS_2,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     button
 }
 
@@ -170,25 +180,21 @@ pub(in crate::ui) fn column_sort_direction_toggle(
     browser: &Rc<Browser>,
     depth: usize,
 ) -> gtk::Button {
-    let direction = browser
-        .column_preferences(depth)
-        .unwrap_or_default()
-        .sort_direction;
+    let preferences = browser.column_preferences(depth).unwrap_or_default();
     let button = gtk::Button::new();
     let icon = crate::assets::chrome_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE);
     button.set_child(Some(&icon));
-    button.add_css_class("column-header-action");
-    sync_sort_direction_toggle(&button, &icon, direction);
+    crate::ui::controls::pane_header_action(&button);
+    sync_sort_direction_toggle(&button, &icon, preferences);
 
     let weak_browser = Rc::downgrade(browser);
     let icon_for_map = icon.clone();
     button.connect_map(move |button| {
-        if let Some(direction) = weak_browser
+        if let Some(preferences) = weak_browser
             .upgrade()
             .and_then(|browser| browser.column_preferences(depth))
-            .map(|preferences| preferences.sort_direction)
         {
-            sync_sort_direction_toggle(button, &icon_for_map, direction);
+            sync_sort_direction_toggle(button, &icon_for_map, preferences);
         }
     });
     let weak_browser = Rc::downgrade(browser);
@@ -196,22 +202,41 @@ pub(in crate::ui) fn column_sort_direction_toggle(
         let Some(browser) = weak_browser.upgrade() else {
             return;
         };
-        let direction = match browser
-            .column_preferences(depth)
-            .unwrap_or_default()
-            .sort_direction
-        {
+        let mut preferences = browser.column_preferences(depth).unwrap_or_default();
+        if preferences.sort_key == SortKey::DeviceOrder {
+            return;
+        }
+        let direction = match preferences.sort_direction {
             SortDirection::Ascending => SortDirection::Descending,
             SortDirection::Descending => SortDirection::Ascending,
         };
-        sync_sort_direction_toggle(button, &icon, direction);
+        preferences.sort_direction = direction;
+        sync_sort_direction_toggle(button, &icon, preferences);
         browser.set_sort_direction(depth, direction);
     });
     button
 }
 
-fn sync_sort_direction_toggle(button: &gtk::Button, icon: &gtk::Image, direction: SortDirection) {
-    let descending = direction == SortDirection::Descending;
+pub(in crate::ui) fn sync_column_sort_direction(
+    browser: &Browser,
+    depth: usize,
+    button: &gtk::Button,
+) {
+    if let Some(preferences) = browser.column_preferences(depth)
+        && let Some(icon) = button.child().and_downcast::<gtk::Image>()
+    {
+        sync_sort_direction_toggle(button, &icon, preferences);
+    }
+}
+
+fn sync_sort_direction_toggle(
+    button: &gtk::Button,
+    icon: &gtk::Image,
+    preferences: crate::model::ViewPreferences,
+) {
+    let device_order = preferences.sort_key == SortKey::DeviceOrder;
+    button.set_sensitive(!device_order);
+    let descending = preferences.sort_direction == SortDirection::Descending;
     crate::assets::set_primary_icon(
         icon,
         if descending {
@@ -220,7 +245,9 @@ fn sync_sort_direction_toggle(button: &gtk::Button, icon: &gtk::Image, direction
             crate::assets::icons::ARROW_UP_NARROW_WIDE
         },
     );
-    button.set_tooltip_text(Some(if descending {
+    button.set_tooltip_text(Some(if device_order {
+        "Device order follows discovery; choose a sort field to reverse its direction"
+    } else if descending {
         "Descending — click to reverse"
     } else {
         "Ascending — click to reverse"
@@ -235,7 +262,7 @@ pub(in crate::ui) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::TRASH,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |_| {
         if let Some(browser) = weak_browser.upgrade() {

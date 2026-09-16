@@ -4,6 +4,7 @@ use super::*;
 
 #[test]
 fn entry_matching_uses_the_display_name_and_hidden_flag() {
+    let fold = crate::services::fold_for_search;
     for (value, show_hidden, query, expected) in [
         ("fv\tAlpha.txt", false, "alpha", true),
         ("fh\tAlpha.txt", false, "alpha", false),
@@ -12,11 +13,29 @@ fn entry_matching_uses_the_display_name_and_hidden_flag() {
         ("dv\tFolder", false, "", true),
         ("dh\tFolder", false, "", false),
         ("fv\tÉcole\tNotes", false, "école\tnotes", true),
+        (
+            "fv\tre\u{301}sume\u{301}.txt",
+            false,
+            "r\u{e9}sum\u{e9}",
+            true,
+        ),
+        (
+            "fv\tr\u{e9}sum\u{e9}.txt",
+            false,
+            "re\u{301}sume\u{301}",
+            true,
+        ),
         ("plain name", false, "name", true),
         ("fv\tAlpha.txt", true, "beta", false),
+        ("fv\tAlpha.txt", false, "*.TXT", true),
+        ("fv\tAlpha.txt.bak", false, "*.txt", false),
+        ("fh\t.secret.txt", false, "*", false),
+        ("fh\t.secret.txt", true, "*.txt", true),
+        ("dv\tPhotos", false, "Photo*", true),
+        ("fv\tAlpha.txt", false, "fv*", false),
     ] {
         assert_eq!(
-            entry_matches(value, show_hidden, query),
+            entry_matches(value, show_hidden, &fold(query)),
             expected,
             "{value:?}, {show_hidden}, {query:?}"
         );
@@ -27,11 +46,16 @@ use gtk::gio;
 use std::path::Path;
 
 #[test]
-fn file_sizes_use_compact_decimal_units() {
+fn file_sizes_use_compact_decimal_units_and_promote_rounded_overflow() {
     assert_eq!(format_file_size(999), "999 B");
     assert_eq!(format_file_size(1_200), "1.2 kB");
     assert_eq!(format_file_size(1_000_000), "1 MB");
     assert_eq!(format_file_size(2_500_000_000), "2.5 GB");
+
+    assert_eq!(format_file_size(999_950), "1 MB");
+    assert_eq!(format_file_size(999_950_000), "1 GB");
+    assert_eq!(format_file_size(9_949), "9.9 kB");
+    assert_eq!(format_file_size(9_950), "10 kB");
 }
 
 #[test]
@@ -46,6 +70,9 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let mut folder = file.clone();
     folder.kind = crate::model::EntryKind::Directory;
@@ -70,6 +97,9 @@ fn quick_preview_is_offered_only_for_supported_files() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
@@ -80,9 +110,36 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "notes.txt",
         crate::model::EntryKind::FileSymbolicLink,
     )));
+    for name in [
+        "notes.mdown",
+        "notes.mkdn",
+        "notes.mdwn",
+        "page.xhtml",
+        "data.csv",
+        "data.tsv",
+        "book.xls",
+        "book.xlsx",
+        "book.ods",
+    ] {
+        assert!(
+            crate::ui::preview::entry_supports_quick_preview(&entry(
+                name,
+                crate::model::EntryKind::File
+            )),
+            "{name} should reach the preview provider"
+        );
+    }
     assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
         ".steampath",
         crate::model::EntryKind::File,
+    )));
+    assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
+        "some notes",
+        crate::model::EntryKind::File,
+    )));
+    assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
+        "some notes",
+        crate::model::EntryKind::Directory,
     )));
     assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
         "archive.zip",
@@ -114,6 +171,9 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     for name in [
@@ -122,6 +182,7 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         "settings.toml",
         "photo.png",
         "guide.pdf",
+        "some notes",
     ] {
         assert!(entry_supports_printing(&entry(
             name,
@@ -129,20 +190,23 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         )));
     }
 
-    for (name, supported) in [
-        ("notes.txt", true),
-        ("main.rs", true),
-        ("photo.png", false),
-        ("guide.pdf", false),
+    for (name, printable, previewable) in [
+        ("notes.txt", true, true),
+        ("main.rs", true, true),
+        ("photo.png", false, true),
+        ("guide.pdf", false, false),
     ] {
         let trashed = FileEntry {
             location: Location::uri(format!("trash:///{name}")),
+            image_dimensions: crate::model::MetadataValue::Unknown,
+            child_count: crate::model::MetadataValue::Unknown,
+            duration_seconds: crate::model::MetadataValue::Unknown,
             ..entry(name, crate::model::EntryKind::File)
         };
-        assert_eq!(entry_supports_printing(&trashed), supported, "{name}");
+        assert_eq!(entry_supports_printing(&trashed), printable, "{name}");
         assert_eq!(
             crate::ui::preview::entry_supports_quick_preview(&trashed),
-            supported,
+            previewable,
             "{name}"
         );
     }
@@ -160,6 +224,10 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
 fn file_names_map_to_specific_lucide_icons() {
     assert_eq!(icon_for_name("setup.sh"), crate::assets::icons::TERMINAL);
     assert_eq!(icon_for_name("photo.webp"), crate::assets::icons::PICTURES);
+    assert_eq!(
+        icon_for_name("IMG_0001.HEIC"),
+        crate::assets::icons::PICTURES
+    );
     assert_eq!(icon_for_name("movie.mkv"), crate::assets::icons::VIDEOS);
     assert_eq!(icon_for_name("source.rs"), crate::assets::icons::FILE_CODE);
     assert_eq!(
@@ -181,6 +249,9 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let hidden = FileEntry {
         location: Location::local("/fixture/.config"),
@@ -192,6 +263,9 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: true,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     let encoded_visible = entry_model_value(&visible);
@@ -216,8 +290,9 @@ fn type_groups_name_folders_and_broken_links_directly() {
 
 #[test]
 fn files_of_an_unrecognized_type_share_one_group() {
-    assert_eq!(model_type_group("fv\tblob.qqqqq"), "File");
-    assert_eq!(model_type_group("fv\tarchive-index"), "File");
+    assert_eq!(model_type_group("fv\tblob.qqqqq"), "Other");
+    assert_eq!(model_type_group("fv\tarchive-index"), "Other");
+    assert_eq!(model_type_group("ov\tsocket.json"), "Other");
 }
 
 #[test]
@@ -235,5 +310,5 @@ fn repeated_lookups_of_one_suffix_agree() {
     let second = model_type_group("fv\ttwo.py");
 
     assert_eq!(first, second);
-    assert_ne!(first, "File");
+    assert_ne!(first, "Other");
 }

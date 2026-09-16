@@ -23,9 +23,9 @@ use crate::{
     },
 };
 use compression::{
-    compress_7z, compress_tar, compress_zip, count_archive_files, write_staged_archive,
+    compress_7z, compress_tar, compress_zip, inspect_archive_sources, write_staged_archive,
 };
-use decoders::{extract_7z_from_reader, extract_tar, extract_zip_from_archive};
+use decoders::{extract_7z_from_reader, extract_rar, extract_tar, extract_zip_from_archive};
 use extraction::ArchiveOutcome;
 use gtk::{gio, glib};
 use std::{
@@ -116,8 +116,8 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
             request.conflict,
             &task_cancelled,
             move |file| {
-                let count = count_archive_files(&entries, &work_cancelled)?;
-                work_total.store(count, Ordering::Relaxed);
+                let sources = inspect_archive_sources(&entries, &work_cancelled)?;
+                work_total.store(sources.files, Ordering::Relaxed);
                 match format {
                     ArchiveFormat::Zip => compress_zip(
                         file,
@@ -133,21 +133,28 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
                         &work_progress,
                         &work_cancelled,
                     ),
-                    ArchiveFormat::TarGz => {
-                        compress_tar(file, &entries, true, &work_progress, &work_cancelled)
-                    }
+                    ArchiveFormat::TarGz => compress_tar(
+                        file,
+                        &entries,
+                        Some(sources.gzip_level()),
+                        &work_progress,
+                        &work_cancelled,
+                    ),
                     ArchiveFormat::Tar => {
-                        compress_tar(file, &entries, false, &work_progress, &work_cancelled)
+                        compress_tar(file, &entries, None, &work_progress, &work_cancelled)
                     }
+                    ArchiveFormat::Rar => Err(ArchiveError::Failed(
+                        "RAR compression is not supported".to_owned(),
+                    )),
                 }
             },
         )
         .await;
         timer_id.remove();
         match result {
-            Ok(()) => emit(OperationEvent::Compressed {
+            Ok(archive_name) => emit(OperationEvent::Compressed {
                 request_id: request.id,
-                archive_name: archive_name.clone(),
+                archive_name,
             }),
             Err(ArchiveError::Cancelled) => emit(cancelled_archive_event(
                 request.id,
@@ -209,6 +216,15 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
+        let created_dest = !dest_dir.exists();
+        if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
+            emit(OperationEvent::Failed {
+                request_id: request.id,
+                message: format!("Could not create folder: {e}"),
+            });
+            return;
+        }
+        let dest_dir_for_cleanup = dest_dir.clone();
         let format = ArchiveFormat::from_extension(&request.entry.display_name);
         let password = request.password.clone();
         let display_name = request.entry.display_name.clone();
@@ -225,7 +241,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let result = gio::spawn_blocking(move || match format {
             Some(ArchiveFormat::Zip) => {
                 let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+                let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
                 work_total.store(archive.len(), Ordering::Relaxed);
                 extract_zip_from_archive(
                     &mut archive,
@@ -257,12 +273,26 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 &work_progress,
                 &work_cancelled,
             ),
+            Some(ArchiveFormat::Rar) => extract_rar(
+                &archive_path,
+                &dest_dir,
+                password.as_deref(),
+                &work_progress,
+                &work_cancelled,
+            ),
             None => Err(archive_failed(format!(
                 "Unsupported archive format: {display_name}"
             ))),
         })
         .await;
         timer_id.remove();
+        if created_dest
+            && !matches!(result, Ok(Ok(ArchiveOutcome::Completed(_))))
+            && std::fs::read_dir(&dest_dir_for_cleanup)
+                .is_ok_and(|mut entries| entries.next().is_none())
+        {
+            let _ = std::fs::remove_dir(&dest_dir_for_cleanup);
+        }
         match result {
             Ok(Ok(ArchiveOutcome::Completed(first_name))) => emit(OperationEvent::Extracted {
                 request_id: request.id,

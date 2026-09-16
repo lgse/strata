@@ -4,6 +4,7 @@ mod adapters;
 mod app;
 mod assets;
 mod build_info;
+mod media;
 mod metrics;
 mod model;
 mod portal;
@@ -17,7 +18,7 @@ mod test_support;
 mod ui;
 mod util;
 
-use std::{os::unix::process::CommandExt, process::Stdio, time::Duration};
+use std::{ffi::OsString, os::unix::process::CommandExt, process::Stdio, time::Duration};
 
 use gtk::{gio, prelude::*};
 
@@ -27,49 +28,73 @@ const GVFS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const GIO_FALLBACK_BACKENDS: [(&str, &str); 2] =
     [("GIO_USE_VFS", "local"), ("GIO_USE_VOLUME_MONITOR", "unix")];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LaunchMode {
+    PreviewHelper,
+    GvfsProbe,
+    Portal,
+    InstallPortal,
+    DismissPortalPrompt,
+    UninstallPortal,
+    Version,
+    Application,
+}
+
+/// Byte-safe: a non-UTF-8 path argument is an ordinary application launch,
+/// not a reason to abort before GIO ever sees it.
+fn launch_mode(arguments: &[OsString]) -> LaunchMode {
+    match arguments.get(1).and_then(|argument| argument.to_str()) {
+        Some("--preview-helper") => LaunchMode::PreviewHelper,
+        Some(GVFS_PROBE_ARGUMENT) => LaunchMode::GvfsProbe,
+        Some("--portal") => LaunchMode::Portal,
+        Some("--install-portal") => LaunchMode::InstallPortal,
+        Some("--dismiss-portal-prompt") => LaunchMode::DismissPortalPrompt,
+        Some("--uninstall-portal") => LaunchMode::UninstallPortal,
+        Some("--version") => LaunchMode::Version,
+        _ => LaunchMode::Application,
+    }
+}
+
+fn version_line() -> String {
+    format!(
+        "{} {}",
+        env!("CARGO_PKG_NAME"),
+        build_info::installed_version()
+    )
+}
+
 fn main() -> gtk::glib::ExitCode {
-    let arguments: Vec<_> = std::env::args().collect();
-    if arguments
-        .get(1)
-        .is_some_and(|value| value == "--preview-helper")
-    {
-        if let Err(error) = sandbox_helper::run(&arguments[2..]) {
-            eprintln!("Preview helper failed: {error}");
-            return gtk::glib::ExitCode::FAILURE;
+    let arguments: Vec<OsString> = std::env::args_os().collect();
+    match launch_mode(&arguments) {
+        LaunchMode::PreviewHelper => {
+            if let Err(error) = run_preview_helper(&arguments[2..]) {
+                eprintln!("Preview helper failed: {error}");
+                return gtk::glib::ExitCode::FAILURE;
+            }
+            return gtk::glib::ExitCode::SUCCESS;
         }
-        return gtk::glib::ExitCode::SUCCESS;
-    }
-    if arguments
-        .get(1)
-        .is_some_and(|value| value == GVFS_PROBE_ARGUMENT)
-    {
-        let _vfs = gio::Vfs::default();
-        let _volumes = gio::VolumeMonitor::get();
-        return gtk::glib::ExitCode::SUCCESS;
-    }
-    if arguments.get(1).is_some_and(|value| value == "--portal") {
-        restart_with_local_vfs_if_gvfs_is_unresponsive();
-        return portal::run();
-    }
-    if arguments
-        .get(1)
-        .is_some_and(|value| value == "--install-portal")
-    {
-        return finish_portal_setup(portal_setup::install());
-    }
-    if arguments
-        .get(1)
-        .is_some_and(|value| value == "--dismiss-portal-prompt")
-    {
-        return finish_portal_setup(portal_setup::dismiss_prompt());
-    }
-    if arguments
-        .get(1)
-        .is_some_and(|value| value == "--uninstall-portal")
-    {
-        return finish_portal_setup(portal_setup::uninstall());
+        LaunchMode::GvfsProbe => {
+            let _vfs = gio::Vfs::default();
+            let _volumes = gio::VolumeMonitor::get();
+            return gtk::glib::ExitCode::SUCCESS;
+        }
+        LaunchMode::Portal => {
+            restart_with_local_vfs_if_gvfs_is_unresponsive();
+            return portal::run();
+        }
+        LaunchMode::InstallPortal => return finish_portal_setup(portal_setup::install()),
+        LaunchMode::DismissPortalPrompt => {
+            return finish_portal_setup(portal_setup::dismiss_prompt());
+        }
+        LaunchMode::UninstallPortal => return finish_portal_setup(portal_setup::uninstall()),
+        LaunchMode::Version => {
+            println!("{}", version_line());
+            return gtk::glib::ExitCode::SUCCESS;
+        }
+        LaunchMode::Application => {}
     }
 
+    install_application_identity();
     metrics::initialize();
     if let Err(error) = tracing_subscriber::fmt::try_init() {
         eprintln!("Unable to initialize logging: {error}");
@@ -102,13 +127,46 @@ fn main() -> gtk::glib::ExitCode {
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
         .build();
 
+    application.connect_startup(|_| install_x11_program_class());
     application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
-        let location = files.first().and_then(gio::File::path);
-        ui::present_location(application, location);
+        if files.is_empty() {
+            ui::present(application);
+        }
+        for file in files {
+            ui::present_open(application, file.clone());
+        }
     });
     application.run()
+}
+
+fn install_application_identity() {
+    glib::set_prgname(Some(APPLICATION_ID));
+    glib::set_application_name("Strata");
+}
+
+fn install_x11_program_class() {
+    let Some(display) = gtk::gdk::Display::default() else {
+        return;
+    };
+    let Ok(x11) = display.downcast::<gdk4_x11::X11Display>() else {
+        return;
+    };
+    x11.set_program_class(APPLICATION_ID);
+}
+
+fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
+    let arguments = arguments
+        .iter()
+        .map(|argument| {
+            argument
+                .to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "Invalid UTF-8 in preview helper arguments".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    sandbox_helper::run(&arguments)
 }
 
 fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {

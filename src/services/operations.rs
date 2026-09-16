@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashSet, rc::Rc};
+use std::{collections::HashSet, ffi::OsString, path::PathBuf, rc::Rc};
 
 use crate::model::{FileEntry, Location};
 
@@ -62,6 +62,15 @@ pub struct MoveRecord {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RenameRecord {
+    pub original: Location,
+    pub current: Location,
+    pub native_name: OsString,
+    pub display_name: String,
+    pub is_hidden: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UndoMoveItem {
     pub record: MoveRecord,
     pub conflict: TransferConflict,
@@ -71,6 +80,13 @@ pub struct UndoMoveItem {
 pub struct UndoMoveRequest {
     pub id: OperationRequestId,
     pub items: Vec<UndoMoveItem>,
+}
+
+#[derive(Clone, Debug)]
+pub struct UndoRenameRequest {
+    pub id: OperationRequestId,
+    pub current: Location,
+    pub original: Location,
 }
 
 #[derive(Clone, Debug)]
@@ -103,8 +119,14 @@ pub struct DeleteRequest {
 }
 
 #[derive(Clone, Debug)]
+pub struct RestoreTrashItem {
+    pub entry: FileEntry,
+    pub destination: PathBuf,
+}
+
+#[derive(Clone, Debug)]
 pub enum RestoreSource {
-    TrashEntries(Vec<FileEntry>),
+    TrashEntries(Vec<RestoreTrashItem>),
     OriginalLocations(Vec<Location>),
 }
 
@@ -120,6 +142,7 @@ pub enum ArchiveFormat {
     SevenZ,
     TarGz,
     Tar,
+    Rar,
 }
 
 impl ArchiveFormat {
@@ -129,11 +152,12 @@ impl ArchiveFormat {
             Self::SevenZ => "7z",
             Self::TarGz => "tar.gz",
             Self::Tar => "tar",
+            Self::Rar => "rar",
         }
     }
 
     pub fn supports_password(self) -> bool {
-        matches!(self, Self::Zip | Self::SevenZ)
+        matches!(self, Self::Zip | Self::SevenZ | Self::Rar)
     }
 
     pub fn from_extension(name: &str) -> Option<Self> {
@@ -146,6 +170,8 @@ impl ArchiveFormat {
             Some(Self::Zip)
         } else if lower.ends_with(".7z") {
             Some(Self::SevenZ)
+        } else if lower.ends_with(".rar") {
+            Some(Self::Rar)
         } else {
             None
         }
@@ -284,6 +310,11 @@ pub trait OperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     /// Moves completed transfers back to their original locations.
     fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    fn undo_rename(
+        &self,
+        request: UndoRenameRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle;
     fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;

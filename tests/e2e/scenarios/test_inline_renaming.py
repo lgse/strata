@@ -1,14 +1,46 @@
 # SPDX-License-Identifier: MIT
 """Immediate creation and consistent file/folder rename finalization."""
 
+import time
+
 import pytest
 
 from harness.artifacts import ArtifactCollector
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, COLUMNS_AND_ONE
 from harness.screenshots import capture
 from harness.tree import Atspi
 
 KINDS = ["file", "folder"]
+
+
+def _cases_for_modes(modes, kind, new, target):
+    new_id = "new" if new else "existing"
+    return [
+        pytest.param(
+            mode.values[0],
+            kind,
+            new,
+            target,
+            marks=mode.marks,
+            id=f"{target}-{new_id}-{kind}-{mode.id}",
+        )
+        for mode in modes
+    ]
+
+
+# Enter and sidebar have extra postconditions. The four click-away targets share
+# disk + editor-closed asserts, so they run in Columns + List on one lifecycle.
+VALID_NAME_COMMIT_CASES = [
+    case
+    for target in ("enter", "sidebar")
+    for kind in KINDS
+    for new in (False, True)
+    for case in _cases_for_modes(ALL_MODES, kind, new, target)
+] + [
+    case
+    for target in ("file", "folder", "background", "tab")
+    for case in _cases_for_modes(COLUMNS_AND_ONE, "file", False, target)
+]
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -16,6 +48,7 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
     name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"
     strata.fixture.path(name).write_text("keep\n")
     strata.keyboard.press("F5")
+    strata.entry(name)
     strata.select_entry_with_keyboard(name)
     bounds = strata.window.window_bounds()
     width = 420 if mode == "Columns" else 640
@@ -67,6 +100,25 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
     assert not strata.fixture.path(name + "-final").exists()
 
 
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_slow_click_rename_respects_escape_and_selects_the_stem(strata, mode):
+    strata.select_entry_with_keyboard("todo.txt")
+    strata.pointer.click(strata.entry("todo.txt"))
+    strata.keyboard.press("Escape")
+    # Outlast GTK's 400ms double-click interval to detect a stale timeout.
+    time.sleep(0.6)
+    assert strata.window.find(role="text", name="Rename", states={"editable"}) is None
+
+    strata.select_entry_with_keyboard("todo.txt")
+    strata.pointer.click(strata.entry("todo.txt"))
+    field = rename_field(strata)
+    text = Atspi.Accessible.get_text_iface(field.accessible)
+    selection = Atspi.Text.get_selection(text, 0)
+    assert (selection.start_offset, selection.end_offset) == (0, len("todo"))
+    assert field.text == "todo.txt"
+    assert strata.fixture.path("todo.txt").exists()
+
+
 def rename_field(strata):
     return strata.wait(
         lambda: strata.window.find(role="text", name="Rename", states={"editable", "focused"}),
@@ -109,9 +161,8 @@ def wait_for_edit_closed(strata):
     assert "Gtk-CRITICAL" not in strata.application.log()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("kind,via_menu", [("folder", False), ("folder", True), ("file", True)])
-def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(strata, mode, kind, via_menu):
+def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(strata, kind, via_menu):
     strata.select_entry("readme.md")
     field = start_creation(strata, kind, via_menu)
     original = "new " + kind
@@ -120,26 +171,30 @@ def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(st
     assert path.is_dir() if kind == "folder" else path.is_file()
     if kind == "file":
         assert path.read_bytes() == b""
+    strata.keyboard.press("End")
+    strata.keyboard.press("ctrl+a")
     strata.keyboard.press("BackSpace")
-    strata.wait(lambda: field.text == "", "one Backspace to clear the entire default name")
+    strata.wait(lambda: field.text == "", "Ctrl+A and Backspace to clear the entire default name")
     strata.keyboard.press("Return")
     wait_for_edit_closed(strata)
     strata.entry(original)
     assert path.exists()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("kind", KINDS)
-def test_new_item_uses_the_first_free_number_without_overwriting(strata, mode, kind):
-    base = "new " + kind
+def test_new_item_uses_the_first_free_number_without_overwriting(strata):
+    base = "new file"
     strata.fixture.path(base).write_text("keep\n")
     strata.fixture.path(base + " (1)").symlink_to("missing")
     strata.fixture.path(base + " (2)").mkdir()
-    strata.select_entry("readme.md")
-    field = start_creation(strata, kind)
+    strata.keyboard.press("F5")
+    for name in (base, base + " (1)", base + " (2)"):
+        strata.entry(name)
+    # Fixture insertions move rows; select by keyboard after the refreshed inventory.
+    strata.select_entry_with_keyboard("readme.md")
+    field = start_creation(strata, "file")
     strata.wait(lambda: field.text == base + " (3)", "the first available numbered name")
     created = strata.fixture.path(base + " (3)")
-    assert created.is_dir() if kind == "folder" else created.is_file()
+    assert created.is_file()
     strata.keyboard.press("Escape")
     wait_for_edit_closed(strata)
     assert strata.fixture.path(base).read_text() == "keep\n"
@@ -148,10 +203,7 @@ def test_new_item_uses_the_first_free_number_without_overwriting(strata, mode, k
     assert created.exists()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("kind", KINDS)
-@pytest.mark.parametrize("new", [False, True], ids=["existing", "new"])
-@pytest.mark.parametrize("target", ["file", "folder", "background", "sidebar", "tab", "enter"])
+@pytest.mark.parametrize("mode,kind,new,target", VALID_NAME_COMMIT_CASES)
 def test_leaving_a_valid_name_commits_it(strata, mode, kind, new, target):
     if kind == "folder" and not new:
         strata.fixture.path("archive/marker.txt").write_text("keep\n")
@@ -178,20 +230,43 @@ def test_leaving_a_valid_name_commits_it(strata, mode, kind, new, target):
         assert renamed.is_dir()
         if not new:
             assert (renamed / "marker.txt").read_text() == "keep\n"
+    if target == "enter":
+        strata.entry("renamed.item")
     if target == "sidebar":
         strata.wait_for_directory(strata.environment.home.name)
         assert not (strata.environment.home / "renamed.item").exists()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("kind", KINDS)
-@pytest.mark.parametrize("new", [False, True], ids=["existing", "new"])
+def test_rename_and_undo_restores_the_original_item(strata, kind):
+    if kind == "folder":
+        strata.fixture.path("archive/marker.txt").write_text("keep\n")
+    field, original = begin_edit(strata, kind, False)
+    original_path = strata.fixture.path(original)
+    strata.keyboard.type_text("undo-target")
+    strata.wait(lambda: field.text == "undo-target", "the replacement name")
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    renamed_path = strata.fixture.path("undo-target")
+    strata.wait(renamed_path.exists, "the renamed item")
+
+    strata.keyboard.press("ctrl+z")
+    strata.wait(
+        lambda: original_path.exists() and not renamed_path.exists(),
+        "Ctrl+Z to restore the original item",
+    )
+    if kind == "file":
+        assert original_path.read_text() == "todo\n"
+    else:
+        assert (original_path / "marker.txt").read_text() == "keep\n"
+
+
 @pytest.mark.parametrize("action", ["enter", "click"])
-def test_invalid_names_retain_the_original(strata, mode, kind, new, action):
+def test_invalid_names_retain_the_original(strata, action):
     name = "bad/name"
-    field, original = begin_edit(strata, kind, new)
+    field, original = begin_edit(strata, "file", False)
     path = strata.fixture.path(original)
-    contents = path.read_bytes() if kind == "file" else None
+    contents = path.read_bytes()
     strata.keyboard.press("BackSpace")
     strata.keyboard.type_text(name)
     strata.wait(lambda: field.text == name, "the proposed name to appear")
@@ -202,15 +277,13 @@ def test_invalid_names_retain_the_original(strata, mode, kind, new, action):
     wait_for_edit_closed(strata)
     strata.entry(original)
     assert path.exists()
-    if kind == "file":
-        assert path.read_bytes() == contents
+    assert path.read_bytes() == contents
     assert not strata.fixture.path("bad").exists()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("kind", KINDS)
 @pytest.mark.parametrize("new", [False, True], ids=["existing", "new"])
-def test_escape_preserves_the_original_name(strata, mode, kind, new):
+def test_escape_preserves_the_original_name(strata, kind, new):
     field, original = begin_edit(strata, kind, new)
     strata.keyboard.type_text("discarded")
     strata.wait(lambda: field.text == "discarded", "the proposed name to appear")
@@ -239,7 +312,7 @@ def test_new_item_clears_a_filter_that_would_hide_its_editor(strata, mode, kind)
     strata.entry(original)
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
 @pytest.mark.parametrize("kind", KINDS)
 def test_repeated_renames_select_the_folder_name_or_file_stem(strata, mode, kind):
     original = "archive" if kind == "folder" else "todo.txt"

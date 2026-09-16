@@ -94,6 +94,7 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label) {
     ));
     let notice = gtk::Button::builder().child(&content).build();
     notice.add_css_class("sidebar-update");
+    notice.set_cursor_from_name(Some("pointer"));
     let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     separator.add_css_class("sidebar-separator");
     separator.add_css_class("sidebar-update-separator");
@@ -113,6 +114,7 @@ impl SidebarState {
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
         let place_order = resolve_place_order(&theme_manager.sidebar_order());
+        let places_visibility = theme_manager.sidebar_places_visibility();
         Rc::new(Self {
             widget,
             browser: view.browser(),
@@ -121,7 +123,8 @@ impl SidebarState {
             mount_monitor: gio_unix::MountMonitor::get(),
             theme_manager,
             place_order: RefCell::new(place_order),
-            pinned_places: Rc::new(RefCell::new(load_pinned_places())),
+            places_visibility: RefCell::new(places_visibility),
+            pinned_places: Rc::new(RefCell::new(load_pinned_places().unwrap_or_default())),
             place_rows: RefCell::new(Vec::new()),
             trash_contents: Cell::new(TrashContents::Unknown),
             trash_menu_rows: RefCell::new(None),
@@ -129,6 +132,9 @@ impl SidebarState {
             trash_probe_running: Cell::new(false),
             trash_probe_pending: Cell::new(false),
             local_only,
+            pending_scroll: Cell::new(None),
+            rebuild_queued: Cell::new(false),
+            scroll_restore_queued: Cell::new(false),
         })
     }
 
@@ -144,6 +150,19 @@ impl SidebarState {
                         state.place_order.replace(order);
                         state.rebuild();
                     }
+                }
+            },
+        );
+        let weak = Rc::downgrade(self);
+        self.theme_manager.bind_preference(
+            &self.widget,
+            ThemeManager::sidebar_places_visibility,
+            move |_, visibility| {
+                if let Some(state) = weak.upgrade()
+                    && *state.places_visibility.borrow() != visibility
+                {
+                    state.places_visibility.replace(visibility);
+                    state.rebuild();
                 }
             },
         );
@@ -182,12 +201,20 @@ impl SidebarState {
         let browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
+        let keyboard_activation = Rc::new(Cell::new(false));
+        let activating = keyboard_activation.clone();
+        row.connect_activate(move |_| activating.set(true));
         row.connect_clicked(move |_| {
+            let select_first = keyboard_activation.replace(false);
             select_sidebar_row(&sidebar, &selected_row);
             if let Some(browser) = browser.upgrade() {
                 match navigation {
-                    PlaceNavigation::Direct => browser.navigate(location.clone()),
-                    PlaceNavigation::Validate => browser.navigate_location(location.clone()),
+                    PlaceNavigation::Direct => {
+                        browser.navigate_with_selection(location.clone(), select_first);
+                    }
+                    PlaceNavigation::Validate => {
+                        browser.navigate_location(location.clone(), select_first);
+                    }
                 }
             }
         });
@@ -213,11 +240,14 @@ fn connect_device_changes(
         monitor.connect_volume_added(rebuild_on_change(state)),
         monitor.connect_volume_removed(rebuild_on_change(state)),
         monitor.connect_volume_changed(rebuild_on_change(state)),
+        monitor.connect_drive_connected(rebuild_on_change(state)),
+        monitor.connect_drive_disconnected(rebuild_on_change(state)),
+        monitor.connect_drive_changed(rebuild_on_change(state)),
     ];
     let weak = Rc::downgrade(state);
     let mount_handler = state.mount_monitor.connect_mounts_changed(move |_| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.queue_rebuild();
         }
     });
     (handlers, mount_handler)
@@ -229,7 +259,7 @@ fn rebuild_on_change<T: 'static>(
     let weak = Rc::downgrade(state);
     move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.queue_rebuild();
         }
     }
 }

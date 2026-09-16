@@ -188,15 +188,15 @@ Portal backend selection happens before a request is sent. Keeping the existing 
 
 ### Test a build without changing your desktop portal
 
-From the repository root, use `make run-chooser-dev` to rebuild and open an isolated Save chooser with application choices. Requires Python with PyGObject/Gio and `dbus-daemon`.
+From the repository root, use `mise run chooser-dev` to rebuild and open an isolated Save chooser with application choices. Requires Python with PyGObject/Gio and `dbus-daemon`.
 
 ```bash
-make run-chooser-dev
-make run-chooser-dev CHOOSER_CASE=multiple CHOOSER_ARGS="--view list --group-by-type"
-make run-chooser-dev CHOOSER_ARGS="--choices --theme classic-light"
+mise run chooser-dev
+CHOOSER_CASE=multiple CHOOSER_ARGS="--view list --group-by-type" mise run chooser-dev
+CHOOSER_ARGS="--choices --theme classic-light" mise run chooser-dev
 ```
 
-This target disables accessibility integration only for the test session, whose private bus does not provide a working accessibility registry. `make run-dev` still launches the normal app.
+This task disables accessibility integration only for the test session, whose private bus does not provide a working accessibility registry. `mise run dev` still launches the normal app.
 
 You can also build Strata and run the dedicated client directly:
 

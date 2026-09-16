@@ -6,6 +6,13 @@ extend-exclude = [
   "Cargo.lock",
 ]
 
+[default]
+extend-ignore-re = [
+  "`crypted\\.rar`",
+  # Deliberately misspelled input in the Settings closest-match regression.
+  '"relase chanel"',
+]
+
 [default.extend-words]
 Omarchy = "Omarchy"
 Hyprland = "Hyprland"

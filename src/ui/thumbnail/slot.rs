@@ -11,9 +11,14 @@ mod imp {
     pub struct ThumbnailSlot {
         pub slot: Cell<i32>,
         pub content_inset: Cell<i32>,
+        pub limit_fallback_height: Cell<bool>,
+        pub fallback_scale: Cell<f64>,
         pub texture: RefCell<Option<gdk::Texture>>,
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
+        pub cut: Cell<bool>,
+        pub hidden: Cell<bool>,
+        pub base_opacity: Cell<f64>,
         #[cfg(test)]
         pub resize_calls: Cell<u32>,
     }
@@ -48,25 +53,41 @@ mod imp {
             if width <= 0.0 || height <= 0.0 {
                 return;
             }
-            let texture = self
-                .texture
-                .borrow()
-                .clone()
-                .or_else(|| self.fallback.borrow().clone());
+            let is_cut = self.cut.get();
+
+            let texture = if is_cut {
+                crate::assets::primary_icon_paintable(crate::assets::icons::SCISSORS)
+                    .or_else(|| self.texture.borrow().clone())
+                    .or_else(|| self.fallback.borrow().clone())
+            } else {
+                self.texture
+                    .borrow()
+                    .clone()
+                    .or_else(|| self.fallback.borrow().clone())
+            };
+
             let Some(texture) = texture else {
                 return;
             };
+
+            let scale = if self.texture.borrow().is_some() || is_cut {
+                1.0
+            } else {
+                self.fallback_scale.get()
+            };
+
             let inset = f64::from(self.content_inset.get())
                 .min((width - 1.0) / 2.0)
                 .min((height - 1.0) / 2.0);
+
             snapshot.save();
-            snapshot.translate(&graphene::Point::new(inset as f32, inset as f32));
-            snapshot_texture(
-                snapshot,
-                &texture,
-                width - 2.0 * inset,
-                height - 2.0 * inset,
-            );
+            let draw_width = (width - 2.0 * inset) * scale;
+            let draw_height = (height - 2.0 * inset) * scale;
+            snapshot.translate(&graphene::Point::new(
+                ((width - draw_width) / 2.0) as f32,
+                ((height - draw_height) / 2.0) as f32,
+            ));
+            snapshot_texture(snapshot, &texture, draw_width, draw_height);
             snapshot.restore();
         }
     }
@@ -87,6 +108,21 @@ fn snapshot_texture(snapshot: &gtk::Snapshot, texture: &gdk::Texture, width: f64
         texture,
         &graphene::Rect::new(x, y, draw_w as f32, draw_h as f32),
     );
+}
+
+fn folder_height_scale(texture: &gdk::Texture) -> f64 {
+    let mut downloader = gdk::TextureDownloader::new(texture);
+    downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+    let (pixels, stride) = downloader.download_bytes();
+    let width = texture.width() as usize;
+    let visible = |row: usize| (0..width).any(|column| pixels[row * stride + column * 4 + 3] > 0);
+    let height = texture.height() as usize;
+    let Some(first) = (0..height).find(|row| visible(*row)) else {
+        return 1.0;
+    };
+    let last = (first..height).rfind(|row| visible(*row)).unwrap_or(first);
+    // Lucide's folder ink spans y=2..21, including its stroke, in a 24-unit viewBox.
+    (19.0 / 24.0 * height as f64 / (last - first + 1) as f64).min(1.0)
 }
 
 fn same_texture(left: Option<&gdk::Texture>, right: Option<&gdk::Texture>) -> bool {
@@ -110,6 +146,8 @@ impl ThumbnailSlot {
     pub(crate) fn new(slot: i32) -> Self {
         let widget: Self = glib::Object::new();
         widget.set_overflow(gtk::Overflow::Hidden);
+        widget.imp().fallback_scale.set(1.0);
+        widget.imp().base_opacity.set(1.0);
         widget.set_slot(slot);
         widget
     }
@@ -138,11 +176,16 @@ impl ThumbnailSlot {
         }
     }
 
+    pub(crate) fn limit_fallback_height_to_folder(&self) {
+        self.imp().limit_fallback_height.set(true);
+    }
+
     pub(crate) fn set_texture(&self, texture: &gdk::Texture) {
         if same_texture(self.imp().texture.borrow().as_ref(), Some(texture)) {
             return;
         }
         self.imp().texture.replace(Some(texture.clone()));
+        self.update_state_opacity();
         self.queue_draw();
     }
 
@@ -154,8 +197,16 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().texture.replace(None);
+        let scale =
+            if self.imp().limit_fallback_height.get() && icon != crate::assets::icons::FOLDER {
+                texture.map_or(1.0, folder_height_scale)
+            } else {
+                1.0
+            };
+        self.imp().fallback_scale.set(scale);
         self.imp().fallback_icon.replace(Some(icon.to_owned()));
         self.imp().fallback.replace(texture.cloned());
+        self.update_state_opacity();
         self.queue_draw();
     }
 
@@ -163,8 +214,46 @@ impl ThumbnailSlot {
         self.imp().texture.borrow().clone()
     }
 
+    pub(crate) fn set_cut(&self, cut: bool) {
+        if self.imp().cut.replace(cut) != cut {
+            self.update_state_opacity();
+            self.queue_draw();
+        }
+    }
+
+    pub(crate) fn set_hidden(&self, hidden: bool) {
+        if self.imp().hidden.replace(hidden) != hidden {
+            self.update_state_opacity();
+        }
+    }
+
+    pub(crate) fn set_base_opacity(&self, opacity: f64) {
+        let opacity = opacity.clamp(0.0, 1.0);
+        let current = self.imp().base_opacity.get();
+        if (current - opacity).abs() > 1e-4 {
+            self.imp().base_opacity.set(opacity);
+            self.update_state_opacity();
+        }
+    }
+
+    fn update_state_opacity(&self) {
+        let opacity = if self.imp().hidden.get() {
+            0.65
+        } else if self.imp().cut.get() || self.imp().texture.borrow().is_some() {
+            1.0
+        } else {
+            self.imp().base_opacity.get()
+        };
+        self.set_opacity(opacity);
+    }
+
     #[cfg(test)]
     pub(crate) fn resize_calls(&self) -> u32 {
         self.imp().resize_calls.get()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fallback_texture(&self) -> Option<gdk::Texture> {
+        self.imp().fallback.borrow().clone()
     }
 }

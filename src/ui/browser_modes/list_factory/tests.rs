@@ -63,6 +63,9 @@ fn entry(name: &str, size: u64) -> FileEntry {
         modified_unix_seconds: MetadataValue::Known(1),
         mode: MetadataValue::Known(0o100644),
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -70,7 +73,6 @@ struct Fixture {
     browser: Option<Rc<Browser>>,
     source: Rc<Source>,
     index: SourceIndexMap,
-    columns: ListColumnLayout,
     cuts: Rc<RefCell<HashSet<Location>>>,
     scrolling: Rc<Cell<bool>>,
     items: Rc<RefCell<Vec<BoundModeItem>>>,
@@ -122,6 +124,7 @@ impl Fixture {
             scrolling: scrolling.clone(),
             bound_items: items.clone(),
             state: None,
+            filter_query: Rc::new(RefCell::new(String::new())),
         }
         .build();
         let view = gtk::ListView::new(Some(selection), Some(factory.clone()));
@@ -135,7 +138,6 @@ impl Fixture {
             browser: Some(browser),
             source,
             index,
-            columns,
             cuts,
             scrolling,
             items,
@@ -155,11 +157,14 @@ impl Fixture {
             .find(|item| item.item().is_some() && item.position() == position)
     }
 
+    fn row_at(&self, position: u32) -> Option<(gtk::ListItem, ListRow)> {
+        let item = self.item_at(position)?;
+        let row = ListRow::from_widget(item.child().and_downcast::<gtk::Box>()?)?;
+        Some((item, row))
+    }
+
     fn first(&self) -> (gtk::ListItem, ListRow) {
-        let item = self.item_at(0).expect("bound first item");
-        let row = ListRow::from_widget(item.child().and_downcast::<gtk::Box>().expect("row"))
-            .expect("row parts");
-        (item, row)
+        self.row_at(0).expect("bound first item")
     }
 
     fn bind(&self, item: &gtk::ListItem) {
@@ -207,12 +212,7 @@ fn setup_and_binding_follow_source_positions_and_shared_column_widths() {
             assert_eq!(row.name.label(), expected.display_name);
             assert_eq!(row.size.label(), entry_size(expected));
             assert_eq!(row.mode.label(), entry_mode(expected));
-            assert_eq!(row.kind.label(), "File");
-            assert_eq!(row.icon.slot_size(), 18);
-            super::super::set_list_column_width(&fixture.columns, 0, 240);
-            super::super::set_list_column_width(&fixture.columns, 2, 115);
-            assert_eq!(row.name_cell.width_request(), 240);
-            assert_eq!(row.size.width_request(), 115);
+            assert_eq!(row.kind.label(), entry_type(expected));
         },
     );
 }
@@ -253,6 +253,7 @@ fn scrolling_defers_details_and_settling_preserves_rename_state() {
                 bound_items: fixture.items.clone(),
                 syncing: Rc::new(Cell::new(false)),
                 visit: super::super::bound_item_visitor(fixture.items.clone()),
+                item_context_trigger: Rc::new(|_, _| {}),
             };
             refresh_list_section(
                 fixture.browser.as_ref().expect("browser"),
@@ -353,9 +354,9 @@ fn unbind_cancels_pending_thumbnail_work() {
 }
 
 #[test]
-fn appearance_animation_is_suppressed_while_scrolling() {
+fn replacement_rows_are_visible_without_waiting_for_idle() {
     gtk_test(
-        "ui::browser_modes::list_factory::tests::appearance_animation_is_suppressed_while_scrolling",
+        "ui::browser_modes::list_factory::tests::replacement_rows_are_visible_without_waiting_for_idle",
         || {
             let fixture = Fixture::new();
             for scrolling in [false, true] {
@@ -363,9 +364,75 @@ fn appearance_animation_is_suppressed_while_scrolling() {
                 let item: gtk::ListItem = glib::Object::new();
                 fixture.factory.emit_by_name::<()>("setup", &[&item]);
                 let row = item.child().expect("row");
-                assert_eq!(row.has_css_class("file-appear"), !scrolling);
-                pump_until(|| !row.has_css_class("file-appear"));
+                assert!(!row.has_css_class("file-appear"));
+                assert_eq!(row.opacity(), 1.0);
             }
+        },
+    );
+}
+
+fn selection_gesture(widget: &impl IsA<gtk::Widget>) -> gtk::GestureClick {
+    let controllers = widget.observe_controllers();
+    (0..controllers.n_items())
+        .find_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::GestureClick>()
+                .filter(|gesture| gesture.propagation_phase() == gtk::PropagationPhase::Capture)
+        })
+        .expect("selection gesture")
+}
+
+#[test]
+fn pressing_unselected_item_moves_selection_on_press_and_preserves_multi_selection() {
+    gtk_test(
+        "ui::browser_modes::list_factory::tests::pressing_unselected_item_moves_selection_on_press_and_preserves_multi_selection",
+        || {
+            let fixture = Fixture::new();
+            pump_until(|| {
+                fixture.item_at(0).is_some()
+                    && fixture.item_at(1).is_some()
+                    && fixture.item_at(2).is_some()
+            });
+            let selection: gtk::MultiSelection = fixture
+                .view
+                .model()
+                .expect("selection")
+                .downcast()
+                .expect("multi selection");
+
+            let (_, row1) = fixture.row_at(1).expect("row 1");
+            let (_, row2) = fixture.row_at(2).expect("row 2");
+
+            let gesture1 = selection_gesture(&row1.widget);
+            let gesture2 = selection_gesture(&row2.widget);
+
+            // Initially select item 0.
+            selection.select_item(0, true);
+            assert!(selection.is_selected(0));
+            assert!(!selection.is_selected(1));
+
+            // Pressing on unselected item 1 moves selection to 1 immediately on press.
+            gesture1.emit_by_name::<()>("pressed", &[&1i32, &10.0f64, &10.0f64]);
+            assert!(!selection.is_selected(0));
+            assert!(selection.is_selected(1));
+
+            // Multi-select items 0 and 1.
+            selection.select_item(0, false);
+            assert!(selection.is_selected(0));
+            assert!(selection.is_selected(1));
+            assert!(!selection.is_selected(2));
+
+            // Pressing on already-selected item 1 preserves the multi-selection group for drag.
+            gesture1.emit_by_name::<()>("pressed", &[&1i32, &10.0f64, &10.0f64]);
+            assert!(selection.is_selected(0));
+            assert!(selection.is_selected(1));
+
+            // Pressing on unselected item 2 clears the group and selects item 2.
+            gesture2.emit_by_name::<()>("pressed", &[&1i32, &10.0f64, &10.0f64]);
+            assert!(!selection.is_selected(0));
+            assert!(!selection.is_selected(1));
+            assert!(selection.is_selected(2));
         },
     );
 }

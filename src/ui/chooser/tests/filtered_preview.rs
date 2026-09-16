@@ -4,6 +4,7 @@ use super::*;
 use crate::ui::browser_modes::BrowserMode;
 use std::time::{Duration, Instant};
 
+#[track_caller]
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -27,20 +28,21 @@ fn find(widget: &gtk::Widget, predicate: &impl Fn(&gtk::Widget) -> bool) -> Opti
     None
 }
 
-fn keys(widget: &impl IsA<gtk::Widget>) -> gtk::EventControllerKey {
+fn keys(widget: &impl IsA<gtk::Widget>) -> Vec<gtk::EventControllerKey> {
     let controllers = widget.observe_controllers();
     (0..controllers.n_items())
         .filter_map(|index| controllers.item(index))
-        .find_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
-        .expect("key controller")
+        .filter_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
+        .collect()
 }
 
 fn press(
-    keys: &gtk::EventControllerKey,
+    keys: &[gtk::EventControllerKey],
     key: gtk::gdk::Key,
     modifiers: gtk::gdk::ModifierType,
 ) -> bool {
-    keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+    keys.iter()
+        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
 }
 
 #[test]
@@ -50,7 +52,8 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
         || {
             crate::ui::prepare_portal_ui();
             let root = tempfile::tempdir().expect("fixture");
-            std::fs::create_dir(root.path().join("folder")).expect("nested directory");
+            std::fs::create_dir_all(root.path().join("folder/matched"))
+                .expect("nested directories");
             std::fs::write(root.path().join("stale.txt"), "Wrong preview").expect("stale file");
             std::fs::write(root.path().join("folder/nested.txt"), "Nested preview")
                 .expect("nested file");
@@ -81,6 +84,11 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                     };
                     let state = build_chooser(request, Arc::new(AtomicBool::new(false)), |_| {})
                         .expect("chooser");
+                    // Finish deferred startup focus before simulating user input.
+                    let initialized = Rc::new(Cell::new(false));
+                    let initialized_at_idle = initialized.clone();
+                    glib::idle_add_local_once(move || initialized_at_idle.set(true));
+                    wait_until(|| initialized.get());
                     let browser = state.view.browser();
                     wait_until(|| {
                         browser
@@ -142,6 +150,35 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                             .location,
                         Location::local(root.path().join("folder/nested.txt"))
                     );
+                    assert!(!state.view.filter_has_focus());
+                    let result_focus =
+                        gtk::prelude::RootExt::focus(&state.window).expect("result focus");
+                    assert!(result_focus == results || result_focus.is_ancestor(&results));
+                    assert!(!press(
+                        &window_keys,
+                        gtk::gdk::Key::Up,
+                        gtk::gdk::ModifierType::empty()
+                    ));
+                    assert!(press(
+                        &keys(&results),
+                        gtk::gdk::Key::Up,
+                        gtk::gdk::ModifierType::empty()
+                    ));
+                    assert!(state.view.filter_has_focus());
+                    assert_eq!(field.text(), "nested");
+                    assert!(press(
+                        &filter_keys,
+                        gtk::gdk::Key::Down,
+                        gtk::gdk::ModifierType::empty()
+                    ));
+                    assert!(!state.view.filter_has_focus());
+                    assert!(press(
+                        &window_keys,
+                        gtk::gdk::Key::f,
+                        gtk::gdk::ModifierType::CONTROL_MASK
+                    ));
+                    assert!(state.view.filter_has_focus());
+                    assert_eq!(field.text(), "nested");
                     assert!(!press(
                         &window_keys,
                         gtk::gdk::Key::space,
@@ -165,7 +202,7 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                         ));
                         wait_until(|| {
                             find(state.window.upcast_ref(), &|widget| {
-                                widget.has_css_class("preview-pane")
+                                widget.is_mapped() && widget.has_css_class("preview-pane")
                             })
                             .is_some()
                                 == open
@@ -187,7 +224,7 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                         assert!(state.completion.borrow().is_some());
                         if open {
                             let pane = find(state.window.upcast_ref(), &|widget| {
-                                widget.has_css_class("preview-pane")
+                                widget.is_mapped() && widget.has_css_class("preview-pane")
                             })
                             .expect("open preview");
                             wait_until(|| {
@@ -200,6 +237,80 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                             });
                             capture("after");
                         }
+                    }
+                    for recursive in [true, false] {
+                        state.view.dismiss_focused_filter();
+                        browser.navigate(Location::local(root.path()));
+                        wait_until(|| {
+                            browser
+                                .column_snapshot(0)
+                                .is_some_and(|column| !column.loading)
+                        });
+                        if recursive {
+                            assert!(state.view.show_filter_with_query("matched"));
+                            let field = gtk::prelude::RootExt::focus(&state.window)
+                                .expect("filter focus")
+                                .ancestor(gtk::Entry::static_type())
+                                .and_downcast::<gtk::Entry>()
+                                .expect("filter entry");
+                            wait_until(|| {
+                                find(state.window.upcast_ref(), &|widget| {
+                                    widget.is_mapped()
+                                        && widget
+                                            .downcast_ref::<gtk::Label>()
+                                            .is_some_and(|label| label.text() == "matched")
+                                })
+                                .is_some()
+                            });
+                            field.grab_focus_without_selecting();
+                            press(
+                                &keys(&field),
+                                gtk::gdk::Key::Down,
+                                gtk::gdk::ModifierType::empty(),
+                            );
+                            wait_until(|| {
+                                state
+                                    .view
+                                    .selected_search_result()
+                                    .is_some_and(|entry| entry.is_directory())
+                            });
+                        } else {
+                            browser.select(0, 0);
+                            browser.focus_active();
+                            wait_until(|| state.view.item_view_has_focus());
+                            assert_eq!(
+                                browser.focused_entry().expect("folder").display_name,
+                                "folder"
+                            );
+                        }
+                        assert!(press(
+                            &window_keys,
+                            gtk::gdk::Key::space,
+                            gtk::gdk::ModifierType::empty()
+                        ));
+                        if mode == BrowserMode::Columns {
+                            let path = root.path().join(if recursive {
+                                "folder/matched"
+                            } else {
+                                "folder"
+                            });
+                            wait_until(|| {
+                                browser.active_location() == Some(Location::local(&path))
+                            });
+                            if !recursive {
+                                assert_eq!(
+                                    browser.location_at(0),
+                                    Some(Location::local(root.path()))
+                                );
+                            }
+                        } else {
+                            assert_eq!(
+                                browser.active_location(),
+                                Some(Location::local(root.path())),
+                                "Space must not navigate: {mode:?}, recursive={recursive}"
+                            );
+                        }
+                        assert!(state.completion.borrow().is_some());
                     }
                     state.cancel();
                 }

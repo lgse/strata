@@ -5,9 +5,8 @@
 //! Decoders lend member streams to the session and supply already-known pending
 //! names only on cancellation. The session validates and maps destination reports
 //! without scanning ahead, probing the filesystem or reserving pending names.
-
 use std::{
-    io::Read,
+    io::{Read, Write},
     path::Path,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
@@ -15,21 +14,24 @@ use std::{
 use crate::model::Location;
 
 use super::{
-    ArchiveError, check_archive_cancelled, copy_with_big_buf,
+    ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled,
     destination::{ExtractNameResolver, ExtractionDestination, validated_archive_path},
 };
 
 #[cfg(test)]
 mod tests;
 
-/// Output classification, not a complete archive entry type. Decoders currently
-/// flatten non-directory entries into file streams; this is a provisional boundary.
+pub(super) type MemberSink<'a> = dyn FnMut(&[u8]) -> Result<(), ArchiveError> + 'a;
+pub(super) type MemberDecoder<'a> = dyn FnMut(&mut MemberSink<'_>) -> Result<(), ArchiveError> + 'a;
+
 pub(super) enum MemberContent<'a> {
     Directory,
-    File(&'a mut dyn Read),
+    File(&'a mut dyn Read, Option<u64>),
+    Decoded(&'a mut MemberDecoder<'a>, u64),
 }
 
 /// Result of an extract that may stop after writing some members.
+#[derive(Debug)]
 pub(super) enum ArchiveOutcome<T> {
     Completed(T),
     Cancelled {
@@ -53,6 +55,8 @@ pub(super) struct ExtractionSession<'a> {
     first_name: Option<String>,
     completed: Vec<Location>,
     interrupted: Option<InterruptedMember>,
+    written: u64,
+    available_bytes: Option<u64>,
 }
 
 impl<'a> ExtractionSession<'a> {
@@ -61,21 +65,81 @@ impl<'a> ExtractionSession<'a> {
         progress: &'a AtomicUsize,
         cancelled: &'a AtomicBool,
     ) -> Result<Self, ArchiveError> {
-        Ok(Self {
+        let directory = ExtractionDestination::open(destination)?;
+        let available_bytes = directory.available_bytes()?;
+        Ok(Self::from_open(
             destination,
-            directory: ExtractionDestination::open(destination)?,
+            directory,
+            progress,
+            cancelled,
+            available_bytes,
+        ))
+    }
+
+    fn from_open(
+        destination: &'a Path,
+        directory: ExtractionDestination,
+        progress: &'a AtomicUsize,
+        cancelled: &'a AtomicBool,
+        available_bytes: Option<u64>,
+    ) -> Self {
+        Self {
+            destination,
+            directory,
             resolver: ExtractNameResolver::new(),
             progress,
             cancelled,
             first_name: None,
             completed: Vec::new(),
             interrupted: None,
-        })
+            written: 0,
+            available_bytes,
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn open_with_available_bytes(
+        destination: &'a Path,
+        progress: &'a AtomicUsize,
+        cancelled: &'a AtomicBool,
+        available_bytes: Option<u64>,
+    ) -> Result<Self, ArchiveError> {
+        Ok(Self::from_open(
+            destination,
+            ExtractionDestination::open(destination)?,
+            progress,
+            cancelled,
+            available_bytes,
+        ))
     }
 
     /// Allows a decoder to stop before opening/decrypting another member.
     pub(super) fn check_cancelled(&self) -> Result<(), ArchiveError> {
         check_archive_cancelled(self.cancelled)
+    }
+
+    /// Sequential formats that cannot cheaply sum headers rely on per-member checks.
+    pub(super) fn preflight_claimed_size(&self, claimed: u128) -> Result<(), ArchiveError> {
+        match self.remaining() {
+            Some(available) if claimed > u128::from(available) => Err(archive_failed(format!(
+                "Archive declared size ({claimed} bytes) exceeds the {available} bytes of free space at the destination"
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    fn remaining(&self) -> Option<u64> {
+        self.available_bytes
+            .map(|available| available.saturating_sub(self.written))
+    }
+
+    fn ensure_member_fits(&self, name: &str, declared: u64) -> Result<(), ArchiveError> {
+        match self.remaining() {
+            Some(available) if declared > available => Err(archive_failed(format!(
+                "Archive member `{name}` declared {declared} bytes, but only {available} bytes are free at the destination"
+            ))),
+            _ => Ok(()),
+        }
     }
 
     /// Processes one member. On error the decoder must stop and call `finish`.
@@ -93,6 +157,11 @@ impl<'a> ExtractionSession<'a> {
             )));
             return Err(error);
         }
+        if let MemberContent::File(_, Some(declared)) | MemberContent::Decoded(_, declared) =
+            &content
+        {
+            self.ensure_member_fits(name, *declared)?;
+        }
         let outpath = self.resolver.resolve(&self.directory, &path)?;
         if self.first_name.is_none() {
             self.first_name = outpath
@@ -105,22 +174,46 @@ impl<'a> ExtractionSession<'a> {
                 self.directory.create_directories(&outpath)?;
                 outpath
             }
-            MemberContent::File(reader) => {
+            content => {
                 let (mut file, created) = self.directory.create_file(&outpath)?;
-                if let Err(error) = copy_with_big_buf(reader, &mut file, self.cancelled) {
-                    drop(file);
-                    let removed = self.directory.remove_file(&created);
-                    if error == ArchiveError::Cancelled {
-                        let location = extract_entry_location(self.destination, &created);
-                        self.interrupted = Some(if removed.is_ok() {
-                            InterruptedMember::NotAttempted(location)
-                        } else {
-                            InterruptedMember::Failed(location)
-                        });
+                let result = match content {
+                    MemberContent::File(reader, declared_size) => copy_member(
+                        name,
+                        reader,
+                        &mut file,
+                        self.cancelled,
+                        declared_size,
+                        self.remaining(),
+                    ),
+                    MemberContent::Decoded(decode, declared) => decode_member(
+                        name,
+                        decode,
+                        &mut file,
+                        self.cancelled,
+                        declared,
+                        self.remaining(),
+                    ),
+                    MemberContent::Directory => unreachable!(),
+                };
+                match result {
+                    Ok(copied) => {
+                        self.written = self.written.saturating_add(copied);
+                        created
                     }
-                    return Err(error);
+                    Err(error) => {
+                        drop(file);
+                        let removed = self.directory.remove_file(&created);
+                        if error == ArchiveError::Cancelled {
+                            let location = extract_entry_location(self.destination, &created);
+                            self.interrupted = Some(if removed.is_ok() {
+                                InterruptedMember::NotAttempted(location)
+                            } else {
+                                InterruptedMember::Failed(location)
+                            });
+                        }
+                        return Err(error);
+                    }
                 }
-                created
             }
         };
         self.completed
@@ -167,4 +260,107 @@ impl<'a> ExtractionSession<'a> {
 
 fn extract_entry_location(destination: &Path, relative: &Path) -> Location {
     Location::local(destination.join(relative))
+}
+
+fn declared_size_exceeded(name: &str, declared: u64) -> ArchiveError {
+    archive_failed(format!(
+        "Archive member `{name}` declared {declared} bytes but produced more"
+    ))
+}
+
+fn declared_size_short(name: &str, declared: u64, actual: u64) -> ArchiveError {
+    archive_failed(format!(
+        "Archive member `{name}` declared {declared} bytes but produced {actual} bytes"
+    ))
+}
+
+fn destination_full(name: &str, available: u64) -> ArchiveError {
+    archive_failed(format!(
+        "Not enough free space at the destination to extract `{name}` ({available} bytes available)"
+    ))
+}
+
+fn decode_member(
+    name: &str,
+    decode: &mut MemberDecoder<'_>,
+    writer: &mut impl Write,
+    cancelled: &AtomicBool,
+    declared: u64,
+    remaining_disk: Option<u64>,
+) -> Result<u64, ArchiveError> {
+    let mut written = 0u64;
+    decode(&mut |bytes| {
+        check_archive_cancelled(cancelled)?;
+        let length = bytes.len() as u64;
+        if length > declared.saturating_sub(written) {
+            return Err(declared_size_exceeded(name, declared));
+        }
+        if let Some(available) = remaining_disk
+            && length > available.saturating_sub(written)
+        {
+            return Err(destination_full(name, available));
+        }
+        writer.write_all(bytes).map_err(archive_failed)?;
+        written += length;
+        Ok(())
+    })?;
+    check_archive_cancelled(cancelled)?;
+    if written != declared {
+        return Err(declared_size_short(name, declared, written));
+    }
+    Ok(written)
+}
+
+/// An extra byte past either limit is probed before it can be written.
+fn copy_member(
+    name: &str,
+    mut reader: impl Read,
+    writer: &mut (impl Write + ?Sized),
+    cancelled: &AtomicBool,
+    declared_size: Option<u64>,
+    remaining_disk: Option<u64>,
+) -> Result<u64, ArchiveError> {
+    let mut buf = vec![0u8; COPY_BUF];
+    let mut copied = 0u64;
+    loop {
+        check_archive_cancelled(cancelled)?;
+        let declared_remaining = declared_size.map(|declared| declared.saturating_sub(copied));
+        let disk_remaining = remaining_disk.map(|disk| disk.saturating_sub(copied));
+        let allowed = match (declared_remaining, disk_remaining) {
+            (Some(declared), Some(disk)) => declared.min(disk),
+            (Some(limit), None) | (None, Some(limit)) => limit,
+            (None, None) => u64::MAX,
+        };
+        if allowed == 0 {
+            let mut probe = [0u8; 1];
+            if reader.read(&mut probe).map_err(archive_failed)? == 0 {
+                break;
+            }
+            return Err(match declared_size {
+                Some(declared) if declared_remaining == Some(0) => {
+                    declared_size_exceeded(name, declared)
+                }
+                _ => destination_full(
+                    name,
+                    remaining_disk
+                        .expect("should know free space when the declared size is not exhausted"),
+                ),
+            });
+        }
+        let cap = buf
+            .len()
+            .min(usize::try_from(allowed).unwrap_or(usize::MAX));
+        let n = reader.read(&mut buf[..cap]).map_err(archive_failed)?;
+        if n == 0 {
+            break;
+        }
+        writer.write_all(&buf[..n]).map_err(archive_failed)?;
+        copied = copied.saturating_add(n as u64);
+    }
+    if let Some(declared) = declared_size
+        && copied != declared
+    {
+        return Err(declared_size_short(name, declared, copied));
+    }
+    Ok(copied)
 }

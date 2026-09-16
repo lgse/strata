@@ -2,17 +2,16 @@
 
 use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
-    LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
-    compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, should_activate_pointer_click, type_group_sorter, type_groups_of,
-    value_type_group,
+    SourceIndexMap, compare_type_groups, compare_type_groups_for_preferences, list_column_width,
+    metadata_fill_position, should_activate_filtered_pointer, should_activate_pointer_click,
+    type_group_sorter, type_groups_of, value_type_group,
 };
-use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
+use crate::model::{EntryKind, FileEntry, Location, MetadataValue, SortDirection, SortKey};
 use crate::test_support::gtk_test;
 use gtk::{gio, prelude::*};
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
+use std::{cell::RefCell, collections::HashSet};
 
 impl super::ModeViews {
     pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
@@ -43,13 +42,6 @@ fn list_columns_have_usable_minimum_widths() {
     for (index, minimum) in LIST_COLUMN_MIN_WIDTHS.into_iter().enumerate() {
         assert_eq!(list_column_width(index, minimum - 1), minimum);
         assert_eq!(list_column_width(index, minimum + 1), minimum + 1);
-    }
-}
-
-#[test]
-fn list_default_widths_respect_column_minimums() {
-    for (default, minimum) in LIST_COLUMN_WIDTHS.into_iter().zip(LIST_COLUMN_MIN_WIDTHS) {
-        assert!(default >= minimum);
     }
 }
 
@@ -89,6 +81,15 @@ fn type_grouping_is_list_only() {
 }
 
 #[test]
+fn filtered_activation_ignores_click_preferences() {
+    let query = RefCell::new("report".to_owned());
+    assert!(should_activate_filtered_pointer(1, &query));
+    assert!(!should_activate_filtered_pointer(2, &query));
+    query.replace(String::new());
+    assert!(!should_activate_filtered_pointer(1, &query));
+}
+
+#[test]
 fn single_click_activation_distinguishes_files_and_folders() {
     let activation = ClickActivation {
         files: ClickCount::Two,
@@ -112,71 +113,60 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     };
 
-    assert_eq!(metadata_fill_position(Some(7), &entry, false), Some(7));
-    assert_eq!(metadata_fill_position(None, &entry, false), None);
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, false, false),
+        Some(7)
+    );
+    assert_eq!(metadata_fill_position(None, &entry, false, true), None);
 
     entry.size = MetadataValue::Known(100);
-    assert_eq!(metadata_fill_position(Some(7), &entry, false), Some(7));
     entry.modified_unix_seconds = MetadataValue::Known(1);
-    assert_eq!(metadata_fill_position(Some(7), &entry, false), None);
-    assert_eq!(metadata_fill_position(Some(7), &entry, true), Some(7));
+    assert_eq!(metadata_fill_position(Some(7), &entry, false, false), None);
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, false, true),
+        Some(7)
+    );
+    entry.image_dimensions = MetadataValue::Unavailable;
+    entry.native_name = "movie.mp4".into();
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, false, true),
+        Some(7)
+    );
+    entry.duration_seconds = MetadataValue::Unavailable;
+    assert_eq!(
+        metadata_fill_position(Some(7), &entry, true, false),
+        Some(7)
+    );
     entry.mode = MetadataValue::Known(0o100644);
-    assert_eq!(metadata_fill_position(Some(7), &entry, true), None);
-}
-
-#[test]
-fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
-    assert_eq!(icons_card_icon_slot(26), MIN_ICONS_THUMBNAIL_SIZE);
-    assert_eq!(icons_card_icon_slot(128), 128);
-    assert_eq!(icons_card_icon_slot(512), MAX_ICONS_THUMBNAIL_SIZE);
-    assert_eq!(icons_card_extent(26), icons_card_extent(64));
-    assert_eq!(icons_card_extent(64), (156, 107));
-    assert_eq!(icons_card_extent(128), (156, 171));
-    assert_eq!(icons_card_extent(256), (256, 299));
-    assert_eq!(icons_card_extent(512), icons_card_extent(256));
+    assert_eq!(metadata_fill_position(Some(7), &entry, true, false), None);
 }
 
 #[test]
 fn icons_columns_follow_viewport_width() {
     assert_eq!(
-        super::icons_columns_for_width(800, 160, BrowserDensity::Compact),
-        5
+        super::icons_columns_for_width(800, 120, BrowserDensity::Compact),
+        6
     );
     assert_eq!(
-        super::icons_columns_for_width(160, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(120, 120, BrowserDensity::Compact),
         1
     );
     assert_eq!(
-        super::icons_columns_for_width(80, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(80, 120, BrowserDensity::Compact),
         1
     );
     assert_eq!(
-        super::icons_columns_for_width(8000, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(8000, 120, BrowserDensity::Compact),
         20
     );
     assert_eq!(
-        super::icons_columns_for_width(8000, 160, BrowserDensity::Airy),
+        super::icons_columns_for_width(8000, 120, BrowserDensity::Airy),
         16
-    );
-}
-
-#[test]
-fn pinning_icons_columns_leaves_min_at_one() {
-    gtk_test(
-        "ui::browser_modes::tests::pinning_icons_columns_leaves_min_at_one",
-        || {
-            let grid = gtk::GridView::new(
-                Some(gtk::NoSelection::new(Some(gtk::StringList::new(&["a"])))),
-                Some(gtk::SignalListItemFactory::new()),
-            );
-            grid.set_min_columns(1);
-            grid.set_max_columns(12);
-            super::pin_ungrouped_grid_columns(&grid, 4);
-            assert_eq!(grid.min_columns(), 1);
-            assert_eq!(grid.max_columns(), 4);
-        },
     );
 }
 
@@ -282,16 +272,47 @@ fn first_row_columns(view: &impl IsA<gtk::Widget>) -> usize {
 
 #[test]
 fn folders_lead_the_groups_and_the_rest_are_alphabetical() {
-    let mut groups = vec!["Zip archive", "Folder", "JSON document", "audio"];
+    let mut groups = vec!["Zip archive", "Folder", "Other", "JSON document", "audio"];
     groups.sort_by(|left, right| compare_type_groups(left, right));
 
-    assert_eq!(groups, ["Folder", "audio", "JSON document", "Zip archive"]);
+    assert_eq!(
+        groups,
+        ["Folder", "audio", "JSON document", "Zip archive", "Other"]
+    );
+}
+
+#[test]
+fn type_groups_follow_type_direction_and_folder_preference() {
+    for folders_first in [false, true] {
+        for sort_direction in [SortDirection::Ascending, SortDirection::Descending] {
+            let preferences = crate::model::ViewPreferences {
+                sort_key: SortKey::Type,
+                sort_direction,
+                folders_first,
+                ..Default::default()
+            };
+            let mut groups = ["Other", "Type 10", "Folder", "Audio", "Type 2"];
+            groups.sort_by(|left, right| {
+                compare_type_groups_for_preferences(left, right, preferences)
+            });
+            let mut expected = vec!["Audio", "Folder", "Type 2", "Type 10", "Other"];
+            if sort_direction == SortDirection::Descending {
+                expected.reverse();
+            }
+            if folders_first {
+                expected.retain(|label| *label != "Folder");
+                expected.insert(0, "Folder");
+            }
+            assert_eq!(groups.as_slice(), expected);
+        }
+    }
 }
 
 #[test]
 fn empty_model_values_sort_before_known_groups() {
     assert!(compare_type_groups("", "Folder").is_lt());
     assert!(compare_type_groups("", "JSON document").is_lt());
+    assert!(compare_type_groups("", "Other").is_lt());
     assert_eq!(value_type_group(""), "");
 }
 
@@ -334,7 +355,8 @@ fn type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group()
                 &value('f', "data.json"),
                 &value('f', "readme.md"),
             ]);
-            let sorted = gtk::SortListModel::new(Some(source), Some(type_group_sorter()));
+            let sorted =
+                gtk::SortListModel::new(Some(source), Some(type_group_sorter(Default::default)));
             let names: Vec<String> = (0..sorted.n_items())
                 .filter_map(|index| {
                     let value = sorted.item(index)?.downcast::<gtk::StringObject>().ok()?;
@@ -365,8 +387,6 @@ fn type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group()
 const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
 const SOURCE_INDEX_TEST: &str =
     "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_non_source_items";
-const LIST_ROW_GTK_CHILD: &str = "STRATA_LIST_ROW_GTK_CHILD";
-const LIST_ROW_TEST: &str = "ui::browser_modes::tests::list_bind_can_read_the_rename_field";
 
 fn run_source_index_map_checks() {
     let source = gtk::StringList::new(&["fv\talpha", "dh\t.secret", "fv\tneedle"]);
@@ -486,30 +506,6 @@ fn run_source_index_map_checks() {
     );
 }
 
-mod skeletons;
-
-#[test]
-fn list_bind_can_read_the_rename_field() {
-    if std::env::var_os(LIST_ROW_GTK_CHILD).is_some() {
-        if gtk::init().is_err() {
-            return;
-        }
-        let row = super::assemble_list_row();
-        let (_, name, field, _, _, _, _) =
-            super::list_row_parts(&row).expect("bind and settle walk this row");
-        assert!(name.has_css_class("alternate-rename-label"));
-        assert!(field.has_css_class("inline-rename"));
-        return;
-    }
-
-    let status = Command::new(std::env::current_exe().expect("test executable should exist"))
-        .args(["--exact", LIST_ROW_TEST])
-        .env(LIST_ROW_GTK_CHILD, "1")
-        .status()
-        .expect("isolated GTK list row test should start");
-    assert!(status.success(), "isolated GTK list row test failed");
-}
-
 #[test]
 fn source_index_map_tracks_filter_sort_and_non_source_items() {
     if std::env::var_os(GTK_CHILD).is_some() {
@@ -526,6 +522,32 @@ fn source_index_map_tracks_filter_sort_and_non_source_items() {
         .status()
         .expect("isolated GTK mapping test should start");
     assert!(status.success(), "isolated GTK mapping test failed");
+}
+
+#[test]
+fn icons_hover_only_tracks_thumbnail_or_caption_content() {
+    gtk_test(
+        "ui::browser_modes::tests::icons_hover_only_tracks_thumbnail_or_caption_content",
+        || {
+            let card = crate::ui::icons_cell::new_card(64);
+            let (icon, label) = crate::ui::icons_cell::parts(&card).expect("icons card");
+            label.set_text(Some("sample.png"));
+            let window = gtk::Window::builder().child(&card).build();
+            window.present();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            while icon.width() == 0 {
+                assert!(std::time::Instant::now() < deadline);
+                gtk::glib::MainContext::default().iteration(true);
+            }
+            let bounds = icon.compute_bounds(&card).expect("icon bounds");
+            let y = f64::from(bounds.center().y());
+            super::set_icons_content_hover(&card, 2.0, y);
+            assert!(!card.has_css_class("content-hover"));
+            super::set_icons_content_hover(&card, f64::from(bounds.center().x()), y);
+            assert!(card.has_css_class("content-hover"));
+            window.close();
+        },
+    );
 }
 
 #[test]
@@ -546,6 +568,9 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 modified_unix_seconds: MetadataValue::Known(1),
                 mode: MetadataValue::Known(0o100644),
                 is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             };
             let card = crate::ui::icons_cell::new_card(64);
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true, None);
@@ -582,8 +607,79 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
             super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &cuts);
             assert_eq!(label.tooltip_text().as_deref(), Some("icons-scroll.png"));
             assert!(card.has_css_class("cut"));
+            assert_eq!(icon.opacity(), 1.0);
             assert_eq!(crate::ui::thumbnail::pending_thumbnail_id(&path), job);
             crate::ui::thumbnail::clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn icons_entry_displays_item_info_for_images_folders_and_files() {
+    gtk_test(
+        "ui::browser_modes::tests::icons_entry_displays_item_info_for_images_folders_and_files",
+        || {
+            let mut entry = FileEntry {
+                location: Location::local("/fixture/photo.png"),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Known(0o100644),
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let card = crate::ui::icons_cell::new_card(64);
+            let details = crate::ui::icons_cell::details_label(&card).expect("details label");
+
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert!(!details.is_visible());
+
+            entry.image_dimensions = MetadataValue::Known((1920, 1080));
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert!(details.is_visible());
+            assert_eq!(details.text().as_str(), "1920×1080");
+
+            entry.image_dimensions = MetadataValue::Unavailable;
+            entry.size = MetadataValue::Known(2048);
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "2 kB");
+
+            entry.location = Location::local("/fixture/movie.mp4");
+            entry.native_name = "movie.mp4".into();
+            entry.display_name = "movie.mp4".into();
+            entry.duration_seconds = MetadataValue::Known(83);
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "1:23");
+
+            let mut folder_entry = FileEntry {
+                location: Location::local("/fixture/docs"),
+                thumbnail_path: None,
+                native_name: "docs".into(),
+                display_name: "docs".into(),
+                kind: EntryKind::Directory,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Known(0o100755),
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unavailable,
+                child_count: MetadataValue::Known(12),
+                duration_seconds: MetadataValue::Unknown,
+            };
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "12 items");
+
+            folder_entry.child_count = MetadataValue::Known(1);
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "1 item");
+
+            folder_entry.child_count = MetadataValue::Known(0);
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            assert_eq!(details.text().as_str(), "No items");
         },
     );
 }

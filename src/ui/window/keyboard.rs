@@ -103,6 +103,11 @@ impl KeyEvent {
 
 impl Dispatcher {
     fn handle_key(&self, browser: &Rc<Browser>, key: Key, modifiers: Modifiers) -> Propagation {
+        let preferences = &self.type_to_search.preferences;
+        if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
+            preferences.set_text_size(size);
+            return Propagation::Stop;
+        }
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
@@ -125,6 +130,28 @@ impl Dispatcher {
             .or_else(|| self.filter_and_location_commands(&event))
             .or_else(|| self.video_controls(&event))
             .or_else(|| self.sidebar_commands(browser, &event))
+            .or_else(|| self.context_menu_command(&event))
+            .or_else(|| {
+                // Search rows own navigation; directory commands must not act on hidden selections.
+                if self.view.selected_search_results().is_some()
+                    && !event.text_has_focus()
+                    && event.key != Key::Delete
+                {
+                    if matches!(event.key, Key::c | Key::x | Key::v | Key::a)
+                        && let Some(result) = self.clipboard_command(&event)
+                    {
+                        return Some(result);
+                    }
+                    if event.vim_navigation {
+                        crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
+                        Some(Propagation::Stop)
+                    } else {
+                        Some(Propagation::Proceed)
+                    }
+                } else {
+                    None
+                }
+            })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
             .or_else(|| self.focus_navigation(browser, &mut event))
@@ -143,6 +170,12 @@ impl Dispatcher {
             }
             return Some(Propagation::Proceed);
         }
+        if gtk::prelude::RootExt::focus(&self.window)
+            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
+            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        {
+            return Some(Propagation::Proceed);
+        }
         if !self.inline_editing_active()
             && let Some(result) = self.shortcuts.handle_key(key, modifiers)
         {
@@ -156,6 +189,10 @@ impl Dispatcher {
 
     fn inline_editing_active(&self) -> bool {
         self.view.rename_is_active() || self.view.new_entry_is_active()
+    }
+
+    fn arrows_scoped_to_content(&self) -> bool {
+        self.type_to_search.preferences.arrow_navigation_scoped()
     }
 }
 

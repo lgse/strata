@@ -13,7 +13,7 @@
 
 <picture>
   <source media="(prefers-reduced-motion: no-preference)" srcset="docs/assets/strata-demo.gif">
-  <img src="docs/assets/strata-columns.png" alt="Strata browsing files and showing settings, themes, Icons view, and folder creation" width="1280">
+  <img src="docs/assets/strata-columns.png" alt="Strata showing Columns, Icons, and List views, search, a context menu, file properties, and settings" width="1280">
 </picture>
 
 <sub>The animation respects reduced-motion preferences. View the [static preview](docs/assets/strata-columns.png).</sub>
@@ -47,9 +47,9 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Features
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
-- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
+- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
-- **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
+- **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. File Properties shows available media resolution, duration, bitrate, codecs, and audio/video rates.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
@@ -99,6 +99,9 @@ your current chooser and dismiss the one-time in-app offer. Neither folder
 association nor an unattended install enables the chooser automatically.
 Non-interactive package installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
+Phone backends are not installed by the script. For optional iPhone/iPad or Android
+access, follow [Connecting phones](#connecting-phones) after installation.
+
 ### AI-assisted installation
 
 Use this option to have a coding agent install and verify the latest release archive.
@@ -119,10 +122,15 @@ Then:
 - Install the required GTK4, GtkSourceView 5, Poppler GLib, Fontconfig, Bubblewrap,
   FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
   package manager. Add gvfs-smb only if I want SMB support.
+- Ask whether I want phone access. On Arch/Omarchy, add gvfs-afc and usbmuxd for
+  iPhone/iPad app documents, gvfs-gphoto2 for camera/PTP photo access, or gvfs-mtp
+  for Android file transfers, only if requested. Other distributions need their
+  equivalent GVfs backends.
 - Download the archive and its matching .sha256 file from the latest GitHub release.
-- Verify the checksum with sha256sum --check and verify GitHub Actions provenance
-  with `gh attestation verify <archive> --repo lgse/strata`. Stop on any failure;
-  never install an unverified binary.
+- Verify the checksum with sha256sum --check. If GitHub CLI is installed and
+  authenticated, also verify GitHub Actions provenance with
+  `gh attestation verify <archive> --repo lgse/strata`. Stop if either attempted
+  verification fails; never install a binary with an invalid checksum.
 - Extract it and install `strata` to ~/.local/bin/strata without overwriting an
   unrelated file. Ensure ~/.local/bin is on PATH.
 - Ask whether I want a per-user desktop entry and inode/directory association;
@@ -157,7 +165,7 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 # Optional SMB and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
@@ -166,23 +174,31 @@ GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-base
 
 Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
 Fedora; `gvfs-daemons` on Debian/Ubuntu). Without that backend, removable drives
-may be absent from Devices. SMB support remains optional.
+may be absent from Devices. SMB support remains optional. Phones need additional
+backends; see [Connecting phones](#connecting-phones).
 
 #### 2. Download and verify
 
-From the [latest release](https://github.com/lgse/strata/releases/latest), download the `.tar.gz` matching `$target` and its identically named `.sha256` file. Then verify both its digest and signed GitHub Actions provenance:
+From the [latest release](https://github.com/lgse/strata/releases/latest), download the `.tar.gz` matching `$target` and its identically named `.sha256` file over HTTPS. Then verify its digest:
 
 ```bash
 cd ~/Downloads
 archive="strata-<version>-${target}.tar.gz"
 sha256sum --check "${archive}.sha256"
-gh attestation verify "$archive" --repo lgse/strata
-tar -xzf "$archive"
 ```
 
-Both verification commands must succeed. Install the binary and confirm it starts:
+If GitHub CLI is installed and authenticated, you can additionally verify the
+archive's signed GitHub Actions provenance before extracting it:
 
 ```bash
+gh attestation verify "$archive" --repo lgse/strata
+```
+
+Every verification you run must succeed. Extract the archive, install the binary,
+and confirm it starts:
+
+```bash
+tar -xzf "$archive"
 install -Dm755 "${archive%.tar.gz}/strata" "$HOME/.local/bin/strata"
 command -v strata
 strata
@@ -216,9 +232,10 @@ Launch Strata with an optional local directory:
 ```bash
 strata                 # home directory
 strata ~/Documents     # a specific directory
+strata --version       # print the installed version
 ```
 
-Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest move or move to Trash, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
+Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest reversible file operation, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
 
 ### Desktop entry
 
@@ -239,7 +256,7 @@ xdg-mime query default inode/directory
 
 The final command should print `io.github.lgse.Strata.desktop`. The desktop entry's filename matches the `io.github.lgse.Strata` application ID that Strata's windows report, so desktop shells match a running window to this entry and draw its `Icon` value. Log out and back in if a shell caches launcher icons.
 
-When building from source, `make install-local` installs the binary, icon, and desktop entry in the same locations, and `make uninstall-local` removes them.
+When building from source, `mise run install-local` installs the binary, icon, and desktop entry in the same locations, and `mise run uninstall-local` removes them.
 
 ### "Open file location" from other applications
 
@@ -248,7 +265,7 @@ Browsers and GTK/GNOME applications reveal a file by calling the `org.freedeskto
 For a source installation, enable Strata as the per-user activatable provider explicitly:
 
 ```bash
-make install-file-manager
+mise run install-file-manager
 ```
 
 For an AUR package, copy its inactive service template into your per-user service directory:
@@ -268,7 +285,7 @@ sed "s|^Exec=/usr/bin/strata |Exec=$HOME/.local/bin/strata |" \
   > ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service
 ```
 
-A per-user provider takes precedence over system providers shipped by other file managers. Before enabling Strata manually, remove any other per-user service whose `Name` is `org.freedesktop.FileManager1`; two providers for the same name in one service directory are chosen arbitrarily. If another file manager already owns the bus name, exit it before testing. Use `make uninstall-file-manager` for a source installation, or remove the per-user service file, to disable Strata again.
+A per-user provider takes precedence over system providers shipped by other file managers. Before enabling Strata manually, remove any other per-user service whose `Name` is `org.freedesktop.FileManager1`; two providers for the same name in one service directory are chosen arbitrarily. If another file manager already owns the bus name, exit it before testing. Use `mise run uninstall-file-manager` for a source installation, or remove the per-user service file, to disable Strata again.
 
 Strata then answers `ShowFolders`, `ShowItems`, and `ShowItemProperties`, opening the directory that holds the named items with those items selected:
 
@@ -315,25 +332,133 @@ omarchy menu keybindings --print | grep -i "file manager"
 
 `hyprctl configerrors` should produce no errors. These user overrides survive Omarchy updates; do not edit files under `/usr/share/omarchy/`.
 
+### Connecting phones
+
+Strata discovers and mounts phones through GIO/GVfs. The required phone backends
+are optional and are not installed by `install.sh`. On Arch Linux or Omarchy,
+install only the support you need:
+
+```bash
+# iPhone or iPad app documents (AFC):
+sudo pacman -S --needed gvfs-afc usbmuxd
+# Camera/PTP photo access, including compatible iPhones:
+sudo pacman -S --needed gvfs-gphoto2
+# Android (MTP):
+sudo pacman -S --needed gvfs-mtp
+```
+
+Other distributions need equivalent GVfs AFC, gphoto2/PTP, or MTP backends;
+package names vary.
+
+- **iPhone/iPad:** unlock the device, connect it with a USB data cable, and accept
+  **Trust This Computer** (enter the device passcode if requested). AFC can expose
+  an app document-sharing view containing folders named after apps; this is not
+  the photo library. For photos, install the gphoto2 backend and look for a
+  separate camera/device entry with **DCIM**, if exposed by the phone. Accept any
+  photo-access prompt. Photos stored only in iCloud may not be available over USB.
+  Access depends on the iOS version and backend support; iOS does not expose
+  unrestricted internal storage.
+- **Android:** unlock the device, connect it with a USB data cable, and select
+  **File transfer / Android Auto** or **MTP** in its USB preferences rather than
+  charging-only mode. Accept any file-access prompt. Only storage exposed by the
+  phone is available, not protected system files or private app data.
+
+After installing a backend, fully quit Strata (all windows) and reopen it.
+Reconnect the unlocked phone if necessary, then click its entry under **Devices**.
+The camera/PTP entry opens a single **Photos** view: files appear progressively
+from storage/date folders, prioritizing newer date-folder names, without requiring
+you to open each folder. The backend may finish a folder's metadata before
+returning its first batch. This is
+a virtual listing of JPEG, HEIC/HEIF, MOV, MP4, and recognized camera RAW files,
+not a reorganization of the phone. Sidecars such as `.AAE` and other formats are
+hidden only from this Photos view; their originals remain untouched and visible
+in normal folder browsing. Duplicate filenames remain
+separate files with their original locations; use **Copy path** or **Properties**
+to distinguish their sources. Preview, copy, and delete act on those originals.
+This is the USB-exposed collection, not iOS's Albums hierarchy. The current
+backend does not provide album membership for a reliable Albums/Camera Roll split.
+
+Camera batches yield to interface input and redraws. In List view, file-type
+grouping is applied after discovery finishes; the saved grouping setting is
+preserved while the live listing stays ungrouped.
+
+Discovery reads metadata, not every photo's contents. It skips symlinks, avoids
+revisiting discovered directories, and preserves hidden-file filtering. Photos
+keeps loading in batches until the whole exposed library is indexed, you navigate
+away or refresh, or the device reports an error. There is no overall scan
+deadline or fixed file, folder, or nesting limit. Refresh to rescan after a
+phone-side change; not every device supports live change notifications.
+
+Android MTP and iPhone app-document/AFC entries retain normal folder browsing.
+For Android, open **Internal storage** (the label varies by device).
+
+Still photos (including HEIC) and MOV/MP4 videos can use the preview pane or
+<kbd>Space</kbd> quick preview directly from the phone, without a manual copy.
+Strata first downloads a private temporary input for sandboxed decoding: up to
+64 MiB in 30 seconds for images or 256 MiB in 60 seconds for videos, with at most
+four staged inputs per process. Video playback waits for that download, then
+reuses it for seeking and resizing. Closing or changing the preview cancels the
+request; temporary files are removed after the player and its workers release
+them. Remote PDFs, animated GIFs, audio, and other video formats still need a
+local copy for preview. HEIC decoding requires an installed HEIC-capable image
+decoder, such as ImageMagick with libheif. Camera/PTP thumbnails use small previews
+provided by the camera, with bounded retrieval and sandboxed decoding; if the
+camera cannot supply a thumbnail, Strata keeps the file icon instead of downloading
+the original. Camera thumbnails are cached only in memory. See
+[Remote previews](docs/preview-sandbox.md#remote-still-image-previews)
+for cleanup, caching, and sandbox details.
+
+If the phone is missing, check the backend package, try another data cable or USB
+port, and confirm the trust/file-transfer setting. On Arch/Omarchy, `lsusb` (from
+`usbutils`) can confirm USB detection, but detection alone does not establish file
+access. For iPhone/iPad, also check `systemctl status usbmuxd.service` while the
+phone is connected. If the newly installed backend still is not discovered after
+restarting Strata, log out and back in to refresh the desktop's GVfs services.
+
+#### iPhone appears but photo storage is empty
+
+Some recent iPhones can expose an empty camera/PTP store with libgphoto2 2.5.34,
+even when unlocked, trusted, and holding locally stored photos. This is a known
+[upstream libgphoto2 issue](https://github.com/gphoto/libgphoto2/issues/1254), not
+necessarily an empty photo library or a Strata display problem. The backend
+mishandles the folder-parent information returned by these devices.
+
+A read-only test with an iPhone reporting iOS 26.6.1 reproduced the problem:
+unmodified libgphoto2 2.5.34 listed **0 folders**, while the same version with
+[upstream fix `9f5d4f9`](https://github.com/gphoto/libgphoto2/commit/9f5d4f9ca0a7f58bac7987180a48154ea07c090f)
+listed **117 folders**. Both builds were temporary, with their actual library
+loading verified; no photos were downloaded or modified. This confirms folder
+listing with the fix on that device, not complete transfer or Strata GUI coverage.
+
+Use a distribution libgphoto2 update or backport containing that fix when
+available. Merely reinstalling `gvfs-gphoto2` or restarting Strata will not fix an
+affected libgphoto2 build. Strata's GVfs camera backend must load the corrected
+library; setting library paths only for Strata may not affect the separately
+launched GVfs process. This documentation change does **not** bundle or install
+the fix. Avoid replacing system libraries manually; any locally built workaround
+should be isolated and reversible.
+
 ### Network shares
 
 Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Install your distribution's SMB GVfs backend (`gvfs-smb` on Arch) to enable SMB browsing.
 
 ## Theming
 
-Open **Settings → Theme & appearance** from the gear menu or with <kbd>Ctrl</kbd>+<kbd>,</kbd>. Theme changes apply immediately across the interface.
+Open **Settings → Appearance** from the gear menu or with <kbd>Ctrl</kbd>+<kbd>,</kbd>. Theme changes apply immediately across the interface.
+
+Use **Search settings** to filter options across pages and navigate to the closest match, including keywords such as “font size.” In compact windows, the magnifying-glass button opens the search field. Clear the query or press <kbd>Esc</kbd> in the field to restore all settings.
 
 ![Strata Theme and appearance settings showing Omarchy following, six bundled themes, and the Add a theme option](docs/assets/strata-themes.png)
 
 ### Follow Omarchy Quattro
 
-On **Omarchy Quattro**, turn on **Follow Omarchy** under **Settings → Theme & appearance**. Strata maps the active Omarchy palette to its semantic colors, monitors the current theme, and updates live whenever Omarchy's theme changes.
+On **Omarchy Quattro**, turn on **Follow Omarchy** under **Settings → Appearance**. Strata maps the active Omarchy palette to its semantic colors, monitors the current theme, and updates live whenever Omarchy's theme changes.
 
 This integration supports Omarchy Quattro only. The switch is hidden when Strata cannot find a valid Quattro current-theme state; legacy Omarchy theme layouts are not supported.
 
 ### Bundled themes
 
-Choose any included theme from **Settings → Theme & appearance**: Azure Glow, Tokyo Night, Catppuccin, Everforest, Rosé Pine, or Omarchy Light. Selecting a bundled theme turns off Omarchy following and keeps that theme active across restarts.
+Choose any included theme from **Settings → Appearance**: Azure Glow, Tokyo Night, Catppuccin, Everforest, Rosé Pine, or Omarchy Light. Selecting a bundled theme turns off Omarchy following and keeps that theme active across restarts.
 
 ### Custom themes
 
@@ -365,7 +490,7 @@ The deliberate tradeoff: this is fast **filename and path** search, not file-con
 
 Files shown while browsing are untrusted. Image, camera RAW, PDF, thumbnail, and media parsing therefore runs out of process through **Bubblewrap**, not inside the main Strata process. Each short-lived helper receives namespace isolation, a minimal read-only runtime, exactly one canonicalized input file, private output and temporary directories, no network, and no capabilities. Memory, CPU/wall time, input, file, and parent-side output limits bound the work.
 
-Only media helpers may receive allowlisted GPU render devices, and only for accelerated transcoding; image, PDF, and thumbnail helpers receive no device mounts. Outputs are normalized and bounded, then checked for expected PNG, MP4, or WebM signatures before use. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
+Only media helpers may receive allowlisted GPU render devices, and only for accelerated decoding; image, PDF, and thumbnail helpers receive no device mounts. Images are normalized to bounded PNG images. Media arrives incrementally as validated raw RGBA frames and fixed-format PCM: GTK presents textures and GStreamer outputs raw audio, without opening the original file or decoding a compressed clip. Four media sessions per process, bounded queues, and paused-worker cleanup limit concurrent work. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
 
 Plain-text and source previews are different: they stay in process because they do not invoke a native format parser, and reads are capped at 1 MiB. See [Preview sandbox](docs/preview-sandbox.md) for provider ordering, exact mounts, formats, and resource budgets.
 
@@ -379,21 +504,21 @@ Plain-text and source previews are different: they stay in process because they 
 | Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
 | Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
 | Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick, classic `dcraw`, and LibRaw `simple_dcraw` expand camera RAW support |
-| Hardware acceleration | Media-only VA-API or Vulkan attempts with software VP8/WebM fallback; GPU and codec support depend on host drivers/plugins |
+| Hardware acceleration | Media-only VA-API or Vulkan decoding with software fallback; GPU and codec support depend on host drivers |
 | Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
 | Packaging | Dynamically linked release archive with SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
 
 ## Development and documentation
 
-Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. On Arch:
+Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, Fontconfig, and GStreamer 1.20+ (including its app/base development libraries). [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
 
 ```bash
-sudo pacman -S --needed base-devel rust bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
-make start-dev        # rebuild and restart as files change
-make run-dev          # build and launch the main app once
-make run-chooser-dev  # build and open an isolated Save chooser with choices
-./scripts/check.sh    # format, compile, Clippy, tests, and optional policy checks
+sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+mise run start-dev        # rebuild and restart as files change
+mise run dev              # build and launch the main app once
+mise run chooser-dev      # build and open an isolated Save chooser with choices
+mise run check            # format, compile, Clippy, tests, and policy checks
 ```
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:

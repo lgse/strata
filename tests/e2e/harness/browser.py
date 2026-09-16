@@ -19,6 +19,13 @@ from .interaction import Keyboard, Pointer
 from .tree import Bounds, Node, wait_until
 
 ENTRY_ROLES = ("list item", "table cell")
+
+
+def _row_label_matches(node: Node) -> bool:
+    """False while a recycled row's child label still shows the previous name."""
+
+    label = node.find(role="label", rendered=False)
+    return label is None or label.name == node.name
 # `ui::accessibility::describe_pane` names every browser pane after its
 # directory and describes it with the presentation that drew it.
 VIEW_DESCRIPTIONS = {
@@ -32,6 +39,8 @@ ENTRY_CONTAINER_DESCRIPTION = "Files"
 SEARCH_RESULTS_LABEL = "Search results"
 # `ui::preview::PREVIEW_LABEL`.
 PREVIEW_LABEL = "Preview"
+# `ui::browser::peek::PEEK_LABEL`.
+PEEK_LABEL = "Folder peek"
 VIEW_MENU_LABELS = {"Columns": "Columns", "Icons": "Icons", "List": "List"}
 
 
@@ -72,12 +81,16 @@ class Strata:
         place of its list, and the pane must stay addressable either way.
         """
 
-        found = [
-            node
-            for node in self.window.find_all(rendered=True)
-            if node.description in VIEW_DESCRIPTIONS
-        ]
-        return sorted(found, key=lambda node: node.window_bounds().x)
+        found: list[tuple[Node, int]] = []
+        for _, node in self.window.walk():
+            if node.description not in VIEW_DESCRIPTIONS:
+                continue
+            bounds = node._visible_window_bounds()
+            if bounds is None:
+                continue
+            found.append((node, bounds.x))
+        found.sort(key=lambda item: item[1])
+        return [node for node, _ in found]
 
     def entry_container(self, directory: str | None = None) -> Node | None:
         """The list or grid inside a pane, absent while the pane is empty."""
@@ -85,6 +98,9 @@ class Strata:
         pane = self._pane_or_none(directory)
         if pane is None:
             return None
+        return self._entry_container_in(pane)
+
+    def _entry_container_in(self, pane: Node) -> Node | None:
         return pane.find(description=ENTRY_CONTAINER_DESCRIPTION)
 
     def view_mode(self) -> str:
@@ -153,15 +169,35 @@ class Strata:
     # ---------------------------------------------------------------- entries
 
     def entries(self, directory: str | None = None) -> list[Node]:
-        container = self.entry_container(directory)
+        pane = self._pane_or_none(directory)
+        if pane is None:
+            return []
+        return self._entries_in(pane)
+
+    def _entries_in(self, pane: Node) -> list[Node]:
+        container = self._entry_container_in(pane)
         if container is None:
             return []
-        found: list[Node] = []
-        for role in ENTRY_ROLES:
-            found.extend(node for node in container.find_all(role=role) if node.name)
-        return sorted(
-            found, key=lambda node: (node.window_bounds().y, node.window_bounds().x)
-        )
+        found: list[tuple[Node, Bounds]] = []
+        occupied: dict[tuple[int, int, int, int], str] = {}
+        for _, node in container.walk():
+            if node.role not in ENTRY_ROLES or not node.name:
+                continue
+            bounds = node._visible_window_bounds()
+            if bounds is None:
+                continue
+            if not _row_label_matches(node):
+                continue
+            key = (bounds.x, bounds.y, bounds.width, bounds.height)
+            prior = occupied.get(key)
+            if prior is not None and prior != node.name:
+                # GtkListView can expose a recycled row's new name before its
+                # bounds catch up, so two names share one box mid-refresh.
+                return []
+            occupied[key] = node.name
+            found.append((node, bounds))
+        found.sort(key=lambda item: (item[1].y, item[1].x))
+        return [node for node, _ in found]
 
     def is_empty(self, directory: str | None = None) -> bool:
         return self.entry_container(directory) is None
@@ -202,7 +238,7 @@ class Strata:
             candidates = [
                 node
                 for pane in self.containers()
-                for node in self.entries(pane.name)
+                for node in self._entries_in(pane)
             ]
         for node in candidates:
             if node.name == name:
@@ -238,7 +274,7 @@ class Strata:
         return [
             node.name
             for pane in self.containers()
-            for node in self.entries(pane.name)
+            for node in self._entries_in(pane)
             if node.has_state("selected")
         ]
 
@@ -252,9 +288,11 @@ class Strata:
 
     def focused_name(self) -> str | None:
         for role in ENTRY_ROLES:
-            for node in self.window.find_all(role=role, states={"focused"}):
-                if node.name:
-                    return node.name
+            node = self.window.find(
+                role=role, states={"focused"}, predicate=lambda item: bool(item.name)
+            )
+            if node is not None:
+                return node.name
         return None
 
     def wait_for_focused_entry(self, name: str) -> None:
@@ -264,8 +302,7 @@ class Strata:
         )
 
     def focused_node(self) -> Node | None:
-        found = self.window.find_all(states={"focused"})
-        return found[0] if found else None
+        return self.window.find(states={"focused"})
 
     # ---------------------------------------------------------------- actions
 
@@ -293,10 +330,21 @@ class Strata:
         """Click an entry and wait for it to report itself selected."""
 
         self.click_entry(name, directory)
-        return self.wait(
-            lambda: self._selected_entry_or_none(name, directory),
-            f"{name!r} to become selected",
-        )
+        try:
+            return self.wait(
+                lambda: self._selected_entry_or_none(name, directory),
+                f"{name!r} to become selected",
+                timeout=1.0,
+            )
+        except tree.TreeTimeout:
+            # A faster poll can click a row before GTK has it mapped for
+            # input; a second click after the double-click window is a
+            # separate activation, not a double-click.
+            self.click_entry(name, directory)
+            return self.wait(
+                lambda: self._selected_entry_or_none(name, directory),
+                f"{name!r} to become selected",
+            )
 
     def _selected_entry_or_none(self, name: str, directory: str | None):
         node = self._entry_or_none(name, directory)
@@ -320,12 +368,15 @@ class Strata:
     def background_point(self, directory: str | None = None) -> tuple[int, int]:
         """A point on the entry list itself, below the last entry."""
 
-        container = self.entry_container(directory)
+        pane = self._pane_or_none(directory)
+        if pane is None:
+            pane = self.pane(directory)
+        container = self._entry_container_in(pane)
         if container is None:
             # The bottom edge can be Columns' paste-target footer, not its content.
-            return self.pane(directory).screen_bounds().center
+            return pane.screen_bounds().center
         bounds = container.screen_bounds()
-        entries = self.entries(directory)
+        entries = self._entries_in(pane)
         lowest = max(
             (node.screen_bounds().y + node.screen_bounds().height for node in entries),
             default=bounds.y,
@@ -409,6 +460,7 @@ class Strata:
             ),
             f"the menu item {label!r}",
         )
+        self.settle(item)
         self.pointer.click(item)
         self.wait_for_menu_closed()
 
@@ -510,14 +562,18 @@ class Strata:
 
         return self.window.find(name=PREVIEW_LABEL)
 
+    def peek(self) -> Node | None:
+        """The folder peek popover, when it is on screen."""
+
+        return self.window.find(name=PEEK_LABEL)
+
     def preview_shows(self, text: str) -> bool:
         preview = self.preview()
         if preview is None:
             return False
-        for role in ("label", "text"):
-            for node in preview.find_all(role=role, rendered=False):
-                if text in node.name or text in node.text:
-                    return True
+        for node in preview.find_all(rendered=False):
+            if text in node.name or text in node.text:
+                return True
         return False
 
     def dialog(self) -> Node | None:

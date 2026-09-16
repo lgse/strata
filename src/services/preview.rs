@@ -1,23 +1,82 @@
 // SPDX-License-Identifier: MIT
 
-use std::{ffi::OsStr, path::Path, rc::Rc};
-
-use calamine::Reader;
+use std::{
+    borrow::Cow,
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use crate::model::FileEntry;
 
-use super::LoadHandle;
+use super::{DocumentLayout, LoadHandle};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PreviewRequestId(pub u64);
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct MediaPreviewSize {
+    pub width: i32,
+    pub height: i32,
+}
+
+impl MediaPreviewSize {
+    pub const MAX_EDGE: i32 = 1280;
+
+    pub fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.clamp(16, Self::MAX_EDGE),
+            height: height.clamp(16, Self::MAX_EDGE),
+        }
+    }
+
+    pub fn for_viewport(width: i32, height: i32, scale: i32) -> Self {
+        Self::new(width.saturating_mul(scale), height.saturating_mul(scale))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct PreviewRequest {
     pub id: PreviewRequestId,
     pub entry: FileEntry,
     pub text_byte_limit: usize,
+    pub render_document: bool,
     pub pdf_page: i32,
+    pub media_size: MediaPreviewSize,
 }
+
+/// A decode request, not a playable file. Only the sandbox may open `path`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SandboxedMedia {
+    pub(crate) path: PathBuf,
+    pub(crate) size: MediaPreviewSize,
+    pub(crate) backend: crate::sandbox::MediaPreviewBackend,
+    pub(crate) input_owner: Option<PreviewInputLease>,
+}
+
+impl SandboxedMedia {
+    pub(crate) fn retain_input(mut self, owner: impl Send + Sync + 'static) -> Self {
+        self.input_owner = Some(PreviewInputLease(std::sync::Arc::new(owner)));
+        self
+    }
+}
+
+/// Keeps a staged source alive across player clones, seeks, and worker teardown.
+#[derive(Clone)]
+pub(crate) struct PreviewInputLease(std::sync::Arc<dyn Send + Sync>);
+
+impl std::fmt::Debug for PreviewInputLease {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("PreviewInputLease")
+    }
+}
+
+impl PartialEq for PreviewInputLease {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+impl Eq for PreviewInputLease {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreviewContent {
@@ -25,10 +84,16 @@ pub enum PreviewContent {
         content: String,
         truncated: bool,
     },
-    Table {
-        headers: Vec<String>,
-        rows: Vec<Vec<String>>,
+    Document {
+        source: String,
+        document: Option<DocumentLayout>,
+        fallback_reason: Option<String>,
+        warnings: Vec<String>,
         truncated: bool,
+    },
+    Workbook {
+        document: DocumentLayout,
+        warnings: Vec<String>,
     },
     Image,
     Media,
@@ -36,7 +101,7 @@ pub enum PreviewContent {
         png: Vec<u8>,
     },
     SandboxedMedia {
-        data: Vec<u8>,
+        media: SandboxedMedia,
     },
     Pdf {
         png: Vec<u8>,
@@ -68,6 +133,26 @@ pub trait PreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle;
 }
 
+fn content_type_for_path(path: &Path) -> glib::GString {
+    gio::content_type_guess(Some(path), None::<&[u8]>).0
+}
+
+pub(crate) fn is_image_path(path: &Path) -> bool {
+    content_type_for_path(path).starts_with("image/")
+}
+
+pub(crate) fn is_media_path(path: &Path) -> bool {
+    let content_type = content_type_for_path(path);
+    content_type.starts_with("audio/") || content_type.starts_with("video/")
+}
+
+pub(crate) fn supports_remote_video(name: &OsStr) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "mov" | "mp4"))
+}
+
 pub(crate) fn has_plain_text_extension(name: &OsStr) -> bool {
     Path::new(name)
         .extension()
@@ -75,97 +160,12 @@ pub(crate) fn has_plain_text_extension(name: &OsStr) -> bool {
         .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "conf" | "ini"))
 }
 
-pub(crate) fn has_csv_extension(name: &OsStr) -> bool {
-    Path::new(name)
-        .extension()
-        .and_then(OsStr::to_str)
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
-}
-
-pub(crate) fn has_tsv_extension(name: &OsStr) -> bool {
-    Path::new(name)
-        .extension()
-        .and_then(OsStr::to_str)
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("tsv"))
-}
-
-pub(crate) fn has_excel_extension(name: &OsStr) -> bool {
-    Path::new(name)
-        .extension()
-        .and_then(OsStr::to_str)
-        .is_some_and(|extension| {
-            matches!(
-                extension.to_ascii_lowercase().as_str(),
-                "xlsx" | "xls" | "ods"
-            )
-        })
-}
-
-/// Cap on rows parsed for a table preview, matching pandas' truncated-display feel.
-pub(crate) const TABLE_ROW_LIMIT: usize = 200;
-
-/// Parses delimited text (CSV comma, TSV tab) into a header row plus up to
-/// `TABLE_ROW_LIMIT` data rows. Ragged rows are tolerated (`flexible`);
-/// unparsable rows are skipped.
-pub(crate) fn parse_delimited_table(
-    content: &str,
-    delimiter: u8,
-) -> (Vec<String>, Vec<Vec<String>>, bool) {
-    let mut reader = csv::ReaderBuilder::new()
-        .delimiter(delimiter)
-        .flexible(true)
-        .from_reader(content.as_bytes());
-    let headers = reader
-        .headers()
-        .map(|record| record.iter().map(str::to_owned).collect())
-        .unwrap_or_default();
-    let mut rows = Vec::new();
-    let mut truncated = false;
-    for record in reader.records().flatten() {
-        if rows.len() >= TABLE_ROW_LIMIT {
-            truncated = true;
-            break;
-        }
-        rows.push(record.iter().map(str::to_owned).collect());
+pub(crate) fn normalize_preview_text(text: &str) -> Cow<'_, str> {
+    if text.contains('\0') {
+        Cow::Owned(text.replace('\0', "�"))
+    } else {
+        Cow::Borrowed(text)
     }
-    (headers, rows, truncated)
-}
-
-/// Bound on workbook file size before attempting to parse it, so a
-/// pathological or oversized file can't spend unbounded time/memory unzipping.
-pub(crate) const EXCEL_BYTE_LIMIT: u64 = 20 * 1024 * 1024;
-
-type TableParseResult = Result<(Vec<String>, Vec<Vec<String>>, bool), String>;
-
-/// Parses the first worksheet of a local Excel/ODS workbook into a header row
-/// plus up to `TABLE_ROW_LIMIT` data rows.
-pub(crate) fn parse_excel_table(path: &Path) -> TableParseResult {
-    let size = std::fs::metadata(path)
-        .map_err(|error| error.to_string())?
-        .len();
-    if size > EXCEL_BYTE_LIMIT {
-        return Err("Workbook is too large to preview safely".to_owned());
-    }
-    let mut workbook = calamine::open_workbook_auto(path).map_err(|error| error.to_string())?;
-    let range = workbook
-        .worksheet_range_at(0)
-        .ok_or_else(|| "Workbook has no worksheets".to_owned())?
-        .map_err(|error| error.to_string())?;
-    let mut rows_iter = range.rows();
-    let headers = rows_iter
-        .next()
-        .map(|row| row.iter().map(ToString::to_string).collect())
-        .unwrap_or_default();
-    let mut rows = Vec::new();
-    let mut truncated = false;
-    for row in rows_iter {
-        if rows.len() >= TABLE_ROW_LIMIT {
-            truncated = true;
-            break;
-        }
-        rows.push(row.iter().map(ToString::to_string).collect());
-    }
-    Ok((headers, rows, truncated))
 }
 
 pub(crate) fn is_extensionless_dotfile(name: &OsStr) -> bool {
@@ -193,19 +193,6 @@ pub(crate) fn content_family(content_type: &str) -> PreviewContent {
         PreviewContent::Image
     } else if content_type.starts_with("audio/") || content_type.starts_with("video/") {
         PreviewContent::Media
-    } else if matches!(
-        content_type,
-        "text/csv"
-            | "text/tab-separated-values"
-            | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            | "application/vnd.ms-excel"
-            | "application/vnd.oasis.opendocument.spreadsheet"
-    ) {
-        PreviewContent::Table {
-            headers: Vec::new(),
-            rows: Vec::new(),
-            truncated: false,
-        }
     } else if content_type.starts_with("text/")
         || matches!(
             content_type,
