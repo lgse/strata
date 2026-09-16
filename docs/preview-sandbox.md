@@ -1,7 +1,8 @@
 # Preview sandbox
 
 Strata treats files shown while browsing as untrusted. Original-file native
-parsing and decoding run inside bubblewrap, never in the application.
+parsing and decoding run inside bubblewrap, never in the application. The host
+starts bubblewrap from a trusted absolute path, not inherited `PATH`.
 
 ## Providers
 

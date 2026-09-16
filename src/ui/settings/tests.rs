@@ -4,7 +4,7 @@ mod preferences;
 mod reference;
 mod typography;
 
-use std::rc::Rc;
+use std::{path::Path, rc::Rc};
 
 use crate::services::{
     BuildKind, Channel, InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck, UpdateMethod,
@@ -17,7 +17,8 @@ use super::{
     general::{video_preview_backend_label, video_preview_control_state},
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
     managed_install_summary, offer_still_eligible, omarchy_update_command,
-    resolve_update_method_async, responsive_dialog_size, shows_available_release_notes,
+    resolve_update_method_async, responsive_dialog_size, restart_waiter,
+    shows_available_release_notes,
     theme::{theme_background_is_light, theme_name_matches},
     update_check_due, update_check_message, update_dialog_status, update_status_markup,
     uses_compact_navigation,
@@ -535,4 +536,14 @@ fn update_method_resolves_and_caches() {
         *capture.borrow_mut() = Some(method);
     });
     assert_eq!(second.borrow().expect("the cache should answer"), resolved);
+}
+
+#[test]
+fn restart_waiter_uses_absolute_sh() {
+    let Some(command) = restart_waiter(Path::new("/tmp/strata"), 1) else {
+        return;
+    };
+    let program = Path::new(command.get_program());
+    assert!(program.is_absolute());
+    assert_eq!(program.file_name().and_then(|n| n.to_str()), Some("sh"));
 }

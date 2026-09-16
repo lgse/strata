@@ -208,8 +208,11 @@ pub(crate) fn parse(
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable =
         resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
+    let bwrap = crate::trusted_command::resolve("bwrap")
+        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
     let devices = Vec::new();
     let mut command = sandbox_command(
+        &bwrap,
         &executable,
         &input,
         output.path(),
@@ -317,6 +320,7 @@ fn wait_for_renderer(
 }
 
 fn sandbox_command(
+    bwrap: &Path,
     executable: &Path,
     input: &Path,
     output: &Path,
@@ -325,7 +329,7 @@ fn sandbox_command(
     media_backend: MediaPreviewBackend,
     devices: &[PathBuf],
 ) -> Command {
-    let mut command = Command::new("bwrap");
+    let mut command = Command::new(bwrap);
     command.args([
         "--unshare-all",
         "--die-with-parent",

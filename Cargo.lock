@@ -2257,6 +2257,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sevenz-rust2",
+ "sha2",
  "sourceview5",
  "tar",
  "tempfile",
