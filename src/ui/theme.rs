@@ -383,6 +383,7 @@ impl ThemeManager {
             preferences.mode = "omarchy".to_owned();
         }
         super::motion::set_reduce_motion(preferences.reduce_motion);
+        crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
         let manager = Rc::new(Self {
             provider: gtk::CssProvider::new(),
@@ -715,6 +716,7 @@ impl ThemeManager {
             return;
         }
         self.preferences.borrow_mut().date_format = format.as_str().to_owned();
+        crate::util::set_date_format(format);
         self.save_preferences();
     }
 

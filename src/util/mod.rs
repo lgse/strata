@@ -55,7 +55,14 @@ thread_local! {
     /// Labels already listening for format changes; unlike the timestamp
     /// bindings this set is not cleared when a row is rebound without a date.
     static DATE_FORMAT_BOUND: RefCell<Vec<glib::WeakRef<gtk::Label>>> = const { RefCell::new(Vec::new()) };
+    /// Pushed by `ThemeManager` on load and save; reading `shared()` here
+    /// would lazily run theme initialization inside list row binds.
+    static MODIFIED_DATE_FORMAT: Cell<DateFormat> = const { Cell::new(DateFormat::Relative) };
     static MODIFIED_DATE_TIMER_ACTIVE: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(crate) fn set_date_format(format: DateFormat) {
+    MODIFIED_DATE_FORMAT.with(|current| current.set(format));
 }
 
 pub fn modified_date(entry: &FileEntry) -> String {
@@ -149,7 +156,7 @@ pub fn modified_date_example(format: DateFormat) -> String {
 }
 
 fn modified_date_for_seconds(seconds: i64) -> String {
-    let format = crate::ui::theme::ThemeManager::shared().date_format();
+    let format = MODIFIED_DATE_FORMAT.with(Cell::get);
     let Some(modified) = glib::DateTime::from_unix_local(seconds).ok() else {
         return "—".to_owned();
     };
