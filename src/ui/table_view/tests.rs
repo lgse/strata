@@ -80,7 +80,10 @@ fn sorting_preserves_headers_full_copy_and_state_after_recycling() {
         || {
             let state = TableState::new(vec![
                 vec![cell("value", true)],
+                vec![cell("1", false)],
+                vec![cell("5", false)],
                 vec![cell("10", false)],
+                vec![cell("3", false)],
                 vec![cell("2", false)],
                 vec![],
             ]);
@@ -103,11 +106,11 @@ fn sorting_preserves_headers_full_copy_and_state_after_recycling() {
                 .expect("column");
             assert_eq!(
                 state.copy_text(),
-                "value\n2\n10\n\n",
+                "value\n1\n2\n3\n5\n10\n\n",
                 "first column sorts on initial display"
             );
             view.sort_by_column(Some(&column), gtk::SortType::Descending);
-            assert_eq!(state.copy_text(), "value\n\n10\n2\n");
+            assert_eq!(state.copy_text(), "value\n\n10\n5\n3\n2\n1\n");
             let weak = view.downgrade();
             drop((column, view, scroll, widget));
             assert!(
@@ -115,7 +118,7 @@ fn sorting_preserves_headers_full_copy_and_state_after_recycling() {
                 "a recycled table must release its view"
             );
             let widget = state.widget();
-            assert_eq!(state.copy_text(), "value\n\n10\n2\n");
+            assert_eq!(state.copy_text(), "value\n\n10\n5\n3\n2\n1\n");
             drop(widget);
             let weak = Rc::downgrade(&state);
             drop(state);

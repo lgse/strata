@@ -2103,7 +2103,7 @@ paned > separator {
 }
 
 .preview-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.32);
+  border-bottom: 1px solid alpha(@theme_border, 0.6);
   min-height: 40px;
   padding: 0 6px 0 12px;
 }
@@ -2156,20 +2156,9 @@ paned > separator {
   opacity: 0.46;
 }
 
-.preview-metadata {
-  border-bottom: 1px solid alpha(@theme_border, 0.24);
-  padding: 10px 12px;
-}
-
-.preview-metadata-label {
+.preview-metadata label {
   color: @theme_dim_text;
-  font-size: 0.72em;
-  font-weight: 700;
-}
-
-.preview-metadata-value {
-  color: @theme_text;
-  font-size: 0.86em;
+  font-size: 0.65em;
 }
 
 .preview-content,
@@ -2305,10 +2294,14 @@ paned > separator {
   outline-offset: 1px;
 }
 
-.preview-document-table {
+.preview-table-interactive > scrolledwindow,
+.preview-table-interactive > scrolledwindow > viewport,
+.preview-document-table,
+.preview-document-table > listview {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.5);
-  border-radius: 5px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .preview-document-table-cell {
@@ -2379,6 +2372,23 @@ paned > separator {
   border-color: @theme_border;
 }
 
+.preview-document-table > header {
+  border: none;
+  box-shadow: none;
+}
+
+.preview-document-table > header button {
+  background-image: none;
+  box-shadow: none;
+  border-width: 0 0 1px 1px;
+  border-style: solid;
+  border-radius: 0;
+}
+
+.preview-document-table > header button:first-child {
+  border-left-width: 0;
+}
+
 .preview-document-table > header button:hover {
   background: @theme_highlight;
   color: @theme_accent;
@@ -2403,15 +2413,6 @@ paned > separator {
   border-color: @theme_border;
 }
 
-.preview-document-table > header button:last-child,
-.preview-document-table cell:last-child {
-  border-right: 1px solid @theme_border;
-}
-
-.preview-document-table row:last-child cell {
-  border-bottom: 1px solid @theme_border;
-}
-
 .preview-document-table row:hover {
   background: @theme_highlight;
 }
@@ -2419,6 +2420,22 @@ paned > separator {
 .preview-document-table > header separator,
 .preview-document-table > header sort-indicator {
   color: @theme_accent;
+}
+
+.preview-document-table > header sort-indicator.ascending,
+.preview-document-table > header sort-indicator.descending {
+  -gtk-icon-source: -gtk-recolor(url("resource:///io/github/lgse/Strata/icons/scalable/actions/strata-caret.svg"));
+  -gtk-icon-size: 10px;
+  min-width: 12px;
+  min-height: 12px;
+}
+
+.preview-document-table > header sort-indicator.ascending {
+  -gtk-icon-transform: none;
+}
+
+.preview-document-table > header sort-indicator.descending {
+  -gtk-icon-transform: rotate(180deg);
 }
 
 .preview-volume-toggle {

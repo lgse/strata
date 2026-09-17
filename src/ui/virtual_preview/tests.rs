@@ -22,6 +22,32 @@ use crate::{
 };
 
 #[test]
+fn standalone_table_keeps_copy_model_alive_without_document_state() {
+    gtk_test(
+        "ui::virtual_preview::tests::standalone_table_keeps_copy_model_alive_without_document_state",
+        || {
+            let cancellation = crate::sandbox::Cancellation::default();
+            let kind =
+                crate::services::document_kind("text/csv", std::ffi::OsStr::new("table.csv"), true)
+                    .expect("CSV kind");
+            let parsed = crate::services::parse_document(kind, "value\n10\n2\n", &cancellation)
+                .expect("CSV");
+            let layout =
+                crate::services::layout_document(parsed.document, &cancellation).expect("layout");
+            let (widget, state) = rendered_document(layout, Vec::new(), false);
+            let table = Rc::downgrade(state.tables.borrow().get(&0).expect("standalone table"));
+            drop(state);
+            assert_eq!(
+                table.upgrade().expect("widget owns copy model").copy_text(),
+                "value\n2\n10\n"
+            );
+            drop(widget);
+            assert!(table.upgrade().is_none(), "closing table releases model");
+        },
+    );
+}
+
+#[test]
 fn source_units_bound_normal_rows_and_isolate_pathological_lines() {
     let content = format!(
         "{}{}\ntail\n",

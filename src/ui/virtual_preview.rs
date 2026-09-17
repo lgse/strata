@@ -184,6 +184,23 @@ fn virtual_preview(
         hovered: Cell::new(None),
         pressed_link: RefCell::new(None),
     });
+    if let [
+        PreviewUnit::Document(DocumentUnit {
+            kind: DocumentUnitKind::Table { rows, .. },
+            ..
+        }),
+    ] = state.units.as_slice()
+    {
+        let table = super::table_view::TableState::new(rows.clone());
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        container.set_vexpand(true);
+        for warning in warnings {
+            container.append(&super::preview::document_notice(&warning));
+        }
+        container.append(&table.widget_with_height(true));
+        state.tables.borrow_mut().insert(0, table);
+        return (container, state);
+    }
     let model = gtk::StringList::new(&vec![""; state.units.len()]);
     let selection = gtk::NoSelection::new(Some(model.clone()));
     let document_tags = (!source).then(document_tag_table);

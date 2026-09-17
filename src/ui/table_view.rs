@@ -14,6 +14,7 @@ pub(super) struct TableState {
     sort_keys: Rc<Vec<Vec<SortKey>>>,
     header: bool,
     widths: RefCell<Vec<i32>>,
+    manually_sized: Cell<bool>,
     sort: Cell<Option<(usize, gtk::SortType)>>,
     model: gtk::SortListModel,
 }
@@ -69,6 +70,7 @@ impl TableState {
             sort_keys: Rc::new(sort_keys),
             header,
             widths: RefCell::new(vec![160; columns]),
+            manually_sized: Cell::new(false),
             sort: Cell::new((columns > 0).then_some((0, gtk::SortType::Ascending))),
             model: gtk::SortListModel::new(Some(store), None::<gtk::Sorter>),
         })
@@ -91,12 +93,43 @@ impl TableState {
         text
     }
 
+    fn measure_columns(&self, view: &gtk::ColumnView) -> Vec<i32> {
+        let layout = view.create_pango_layout(None);
+        let mut widths = vec![72; self.widths.borrow().len()];
+        for (row_index, row) in self.rows.iter().take(64).enumerate() {
+            for (index, cell) in row.iter().enumerate() {
+                for line in cell.text.lines().take(8) {
+                    layout.set_text(&line.chars().take(128).collect::<String>());
+                    let padding = if row_index == 0 && self.header { 40 } else { 36 };
+                    widths[index] = widths[index].max((layout.pixel_size().0 + padding).min(640));
+                }
+            }
+        }
+        widths
+    }
+
     pub(super) fn widget(self: &Rc<Self>) -> gtk::Box {
+        self.widget_with_height(false)
+    }
+
+    pub(super) fn widget_with_height(self: &Rc<Self>, fill_height: bool) -> gtk::Box {
         let selection = gtk::NoSelection::new(Some(self.model.clone()));
         let view = gtk::ColumnView::new(Some(selection));
         view.add_css_class("preview-document-table");
+        // GTK clears the header cursor after checking divider hit targets. Its
+        // fallback must come from the column view, not the outer text renderer.
+        view.set_cursor_from_name(Some("pointer"));
+        if let Some(body) = view
+            .last_child()
+            .filter(|child| child.css_name() == "listview")
+        {
+            body.set_cursor_from_name(Some("default"));
+        }
+        view.set_reorderable(false);
         view.set_show_column_separators(true);
         view.set_show_row_separators(true);
+        let desired_widths = self.measure_columns(&view);
+        let automatic_resize = Rc::new(Cell::new(false));
         let mut columns = Vec::new();
         for index in 0..self.widths.borrow().len() {
             let factory = gtk::SignalListItemFactory::new();
@@ -146,11 +179,15 @@ impl TableState {
             };
             let column = gtk::ColumnViewColumn::new(Some(&title), Some(factory));
             column.set_resizable(true);
-            column.set_fixed_width(self.widths.borrow()[index]);
+            column.set_fixed_width(if self.manually_sized.get() { self.widths.borrow()[index] } else { desired_widths[index] });
             let weak = Rc::downgrade(self);
+            let automatic_resize = automatic_resize.clone();
             column.connect_fixed_width_notify(move |column| {
                 if let Some(state) = weak.upgrade() {
                     state.widths.borrow_mut()[index] = column.fixed_width();
+                    if !automatic_resize.get() {
+                        state.manually_sized.set(true);
+                    }
                 }
             });
             let keys = self.sort_keys.clone();
@@ -177,11 +214,29 @@ impl TableState {
             view.append_column(&column);
             columns.push(column);
         }
-        if let Some(header) = view
-            .first_child()
-            .filter(|child| child.css_name() == "header")
-        {
-            header.set_cursor_from_name(Some("pointer"));
+        if let Some(header) = view.first_child() {
+            let mut title = header.first_child();
+            while let Some(widget) = title {
+                title = widget.next_sibling();
+                if let Some(content) = widget.first_child().and_downcast::<gtk::Box>() {
+                    if let Some(label) = content.first_child().and_downcast::<gtk::Label>() {
+                        label.set_hexpand(true);
+                        label.set_xalign(0.0);
+                    }
+                    if let Some(indicator) = content
+                        .last_child()
+                        .filter(|child| child.css_name() == "sort-indicator")
+                    {
+                        indicator.set_halign(gtk::Align::End);
+                        indicator.set_valign(gtk::Align::Center);
+                        indicator.set_size_request(12, 12);
+                    }
+                }
+            }
+        }
+        if let (Some(header), Some(column)) = (view.first_child(), columns.last())
+            && let Some(title) = header.last_child() {
+            install_last_column_resize(&title, column);
         }
         if let Some((index, direction)) = self.sort.get() {
             view.sort_by_column(columns.get(index), direction);
@@ -227,16 +282,44 @@ impl TableState {
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .min_content_height((self.rows.len().min(10) as i32 * 40 + 32).clamp(120, 400))
-            .max_content_height(400)
-            .propagate_natural_height(true)
+            .max_content_height(if fill_height { -1 } else { 400 })
+            .propagate_natural_height(!fill_height)
+            .vexpand(fill_height)
             .build();
-        let key = gtk::EventControllerKey::new();
+        scroll.add_css_class("fixed-scrollbar");
         let weak = Rc::downgrade(self);
+        let weak_columns = columns.iter().map(|column| column.downgrade()).collect::<Vec<_>>();
+        let measured_width = Cell::new(0);
+        view.add_tick_callback(move |view, _| {
+            let Some(state) = weak.upgrade() else { return glib::ControlFlow::Break; };
+            let available = (view.width() - 2).max(0);
+            if state.manually_sized.get() || available == 0 || measured_width.replace(available) == available {
+                return glib::ControlFlow::Continue;
+            }
+            let minimum_total = desired_widths.iter().map(|width| (*width).min(160)).sum::<i32>();
+            let extra = (available - minimum_total).max(0);
+            let weights = desired_widths.iter().map(|width| (width - (*width).min(160)).max(1)).sum::<i32>().max(1);
+            let mut remaining = extra;
+            automatic_resize.set(true);
+            for (index, weak_column) in weak_columns.iter().enumerate() {
+                let share = if index + 1 == weak_columns.len() { remaining } else {
+                    (i64::from(extra) * i64::from((desired_widths[index] - desired_widths[index].min(160)).max(1)) / i64::from(weights)) as i32
+                };
+                remaining -= share;
+                if let Some(column) = weak_column.upgrade() {
+                    column.set_fixed_width(desired_widths[index].min(160) + share);
+                }
+            }
+            automatic_resize.set(false);
+            glib::ControlFlow::Continue
+        });
+        let key = gtk::EventControllerKey::new();
+        let state = self.clone();
         let weak_view = view.downgrade();
         key.connect_key_pressed(move |_, key, _, modifiers| {
             if modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
                 && matches!(key, gtk::gdk::Key::c | gtk::gdk::Key::C)
-                && let (Some(state), Some(view)) = (weak.upgrade(), weak_view.upgrade())
+                && let Some(view) = weak_view.upgrade()
             {
                 view.clipboard().set_text(&state.copy_text());
                 return glib::Propagation::Stop;
@@ -246,9 +329,53 @@ impl TableState {
         view.add_controller(key);
         let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         container.add_css_class("preview-table-interactive");
+        container.set_vexpand(fill_height);
         container.append(&scroll);
         container
     }
+}
+
+fn install_last_column_resize(title: &gtk::Widget, column: &gtk::ColumnViewColumn) {
+    // GTK intentionally excludes the final column from its divider hit test.
+    let drag = gtk::GestureDrag::new();
+    drag.set_button(1);
+    drag.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let active = Rc::new(Cell::new(false));
+    let start_width = Rc::new(Cell::new(0));
+    let active_begin = active.clone();
+    let width_begin = start_width.clone();
+    let weak_title = title.downgrade();
+    let weak_column = column.downgrade();
+    drag.connect_drag_begin(move |gesture, x, _| {
+        let (Some(title), Some(column)) = (weak_title.upgrade(), weak_column.upgrade()) else { return; };
+        let resizing = x >= f64::from(title.width() - 8);
+        active_begin.set(resizing);
+        if resizing {
+            width_begin.set(column.fixed_width());
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        } else {
+            gesture.set_state(gtk::EventSequenceState::Denied);
+        }
+    });
+    let weak_column = column.downgrade();
+    drag.connect_drag_update(move |_, offset, _| {
+        if active.get() && let Some(column) = weak_column.upgrade() {
+            column.set_fixed_width((start_width.get() + offset.round() as i32).max(48));
+        }
+    });
+    title.add_controller(drag);
+    let motion = gtk::EventControllerMotion::new();
+    let weak_title = title.downgrade();
+    motion.connect_motion(move |_, x, _| {
+        if let Some(title) = weak_title.upgrade() {
+            title.set_cursor_from_name(Some(if x >= f64::from(title.width() - 8) { "col-resize" } else { "pointer" }));
+        }
+    });
+    let weak_title = title.downgrade();
+    motion.connect_leave(move |_| {
+        if let Some(title) = weak_title.upgrade() { title.set_cursor(None); }
+    });
+    title.add_controller(motion);
 }
 
 fn append_row(text: &mut String, row: &[DocumentTableCellLayout]) {

@@ -219,7 +219,9 @@ impl PreviewDrawer {
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
             .build();
-        close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
+        close.set_child(Some(&crate::assets::chrome_icon(
+            crate::assets::icons::PANEL_RIGHT_CLOSE,
+        )));
         close.add_css_class("preview-close");
         close.add_css_class("preview-header-action");
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -228,7 +230,23 @@ impl PreviewDrawer {
         header_handle.set_margin_end(8);
         header_handle.set_cursor_from_name(Some("grab"));
         header_handle.append(&icon);
-        header_handle.append(&title);
+        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
+        heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
+        heading.append(&title);
+        let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+        metadata.add_css_class("preview-metadata");
+        let size = metadata_value("Size");
+        let modified = metadata_value("Modified");
+        let content_type = metadata_value("Type");
+        content_type.set_hexpand(true);
+        metadata.append(&size);
+        metadata.append(&gtk::Label::new(Some("·")));
+        metadata.append(&modified);
+        metadata.append(&gtk::Label::new(Some("·")));
+        metadata.append(&content_type);
+        heading.append(&metadata);
+        header_handle.append(&heading);
         header.append(&header_handle);
         header.append(&document_view_button);
         header.append(&open);
@@ -236,25 +254,6 @@ impl PreviewDrawer {
         header.append(&wrap);
         header.append(&close);
         pane.append(&header);
-
-        let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 18);
-        metadata.add_css_class("preview-metadata");
-        let (size_group, size) = metadata_value("SIZE");
-        let (modified_group, modified) = metadata_value("MODIFIED");
-        let (type_group, content_type) = metadata_value("TYPE");
-        metadata.append(&size_group);
-        metadata.append(&modified_group);
-        metadata.append(&type_group);
-        super::theme::ThemeManager::shared().bind_interface_scale(&metadata, |widget, scale| {
-            let metadata = widget.downcast_ref::<gtk::Box>().expect("preview metadata");
-            metadata.set_orientation(if scale > 1.5 {
-                gtk::Orientation::Vertical
-            } else {
-                gtk::Orientation::Horizontal
-            });
-            metadata.set_spacing(if scale > 1.5 { 6 } else { 18 });
-        });
-        pane.append(&metadata);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.add_css_class("preview-content");
@@ -586,20 +585,18 @@ impl PreviewState {
 
     fn show_after_focus_change(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
         self.cancel_pending_show();
-        if self.current.borrow().as_ref() == Some(&entry) {
+        if self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some() {
             return;
         }
         if !self.revealer.reveals_child() {
             self.show(entry, depth);
             return;
         }
-        let cancelled_request = self.current_request.replace(None).is_some();
-        let cancelled_load = self.load.borrow_mut().take().is_some();
-        let cancelled_pdf_load = !self.pdf_loads.borrow().is_empty();
+        self.current_request.set(None);
+        self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
-        if cancelled_request || cancelled_load || cancelled_pdf_load {
-            self.current.replace(None);
-        }
+        // Keep the displayed target during debounce: split synchronization must
+        // not mistake a replacement request for an empty, closed drawer.
 
         let weak = Rc::downgrade(self);
         let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
@@ -619,7 +616,8 @@ impl PreviewState {
         self.current_depth.set(depth);
         self.set_enabled(true);
         let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
-        let already_showing = self.current.borrow().as_ref() == Some(&entry);
+        let already_showing =
+            self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some();
         let split = self.split.borrow().clone();
         if let Some(split) = split.as_ref()
             && (!self.can_show_in(split) || self.sizing.is_suspended())
@@ -955,6 +953,7 @@ impl PreviewState {
         self.size.set_text(&metadata_size(&entry));
         crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
+        self.content_type.set_tooltip_text(Some(file_extension(&entry)));
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -1014,6 +1013,7 @@ impl PreviewState {
 
     fn render(self: &Rc<Self>, preview: Preview) {
         self.content_type.set_text(&preview.content_type);
+        self.content_type.set_tooltip_text(Some(&preview.content_type));
         self.clear_content();
         match preview.content {
             PreviewContent::Text { content, truncated } => {
@@ -2332,20 +2332,12 @@ fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static
     )
 }
 
-fn metadata_value(label: &str) -> (gtk::Box, gtk::Label) {
-    let group = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    group.set_hexpand(true);
-    group.set_valign(gtk::Align::Center);
-    let heading = gtk::Label::new(Some(label));
-    heading.add_css_class("preview-metadata-label");
-    heading.set_xalign(0.0);
+fn metadata_value(description: &str) -> gtk::Label {
     let value = gtk::Label::new(Some("—"));
-    value.add_css_class("preview-metadata-value");
     value.set_ellipsize(gtk::pango::EllipsizeMode::End);
     value.set_xalign(0.0);
-    group.append(&heading);
-    group.append(&value);
-    (group, value)
+    value.update_property(&[gtk::accessible::Property::Description(description)]);
+    value
 }
 
 fn set_pdf_page_texture(
