@@ -857,14 +857,15 @@ pub(super) fn note_metadata(path: &Path, modified: Option<i64>, file_size: Optio
     }
 }
 pub(super) fn note_metadata_entry(entry: &FileEntry) {
-    let Some(path) = entry.local_thumbnail_path() else {
-        return;
-    };
-    note_metadata(
-        path,
-        known_metadata(&entry.modified_unix_seconds),
-        known_metadata(&entry.size),
-    );
+    let modified = known_metadata(&entry.modified_unix_seconds);
+    let file_size = known_metadata(&entry.size);
+    // Mirror-rendered entries park under the mirror path, so the fill must release
+    // that same path; `local_thumbnail_path` only knows about native sources.
+    if let Some(path) = entry.local_thumbnail_path() {
+        note_metadata(path, modified, file_size);
+    } else if let Some((mirror_path, _)) = remote_mirror_thumbnail(entry) {
+        note_metadata(&mirror_path, modified, file_size);
+    }
 }
 
 fn park_into_group(

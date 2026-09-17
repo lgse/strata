@@ -17,9 +17,9 @@ use super::{
     SETTLE_VIEWS, SettledPark, THUMBNAIL_CACHE, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey,
     ThumbnailKind, ThumbnailQueue, ViewSettle, cancel_thumbnail, clear_thumbnail_runtime,
     finish_thumbnail_targets, fire_settled_thumbnails, has_pending_thumbnail,
-    hold_thumbnail_workers, note_metadata, refresh_all_customized_icons, retry_deferred_thumbnail,
-    schedule_or_defer, set_thumbnail_or_icon, show_customized_icon, take_pending_targets,
-    thumbnail_kind,
+    hold_thumbnail_workers, note_metadata, note_metadata_entry, refresh_all_customized_icons,
+    retry_deferred_thumbnail, schedule_or_defer, set_thumbnail_or_icon, show_customized_icon,
+    take_pending_targets, thumbnail_kind,
 };
 use crate::{
     model::{EntryKind, FileEntry, FolderColor, FolderColorValue, Location, MetadataValue},
@@ -764,6 +764,54 @@ fn uri_entries_with_a_local_mirror_render_via_the_mirror_path() {
             bind_thumbnail(&image, &entry);
             drain_main_loop();
             assert!(has_pending_thumbnail(mirror.path()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn a_metadata_fill_releases_a_mirror_rendered_uri_entry() {
+    gtk_test(
+        "ui::thumbnail::tests::a_metadata_fill_releases_a_mirror_rendered_uri_entry",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            // Listings without `include_metadata` leave mtime unknown, which is the
+            // default sort; the thumbnail must still render once the fill arrives.
+            let mut entry = FileEntry {
+                location: Location::uri(format!("file://{}", mirror.path().display())),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(
+                !has_pending_thumbnail(mirror.path()),
+                "unknown metadata must park rather than render"
+            );
+
+            entry.size = MetadataValue::Known(42);
+            entry.modified_unix_seconds = MetadataValue::Known(7);
+            note_metadata_entry(&entry);
+            drain_main_loop();
+            assert!(
+                has_pending_thumbnail(mirror.path()),
+                "metadata fill must release the parked mirror thumbnail"
+            );
             clear_thumbnail_runtime();
         },
     );
