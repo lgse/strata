@@ -159,6 +159,30 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
 }
 
 #[test]
+fn folder_properties_rejects_the_recent_collection() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::folder_properties_rejects_the_recent_collection",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.state
+                .show_folder_properties(&Location::uri("recent:///"));
+
+            assert!(row_label(overlay.upcast_ref(), "LOCATION").is_none());
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
 fn properties_focus_return_handles_detached_origins_and_follow_up_modals() {
     crate::test_support::gtk_test(
         "ui::browser::properties::tests::properties_focus_return_handles_detached_origins_and_follow_up_modals",

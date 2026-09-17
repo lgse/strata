@@ -87,6 +87,9 @@ impl Browser {
             self.restore_path(path);
             return;
         }
+        let focused_was_removed = matches!(&change, DirectoryChange::Remove(location)
+            if self.focused_item().is_some_and(|(focused_depth, _, entry)|
+                focused_depth == depth && entry.location == *location));
         let relocation = match &change {
             DirectoryChange::Move { from, entry } => Some((from.clone(), entry.location.clone())),
             _ => None,
@@ -95,7 +98,7 @@ impl Browser {
             .state
             .borrow_mut()
             .apply_directory_change(depth, watched, change);
-        self.publish_live_change(depth, application);
+        self.publish_live_change(depth, application, focused_was_removed);
         if let Some((from, to)) = relocation {
             self.relocate_open_columns(&from, &to);
         }
@@ -105,15 +108,16 @@ impl Browser {
         &self,
         depth: usize,
         application: Option<(Vec<EntrySplice>, Option<usize>)>,
+        focused_was_removed: bool,
     ) {
         let Some((splices, selected)) = application else {
             return;
         };
         self.emit(BrowserEvent::EntriesSpliced { depth, splices });
-        if selected.is_none() && self.active_depth() == Some(depth) {
+        if self.active_depth() == Some(depth) && (selected.is_none() || focused_was_removed) {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
-                position: None,
+                position: selected,
             });
         }
     }

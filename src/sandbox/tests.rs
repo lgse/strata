@@ -179,6 +179,34 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 }
 
 #[test]
+fn workbook_parser_uses_resource_limited_sandbox_and_validated_output() {
+    let command = sandbox_command(
+        Path::new("/app/strata"),
+        Path::new("/fixtures/book.xlsx"),
+        Path::new("/private-output"),
+        ParseOperation::PreviewWorkbook,
+        0,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let arguments = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(arguments.contains("--unshare-all --die-with-parent --new-session --clearenv"));
+    assert!(arguments.contains("--as=2147483648 --cpu=10"));
+    assert!(arguments.contains("preview-workbook /input.xlsx /output/result.json"));
+    assert!(!arguments.contains("--share-net"));
+    assert!(!arguments.contains("--dev-bind"));
+    assert!(valid_output(
+        ParseOperation::PreviewWorkbook,
+        br#"{"rows":[["a"],["1"]],"truncated":false}"#
+    ));
+    assert!(!valid_output(ParseOperation::PreviewWorkbook, b"invalid"));
+}
+
+#[test]
 fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
     let command = sandbox_command(
         Path::new("/tmp/strata"),

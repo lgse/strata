@@ -62,6 +62,7 @@ fn paste_prefers_only_a_single_selected_directory() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,
@@ -109,6 +110,12 @@ fn paste_prefers_only_a_single_selected_directory() {
         };
         assert_eq!(
             paste_destination(&[folder], Some(Location::local("/fixture")), false),
+            None
+        );
+    }
+    for load_cursor in [false, true] {
+        assert_eq!(
+            paste_destination(&[], Some(Location::uri("recent:///")), load_cursor),
             None
         );
     }

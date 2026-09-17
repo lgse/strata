@@ -307,6 +307,9 @@ fn remember_properties_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cel
 
 impl ViewState {
     pub(super) fn show_folder_properties(self: &Rc<Self>, location: &Location) {
+        if location.is_recent_location() {
+            return;
+        }
         self.show_properties(location.clone(), None);
     }
 

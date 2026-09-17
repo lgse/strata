@@ -32,7 +32,7 @@ pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;
-mod context_menu;
+pub(super) mod context_menu;
 mod customization;
 mod desktop;
 mod destination;
@@ -172,6 +172,8 @@ pub(super) struct ViewState {
     pending_rename: RefCell<Option<PendingRename>>,
     rename_generation: Cell<u64>,
     rename_reveal_generation: Cell<u64>,
+    pending_click_rename: RefCell<Option<glib::SourceId>>,
+    click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
@@ -182,7 +184,7 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
-    pending_transfer_selection: RefCell<Option<(Location, Vec<Location>)>>,
+    pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
     /// dialog opens once the entry it describes is actually loaded.
     pending_select_properties: Cell<bool>,
@@ -492,6 +494,8 @@ impl BrowserView {
             pending_rename: RefCell::new(None),
             rename_generation: Cell::new(0),
             rename_reveal_generation: Cell::new(0),
+            pending_click_rename: RefCell::new(None),
+            click_rename_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
@@ -502,7 +506,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
-            pending_transfer_selection: RefCell::new(None),
+            pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
@@ -564,6 +568,28 @@ impl BrowserView {
         state
             .browser
             .observe(move |event| observer_state.handle(event));
+
+        let click = gtk::GestureClick::new();
+        click.set_button(0);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_state = Rc::downgrade(&state);
+        click.connect_pressed(move |_, _, _, _| {
+            if let Some(state) = weak_state.upgrade() {
+                state.cancel_click_rename();
+            }
+        });
+        state.overlay.add_controller(click);
+
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_state = Rc::downgrade(&state);
+        keys.connect_key_pressed(move |_, _, _, _| {
+            if let Some(state) = weak_state.upgrade() {
+                state.cancel_click_rename();
+            }
+            glib::Propagation::Proceed
+        });
+        state.overlay.add_controller(keys);
 
         let weak_state = Rc::downgrade(&state);
         state.location_entry.connect_activate(move |_| {
@@ -705,6 +731,30 @@ impl BrowserView {
     pub fn select_after_load(&self, names: Vec<String>, properties: bool) {
         self.state.pending_select.borrow_mut().extend(names);
         self.state.pending_select_properties.set(properties);
+    }
+
+    pub(super) fn reveal_location(&self, location: Location) {
+        let Some(parent) = location.parent() else {
+            return;
+        };
+        self.state.pending_archive_destination.take();
+        self.state.pending_navigate.take();
+        self.state.pending_select.take();
+        self.state.pending_select_properties.set(false);
+        self.state
+            .pending_location_selection
+            .replace(Some((parent.clone(), vec![location])));
+        if self.state.browser.active_location().as_ref() == Some(&parent) {
+            if let Some(depth) = self.state.browser.active_depth() {
+                if let Some(column) = self.state.columns.borrow().get(depth) {
+                    column.filter_entry.set_text("");
+                }
+                self.state.mode_views.borrow().clear_filter(depth);
+            }
+            self.state.browser.reload_active();
+        } else {
+            self.state.browser.navigate_location(parent, false);
+        }
     }
 
     pub fn browser(&self) -> Rc<Browser> {
@@ -1368,6 +1418,9 @@ impl BrowserView {
     }
 
     pub fn undo_last_operation(&self) -> bool {
+        if let Some((generation, _, _)) = self.state.browser.pending_undo_rename() {
+            return self.state.browser.undo_rename(generation);
+        }
         if let Some((generation, records)) = self.state.browser.pending_undo_move() {
             return self.state.undo_move(generation, records);
         }
@@ -1879,10 +1932,9 @@ impl ViewState {
                 true
             });
             let active = destination == Some(depth)
-                && self
-                    .browser
-                    .location_at(depth)
-                    .is_some_and(|location| !is_trash_location(&location));
+                && self.browser.location_at(depth).is_some_and(|location| {
+                    !is_trash_location(&location) && !location.is_recent_location()
+                });
             if active {
                 column.shell.add_css_class("destination-column");
             } else {
@@ -1927,7 +1979,7 @@ fn paste_destination(
         [folder] if folder.is_directory() && !load_cursor => Some(folder.location.clone()),
         _ => column,
     }
-    .filter(|location| !is_trash_location(location))
+    .filter(|location| !is_trash_location(location) && !location.is_recent_location())
 }
 
 /// Keyboard-triggered folder creation must ignore the pointer so a resting mouse

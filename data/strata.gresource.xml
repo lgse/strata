@@ -12,6 +12,7 @@
     <file>icons/scalable/actions/strata-circle-check.svg</file>
     <file>icons/scalable/actions/strata-check-on-primary.svg</file>
     <file>icons/scalable/actions/strata-chevron-right.svg</file>
+    <file>icons/scalable/actions/strata-clock.svg</file>
     <file>icons/scalable/actions/strata-clipboard-paste.svg</file>
     <file>icons/scalable/actions/strata-copy.svg</file>
     <file>icons/scalable/actions/strata-corner-down-left.svg</file>
@@ -25,6 +26,7 @@
     <file>icons/scalable/actions/strata-file-plus.svg</file>
     <file>icons/scalable/actions/strata-file-text.svg</file>
     <file>icons/scalable/actions/strata-folder.svg</file>
+    <file>icons/scalable/actions/strata-folder-open.svg</file>
     <file>icons/scalable/actions/strata-folder-plus.svg</file>
     <file>icons/scalable/actions/strata-funnel.svg</file>
     <file>icons/scalable/actions/strata-columns.svg</file>
@@ -66,12 +68,14 @@
     <file>icons/scalable/actions/strata-terminal.svg</file>
     <file>icons/scalable/actions/strata-trash.svg</file>
     <file>icons/scalable/actions/strata-triangle-alert.svg</file>
+    <file>icons/scalable/actions/strata-caret.svg</file>
     <file>icons/scalable/actions/strata-unplug.svg</file>
     <file>icons/scalable/actions/strata-video.svg</file>
     <file>icons/scalable/actions/strata-volume-2.svg</file>
     <file>icons/scalable/actions/strata-volume-x.svg</file>
     <file>icons/scalable/actions/strata-wrap-text.svg</file>
     <file>icons/scalable/actions/strata-x.svg</file>
+    <file>icons/scalable/actions/strata-panel-right-close.svg</file>
     <file>icons/scalable/apps/io.github.lgse.Strata.svg</file>
   </gresource>
 </gresources>

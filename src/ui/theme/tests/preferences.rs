@@ -2,6 +2,7 @@
 
 use super::super::*;
 use crate::{
+    model::{SortDirection, SortKey, ViewPreferences},
     test_support::gtk_test,
     ui::browser_modes::{BrowserDensity, BrowserMode, ClickCount},
 };
@@ -13,6 +14,7 @@ fn non_default_preferences() -> Preferences {
         theme: "nord".into(),
         folder_peeking: false,
         single_click_previews: false,
+        render_documents_by_default: false,
         hardware_accelerated_video_previews: Some(false),
         video_preview_backend: "vulkan".into(),
         search_open_files_directly: true,
@@ -41,6 +43,7 @@ fn non_default_preferences() -> Preferences {
         sidebar_show_home: false,
         sidebar_show_trash: false,
         sidebar_show_network: false,
+        sidebar_show_recent: false,
         sidebar_show_desktop: false,
         sidebar_show_documents: false,
         sidebar_show_downloads: false,
@@ -90,6 +93,30 @@ impl ThemeManager {
         )
         .expect("persist complete fixture");
     }
+}
+
+#[test]
+fn recent_sort_is_not_stored_as_an_ordinary_folder_default() {
+    gtk_test(
+        "ui::theme::tests::preferences::recent_sort_is_not_stored_as_an_ordinary_folder_default",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::load();
+            let saved = manager.preferences.borrow().clone();
+
+            manager.set_sort_preferences(ViewPreferences {
+                sort_key: SortKey::Recency,
+                sort_direction: SortDirection::Descending,
+                ..ViewPreferences::default()
+            });
+
+            assert_eq!(*manager.preferences.borrow(), saved);
+            let persisted: Preferences =
+                toml::from_str(&fs::read_to_string(settings_path()).expect("saved preferences"))
+                    .expect("persisted preferences");
+            assert_eq!(persisted, saved);
+        },
+    );
 }
 
 #[test]
@@ -406,6 +433,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(!manager.sidebar_show_home());
             assert!(!manager.sidebar_show_trash());
             assert!(!manager.sidebar_show_network());
+            assert!(!manager.sidebar_show_recent());
             assert!(!manager.sidebar_show_desktop());
             assert!(!manager.sidebar_show_documents());
             assert!(!manager.sidebar_show_downloads());
@@ -413,7 +441,9 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(!manager.sidebar_show_videos());
             assert_eq!(
                 manager.sidebar_places_visibility(),
-                [false, false, false, false, false, false, false, false]
+                [
+                    false, false, false, false, false, false, false, false, false
+                ]
             );
             assert_eq!(manager.text_size(), TextSize::new(24));
             assert_eq!(
@@ -503,6 +533,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
             let setters: &[fn(&ThemeManager)] = &[
                 |m| m.set_folder_peeking(true),
                 |m| m.set_single_click_previews(true),
+                |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),
@@ -539,6 +570,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_sidebar_show_home(true),
                 |m| m.set_sidebar_show_trash(true),
                 |m| m.set_sidebar_show_network(true),
+                |m| m.set_sidebar_show_recent(true),
                 |m| m.set_sidebar_show_desktop(true),
                 |m| m.set_sidebar_show_documents(true),
                 |m| m.set_sidebar_show_downloads(true),

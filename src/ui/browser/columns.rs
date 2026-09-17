@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
-const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+pub(super) const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
@@ -1074,10 +1074,14 @@ impl ViewState {
         list.add_controller(selection_keys);
 
         let weak_browser = Rc::downgrade(&self.browser);
+        let weak_state_for_activate = Rc::downgrade(self);
         let map_for_activation = map.clone();
         let search_handle_for_activate = search_handle.clone();
         let search_results_for_activate = search_results.clone();
         list.connect_activate(move |_, position| {
+            if let Some(state) = weak_state_for_activate.upgrade() {
+                state.cancel_click_rename();
+            }
             if search_handle_for_activate.borrow().is_some() {
                 activate_recursive_search_result(
                     &weak_browser,
@@ -1352,6 +1356,8 @@ impl ViewState {
         reveal_button.add_css_class("column-peek-target");
         reveal_button.set_focusable(false);
         reveal_button.set_focus_on_click(false);
+        // Let row drag sources receive presses through the peek overlay.
+        reveal_button.set_can_target(false);
         reveal_button.set_cursor_from_name(Some("pointer"));
         reveal_button.set_visible(false);
         crate::ui::accessibility::set_label(
@@ -1480,6 +1486,7 @@ impl ViewState {
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
+        self.columns_widget.set_margin_end(0);
         let weak = Rc::downgrade(self);
         let measured_shell = shell.downgrade();
         let _tick = self.scroller.add_tick_callback(move |_, _| {

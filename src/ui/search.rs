@@ -11,7 +11,9 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
-use crate::services::{SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees};
+use crate::services::{
+    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees,
+};
 
 const MAX_RESULT_UPDATES_PER_FRAME: usize = 8;
 
@@ -30,17 +32,20 @@ struct SearchState {
     scroller: gtk::ScrolledWindow,
     results: gtk::Stack,
     status: gtk::Label,
-    truncated_hint: gtk::Label,
+    truncated_hint: gtk::Box,
     visible_results: RefCell<Vec<SearchItem>>,
     positions: Rc<RefCell<HashMap<gtk::ListBoxRow, usize>>>,
     requested_thumbnails: RefCell<HashSet<PathBuf>>,
     rendered_query: RefCell<String>,
     search: RefCell<Option<SearchHandle>>,
+    history: RefCell<Option<Rc<NavigationHistory>>>,
     generation: Cell<u64>,
     interaction_revision: Cell<u64>,
     navigation_started: Cell<bool>,
     reconciling_results: Cell<bool>,
     activate: Rc<dyn Fn(SearchItem)>,
+    reveal: Rc<dyn Fn(SearchItem)>,
+    context_menu: RefCell<Option<gtk::Popover>>,
     dismiss: Rc<dyn Fn()>,
 }
 
@@ -49,7 +54,11 @@ impl SearchDialog {
         deprecated,
         reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
     )]
-    pub fn new(activate: Rc<dyn Fn(SearchItem)>, dismiss: Rc<dyn Fn()>) -> Self {
+    pub fn new(
+        activate: Rc<dyn Fn(SearchItem)>,
+        reveal: Rc<dyn Fn(SearchItem)>,
+        dismiss: Rc<dyn Fn()>,
+    ) -> Self {
         let themes = super::theme::ThemeManager::shared();
         let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         layer.add_css_class("search-backdrop");
@@ -132,9 +141,21 @@ impl SearchDialog {
         open.add_css_class("search-hint");
         footer.append(&navigation);
         footer.append(&open);
-        let truncated_hint = gtk::Label::new(None);
-        truncated_hint.set_wrap(true);
-        truncated_hint.set_max_width_chars(58);
+        let reveal_hint = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        reveal_hint.set_valign(gtk::Align::Center);
+        reveal_hint.append(&crate::assets::primary_icon(
+            crate::assets::icons::FOLDER_OPEN,
+            13,
+        ));
+        reveal_hint.append(&gtk::Label::new(Some("Alt+Enter  open containing folder")));
+        reveal_hint.add_css_class("search-hint");
+        footer.append(&reveal_hint);
+        let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        truncated_hint.append(&crate::assets::primary_icon(
+            crate::assets::icons::TRIANGLE_ALERT,
+            14,
+        ));
+        truncated_hint.append(&gtk::Label::new(Some("Partial results")));
         truncated_hint.add_css_class("search-hint");
         truncated_hint.add_css_class("search-hint-warning");
         truncated_hint.set_hexpand(true);
@@ -159,11 +180,14 @@ impl SearchDialog {
             requested_thumbnails: RefCell::new(HashSet::new()),
             rendered_query: RefCell::new(String::new()),
             search: RefCell::new(None),
+            history: RefCell::new(None),
             generation: Cell::new(0),
             interaction_revision: Cell::new(0),
             navigation_started: Cell::new(false),
             reconciling_results: Cell::new(false),
             activate,
+            reveal,
+            context_menu: RefCell::new(None),
             dismiss,
         });
 
@@ -189,6 +213,21 @@ impl SearchDialog {
             record_interaction(&state);
             if key == gdk::Key::Escape {
                 hide(&state);
+                return glib::Propagation::Stop;
+            }
+            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter)
+                && modifiers & gtk::accelerator_get_default_mod_mask()
+                    == gdk::ModifierType::ALT_MASK
+            {
+                if let Some(item) = state.list.selected_row().and_then(|row| {
+                    state
+                        .visible_results
+                        .borrow()
+                        .get(row.index() as usize)
+                        .cloned()
+                }) {
+                    reveal_result(&state, item);
+                }
                 return glib::Propagation::Stop;
             }
             if modifiers.intersects(
@@ -274,6 +313,10 @@ impl SearchDialog {
         self.state.generation.set(self.state.generation.get() + 1);
         let generation = self.state.generation.get();
         self.state.search.borrow_mut().take();
+        self.state.history.borrow_mut().take();
+        self.state
+            .field
+            .set_placeholder_text(Some("Search files and folders…"));
         let locations = roots
             .iter()
             .map(|root| root.display().to_string())
@@ -339,7 +382,9 @@ impl SearchDialog {
                     state.indexing_spinner.set_visible(false);
                 }
                 if query == state.field.text().trim() {
-                    state.truncated_hint.set_text(&coverage.message());
+                    state
+                        .truncated_hint
+                        .set_tooltip_text(Some(&coverage.message()));
                     state.truncated_hint.set_visible(coverage.is_partial());
                 }
                 if !query.is_empty() && query == state.field.text().trim() {
@@ -348,6 +393,29 @@ impl SearchDialog {
             }
             glib::ControlFlow::Continue
         });
+    }
+
+    pub(crate) fn show_history(&self, history: Rc<NavigationHistory>) {
+        self.state.generation.set(self.state.generation.get() + 1);
+        self.state.search.borrow_mut().take();
+        self.state.history.replace(Some(history));
+        self.state
+            .field
+            .set_placeholder_text(Some("Jump to a folder…"));
+        self.state
+            .field
+            .set_tooltip_text(Some("Folders previously visited in Strata"));
+        self.state.field.set_sensitive(true);
+        clear_results(&self.state);
+        self.state.field.set_text("");
+        self.state.status.set_visible(true);
+        self.state.truncated_hint.set_visible(false);
+        self.state.indexing_spinner.stop();
+        self.state.indexing_spinner.set_visible(false);
+        self.state.layer.set_visible(true);
+        super::browser::animate_in(&self.state.layer);
+        self.state.field.grab_focus_without_selecting();
+        begin_query(&self.state, "");
     }
 
     pub fn hide(&self) {
@@ -362,6 +430,15 @@ impl SearchDialog {
 fn begin_query(state: &Rc<SearchState>, query: &str) {
     record_interaction(state);
     state.navigation_started.set(false);
+    if let Some(history) = state.history.borrow().clone() {
+        render_results(
+            state,
+            history.search(query),
+            false,
+            SearchCoverage::default(),
+        );
+        return;
+    }
     if query.trim().is_empty() {
         clear_results(state);
         state.results.set_visible_child_name("status");
@@ -426,12 +503,12 @@ fn render_results(
                     requested.remove(&item.path);
                     super::thumbnail::cancel_thumbnails_in(row.upcast_ref());
                     state.list.remove(&row);
-                    let row = result_row(item);
+                    let row = result_row(state, item);
                     state.list.append(&row);
                     row
                 }
             } else {
-                let row = result_row(item);
+                let row = result_row(state, item);
                 state.list.append(&row);
                 row
             };
@@ -456,9 +533,12 @@ fn render_results(
         state.reconciling_results.set(false);
     }
 
+    let query_empty = query.is_empty();
     state.rendered_query.replace(query);
     let has_results = !state.visible_results.borrow().is_empty();
-    state.truncated_hint.set_text(&coverage.message());
+    state
+        .truncated_hint
+        .set_tooltip_text(Some(&coverage.message()));
     state.truncated_hint.set_visible(coverage.is_partial());
     state
         .results
@@ -485,11 +565,18 @@ fn render_results(
             .list
             .select_row(state.list.row_at_index(restored as i32).as_ref());
     } else if !has_results {
-        state.status.set_text(if indexing {
+        let message = if state.history.borrow().is_some() {
+            if query_empty {
+                "No folder history yet"
+            } else {
+                "No matching folders"
+            }
+        } else if indexing {
             "Searching…"
         } else {
             "No matching files or folders"
-        });
+        };
+        state.status.set_text(message);
     }
 
     if results_changed
@@ -541,7 +628,7 @@ fn render_results(
     }
 }
 
-fn result_row(item: &SearchItem) -> gtk::ListBoxRow {
+fn result_row(state: &Rc<SearchState>, item: &SearchItem) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("search-result");
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -570,7 +657,68 @@ fn result_row(item: &SearchItem) -> gtk::ListBoxRow {
     labels.append(&path);
     content.append(&labels);
     row.set_child(Some(&content));
+    let click = gtk::GestureClick::new();
+    click.set_button(gdk::BUTTON_SECONDARY);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(state);
+    let target = item.clone();
+    click.connect_pressed(move |gesture, _, x, y| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if let Some(state) = weak.upgrade()
+            && let Some(row) = gesture.widget().and_downcast::<gtk::ListBoxRow>()
+        {
+            show_result_menu(&state, &row, target.clone(), x, y);
+        }
+    });
+    row.add_controller(click);
     row
+}
+
+fn show_result_menu(
+    state: &Rc<SearchState>,
+    row: &gtk::ListBoxRow,
+    item: SearchItem,
+    x: f64,
+    y: f64,
+) {
+    use super::browser::context_menu::{
+        context_menu_option, context_menu_popover, show_context_popover,
+    };
+
+    close_result_menu(state);
+    record_interaction(state);
+    state.list.select_row(Some(row));
+    let content = super::accessibility::menu_box();
+    content.add_css_class("folder-context-menu");
+    let reveal = context_menu_option(
+        crate::assets::icons::FOLDER_OPEN,
+        "Open containing folder",
+        "Alt+Enter",
+    );
+    reveal.set_sensitive(item.path.parent().is_some());
+    content.append(&reveal);
+    let (popover, scroll) = context_menu_popover(&content);
+    popover.add_css_class("folder-context-popover");
+    popover.connect_closed(|popover| popover.unparent());
+    let weak = Rc::downgrade(state);
+    reveal.connect_clicked(move |_| {
+        if let Some(state) = weak.upgrade() {
+            reveal_result(&state, item.clone());
+        }
+    });
+    show_context_popover(&popover, &scroll, row.upcast_ref(), x, y);
+    state.context_menu.replace(Some(popover));
+}
+
+fn close_result_menu(state: &SearchState) {
+    if let Some(popover) = state.context_menu.take() {
+        popover.popdown();
+    }
+}
+
+fn reveal_result(state: &SearchState, item: SearchItem) {
+    let reveal = state.reveal.clone();
+    hide_then(state, move || reveal(item));
 }
 
 fn refresh_visible_thumbnails(state: &SearchState) {
@@ -706,6 +854,11 @@ fn activate_position(state: &Rc<SearchState>, position: i32) {
 }
 
 fn hide(state: &SearchState) {
+    hide_then(state, || {});
+}
+
+fn hide_then(state: &SearchState, after_dismiss: impl FnOnce() + 'static) {
+    close_result_menu(state);
     state.generation.set(state.generation.get() + 1);
     record_interaction(state);
     state.search.borrow_mut().take();
@@ -725,6 +878,7 @@ fn hide(state: &SearchState) {
         layer.remove_css_class("dismissing");
         layer.set_sensitive(true);
         dismiss();
+        after_dismiss();
     });
 }
 

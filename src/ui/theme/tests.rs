@@ -9,8 +9,9 @@ use super::{
     Preferences, TextSize, Theme, ThemeTokens, azure_tokens, blend, browser_mode_from_stored,
     builtins, color_to_hex, configured_hardware_acceleration, configured_video_preview_backend,
     is_omarchy_theme_event, merge_builtin_and_custom_themes, notify_live, slugify,
-    snapped_root_font_px, sort_preferences, source_style_scheme_xml, stored_browser_mode,
-    text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro, validate_tokens,
+    snapped_root_font_px, sort_preferences, source_palette_from_quattro, source_style_scheme_xml,
+    stored_browser_mode, text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro,
+    validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
@@ -131,9 +132,9 @@ fn source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview() {
                 border: "rgb(49,91,117)".to_owned(),
                 dim_text: "rgb(111,141,163)".to_owned(),
             };
-            let xml = source_style_scheme_xml(&tokens);
+            let xml = source_style_scheme_xml(&tokens, None);
             let values = scheme_color_values(&xml);
-            assert_eq!(values.len(), 9);
+            assert_eq!(values.len(), 12);
             for value in &values {
                 assert!(
                     value.starts_with('#') && value.len() == 7,
@@ -183,6 +184,27 @@ color8 = "#123247"
 }
 
 #[test]
+fn quattro_syntax_colors_remain_theme_native() {
+    let palette = source_palette_from_quattro(
+        r##"
+blue = "#111111"
+cyan = "#222222"
+green = "#333333"
+yellow = "#444444"
+orange = "#555555"
+magenta = "#666666"
+"##,
+    )
+    .expect("complete Quattro syntax palette");
+
+    assert_eq!(palette.statement, "#666666");
+    assert_eq!(palette.string, "#333333");
+    assert_eq!(palette.constant, "#555555");
+    assert_eq!(palette.type_color, "#222222");
+    assert_eq!(palette.preprocessor, "#444444");
+}
+
+#[test]
 fn legacy_palette_without_quattro_semantics_is_not_detected() {
     assert!(tokens_from_quattro("legacy", "color4 = \"#00aaff\"").is_none());
 }
@@ -224,6 +246,7 @@ theme = "azure-glow"
 fn assert_preference_defaults(preferences: &Preferences) {
     assert!(preferences.folder_peeking);
     assert!(preferences.single_click_previews);
+    assert!(preferences.render_documents_by_default);
     assert_eq!(preferences.hardware_accelerated_video_previews, None);
     assert!(configured_hardware_acceleration(preferences, false));
     assert!(!configured_hardware_acceleration(preferences, true));
@@ -265,6 +288,7 @@ fn assert_preference_defaults(preferences: &Preferences) {
         preferences.sidebar_order,
         ["desktop", "documents", "downloads", "pictures", "videos"]
     );
+    assert!(preferences.sidebar_show_recent);
 }
 
 #[test]
