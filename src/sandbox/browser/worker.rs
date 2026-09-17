@@ -13,7 +13,6 @@ use super::{
 /// This process parses only the private control protocol, never media. Decoders
 /// receive a source on stdin and a one-way output pipe, not the control socket.
 pub(crate) fn run() -> Result<(), String> {
-    // The immutable filter is installed once and inherited by every job.
     restrict_mutations()?;
     let socket = UnixStream::from(rustix::io::dup(std::io::stdin()).map_err(|e| e.to_string())?);
     rustix::io::fcntl_setfd(&socket, rustix::io::FdFlags::CLOEXEC).map_err(|e| e.to_string())?;

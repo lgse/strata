@@ -7,7 +7,7 @@ use std::{
 
 use gtk::{glib, prelude::*};
 
-/// One cancellable update after the next frame; never runs inside GTK layout.
+/// Dispatches outside GTK layout, even when scheduled by a frame callback.
 pub(super) struct FrameTask {
     cancelled: Rc<Cell<bool>>,
 }

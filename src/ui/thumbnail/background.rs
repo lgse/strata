@@ -49,8 +49,7 @@ fn submit<T: Send + 'static>(
                         let Ok(task) = task else {
                             break;
                         };
-                        // Like spawn_blocking, a panic cancels this completion, not the
-                        // executor. Listing's GIO threads never wait on decoder jobs.
+                        // A task panic must not permanently reduce executor capacity.
                         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(task));
                     }
                 })
