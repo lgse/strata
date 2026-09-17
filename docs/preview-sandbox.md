@@ -13,7 +13,10 @@ parsing and decoding run inside bubblewrap, never in the application.
 - Media previews use the incremental decoded-frame transport described below.
 - Plain text stays in-process, invokes no native format parser, and is capped at
   1 MiB.
-- Local [Markdown and bounded HTML previews](document-previews.md) are parsed
+- Local XLS, XLSX, and ODS previews run Calamine inside the resource-limited
+  helper, accepting at most 20 MiB of input. Only validated, bounded JSON cell
+  values cross back into the application; macros and formulas are not executed.
+- Local [Markdown, bounded HTML, CSV, and TSV previews](document-previews.md) are parsed
   in-process by pure-Rust parsers that receive only the bounded source string and
   cannot initiate filesystem access, network access, JavaScript execution, or
   subresource loading. Relative Markdown images are separately confined to the

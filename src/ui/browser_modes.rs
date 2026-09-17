@@ -946,6 +946,9 @@ impl ModeViews {
     }
 
     fn grouping_for_snapshot(&self, depth: usize, snapshot: &BrowserColumnSnapshot) -> bool {
+        if snapshot.location.is_recent_root() {
+            return false;
+        }
         // GTK 4.22 cannot safely section interleaved camera batches. Device order
         // must also remain ungrouped after completion rather than reshuffling rows.
         let device_order = self
@@ -2614,10 +2617,18 @@ fn build_list_pane(
         ));
     }
     actions.append(&super::browser::pane_refresh_button(&browser, depth));
-    if browser
-        .location_at(depth)
-        .is_some_and(|location| location.is_camera_photo_root())
-    {
+    let camera_photos = location
+        .as_ref()
+        .is_some_and(|location| location.is_camera_photo_root());
+    let recent = location
+        .as_ref()
+        .is_some_and(|location| location.is_recent_root());
+    if recent {
+        actions.append(&super::browser::column_sort_direction_toggle(
+            &browser, depth,
+        ));
+    }
+    if camera_photos || recent {
         actions.append(&super::browser::column_sort_menu(&browser, depth));
     }
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter list (Ctrl+F)");
@@ -3172,7 +3183,10 @@ fn install_mode_directory_drop_target(
     destination: Location,
     transfer_handler: TransferHandlerSlot,
 ) {
-    if transfer_handler.borrow().is_none() || is_trash_location(&destination) {
+    if transfer_handler.borrow().is_none()
+        || is_trash_location(&destination)
+        || destination.is_recent_location()
+    {
         return;
     }
     widget.add_css_class("file-drop-zone");

@@ -12,6 +12,7 @@ mod operations;
 mod preview;
 mod release_channel;
 mod search;
+pub(crate) mod table;
 mod transfer_action;
 mod update_check;
 mod update_install;

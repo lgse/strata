@@ -16,7 +16,7 @@ use crate::sandbox::Cancellation;
 pub const DOCUMENT_INPUT_LIMIT: usize = 1024 * 1024;
 pub const DOCUMENT_EVENT_LIMIT: usize = 20_000;
 pub const DOCUMENT_DEPTH_LIMIT: usize = 32;
-pub const DOCUMENT_TABLE_CELL_LIMIT: usize = 512;
+pub const DOCUMENT_TABLE_COLUMN_LIMIT: usize = super::table::TABLE_COLUMN_LIMIT;
 pub const DOCUMENT_MARKUP_LIMIT: usize = 4 * 1024 * 1024;
 pub const DOCUMENT_TIME_LIMIT: Duration = Duration::from_millis(500);
 pub const DOCUMENT_UNIT_TARGET: usize = 32 * 1024;
@@ -26,6 +26,8 @@ pub const DOCUMENT_UNIT_LINE_TARGET: usize = 2 * 1024;
 pub enum DocumentKind {
     Markdown,
     Html,
+    Csv,
+    Tsv,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -181,7 +183,7 @@ pub struct ParsedDocument {
 struct ParseLimits {
     events: usize,
     depth: usize,
-    table_cells: usize,
+    table_columns: usize,
     markup: usize,
     time: Duration,
 }
@@ -191,7 +193,7 @@ impl Default for ParseLimits {
         Self {
             events: DOCUMENT_EVENT_LIMIT,
             depth: DOCUMENT_DEPTH_LIMIT,
-            table_cells: DOCUMENT_TABLE_CELL_LIMIT,
+            table_columns: DOCUMENT_TABLE_COLUMN_LIMIT,
             markup: DOCUMENT_MARKUP_LIMIT,
             time: DOCUMENT_TIME_LIMIT,
         }
@@ -319,6 +321,8 @@ pub fn document_kind(content_type: &str, name: &OsStr, is_native: bool) -> Optio
     {
         "text/markdown" | "text/x-markdown" => return Some(DocumentKind::Markdown),
         "text/html" | "application/xhtml+xml" => return Some(DocumentKind::Html),
+        "text/csv" => return Some(DocumentKind::Csv),
+        "text/tab-separated-values" => return Some(DocumentKind::Tsv),
         _ => {}
     }
     match Path::new(name)
@@ -329,6 +333,8 @@ pub fn document_kind(content_type: &str, name: &OsStr, is_native: bool) -> Optio
     {
         Some("md" | "markdown" | "mdown" | "mkd" | "mkdn" | "mdwn") => Some(DocumentKind::Markdown),
         Some("html" | "htm" | "xhtml") => Some(DocumentKind::Html),
+        Some("csv") => Some(DocumentKind::Csv),
+        Some("tsv") => Some(DocumentKind::Tsv),
         _ => None,
     }
 }
@@ -361,6 +367,8 @@ fn parse_document_with_limits(
     let parsed = match kind {
         DocumentKind::Markdown => parse_markdown_bounded(source, cancellation, limits, true),
         DocumentKind::Html => parse_html_bounded(source, cancellation, limits),
+        DocumentKind::Csv => super::table::parse_delimited(source, b',', cancellation),
+        DocumentKind::Tsv => super::table::parse_delimited(source, b'\t', cancellation),
     }?;
     validate_document(parsed, limits)
 }
@@ -371,7 +379,7 @@ pub fn parse_markdown(markdown: &str) -> Document {
     let limits = ParseLimits {
         events: usize::MAX,
         depth: usize::MAX,
-        table_cells: usize::MAX,
+        table_columns: usize::MAX,
         markup: usize::MAX,
         time: Duration::MAX,
     };
@@ -783,9 +791,9 @@ fn parse_markdown_bounded(
         completed_blocks = blocks.len();
         if table_row
             .as_ref()
-            .is_some_and(|row| row.len() > limits.table_cells)
+            .is_some_and(|row| row.len() > limits.table_columns)
         {
-            return Err("Rendered preview exceeded the 512-cell limit for one table".to_owned());
+            return Err("Rendered preview exceeded the column budget for one table".to_owned());
         }
         let pending_markup = pending_images.iter().map(block_markup_bytes).sum::<usize>()
             + active.as_ref().map_or(0, |block| block.markup().len())
@@ -1450,8 +1458,8 @@ fn validate_document(
     if parsed.document.blocks.is_empty() {
         return Err("Rendered preview found no supported document content".to_owned());
     }
-    if !tables_within_cell_limit(&parsed.document.blocks, limits.table_cells) {
-        return Err("Rendered preview exceeded the 512-cell limit for one table".to_owned());
+    if !tables_within_column_limit(&parsed.document.blocks, limits.table_columns) {
+        return Err("Rendered preview exceeded the column budget for one table".to_owned());
     }
     let markup = parsed
         .document
@@ -2067,29 +2075,13 @@ fn rule_unit(list_depth: Option<usize>) -> DocumentUnit {
     }
 }
 
-fn tables_within_cell_limit(blocks: &[DocumentBlock], limit: usize) -> bool {
-    let mut table = None::<Option<usize>>;
-    let mut cells = 0usize;
-    for block in blocks {
-        let next = match block {
-            DocumentBlock::TableRow { cells } => Some((None, cells.len())),
-            DocumentBlock::ListTableRow { depth, cells } => Some((Some(*depth), cells.len())),
-            _ => None,
-        };
-        if let Some((depth, row_cells)) = next {
-            if table != Some(depth) {
-                cells = 0;
-                table = Some(depth);
-            }
-            cells = cells.saturating_add(row_cells);
-            if cells > limit {
-                return false;
-            }
-        } else {
-            table = None;
+fn tables_within_column_limit(blocks: &[DocumentBlock], limit: usize) -> bool {
+    blocks.iter().all(|block| match block {
+        DocumentBlock::TableRow { cells } | DocumentBlock::ListTableRow { cells, .. } => {
+            cells.len() <= limit
         }
-    }
-    true
+        _ => true,
+    })
 }
 
 fn block_has_balanced_markup(block: &DocumentBlock) -> bool {

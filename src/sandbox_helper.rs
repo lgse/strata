@@ -44,6 +44,14 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if operation == "preview-media" {
         return media::run(input, output, value, media_backend, start_tick);
     }
+    if operation == "preview-workbook" {
+        let table = crate::services::table::read_workbook(input)?;
+        let bytes = serde_json::to_vec(&table).map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > MAX_OUTPUT_BYTES {
+            return Err("Table output budget exceeded".into());
+        }
+        return fs::write(output, bytes).map_err(|e| e.to_string());
+    }
     if operation == "media-metadata" {
         return write_media_metadata(input, output);
     }

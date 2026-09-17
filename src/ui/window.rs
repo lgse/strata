@@ -8,7 +8,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, gio::prelude::EmblemedIconExt as _, glib, prelude::*};
+use gtk::{
+    gio,
+    gio::prelude::{EmblemedIconExt as _, VfsExt as _},
+    glib,
+    prelude::*,
+};
 
 use crate::{
     adapters::{LocalFileSource, LocalOperationProvider, RevealRequest, location_for_file},
@@ -44,11 +49,44 @@ pub use unlock_argument::{UnlockTarget, present_unlock};
 use sidebar::PlaceNavigation;
 pub(super) use sidebar::build_sidebar;
 
-pub(super) const SIDEBAR_WIDTH: i32 = 208;
-pub(super) const MIN_SIDEBAR_WIDTH: i32 = 176;
+pub(super) const SIDEBAR_WIDTH: i32 = 201;
+pub(super) const MIN_SIDEBAR_WIDTH: i32 = 169;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
 const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RecentAvailability {
+    platform_tracking_enabled: bool,
+    runtime_backend_supported: bool,
+}
+
+impl RecentAvailability {
+    fn from_runtime() -> Self {
+        let platform_tracking_enabled =
+            gtk::Settings::default().is_some_and(|settings| settings.is_gtk_recent_files_enabled());
+        let runtime_backend_supported = gio::Vfs::default()
+            .supported_uri_schemes()
+            .iter()
+            .any(|scheme| scheme.as_str().eq_ignore_ascii_case("recent"));
+        Self {
+            platform_tracking_enabled,
+            runtime_backend_supported,
+        }
+    }
+
+    fn is_available(self) -> bool {
+        self.platform_tracking_enabled && self.runtime_backend_supported
+    }
+}
+
+fn should_show_recent_place(
+    show_recent: bool,
+    local_only: bool,
+    availability: RecentAvailability,
+) -> bool {
+    show_recent && !local_only && availability.is_available()
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MouseHistoryAction {
@@ -916,7 +954,7 @@ pub(super) struct SidebarState {
     mount_monitor: gio_unix::MountMonitor,
     theme_manager: Rc<super::theme::ThemeManager>,
     place_order: RefCell<Vec<&'static str>>,
-    places_visibility: RefCell<[bool; 8]>,
+    places_visibility: RefCell<[bool; 9]>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
     trash_contents: Cell<TrashContents>,
@@ -925,6 +963,7 @@ pub(super) struct SidebarState {
     trash_probe_running: Cell<bool>,
     trash_probe_pending: Cell<bool>,
     local_only: bool,
+    recent_availability: Cell<RecentAvailability>,
     pending_scroll: Cell<Option<f64>>,
     rebuild_queued: Cell<bool>,
     scroll_restore_queued: Cell<bool>,
@@ -993,6 +1032,7 @@ pub(super) struct SidebarView {
     update_label: gtk::Label,
     handlers: RefCell<Vec<glib::SignalHandlerId>>,
     mount_handler: RefCell<Option<glib::SignalHandlerId>>,
+    recent_setting_handler: RefCell<Option<(gtk::Settings, glib::SignalHandlerId)>>,
 }
 
 impl SidebarView {
@@ -1050,6 +1090,9 @@ impl SidebarView {
         }
         if let Some(handler) = self.mount_handler.take() {
             self.state.mount_monitor.disconnect(handler);
+        }
+        if let Some((settings, handler)) = self.recent_setting_handler.take() {
+            settings.disconnect(handler);
         }
     }
 }
@@ -1148,6 +1191,13 @@ impl SidebarState {
                 self.attach_place_context_menu(&row, location, |state| {
                     state.theme_manager.set_sidebar_show_network(false);
                 });
+            }
+            if should_show_recent_place(
+                self.theme_manager.sidebar_show_recent(),
+                self.local_only,
+                self.recent_availability.get(),
+            ) {
+                self.append_recent_place();
             }
         }
         if self.has_visible_standard_places() && self.widget.first_child().is_some() {
@@ -1447,6 +1497,14 @@ impl SidebarState {
             }
         });
         *self.trash_monitor.borrow_mut() = Some(monitor);
+    }
+
+    fn append_recent_place(self: &Rc<Self>) {
+        let location = Location::uri("recent:///");
+        let row = sidebar_button(crate::assets::icons::CLOCK, "Recent");
+        row.set_tooltip_text(Some("recent:///"));
+        self.bind_place_row(&row, location, PlaceNavigation::Direct);
+        self.widget.append(&row);
     }
 
     fn append_trash_place(self: &Rc<Self>) {

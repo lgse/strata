@@ -250,6 +250,7 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         icons::HOME,
         icons::TRASH,
         icons::GLOBE,
+        icons::CLOCK,
         icons::MONITOR,
         icons::DOCUMENTS,
         icons::DOWNLOADS,
@@ -274,6 +275,12 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             description: "Show Network in the sidebar.",
             read: ThemeManager::sidebar_show_network,
             write: ThemeManager::set_sidebar_show_network,
+        },
+        PreferenceSwitch {
+            title: "Show Recent in sidebar",
+            description: "Show Recent files in the sidebar.",
+            read: ThemeManager::sidebar_show_recent,
+            write: ThemeManager::set_sidebar_show_recent,
         },
         PreferenceSwitch {
             title: "Show Desktop in sidebar",

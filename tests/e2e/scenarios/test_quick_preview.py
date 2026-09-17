@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import pytest
+from pathlib import Path
 
 from harness.fixtures import FixtureTree
 from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
@@ -18,10 +19,14 @@ PREVIEW_FIXTURE = {
 
 
 @pytest.fixture
-def fixture_tree():
+def fixture_tree(request):
     """Replaces the shared fixture with file types the preview can render."""
 
-    tree = FixtureTree.create(PREVIEW_FIXTURE)
+    layout = getattr(request, "param", PREVIEW_FIXTURE)
+    tree = FixtureTree.create({name: "" if isinstance(value, Path) else value for name, value in layout.items()})
+    for name, value in layout.items():
+        if isinstance(value, Path):
+            (tree.root / name).write_bytes(value.read_bytes())
     try:
         yield tree
     finally:
@@ -280,6 +285,122 @@ def test_markdown_equations_preserve_inline_prose_source_and_fallbacks(strata, f
         lambda: len(strata.preview().find_all(role="image", description="LaTeX equation")) == 3,
         "equations retained across view switching",
     )
+
+
+def _large_table(extension):
+    rows = [(f"record-{index}", index) for index in range(1000)]
+    if extension in ("csv", "tsv"):
+        separator = "," if extension == "csv" else "\t"
+        return separator.join(("name", "value")) + "\n" + "".join(
+            f"{name}{separator}{value}\n" for name, value in rows
+        )
+    if extension == "md":
+        return "| name | value |\n| --- | --- |\n" + "".join(
+            f"| {name} | {value} |\n" for name, value in rows
+        )
+    return "<table><tr><th>name</th><th>value</th></tr>" + "".join(
+        f"<tr><td>{name}</td><td>{value}</td></tr>" for name, value in rows
+    ) + "</table>"
+
+
+@pytest.mark.parametrize("fixture_tree,filename", [
+    ({f"table.{extension}": _large_table(extension)}, f"table.{extension}")
+    for extension in ("csv", "tsv", "md", "html")
+], indirect=["fixture_tree"])
+@pytest.mark.preferences(render_documents_by_default=True)
+def test_large_table_header_sort_reaches_rows_beyond_old_limits(strata, filename):
+    strata.select_entry_with_keyboard(filename)
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("record-0"), "the first table row")
+    header = strata.preview().find(role="column header", name="value")
+    if header is None:
+        header = strata.preview().find(role="filler", name="value")
+    assert header is not None
+    strata.pointer.click(header)
+    strata.pointer.click(header)
+    strata.wait(lambda: strata.preview_shows("record-999"), "numeric descending sort across every loaded row")
+    assert strata.preview().find(role="button", name="Copy table") is None
+    cell = strata.preview().find(role="label", name="record-999")
+    assert cell is not None
+    strata.pointer.click(cell)
+    strata.keyboard.press("End")
+    for _ in range(3):
+        strata.keyboard.press("shift+Left")
+    strata.keyboard.press("ctrl+c")
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.press("ctrl+v")
+    strata.wait(lambda: field.text == "999", "only the selected cell text to reach the clipboard")
+    strata.keyboard.press("Escape")
+    first = strata.preview().find(role="label", name="999").screen_bounds()
+    last = strata.preview().find(role="label", name="997").screen_bounds()
+    start = (first.x, first.center[1])
+    end = (last.x + last.width - 1, last.center[1])
+    for origin, destination in [(start, end), (end, start)]:
+        strata.pointer.drag_points(origin, destination)
+        strata.keyboard.press("ctrl+c")
+        assert table_clipboard_text(strata) == "999\nrecord-998\t998\nrecord-997\t997"
+    def click_cell_and_copy():
+        strata.pointer.click(strata.preview().find(role="label", name="record-998"))
+        strata.keyboard.press("ctrl+c")
+
+    assert table_clipboard_text(strata, before_read=click_cell_and_copy) == "selection-cleared"
+    preview = strata.preview().screen_bounds()
+    strata.pointer.drag_points(start, (end[0], preview.y + preview.height - 12), release=False)
+    try:
+        strata.wait(lambda: strata.preview_shows("record-950"), "selection drag to autoscroll through recycled rows")
+    finally:
+        strata.pointer.connection.button(1, False)
+    strata.keyboard.press("ctrl+c")
+    copied = table_clipboard_text(strata)
+    assert copied.startswith("999\nrecord-998\t998\n")
+    assert "record-970\t970\n" in copied
+
+    def dismiss_and_copy():
+        strata.pointer.click(strata.preview(), at=(preview.x + 180, preview.y + 16))
+        strata.keyboard.press("ctrl+c")
+
+    assert table_clipboard_text(strata, before_read=dismiss_and_copy) == "selection-cleared"
+
+
+def table_clipboard_text(strata, *, before_read=None):
+    from gi.repository import Gdk, GLib
+
+    display = Gdk.Display.open(strata.display.display)
+    assert display is not None
+    result = []
+    try:
+        if before_read is not None:
+            display.get_clipboard().set("selection-cleared")
+            display.flush()
+            before_read()
+        display.get_clipboard().read_text_async(
+            None, lambda clipboard, response: result.append(clipboard.read_text_finish(response))
+        )
+
+        def received():
+            context = GLib.MainContext.default()
+            while context.pending():
+                context.iteration(False)
+            return bool(result)
+
+        strata.wait(received, "selected table text on the private display clipboard")
+        return result[0]
+    finally:
+        display.close()
+
+
+@pytest.mark.parametrize("fixture_tree,filename", [
+    ({f"book.{extension}": (Path(__file__).resolve().parents[2] / "fixtures" / "spreadsheets" / f"any_sheets.{extension}")}, f"book.{extension}")
+    for extension in ("xls", "xlsx", "ods")
+], indirect=["fixture_tree"])
+def test_workbook_uses_sandboxed_shared_table_preview(strata, filename):
+    strata.select_entry_with_keyboard(filename)
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("3"), "the sandboxed workbook cells")
+    assert strata.preview().find(role="button", name="Copy table") is None
+    assert strata.preview().find(role="button", name="View source") is None
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)

@@ -157,6 +157,7 @@ fn activate_result(
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
                 image_dimensions: MetadataValue::Unknown,

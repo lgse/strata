@@ -18,6 +18,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Known(1),
             mode: MetadataValue::Unknown,
+            recent_unix_seconds: MetadataValue::Unknown,
             is_hidden: false,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,

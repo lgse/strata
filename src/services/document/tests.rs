@@ -1009,18 +1009,28 @@ fn parser_enforces_input_event_depth_table_markup_time_and_cancellation_limits()
 
     let table_at_limit = format!(
         "<table><tr>{}</tr></table>",
-        "<td>x</td>".repeat(super::DOCUMENT_TABLE_CELL_LIMIT)
+        "<td>x</td>".repeat(super::DOCUMENT_TABLE_COLUMN_LIMIT)
     );
     assert!(parse_document(DocumentKind::Html, &table_at_limit, &cancellation).is_ok());
     let table_over_limit = format!(
         "<table><tr>{}</tr></table>",
-        "<td>x</td>".repeat(super::DOCUMENT_TABLE_CELL_LIMIT + 1)
+        "<td>x</td>".repeat(super::DOCUMENT_TABLE_COLUMN_LIMIT + 1)
     );
     assert!(
         parse_document(DocumentKind::Html, &table_over_limit, &cancellation)
-            .expect_err("one atomic table must keep a resident cell bound")
+            .expect_err("one row must keep a resident column bound")
             .contains("one table")
     );
+
+    let large_table = format!(
+        "<table>{}</table>",
+        "<tr><td>a</td><td>b</td></tr>".repeat(1000)
+    );
+    let parsed = parse_document(DocumentKind::Html, &large_table, &cancellation)
+        .expect("row virtualization removes the 512-cell ceiling");
+    let layout =
+        super::layout_document(parsed.document, &cancellation).expect("large table layout");
+    assert_eq!(layout.units[0].copy_text.lines().count(), 1000);
 
     let markup = "&".repeat(1024 * 1024);
     assert!(
