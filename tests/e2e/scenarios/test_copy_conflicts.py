@@ -63,6 +63,9 @@ def test_dismissing_a_copy_or_move_conflict_preserves_both_files(strata, moving,
     strata.paste_into("archive")
     dialog = strata.wait_for_dialog()
     assert (dialog.find(role="button", name="Keep Both") is not None) == (not moving)
+    assert dialog.find(role="button", name="Merge") is None, (
+        "a file collision cannot merge"
+    )
 
     if action == "Escape":
         strata.keyboard.press("Escape")
@@ -108,3 +111,47 @@ def test_keep_both_applies_to_all_collisions_in_a_mixed_paste(strata):
         ).read_bytes()
     for name in ["notes.txt", "report.md"]:
         assert fixture.path(f"archive/{name}").read_text() == f"existing {name}\n"
+
+
+def test_merge_combines_folder_contents(strata):
+    fixture = strata.fixture
+    fixture.path("folder").mkdir()
+    fixture.path("folder/incoming.txt").write_text("from source\n")
+    fixture.path("folder/shared.txt").write_text("incoming\n")
+    fixture.path("archive/folder").mkdir()
+    fixture.path("archive/folder/stays.txt").write_text("kept\n")
+    fixture.path("archive/folder/shared.txt").write_text("original\n")
+    strata.open_context_menu("folder")
+    strata.choose_menu_item("Copy")
+    strata.open_directory("archive")
+    strata.paste_into("archive")
+
+    strata.wait_for_dialog()
+    strata.pointer.click(strata.dialog_button("Merge"))
+
+    strata.wait(
+        lambda: fixture.path("archive/folder/incoming.txt").exists(),
+        "the merged incoming file",
+    )
+    assert fixture.path("archive/folder/stays.txt").read_text() == "kept\n", (
+        "destination-only contents survive the merge"
+    )
+    assert fixture.path("archive/folder/shared.txt").read_text() == "incoming\n", (
+        "the incoming item overwrites a same-named destination item"
+    )
+    assert fixture.path("folder/incoming.txt").exists(), "a copy merge keeps the source"
+
+    strata.wait(lambda: strata.dialog() is None, "the conflict dialog to finish dismissing")
+    strata.keyboard.press("ctrl+z")
+    strata.wait(
+        lambda: not fixture.path("archive/folder/incoming.txt").exists(),
+        "merge undo removes the created file",
+    )
+    assert fixture.path("archive/folder/shared.txt").read_text() == "original\n", (
+        "merge undo restores the overwritten original from Trash"
+    )
+    assert fixture.path("archive/folder/stays.txt").read_text() == "kept\n", (
+        "merge undo leaves destination-only contents alone"
+    )
+    assert fixture.path("archive/folder").is_dir(), "the destination folder survives undo"
+    assert fixture.path("folder/incoming.txt").exists(), "the source is still intact"

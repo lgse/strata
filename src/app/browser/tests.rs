@@ -518,6 +518,8 @@ impl FileSource for CountingFileSource {
 thread_local! {
     static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
     static UNDO_COPY_REQUESTS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
+    static UNDO_MERGE_REQUESTS: RefCell<Vec<(Vec<Location>, Vec<Location>)>> =
+        const { RefCell::new(Vec::new()) };
     static UNDO_RENAME_REQUESTS: RefCell<Vec<(Location, Location)>> = const { RefCell::new(Vec::new()) };
     static FORWARD_RENAME_OUTCOME: Cell<Option<ForwardRenameOutcome>> = const { Cell::new(None) };
 }
@@ -653,6 +655,23 @@ impl OperationProvider for ImmediateOperationProvider {
         LoadHandle::new(|| {})
     }
 
+    fn undo_merge(
+        &self,
+        request: UndoMergeRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        UNDO_MERGE_REQUESTS.with(|requests| {
+            requests
+                .borrow_mut()
+                .push((request.created.clone(), request.overwritten.clone()));
+        });
+        emit(OperationEvent::Restored {
+            request_id: request.id,
+            locations: Vec::new(),
+        });
+        LoadHandle::new(|| {})
+    }
+
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Deleted {
             request_id: request.id,
@@ -737,6 +756,14 @@ impl OperationProvider for HeldExtractProvider {
 
     fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         ImmediateOperationProvider.undo_copy(request, emit)
+    }
+
+    fn undo_merge(
+        &self,
+        request: UndoMergeRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.undo_merge(request, emit)
     }
 
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
