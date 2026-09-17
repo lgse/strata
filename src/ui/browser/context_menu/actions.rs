@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gtk::{glib, prelude::*};
+use gtk::prelude::*;
 
 use crate::{
     assets::icons,
