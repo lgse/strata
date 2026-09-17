@@ -26,6 +26,7 @@ pub(super) fn general_page(
     let preferences = page_content();
 
     append_browsing_options(&preferences, &manager);
+    append_sidebar_options(&preferences, &manager);
 
     append_heading(&preferences, "OPENING ITEMS");
     let description = gtk::Label::new(Some("How many clicks open a file or folder in each view."));
@@ -88,6 +89,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             description: "Show a quick preview when selecting a supported file.",
             read: ThemeManager::single_click_previews,
             write: ThemeManager::set_single_click_previews,
+        },
+        PreferenceSwitch {
+            title: "Render documents by default",
+            description: "Open Markdown and HTML previews in the rendered view instead of source.",
+            read: ThemeManager::render_documents_by_default,
+            write: ThemeManager::set_render_documents_by_default,
         },
         PreferenceSwitch {
             title: "Keep arrows in file list",
@@ -220,6 +227,101 @@ fn abbreviate_home(path: &std::path::Path) -> String {
         format!("~/{}", rest.display())
     } else {
         path.display().to_string()
+    }
+}
+
+fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let sidebar = super::settings_group(content, "SIDEBAR");
+    let chips = super::wrap::WrapRow::new(8);
+    let row = super::control_row(
+        "Items shown in sidebar",
+        "Toggle which locations appear in the sidebar.",
+        &chips,
+    );
+    row.add_css_class("settings-sidebar-places");
+    row.set_orientation(gtk::Orientation::Vertical);
+    row.set_spacing(18);
+    sidebar.append(&row);
+    use crate::assets::icons;
+    let icons = [
+        icons::HOME,
+        icons::TRASH,
+        icons::GLOBE,
+        icons::MONITOR,
+        icons::DOCUMENTS,
+        icons::DOWNLOADS,
+        icons::PICTURES,
+        icons::VIDEOS,
+    ];
+    for (switch, icon) in [
+        PreferenceSwitch {
+            title: "Show Home in sidebar",
+            description: "Show the Home folder in the sidebar.",
+            read: ThemeManager::sidebar_show_home,
+            write: ThemeManager::set_sidebar_show_home,
+        },
+        PreferenceSwitch {
+            title: "Show Trash in sidebar",
+            description: "Show Trash in the sidebar.",
+            read: ThemeManager::sidebar_show_trash,
+            write: ThemeManager::set_sidebar_show_trash,
+        },
+        PreferenceSwitch {
+            title: "Show Network in sidebar",
+            description: "Show Network in the sidebar.",
+            read: ThemeManager::sidebar_show_network,
+            write: ThemeManager::set_sidebar_show_network,
+        },
+        PreferenceSwitch {
+            title: "Show Desktop in sidebar",
+            description: "Show the Desktop folder in the sidebar.",
+            read: ThemeManager::sidebar_show_desktop,
+            write: ThemeManager::set_sidebar_show_desktop,
+        },
+        PreferenceSwitch {
+            title: "Show Documents in sidebar",
+            description: "Show the Documents folder in the sidebar.",
+            read: ThemeManager::sidebar_show_documents,
+            write: ThemeManager::set_sidebar_show_documents,
+        },
+        PreferenceSwitch {
+            title: "Show Downloads in sidebar",
+            description: "Show the Downloads folder in the sidebar.",
+            read: ThemeManager::sidebar_show_downloads,
+            write: ThemeManager::set_sidebar_show_downloads,
+        },
+        PreferenceSwitch {
+            title: "Show Pictures in sidebar",
+            description: "Show the Pictures folder in the sidebar.",
+            read: ThemeManager::sidebar_show_pictures,
+            write: ThemeManager::set_sidebar_show_pictures,
+        },
+        PreferenceSwitch {
+            title: "Show Videos in sidebar",
+            description: "Show the Videos folder in the sidebar.",
+            read: ThemeManager::sidebar_show_videos,
+            write: ThemeManager::set_sidebar_show_videos,
+        },
+    ]
+    .into_iter()
+    .zip(icons)
+    {
+        let label = switch
+            .title
+            .trim_start_matches("Show ")
+            .trim_end_matches(" in sidebar");
+        let button = gtk::ToggleButton::new();
+        button.add_css_class("sidebar-place-chip");
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        content.append(&crate::assets::primary_icon(icon, 16));
+        content.append(&gtk::Label::new(Some(label)));
+        button.set_child(Some(&content));
+        button.update_property(&[
+            gtk::accessible::Property::Label(switch.title),
+            gtk::accessible::Property::Description(switch.description),
+        ]);
+        super::bindings::bind_toggle(manager, &button, switch.read, switch.write);
+        chips.append(&button);
     }
 }
 

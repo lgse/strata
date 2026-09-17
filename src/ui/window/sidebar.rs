@@ -114,6 +114,7 @@ impl SidebarState {
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
         let place_order = resolve_place_order(&theme_manager.sidebar_order());
+        let places_visibility = theme_manager.sidebar_places_visibility();
         Rc::new(Self {
             widget,
             browser: view.browser(),
@@ -122,6 +123,7 @@ impl SidebarState {
             mount_monitor: gio_unix::MountMonitor::get(),
             theme_manager,
             place_order: RefCell::new(place_order),
+            places_visibility: RefCell::new(places_visibility),
             pinned_places: Rc::new(RefCell::new(load_pinned_places().unwrap_or_default())),
             place_rows: RefCell::new(Vec::new()),
             trash_contents: Cell::new(TrashContents::Unknown),
@@ -148,6 +150,19 @@ impl SidebarState {
                         state.place_order.replace(order);
                         state.rebuild();
                     }
+                }
+            },
+        );
+        let weak = Rc::downgrade(self);
+        self.theme_manager.bind_preference(
+            &self.widget,
+            ThemeManager::sidebar_places_visibility,
+            move |_, visibility| {
+                if let Some(state) = weak.upgrade()
+                    && *state.places_visibility.borrow() != visibility
+                {
+                    state.places_visibility.replace(visibility);
+                    state.rebuild();
                 }
             },
         );

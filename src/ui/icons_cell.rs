@@ -14,6 +14,7 @@ const ICONS_CARD_LABEL_LINE_PX: i32 = 18;
 const ICONS_CARD_PAD_Y: i32 = 4;
 pub(super) const ICONS_CARD_ICON_PADDING: i32 = 6;
 const ICONS_CARD_CAPTION_GAP: i32 = 4;
+const ICONS_CARD_DETAILS_LINE_PX: i32 = 14;
 
 pub(super) fn new_card(slot: i32) -> gtk::Box {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -41,11 +42,17 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     label.add_css_class("alternate-rename-label");
     configure_label(&label);
 
+    let details = gtk::Label::new(None);
+    details.add_css_class("icons-card-details");
+    details.set_halign(gtk::Align::Center);
+    details.set_visible(false);
+
     // GtkOverlay requires its own layout-child type; this caption has a custom layout.
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
     labels.add_css_class("icons-card-caption");
     labels.set_hexpand(true);
     labels.append(&label);
+    labels.append(&details);
 
     card.append(&icon_frame);
     card.append(&labels);
@@ -65,6 +72,18 @@ pub(super) fn parts(
     let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let label = labels.first_child()?.downcast::<gtk::Inscription>().ok()?;
     Some((icon, label))
+}
+
+pub(super) fn details_label(card: &impl IsA<gtk::Widget>) -> Option<gtk::Label> {
+    let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
+    let mut sibling = labels.first_child();
+    while let Some(widget) = sibling {
+        if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
+            return Some(label);
+        }
+        sibling = widget.next_sibling();
+    }
+    None
 }
 
 pub(super) fn rename_field(card: &impl IsA<gtk::Widget>) -> Option<gtk::Entry> {
@@ -116,6 +135,7 @@ pub(super) fn icons_card_extent(thumbnail_size: i32) -> (i32, i32) {
     let height = icon_extent
         + ICONS_CARD_CAPTION_GAP
         + ICONS_CARD_LABEL_LINE_PX * ICONS_CARD_LABEL_LINES
+        + ICONS_CARD_DETAILS_LINE_PX
         + ICONS_CARD_PAD_Y;
     (width, height)
 }

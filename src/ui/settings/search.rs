@@ -54,6 +54,12 @@ const TARGETS: &[Target] = &[
         aliases: "launch files quick preview",
     },
     Target {
+        id: "sidebar-places",
+        page: "general",
+        title: "Items shown in sidebar",
+        aliases: "sidebar places hide show home trash network shares desktop documents downloads pictures videos folder",
+    },
+    Target {
         id: "opening",
         page: "general",
         title: "Opening items",
@@ -128,8 +134,8 @@ const TARGETS: &[Target] = &[
     Target {
         id: "hints",
         page: "keybindings",
-        title: "Show keybinding hints",
-        aliases: "keyboard shortcuts footer navigation paste",
+        title: "Show F1 Shortcuts button",
+        aliases: "keyboard keybinding hints shortcuts footer navigation paste",
     },
     Target {
         id: "shortcuts",

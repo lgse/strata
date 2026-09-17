@@ -47,6 +47,9 @@ impl FileSource for MenuSource {
                     0o644
                 }),
                 is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             })
             .collect();
             emit(DirectoryEvent::Batch {
@@ -90,18 +93,18 @@ fn run_is_only_offered_for_one_regular_executable_file() {
                 wait_until(|| label(&view.widget(), "Run this program?").is_none());
 
                 let menu = open_menu(&view, Some("notes.txt"));
-                assert_actions(&menu, &[], &["Run"]);
+                assert_actions(&menu, &[], &["Run", "Open file location"]);
                 menu.popdown();
                 wait_until(|| menu.parent().is_none());
 
                 let menu = open_menu(&view, Some("folder"));
-                assert_actions(&menu, &[], &["Run"]);
+                assert_actions(&menu, &[], &["Run", "Open file location"]);
                 menu.popdown();
                 wait_until(|| menu.parent().is_none());
 
                 view.select_all();
                 let menu = open_menu(&view, Some("run-me"));
-                assert_actions(&menu, &[], &["Run"]);
+                assert_actions(&menu, &[], &["Run", "Open file location"]);
                 menu.popdown();
                 wait_until(|| menu.parent().is_none());
             }
@@ -377,14 +380,18 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         &["Extract here", "Extract to…"],
                     );
                     if in_trash {
-                        assert_actions(&menu, &[], &["Rename", "Compress…", "Customize…"]);
+                        assert_actions(
+                            &menu,
+                            &[],
+                            &["Rename", "Compress…", "Customize…", "Open file location"],
+                        );
                         assert!(!view.begin_rename());
                         assert!(!view.duplicate_selection());
                     } else {
                         assert_actions(
                             &menu,
                             &["Rename", "Compress…", "Move to Trash"],
-                            &["Restore"],
+                            &["Restore", "Open file location"],
                         );
                     }
                     if nested {
@@ -410,7 +417,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     assert_actions(
                         &menu,
                         &["Copy", "Duplicate", "Copy paths", "Copy to…"],
-                        &["Rename", "Print"],
+                        &["Rename", "Print", "Open file location"],
                     );
                     if in_trash {
                         assert_actions(&menu, &[], &["Compress…"]);
@@ -561,4 +568,84 @@ fn vertical_offset(menu: &gtk::Popover, widget: &gtk::Widget) -> f32 {
         .compute_point(menu, &gtk::graphene::Point::new(0.0, 0.0))
         .expect("menu coordinates")
         .y()
+}
+
+#[test]
+fn open_file_location_navigates_to_parent_folder_and_selects_file() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::open_file_location_navigates_to_parent_folder_and_selects_file",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture dir");
+            let sub = fixture.path().join("nested_folder");
+            std::fs::create_dir(&sub).expect("nested dir");
+            let target_file = sub.join("target.pdf");
+            std::fs::write(&target_file, b"%PDF-1.4\n").expect("target file");
+
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    PeekBehavior::default(),
+                );
+                view.set_view_mode(mode);
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(850)
+                    .build();
+                window.present();
+                view.browser().navigate(Location::local(fixture.path()));
+                let direct_file = fixture.path().join("direct.txt");
+                std::fs::write(&direct_file, b"direct\n").expect("direct file");
+                wait_until(|| label(&view.widget(), "direct.txt").is_some());
+
+                let menu = open_menu(&view, Some("direct.txt"));
+                assert_actions(&menu, &[], &["Open file location"]);
+                menu.popdown();
+                wait_until(|| menu.parent().is_none());
+
+                assert!(view.show_filter_with_query("direct"));
+                wait_until(|| label(&view.widget(), "direct.txt").is_some());
+
+                let menu = open_menu(&view, Some("direct.txt"));
+                assert_actions(&menu, &["Open file location"], &[]);
+
+                let open_button = button_with_label(menu.upcast_ref(), "Open file location");
+                open_button.emit_clicked();
+                wait_until(|| menu.parent().is_none());
+                wait_until(|| label(&view.widget(), "nested_folder").is_some());
+
+                wait_until(|| {
+                    view.browser().active_location().as_ref()
+                        == Some(&Location::local(fixture.path()))
+                });
+                wait_until(|| {
+                    view.browser()
+                        .focused_item()
+                        .is_some_and(|(_, _, entry)| entry.display_name == "direct.txt")
+                });
+
+                assert!(view.show_filter_with_query("target.pdf"));
+                wait_until(|| label(&view.widget(), "target.pdf").is_some());
+
+                let menu = open_menu(&view, Some("target.pdf"));
+                assert_actions(&menu, &["Open file location"], &[]);
+
+                let open_button = button_with_label(menu.upcast_ref(), "Open file location");
+                open_button.emit_clicked();
+                wait_until(|| menu.parent().is_none());
+
+                wait_until(|| {
+                    view.browser().active_location().as_ref() == Some(&Location::local(&sub))
+                });
+                wait_until(|| {
+                    view.browser()
+                        .focused_item()
+                        .is_some_and(|(_, _, entry)| entry.display_name == "target.pdf")
+                });
+
+                view.browser().clear_observer();
+                window.destroy();
+            }
+        },
+    );
 }

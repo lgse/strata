@@ -32,6 +32,7 @@ pub(super) fn install(
     // layer, and every other window's update and rollback controls.
     let guard = settings::install_guard();
     let notice = bind_update_notice(window, &content.sidebar, &guard);
+    settings::register_update_notice(&notice);
     bind_update_notice_preferences(window, preferences, &notice);
     let launcher = Rc::new(SettingsLauncher {
         layer: RefCell::new(None),

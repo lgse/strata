@@ -41,6 +41,40 @@ fn background(window: &gtk::Window, row: &gtk::Widget) -> [u8; 4] {
 }
 
 #[test]
+fn icon_grid_cell_prelight_does_not_hover_content_without_a_content_hit() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::hover::icon_grid_cell_prelight_does_not_hover_content_without_a_content_hit",
+        || {
+            crate::ui::prepare_portal_ui();
+            let selection = gtk::SingleSelection::new(Some(gtk::StringList::new(&["alpha"])));
+            let factory = gtk::SignalListItemFactory::new();
+            factory.connect_setup(move |_, item| {
+                let item = item.downcast_ref::<gtk::ListItem>().expect("list item");
+                let card = crate::ui::icons_cell::new_card(64);
+                let (_, label) = crate::ui::icons_cell::parts(&card).expect("icon card");
+                label.set_text(Some("sample"));
+                item.set_child(Some(&card));
+            });
+            let grid = gtk::GridView::new(Some(selection), Some(factory));
+            grid.add_css_class("file-icons");
+            let window = gtk::Window::builder()
+                .default_width(300)
+                .default_height(150)
+                .child(&grid)
+                .build();
+            window.present();
+            settle();
+            let item = grid.first_child().expect("grid item");
+            let normal = background(&window, &item);
+            item.set_state_flags(gtk::StateFlags::PRELIGHT, false);
+            settle();
+            assert_eq!(background(&window, &item), normal);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn preselected_entries_keep_hover_feedback_in_all_modes() {
     crate::test_support::gtk_test(
         "ui::browser::tests::hover::preselected_entries_keep_hover_feedback_in_all_modes",
@@ -98,6 +132,11 @@ fn preselected_entries_keep_hover_feedback_in_all_modes() {
                     root.remove_css_class("keyboard-navigation");
                     first.unset_state_flags(gtk::StateFlags::PRELIGHT);
                     second.unset_state_flags(gtk::StateFlags::PRELIGHT);
+                    if mode == "Icons"
+                        && let Some(card) = first.first_child()
+                    {
+                        card.remove_css_class("content-hover");
+                    }
                     if focused {
                         list.grab_focus();
                     } else {
@@ -111,6 +150,11 @@ fn preselected_entries_keep_hover_feedback_in_all_modes() {
                     let normal = background(&window, &first);
                     first.set_state_flags(gtk::StateFlags::PRELIGHT, false);
                     second.set_state_flags(gtk::StateFlags::PRELIGHT, false);
+                    if mode == "Icons"
+                        && let Some(card) = first.first_child()
+                    {
+                        card.add_css_class("content-hover");
+                    }
                     settle();
                     let hover = background(&window, &first);
                     assert_ne!(

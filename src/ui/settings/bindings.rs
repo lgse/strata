@@ -96,6 +96,26 @@ pub(super) fn bind_switch(
     });
 }
 
+pub(super) fn bind_toggle(
+    manager: &Rc<ThemeManager>,
+    toggle: &gtk::ToggleButton,
+    read: fn(&ThemeManager) -> bool,
+    write: fn(&ThemeManager, bool),
+) {
+    manager.bind_preference(toggle, read, |widget, value| {
+        if let Some(toggle) = widget.downcast_ref::<gtk::ToggleButton>() {
+            toggle.set_active(value);
+        }
+    });
+    let manager = manager.clone();
+    toggle.connect_toggled(move |toggle| {
+        let value = toggle.is_active();
+        if read(&manager) != value {
+            write(&manager, value);
+        }
+    });
+}
+
 pub(super) fn bind_choice<T: Copy + PartialEq + 'static>(
     manager: &Rc<ThemeManager>,
     button: &gtk::ToggleButton,

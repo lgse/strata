@@ -25,8 +25,10 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<ThemeManager>> = const { RefCell::new(std::rc::Weak::new()) };
     static SOURCE_STYLE_PATH_INSTALLED: Cell<bool> = const { Cell::new(false) };
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
+    static DOCUMENT_BUFFERS: RefCell<Vec<glib::WeakRef<gtk::TextBuffer>>> = const { RefCell::new(Vec::new()) };
+    static DOCUMENT_VIEWS: RefCell<Vec<glib::WeakRef<super::document_view::DocumentTextView>>> = const { RefCell::new(Vec::new()) };
     /// Installed on the first source preview buffer, so startup performs no SourceView I/O.
-    static PENDING_STYLE_TOKENS: RefCell<Option<ThemeTokens>> = const { RefCell::new(None) };
+    static PENDING_STYLE_TOKENS: RefCell<Option<(ThemeTokens, Option<SourcePalette>)>> = const { RefCell::new(None) };
     static STYLE_SCHEME_DIRTY: Cell<bool> = const { Cell::new(true) };
 }
 
@@ -60,6 +62,15 @@ pub struct ThemeTokens {
     pub dim_text: String,
 }
 
+#[derive(Clone)]
+struct SourcePalette {
+    statement: String,
+    string: String,
+    constant: String,
+    type_color: String,
+    preprocessor: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct Theme {
     pub id: String,
@@ -87,6 +98,8 @@ struct Preferences {
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default = "default_enabled")]
+    render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hardware_accelerated_video_previews: Option<bool>,
     #[serde(default = "default_video_preview_backend")]
@@ -125,6 +138,22 @@ struct Preferences {
     list_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
+    #[serde(default = "default_enabled")]
+    sidebar_show_home: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_trash: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_network: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_desktop: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_documents: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_downloads: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_pictures: bool,
+    #[serde(default = "default_enabled")]
+    sidebar_show_videos: bool,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default)]
@@ -166,6 +195,7 @@ impl Default for Preferences {
             theme: "tokyo-night".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
@@ -185,6 +215,14 @@ impl Default for Preferences {
             list_file_clicks: default_file_clicks(),
             list_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
+            sidebar_show_home: true,
+            sidebar_show_trash: true,
+            sidebar_show_network: true,
+            sidebar_show_desktop: true,
+            sidebar_show_documents: true,
+            sidebar_show_downloads: true,
+            sidebar_show_pictures: true,
+            sidebar_show_videos: true,
             show_hidden: false,
             text_size: TextSize::default(),
             folders_first: true,
@@ -461,6 +499,15 @@ impl ThemeManager {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.preferences.borrow_mut().single_click_previews = enabled;
+        self.save_preferences();
+    }
+
+    pub fn render_documents_by_default(&self) -> bool {
+        self.preferences.borrow().render_documents_by_default
+    }
+
+    pub fn set_render_documents_by_default(&self, enabled: bool) {
+        self.preferences.borrow_mut().render_documents_by_default = enabled;
         self.save_preferences();
     }
 
@@ -833,6 +880,92 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn sidebar_show_home(&self) -> bool {
+        self.preferences.borrow().sidebar_show_home
+    }
+
+    pub fn set_sidebar_show_home(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_home = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_trash(&self) -> bool {
+        self.preferences.borrow().sidebar_show_trash
+    }
+
+    pub fn set_sidebar_show_trash(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_trash = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_network(&self) -> bool {
+        self.preferences.borrow().sidebar_show_network
+    }
+
+    pub fn set_sidebar_show_network(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_network = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_desktop(&self) -> bool {
+        self.preferences.borrow().sidebar_show_desktop
+    }
+
+    pub fn set_sidebar_show_desktop(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_desktop = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_documents(&self) -> bool {
+        self.preferences.borrow().sidebar_show_documents
+    }
+
+    pub fn set_sidebar_show_documents(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_documents = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_downloads(&self) -> bool {
+        self.preferences.borrow().sidebar_show_downloads
+    }
+
+    pub fn set_sidebar_show_downloads(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_downloads = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_pictures(&self) -> bool {
+        self.preferences.borrow().sidebar_show_pictures
+    }
+
+    pub fn set_sidebar_show_pictures(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_pictures = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_show_videos(&self) -> bool {
+        self.preferences.borrow().sidebar_show_videos
+    }
+
+    pub fn set_sidebar_show_videos(&self, visible: bool) {
+        self.preferences.borrow_mut().sidebar_show_videos = visible;
+        self.save_preferences();
+    }
+
+    pub fn sidebar_places_visibility(&self) -> [bool; 8] {
+        let preferences = self.preferences.borrow();
+        [
+            preferences.sidebar_show_home,
+            preferences.sidebar_show_trash,
+            preferences.sidebar_show_network,
+            preferences.sidebar_show_desktop,
+            preferences.sidebar_show_documents,
+            preferences.sidebar_show_downloads,
+            preferences.sidebar_show_pictures,
+            preferences.sidebar_show_videos,
+        ]
+    }
+
     pub fn sort_preferences(&self) -> ViewPreferences {
         sort_preferences(&self.preferences.borrow())
     }
@@ -841,18 +974,21 @@ impl ThemeManager {
         let mut stored = self.preferences.borrow_mut();
         stored.show_hidden = preferences.show_hidden;
         stored.folders_first = preferences.folders_first;
-        stored.sort_key = match preferences.sort_key {
-            SortKey::Name => "name",
-            SortKey::Size => "size",
-            SortKey::Modified => "modified",
-            SortKey::Type => "type",
+        let sort_key = match preferences.sort_key {
+            SortKey::DeviceOrder => None,
+            SortKey::Name => Some("name"),
+            SortKey::Size => Some("size"),
+            SortKey::Modified => Some("modified"),
+            SortKey::Type => Some("type"),
+        };
+        if let Some(sort_key) = sort_key {
+            stored.sort_key = sort_key.to_owned();
+            stored.sort_direction = match preferences.sort_direction {
+                SortDirection::Ascending => "ascending",
+                SortDirection::Descending => "descending",
+            }
+            .to_owned();
         }
-        .to_owned();
-        stored.sort_direction = match preferences.sort_direction {
-            SortDirection::Ascending => "ascending",
-            SortDirection::Descending => "descending",
-        }
-        .to_owned();
         drop(stored);
         self.save_preferences();
     }
@@ -888,7 +1024,7 @@ impl ThemeManager {
     pub fn preview(&self, tokens: &ThemeTokens) {
         if validate_tokens(tokens).is_ok() {
             self.previewing.set(true);
-            self.apply_tokens(tokens);
+            self.apply_tokens(tokens, None);
         }
     }
 
@@ -964,12 +1100,13 @@ impl ThemeManager {
     fn apply_selected(&self) {
         if self.follows_omarchy() {
             if let Some(tokens) = load_omarchy_theme() {
-                self.apply_tokens(&tokens);
+                let palette = load_omarchy_source_palette();
+                self.apply_tokens(&tokens, palette.as_ref());
             }
             return;
         }
         if let Some(tokens) = self.current_tokens() {
-            self.apply_tokens(&tokens);
+            self.apply_tokens(&tokens, None);
         }
     }
 
@@ -982,7 +1119,8 @@ impl ThemeManager {
             .map(|theme| theme.tokens.clone())
     }
 
-    fn apply_tokens(&self, tokens: &ThemeTokens) {
+    fn apply_tokens(&self, tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
+        super::document_media::apply_theme(tokens);
         let root_font_px =
             snapped_root_font_px(self.text_size().root_font_px(), desktop_text_scale_factor());
         let glow = if self.element_glow() {
@@ -999,7 +1137,9 @@ impl ThemeManager {
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_danger_icon_color(&tokens.danger);
         super::thumbnail::refresh_all_customized_icons();
-        stage_source_style_scheme(tokens);
+        stage_source_style_scheme(tokens, source_palette);
+        style_document_buffers(tokens);
+        style_document_views(tokens);
     }
 
     fn save_preferences(&self) {
@@ -1276,6 +1416,11 @@ fn load_omarchy_theme() -> Option<ThemeTokens> {
     tokens_from_quattro(name.trim(), &colors)
 }
 
+fn load_omarchy_source_palette() -> Option<SourcePalette> {
+    let colors = fs::read_to_string(omarchy_state_dir().join("theme/colors.toml")).ok()?;
+    source_palette_from_quattro(&colors)
+}
+
 fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
     let values: toml::Value = toml::from_str(source).ok()?;
     let get = |key: &str| {
@@ -1300,6 +1445,18 @@ fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
         text,
         accent,
         danger: get("color1").unwrap_or_else(default_danger),
+    })
+}
+
+fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
+    let values: toml::Value = toml::from_str(source).ok()?;
+    let get = |key: &str| values.get(key)?.as_str().map(str::to_owned);
+    Some(SourcePalette {
+        statement: get("magenta").or_else(|| get("blue"))?,
+        string: get("green")?,
+        constant: get("orange").or_else(|| get("yellow"))?,
+        type_color: get("cyan").or_else(|| get("blue"))?,
+        preprocessor: get("yellow")?,
     })
 }
 
@@ -1345,8 +1502,116 @@ pub(super) fn register_source_buffer(buffer: &sourceview5::Buffer) {
     });
 }
 
-fn stage_source_style_scheme(tokens: &ThemeTokens) {
-    PENDING_STYLE_TOKENS.with(|pending| pending.replace(Some(tokens.clone())));
+pub(super) fn register_document_buffer(buffer: &gtk::TextBuffer) {
+    let manager = ThemeManager::shared();
+    let tokens = if manager.follows_omarchy() {
+        load_omarchy_theme()
+    } else {
+        manager.current_tokens()
+    }
+    .unwrap_or_else(azure_tokens);
+    style_document_buffer(buffer, &tokens);
+    DOCUMENT_BUFFERS.with(|buffers| {
+        let mut buffers = buffers.borrow_mut();
+        buffers.retain(|buffer| buffer.upgrade().is_some());
+        let weak = glib::WeakRef::new();
+        weak.set(Some(buffer));
+        buffers.push(weak);
+    });
+}
+
+pub(super) fn register_document_view(view: &super::document_view::DocumentTextView) {
+    let manager = ThemeManager::shared();
+    let tokens = if manager.follows_omarchy() {
+        load_omarchy_theme()
+    } else {
+        manager.current_tokens()
+    }
+    .unwrap_or_else(azure_tokens);
+    style_document_view(view, &tokens);
+    DOCUMENT_VIEWS.with(|views| {
+        let mut views = views.borrow_mut();
+        views.retain(|view| view.upgrade().is_some());
+        let weak = glib::WeakRef::new();
+        weak.set(Some(view));
+        views.push(weak);
+    });
+}
+
+fn style_document_buffers(tokens: &ThemeTokens) {
+    DOCUMENT_BUFFERS.with(|buffers| {
+        buffers.borrow_mut().retain(|buffer| {
+            let Some(buffer) = buffer.upgrade() else {
+                return false;
+            };
+            style_document_buffer(&buffer, tokens);
+            true
+        });
+    });
+}
+
+fn style_document_views(tokens: &ThemeTokens) {
+    DOCUMENT_VIEWS.with(|views| {
+        views.borrow_mut().retain(|view| {
+            let Some(view) = view.upgrade() else {
+                return false;
+            };
+            style_document_view(&view, tokens);
+            true
+        });
+    });
+}
+
+fn style_document_view(view: &super::document_view::DocumentTextView, tokens: &ThemeTokens) {
+    if let (Ok(fill), Ok(border), Ok(selection)) = (
+        gdk::RGBA::parse(blend(&tokens.surface, &tokens.muted, 0.54)),
+        gdk::RGBA::parse(blend(&tokens.surface, &tokens.border, 0.5)),
+        gdk::RGBA::parse(&tokens.accent),
+    ) {
+        view.set_colors(fill, border, selection);
+    }
+}
+
+fn style_document_buffer(buffer: &gtk::TextBuffer, tokens: &ThemeTokens) {
+    let parse = |value: &str| gdk::RGBA::parse(value).ok();
+    let table = buffer.tag_table();
+    if let Some(color) = parse(&tokens.accent) {
+        for name in ["document-accent", "document-link"] {
+            if let Some(tag) = table.lookup(name) {
+                tag.set_foreground_rgba(Some(&color));
+            }
+        }
+    }
+    if let Some(color) = parse(&tokens.dim_text)
+        && let Some(tag) = table.lookup("document-dim")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(color) = parse(&tokens.text)
+        && let Some(tag) = table.lookup("document-link-hover")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(color) = parse(&tokens.background)
+        && let Some(tag) = table.lookup("document-selection")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(mut color) = parse(&tokens.highlight) {
+        color.set_alpha(0.36);
+        if let Some(tag) = table.lookup("document-quote") {
+            tag.set_paragraph_background_rgba(Some(&color));
+        }
+        color.set_alpha(0.5);
+        if let Some(tag) = table.lookup("document-link-hover") {
+            tag.set_background_rgba(Some(&color));
+        }
+    }
+}
+
+fn stage_source_style_scheme(tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
+    PENDING_STYLE_TOKENS
+        .with(|pending| pending.replace(Some((tokens.clone(), source_palette.cloned()))));
     STYLE_SCHEME_DIRTY.with(|dirty| dirty.set(true));
     let live = SOURCE_BUFFERS.with(|buffers| {
         buffers
@@ -1365,12 +1630,12 @@ fn ensure_source_style_scheme_installed() {
         return;
     }
     let pending = PENDING_STYLE_TOKENS.with(|pending| pending.borrow().clone());
-    let Some(tokens) = pending else {
+    let Some((tokens, palette)) = pending else {
         return;
     };
     let directory = glib::user_cache_dir().join("strata").join("source-styles");
     if let Err(error) = fs::create_dir_all(&directory).and_then(|()| {
-        let value = source_style_scheme_xml(&tokens);
+        let value = source_style_scheme_xml(&tokens, palette.as_ref());
         crate::storage::atomic_write(&directory.join("strata-current.xml"), value.as_bytes())
     }) {
         tracing::warn!(%error, "unable to write preview syntax style");
@@ -1397,10 +1662,15 @@ fn ensure_source_style_scheme_installed() {
     });
 }
 
-fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
-    let string = blend(&tokens.accent, &tokens.text, 0.48);
-    let constant = blend(&tokens.accent, &tokens.text, 0.18);
-    let type_color = blend(&tokens.accent, &tokens.text, 0.24);
+fn source_style_scheme_xml(tokens: &ThemeTokens, palette: Option<&SourcePalette>) -> String {
+    let fallback = SourcePalette {
+        statement: tokens.accent.clone(),
+        string: blend(&tokens.accent, &tokens.text, 0.48),
+        constant: blend(&tokens.accent, &tokens.text, 0.18),
+        type_color: blend(&tokens.accent, &tokens.text, 0.24),
+        preprocessor: blend(&tokens.accent, &tokens.text, 0.32),
+    };
+    let palette = palette.unwrap_or(&fallback);
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <style-scheme id="strata-current" _name="Strata Current Theme" version="1.0">
@@ -1408,11 +1678,14 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <color name="surface" value="{}"/>
   <color name="text" value="{}"/>
   <color name="accent" value="{}"/>
+  <color name="danger" value="{}"/>
   <color name="selection" value="{}"/>
   <color name="dim" value="{}"/>
   <color name="string" value="{}"/>
   <color name="constant" value="{}"/>
   <color name="type" value="{}"/>
+  <color name="statement" value="{}"/>
+  <color name="preprocessor" value="{}"/>
   <style name="text" foreground="text" background="surface"/>
   <style name="selection" foreground="background" background="accent"/>
   <style name="cursor" foreground="accent"/>
@@ -1424,23 +1697,26 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <style name="def:constant" foreground="constant"/>
   <style name="def:special-char" foreground="constant"/>
   <style name="def:identifier" foreground="text"/>
-  <style name="def:statement" foreground="accent" bold="true"/>
+  <style name="def:statement" foreground="statement" bold="true"/>
   <style name="def:type" foreground="type" bold="true"/>
-  <style name="def:preprocessor" foreground="type"/>
+  <style name="def:preprocessor" foreground="preprocessor"/>
   <style name="def:heading" foreground="accent" bold="true"/>
   <style name="def:link-destination" foreground="string" underline="single"/>
-  <style name="def:error" foreground="background" background="accent" bold="true"/>
+  <style name="def:error" foreground="background" background="danger" bold="true"/>
 </style-scheme>
 "#,
         color_to_hex(&tokens.background),
         color_to_hex(&tokens.surface),
         color_to_hex(&tokens.text),
         color_to_hex(&tokens.accent),
+        color_to_hex(&tokens.danger),
         color_to_hex(&tokens.highlight),
         color_to_hex(&tokens.dim_text),
-        color_to_hex(&string),
-        color_to_hex(&constant),
-        color_to_hex(&type_color),
+        color_to_hex(&palette.string),
+        color_to_hex(&palette.constant),
+        color_to_hex(&palette.type_color),
+        color_to_hex(&palette.statement),
+        color_to_hex(&palette.preprocessor),
     )
 }
 

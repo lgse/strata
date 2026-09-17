@@ -11,10 +11,26 @@ fn caption_label(widget: &gtk::Widget) -> Option<gtk::Inscription> {
     widget.first_child()?.downcast().ok()
 }
 
+fn caption_details(widget: &gtk::Widget) -> Option<gtk::Label> {
+    let mut sibling = widget.first_child();
+    while let Some(child) = sibling {
+        if let Ok(label) = child.clone().downcast::<gtk::Label>() {
+            return Some(label);
+        }
+        sibling = child.next_sibling();
+    }
+    None
+}
+
 fn caption_editor(widget: &gtk::Widget) -> Option<gtk::Widget> {
-    widget
-        .last_child()
-        .filter(|child| child.is::<gtk::Entry>() && child.is_visible())
+    let mut sibling = widget.first_child();
+    while let Some(child) = sibling {
+        if child.is::<gtk::Entry>() && child.is_visible() {
+            return Some(child);
+        }
+        sibling = child.next_sibling();
+    }
+    None
 }
 
 #[expect(
@@ -168,7 +184,12 @@ mod imp {
                 return (0, 0, -1, -1);
             };
             if orientation == gtk::Orientation::Horizontal {
-                let width = preferred_caption_width(&label);
+                let mut width = preferred_caption_width(&label);
+                if let Some(details) =
+                    caption_details(widget).filter(|details| details.is_visible())
+                {
+                    width = width.max(details.measure(orientation, for_size).1);
+                }
                 return (width, width, -1, -1);
             }
             let width = if for_size < 0 {
@@ -176,8 +197,12 @@ mod imp {
             } else {
                 for_size
             };
-            let height = reserved_caption_height(&label, width)
+            let details_height = caption_details(widget)
+                .filter(|details| details.is_visible())
+                .map_or(0, |details| details.measure(orientation, width).1);
+            let content_height = reserved_caption_height(&label, width)
                 .max(caption_editor(widget).map_or(0, |field| field.measure(orientation, width).1));
+            let height = content_height + details_height;
             (height, height, -1, -1)
         }
 
@@ -185,18 +210,21 @@ mod imp {
             let Some(label) = caption_label(widget) else {
                 return;
             };
+            let mut current_y = 0;
             if label.is_visible() {
                 let (caption_width, caption_height) = caption_extent(&label, width);
                 let caption_width = caption_width.min(width);
+                let caption_height = caption_height.min(height);
                 label.allocate(
                     caption_width,
-                    caption_height.min(height),
+                    caption_height,
                     -1,
                     Some(gsk::Transform::new().translate(&graphene::Point::new(
                         ((width - caption_width) / 2) as f32,
                         0.0,
                     ))),
                 );
+                current_y += caption_height;
             }
             if let Some(field) = caption_editor(widget) {
                 let field_height = field
@@ -204,6 +232,26 @@ mod imp {
                     .1
                     .min(height);
                 field.allocate(width, field_height, -1, None);
+                current_y = current_y.max(field_height);
+            }
+            if let Some(details) = caption_details(widget).filter(|details| details.is_visible()) {
+                let details_width = details
+                    .measure(gtk::Orientation::Horizontal, -1)
+                    .1
+                    .min(width);
+                let details_height = details
+                    .measure(gtk::Orientation::Vertical, details_width)
+                    .1
+                    .min((height - current_y).max(0));
+                details.allocate(
+                    details_width,
+                    details_height,
+                    -1,
+                    Some(gsk::Transform::new().translate(&graphene::Point::new(
+                        ((width - details_width) / 2) as f32,
+                        current_y as f32,
+                    ))),
+                );
             }
         }
     }

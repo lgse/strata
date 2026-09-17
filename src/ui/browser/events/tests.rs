@@ -136,6 +136,9 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             };
             let dissolve = RefCell::new(None);
             wait_until(
@@ -458,6 +461,9 @@ fn operation_failed_password_prompt_drops_pending_navigate_for_later_completion(
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             };
             state
                 .pending_extract_retry
@@ -519,6 +525,9 @@ fn password_retry_preserves_extract_here_and_extract_to_navigation_intent() {
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 };
                 state
                     .pending_extract_retry

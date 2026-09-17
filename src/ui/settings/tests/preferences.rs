@@ -57,10 +57,27 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             );
             assert_eq!(
                 active_switches(&first),
-                vec![false, false, true, false, false, true, true, false]
+                vec![false, false, false, true, false, false, true]
+                    .into_iter()
+                    .chain([true, false])
+                    .collect::<Vec<_>>()
             );
             assert_eq!(active_switches(&first), active_switches(&second));
             assert_eq!(active_choices(&first), active_choices(&second));
+            for page in [&first, &second] {
+                for button in descendants::<gtk::ToggleButton>(page)
+                    .into_iter()
+                    .filter(|button| button.has_css_class("sidebar-place-chip"))
+                {
+                    assert!(!button.is_active());
+                    button.emit_clicked();
+                    assert!(button.is_active());
+                    assert_eq!(active_choices(&first), active_choices(&second));
+                    button.emit_clicked();
+                    assert!(!button.is_active());
+                    assert_eq!(active_choices(&first), active_choices(&second));
+                }
+            }
             let directory_buttons = [&first, &second].map(|page| {
                 descendants::<gtk::Button>(page)
                     .into_iter()

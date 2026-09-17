@@ -6,6 +6,8 @@ mod browser;
 mod browser_modes;
 mod chooser;
 mod controls;
+mod document_media;
+mod document_view;
 mod entry_list_model;
 mod focus_navigation;
 mod icons_cell;
@@ -29,10 +31,11 @@ mod theme;
 mod thumbnail;
 pub(crate) mod thumbnail_cache;
 mod top_bar_navigation;
+mod virtual_preview;
 mod window;
 
 pub(crate) use chooser::{cancel_chooser, present_chooser};
-pub(crate) use window::home_directory;
+pub(crate) use window::default_save_folder;
 pub use window::{present, present_open, present_reveal};
 
 pub(crate) fn prepare_portal_ui() {

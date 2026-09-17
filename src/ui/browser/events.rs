@@ -27,6 +27,26 @@ use std::time::Instant;
 
 impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
+        if matches!(
+            event,
+            BrowserEvent::NavigationStarting
+                | BrowserEvent::Reset
+                | BrowserEvent::ColumnsTruncated { .. }
+                | BrowserEvent::ColumnsRelocated { .. }
+                | BrowserEvent::EntriesInserted { .. }
+                | BrowserEvent::EntriesReplaced { .. }
+                | BrowserEvent::EntriesPublished { .. }
+                | BrowserEvent::EntriesSpliced { .. }
+                | BrowserEvent::SortingStarted { .. }
+                | BrowserEvent::ColumnReloaded { .. }
+                | BrowserEvent::HiddenToggled { .. }
+                | BrowserEvent::FocusChanged { .. }
+                | BrowserEvent::SelectionSetChanged { .. }
+                | BrowserEvent::SelectionSynced { .. }
+                | BrowserEvent::OpenRequested { .. }
+        ) {
+            self.cancel_click_rename();
+        }
         match event {
             BrowserEvent::SelectionSynced { .. } => return,
             BrowserEvent::NavigationStarting => {}
@@ -89,6 +109,11 @@ impl ViewState {
                         .browser
                         .location_at(*depth)
                         .is_some_and(|location| location.is_camera_photo_root());
+                    let top = camera
+                        .then(|| {
+                            super::camera_scroll::CameraTopAnchor::capture(column.list.upcast_ref())
+                        })
+                        .flatten();
                     if entry_count > 0 && (!column.spinner.is_spinning() || camera) {
                         column.presentation.show_content();
                     }
@@ -111,6 +136,9 @@ impl ViewState {
                     set_filter_placeholder(&column, count);
                     update_empty_trash_sensitivity(&column, count);
                     set_column_busy(&column, false);
+                    if let Some(top) = top {
+                        top.restore();
+                    }
                     crate::metrics::mark_batch_rendered(entry_count, render_started);
                     crate::metrics::record_stage(
                         "ui-publication",
@@ -210,6 +238,11 @@ impl ViewState {
             BrowserEvent::SortingFinished { depth } => {
                 self.overlay.set_cursor(None::<&gtk::gdk::Cursor>);
                 if let Some(column) = self.columns.borrow().get(*depth) {
+                    super::pane_header::sync_column_sort_direction(
+                        &self.browser,
+                        *depth,
+                        &column.sort_direction_button,
+                    );
                     stop_column_spinner(column);
                     column.spinner.set_tooltip_text(None);
                     set_column_busy(column, false);
@@ -270,6 +303,11 @@ impl ViewState {
             }
             BrowserEvent::ColumnReloaded { depth } => {
                 if let Some(column) = self.columns.borrow().get(*depth) {
+                    super::pane_header::sync_column_sort_direction(
+                        &self.browser,
+                        *depth,
+                        &column.sort_direction_button,
+                    );
                     column.search_handle.borrow_mut().take();
                     column
                         .search_generation
@@ -488,7 +526,14 @@ impl ViewState {
                     // an in-progress rename (visible for slow network directories
                     // that stream many batches). A pending creation still needs to scroll.
                     if self.active_rename.borrow().is_none() {
-                        if (*take_focus || self.focused_column_depth() == Some(*depth))
+                        let camera_loading =
+                            self.browser
+                                .column_snapshot(*depth)
+                                .is_some_and(|snapshot| {
+                                    snapshot.loading && snapshot.location.is_camera_photo_root()
+                                });
+                        if (*take_focus
+                            || (self.focused_column_depth() == Some(*depth) && !camera_loading))
                             && let Some(focused) = column.map.view_position(*focused)
                         {
                             scroll_column_to(column, focused);
@@ -536,7 +581,7 @@ impl ViewState {
             }
             BrowserEvent::OpenRequested { location } => {
                 if self.interactive {
-                    open_location(location, &self.overlay);
+                    open_location(location, &self.overlay, &self.browser);
                 }
             }
             BrowserEvent::EntryCreated { location } => {
@@ -933,7 +978,7 @@ impl ViewState {
         }
     }
 
-    fn reveal_focused_entry(self: &Rc<Self>) {
+    pub(super) fn reveal_focused_entry(self: &Rc<Self>) {
         let Some((depth, position, _)) = self.browser.focused_item() else {
             return;
         };

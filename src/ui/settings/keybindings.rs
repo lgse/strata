@@ -75,10 +75,10 @@ pub(super) fn search_text() -> String {
 
 pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     let content = page_content();
-    let hints = super::settings_group(&content, "HINTS");
+    let hints = super::settings_group(&content, "SHORTCUTS BUTTON");
     let (row, toggle) = settings_option(
-        "Show keybinding hints",
-        "Show navigation and paste hints at the bottom of every view. F1 always opens the full reference.",
+        "Show F1 Shortcuts button",
+        "Show the shortcuts button in the bottom bar. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the full reference.",
         manager.show_keybinding_hints(),
     );
     bind_switch(

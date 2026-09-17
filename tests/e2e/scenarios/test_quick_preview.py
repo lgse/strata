@@ -216,13 +216,69 @@ def test_preview_hides_on_shift_range_folder_focus(strata):
     strata.wait(lambda: strata.preview_shows("alpha"), "preview to resume after the folder")
 
 
-def test_preview_renders_markdown(strata):
+def test_preview_renders_markdown(strata, fixture_tree):
+    from PIL import Image
+
+    Image.new("RGB", (80, 32), "green").save(fixture_tree.path("folder/local image.png"))
+    fixture_tree.path("folder/shapes.svg").write_text(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="32">'
+        '<circle cx="16" cy="16" r="12" fill="red"/></svg>'
+    )
+    fixture_tree.path("page.md").write_text(
+        "# Heading\n\nBody text.\n\n"
+        "![Local PNG](folder/local%20image.png)\n\n"
+        "![Local SVG](folder/shapes.svg)\n\n"
+        "```mermaid\nflowchart LR\nA[Open] --> B[Preview]\n```\n\n"
+        "![Missing fixture](folder/missing.png)\n"
+    )
     strata.select_entry_with_keyboard("page.md")
     strata.keyboard.press("space")
 
     strata.wait(
         lambda: strata.preview_shows("Body text."),
         "the markdown preview to render its body",
+    )
+    for name in ("Local PNG", "Local SVG", "Mermaid diagram"):
+        strata.wait(
+            lambda name=name: strata.preview().find(role="image", description=name) is not None,
+            f"the sandboxed Markdown media to render: {name}",
+        )
+    strata.wait(lambda: strata.preview_shows("Missing fixture"), "missing-image fallback")
+    strata.pointer.click(strata.preview().find(role="button", name="View source"))
+    strata.wait(lambda: strata.preview_shows("flowchart LR"), "original Mermaid source")
+    strata.pointer.click(strata.preview().find(role="button", name="View rendered"))
+    strata.wait(
+        lambda: strata.preview().find(role="image", description="Mermaid diagram") is not None,
+        "the cached diagram after switching back to rendered view",
+    )
+    strata.select_entry("notes.txt")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "next preview")
+    assert strata.preview().find(role="image", description="Mermaid diagram") is None
+
+
+def test_markdown_equations_preserve_inline_prose_source_and_fallbacks(strata, fixture_tree):
+    fixture_tree.path("page.md").write_text(
+        "# Equations\n\nEnergy $E=mc^2$ in prose.\n\n"
+        "$$\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}$$\n\n"
+        "```latex\n\\sum_{n=1}^{\\infty}\\frac{1}{n^2}=\\frac{\\pi^2}{6}\n```\n\n"
+        "Unsupported $\\unknowncommand{x}$ remains readable.\n"
+    )
+    strata.select_entry_with_keyboard("page.md")
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: len(strata.preview().find_all(role="image", description="LaTeX equation")) == 3,
+        "inline, display, and fenced equations rendered through the sandbox",
+    )
+    assert strata.preview_shows("Energy") and strata.preview_shows("in prose."), "\n".join(
+        repr((node.role, node.text)) for node in strata.preview().find_all(rendered=False) if node.text
+    )
+    strata.wait(lambda: strata.preview_shows("$\\unknowncommand{x}$"), "unsupported equation fallback")
+    strata.pointer.click(strata.preview().find(role="button", name="View source"))
+    strata.wait(lambda: strata.preview_shows("$E=mc^2$"), "unchanged equation source")
+    strata.pointer.click(strata.preview().find(role="button", name="View rendered"))
+    strata.wait(
+        lambda: len(strata.preview().find_all(role="image", description="LaTeX equation")) == 3,
+        "equations retained across view switching",
     )
 
 

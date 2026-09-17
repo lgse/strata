@@ -13,6 +13,15 @@ parsing and decoding run inside bubblewrap, never in the application.
 - Media previews use the incremental decoded-frame transport described below.
 - Plain text stays in-process, invokes no native format parser, and is capped at
   1 MiB.
+- Local [Markdown and bounded HTML previews](document-previews.md) are parsed
+  in-process by pure-Rust parsers that receive only the bounded source string and
+  cannot initiate filesystem access, network access, JavaScript execution, or
+  subresource loading. Relative Markdown images are separately confined to the
+  document directory and staged as bounded private files. Their decoders and the
+  native Mermaid renderer and bundled MathJax equation renderer run in sandbox
+  helpers with a three-second deadline. QuickJS has no host APIs or module loader,
+  and user equations are passed as data, not evaluated as JavaScript;
+  SVG resource resolution is disabled and only validated PNG output returns.
 
 ## Bundled interface icons
 
@@ -20,12 +29,14 @@ Strata's bundled Lucide SVGs are trusted application resources, not browser file
 They render directly to bounded in-memory pixels with `resvg`, avoiding synchronous
 GdkPixbuf/Glycin loader startup on the GTK thread during row binding and live theme
 changes. External and embedded image references are disabled; icon inputs and
-output dimensions are bounded. SVG text, system-font lookup, and raster-image
-features of this renderer are disabled. Emoji icons retain Pango/Cairo rendering
+output dimensions are bounded. The icon path does not load system fonts or resolve
+raster images. Emoji icons retain Pango/Cairo rendering
 but pass raw pixels to GTK instead of encoding and decoding an intermediate PNG.
 
-This renderer is not used for user SVGs, phone photos, or thumbnails of originals;
-those keep their existing sandbox boundary. No toolkit libraries or private media
+This in-process icon path is not used for user SVGs, phone photos, or thumbnails
+of originals; those keep their sandbox boundary. Markdown SVGs, Mermaid diagrams, and equation
+output use a separate `resvg` path inside the sandbox, with font loading enabled
+there and image references disabled. No toolkit libraries or private media
 runtime patches are updated by this change.
 
 ## Remote still-image previews
@@ -80,6 +91,13 @@ by the existing image-thumbnail sandbox, and removed after the decoder exits.
 Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded
 in-memory cache, never the persistent thumbnail cache. AFC and MTP file-list
 thumbnails are not enabled by this path.
+
+Complete Photos scans yield between batches to give visible thumbnails a bounded
+turn on the camera connection. If the viewport is at the top, incoming batches
+leave it there instead of following the old first photo down the sorted list.
+After the user scrolls, normal viewport anchoring applies; background selection updates do
+not reveal the selected photo. The initial folder listing still depends on GVfs
+finishing that folder's enumeration before it publishes entries.
 
 ## Media metadata
 

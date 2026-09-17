@@ -7,6 +7,9 @@ use crate::ui::{blur::BlurBin, theme::ThemeManager};
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),
+        ("Items shown in sidebar", "general", "sidebar-places"),
+        ("sidebar downloads", "general", "sidebar-places"),
+        ("show network", "general", "sidebar-places"),
         ("tezt size", "theme", "text"),
         ("font size", "theme", "text"),
         ("nightly", "updates", "channel"),

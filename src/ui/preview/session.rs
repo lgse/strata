@@ -46,6 +46,7 @@ impl PreviewState {
     }
 
     pub(super) fn clear_target(&self) {
+        self.cancel_pending_show();
         self.animating.set(false);
         self.sizing.close();
         self.animation_generation

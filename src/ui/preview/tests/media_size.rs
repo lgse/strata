@@ -39,6 +39,9 @@ pub(in crate::ui::preview) fn entry(name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Known(1),
         mode: MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 

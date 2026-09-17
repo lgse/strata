@@ -194,8 +194,8 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata):
     assert len(launch_counter.read_text().splitlines()) == 1
 
 
-@pytest.mark.preferences(browser_mode="columns")
-def test_filtered_columns_result_waits_for_release_before_launching(launch_counter, strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_result_waits_for_release_before_launching(launch_counter, strata, mode):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")
@@ -371,7 +371,7 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
 
 
 @pytest.mark.preferences(search_open_files_directly=False)
-def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata):
+def test_global_search_preview_follows_neighbor_when_same_folder_result_is_deleted(strata):
     folder = strata.environment.home / "preview-deletion"
     folder.mkdir()
     previewed = folder / "preview-deletion-fixture.txt"
@@ -394,7 +394,10 @@ def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata)
         "search result preview",
     )
     previewed.unlink()
-    strata.wait(lambda: strata.preview() is None, "deleted result preview to close")
+    strata.wait(
+        lambda: strata.preview_shows("remaining file"),
+        "deleted result preview to follow the remaining file",
+    )
     assert "remaining.txt" in strata.entry_names()
 
 

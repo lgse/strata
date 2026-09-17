@@ -34,6 +34,9 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -56,6 +59,36 @@ fn open_defaults_match_the_portal_contract() {
             multiple: false
         }
     ));
+}
+
+#[test]
+fn folder_hints_override_defaults_and_invalid_hints_preserve_save_names() {
+    let current = tempfile::tempdir().expect("current directory");
+    for hint in [
+        None,
+        Some(PathBuf::from("relative")),
+        Some(current.path().join("missing")),
+        Some(current.path().to_path_buf()),
+    ] {
+        let expected = if hint.as_deref() == Some(current.path()) {
+            current.path().to_path_buf()
+        } else {
+            crate::ui::default_save_folder()
+        };
+        assert_eq!(
+            run_async(accessible_folder(hint.clone())).expect("open/save-files folder"),
+            expected
+        );
+        assert_eq!(
+            run_async(save_file_suggestion(
+                None,
+                hint,
+                Some("report.txt".to_owned()),
+            ))
+            .expect("save suggestion"),
+            (expected, Some(OsString::from("report.txt")))
+        );
+    }
 }
 
 #[test]
@@ -115,7 +148,7 @@ fn current_file_rejects_directories_and_missing_parents() {
     ] {
         let suggestion =
             run_async(save_file_suggestion(Some(file), None, None)).expect("save suggestion");
-        assert_eq!(suggestion, (crate::ui::home_directory(), None));
+        assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
     }
 }
 
@@ -128,7 +161,7 @@ fn invalid_current_file_falls_back_without_using_lower_priority_suggestions() {
         Some("ignored.txt".to_owned()),
     ))
     .expect("save suggestion");
-    assert_eq!(suggestion, (crate::ui::home_directory(), None));
+    assert_eq!(suggestion, (crate::ui::default_save_folder(), None));
 }
 
 #[test]
@@ -226,6 +259,9 @@ fn open_selection_validates_kind_cardinality_and_locality() {
     );
     let remote = FileEntry {
         location: Location::uri("smb://server/share/file"),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         ..folder
     };
     assert!(open_selection(&[remote], &current, true, false).is_err());

@@ -2,12 +2,16 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs,
     io::ErrorKind,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -19,7 +23,8 @@ use crate::{
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-        backend_unavailable_message, is_hidden_name, native_hidden_names, native_kind,
+        backend_unavailable_message, is_hidden_name, is_image_path, is_media_path,
+        native_hidden_names, native_kind,
     },
 };
 
@@ -29,6 +34,162 @@ const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::t
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
+const MAX_ICON_DETAILS_CACHE_ENTRIES: usize = 10_000;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct IconDetailsFingerprint {
+    size: u64,
+    modified_seconds: i64,
+    modified_nanoseconds: i64,
+    changed_seconds: i64,
+    changed_nanoseconds: i64,
+}
+
+impl IconDetailsFingerprint {
+    fn read(path: &Path) -> Option<Self> {
+        let metadata = fs::metadata(path).ok()?;
+        Some(Self {
+            size: metadata.len(),
+            modified_seconds: metadata.mtime(),
+            modified_nanoseconds: metadata.mtime_nsec(),
+            changed_seconds: metadata.ctime(),
+            changed_nanoseconds: metadata.ctime_nsec(),
+        })
+    }
+}
+
+#[derive(Clone)]
+struct IconDetails {
+    image_dimensions: MetadataValue<(u32, u32)>,
+    child_count: MetadataValue<u64>,
+    duration_seconds: MetadataValue<u64>,
+}
+
+impl IconDetails {
+    fn from_update(update: &MetadataUpdate) -> Self {
+        Self {
+            image_dimensions: update.image_dimensions.clone(),
+            child_count: update.child_count.clone(),
+            duration_seconds: update.duration_seconds.clone(),
+        }
+    }
+
+    fn apply_to(&self, update: &mut MetadataUpdate) {
+        update.image_dimensions = self.image_dimensions.clone();
+        update.child_count = self.child_count.clone();
+        update.duration_seconds = self.duration_seconds.clone();
+    }
+
+    fn apply_to_entry(&self, entry: &mut FileEntry) {
+        entry.image_dimensions = self.image_dimensions.clone();
+        entry.child_count = self.child_count.clone();
+        entry.duration_seconds = self.duration_seconds.clone();
+    }
+}
+
+struct CachedIconDetails {
+    fingerprint: IconDetailsFingerprint,
+    details: IconDetails,
+    generation: u64,
+}
+
+#[derive(Default)]
+struct IconDetailsCache {
+    entries: HashMap<PathBuf, CachedIconDetails>,
+    recent: VecDeque<(PathBuf, u64)>,
+    generation: u64,
+}
+
+impl IconDetailsCache {
+    fn get(&mut self, path: &Path, fingerprint: IconDetailsFingerprint) -> Option<IconDetails> {
+        if self
+            .entries
+            .get(path)
+            .is_some_and(|cached| cached.fingerprint != fingerprint)
+        {
+            self.entries.remove(path);
+            return None;
+        }
+        let cached = self.entries.get_mut(path)?;
+        self.generation = self.generation.saturating_add(1);
+        cached.generation = self.generation;
+        self.recent.push_back((path.to_path_buf(), self.generation));
+        let details = cached.details.clone();
+        self.compact_recent();
+        Some(details)
+    }
+
+    fn insert(&mut self, path: PathBuf, fingerprint: IconDetailsFingerprint, details: IconDetails) {
+        self.generation = self.generation.saturating_add(1);
+        let generation = self.generation;
+        self.entries.insert(
+            path.clone(),
+            CachedIconDetails {
+                fingerprint,
+                details,
+                generation,
+            },
+        );
+        self.recent.push_back((path, generation));
+        while self.entries.len() > MAX_ICON_DETAILS_CACHE_ENTRIES {
+            let Some((oldest_path, oldest_generation)) = self.recent.pop_front() else {
+                break;
+            };
+            if self
+                .entries
+                .get(&oldest_path)
+                .is_some_and(|cached| cached.generation == oldest_generation)
+            {
+                self.entries.remove(&oldest_path);
+            }
+        }
+        self.compact_recent();
+    }
+
+    fn compact_recent(&mut self) {
+        if self.recent.len() > MAX_ICON_DETAILS_CACHE_ENTRIES * 4 {
+            self.recent.retain(|(path, generation)| {
+                self.entries
+                    .get(path)
+                    .is_some_and(|cached| cached.generation == *generation)
+            });
+        }
+    }
+}
+
+fn icon_details_cache() -> &'static Mutex<IconDetailsCache> {
+    static CACHE: OnceLock<Mutex<IconDetailsCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(IconDetailsCache::default()))
+}
+
+fn cached_icon_details(path: &Path, fingerprint: IconDetailsFingerprint) -> Option<IconDetails> {
+    icon_details_cache().lock().ok()?.get(path, fingerprint)
+}
+
+fn cached_icon_details_for_revisit(path: &Path) -> Option<IconDetails> {
+    let was_cached = icon_details_cache().lock().ok()?.entries.contains_key(path);
+    if !was_cached {
+        return None;
+    }
+    cached_icon_details(path, IconDetailsFingerprint::read(path)?)
+}
+
+fn cache_icon_details(
+    path: &Path,
+    fingerprint: Option<IconDetailsFingerprint>,
+    update: &MetadataUpdate,
+) {
+    let Some(fingerprint) = fingerprint else {
+        return;
+    };
+    if let Ok(mut cache) = icon_details_cache().lock() {
+        cache.insert(
+            path.to_path_buf(),
+            fingerprint,
+            IconDetails::from_update(update),
+        );
+    }
+}
 
 #[derive(Default)]
 pub struct LocalFileSource;
@@ -174,6 +335,9 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         size,
         modified_unix_seconds,
         mode: info_mode(&info),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
         is_hidden: info_is_hidden(&info),
     }
 }
@@ -267,7 +431,8 @@ fn scan_native_directory(
         };
         let path = child.path();
         let kind = native_kind(file_type, &path);
-        entries.push(FileEntry {
+        let cached_details = cached_icon_details_for_revisit(&path);
+        let mut entry = FileEntry {
             location: Location::local(path),
             display_name: native_name.to_string_lossy().into_owned(),
             thumbnail_path: None,
@@ -276,8 +441,15 @@ fn scan_native_directory(
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
             is_hidden,
-        });
+        };
+        if let Some(details) = cached_details {
+            details.apply_to_entry(&mut entry);
+        }
+        entries.push(entry);
     }
 
     // `access::can-trash`/`access::can-delete` describe the queried item, not its
@@ -298,7 +470,7 @@ fn scan_native_directory(
 
     let mut metadata_complete = true;
     if request.include_metadata && !entries.is_empty() && Instant::now() < deadline {
-        let width = sort_fill_width().min(entries.len());
+        let width = metadata_fill_width().min(entries.len());
         let chunk = entries.len().div_ceil(width);
         std::thread::scope(|scope| {
             for piece in entries.chunks_mut(chunk) {
@@ -654,6 +826,7 @@ impl FileSource for LocalFileSource {
         // Cap viewport fills so a buggy caller cannot stat a full directory.
         const MAX_FILL_ENTRIES: usize = 1024;
         let request_id = request.id;
+        let include_icon_details = request.include_icon_details;
         let mut locations = request.entries;
         if !request.full {
             locations.truncate(MAX_FILL_ENTRIES);
@@ -661,8 +834,14 @@ impl FileSource for LocalFileSource {
         let all_native = locations
             .iter()
             .all(|location| location.native_path().is_some());
-        if request.full && all_native && !locations.is_empty() {
-            return fill_parallel(request_id, locations, request.time_budget, emit);
+        if all_native && !locations.is_empty() {
+            return fill_parallel(
+                request_id,
+                locations,
+                include_icon_details,
+                request.time_budget,
+                emit,
+            );
         }
         let task = glib::MainContext::default().spawn_local(async move {
             let deadline = Instant::now() + request.time_budget;
@@ -699,13 +878,24 @@ impl FileSource for LocalFileSource {
                 )
                 .await
                 {
-                    Ok(Ok(info)) => update_from_info(&info, location),
+                    Ok(Ok(info)) => {
+                        let (mut update, ok) = update_from_info(&info, location);
+                        if include_icon_details {
+                            update.image_dimensions = MetadataValue::Unavailable;
+                            update.child_count = MetadataValue::Unavailable;
+                            update.duration_seconds = MetadataValue::Unavailable;
+                        }
+                        (update, ok)
+                    }
                     Ok(Err(_)) => (
                         MetadataUpdate {
                             location: location.clone(),
                             size: MetadataValue::Unknown,
                             modified_unix_seconds: MetadataValue::Unknown,
                             mode: MetadataValue::Unknown,
+                            image_dimensions: MetadataValue::Unknown,
+                            child_count: MetadataValue::Unknown,
+                            duration_seconds: MetadataValue::Unknown,
                         },
                         false,
                     ),
@@ -838,7 +1028,7 @@ impl FileSource for LocalFileSource {
     }
 }
 
-fn sort_fill_width() -> usize {
+fn metadata_fill_width() -> usize {
     std::thread::available_parallelism()
         .map(|parallelism| parallelism.get().min(8))
         .unwrap_or(4)
@@ -847,41 +1037,59 @@ fn sort_fill_width() -> usize {
 fn fill_parallel(
     request_id: RequestId,
     locations: Vec<Location>,
+    include_icon_details: bool,
     time_budget: Duration,
     emit: Rc<dyn Fn(DirectoryEvent)>,
 ) -> LoadHandle {
-    fill_parallel_with(sort_fill_width(), request_id, locations, time_budget, emit)
+    fill_parallel_with(
+        metadata_fill_width(),
+        request_id,
+        locations,
+        include_icon_details,
+        time_budget,
+        emit,
+    )
 }
 
 fn fill_parallel_with(
     width: usize,
     request_id: RequestId,
     locations: Vec<Location>,
+    include_icon_details: bool,
     time_budget: Duration,
     emit: Rc<dyn Fn(DirectoryEvent)>,
 ) -> LoadHandle {
     let cancellable = gio::Cancellable::new();
     let cancel = cancellable.clone();
     let cancelled = cancellable.clone();
+    let (tx, mut rx) = futures_channel::mpsc::unbounded::<Vec<MetadataUpdate>>();
     let task = glib::MainContext::default().spawn_local(async move {
         let deadline = Instant::now() + time_budget;
-        let outcome = gio::spawn_blocking(move || {
-            let width = width.max(1);
-            let chunk = locations.len().div_ceil(width);
-            let mut updates = Vec::with_capacity(locations.len());
+        let locations_len = locations.len();
+        let blocking_task = gio::spawn_blocking(move || {
+            let worker_count = width.max(1).min(locations.len());
+            let next = AtomicUsize::new(0);
             let mut attempted = 0usize;
             let mut failed = 0usize;
             let mut truncated = false;
             std::thread::scope(|scope| {
-                let mut handles = Vec::new();
-                for piece in locations.chunks(chunk.max(1)) {
+                let mut handles = Vec::with_capacity(worker_count);
+                for _ in 0..worker_count {
                     let cancellable = cancellable.clone();
+                    let tx = tx.clone();
+                    let locations = &locations;
+                    let next = &next;
                     handles.push(scope.spawn(move || {
-                        let mut updates = Vec::with_capacity(piece.len());
+                        let mut updates = Vec::new();
+                        let mut sent_first = false;
                         let mut attempted = 0usize;
                         let mut failed = 0usize;
                         let mut truncated = false;
-                        for location in piece {
+                        loop {
+                            let index = next.fetch_add(1, Ordering::Relaxed);
+                            let Some(location) = locations.get(index) else {
+                                break;
+                            };
                             if cancellable.is_cancelled() || Instant::now() >= deadline {
                                 truncated = true;
                                 break;
@@ -890,44 +1098,84 @@ fn fill_parallel_with(
                                 continue;
                             };
                             attempted += 1;
-                            let (update, ok) = match gio::File::for_path(path).query_info(
-                                METADATA_ATTRIBUTES,
-                                gio::FileQueryInfoFlags::NONE,
-                                Some(&cancellable),
-                            ) {
-                                Ok(info) => update_from_info(&info, location),
+                            let (mut update, ok, details_complete) = match gio::File::for_path(path)
+                                .query_info(
+                                    METADATA_ATTRIBUTES,
+                                    gio::FileQueryInfoFlags::NONE,
+                                    Some(&cancellable),
+                                ) {
+                                Ok(info) => {
+                                    let (mut update, ok) = update_from_info(&info, location);
+                                    let details_complete = !include_icon_details
+                                        || fill_icon_details(
+                                            &mut update,
+                                            &info,
+                                            location,
+                                            &cancellable,
+                                            deadline,
+                                        );
+                                    (update, ok, details_complete)
+                                }
                                 Err(_) => (
                                     MetadataUpdate {
                                         location: location.clone(),
                                         size: MetadataValue::Unknown,
                                         modified_unix_seconds: MetadataValue::Unknown,
                                         mode: MetadataValue::Unknown,
+                                        image_dimensions: MetadataValue::Unknown,
+                                        child_count: MetadataValue::Unknown,
+                                        duration_seconds: MetadataValue::Unknown,
                                     },
                                     false,
+                                    true,
                                 ),
                             };
+                            if include_icon_details && !details_complete {
+                                update.image_dimensions = MetadataValue::Unknown;
+                                update.child_count = MetadataValue::Unknown;
+                                update.duration_seconds = MetadataValue::Unknown;
+                                truncated = true;
+                            }
                             failed += usize::from(!ok);
                             updates.push(update);
+                            if !sent_first || updates.len() >= 8 {
+                                let _ = tx.unbounded_send(std::mem::take(&mut updates));
+                                sent_first = true;
+                            }
+                            if !details_complete {
+                                break;
+                            }
                         }
-                        (updates, attempted, failed, truncated)
+                        if !updates.is_empty() {
+                            let _ = tx.unbounded_send(updates);
+                        }
+                        (attempted, failed, truncated)
                     }));
                 }
                 for handle in handles {
-                    let Ok((piece, attempted_piece, failed_piece, truncated_piece)) = handle.join()
-                    else {
+                    let Ok((attempted_piece, failed_piece, truncated_piece)) = handle.join() else {
                         truncated = true;
                         continue;
                     };
-                    updates.extend(piece);
                     attempted += attempted_piece;
                     failed += failed_piece;
                     truncated = truncated || truncated_piece;
                 }
             });
-            (updates, attempted, failed, truncated, locations.len())
-        })
-        .await;
-        let Ok((updates, attempted, failed, truncated, total)) = outcome else {
+            (attempted, failed, truncated, locations_len)
+        });
+
+        use futures_lite::StreamExt;
+        while let Some(chunk) = rx.next().await {
+            if !chunk.is_empty() && !cancelled.is_cancelled() {
+                emit(DirectoryEvent::MetadataFilled {
+                    request_id,
+                    updates: chunk,
+                });
+            }
+        }
+
+        let Ok((attempted, failed, truncated, total)) = blocking_task.await else {
             return;
         };
         if cancelled.is_cancelled() {
@@ -936,12 +1184,6 @@ fn fill_parallel_with(
                 outcome: MetadataOutcome::Cancelled,
             });
             return;
-        }
-        if !updates.is_empty() {
-            emit(DirectoryEvent::MetadataFilled {
-                request_id,
-                updates,
-            });
         }
         let outcome = if truncated {
             MetadataOutcome::Truncated
@@ -961,6 +1203,135 @@ fn fill_parallel_with(
         cancel.cancel();
         task.abort();
     })
+}
+
+#[cfg(test)]
+fn media_metadata_probe_counts() -> &'static Mutex<HashMap<PathBuf, usize>> {
+    static COUNTS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
+    COUNTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+#[cfg(test)]
+fn media_metadata_probe_count(path: &Path) -> usize {
+    media_metadata_probe_counts()
+        .lock()
+        .ok()
+        .and_then(|counts| counts.get(path).copied())
+        .unwrap_or(0)
+}
+
+fn probe_sandboxed_media_metadata(
+    path: &Path,
+    image: bool,
+) -> Result<crate::sandbox::metadata::MediaMetadata, String> {
+    #[cfg(not(test))]
+    {
+        let cancellation = crate::sandbox::Cancellation::default();
+        crate::sandbox::parse(
+            path,
+            crate::sandbox::ParseOperation::MediaMetadata,
+            0,
+            crate::sandbox::MediaPreviewBackend::Software,
+            &cancellation,
+        )
+        .and_then(|output| crate::sandbox::metadata::MediaMetadata::from_json(&output.data, image))
+    }
+    #[cfg(test)]
+    {
+        let output_dir = tempfile::tempdir().map_err(|error| error.to_string())?;
+        let output_path = output_dir.path().join("result.json");
+        crate::sandbox_helper::run(&[
+            "media-metadata".to_owned(),
+            path.to_string_lossy().into_owned(),
+            output_path.to_string_lossy().into_owned(),
+            "0".to_owned(),
+            "software".to_owned(),
+        ])?;
+        let data = std::fs::read(&output_path).map_err(|error| error.to_string())?;
+        crate::sandbox::metadata::MediaMetadata::from_json(&data, image)
+    }
+}
+
+fn fill_icon_details(
+    update: &mut MetadataUpdate,
+    info: &gio::FileInfo,
+    location: &Location,
+    cancellable: &gio::Cancellable,
+    deadline: Instant,
+) -> bool {
+    let Some(path) = location.native_path() else {
+        update.image_dimensions = MetadataValue::Unavailable;
+        update.child_count = MetadataValue::Unavailable;
+        update.duration_seconds = MetadataValue::Unavailable;
+        return true;
+    };
+    if cancellable.is_cancelled() || Instant::now() >= deadline {
+        return false;
+    }
+    let fingerprint = IconDetailsFingerprint::read(path);
+    if let Some(details) =
+        fingerprint.and_then(|fingerprint| cached_icon_details(path, fingerprint))
+    {
+        details.apply_to(update);
+        return true;
+    }
+
+    update.child_count = if info.file_type() == gio::FileType::Directory {
+        let Ok(entries) = fs::read_dir(path) else {
+            update.image_dimensions = MetadataValue::Unavailable;
+            update.child_count = MetadataValue::Unavailable;
+            update.duration_seconds = MetadataValue::Unavailable;
+            cache_icon_details(path, fingerprint, update);
+            return true;
+        };
+        let mut count = 0u64;
+        for entry in entries {
+            if cancellable.is_cancelled() || Instant::now() >= deadline {
+                return false;
+            }
+            if entry.is_ok() {
+                count = count.saturating_add(1);
+            }
+        }
+        MetadataValue::Known(count)
+    } else {
+        MetadataValue::Unavailable
+    };
+
+    if cancellable.is_cancelled() || Instant::now() >= deadline {
+        return false;
+    }
+    let needs_metadata =
+        info.file_type() == gio::FileType::Regular && (is_image_path(path) || is_media_path(path));
+    if needs_metadata {
+        #[cfg(test)]
+        if let Ok(mut counts) = media_metadata_probe_counts().lock() {
+            *counts.entry(path.to_path_buf()).or_default() += 1;
+        }
+        let image = is_image_path(path);
+        match probe_sandboxed_media_metadata(path, image) {
+            Ok(metadata) => {
+                update.image_dimensions = metadata
+                    .dimensions
+                    .map(MetadataValue::Known)
+                    .unwrap_or(MetadataValue::Unavailable);
+                update.duration_seconds = metadata
+                    .duration
+                    .filter(|d| *d > 0.0)
+                    .map(|d| MetadataValue::Known(d.round() as u64))
+                    .unwrap_or(MetadataValue::Unavailable);
+            }
+            Err(_) => {
+                update.image_dimensions = MetadataValue::Unavailable;
+                update.duration_seconds = MetadataValue::Unavailable;
+            }
+        }
+    } else {
+        update.image_dimensions = MetadataValue::Unavailable;
+        update.duration_seconds = MetadataValue::Unavailable;
+    }
+    cache_icon_details(path, fingerprint, update);
+    true
 }
 
 fn update_from_info(info: &gio::FileInfo, location: &Location) -> (MetadataUpdate, bool) {
@@ -985,6 +1356,9 @@ fn update_from_info(info: &gio::FileInfo, location: &Location) -> (MetadataUpdat
             size,
             modified_unix_seconds,
             mode,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         },
         ok,
     )

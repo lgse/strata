@@ -133,10 +133,24 @@ impl Dispatcher {
             .or_else(|| self.context_menu_command(&event))
             .or_else(|| {
                 // Search rows own navigation; directory commands must not act on hidden selections.
-                (self.view.selected_search_results().is_some()
+                if self.view.selected_search_results().is_some()
                     && !event.text_has_focus()
-                    && event.key != Key::Delete)
-                    .then_some(Propagation::Proceed)
+                    && event.key != Key::Delete
+                {
+                    if matches!(event.key, Key::c | Key::x | Key::v | Key::a)
+                        && let Some(result) = self.clipboard_command(&event)
+                    {
+                        return Some(result);
+                    }
+                    if event.vim_navigation {
+                        crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
+                        Some(Propagation::Stop)
+                    } else {
+                        Some(Propagation::Proceed)
+                    }
+                } else {
+                    None
+                }
             })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))

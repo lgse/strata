@@ -19,8 +19,12 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
             modified_unix_seconds: MetadataValue::Known(1),
             mode: MetadataValue::Unknown,
             is_hidden: false,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
         },
         text_byte_limit: 1024,
+        render_document: false,
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
     }

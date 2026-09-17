@@ -2053,7 +2053,7 @@ scrollbar slider:active {
 }
 
 .sidebar-update-separator {
-  margin: 0 4px;
+  margin: 0;
 }
 
 .sidebar-heading {
@@ -2072,21 +2072,14 @@ paned > separator {
   border-right: none;
 }
 
-.sidebar-split .sidebar-update {
-  margin-left: 4px;
-  padding-left: 9px;
-  padding-right: 9px;
-}
-
-.sidebar-split .sidebar-update-separator {
-  margin-right: 0;
-}
-
-.sidebar-split > separator {
-  padding: 0 2px 0 0;
+.sidebar-split > separator.wide {
+  min-width: 1px;
+  margin: 0;
+  padding: 0;
   border: none;
-  background: @theme_surface;
-  box-shadow: inset 1px 0 alpha(@theme_border, 0.6);
+  background: alpha(@theme_border, 0.6);
+  background-image: none;
+  box-shadow: none;
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */
@@ -2205,6 +2198,159 @@ paned > separator {
 .preview-text text selection {
   background: @theme_accent;
   color: @theme_bg;
+}
+
+.preview-document-notice {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px solid alpha(@theme_accent, 0.42);
+  border-radius: 5px;
+  color: @theme_text;
+  font-size: 0.82em;
+  margin: 8px 12px;
+  padding: 7px 9px;
+}
+
+.preview-document-notice selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document {
+  background: @theme_surface;
+  color: @theme_text;
+}
+
+.preview-virtual-list,
+.preview-virtual-list > row,
+.preview-virtual-list > row:hover,
+.preview-virtual-list > row:active,
+.preview-virtual-list > row:selected,
+.preview-virtual-row {
+  background: @theme_surface;
+  border: none;
+  box-shadow: none;
+  color: @theme_text;
+  margin: 0;
+  outline: none;
+  padding: 0;
+}
+
+.preview-source-row {
+  background: @theme_surface;
+  color: @theme_text;
+  padding: 0 14px;
+}
+
+.preview-source-lines,
+.preview-source-lines text {
+  background: @theme_surface;
+  color: @theme_dim_text;
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+}
+
+.preview-virtual-source:focus-visible,
+.preview-virtual-list:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.preview-document text {
+  background: @theme_surface;
+  color: @theme_text;
+}
+
+.preview-document selection,
+.preview-document text selection {
+  background: transparent;
+  color: @theme_bg;
+}
+
+.preview-code-overlay {
+  background: transparent;
+}
+
+.preview-code-copy {
+  background: alpha(@theme_surface, 0.9);
+  border: 1px solid alpha(@theme_border, 0.72);
+  border-radius: 5px;
+  box-shadow: 0 2px 8px alpha(@theme_bg, 0.22);
+  color: @theme_text;
+  margin: 10px 24px 0 0;
+  min-height: 27px;
+  min-width: 27px;
+  opacity: 0;
+  padding: 3px;
+  transition: opacity 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out;
+}
+
+.preview-code-overlay:hover .preview-code-copy,
+.preview-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.preview-code-copy:hover {
+  background: alpha(@theme_highlight, 0.92);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.preview-code-copy:active {
+  background: alpha(@theme_muted, 0.88);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.preview-code-copy:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.58);
+  outline-offset: 1px;
+}
+
+.preview-document-table {
+  background: alpha(@theme_border, 0.5);
+  border: 1px solid alpha(@theme_border, 0.5);
+  border-radius: 5px;
+}
+
+.preview-document-table-cell {
+  background: @theme_surface;
+  color: @theme_text;
+  padding: 6px 8px;
+}
+
+.preview-document-table-cell.header {
+  background: alpha(@theme_highlight, 0.64);
+  color: @theme_accent;
+  font-weight: 700;
+}
+
+.preview-document-table-cell link {
+  color: @theme_accent;
+}
+
+.preview-document-table-cell link:hover {
+  background: alpha(@theme_highlight, 0.5);
+  color: @theme_text;
+}
+
+.preview-document-table-cell link:active {
+  background: alpha(@theme_muted, 0.72);
+  color: @theme_accent;
+}
+
+.preview-document-table-cell link:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline-offset: 1px;
+}
+
+.preview-document-table.selected .preview-document-table-cell,
+.preview-document-table.selected .preview-document-table-cell.header {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .preview-image,
@@ -2476,17 +2622,19 @@ entry.preview-command-entry selection {
   font-size: 0.85em;
 }
 
+.shortcut-footer-count {
+  color: @theme_text;
+  font-weight: normal;
+}
+
 .shortcut-footer-paste {
   color: @theme_accent;
   background-color: alpha(@theme_accent, 0.10);
   border: 1px solid alpha(@theme_accent, 0.35);
   border-radius: 4px;
+  margin: 2px 0;
   padding: 1px 6px;
   font-weight: bold;
-}
-
-.shortcut-footer-summary {
-  color: @theme_text;
 }
 
 .shortcut-footer-button > button,
@@ -2662,6 +2810,14 @@ entry.preview-command-entry selection {
   min-height: 31px;
   /* Balance the three-pixel top indicator against the one-pixel bottom border. */
   padding: 2px 5px 4px 12px;
+}
+
+.column-truncated-hint {
+  opacity: 0;
+}
+
+.directory-column:hover .column-truncated-hint {
+  opacity: 1;
 }
 
 .column-heading {
@@ -3554,6 +3710,12 @@ colorchooser colorswatch overlay {
   margin-top: 4px;
 }
 
+.file-row.cut,
+.list-row.cut,
+.icons-card.cut {
+  opacity: 0.65;
+}
+
 .file-row.dragging {
   opacity: 0.48;
 }
@@ -3793,8 +3955,8 @@ colorchooser colorswatch overlay {
 .keyboard-navigation .file-list row:hover:not(:selected),
 .keyboard-navigation .file-list-mode row:hover:not(:selected),
 .keyboard-navigation .file-icons > child:hover:not(:selected),
-.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card-icon-frame,
-.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card-label {
+.keyboard-navigation .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-icon-frame,
+.keyboard-navigation .file-icons > child:not(:selected) .icons-card.content-hover .icons-card-label {
   background: transparent;
   color: @theme_text;
 }
@@ -4269,12 +4431,28 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   background: transparent;
 }
 
-.file-icons > child:hover .icons-card-icon-frame {
+.file-icons > child .icons-card.content-hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.15);
 }
 
-.file-icons > child:hover .icons-card-label {
+.file-icons > child .icons-card.content-hover .icons-card-label {
   background: alpha(@theme_accent, 0.10);
+}
+
+.file-icons > child:hover:not(:selected) .icons-card-label,
+.file-icons > child:not(:selected) .icons-card.content-hover .icons-card-label {
+  color: @theme_text;
+}
+
+.file-icons > child:hover:not(:selected) .icons-card-details,
+.file-icons > child:not(:selected) .icons-card.content-hover .icons-card-details {
+  color: @theme_dim_text;
+}
+
+.file-icons > child:selected:hover .icons-card-label,
+.file-icons > child:selected .icons-card.content-hover .icons-card-label {
+  background: @theme_accent;
+  color: @theme_bg;
 }
 
 .file-icons > child:selected {
@@ -4289,11 +4467,11 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   outline-offset: -1px;
 }
 
-.file-icons > child:selected:hover .icons-card-icon-frame {
+.file-icons > child:selected .icons-card.content-hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.30);
 }
 
-.keyboard-navigation .file-icons > child:selected:hover .icons-card-icon-frame {
+.keyboard-navigation .file-icons > child:selected .icons-card.content-hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.22);
 }
 
@@ -4327,6 +4505,12 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   border-radius: 4px;
   color: @theme_text;
   padding: 2px 4px;
+}
+
+.icons-card-details {
+  color: @theme_dim_text;
+  font-size: 0.82em;
+  padding: 0 4px 2px;
 }
 
 .list-fast-scroll .list-row,
@@ -4649,6 +4833,37 @@ two-column presentation. */
 .settings-option-description {
   font-size: 0.9375em;
   color: @theme_dim_text;
+}
+
+.settings-dialog button.sidebar-place-chip {
+  padding: 5px 12px;
+  min-height: 0;
+  border-radius: 999px;
+  border: 1px solid alpha(@theme_border, 0.55);
+  background: @theme_bg;
+  color: @theme_dim_text;
+  box-shadow: none;
+}
+
+.settings-dialog button.sidebar-place-chip:hover {
+  background: @theme_highlight;
+  color: @theme_text;
+}
+
+.settings-dialog button.sidebar-place-chip:checked {
+  background: mix(@theme_bg, @theme_text, 0.12);
+  border-color: alpha(@theme_text, 0.4);
+  color: @theme_text;
+}
+
+.settings-dialog button.sidebar-place-chip:active {
+  background: mix(@theme_bg, @theme_text, 0.2);
+  color: @theme_text;
+}
+
+.settings-dialog button.sidebar-place-chip:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 2px;
 }
 
 .settings-dependent {

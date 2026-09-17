@@ -9,6 +9,7 @@ use crate::{
         DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, OperationEvent, OperationProvider, OperationRequestId,
         PasteRequest, RenameRequest, RestoreRequest, UndoCopyRequest, UndoMoveRequest,
+        UndoRenameRequest,
     },
     test_support::gtk_test,
     ui::{
@@ -47,6 +48,7 @@ fn inline_rename_selects_the_stem_but_keeps_the_extension() {
     assert_eq!(rename_stem_end(".gitignore"), 10);
 }
 
+#[track_caller]
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -117,6 +119,30 @@ fn wait_for_current_rename_label(view: &BrowserView, mode: BrowserMode) -> gtk::
     label
 }
 
+#[track_caller]
+fn wait_for_click_rename_target(view: &BrowserView, name: &str) {
+    wait_until(|| {
+        let mut pending = vec![view.widget()];
+        while let Some(widget) = pending.pop() {
+            if label_text(&widget).as_deref() == Some(name)
+                && widget.is_mapped()
+                && widget.width() > 0
+                && std::iter::successors(Some(widget.clone()), |widget| widget.parent())
+                    .filter_map(|ancestor| ancestor.downcast::<gtk::Stack>().ok())
+                    .all(|stack| !stack.is_transition_running())
+            {
+                return true;
+            }
+            let mut child = widget.first_child();
+            while let Some(current) = child {
+                child = current.next_sibling();
+                pending.push(current);
+            }
+        }
+        false
+    });
+}
+
 fn click_away(window: &gtk::Window) {
     // This emits the dismissal controller directly; real pointer coverage remains in E2E.
     let controllers = window.observe_controllers();
@@ -138,6 +164,9 @@ fn fixture_entry(name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -308,6 +337,7 @@ impl OperationProvider for DelayedRenameProvider {
     unsupported_operation!(create_file, CreateFileRequest);
     unsupported_operation!(paste, PasteRequest);
     unsupported_operation!(undo_move, UndoMoveRequest);
+    unsupported_operation!(undo_rename, UndoRenameRequest);
     unsupported_operation!(undo_copy, UndoCopyRequest);
     unsupported_operation!(delete, DeleteRequest);
     unsupported_operation!(restore, RestoreRequest);
@@ -338,6 +368,9 @@ fn entry_at_location(location: Location, name: &str, directory: bool) -> FileEnt
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -938,6 +971,85 @@ fn invalid_renames_retain_the_original_file_in_every_view_mode() {
                 browser.clear_observer();
                 window.destroy();
             }
+        },
+    );
+}
+
+#[test]
+fn slow_click_rename_opens_editor_after_the_double_click_interval() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::slow_click_rename_opens_editor_after_the_double_click_interval",
+        || {
+            let settings = gtk::Settings::default().expect("GTK settings");
+            let original_interval = settings.gtk_double_click_time();
+            let intervals = [original_interval.max(1), 1]
+                .into_iter()
+                .collect::<std::collections::BTreeSet<_>>();
+            for interval in intervals {
+                settings.set_gtk_double_click_time(interval);
+                for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                    let fixture = tempfile::tempdir().expect("directory fixture");
+                    std::fs::write(fixture.path().join("notes.txt"), b"body")
+                        .expect("fixture file");
+                    std::fs::write(fixture.path().join("other.txt"), b"body")
+                        .expect("fixture file");
+                    let view = BrowserView::new(
+                        Rc::new(crate::adapters::LocalFileSource),
+                        PeekBehavior::default(),
+                    );
+                    view.set_view_mode(mode);
+                    let window = gtk::Window::builder()
+                        .child(&view.widget())
+                        .default_width(600)
+                        .default_height(300)
+                        .build();
+                    window.present();
+                    let browser = view.browser();
+                    browser.navigate(Location::local(fixture.path()));
+                    wait_until(|| {
+                        browser
+                            .column_snapshot(0)
+                            .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 2)
+                    });
+                    browser.select(0, 0);
+                    wait_until(|| browser.focused_item().is_some());
+                    // Model completion can precede row allocation and the loading-stack transition.
+                    wait_for_click_rename_target(&view, "notes.txt");
+
+                    view.state.schedule_click_rename(0, 0);
+                    assert!(
+                        !view.rename_is_active(),
+                        "editor opens only after the timeout"
+                    );
+                    wait_until(|| view.rename_is_active());
+                    assert!(view.state.cancel_rename());
+                    assert!(!view.rename_is_active());
+
+                    view.state.schedule_click_rename(0, 0);
+                    browser.select(0, 1);
+                    browser.select(0, 0);
+                    let deadline = Instant::now()
+                        + Duration::from_millis(
+                            view.state
+                                .scroller
+                                .settings()
+                                .gtk_double_click_time()
+                                .max(1) as u64
+                                + 100,
+                        );
+                    while Instant::now() < deadline {
+                        glib::MainContext::default().iteration(false);
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    assert!(
+                        !view.rename_is_active(),
+                        "selection changes cancel rename in {mode:?} at {interval}ms"
+                    );
+                    browser.clear_observer();
+                    window.destroy();
+                }
+            }
+            settings.set_gtk_double_click_time(original_interval);
         },
     );
 }

@@ -13,6 +13,7 @@ fn non_default_preferences() -> Preferences {
         theme: "nord".into(),
         folder_peeking: false,
         single_click_previews: false,
+        render_documents_by_default: false,
         hardware_accelerated_video_previews: Some(false),
         video_preview_backend: "vulkan".into(),
         search_open_files_directly: true,
@@ -38,6 +39,14 @@ fn non_default_preferences() -> Preferences {
             "documents".into(),
             "desktop".into(),
         ],
+        sidebar_show_home: false,
+        sidebar_show_trash: false,
+        sidebar_show_network: false,
+        sidebar_show_desktop: false,
+        sidebar_show_documents: false,
+        sidebar_show_downloads: false,
+        sidebar_show_pictures: false,
+        sidebar_show_videos: false,
         show_hidden: true,
         text_size: TextSize::new(24),
         folders_first: false,
@@ -395,6 +404,18 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.sidebar_order(),
                 non_default_preferences().sidebar_order
             );
+            assert!(!manager.sidebar_show_home());
+            assert!(!manager.sidebar_show_trash());
+            assert!(!manager.sidebar_show_network());
+            assert!(!manager.sidebar_show_desktop());
+            assert!(!manager.sidebar_show_documents());
+            assert!(!manager.sidebar_show_downloads());
+            assert!(!manager.sidebar_show_pictures());
+            assert!(!manager.sidebar_show_videos());
+            assert_eq!(
+                manager.sidebar_places_visibility(),
+                [false, false, false, false, false, false, false, false]
+            );
             assert_eq!(manager.text_size(), TextSize::new(24));
             assert_eq!(
                 manager.sort_preferences(),
@@ -483,6 +504,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
             let setters: &[fn(&ThemeManager)] = &[
                 |m| m.set_folder_peeking(true),
                 |m| m.set_single_click_previews(true),
+                |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),
@@ -516,6 +538,14 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                     )
                 },
                 |m| m.set_sidebar_order(default_sidebar_order()),
+                |m| m.set_sidebar_show_home(true),
+                |m| m.set_sidebar_show_trash(true),
+                |m| m.set_sidebar_show_network(true),
+                |m| m.set_sidebar_show_desktop(true),
+                |m| m.set_sidebar_show_documents(true),
+                |m| m.set_sidebar_show_downloads(true),
+                |m| m.set_sidebar_show_pictures(true),
+                |m| m.set_sidebar_show_videos(true),
                 |m| m.set_sort_preferences(ViewPreferences::default()),
                 |m| m.set_text_size(TextSize::new(11)),
                 |m| m.set_checks_for_updates(true),
