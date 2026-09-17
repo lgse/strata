@@ -734,6 +734,74 @@ fn cache_miss_enqueues_sandbox_job_without_settle_timeout() {
 }
 
 #[test]
+fn uri_entries_with_a_local_mirror_render_via_the_mirror_path() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_with_a_local_mirror_render_via_the_mirror_path",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            // A GVfs FUSE mirror is a real absolute path; a `file://` URI stands in for
+            // one here so the test needs no network mount. See `remote_mirror_thumbnail`.
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            let entry = FileEntry {
+                location: Location::uri(format!("file://{}", mirror.path().display())),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(has_pending_thumbnail(mirror.path()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            let entry = FileEntry {
+                // smb:// has no `file://`-style mirror in this test environment, so
+                // `remote_mirror_thumbnail` must return `None` and fall back cleanly.
+                location: Location::uri("smb://example.invalid/share/photo.png"),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(PENDING_THUMBNAILS.with(|pending| pending.borrow().is_empty()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
 fn stale_request_id_does_not_apply_completed_texture() {
     gtk_test(
         "ui::thumbnail::tests::stale_request_id_does_not_apply_completed_texture",
