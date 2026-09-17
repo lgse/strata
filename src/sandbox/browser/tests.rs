@@ -144,6 +144,7 @@ fn cancelled_admission_never_starts_a_worker_or_strands_a_waiter() {
         state: Mutex::default(),
         changed: Condvar::new(),
         limit: 2,
+        idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
     };
     let cancellation = Cancellation::default();
     cancellation.cancel();
@@ -169,11 +170,17 @@ fn slow_work_preserves_capacity_for_visible_images_and_releases_its_permit() {
     let pool = Pool {
         state: Mutex::new(PoolState {
             count: 2,
-            idle: vec![Worker::OneShot, Worker::OneShot],
+            idle: (0..2)
+                .map(|_| IdleWorker {
+                    worker: Worker::OneShot,
+                    since: Instant::now(),
+                })
+                .collect(),
             ..Default::default()
         }),
         changed: Condvar::new(),
         limit: 2,
+        idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
     };
     let cancellation = Cancellation::default();
     let slow = pool
@@ -191,6 +198,77 @@ fn slow_work_preserves_capacity_for_visible_images_and_releases_its_permit() {
 }
 
 #[test]
+fn idle_expiry_releases_only_expired_workers_and_can_empty_the_pool() {
+    let now = Instant::now();
+    let timeout = configured_idle_timeout(Some("10"));
+    let pool = Pool {
+        state: Mutex::new(PoolState {
+            count: 2,
+            idle: [now, now + Duration::from_secs(5)]
+                .into_iter()
+                .map(|since| IdleWorker {
+                    worker: Worker::OneShot,
+                    since,
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        changed: Condvar::new(),
+        limit: 2,
+        idle_timeout: timeout,
+    };
+    assert_eq!(pool.next_expiration(now), Some(timeout));
+    assert_eq!(pool.retire_idle(now + Duration::from_secs(9)), 0);
+    assert_eq!(pool.retire_idle(now + timeout), 1);
+    assert_eq!(pool.state.lock().expect("pool").count, 1);
+    assert_eq!(
+        pool.next_expiration(now + timeout),
+        Some(Duration::from_secs(5))
+    );
+    assert_eq!(pool.retire_idle(now + Duration::from_secs(15)), 1);
+    assert_eq!(pool.state.lock().expect("pool").count, 0);
+    assert!(
+        pool.next_expiration(now + Duration::from_secs(15))
+            .is_none()
+    );
+}
+
+#[test]
+fn idle_expiry_never_interrupts_a_lease_and_returning_it_resets_the_deadline() {
+    let timeout = Duration::from_secs(10);
+    let now = Instant::now();
+    let pool = Pool {
+        state: Mutex::new(PoolState {
+            count: 1,
+            idle: vec![IdleWorker {
+                worker: Worker::OneShot,
+                since: now - timeout * 2,
+            }],
+            ..Default::default()
+        }),
+        changed: Condvar::new(),
+        limit: 1,
+        idle_timeout: timeout,
+    };
+    let lease = pool
+        .acquire(Operation::MediaMetadata, &Cancellation::default())
+        .expect("reused lease");
+    assert_eq!(pool.retire_idle(now), 0);
+    assert!(pool.next_expiration(now).is_none());
+    assert_eq!(pool.state.lock().expect("pool").count, 1);
+    assert_eq!(pool.state.lock().expect("pool").slow_running, 1);
+    drop(lease);
+    assert_eq!(
+        pool.retire_idle(now),
+        0,
+        "returning a worker renews its idle lifetime"
+    );
+    assert_eq!(pool.state.lock().expect("pool").slow_running, 0);
+    assert_eq!(pool.retire_idle(Instant::now() + timeout), 1);
+    assert_eq!(pool.state.lock().expect("pool").count, 0);
+}
+
+#[test]
 fn saturated_pool_wait_is_cancellable() {
     let pool = Pool {
         state: Mutex::new(PoolState {
@@ -199,6 +277,7 @@ fn saturated_pool_wait_is_cancellable() {
         }),
         changed: Condvar::new(),
         limit: 2,
+        idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
     };
     let cancellation = Cancellation::default();
     std::thread::scope(|scope| {

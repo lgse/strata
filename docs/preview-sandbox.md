@@ -27,6 +27,16 @@ at process startup (default: available parallelism capped at four; range 1–16;
 invalid values use the default). This includes browser media-metadata probes,
 not preview playback or Properties inspection. No setting is stored in preferences.
 
+Idle supervisors stop after **60 seconds without a job**, and the pool can shrink
+to zero while Strata stays open. `STRATA_THUMBNAIL_IDLE_SECONDS` overrides this at
+startup (positive integer seconds, capped at 86,400; zero/invalid values use 60).
+Each completed lease resets that worker's idle clock; busy decoders are never
+interrupted by idle expiry. The existing lifetime launcher waits for the next
+expiry, without a polling timer or another maintenance thread. New misses start
+workers lazily again, within the same process-wide limit. This releases sandbox
+process memory, not application-side thumbnail caches or the small launcher/cache
+executor threads, so displayed and cached thumbnails remain available.
+
 The main process opens regular sources read-only and sends descriptors over a
 private Unix socket. A persistent bubblewrap **supervisor** handles only this
 small control protocol, never original media. Each job forks a disposable decoder
@@ -81,8 +91,9 @@ uses the same viewport policy; cheap filesystem metadata is published before
 media inspection or directory counting.
 
 `RUST_LOG=strata::sandbox::browser=debug` records supervisor starts and operation
-latencies without source paths. It is useful for verifying reuse: repeated cold
-files should produce jobs, not a new `browser sandbox started` line per file.
+latencies and idle retirements without source paths. It is useful for verifying
+reuse: repeated cold files within the idle timeout should produce jobs, not a new
+`browser sandbox started` line per file.
 
 ## Bundled interface icons
 

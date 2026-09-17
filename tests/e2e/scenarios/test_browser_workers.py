@@ -15,11 +15,17 @@ from harness.modes import ALL_MODES
 
 
 @pytest.fixture
-def test_environment(test_environment, monkeypatch):
+def worker_idle_seconds():
+    return 60
+
+
+@pytest.fixture
+def test_environment(test_environment, monkeypatch, worker_idle_seconds):
     variables = test_environment.variables
     monkeypatch.setattr(test_environment, "variables", lambda: {
         **variables(),
         "STRATA_THUMBNAIL_WORKERS": "2",
+        "STRATA_THUMBNAIL_IDLE_SECONDS": str(worker_idle_seconds),
         "RUST_LOG": "strata=info,strata::sandbox::browser=debug",
     })
     return test_environment
@@ -35,14 +41,23 @@ def fixture_tree(fixture_tree):
     return fixture_tree
 
 
+def _folder_cached(strata, test_environment, folder):
+    bucket = test_environment.cache_home / "thumbnails" / "large"
+    return all((bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")).is_file()
+               for path in strata.fixture.path(folder).glob("*.png"))
+
+
+def _worker_pids(strata):
+    log = re.sub(r"\x1b\[[0-9;]*m", "", strata.application.log())
+    return [int(pid) for pid in re.findall(r"browser sandbox started pid=(\d+)", log)]
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mode, test_environment):
     strata.switch_view(mode)
 
     def cached(folder):
-        bucket = test_environment.cache_home / "thumbnails" / "large"
-        return all((bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")).is_file()
-                   for path in strata.fixture.path(folder).glob("*.png"))
+        return _folder_cached(strata, test_environment, folder)
 
     def starts():
         return strata.application.log().count("browser sandbox started")
@@ -61,8 +76,7 @@ def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mod
     assert starts() <= 2, "navigation must reuse the process-wide pool"
     assert strata.application.log().count("browser worker completed") >= 12
     if persistent:
-        log = re.sub(r"\x1b\[[0-9;]*m", "", strata.application.log())
-        pid = int(re.findall(r"browser sandbox started pid=(\d+)", log)[-1])
+        pid = _worker_pids(strata)[-1]
         status = Path(f"/proc/{pid}/status").read_text()
         assert f"PPid:\t{strata.application.process.popen.pid}\n" in status
         os.kill(pid, signal.SIGKILL)
@@ -74,6 +88,27 @@ def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mod
     for path in strata.fixture.path("photos-a").glob("*.png"):
         with Image.open(path) as source:
             assert source.getpixel((0, 0)) == (40, 160, 80)
+
+
+@pytest.mark.parametrize("worker_idle_seconds", [1])
+def test_idle_workers_exit_without_new_requests_and_restart_on_demand(strata, test_environment, worker_idle_seconds):
+    strata.open_directory("photos-a")
+    strata.wait(lambda: _folder_cached(strata, test_environment, "photos-a"), "initial thumbnails")
+    original = _worker_pids(strata)
+    persistent = "Landlock ABI 3 unavailable" not in strata.application.log()
+    if persistent:
+        assert original
+        strata.wait(lambda: all(not Path(f"/proc/{pid}").exists() for pid in original)
+                    and strata.application.log().count("idle browser sandbox retired") == len(original),
+                    "idle sandbox processes to exit without another request")
+    else:
+        assert not original
+    strata.keyboard.press("alt+Left")
+    strata.wait(lambda: strata.entry("photos-b"), "parent after idle retirement")
+    strata.open_directory("photos-b")
+    strata.wait(lambda: _folder_cached(strata, test_environment, "photos-b"), "thumbnails after idle retirement")
+    replacements = _worker_pids(strata)[len(original):]
+    assert replacements if persistent else not replacements
 
 
 @pytest.mark.preferences(browser_mode="list")

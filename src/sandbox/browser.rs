@@ -25,6 +25,7 @@ const CACHE_ENTRIES: usize = 64;
 const CACHE_TTL: Duration = Duration::from_secs(30);
 const WAIT_QUANTUM: Duration = Duration::from_millis(20);
 const MAX_WORKERS: usize = 16;
+const DEFAULT_WORKER_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(crate) fn worker_limit() -> usize {
     static LIMIT: OnceLock<usize> = OnceLock::new();
@@ -42,6 +43,16 @@ fn configured_limit(value: Option<&str>, default: usize) -> usize {
         .and_then(|v| v.parse::<usize>().ok())
         .unwrap_or(default)
         .clamp(1, MAX_WORKERS)
+}
+
+fn configured_idle_timeout(value: Option<&str>) -> Duration {
+    Duration::from_secs(
+        value
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|seconds| *seconds > 0)
+            .unwrap_or(DEFAULT_WORKER_IDLE_TIMEOUT.as_secs())
+            .min(86_400),
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -268,11 +279,17 @@ struct Pool {
     state: Mutex<PoolState>,
     changed: Condvar,
     limit: usize,
+    idle_timeout: Duration,
+}
+
+struct IdleWorker {
+    worker: Worker,
+    since: Instant,
 }
 
 #[derive(Default)]
 struct PoolState {
-    idle: Vec<Worker>,
+    idle: Vec<IdleWorker>,
     count: usize,
     slow_running: usize,
     thumbnail_waiters: usize,
@@ -284,10 +301,60 @@ fn pool() -> &'static Pool {
         state: Mutex::default(),
         changed: Condvar::new(),
         limit: worker_limit(),
+        idle_timeout: configured_idle_timeout(
+            std::env::var("STRATA_THUMBNAIL_IDLE_SECONDS")
+                .ok()
+                .as_deref(),
+        ),
     })
 }
 
 impl Pool {
+    fn next_expiration(&self, now: Instant) -> Option<Duration> {
+        self.state
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .idle
+            .iter()
+            .map(|idle| {
+                self.idle_timeout
+                    .saturating_sub(now.saturating_duration_since(idle.since))
+            })
+            .min()
+    }
+
+    fn retire_idle(&self, now: Instant) -> usize {
+        let expired = {
+            let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+            state
+                .idle
+                .extract_if(.., |idle| {
+                    now.saturating_duration_since(idle.since) >= self.idle_timeout
+                })
+                .collect::<Vec<_>>()
+        };
+        let count = expired.len();
+        if count == 0 {
+            return 0;
+        }
+        // Teardown never holds the pool lock. Retiring processes still count
+        // against admission until they have actually been stopped and reaped.
+        for idle in expired {
+            let pid = match &idle.worker {
+                Worker::Persistent(worker) => Some(worker.child.id()),
+                Worker::OneShot => None,
+            };
+            drop(idle.worker);
+            if let Some(pid) = pid {
+                tracing::debug!(pid, "idle browser sandbox retired");
+            }
+        }
+        let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.count -= count;
+        self.changed.notify_all();
+        count
+    }
+
     fn acquire(
         &self,
         operation: Operation,
@@ -319,7 +386,7 @@ impl Pool {
                 if slow {
                     state.slow_running += 1;
                 }
-                let worker = state.idle.pop();
+                let worker = state.idle.pop().map(|idle| idle.worker);
                 if worker.is_none() {
                     state.count += 1;
                 }
@@ -386,8 +453,12 @@ impl Lease<'_> {
 impl Drop for Lease<'_> {
     fn drop(&mut self) {
         let mut state = self.pool.state.lock().unwrap_or_else(|p| p.into_inner());
+        let wake_launcher = state.idle.is_empty();
         if let Some(worker) = self.worker.take() {
-            state.idle.push(worker);
+            state.idle.push(IdleWorker {
+                worker,
+                since: Instant::now(),
+            });
         } else {
             state.count = state.count.saturating_sub(1);
         }
@@ -395,6 +466,10 @@ impl Drop for Lease<'_> {
             state.slow_running = state.slow_running.saturating_sub(1);
         }
         self.pool.changed.notify_all();
+        drop(state);
+        if wake_launcher && let Some(Ok(launcher)) = LAUNCHER.get() {
+            let _ = launcher.send(LauncherMessage::Idle);
+        }
     }
 }
 
@@ -463,20 +538,38 @@ struct ProcessWorker {
     _snapshot: super::PrivateOutput,
 }
 
+enum LauncherMessage {
+    Spawn(std::sync::mpsc::SyncSender<io::Result<ProcessWorker>>),
+    Idle,
+}
+
+static LAUNCHER: OnceLock<Result<std::sync::mpsc::Sender<LauncherMessage>, String>> =
+    OnceLock::new();
+
 impl ProcessWorker {
     fn spawn() -> io::Result<Self> {
-        type Reply = std::sync::mpsc::SyncSender<io::Result<ProcessWorker>>;
-        static LAUNCHER: OnceLock<Result<std::sync::mpsc::Sender<Reply>, String>> = OnceLock::new();
         let launcher = LAUNCHER
             .get_or_init(|| {
-                let (sender, receiver) = std::sync::mpsc::channel::<Reply>();
+                let (sender, receiver) = std::sync::mpsc::channel::<LauncherMessage>();
                 // PR_SET_PDEATHSIG follows the spawning *thread*. Metadata's scoped
                 // threads and GIO's expiring pool threads must not own bwrap's life.
                 std::thread::Builder::new()
                     .name("thumbnail-launcher".into())
                     .spawn(move || {
-                        while let Ok(reply) = receiver.recv() {
-                            let _ = reply.send(Self::spawn_on_launcher());
+                        use std::sync::mpsc::RecvTimeoutError;
+                        loop {
+                            pool().retire_idle(Instant::now());
+                            let message = match pool().next_expiration(Instant::now()) {
+                                Some(timeout) => receiver.recv_timeout(timeout),
+                                None => receiver.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                            };
+                            match message {
+                                Ok(LauncherMessage::Spawn(reply)) => {
+                                    let _ = reply.send(Self::spawn_on_launcher());
+                                }
+                                Ok(LauncherMessage::Idle) | Err(RecvTimeoutError::Timeout) => {}
+                                Err(RecvTimeoutError::Disconnected) => break,
+                            }
                         }
                     })
                     .map_err(|e| e.to_string())?;
@@ -485,7 +578,9 @@ impl ProcessWorker {
             .as_ref()
             .map_err(|error| io::Error::other(error.clone()))?;
         let (reply, result) = std::sync::mpsc::sync_channel(1);
-        launcher.send(reply).map_err(io::Error::other)?;
+        launcher
+            .send(LauncherMessage::Spawn(reply))
+            .map_err(io::Error::other)?;
         result.recv().map_err(io::Error::other)?
     }
 
