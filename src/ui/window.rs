@@ -42,8 +42,8 @@ pub use open_argument::present_open;
 use sidebar::PlaceNavigation;
 pub(super) use sidebar::build_sidebar;
 
-pub(super) const SIDEBAR_WIDTH: i32 = 208;
-pub(super) const MIN_SIDEBAR_WIDTH: i32 = 176;
+pub(super) const SIDEBAR_WIDTH: i32 = 201;
+pub(super) const MIN_SIDEBAR_WIDTH: i32 = 169;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
 const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];

@@ -1849,6 +1849,25 @@ scrollbar slider:active {
   min-height: 6px;
 }
 
+.sidebar-scroll scrollbar.vertical {
+  min-width: 5px;
+}
+
+.sidebar-scroll scrollbar.vertical > range > trough > slider {
+  min-width: 3px;
+  margin: 0 1px;
+  border: none;
+  background: alpha(@theme_text, 0.35);
+}
+
+.sidebar-scroll scrollbar.vertical:hover > range > trough > slider {
+  background: alpha(@theme_accent, 0.65);
+}
+
+.sidebar-scroll scrollbar.vertical > range > trough > slider:active {
+  background: @theme_accent;
+}
+
 .columns-scroll scrollbar.horizontal {
   background: @theme_bg;
 }
@@ -1866,10 +1885,9 @@ scrollbar slider:active {
   min-width: 22px;
 }
 
-/* Reserve the overlay scrollbar's width so it cannot cover device controls. */
 .sidebar {
   background: @theme_surface;
-  padding: 8px 14px 8px 7px;
+  padding: 8px 7px;
 }
 
 .sidebar-update {
@@ -2047,9 +2065,9 @@ scrollbar slider:active {
   background-image: none;
   border: none;
   /* Offset sidebar padding; min-width keeps measurement nonnegative. */
-  margin: 6px -14px 6px -7px;
+  margin: 6px -7px;
   min-height: 1px;
-  min-width: 21px;
+  min-width: 14px;
 }
 
 .sidebar-update-separator {

@@ -57,6 +57,7 @@ impl SidebarShell {
             .child(&places)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .overlay_scrolling(false)
             .width_request(SIDEBAR_WIDTH)
             .vexpand(true)
             .build();
