@@ -46,6 +46,12 @@ pub enum TransferConflict {
     FailIfExists,
     ReplaceExisting,
     KeepBoth,
+    /// Union of two folders into the existing destination. Incoming items
+    /// overwrite same-named destination items; destination-only items stay.
+    /// Overwritten originals are staged in Trash and written paths are
+    /// reported via [`OperationEvent::Merged`] so undo can restore the
+    /// pre-merge state without trashing the whole destination folder.
+    Merge,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -93,6 +99,16 @@ pub struct UndoRenameRequest {
 pub struct UndoCopyRequest {
     pub id: OperationRequestId,
     pub locations: Vec<Location>,
+}
+
+#[derive(Clone, Debug)]
+pub struct UndoMergeRequest {
+    pub id: OperationRequestId,
+    /// Paths the merge wrote fresh; undo moves them to Trash.
+    pub created: Vec<Location>,
+    /// Paths whose originals were staged in Trash before being overwritten;
+    /// undo deletes the incoming copy and restores the original.
+    pub overwritten: Vec<Location>,
 }
 
 #[derive(Clone, Debug)]
@@ -221,6 +237,16 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         locations: Vec<Location>,
     },
+    /// A folder merge finished (or staged its backups): `created` are paths
+    /// the merge wrote fresh, `overwritten` are paths whose originals now
+    /// sit in Trash. Reported per merged source so undo can rebuild the
+    /// pre-merge state even after a partial transfer.
+    Merged {
+        request_id: OperationRequestId,
+        source: Location,
+        created: Vec<Location>,
+        overwritten: Vec<Location>,
+    },
     TransferFailed {
         request_id: OperationRequestId,
         completed_locations: Vec<Location>,
@@ -316,6 +342,10 @@ pub trait OperationProvider {
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle;
     fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    /// Reverts a merge: trashes what the merge created, deletes the incoming
+    /// copies at overwritten paths, and restores the staged originals.
+    fn undo_merge(&self, request: UndoMergeRequest, emit: Rc<dyn Fn(OperationEvent)>)
+    -> LoadHandle;
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;

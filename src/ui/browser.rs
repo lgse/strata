@@ -1403,6 +1403,9 @@ impl BrowserView {
         if let Some((generation, locations)) = self.state.browser.pending_undo_copy() {
             return self.state.undo_copy(generation, locations);
         }
+        if let Some((generation, created, overwritten)) = self.state.browser.pending_undo_merge() {
+            return self.state.undo_merge(generation, created, overwritten);
+        }
         self.state.browser.undo_last_trash()
     }
 

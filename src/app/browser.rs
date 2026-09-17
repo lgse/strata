@@ -17,8 +17,8 @@ use crate::{
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRecord,
         RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
-        TransferConflict, UndoCopyRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
-        validate_basename, validate_uri_credentials,
+        TransferConflict, UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest,
+        UndoRenameRequest, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -259,6 +259,12 @@ pub enum UndoEntry {
     Trash(Vec<Location>),
     Move(Vec<MoveRecord>),
     Copy(Vec<Location>),
+    /// `created` paths get trashed; `overwritten` paths lose the incoming
+    /// copy and get their staged original restored from Trash.
+    Merge {
+        created: Vec<Location>,
+        overwritten: Vec<Location>,
+    },
     Rename(RenameRecord),
 }
 
@@ -266,10 +272,24 @@ impl UndoEntry {
     fn is_empty(&self) -> bool {
         match self {
             Self::Trash(locations) | Self::Copy(locations) => locations.is_empty(),
+            Self::Merge {
+                created,
+                overwritten,
+            } => created.is_empty() && overwritten.is_empty(),
             Self::Move(records) => records.is_empty(),
             Self::Rename(_) => false,
         }
     }
+}
+
+/// Merge bookkeeping collected while a paste runs: which sources merged, and
+/// what each merge created or overwrote. Sources matter for move transfers,
+/// where a merged source must not join the move-undo records.
+#[derive(Default)]
+struct MergeUndoState {
+    sources: HashSet<Location>,
+    created: Vec<Location>,
+    overwritten: Vec<Location>,
 }
 
 struct PendingUndo {
@@ -350,6 +370,13 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
             UndoEntry::Trash(locations) | UndoEntry::Copy(locations) => {
                 locations.retain(|candidate| candidate != location);
             }
+            UndoEntry::Merge {
+                created,
+                overwritten,
+            } => {
+                created.retain(|candidate| candidate != location);
+                overwritten.retain(|candidate| candidate != location);
+            }
             UndoEntry::Move(records) => {
                 records.retain(|record| &record.current != location);
             }
@@ -391,6 +418,21 @@ fn retain_pending_copy_items(generation: u64, locations: &[Location]) {
             && let UndoEntry::Copy(created) = &mut pending.entry
         {
             created.retain(|location| locations.contains(location));
+        }
+    });
+}
+
+fn retain_pending_merge_items(generation: u64, created: &[Location], overwritten: &[Location]) {
+    PENDING_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if let Some(pending) = pending.find_mut(generation)
+            && let UndoEntry::Merge {
+                created: kept_created,
+                overwritten: kept_overwritten,
+            } = &mut pending.entry
+        {
+            kept_created.retain(|location| created.contains(location));
+            kept_overwritten.retain(|location| overwritten.contains(location));
         }
     });
 }
@@ -537,6 +579,7 @@ pub struct Browser {
     /// source listing; a paste or explicit "move to" still shows where it landed.
     transfer_reveal: Cell<bool>,
     created_locations: RefCell<Vec<Location>>,
+    merged_undo: RefCell<MergeUndoState>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
@@ -588,6 +631,7 @@ impl Browser {
             transfer_destination: RefCell::new(None),
             transfer_reveal: Cell::new(true),
             created_locations: RefCell::new(Vec::new()),
+            merged_undo: RefCell::new(MergeUndoState::default()),
             undo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
@@ -1648,7 +1692,13 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Copy(_) | UndoEntry::Rename(_)) => None,
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Copy(_)
+                | UndoEntry::Merge { .. }
+                | UndoEntry::Rename(_),
+            ) => None,
         }
     }
 
@@ -1658,7 +1708,32 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Copy(locations)) => Some((generation, locations)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Move(_) | UndoEntry::Rename(_)) => None,
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Move(_)
+                | UndoEntry::Merge { .. }
+                | UndoEntry::Rename(_),
+            ) => None,
+        }
+    }
+
+    pub fn pending_undo_merge(&self) -> Option<(u64, Vec<Location>, Vec<Location>)> {
+        match peek_pending_undo()? {
+            (
+                generation,
+                UndoEntry::Merge {
+                    created,
+                    overwritten,
+                },
+            ) => Some((generation, created, overwritten)),
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Move(_)
+                | UndoEntry::Copy(_)
+                | UndoEntry::Rename(_),
+            ) => None,
         }
     }
 
@@ -1673,7 +1748,13 @@ impl Browser {
                     original, current, ..
                 }),
             ) => Some((generation, current, original)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Move(_) | UndoEntry::Copy(_)) => None,
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Move(_)
+                | UndoEntry::Copy(_)
+                | UndoEntry::Merge { .. },
+            ) => None,
         }
     }
 
@@ -1789,6 +1870,57 @@ impl Browser {
             UndoCopyRequest {
                 id: request_id,
                 locations,
+            },
+            self.operation_callback(request_id, false, refresh_locations),
+        );
+        self.install_operation_load(request_id, load);
+        true
+    }
+
+    /// Merge undo restores originals from Trash, so it runs through the
+    /// restoration pipeline like trash undo.
+    pub fn undo_merge(
+        self: &Rc<Self>,
+        generation: u64,
+        created: Vec<Location>,
+        overwritten: Vec<Location>,
+    ) -> bool {
+        if self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Merge { .. } = entry else {
+            finish_undo(generation, false);
+            return false;
+        };
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_undo(generation, false);
+            return false;
+        };
+        retain_pending_merge_items(generation, &created, &overwritten);
+        let total = created.len() + overwritten.len();
+        let refresh_locations = created
+            .iter()
+            .chain(&overwritten)
+            .filter_map(|location| location.parent())
+            .collect();
+        let request_id = self.begin_operation();
+        self.restoration_operation.set(true);
+        self.undo_claim.replace(Some((
+            generation,
+            UndoEntry::Merge {
+                created: created.clone(),
+                overwritten: overwritten.clone(),
+            },
+        )));
+        self.emit(BrowserEvent::RestorationStarted { total });
+        let load = provider.undo_merge(
+            UndoMergeRequest {
+                id: request_id,
+                created,
+                overwritten,
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
@@ -1958,6 +2090,7 @@ impl Browser {
         self.transfer_operation.set(None);
         self.transfer_destination.replace(None);
         self.created_locations.borrow_mut().clear();
+        *self.merged_undo.borrow_mut() = MergeUndoState::default();
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
         self.deferred_file_operation_changes.borrow_mut().clear();

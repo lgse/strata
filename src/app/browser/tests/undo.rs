@@ -833,3 +833,187 @@ fn cancelled_rename_undo_releases_its_claim_and_remains_retryable() {
     assert_eq!(pending_undo_entry(), Some(expected));
     assert!(browser.pending_undo_rename().is_some());
 }
+
+#[test]
+fn a_merged_copy_records_created_and_overwritten_paths_for_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    UNDO_MERGE_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    let source = Location::local("/fixture/folder");
+    let created = Location::local("/fixture/archive/folder/incoming.txt");
+    let overwritten = Location::local("/fixture/archive/folder/shared.txt");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture/archive")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Merged {
+        request_id,
+        source: source.clone(),
+        created: vec![created.clone()],
+        overwritten: vec![overwritten.clone()],
+    });
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![source],
+    });
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Merge {
+            created: vec![created.clone()],
+            overwritten: vec![overwritten.clone()],
+        })
+    );
+    let Some((generation, created, overwritten)) = browser.pending_undo_merge() else {
+        panic!("expected a pending merge undo");
+    };
+    assert!(browser.undo_merge(generation, created.clone(), overwritten.clone()));
+    assert_eq!(
+        UNDO_MERGE_REQUESTS.with(|requests| requests.borrow().clone()),
+        vec![(created, overwritten)]
+    );
+    assert_eq!(pending_undo_entry(), None);
+}
+
+#[test]
+fn a_paste_mixing_plain_copies_and_a_merge_records_one_merge_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let copied = Location::local("/fixture/archive/report.txt");
+    let merged_created = Location::local("/fixture/archive/folder/incoming.txt");
+    let merged_overwritten = Location::local("/fixture/archive/folder/shared.txt");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture/archive")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::TransferProgress {
+        request_id,
+        completed_items: 1,
+        transferred_bytes: 0,
+        total_bytes: None,
+        created_location: Some(copied.clone()),
+    });
+    emit(OperationEvent::Merged {
+        request_id,
+        source: Location::local("/fixture/folder"),
+        created: vec![merged_created.clone()],
+        overwritten: vec![merged_overwritten.clone()],
+    });
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![
+            Location::local("/fixture/report.txt"),
+            Location::local("/fixture/folder"),
+        ],
+    });
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Merge {
+            created: vec![copied, merged_created],
+            overwritten: vec![merged_overwritten],
+        })
+    );
+}
+
+#[test]
+fn a_merged_move_source_is_excluded_from_the_move_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let merged = Location::local("/fixture/folder");
+    let moved = Location::local("/fixture/report.txt");
+    let destination = Location::local("/fixture/archive");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    browser
+        .transfer_destination
+        .replace(Some(destination.clone()));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Merged {
+        request_id,
+        source: merged.clone(),
+        created: vec![Location::local("/fixture/archive/folder/incoming.txt")],
+        overwritten: vec![Location::local("/fixture/archive/folder/shared.txt")],
+    });
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![merged, moved.clone()],
+    });
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Move(vec![MoveRecord {
+            original: moved,
+            current: Location::local("/fixture/archive/report.txt"),
+        }])),
+        "a merged move deletes its source, so only the plain move can be undone"
+    );
+}
+
+#[test]
+fn a_cancelled_merge_still_records_the_staged_originals_for_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let source = Location::local("/fixture/folder");
+    let overwritten = Location::local("/fixture/archive/folder/shared.txt");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture/archive")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Merged {
+        request_id,
+        source: source.clone(),
+        created: Vec::new(),
+        overwritten: vec![overwritten.clone()],
+    });
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed: Vec::new(),
+            failed: vec![source.clone()],
+            not_attempted: vec![Location::local("/fixture/second")],
+            affected_locations: HashSet::new(),
+        },
+    });
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Merge {
+            created: Vec::new(),
+            overwritten: vec![overwritten],
+        }),
+        "originals staged before the cancelled copy still need restoring"
+    );
+}
+
+#[test]
+fn a_partial_merge_undo_keeps_the_paths_still_to_revert() {
+    let first = Location::local("/fixture/archive/first.txt");
+    let second = Location::local("/fixture/archive/second.txt");
+    push_pending_undo(UndoEntry::Merge {
+        created: vec![first.clone()],
+        overwritten: vec![second.clone()],
+    });
+    let (generation, _) = claim_pending_undo(None).expect("undo claim");
+
+    mark_undo_item_completed(generation, &first);
+    finish_undo(generation, false);
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Merge {
+            created: Vec::new(),
+            overwritten: vec![second],
+        })
+    );
+}

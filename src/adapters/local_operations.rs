@@ -39,7 +39,8 @@ use crate::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
         DeleteRequest, ExtractRequest, LoadHandle, OperationEvent, OperationProvider,
         OperationRequestId, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
-        TransferConflict, UndoCopyRequest, UndoMoveRequest, UndoRenameRequest, validate_basename,
+        TransferConflict, UndoCopyRequest, UndoMergeRequest, UndoMoveRequest, UndoRenameRequest,
+        validate_basename,
     },
 };
 
@@ -1499,6 +1500,256 @@ async fn replace_local(
     .await
 }
 
+/// What a merge will write: `created` are the topmost destination paths with
+/// no existing counterpart, `overwritten` are leaf collisions whose originals
+/// get staged in Trash so undo can restore them.
+#[derive(Default)]
+struct MergePlan {
+    created: Vec<Location>,
+    overwritten: Vec<Location>,
+}
+
+/// Backs up an overwritten original before the incoming copy lands. Production
+/// stages through Trash; tests substitute a rename so fixtures on filesystems
+/// without Trash support still exercise the flow.
+type StageOverwrite = Rc<
+    dyn Fn(Location, gio::Cancellable) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+fn trash_stage_overwrite(
+    location: Location,
+    cancellable: gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    Box::pin(async move {
+        let file = gio_file_for_location(&location);
+        await_cancellable(&file, &cancellable, |file, cancellable, result| {
+            file.trash_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+                result.resolve(output)
+            });
+        })
+        .await
+    })
+}
+
+/// The injectable steps of a merge, bundled to keep the call sites small.
+struct MergeHooks<'a> {
+    copy_into_target: StageCopy,
+    stage_overwrite: StageOverwrite,
+    on_merged: &'a dyn Fn(MergePlan),
+}
+
+fn classify_merge<'a>(
+    source: &'a gio::File,
+    target: &'a gio::File,
+    plan: &'a mut MergePlan,
+    cancellable: &'a gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>> + 'a>> {
+    Box::pin(async move {
+        let enumerator = await_cancellable(source, cancellable, |source, cancellable, result| {
+            source.enumerate_children_async(
+                "standard::name,standard::type",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await?;
+        loop {
+            let children = await_cancellable(
+                &enumerator,
+                cancellable,
+                |enumerator, cancellable, result| {
+                    enumerator.next_files_async(
+                        64,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        move |output| result.resolve(output),
+                    );
+                },
+            )
+            .await?;
+            if children.is_empty() {
+                return Ok(());
+            }
+            for child in children {
+                if cancellable.is_cancelled() {
+                    return Err(cancelled_local_operation());
+                }
+                let child_source = source.child(child.name());
+                let child_target = target.child(child.name());
+                let target_type = match await_cancellable(
+                    &child_target,
+                    cancellable,
+                    |target, cancellable, result| {
+                        target.query_info_async(
+                            "standard::type",
+                            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            move |output| result.resolve(output),
+                        );
+                    },
+                )
+                .await
+                {
+                    Ok(info) => Some(info.file_type()),
+                    Err(error) if error.matches(gio::IOErrorEnum::NotFound) => None,
+                    Err(error) => return Err(error),
+                };
+                let source_is_directory = child.file_type() == gio::FileType::Directory;
+                match target_type {
+                    None => {
+                        if let Some(location) = location_for_file(&child_target) {
+                            plan.created.push(location);
+                        }
+                    }
+                    Some(gio::FileType::Directory) if source_is_directory => {
+                        classify_merge(&child_source, &child_target, plan, cancellable).await?;
+                    }
+                    Some(gio::FileType::Directory) => {
+                        return Err(glib::Error::new(
+                            gio::IOErrorEnum::NotSupported,
+                            "A file and a folder cannot safely replace one another",
+                        ));
+                    }
+                    Some(_) if source_is_directory => {
+                        return Err(glib::Error::new(
+                            gio::IOErrorEnum::NotSupported,
+                            "A file and a folder cannot safely replace one another",
+                        ));
+                    }
+                    Some(_) => {
+                        if let Some(location) = location_for_file(&child_target) {
+                            plan.overwritten.push(location);
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+/// Combines the source folder into the existing destination folder: every
+/// child lands inside `target`, overwriting same-named entries, while
+/// destination-only contents stay. Unlike [`replace_local_with`] this writes
+/// into the live destination, so a failed or cancelled merge leaves a
+/// partial result behind and never cleans what was already there.
+async fn merge_local_with(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+    cancellable: gio::Cancellable,
+    affected_locations: Option<&mut HashSet<Location>>,
+    hooks: MergeHooks<'_>,
+) -> Result<(), glib::Error> {
+    if let Some(locations) = affected_locations {
+        locations.extend([&source, &target].into_iter().filter_map(location_for_file));
+    }
+    for file in [&source, &target] {
+        let file_type = await_cancellable(file, &cancellable, |file, cancellable, result| {
+            file.query_info_async(
+                "standard::type",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await?
+        .file_type();
+        if file_type != gio::FileType::Directory {
+            return Err(glib::Error::new(
+                gio::IOErrorEnum::NotSupported,
+                "Only folders can be merged",
+            ));
+        }
+    }
+    let mut plan = MergePlan::default();
+    classify_merge(&source, &target, &mut plan, &cancellable).await?;
+    // Stage every overwritten original in Trash before the copy so undo can
+    // restore it; on failure, report what was staged so it stays recoverable.
+    let mut staged = Vec::new();
+    for location in &plan.overwritten {
+        let result = (hooks.stage_overwrite)(location.clone(), cancellable.clone()).await;
+        if let Err(error) = result {
+            (hooks.on_merged)(MergePlan {
+                created: Vec::new(),
+                overwritten: staged,
+            });
+            return Err(glib::Error::new(
+                gio::IOErrorEnum::Failed,
+                &format!(
+                    "Could not move {} to Trash before merging: {error}",
+                    location.display_name()
+                ),
+            ));
+        }
+        staged.push(location.clone());
+    }
+    (hooks.on_merged)(plan);
+    let source_identity = local_file_identity(&source).await?;
+    (hooks.copy_into_target)(source.clone(), target, true, cancellable.clone()).await?;
+    if move_source {
+        permanently_delete_maybe_local_if_unchanged(source, true, source_identity, cancellable)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn merge_local_with_progress(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+    cancellable: gio::Cancellable,
+    affected_locations: Option<&mut HashSet<Location>>,
+    progress: Option<Rc<TransferProgressTracker>>,
+    on_merged: &dyn Fn(MergePlan),
+) -> Result<(), glib::Error> {
+    merge_local_with(
+        source,
+        target,
+        move_source,
+        cancellable,
+        affected_locations,
+        MergeHooks {
+            copy_into_target: Rc::new(move |source, target, _directory, cancellable| {
+                copy_recursively_with_progress(
+                    source,
+                    target,
+                    true,
+                    cancellable,
+                    None,
+                    progress.clone(),
+                )
+            }),
+            stage_overwrite: Rc::new(trash_stage_overwrite),
+            on_merged,
+        },
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn merge_local(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+    cancellable: gio::Cancellable,
+    on_merged: &dyn Fn(MergePlan),
+) -> Result<(), glib::Error> {
+    merge_local_with_progress(
+        source,
+        target,
+        move_source,
+        cancellable,
+        None,
+        None,
+        on_merged,
+    )
+    .await
+}
+
 fn permanently_delete(
     file: gio::File,
     directory: bool,
@@ -2501,6 +2752,284 @@ async fn trashed_entries_for_originals(
         .collect())
 }
 
+async fn restore_trash_entry(
+    entry: &RestoreEntry,
+    context: &RestoreContext,
+    affected_locations: &mut HashSet<Location>,
+    cancellable: &gio::Cancellable,
+) -> Result<(), glib::Error> {
+    let plan = match plan_restore_for_location(
+        &entry.source,
+        entry.original_target.as_ref(),
+        entry.trash_info.as_deref(),
+        entry.physical_path.as_deref(),
+        context,
+    )
+    .await
+    {
+        Ok(plan)
+            if entry
+                .confirmed_destination
+                .as_ref()
+                .is_some_and(|confirmed| plan.destination != *confirmed) =>
+        {
+            return Err(glib::Error::new(
+                gio::IOErrorEnum::Failed,
+                "The original location changed and no longer matches the confirmed destination",
+            ));
+        }
+        Ok(plan) => plan,
+        Err(error) => {
+            return Err(glib::Error::new(gio::IOErrorEnum::Failed, error.message()));
+        }
+    };
+    if let Some(parent) = plan.destination.parent() {
+        affected_locations.insert(Location::local(parent));
+    }
+    let source = gio::File::for_path(&plan.source_path);
+    let target = gio::File::for_path(&plan.destination);
+    move_restore(source, target, plan.allowed_root, cancellable.clone()).await?;
+    if let Some(info_path) = plan.trash_info.as_ref().or(entry.trash_info.as_ref())
+        && let Err(error) = std::fs::remove_file(info_path)
+    {
+        tracing::warn!(%error, "unable to remove restored trash metadata");
+    }
+    Ok(())
+}
+
+/// Finds the Trash entry a merge staged for an overwritten original.
+fn trashed_merge_original(
+    location: Location,
+    cancellable: gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<RestoreEntry, glib::Error>>>> {
+    Box::pin(async move {
+        let entries =
+            trashed_entries_for_originals(std::slice::from_ref(&location), &cancellable).await?;
+        entries.into_iter().next().ok_or_else(|| {
+            glib::Error::new(
+                gio::IOErrorEnum::NotFound,
+                "The original is no longer in Trash",
+            )
+        })
+    })
+}
+
+/// Reverts one overwritten merge path: removes the incoming copy so the
+/// staged original can move back out of Trash.
+async fn undo_merged_overwrite(
+    location: &Location,
+    staged: &RestoreEntry,
+    context: &RestoreContext,
+    affected_locations: &mut HashSet<Location>,
+    cancellable: &gio::Cancellable,
+) -> Result<(), glib::Error> {
+    let file = gio_file_for_location(location);
+    let existing_type = await_cancellable(&file, cancellable, |file, cancellable, result| {
+        file.query_info_async(
+            "standard::type",
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+            Some(cancellable),
+            move |output| result.resolve(output),
+        );
+    })
+    .await
+    .map(|info| info.file_type())
+    .ok();
+    if let Some(file_type) = existing_type {
+        permanently_delete_maybe_local(
+            file,
+            file_type == gio::FileType::Directory,
+            cancellable.clone(),
+        )
+        .await?;
+    }
+    restore_trash_entry(staged, context, affected_locations, cancellable).await
+}
+
+/// Resolves where an overwritten original was staged. Production reads Trash;
+/// tests hand back fixture entries pointing at a fake trash root.
+type StagedOriginalLookup = Rc<
+    dyn Fn(
+        Location,
+        gio::Cancellable,
+    ) -> Pin<Box<dyn Future<Output = Result<RestoreEntry, glib::Error>>>>,
+>;
+
+async fn run_merge_undo(
+    request_id: OperationRequestId,
+    created: Vec<Location>,
+    overwritten: Vec<Location>,
+    emit: Rc<dyn Fn(OperationEvent)>,
+    cancellable: gio::Cancellable,
+    staged_original: StagedOriginalLookup,
+) {
+    let total = overwritten.len() + created.len();
+    let pending: Vec<Location> = overwritten.iter().chain(&created).cloned().collect();
+    let mut affected_locations = HashSet::from([Location::uri("trash:///")]);
+    for location in &pending {
+        if let Some(parent) = location.parent() {
+            affected_locations.insert(parent);
+        }
+    }
+    let context = RestoreContext::current();
+    let mut completed_locations = Vec::new();
+    let mut failed_locations = Vec::new();
+    let mut errors = Vec::new();
+    let mut completed = 0usize;
+    let remaining = |index: usize| pending[index..].to_vec();
+    // Undo applies to copies only, so an incoming item at an overwritten path
+    // is a duplicate of the surviving source: delete it permanently to free
+    // the path, then move the staged original back out of Trash.
+    for (index, location) in overwritten.iter().enumerate() {
+        if cancellable.is_cancelled() {
+            emit(cancelled_event(
+                request_id,
+                completed_locations,
+                failed_locations,
+                remaining(index),
+                affected_locations,
+            ));
+            return;
+        }
+        let result = match staged_original(location.clone(), cancellable.clone()).await {
+            Ok(staged) => {
+                undo_merged_overwrite(
+                    location,
+                    &staged,
+                    &context,
+                    &mut affected_locations,
+                    &cancellable,
+                )
+                .await
+            }
+            Err(error) => Err(error),
+        };
+        let restored_location = match result {
+            Ok(()) => {
+                completed_locations.push(location.clone());
+                Some(location.clone())
+            }
+            Err(error) if was_cancelled(&error) => {
+                failed_locations.push(location.clone());
+                emit(cancelled_event(
+                    request_id,
+                    completed_locations,
+                    failed_locations,
+                    remaining(index + 1),
+                    affected_locations,
+                ));
+                return;
+            }
+            Err(error) => {
+                errors.push(format!("{}: {error}", location.display_name()));
+                failed_locations.push(location.clone());
+                None
+            }
+        };
+        completed += 1;
+        emit(OperationEvent::RestoreProgress {
+            request_id,
+            completed,
+            total,
+            restored_location,
+        });
+    }
+    for (index, location) in created.iter().enumerate() {
+        if cancellable.is_cancelled() {
+            emit(cancelled_event(
+                request_id,
+                completed_locations,
+                failed_locations,
+                remaining(overwritten.len() + index),
+                affected_locations,
+            ));
+            return;
+        }
+        let file = gio_file_for_location(location);
+        let existing_type = await_cancellable(&file, &cancellable, |file, cancellable, result| {
+            file.query_info_async(
+                "standard::type",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await
+        .map(|info| info.file_type())
+        .ok();
+        let result = match existing_type {
+            None => Ok(()),
+            Some(_) => {
+                let trashed =
+                    await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                        file.trash_async(
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            move |output| result.resolve(output),
+                        );
+                    })
+                    .await;
+                match trashed {
+                    Err(error) if error.matches(gio::IOErrorEnum::NotSupported) => {
+                        permanently_delete_maybe_local(
+                            file,
+                            existing_type == Some(gio::FileType::Directory),
+                            cancellable.clone(),
+                        )
+                        .await
+                    }
+                    result => result.map(|_| ()),
+                }
+            }
+        };
+        let deleted_location = match result {
+            Ok(()) => {
+                completed_locations.push(location.clone());
+                Some(location.clone())
+            }
+            Err(error) if was_cancelled(&error) => {
+                failed_locations.push(location.clone());
+                emit(cancelled_event(
+                    request_id,
+                    completed_locations,
+                    failed_locations,
+                    remaining(overwritten.len() + index + 1),
+                    affected_locations,
+                ));
+                return;
+            }
+            Err(error) => {
+                errors.push(format!("{}: {error}", location.display_name()));
+                failed_locations.push(location.clone());
+                None
+            }
+        };
+        completed += 1;
+        emit(OperationEvent::DeleteProgress {
+            request_id,
+            completed,
+            total,
+            deleted_location,
+        });
+    }
+    if errors.is_empty() {
+        emit(OperationEvent::Restored {
+            request_id,
+            locations: Vec::new(),
+        });
+    } else {
+        emit(OperationEvent::CompletedWithErrors {
+            request_id,
+            deleted_locations: completed_locations,
+            retryable_locations: Vec::new(),
+            has_non_retryable_failures: true,
+            message: deletion_error_summary(&errors),
+        });
+    }
+}
+
 fn home_trash_entries(
     requested: &HashSet<PathBuf>,
     cancellable: &gio::Cancellable,
@@ -3009,6 +3538,24 @@ impl OperationProvider for LocalOperationProvider {
                         Some(progress.clone()),
                     )
                     .await
+                } else if item.conflict == TransferConflict::Merge {
+                    merge_local_with_progress(
+                        source,
+                        target,
+                        request.move_sources,
+                        operation_cancellable.clone(),
+                        Some(&mut affected_locations),
+                        Some(progress.clone()),
+                        &|plan| {
+                            emit(OperationEvent::Merged {
+                                request_id: request.id,
+                                source: item.source.clone(),
+                                created: plan.created,
+                                overwritten: plan.overwritten,
+                            });
+                        },
+                    )
+                    .await
                 } else if item.conflict == TransferConflict::ReplaceExisting {
                     replace_local_with_progress(
                         source,
@@ -3058,7 +3605,11 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.source.clone());
-                let created_location = target_location.filter(|_| !request.move_sources);
+                // A merge reports its written paths through Merged instead:
+                // copy undo trashes recorded locations, and the merged folder
+                // held pre-existing contents that must not be trashed.
+                let created_location = target_location
+                    .filter(|_| !request.move_sources && item.conflict != TransferConflict::Merge);
                 progress.finish_item(item_started_at, item_sizes[index], created_location);
             }
             emit(OperationEvent::Pasted {
@@ -3265,6 +3816,27 @@ impl OperationProvider for LocalOperationProvider {
         cancellation_handle(cancellable)
     }
 
+    fn undo_merge(
+        &self,
+        request: UndoMergeRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        let cancellable = gio::Cancellable::new();
+        let operation_cancellable = cancellable.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            run_merge_undo(
+                request.id,
+                request.created,
+                request.overwritten,
+                emit,
+                operation_cancellable,
+                Rc::new(trashed_merge_original),
+            )
+            .await;
+        });
+        cancellation_handle(cancellable)
+    }
+
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
@@ -3324,50 +3896,13 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let result = match plan_restore_for_location(
-                    &entry.source,
-                    entry.original_target.as_ref(),
-                    entry.trash_info.as_deref(),
-                    entry.physical_path.as_deref(),
+                let result = restore_trash_entry(
+                    entry,
                     &context,
+                    &mut affected_locations,
+                    &operation_cancellable,
                 )
-                .await
-                {
-                    Ok(plan)
-                        if entry
-                            .confirmed_destination
-                            .as_ref()
-                            .is_some_and(|confirmed| plan.destination != *confirmed) =>
-                    {
-                        Err(glib::Error::new(
-                            gio::IOErrorEnum::Failed,
-                            "The original location changed and no longer matches the confirmed destination",
-                        ))
-                    }
-                    Ok(plan) => {
-                        if let Some(parent) = plan.destination.parent() {
-                            affected_locations.insert(Location::local(parent));
-                        }
-                        let source = gio::File::for_path(&plan.source_path);
-                        let target = gio::File::for_path(&plan.destination);
-                        let moved = move_restore(
-                            source,
-                            target,
-                            plan.allowed_root,
-                            operation_cancellable.clone(),
-                        )
-                        .await;
-                        if moved.is_ok()
-                            && let Some(info_path) =
-                                plan.trash_info.as_ref().or(entry.trash_info.as_ref())
-                            && let Err(error) = std::fs::remove_file(info_path)
-                        {
-                            tracing::warn!(%error, "unable to remove restored trash metadata");
-                        }
-                        moved
-                    }
-                    Err(error) => Err(glib::Error::new(gio::IOErrorEnum::Failed, error.message())),
-                };
+                .await;
                 let restored_location = if let Err(error) = result {
                     if was_cancelled(&error) {
                         failed_locations.push(entry.source.clone());
