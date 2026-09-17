@@ -168,6 +168,7 @@ fn saturated_queue_defers_the_live_request() {
             image_id,
             ActiveRequest {
                 id: request,
+                key: key(MAX_QUEUED_THUMBNAILS),
                 image: glib::WeakRef::new(),
                 deferred: None,
             },
@@ -239,6 +240,7 @@ fn failed_jobs_release_their_active_requests() {
             image_id,
             ActiveRequest {
                 id: 7,
+                key: key(0),
                 image: glib::WeakRef::new(),
                 deferred: None,
             },
@@ -447,6 +449,8 @@ fn cache_hit_applies_texture_on_idle_not_during_bind() {
         || {
             super::super::theme::ThemeManager::shared();
             let path = PathBuf::from("/fixture/cache-hit.png");
+            let pending = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&pending, &sample_entry(&path));
             let texture = sample_texture();
             THUMBNAIL_CACHE.with(|cache| {
                 cache.borrow_mut().insert(
@@ -459,6 +463,8 @@ fn cache_hit_applies_texture_on_idle_not_during_bind() {
                     texture.clone(),
                 );
             });
+            bind_thumbnail(&pending, &sample_entry(&path));
+            assert_eq!(displayed_texture(&pending).as_ref(), Some(&texture));
             for size in [17, 18, 96] {
                 let image = super::ThumbnailSlot::new(size);
                 super::set_thumbnail_or_icon(
@@ -615,6 +621,7 @@ fn stale_request_id_does_not_apply_completed_texture() {
                     image_id,
                     ActiveRequest {
                         id: 2,
+                        key: key(0),
                         image: weak.clone(),
                         deferred: None,
                     },

@@ -352,7 +352,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
 }
 
 #[test]
-fn metadata_dispatch_is_not_starved_by_continuously_arriving_rows() {
+fn metadata_dispatch_coalesces_on_idle_and_reuses_covered_in_flight_requests() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("the async test lock should not be poisoned");
@@ -361,15 +361,59 @@ fn metadata_dispatch_is_not_starved_by_continuously_arriving_rows() {
         vec![FillAnswer::Never],
     ));
     browser.navigate(Location::local("/fixture"));
-    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    while source.fill_calls.borrow().is_empty() && std::time::Instant::now() < deadline {
+    let drain_idle = || {
+        let done = Rc::new(Cell::new(false));
+        let done_for_idle = done.clone();
+        gtk::glib::idle_add_local_once(move || done_for_idle.set(true));
+        while !done.get() {
+            gtk::glib::MainContext::default().iteration(false);
+        }
+    };
+    for _ in 0..3 {
+        browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
         browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
-        gtk::glib::MainContext::default().iteration(false);
-        std::thread::sleep(std::time::Duration::from_millis(2));
     }
+    assert!(source.fill_calls.borrow().is_empty());
+    drain_idle();
     assert_eq!(source.fill_calls.borrow().len(), 1);
+    assert_eq!(source.fill_calls.borrow()[0].entries.len(), 2);
     assert!(!source.fill_calls.borrow()[0].full);
+    for _ in 0..3 {
+        browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
+        browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
+        drain_idle();
+    }
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        1,
+        "in-flight work is not restarted"
+    );
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    drain_idle();
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        2,
+        "richer requests still reach the source"
+    );
+    assert!(source.fill_calls.borrow()[1].include_icon_details);
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    drain_idle();
+    assert_eq!(source.fill_calls.borrow().len(), 2);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[1].id, calls[1].emit.clone())
+    };
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    drain_idle();
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        3,
+        "completed work releases its claim"
+    );
 }
 
 #[test]

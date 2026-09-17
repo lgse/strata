@@ -236,7 +236,7 @@ struct ListBinding {
 }
 
 impl ListBinding {
-    /// Settling must not reset labels or an active rename editor.
+    /// Detail updates must not reset labels or an active rename editor.
     fn refresh_details(&self, row: &ListRow) {
         self.request_thumbnail_and_metadata(row);
         crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
@@ -282,6 +282,9 @@ pub(super) fn refresh_list_section(
         else {
             return;
         };
+        if !thumbnail::near_viewport(&row.widget) {
+            return;
+        }
         let Some(item) = bound.item.upgrade() else {
             return;
         };
@@ -295,13 +298,7 @@ pub(super) fn refresh_list_section(
         let is_hidden = entry.is_hidden;
         set_mode_cut_style(&row.widget, is_cut);
         row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
-        ListBinding {
-            browser: browser.clone(),
-            depth,
-            position,
-            entry,
-        }
-        .refresh_details(&row);
+        crate::util::set_modified_date(&row.modified, Some(&entry), "—");
         row.icon.set_hidden(is_hidden);
         row.icon.set_base_opacity(1.0);
     });

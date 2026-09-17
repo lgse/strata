@@ -85,7 +85,14 @@ off the GTK thread. Persistence remains bounded and asynchronous.
 Scheduling ranks visible targets before a small overscan region across enclosing
 scrollers (including horizontally hidden Columns panes). Offscreen requests stay
 deferred, and scroll/map changes reprioritize work outside GTK layout callbacks.
-RAM hits remain available while scrolling. With more than one render slot, slow
+RAM hits remain available while scrolling. Metadata requests batch on the next
+main-loop idle, without a fixed 100 ms delay. List/Icons presentation work and
+camera admission batches coalesce on GTK's frame clock instead of 80/16 ms timers;
+repeated scrolling does not re-arm the pending frame. Work that inspects widgets
+runs from idle after the frame, outside GTK binding/layout callbacks. Identical
+in-flight file requests are reused, and presentation refreshes do not resubmit
+them. This removes fixed scheduling waits, not the time needed for I/O or decoding.
+With more than one render slot, slow
 RAW/PDF/video work leaves capacity for ordinary images. Browser metadata admission
 uses the same viewport policy; cheap filesystem metadata is published before
 media inspection or directory counting.

@@ -895,6 +895,7 @@ enum FillAnswer {
 struct FillCall {
     id: RequestId,
     full: bool,
+    include_icon_details: bool,
     entries: Vec<Location>,
     emit: DirectoryEmit,
 }
@@ -1058,6 +1059,7 @@ impl FileSource for ScriptedSource {
                 self.fill_calls.borrow_mut().push(FillCall {
                     id,
                     full,
+                    include_icon_details: request.include_icon_details,
                     entries,
                     emit,
                 });
@@ -1066,6 +1068,7 @@ impl FileSource for ScriptedSource {
                 self.fill_calls.borrow_mut().push(FillCall {
                     id,
                     full,
+                    include_icon_details: request.include_icon_details,
                     entries,
                     emit: emit.clone(),
                 });

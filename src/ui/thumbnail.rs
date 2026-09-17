@@ -20,7 +20,7 @@ mod camera;
 mod slot;
 mod viewport;
 pub(crate) use slot::ThumbnailSlot;
-pub(super) use viewport::request_metadata;
+pub(super) use viewport::{near_viewport, request_metadata};
 
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 const MAX_CACHE_ENTRIES: usize = 256;
@@ -42,7 +42,7 @@ thread_local! {
         RefCell::new(HashMap::new());
     static THUMBNAIL_QUEUE: RefCell<ThumbnailQueue> = RefCell::new(ThumbnailQueue::default());
     static THUMBNAIL_CACHE: RefCell<ThumbnailCache> = RefCell::new(ThumbnailCache::default());
-    /// Per-viewport settle groups (key zero is the fallback); one view's fling never postpones another's.
+    /// Per-viewport admission batches; one view's fling never postpones another's.
     static SETTLE_VIEWS: RefCell<HashMap<usize, ViewSettle>> = RefCell::new(HashMap::new());
     static TRACKED_CUSTOMIZED_ICONS: RefCell<Vec<TrackedCustomizedIcon>> =
         const { RefCell::new(Vec::new()) };
@@ -64,6 +64,7 @@ struct TrackedCustomizedIcon {
 
 struct ActiveRequest {
     id: u64,
+    key: ThumbnailKey,
     image: glib::WeakRef<ThumbnailSlot>,
     deferred: Option<DeferredThumbnail>,
 }
@@ -89,7 +90,7 @@ struct SettledPark {
 struct ViewSettle {
     viewport: glib::WeakRef<gtk::ScrolledWindow>,
     pending: Vec<SettledPark>,
-    timer: Option<glib::SourceId>,
+    timer: Option<super::frame::FrameTask>,
     hooked: bool,
 }
 
@@ -448,6 +449,18 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
         }
         None => {}
     }
+    let already_requested = ACTIVE_REQUESTS.with(|requests| {
+        requests
+            .borrow()
+            .get(&(request.image.as_ptr() as usize))
+            .is_some_and(|active| {
+                active.key == key && active.image.upgrade().as_ref() == Some(request.image)
+            })
+    });
+    if already_requested {
+        request.image.set_slot(thumbnail_size);
+        return;
+    }
     let (image_id, request_id) = set_fallback_icon(
         request.image,
         customization_path,
@@ -455,7 +468,7 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
         request.icon_size,
     );
     request.image.set_slot(thumbnail_size);
-    let target = register_active_request(request.image, image_id, request_id);
+    let target = register_active_request(request.image, image_id, request_id, key.clone());
     // Walking ancestors or hooking the viewport during bind can corrupt layout.
     glib::idle_add_local_once(move || {
         if request_is_live(&target) {
@@ -497,9 +510,7 @@ fn park_thumbnail(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTarget)
         });
         // A dead viewport's address may be recycled: reset the group instead of joining its stale hooks and pending requests.
         if group != 0 && settle.viewport.upgrade().is_none() {
-            if let Some(timer) = settle.timer.take() {
-                timer.remove();
-            }
+            settle.timer.take();
             *settle = ViewSettle {
                 viewport: viewport_ref.clone(),
                 pending: Vec::new(),
@@ -551,10 +562,13 @@ fn request_group_fire(group: usize) {
         if settle.timer.is_some() {
             return;
         }
-        let delay = Duration::from_millis(16);
-        settle.timer = Some(glib::timeout_add_local_once(delay, move || {
-            fire_view_group(group);
-        }));
+        let viewport = settle.viewport.upgrade();
+        settle.timer = Some(super::frame::FrameTask::new(
+            viewport.as_ref().map(|view| view.upcast_ref()),
+            move || {
+                fire_view_group(group);
+            },
+        ));
     });
 }
 fn hook_viewport(group: usize, viewport: &gtk::ScrolledWindow) {
@@ -587,9 +601,7 @@ fn fire_view_group(group: usize) {
         let Some(settle) = views.get_mut(&group) else {
             return Vec::new();
         };
-        if let Some(timer) = settle.timer.take() {
-            timer.remove();
-        }
+        settle.timer.take();
         if group != 0 && settle.viewport.upgrade().is_none() {
             views.remove(&group);
             return Vec::new();
@@ -617,6 +629,7 @@ fn register_active_request(
     image: &ThumbnailSlot,
     image_id: usize,
     request_id: u64,
+    key: ThumbnailKey,
 ) -> PendingTarget {
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(image));
@@ -625,6 +638,7 @@ fn register_active_request(
             image_id,
             ActiveRequest {
                 id: request_id,
+                key,
                 image: weak_image.clone(),
                 deferred: None,
             },

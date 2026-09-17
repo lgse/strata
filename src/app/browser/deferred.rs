@@ -4,24 +4,24 @@ use std::rc::Rc;
 
 use crate::services::MetadataOutcome;
 
-use super::{Browser, METADATA_FILL_DEBOUNCE};
+use super::Browser;
 
 impl Browser {
     pub(super) fn schedule_metadata_fill(self: &Rc<Self>) {
-        if self.metadata_timer.borrow().is_some() {
+        if self.metadata_idle.borrow().is_some() {
             return;
         }
         let weak = Rc::downgrade(self);
-        let source = gio::glib::timeout_add_local_once(METADATA_FILL_DEBOUNCE, move || {
+        let source = gio::glib::idle_add_local_once(move || {
             if let Some(browser) = weak.upgrade() {
                 browser.flush_metadata_fills();
             }
         });
-        *self.metadata_timer.borrow_mut() = Some(source);
+        *self.metadata_idle.borrow_mut() = Some(source);
     }
 
-    fn cancel_metadata_timer(&self) {
-        if let Some(source) = self.metadata_timer.borrow_mut().take() {
+    fn cancel_metadata_idle(&self) {
+        if let Some(source) = self.metadata_idle.borrow_mut().take() {
             source.remove();
         }
     }
@@ -33,7 +33,7 @@ impl Browser {
     }
 
     fn retain_metadata_work(self: &Rc<Self>, len: usize) {
-        self.cancel_metadata_timer();
+        self.cancel_metadata_idle();
         self.metadata_pending
             .borrow_mut()
             .retain(|depth, _| *depth < len);
@@ -85,7 +85,7 @@ impl Browser {
 
     /// Discard work only when its load/data source is being replaced wholesale.
     pub(super) fn cancel_deferred_work(&self) {
-        self.cancel_metadata_timer();
+        self.cancel_metadata_idle();
         self.metadata_pending.borrow_mut().clear();
         self.metadata_loads.borrow_mut().clear();
         self.fill_tokens.borrow_mut().clear();

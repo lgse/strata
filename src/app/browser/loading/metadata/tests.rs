@@ -27,6 +27,7 @@ fn install_fill(fixture: &Fixture, full_sort: bool) -> RequestId {
             depth: 0,
             directory_request: fixture.request(),
             tokens: vec![(1, fixture.entry("beta").location)],
+            include_icon_details: false,
         },
     );
     if full_sort {

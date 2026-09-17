@@ -124,6 +124,10 @@ pub(super) fn hook_ancestors(widget: &impl IsA<gtk::Widget>) {
     }
 }
 
+pub(in crate::ui) fn near_viewport(widget: &impl IsA<gtk::Widget>) -> bool {
+    visibility(widget).0 < 2
+}
+
 type Priority = (u8, i32, i32, u64);
 
 pub(super) fn priority(target: &PendingTarget) -> Priority {

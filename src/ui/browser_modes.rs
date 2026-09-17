@@ -35,7 +35,6 @@ use list_factory::{ListFactory, refresh_list_section};
 const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
 const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_ICONS_THUMBNAIL_SIZE: i32 = 64;
-const SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
 const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 
 #[derive(Clone)]
@@ -1892,7 +1891,7 @@ fn build_icons_pane(
     let sections_for_settle = context.sections.clone();
     let cuts_for_settle = context.cuts.clone();
     let depth_for_settle = context.depth;
-    install_scroll_settle(&scroll, context.scrolling.clone(), None, move || {
+    install_scroll_refresh(&scroll, context.scrolling.clone(), None, move || {
         let Some(browser) = browser_for_settle.upgrade() else {
             return;
         };
@@ -2244,46 +2243,53 @@ fn refresh_marquee_targets(pane: &Pane) {
         .collect();
 }
 
-fn install_scroll_settle(
+fn install_scroll_refresh(
     scroll: &gtk::ScrolledWindow,
     scrolling: Rc<Cell<bool>>,
     css_class: Option<&'static str>,
-    on_settle: impl Fn() + 'static,
+    on_refresh: impl Fn() + 'static,
 ) {
-    let pending = Rc::new(RefCell::new(None::<glib::SourceId>));
-    let on_settle = Rc::new(on_settle);
+    let pending = Rc::new(RefCell::new(None::<super::frame::FrameTask>));
+    let on_refresh = Rc::new(on_refresh);
     for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
         let pending = pending.clone();
         let scrolling = scrolling.clone();
-        let scroll = scroll.clone();
-        let on_settle = on_settle.clone();
+        let scroll = scroll.downgrade();
+        let on_refresh = on_refresh.clone();
         adjustment.connect_value_changed(move |_| {
-            let started = !scrolling.replace(true);
-            if started && let Some(css_class) = css_class {
+            let Some(scroll) = scroll.upgrade() else {
+                return;
+            };
+            if pending.borrow().is_some() {
+                return;
+            }
+            scrolling.set(true);
+            if let Some(css_class) = css_class {
                 let scrolling = scrolling.clone();
-                let scroll = scroll.clone();
+                let scroll = scroll.downgrade();
                 glib::idle_add_local_once(move || {
-                    if scrolling.get() {
+                    if scrolling.get()
+                        && let Some(scroll) = scroll.upgrade()
+                    {
                         scroll.add_css_class(css_class);
                     }
                 });
             }
-            if let Some(source) = pending.borrow_mut().take() {
-                source.remove();
-            }
-            let pending_for_timeout = pending.clone();
+            let pending_for_frame = pending.clone();
             let scrolling = scrolling.clone();
-            let scroll = scroll.clone();
-            let on_settle = on_settle.clone();
-            pending.replace(Some(glib::timeout_add_local_once(
-                SCROLL_SETTLE_DELAY,
+            let weak_scroll = scroll.downgrade();
+            let on_refresh = on_refresh.clone();
+            pending.replace(Some(super::frame::FrameTask::new(
+                Some(scroll.upcast_ref()),
                 move || {
-                    pending_for_timeout.borrow_mut().take();
+                    pending_for_frame.borrow_mut().take();
                     scrolling.set(false);
-                    if let Some(css_class) = css_class {
-                        scroll.remove_css_class(css_class);
+                    if let Some(scroll) = weak_scroll.upgrade() {
+                        if let Some(css_class) = css_class {
+                            scroll.remove_css_class(css_class);
+                        }
+                        on_refresh();
                     }
-                    on_settle();
                 },
             )));
         });
@@ -2780,7 +2786,7 @@ fn build_list_pane(
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);
     let cuts_for_settle = cut_locations.clone();
-    install_scroll_settle(&scroll, scrolling, Some("list-fast-scroll"), move || {
+    install_scroll_refresh(&scroll, scrolling, Some("list-fast-scroll"), move || {
         let Some(browser) = browser_for_settle.upgrade() else {
             return;
         };
@@ -4213,24 +4219,8 @@ fn refresh_icons_section(
         let Some(entry) = browser.entry_at(depth, position) else {
             return;
         };
-        refresh_icons_card_chrome(Some(&item), &card, &icon, &label, &entry, cuts);
-        super::thumbnail::set_thumbnail_or_icon(
-            &icon,
-            &entry,
-            super::browser::entry_icon(&entry),
-            icon.slot_size(),
-            icon.slot_size(),
-        );
-        if let Some(position) = metadata_fill_position(Some(position), &entry, false, true) {
-            super::thumbnail::request_metadata(
-                &icon,
-                &card,
-                browser,
-                depth,
-                position,
-                entry.location.clone(),
-                true,
-            );
+        if super::thumbnail::near_viewport(&card) {
+            refresh_icons_card_chrome(Some(&item), &card, &icon, &label, &entry, cuts);
         }
     });
 }

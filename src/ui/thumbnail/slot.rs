@@ -153,6 +153,7 @@ impl ThumbnailSlot {
         widget
     }
 
+    #[cfg(test)]
     pub(crate) fn slot_size(&self) -> i32 {
         self.imp().slot.get().max(1)
     }
