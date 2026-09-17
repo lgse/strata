@@ -87,7 +87,7 @@ struct BrowseSource {
 
 impl FileSource for BrowseSource {
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
-        assert_eq!(location, &Location::uri("smb://server/Documents"));
+        assert_eq!(location, &self.entry.location);
         self.validation_error.clone().map_or(Ok(()), Err)
     }
 
@@ -111,7 +111,8 @@ impl FileSource for BrowseSource {
 #[test]
 fn browse_activation_navigates_or_requests_mounting_of_the_resolved_share() {
     let root = Location::uri("smb://server/");
-    let target = Location::uri("smb://server/Documents");
+    let target = location_for_file(&gio::File::for_uri("smb://server/Documents"))
+        .expect("the browse target should be a valid location");
     for file_type in [gio::FileType::Shortcut, gio::FileType::Mountable] {
         for validation_error in [
             None,

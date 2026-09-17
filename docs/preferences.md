@@ -70,7 +70,9 @@ control that might be midway through synchronization.
 Location, selection, history, each column's sort, filter query, transient theme
 catalog filters, dialogs, and preview playback position remain window-local.
 Pinned places, portal integration and other externally managed state have their
-own stores and are not fields in the application preferences schema.
+own stores and are not fields in the application preferences schema. Udiskie
+encrypted-volume integration is stored in `$XDG_CONFIG_HOME/udiskie/config.yml`
+plus `$XDG_DATA_HOME/strata/udiskie-install/state.toml`.
 Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.

@@ -61,11 +61,41 @@ impl Location {
             }
             LocationKind::Uri(uri) if uri == "trash:///" || uri == "network:///" => None,
             LocationKind::Uri(uri) => {
-                let file = gio::File::for_uri(uri);
-                let parent = file.parent()?;
-                let parent_uri = parent.uri();
+                // Walk the URI path. GVfs File::parent() can SIGSEGV on gphoto2
+                // and similar backends when many tests call it concurrently.
+                let parsed = gio::glib::Uri::parse(
+                    uri,
+                    gio::glib::UriFlags::HAS_PASSWORD
+                        | gio::glib::UriFlags::HAS_AUTH_PARAMS
+                        | gio::glib::UriFlags::ENCODED,
+                )
+                .ok()?;
+                let path = parsed.path();
+                let trimmed = path.trim_end_matches('/');
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let parent_path = match trimmed.rsplit_once('/') {
+                    Some(("", _)) => "/",
+                    Some((parent, _)) => parent,
+                    None => return None,
+                };
+                let parent_uri = gio::glib::Uri::build_with_user(
+                    gio::glib::UriFlags::ENCODED,
+                    &parsed.scheme(),
+                    parsed.user().as_deref(),
+                    parsed.password().as_deref(),
+                    parsed.auth_params().as_deref(),
+                    parsed.host().as_deref(),
+                    parsed.port(),
+                    parent_path,
+                    parsed.query().as_deref(),
+                    parsed.fragment().as_deref(),
+                )
+                .to_str()
+                .to_string();
                 let canonical = if parent_uri.ends_with("///") {
-                    parent_uri.to_string()
+                    parent_uri
                 } else {
                     parent_uri.trim_end_matches('/').to_owned()
                 };
@@ -209,8 +239,8 @@ impl Location {
 
     pub fn is_camera_photo_root(&self) -> bool {
         self.uri_value().is_some_and(|uri| {
-            let file = gio::File::for_uri(uri);
-            file.has_uri_scheme("gphoto2") && file.parent().is_none()
+            gio::glib::Uri::parse_scheme(uri).as_deref() == Some("gphoto2")
+                && self.parent().is_none()
         })
     }
 

@@ -97,6 +97,7 @@ pub(crate) enum ParseOperation {
     ThumbnailRaw,
     ThumbnailPdf,
     ThumbnailVideo,
+    ThumbnailAppImage,
     PreviewImage,
     DocumentImage,
     DocumentMermaid,
@@ -114,6 +115,7 @@ impl ParseOperation {
             Self::ThumbnailRaw => "thumbnail-raw",
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
+            Self::ThumbnailAppImage => "thumbnail-appimage",
             Self::PreviewImage => "preview-image",
             Self::DocumentImage => "document-image",
             Self::DocumentMermaid => "document-mermaid",
@@ -145,7 +147,8 @@ impl ParseOperation {
             Self::ThumbnailImage
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
-            | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
+            | Self::ThumbnailVideo
+            | Self::ThumbnailAppImage => Some((256, 256, 256 * 256)),
             Self::PreviewImage
             | Self::DocumentImage
             | Self::DocumentMermaid
@@ -170,7 +173,10 @@ impl ParseOperation {
             Self::DocumentMath { .. } => {
                 Some(crate::services::document_media::MATH_INPUT_LIMIT as u64)
             }
-            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata => None,
+            Self::ThumbnailVideo
+            | Self::ThumbnailAppImage
+            | Self::PreviewMedia(_)
+            | Self::MediaMetadata => None,
         }
     }
 }

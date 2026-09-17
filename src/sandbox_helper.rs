@@ -18,6 +18,7 @@ use crate::{
     services::MediaPreviewSize,
 };
 
+mod appimage;
 mod document_media;
 mod media;
 
@@ -70,6 +71,10 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             None,
         ),
         "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
+        "thumbnail-appimage" => (
+            appimage::render(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
         "preview-image" => (render_raw(input, 800)?, None),
         "document-image" => (document_media::image(input)?, None),
         "document-mermaid" => (document_media::mermaid(input)?, None),

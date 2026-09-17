@@ -48,12 +48,24 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
                 crate::ui::browser::PeekBehavior::default(),
             );
             let path = glib::user_config_dir().join("strata/settings.toml");
+            let udiskie_config = glib::user_config_dir().join("udiskie/config.yml");
+            let udiskie_state = glib::user_data_dir().join("strata/udiskie-install/state.toml");
             let before = std::fs::read_to_string(&path).expect("saved settings");
             let (first, _, _) = general_page(manager.clone());
             let (second, _, _) = general_page(manager.clone());
             assert_eq!(
                 std::fs::read_to_string(&path).expect("saved settings"),
                 before
+            );
+            assert!(
+                !udiskie_config.exists(),
+                "opening Settings should not write {}",
+                udiskie_config.display()
+            );
+            assert!(
+                !udiskie_state.exists(),
+                "opening Settings should not write {}",
+                udiskie_state.display()
             );
             assert_eq!(
                 active_switches(&first),

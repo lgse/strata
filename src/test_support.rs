@@ -32,6 +32,14 @@ pub(crate) static ASYNC_MAIN_CONTEXT_DEFAULT: TestMutex = TestMutex::new();
 
 /// GTK initialization is thread-affine; each UI test gets a process and disposable preferences.
 pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
+    gtk_test_with_env(name, std::iter::empty::<(&str, &std::ffi::OsStr)>(), run);
+}
+
+pub(crate) fn gtk_test_with_env(
+    name: &str,
+    extra_env: impl IntoIterator<Item = (impl AsRef<std::ffi::OsStr>, impl AsRef<std::ffi::OsStr>)>,
+    run: impl FnOnce(),
+) {
     const CHILD: &str = "STRATA_ISOLATED_GTK_TEST";
     if std::env::var(CHILD).as_deref() == Ok(name) {
         if let Err(error) = gtk::init() {
@@ -47,22 +55,29 @@ pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
         run();
         return;
     }
+    let extra_env: Vec<(std::ffi::OsString, std::ffi::OsString)> = extra_env
+        .into_iter()
+        .map(|(key, value)| (key.as_ref().to_owned(), value.as_ref().to_owned()))
+        .collect();
     // Child processes still share the display's clipboard and pointer grabs.
     static DISPLAY: TestMutex = TestMutex::new();
     let _display = DISPLAY.lock().expect("GTK display lock");
     let sandbox = tempfile::tempdir().expect("isolated preferences");
     let home = sandbox.path().join("home");
     std::fs::create_dir_all(&home).expect("isolated home");
-    let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
+    let mut command = std::process::Command::new(std::env::current_exe().expect("test executable"));
+    command
         .args(["--exact", name, "--nocapture"])
         .env(CHILD, name)
         .env("HOME", home)
         .env("XDG_STATE_HOME", sandbox.path().join("state"))
         .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
         .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
-        .env("XDG_DATA_HOME", sandbox.path().join("data"))
-        .status()
-        .expect("isolated GTK test starts");
+        .env("XDG_DATA_HOME", sandbox.path().join("data"));
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+    let status = command.status().expect("isolated GTK test starts");
     assert!(status.success(), "{name} failed");
 }
 

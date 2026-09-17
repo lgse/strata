@@ -458,3 +458,35 @@ fn sidebar_visibility_prefs_hide_and_restore_default_places_across_windows() {
         },
     );
 }
+
+#[test]
+fn schedule_after_first_paint_rebuilds_sidebar_places() {
+    gtk_test(
+        "ui::window::sidebar::tests::schedule_after_first_paint_rebuilds_sidebar_places",
+        || {
+            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let window = gtk::Window::builder()
+                .child(&sidebar.widget)
+                .default_width(240)
+                .default_height(140)
+                .build();
+            let initial = sidebar
+                .state
+                .widget
+                .first_child()
+                .expect("initial Home row");
+            sidebar.schedule_after_first_paint(&window);
+            window.present();
+            settle_mapped(&window);
+            let rebuilt = sidebar
+                .state
+                .widget
+                .first_child()
+                .expect("rebuilt Home row");
+            assert_ne!(initial, rebuilt);
+            sidebar.disconnect();
+            sidebar.state.browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
