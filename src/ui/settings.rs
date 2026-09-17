@@ -20,6 +20,7 @@ use crate::{
 
 mod about;
 mod bindings;
+mod exclusions;
 mod general;
 mod keybindings;
 mod search;

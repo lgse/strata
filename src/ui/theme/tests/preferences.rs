@@ -17,6 +17,7 @@ fn non_default_preferences() -> Preferences {
         hardware_accelerated_video_previews: Some(false),
         video_preview_backend: "vulkan".into(),
         search_open_files_directly: true,
+        search_exclusions: vec![".venv".into(), "/fixture/custom_excluded".into()],
         type_to_search: false,
         arrow_navigation_scoped: true,
         filter_include_subfolders: false,
@@ -350,6 +351,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 MediaPreviewBackend::Software
             );
             assert!(manager.search_open_files_directly());
+            assert_eq!(
+                manager.search_exclusions(),
+                vec![".venv".to_owned(), "/fixture/custom_excluded".to_owned()]
+            );
             assert!(!manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
             assert!(!manager.filter_include_subfolders());
@@ -508,6 +513,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),
+                |m| m.set_search_exclusions(vec!["changed_exclusion".to_owned()]),
                 |m| m.set_type_to_search(true),
                 |m| m.set_arrow_navigation_scoped(false),
                 |m| m.set_filter_include_subfolders(true),

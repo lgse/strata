@@ -106,6 +106,8 @@ struct Preferences {
     video_preview_backend: String,
     #[serde(default)]
     search_open_files_directly: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    search_exclusions: Vec<String>,
     #[serde(default = "default_enabled")]
     type_to_search: bool,
     #[serde(default)]
@@ -199,6 +201,7 @@ impl Default for Preferences {
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
+            search_exclusions: Vec::new(),
             type_to_search: true,
             arrow_navigation_scoped: false,
             filter_include_subfolders: true,
@@ -554,6 +557,18 @@ impl ThemeManager {
 
     pub fn set_search_open_files_directly(&self, enabled: bool) {
         self.preferences.borrow_mut().search_open_files_directly = enabled;
+        self.save_preferences();
+    }
+
+    pub fn search_exclusions(&self) -> Vec<String> {
+        self.preferences.borrow().search_exclusions.clone()
+    }
+
+    pub fn set_search_exclusions(&self, exclusions: Vec<String>) {
+        if self.preferences.borrow().search_exclusions == exclusions {
+            return;
+        }
+        self.preferences.borrow_mut().search_exclusions = exclusions;
         self.save_preferences();
     }
 

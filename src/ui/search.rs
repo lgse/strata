@@ -11,7 +11,9 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
-use crate::services::{SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees};
+use crate::services::{
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees_with_exclusions,
+};
 
 const MAX_RESULT_UPDATES_PER_FRAME: usize = 8;
 
@@ -22,7 +24,7 @@ pub struct SearchDialog {
 
 struct SearchState {
     // Keep the shared provider alive when this dialog is hosted without a browser window.
-    _themes: Rc<super::theme::ThemeManager>,
+    themes: Rc<super::theme::ThemeManager>,
     layer: gtk::Box,
     field: gtk::Entry,
     indexing_spinner: gtk::Spinner,
@@ -145,7 +147,7 @@ impl SearchDialog {
         super::modal::layout::install(&layer, &panel);
 
         let state = Rc::new(SearchState {
-            _themes: themes,
+            themes,
             layer,
             field,
             indexing_spinner,
@@ -306,7 +308,8 @@ impl SearchDialog {
             self.state.layer.grab_focus();
             return;
         }
-        let (handle, receiver) = index_trees(roots, show_hidden);
+        let exclusions = self.state.themes.search_exclusions();
+        let (handle, receiver) = index_trees_with_exclusions(roots, show_hidden, exclusions);
         self.state.search.replace(Some(handle));
         let weak = Rc::downgrade(&self.state);
         let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {

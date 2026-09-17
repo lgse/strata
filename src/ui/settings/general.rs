@@ -128,6 +128,29 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     ] {
         append_preference_switch(&search, manager, switch);
     }
+    append_search_exclusions_option(&search, manager);
+}
+
+fn append_search_exclusions_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let manage = gtk::Button::with_label("Manage");
+    manage.set_valign(gtk::Align::Center);
+    manage.add_css_class("form-control");
+    manage.add_css_class("settings-choice");
+    manage.set_tooltip_text(Some("Manage folders and directories excluded from search"));
+    super::super::accessibility::set_label(&manage, "Global search exclusions");
+
+    let manager_for_click = manager.clone();
+    manage.connect_clicked(move |button| {
+        super::exclusions::show_search_exclusions_dialog(button, &manager_for_click);
+    });
+
+    let row = super::control_row(
+        "Global search exclusions",
+        "Folders and directories excluded from search.",
+        &manage,
+    );
+    super::search::tag(&row, "Global search exclusions");
+    content.append(&row);
 }
 
 fn append_preference_switch(
@@ -219,11 +242,9 @@ fn default_directory_text(path: Option<std::path::PathBuf>) -> String {
     }
 }
 
-fn abbreviate_home(path: &std::path::Path) -> String {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    if let Some(home) = home
-        && let Ok(rest) = path.strip_prefix(&home)
-    {
+pub(crate) fn abbreviate_home(path: &std::path::Path) -> String {
+    let home = glib::home_dir();
+    if let Ok(rest) = path.strip_prefix(&home) {
         format!("~/{}", rest.display())
     } else {
         path.display().to_string()

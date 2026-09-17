@@ -54,6 +54,12 @@ const TARGETS: &[Target] = &[
         aliases: "launch files quick preview",
     },
     Target {
+        id: "search-exclusions",
+        page: "general",
+        title: "Global search exclusions",
+        aliases: "search filter exclusions exclude folders directories ignore venv prune",
+    },
+    Target {
         id: "sidebar-places",
         page: "general",
         title: "Items shown in sidebar",
