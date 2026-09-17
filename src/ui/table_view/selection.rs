@@ -200,7 +200,7 @@ impl Selection {
                     attrs.insert(attr);
                 }
             }
-            label.set_attributes(Some(&attrs));
+            replace_highlight(&label, (from < to).then_some(&attrs));
             cell.highlight.replace(Some(next));
         }
     }
@@ -254,7 +254,7 @@ impl Selection {
 
     pub(super) fn install(self: &Rc<Self>, view: &gtk::ColumnView, scroll: &gtk::ScrolledWindow) {
         let outside_click = Rc::new(RefCell::new(
-            None::<(glib::WeakRef<gtk::Widget>, gtk::GestureClick)>,
+            None::<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
         ));
         let controller_for_map = outside_click.clone();
         let weak_state = Rc::downgrade(self);
@@ -265,37 +265,18 @@ impl Selection {
             else {
                 return;
             };
-            let click = gtk::GestureClick::new();
+            let click = gtk::EventControllerLegacy::new();
             click.set_name(Some("table-selection-dismiss"));
-            click.set_button(1);
             click.set_propagation_phase(gtk::PropagationPhase::Capture);
             let weak_state = weak_state.clone();
-            let weak_view = view.downgrade();
-            let weak_root = root.downgrade();
-            click.connect_pressed(move |_, _, x, y| {
-                let (Some(state), Some(view), Some(root)) = (
-                    weak_state.upgrade(),
-                    weak_view.upgrade(),
-                    weak_root.upgrade(),
-                ) else {
-                    return;
-                };
-                let inside_cell =
-                    root.pick(x, y, gtk::PickFlags::DEFAULT)
-                        .is_some_and(|mut widget| {
-                            loop {
-                                if widget.has_css_class("preview-document-table-cell")
-                                    && widget.is_ancestor(&view)
-                                {
-                                    return true;
-                                }
-                                let Some(parent) = widget.parent() else {
-                                    return false;
-                                };
-                                widget = parent;
-                            }
-                        });
-                if !inside_cell {
+            // Raw presses are not cancelled when a descendant claims a drag.
+            click.connect_event(move |_, event| {
+                if event.event_type() == gtk::gdk::EventType::ButtonPress
+                    && event
+                        .downcast_ref::<gtk::gdk::ButtonEvent>()
+                        .is_some_and(|event| event.button() == 1)
+                    && let Some(state) = weak_state.upgrade()
+                {
                     state.clear();
                     for cell in state.bound.borrow().iter() {
                         if let Some(label) = cell.label.upgrade() {
@@ -303,6 +284,7 @@ impl Selection {
                         }
                     }
                 }
+                glib::Propagation::Proceed
             });
             root.add_controller(click.clone());
             controller_for_map.replace(Some((root.downgrade(), click)));
@@ -467,6 +449,21 @@ impl Selection {
             self.highlight();
         }
     }
+}
+
+fn replace_highlight(label: &gtk::Label, attributes: Option<&gtk::pango::AttrList>) {
+    // GTK can retain removed attributes in its cached Pango layout. Rebuild
+    // from the original markup so shrinking/clearing cannot leave stale colors.
+    let markup = label.uses_markup();
+    let source = label.label();
+    label.set_attributes(None);
+    label.set_text("");
+    if markup {
+        label.set_markup(&source);
+    } else {
+        label.set_text(&source);
+    }
+    label.set_attributes(attributes);
 }
 
 fn byte_offset(text: &str, characters: usize) -> usize {
