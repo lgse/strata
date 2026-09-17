@@ -2,8 +2,9 @@
 
 use std::{
     cell::{Cell, RefCell},
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
+    time::Duration,
 };
 
 use gtk::{gdk, glib, pango, prelude::*};
@@ -17,6 +18,8 @@ const PANEL_HEIGHT: i32 = 240;
 const MIN_PANEL_HEIGHT: i32 = 96;
 const SCROLLBACK_LINES: i64 = 10_000;
 const BRIGHT_MIX: f64 = 0.35;
+/// How often a deferred directory change re-checks whether the shell is free.
+const SYNC_RETRY: Duration = Duration::from_millis(400);
 
 type DirectorySource = Rc<dyn Fn() -> Option<PathBuf>>;
 
@@ -34,6 +37,13 @@ struct PanelState {
     directory: DirectorySource,
     child: Cell<Option<glib::Pid>>,
     sized: Cell<bool>,
+    /// The newest directory the browser asked for but the shell was not free
+    /// to take. Only the newest matters; the ones it passed through do not.
+    pending: RefCell<Option<PathBuf>>,
+    applied: RefCell<Option<PathBuf>>,
+    /// The user has typed a line the shell has not run yet.
+    typed: Cell<bool>,
+    retrying: Cell<bool>,
 }
 
 impl TerminalPanel {
@@ -57,6 +67,10 @@ impl TerminalPanel {
             directory,
             child: Cell::new(None),
             sized: Cell::new(false),
+            pending: RefCell::new(None),
+            applied: RefCell::new(None),
+            typed: Cell::new(false),
+            retrying: Cell::new(false),
         });
         let panel = Self { state };
         panel.state.widget.append(&panel.header());
@@ -67,6 +81,10 @@ impl TerminalPanel {
             .state
             .terminal
             .connect_child_exited(move |_, _| closing.child_exited());
+        let typing = panel.clone();
+        panel.state.terminal.connect_commit(move |_, text, _| {
+            typing.state.typed.set(!line_was_ended(text));
+        });
         panel
     }
 
@@ -187,6 +205,7 @@ impl TerminalPanel {
         let directory = (self.state.directory)();
         // VTE takes the working directory as UTF-8; a path that is not
         // representable inherits Strata's instead of failing the spawn.
+        self.state.applied.replace(directory.clone());
         let directory = directory.and_then(|path| path.into_os_string().into_string().ok());
         let panel = self.clone();
         let failed_shell = shell.clone();
@@ -211,8 +230,103 @@ impl TerminalPanel {
 
     fn child_exited(&self) {
         self.state.child.set(None);
+        self.state.pending.take();
+        self.state.applied.take();
+        self.state.typed.set(false);
         self.state.widget.set_visible(false);
     }
+
+    /// Follows the browser. The browser stays the source of truth; nothing
+    /// here ever moves it.
+    pub(super) fn observe_browser(&self, browser: &Rc<crate::app::Browser>) {
+        let weak = Rc::downgrade(&self.state);
+        browser.observe(move |_| {
+            if let Some(state) = weak.upgrade() {
+                Self { state }.follow();
+            }
+        });
+    }
+
+    fn follow(&self) {
+        // No session yet: the next one spawns in the right place anyway.
+        // Locations without a local path simply pause synchronisation.
+        let Some(directory) = (self.state.directory)() else {
+            return;
+        };
+        if self.state.child.get().is_none()
+            || self.state.applied.borrow().as_deref() == Some(directory.as_path())
+        {
+            return;
+        }
+        self.state.pending.replace(Some(directory));
+        self.apply_pending();
+    }
+
+    fn apply_pending(&self) {
+        let Some(directory) = self.state.pending.borrow().clone() else {
+            return;
+        };
+        if !self.shell_is_waiting() {
+            self.retry_later();
+            return;
+        }
+        self.state.pending.take();
+        self.state.applied.replace(Some(directory.clone()));
+        self.state
+            .terminal
+            .feed_child(change_directory(&directory).as_bytes());
+    }
+
+    /// True only when the shell itself owns the terminal and the user has not
+    /// left a half-typed line at the prompt. `tcgetpgrp` cannot see the second
+    /// case, so the commit signal tracks it separately.
+    fn shell_is_waiting(&self) -> bool {
+        if self.state.typed.get() {
+            return false;
+        }
+        let Some(child) = self.state.child.get() else {
+            return false;
+        };
+        let Some(pty) = self.state.terminal.pty() else {
+            return false;
+        };
+        rustix::termios::tcgetpgrp(pty.fd())
+            .is_ok_and(|group| group.as_raw_nonzero().get() == child.0)
+    }
+
+    fn retry_later(&self) {
+        if self.state.retrying.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(&self.state);
+        glib::timeout_add_local(SYNC_RETRY, move || {
+            let Some(state) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let panel = Self { state };
+            panel.apply_pending();
+            if panel.state.pending.borrow().is_some() {
+                return glib::ControlFlow::Continue;
+            }
+            panel.state.retrying.set(false);
+            glib::ControlFlow::Break
+        });
+    }
+}
+
+/// Only a submitted or discarded line leaves the prompt empty; anything else
+/// the user typed is still sitting there.
+fn line_was_ended(text: &str) -> bool {
+    text.contains(['\r', '\n', '\u{3}', '\u{4}', '\u{15}'])
+}
+
+fn change_directory(path: &Path) -> String {
+    format!("cd -- {}\n", shell_quote(path))
+}
+
+fn shell_quote(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    format!("'{}'", text.replace('\'', "'\\''"))
 }
 
 fn terminate(pid: glib::Pid) {

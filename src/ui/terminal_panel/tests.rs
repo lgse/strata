@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-use super::{SourcePalette, ThemeTokens, ansi_palette};
+use std::path::Path;
+
+use super::{SourcePalette, ThemeTokens, ansi_palette, change_directory, line_was_ended};
 
 fn tokens() -> ThemeTokens {
     ThemeTokens {
@@ -46,5 +48,35 @@ fn theme_colors_fill_sixteen_distinguishable_ansi_slots() {
 
     for slot in 1..7 {
         assert_ne!(colors[slot], colors[slot + 8], "bright slot {slot} matches");
+    }
+}
+
+#[test]
+fn directory_changes_survive_quotes_and_spaces_in_names() {
+    assert_eq!(
+        change_directory(Path::new("/tmp/two words")),
+        "cd -- '/tmp/two words'\n"
+    );
+    assert_eq!(
+        change_directory(Path::new("/tmp/it's here")),
+        "cd -- '/tmp/it'\\''s here'\n"
+    );
+    assert_eq!(
+        change_directory(Path::new("/tmp/; rm -rf ~")),
+        "cd -- '/tmp/; rm -rf ~'\n"
+    );
+    assert_eq!(
+        change_directory(Path::new("/tmp/$(whoami)")),
+        "cd -- '/tmp/$(whoami)'\n"
+    );
+}
+
+#[test]
+fn only_submitted_or_discarded_input_leaves_the_prompt_empty() {
+    for ended in ["\r", "\n", "ls\r", "\u{3}", "\u{15}", "\u{4}"] {
+        assert!(line_was_ended(ended), "{ended:?}");
+    }
+    for pending in ["l", "ls", "cd /tmp", " ", "\u{1b}[A"] {
+        assert!(!line_was_ended(pending), "{pending:?}");
     }
 }

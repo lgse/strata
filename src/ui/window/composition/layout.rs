@@ -101,8 +101,10 @@ pub(super) fn terminal_panel(
     browser: &BrowserView,
     preferences: &Rc<ThemeManager>,
 ) -> TerminalPanel {
-    let browser = browser.clone();
-    TerminalPanel::new(preferences, Rc::new(move || browser.terminal_directory()))
+    let source = browser.clone();
+    let panel = TerminalPanel::new(preferences, Rc::new(move || source.terminal_directory()));
+    panel.observe_browser(&browser.browser());
+    panel
 }
 
 pub(super) fn browser_layout(
