@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod action_menu;
 mod actions;
 mod keyboard;
 mod menus;

@@ -1,0 +1,320 @@
+// SPDX-License-Identifier: MIT
+
+//! Presentation tests for the Jobs surface. These stay on labels and summaries;
+//! the dashboard's layout is reviewed with screenshots instead.
+
+use std::{ffi::OsString, path::PathBuf, rc::Rc, time::Duration};
+
+use crate::model::{ActionDefinition, ExecutionMode};
+use crate::services::jobs::JobProgress;
+use crate::services::{
+    ActionAvailability, ActionEventSink, ActionHandle, ActionProgram, ActionRunEvent,
+    ActionRunRequest, ActionRunner, CancelHandle, InvocationSource, JobRequest, JobService,
+    JobSnapshot, JobStatus, ScriptProgress,
+};
+
+use super::*;
+
+/// A runner that finishes immediately, so the service can be driven without
+/// spawning processes.
+struct InstantRunner;
+
+impl ActionRunner for InstantRunner {
+    fn run(&self, _: &ActionRunRequest, sink: ActionEventSink) -> CancelHandle {
+        sink(ActionRunEvent::Exited {
+            code: Some(0),
+            signal: None,
+            log: String::new(),
+        });
+        Rc::new(|| {})
+    }
+}
+
+/// A runner that never finishes, so jobs stay active.
+struct PendingRunner;
+
+impl ActionRunner for PendingRunner {
+    fn run(&self, _: &ActionRunRequest, _: ActionEventSink) -> CancelHandle {
+        Rc::new(|| {})
+    }
+}
+
+fn handle(id: &str, name: &str, icon: Option<&str>, mode: ExecutionMode) -> Rc<ActionHandle> {
+    let mode = match mode {
+        ExecutionMode::PerItem => "per-item",
+        ExecutionMode::WholeSelection => "whole-selection",
+    };
+    let icon = icon
+        .map(|icon| format!("icon = \"{icon}\"\n"))
+        .unwrap_or_default();
+    let definition = ActionDefinition::parse(&format!(
+        "schema_version = 1\nid = \"{id}\"\nname = \"{name}\"\n{icon}\n[when]\n\n[run]\nruntime = \"command\"\nprogram = \"true\"\nmode = \"{mode}\"\n"
+    ))
+    .expect("test definition is valid");
+    Rc::new(ActionHandle {
+        definition,
+        directory: PathBuf::from("/tmp/actions").join(id),
+        availability: ActionAvailability::Available(ActionProgram::Command {
+            program: OsString::from("/bin/true"),
+            arguments: Vec::new(),
+        }),
+    })
+}
+
+fn snapshot(status: JobStatus, progress: JobProgress, mode: ExecutionMode) -> JobSnapshot {
+    JobSnapshot {
+        id: JobId(1),
+        action_name: "Convert images".to_owned(),
+        icon: Some("image".to_owned()),
+        mode,
+        parent: PathBuf::from("/home/user/Pictures"),
+        status,
+        progress,
+        log: String::new(),
+        log_truncated: false,
+        created: Vec::new(),
+        message: None,
+        elapsed: Duration::from_secs(65),
+    }
+}
+
+#[test]
+fn the_collapsed_label_separates_active_work_from_history() {
+    let service = JobService::new(Rc::new(PendingRunner));
+    assert_eq!(indicator_label(&service), "");
+    for index in 0..3 {
+        service
+            .enqueue(JobRequest {
+                action: handle(
+                    &format!("a{index}"),
+                    "Convert images",
+                    None,
+                    ExecutionMode::WholeSelection,
+                ),
+                inputs: vec![PathBuf::from("/tmp/a.png")],
+                parent: PathBuf::from("/tmp"),
+                source: InvocationSource::Selection,
+            })
+            .expect("job queues");
+    }
+    service.pump();
+    assert_eq!(
+        indicator_label(&service),
+        "2 jobs running · 1 queued",
+        "active work is described without a misleading combined percentage"
+    );
+
+    let finished = JobService::new(Rc::new(InstantRunner));
+    finished
+        .enqueue(JobRequest {
+            action: handle("a1", "One", None, ExecutionMode::WholeSelection),
+            inputs: vec![PathBuf::from("/tmp/a.png")],
+            parent: PathBuf::from("/tmp"),
+            source: InvocationSource::Selection,
+        })
+        .expect("job queues");
+    for _ in 0..32 {
+        finished.pump();
+    }
+    assert_eq!(indicator_label(&finished), "1 job finished");
+}
+
+#[test]
+fn the_collapsed_label_reports_failures_without_calling_them_running() {
+    struct FailingRunner;
+    impl ActionRunner for FailingRunner {
+        fn run(&self, _: &ActionRunRequest, sink: ActionEventSink) -> CancelHandle {
+            sink(ActionRunEvent::Exited {
+                code: Some(1),
+                signal: None,
+                log: String::new(),
+            });
+            Rc::new(|| {})
+        }
+    }
+    let service = JobService::new(Rc::new(FailingRunner));
+    service
+        .enqueue(JobRequest {
+            action: handle("a1", "One", None, ExecutionMode::WholeSelection),
+            inputs: vec![PathBuf::from("/tmp/a.png")],
+            parent: PathBuf::from("/tmp"),
+            source: InvocationSource::Selection,
+        })
+        .expect("job queues");
+    for _ in 0..32 {
+        service.pump();
+    }
+    assert_eq!(indicator_label(&service), "1 job finished · failures");
+}
+
+#[test]
+fn status_labels_describe_partial_results_and_item_progress() {
+    let per_item = JobProgress {
+        completed_items: 42,
+        succeeded_items: 42,
+        total_items: 100,
+        ..JobProgress::default()
+    };
+    assert_eq!(
+        status_label(&snapshot(
+            JobStatus::Running,
+            per_item.clone(),
+            ExecutionMode::PerItem
+        )),
+        "42 / 100"
+    );
+
+    let partial = JobProgress {
+        completed_items: 20,
+        succeeded_items: 18,
+        failed_items: 2,
+        total_items: 20,
+        ..JobProgress::default()
+    };
+    assert_eq!(
+        status_label(&snapshot(
+            JobStatus::Failed,
+            partial,
+            ExecutionMode::PerItem
+        )),
+        "2 items failed"
+    );
+    assert_eq!(
+        status_label(&snapshot(
+            JobStatus::Succeeded,
+            per_item.clone(),
+            ExecutionMode::PerItem
+        )),
+        "Completed"
+    );
+    assert_eq!(
+        status_label(&snapshot(
+            JobStatus::Cancelled,
+            per_item,
+            ExecutionMode::PerItem
+        )),
+        "Cancelled"
+    );
+    assert_eq!(
+        status_label(&snapshot(
+            JobStatus::Running,
+            JobProgress::default(),
+            ExecutionMode::WholeSelection
+        )),
+        "Running",
+        "an unmodified command shows no fabricated percentage"
+    );
+    assert_eq!(
+        status_label(&snapshot(
+            JobStatus::Queued,
+            JobProgress::default(),
+            ExecutionMode::WholeSelection
+        )),
+        "Queued"
+    );
+}
+
+#[test]
+fn meta_lines_show_progress_elapsed_time_and_failures() {
+    let mut item = snapshot(
+        JobStatus::Running,
+        JobProgress {
+            completed_items: 1,
+            total_items: 4,
+            message: Some("Converting images".to_owned()),
+            ..JobProgress::default()
+        },
+        ExecutionMode::PerItem,
+    );
+    let label = meta_label(&item);
+    assert!(label.contains("Converting images"), "{label}");
+    assert!(label.contains("1m 05s elapsed"), "{label}");
+
+    item.status = JobStatus::Failed;
+    item.message = Some("Convert images exited with status 3".to_owned());
+    let label = meta_label(&item);
+    assert!(label.contains("exited with status 3"), "{label}");
+
+    item.status = JobStatus::Succeeded;
+    let label = meta_label(&item);
+    assert!(
+        !label.contains("exited with status 3"),
+        "a successful run does not carry a stale failure message: {label}"
+    );
+}
+
+#[test]
+fn elapsed_time_is_readable_at_every_scale() {
+    assert_eq!(format_elapsed(Duration::from_secs(0)), "0s");
+    assert_eq!(format_elapsed(Duration::from_secs(59)), "59s");
+    assert_eq!(format_elapsed(Duration::from_secs(65)), "1m 05s");
+    assert_eq!(format_elapsed(Duration::from_secs(3661)), "1h 01m");
+}
+
+#[test]
+fn progress_fractions_never_invent_completion() {
+    let waiting = snapshot(
+        JobStatus::Running,
+        JobProgress {
+            completed_items: 0,
+            total_items: 3,
+            ..JobProgress::default()
+        },
+        ExecutionMode::PerItem,
+    );
+    assert_eq!(waiting.progress.fraction(waiting.mode), Some(0.0));
+
+    let reported = snapshot(
+        JobStatus::Running,
+        JobProgress {
+            total_items: 1,
+            script: Some(ScriptProgress {
+                completed: 3,
+                total: Some(10),
+                message: None,
+            }),
+            ..JobProgress::default()
+        },
+        ExecutionMode::WholeSelection,
+    );
+    assert_eq!(reported.progress.fraction(reported.mode), Some(0.3));
+
+    let silent = snapshot(
+        JobStatus::Running,
+        JobProgress {
+            total_items: 1,
+            ..JobProgress::default()
+        },
+        ExecutionMode::WholeSelection,
+    );
+    assert_eq!(
+        silent.progress.fraction(silent.mode),
+        None,
+        "a command that reports nothing stays indeterminate"
+    );
+}
+
+#[test]
+fn job_icons_fall_back_to_a_bundled_asset() {
+    let mut job = snapshot(
+        JobStatus::Running,
+        JobProgress::default(),
+        ExecutionMode::WholeSelection,
+    );
+    assert_eq!(job_icon(&job), crate::assets::icons::PICTURES);
+    job.icon = Some("not-a-bundled-icon".to_owned());
+    assert_eq!(
+        job_icon(&job),
+        crate::ui::actions::DEFAULT_ACTION_ICON,
+        "an unknown icon name never breaks the row"
+    );
+    job.icon = None;
+    assert_eq!(job_icon(&job), crate::ui::actions::DEFAULT_ACTION_ICON);
+}
+
+#[test]
+fn the_service_is_shared_across_windows() {
+    let first = shared();
+    let second = shared();
+    assert!(Rc::ptr_eq(&first, &second), "one job service per process");
+}

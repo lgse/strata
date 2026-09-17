@@ -1844,7 +1844,7 @@ fn title_case_slug(slug: &str) -> String {
 }
 
 fn config_directory() -> PathBuf {
-    gtk::glib::user_config_dir().join("strata")
+    crate::storage::config_directory()
 }
 fn settings_path() -> PathBuf {
     config_directory().join("settings.toml")

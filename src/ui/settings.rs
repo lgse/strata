@@ -19,6 +19,7 @@ use crate::{
 };
 
 mod about;
+mod actions;
 mod bindings;
 mod general;
 mod keybindings;
@@ -701,10 +702,12 @@ pub fn build_layer(
     let built: Rc<RefCell<std::collections::HashSet<&'static str>>> = Rc::new(RefCell::new(
         ["general", "keybindings", "about"].into_iter().collect(),
     ));
+    // `actions` joins `theme` and `updates` as a lazily built page.
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Appearance", icons::PALETTE, "theme"),
+        ("Actions", icons::PLAY, "actions"),
         ("Keybindings", icons::KEYBOARD, "keybindings"),
         ("Updates", icons::DOWNLOADS, "updates"),
         ("About", icons::INFO, "about"),
@@ -744,6 +747,11 @@ pub fn build_layer(
                         for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
                         }
+                    }
+                    "actions" => {
+                        let page = actions::actions_page();
+                        search::apply(&page, &search_state);
+                        stack.add_named(&page, Some("actions"));
                     }
                     "updates" => {
                         let container = updates_container.clone();

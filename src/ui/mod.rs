@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod accessibility;
+mod actions;
 mod blur;
 mod browser;
 mod browser_modes;
@@ -14,6 +15,7 @@ mod focus_navigation;
 mod icons_cell;
 mod inline_search;
 mod input_ownership;
+mod jobs;
 mod loading_skeleton;
 mod marquee;
 mod media;

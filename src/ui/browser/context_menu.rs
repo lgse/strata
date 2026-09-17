@@ -16,8 +16,10 @@ use crate::ui::browser_modes::BrowserMode;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
+use std::path::PathBuf;
 use std::rc::Rc;
 
+mod actions;
 mod keyboard;
 
 const CONTEXT_MENU_EDGE_MARGIN: i32 = 16;
@@ -432,6 +434,13 @@ pub(in crate::ui) fn install_folder_context_menu(
         }
     });
 
+    // Custom actions for the folder this menu was opened on. The section is
+    // rebuilt on every open so it always describes the current catalog and the
+    // folder that is actually under the pointer.
+    let action_section =
+        actions::ActionMenuSection::new(actions::ActionMenuStyle::Folder, &popover);
+    content.append(action_section.widget());
+
     let popover_for_trigger = popover.clone();
     let browser_for_trigger = state.browser.clone();
     let scroll_for_trigger = scroll.clone();
@@ -464,6 +473,7 @@ pub(in crate::ui) fn install_folder_context_menu(
             && let Some(parent) = parent_for_trigger.upgrade()
         {
             focus_context_column(&state, depth);
+            action_section.rebuild_for_folder(&state, &location_for_trigger);
             show_context_popover(&popover_for_trigger, &scroll_for_trigger, &parent, x, y);
         }
     });
@@ -698,6 +708,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
     bind_column_context_owner(state, &popover, depth);
+
+    let action_section = actions::ActionMenuSection::new(actions::ActionMenuStyle::Item, &popover);
+    content.append(action_section.widget());
 
     let target = Rc::new(RefCell::new(None::<ContextTarget>));
     let open_with_selection = Rc::new(RefCell::new(None::<OpenWithSelection>));
@@ -1138,6 +1151,16 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         focus_context_entry(&state, depth, position, &entry);
         target.replace(Some((position, entry.clone())));
         let entries = context_entries(&state, &target);
+        // The section captures this selection's paths, so an action can only run
+        // on the items the menu was opened for.
+        action_section.rebuild_for_selection(
+            &state,
+            &entries,
+            state
+                .browser
+                .location_at(depth)
+                .and_then(|location| location.native_path().map(PathBuf::from)),
+        );
         run.set_visible(
             !in_trash && entries.len() == 1 && super::desktop::entry_is_regular_executable(&entry),
         );

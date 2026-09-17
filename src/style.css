@@ -5538,3 +5538,237 @@ popover.settings-search-popover.background {
   padding: 8px;
   box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
 }
+
+/* Custom actions: context-menu section, Settings manager, and the Jobs surface.
+   Every state uses semantic theme tokens so bundled, custom, and Omarchy themes
+   all recolor these consistently. */
+
+.context-menu-actions {
+  min-width: 0;
+}
+
+.jobs-indicator {
+  margin: 0;
+}
+
+.jobs-indicator > button,
+.jobs-indicator > button:hover,
+.jobs-indicator > button:active,
+.jobs-indicator > button:checked {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.jobs-indicator-label {
+  color: @theme_accent;
+  font-weight: bold;
+}
+
+.jobs-indicator:hover .jobs-indicator-label {
+  color: @theme_text;
+}
+
+.jobs-popover .jobs-list {
+  min-width: 0;
+}
+
+.job-row {
+  background: alpha(@theme_bg, 0.55);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+}
+
+.job-row.job-active {
+  border-color: alpha(@theme_accent, 0.45);
+}
+
+.job-row.job-succeeded {
+  border-color: alpha(@theme_accent, 0.28);
+}
+
+.job-row.job-failed {
+  border-color: alpha(@theme_danger, 0.55);
+}
+
+.job-row.job-cancelled {
+  border-color: alpha(@theme_dim_text, 0.4);
+}
+
+.job-icon {
+  opacity: 0.85;
+}
+
+.job-name {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.job-status {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.job-row.job-failed .job-status {
+  color: @theme_danger;
+}
+
+.job-row.job-succeeded .job-status {
+  color: @theme_accent;
+}
+
+.job-meta {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.job-progress {
+  min-height: 4px;
+}
+
+.job-progress progress {
+  background: @theme_accent;
+}
+
+.job-detail {
+  margin-top: 4px;
+}
+
+.job-log {
+  background: alpha(@theme_bg, 0.7);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 4px;
+  color: @theme_text;
+  font-family: monospace;
+  font-size: 0.85em;
+  padding: 6px;
+}
+
+.job-action {
+  background: transparent;
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_text;
+  font-size: 0.85em;
+  min-height: 22px;
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.job-action:hover {
+  background: @theme_highlight;
+  border-color: @theme_accent;
+}
+
+.job-action:active {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.job-action:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-actions-page .settings-action-row {
+  min-height: 64px;
+}
+
+.settings-action-button {
+  background: alpha(@theme_highlight, 0.35);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 26px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.settings-action-button:hover {
+  background: @theme_highlight;
+  border-color: @theme_accent;
+}
+
+.settings-action-button:active {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.settings-action-button:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-action-button.danger {
+  color: @theme_danger;
+  border-color: alpha(@theme_danger, 0.4);
+}
+
+.settings-action-button.danger:hover {
+  background: alpha(@theme_danger, 0.14);
+  border-color: @theme_danger;
+}
+
+.settings-action-problem {
+  color: @theme_danger;
+}
+
+.settings-action-editor {
+  min-width: 460px;
+}
+
+.settings-action-field {
+  min-width: 0;
+}
+
+.settings-action-segmented {
+  min-width: 0;
+}
+
+.settings-action-choice {
+  background: alpha(@theme_bg, 0.55);
+  border: 1px solid alpha(@theme_border, 0.3);
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 26px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.settings-action-choice:hover {
+  background: @theme_highlight;
+}
+
+.settings-action-choice:checked {
+  background: alpha(@theme_accent, 0.2);
+  border-color: @theme_accent;
+  color: @theme_text;
+}
+
+.settings-action-choice:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-action-icon-choice {
+  min-height: 26px;
+}
+
+.settings-action-script {
+  background: alpha(@theme_bg, 0.7);
+  border: 1px solid alpha(@theme_border, 0.3);
+  border-radius: 4px;
+}
+
+.settings-action-script textview {
+  background: transparent;
+  color: @theme_text;
+}
+
+.settings-action-script textview text {
+  background: transparent;
+  color: @theme_text;
+}
