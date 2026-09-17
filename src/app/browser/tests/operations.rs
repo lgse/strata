@@ -12,6 +12,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         kind: EntryKind::File,
         size: MetadataValue::Known(10),
         modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
@@ -237,6 +238,33 @@ fn new_files_and_folders_request_unique_naming_and_report_the_created_location()
 }
 
 #[test]
+fn every_recent_spelling_is_rejected_by_creation_and_transfer_commands() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    for uri in ["recent:///", "recent://", "recent:///entry-id"] {
+        let recent = Location::uri(uri);
+
+        browser.create_new_folder(recent.clone());
+        browser.create_new_file(recent.clone());
+        browser.transfer(
+            recent,
+            vec![PasteItem {
+                source: Location::local("/fixture/source.txt"),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            false,
+            true,
+        );
+
+        assert!(events.borrow().is_empty(), "{uri} produced an operation");
+        assert_eq!(browser.current_operation.get(), None, "{uri}");
+    }
+}
+
+#[test]
 fn large_restore_progress_defers_model_removal() {
     let browser = Browser::new(Rc::new(TrashFileSource));
     browser.navigate(Location::uri("trash:///"));
@@ -446,6 +474,7 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
@@ -642,6 +671,7 @@ fn create_and_rename_refresh_remote_columns_but_not_local_monitors() {
                         kind: EntryKind::File,
                         size: MetadataValue::Known(1),
                         modified_unix_seconds: MetadataValue::Unknown,
+                        recent_unix_seconds: MetadataValue::Unknown,
                         is_hidden: false,
                         mode: MetadataValue::Unknown,
                         image_dimensions: MetadataValue::Unknown,

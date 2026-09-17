@@ -75,6 +75,34 @@ impl SearchItem {
         )
     }
 
+    pub(super) fn for_history(path: PathBuf) -> Self {
+        let name = path
+            .file_name()
+            .unwrap_or(path.as_os_str())
+            .to_string_lossy()
+            .into_owned();
+        let search_path = fold_for_search(&path.to_string_lossy());
+        let search_name_start = search_path
+            .rfind(std::path::MAIN_SEPARATOR)
+            .map_or(0, |position| {
+                position + std::path::MAIN_SEPARATOR.len_utf8()
+            });
+        Self {
+            path,
+            name,
+            is_directory: true,
+            kind: EntryKind::Directory,
+            mode: MetadataValue::Unknown,
+            search_path,
+            search_name_start,
+            depth: 0,
+        }
+    }
+
+    pub(super) fn fuzzy_score(&self, normalized_query: &str) -> Option<i64> {
+        fuzzy_score_normalized(self, normalized_query)
+    }
+
     #[cfg(test)]
     fn new(path: PathBuf, root: &Path, is_directory: bool) -> Self {
         let kind = if is_directory {

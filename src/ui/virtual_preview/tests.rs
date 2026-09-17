@@ -7,10 +7,10 @@ use sourceview5::prelude::*;
 
 use super::{
     DocumentSelection, PreviewUnit, SelectionPoint, SourceUnit, VirtualPreviewState,
-    bind_document_row, bind_document_table_row, bind_source_row, bounded_text_prefix,
-    code_block_copy_text, document_tag_table, document_text_view, drag_threshold_crossed,
-    highlighted_code_language, local_selection, matching_link, plain_text_view, rendered_document,
-    selection_text, source_document, source_line_numbers, source_units, styled_markup,
+    bind_document_row, bind_source_row, bounded_text_prefix, code_block_copy_text,
+    document_tag_table, document_text_view, drag_threshold_crossed, highlighted_code_language,
+    local_selection, matching_link, plain_text_view, rendered_document, selection_text,
+    set_table_cell, source_document, source_line_numbers, source_units, styled_markup,
     use_virtual_source, vertical_distance,
 };
 use crate::{
@@ -20,6 +20,32 @@ use crate::{
     },
     test_support::gtk_test,
 };
+
+#[test]
+fn standalone_table_keeps_copy_model_alive_without_document_state() {
+    gtk_test(
+        "ui::virtual_preview::tests::standalone_table_keeps_copy_model_alive_without_document_state",
+        || {
+            let cancellation = crate::sandbox::Cancellation::default();
+            let kind =
+                crate::services::document_kind("text/csv", std::ffi::OsStr::new("table.csv"), true)
+                    .expect("CSV kind");
+            let parsed = crate::services::parse_document(kind, "value\n10\n2\n", &cancellation)
+                .expect("CSV");
+            let layout =
+                crate::services::layout_document(parsed.document, &cancellation).expect("layout");
+            let (widget, state) = rendered_document(layout, Vec::new(), false, None);
+            let table = Rc::downgrade(state.tables.borrow().get(&0).expect("standalone table"));
+            drop(state);
+            assert_eq!(
+                table.upgrade().expect("widget owns copy model").copy_text(),
+                "value\n2\n10\n"
+            );
+            drop(widget);
+            assert!(table.upgrade().is_none(), "closing table releases model");
+        },
+    );
+}
 
 #[test]
 fn source_units_bound_normal_rows_and_isolate_pathological_lines() {
@@ -94,6 +120,8 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
         source("last line", "last line"),
     ]);
     let mut state = VirtualPreviewState {
+        tables: Default::default(),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         units,
         wrapped: std::cell::Cell::new(false),
         selection: std::cell::Cell::new(Some(DocumentSelection {
@@ -136,6 +164,28 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
         }));
         assert_eq!(selection_text(&state).as_deref(), Some(content.as_str()));
     }
+    let cancellation = crate::sandbox::Cancellation::default();
+    let parsed = crate::services::parse_document(
+        crate::services::document_kind("text/markdown", std::ffi::OsStr::new("math.md"), true)
+            .expect("Markdown"),
+        "Before $E=mc^2$ after",
+        &cancellation,
+    )
+    .expect("equation paragraph");
+    let layout =
+        crate::services::layout_document(parsed.document, &cancellation).expect("equation layout");
+    state.units = Rc::new(
+        layout
+            .units
+            .into_iter()
+            .map(PreviewUnit::Document)
+            .collect(),
+    );
+    state.selection.set(Some(DocumentSelection {
+        anchor: SelectionPoint { unit: 0, offset: 7 },
+        focus: SelectionPoint { unit: 0, offset: 8 },
+    }));
+    assert_eq!(selection_text(&state).as_deref(), Some("$E=mc^2$"));
 }
 
 #[test]
@@ -148,6 +198,8 @@ fn selection_does_not_invent_newlines_between_line_chunks() {
             anchor: SelectionPoint { unit: 0, offset: 2 },
             focus: SelectionPoint { unit: 1, offset: 1 },
         })),
+        tables: Default::default(),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         bound: std::cell::RefCell::default(),
         dragging: std::cell::Cell::new(false),
         press: std::cell::Cell::new((0.0, 0.0)),
@@ -186,6 +238,8 @@ fn table_selection_is_atomic_and_copies_tsv() {
             anchor: SelectionPoint { unit: 0, offset: 0 },
             focus: SelectionPoint { unit: 0, offset: 1 },
         })),
+        tables: Default::default(),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         bound: std::cell::RefCell::default(),
         dragging: std::cell::Cell::new(false),
         press: std::cell::Cell::new((0.0, 0.0)),
@@ -493,33 +547,22 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 python_buffer.iter_has_context_class(&python_buffer.start_iter(), "no-spell-check")
             );
 
-            let table_row = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            let table = bind_document_table_row(
-                &table_row,
-                &[vec![DocumentTableCellLayout {
+            let label = gtk::Label::new(None);
+            set_table_cell(
+                &label,
+                &DocumentTableCellLayout {
                     header: true,
-                    text: "Header".to_owned(),
+                    text: "Header".into(),
                     spans: Vec::new(),
-                }]],
+                },
             );
-            let label = table
-                .first_child()
-                .and_downcast::<gtk::Label>()
-                .expect("table should contain a label");
-            let rebound_table = bind_document_table_row(
-                &table_row,
-                &[vec![DocumentTableCellLayout {
+            set_table_cell(
+                &label,
+                &DocumentTableCellLayout {
                     header: false,
-                    text: "Cell".to_owned(),
+                    text: "Cell".into(),
                     spans: Vec::new(),
-                }]],
-            );
-            assert_eq!(table, rebound_table);
-            assert_eq!(
-                label,
-                rebound_table
-                    .first_child()
-                    .expect("rebound table should retain its label")
+                },
             );
             assert_eq!(label.text(), "Cell");
             assert!(!label.has_css_class("header"));
@@ -532,9 +575,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 other_row,
                 python_buffer,
                 python_view,
-                table,
                 label,
-                table_row,
             ));
 
             let root = rendered_document(
@@ -543,6 +584,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 },
                 Vec::new(),
                 false,
+                None,
             )
             .0;
             let weak = root.downgrade();
@@ -579,7 +621,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
             let (source, _) = source_units(&content);
             let units = source.into_iter().map(PreviewUnit::Source).collect();
             let (source_root, source_state) =
-                super::virtual_preview(units, Vec::new(), true, false);
+                super::virtual_preview(units, Vec::new(), true, false, None);
             stack.add_named(&source_root, Some("source"));
             stack.set_visible_child_name("source");
             while gtk::glib::MainContext::default().pending() {
@@ -616,6 +658,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 vec!["Unsupported content omitted".to_owned()],
                 false,
                 false,
+                None,
             );
             stack.add_named(&rendered_root, Some("rendered-again"));
             stack.set_visible_child_name("rendered-again");
@@ -677,6 +720,7 @@ fn wrap_toggle_reflows_bound_rendered_and_source_rows() {
                 },
                 Vec::new(),
                 false,
+                None,
             );
             stack.add_named(&rendered, Some("rendered"));
             stack.set_visible_child_name("rendered");

@@ -3,6 +3,65 @@
 use super::*;
 
 #[test]
+fn replacing_preview_targets_does_not_reopen_the_drawer() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::replacing_preview_targets_does_not_reopen_the_drawer",
+        || {
+            gtk::Settings::default()
+                .expect("GTK settings")
+                .set_gtk_enable_animations(true);
+            let preferences = ThemeManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            preferences.set_reduce_motion(false);
+            let fixture = Fixture::new(false);
+            fixture.preview.show(entry("first.png"), None);
+            wait_until(|| !fixture.preview.state.animating.get());
+            let generation = fixture.preview.state.animation_generation.get();
+            for name in ["second.png", "first.png"] {
+                let before = fixture.requests.borrow().len();
+                fixture.preview.show_after_focus_change(entry(name), None);
+                fixture.preview.state.sync_split(&fixture.split);
+                assert!(
+                    fixture.preview.is_open(),
+                    "pending replacement must not hide the drawer"
+                );
+                wait_until(|| fixture.requests.borrow().len() > before);
+                assert_eq!(
+                    fixture.preview.state.animation_generation.get(),
+                    generation,
+                    "changing files must not restart the opening animation"
+                );
+            }
+            let before = fixture.requests.borrow().len();
+            fixture
+                .preview
+                .show_after_focus_change(entry("second.png"), None);
+            fixture
+                .preview
+                .show_after_focus_change(entry("first.png"), None);
+            wait_until(|| fixture.requests.borrow().len() > before);
+            assert_eq!(
+                fixture
+                    .requests
+                    .borrow()
+                    .last()
+                    .expect("replacement")
+                    .entry
+                    .display_name,
+                "first.png"
+            );
+            fixture.preview.close();
+            fixture.preview.show(entry("second.png"), None);
+            assert!(
+                fixture.preview.state.animation_generation.get() > generation,
+                "explicit reopening still starts the animation"
+            );
+            fixture.close();
+        },
+    );
+}
+
+#[test]
 fn closing_preserves_column_positions_without_locking_horizontal_scrolling() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::closing_preserves_column_positions_without_locking_horizontal_scrolling",

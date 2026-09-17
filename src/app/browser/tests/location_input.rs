@@ -110,6 +110,15 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
         browser.active_location(),
         Some(Location::uri("network:///"))
     );
+
+    assert_eq!(browser.navigate_input("recent:///"), Ok(()));
+    assert_eq!(browser.active_location(), Some(Location::uri("recent:///")));
+    assert_eq!(browser.navigate_input("recent://"), Ok(()));
+    assert!(
+        browser
+            .active_location()
+            .is_some_and(|location| location.is_recent_root())
+    );
 }
 
 #[test]

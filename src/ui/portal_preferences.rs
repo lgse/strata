@@ -6,12 +6,10 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{assets::icons, portal_setup};
 
+use super::desktop_integration::SETUP_RUNNING;
+
 #[cfg(test)]
 mod tests;
-
-thread_local! {
-    static SETUP_RUNNING: Cell<bool> = const { Cell::new(false) };
-}
 
 pub(super) fn settings_row() -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -49,17 +47,17 @@ pub(super) fn settings_row() -> gtk::Box {
     row
 }
 
-struct SettingsIntegrationStatus {
-    indicators: [IntegrationIndicator; 4],
-    message: glib::WeakRef<gtk::Label>,
-    complete: glib::WeakRef<gtk::Button>,
-    restore: glib::WeakRef<gtk::Button>,
-    busy: Cell<bool>,
-    known: Cell<bool>,
+pub(crate) struct SettingsIntegrationStatus {
+    pub(crate) indicators: [IntegrationIndicator; 4],
+    pub(crate) message: glib::WeakRef<gtk::Label>,
+    pub(crate) complete: glib::WeakRef<gtk::Button>,
+    pub(crate) restore: glib::WeakRef<gtk::Button>,
+    pub(crate) busy: Cell<bool>,
+    pub(crate) known: Cell<bool>,
 }
 
 impl SettingsIntegrationStatus {
-    fn new(parent: &gtk::Box) -> Rc<Self> {
+    pub(crate) fn new(parent: &gtk::Box) -> Rc<Self> {
         let list = gtk::Box::new(gtk::Orientation::Vertical, 4);
         list.set_margin_top(8);
         list.set_margin_bottom(8);
@@ -114,7 +112,7 @@ impl SettingsIntegrationStatus {
         }
     }
 
-    fn message(&self, text: &str, error: bool) {
+    pub(crate) fn message(&self, text: &str, error: bool) {
         if let Some(message) = self.message.upgrade() {
             message.set_text(text);
             message.set_visible(!text.is_empty());
@@ -150,7 +148,7 @@ impl SettingsIntegrationStatus {
         });
     }
 
-    fn show_result(
+    pub(crate) fn show_result(
         &self,
         result: Result<(portal_setup::PortalStatus, portal_setup::FileManagerStatus), String>,
     ) {
@@ -221,7 +219,7 @@ impl SettingsIntegrationStatus {
         }
     }
 
-    fn apply(self: &Rc<Self>, enable: bool) {
+    pub(crate) fn apply(self: &Rc<Self>, enable: bool) {
         if self.busy.get() || !self.known.get() {
             return;
         }
@@ -266,10 +264,10 @@ impl SettingsIntegrationStatus {
     }
 }
 
-struct IntegrationIndicator {
-    row: glib::WeakRef<gtk::Box>,
+pub(crate) struct IntegrationIndicator {
+    pub(crate) row: glib::WeakRef<gtk::Box>,
     icon: glib::WeakRef<gtk::Image>,
-    name: &'static str,
+    pub(crate) name: &'static str,
 }
 
 impl IntegrationIndicator {

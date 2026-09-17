@@ -30,6 +30,7 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
         } else {
             EntryKind::File
         },
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,

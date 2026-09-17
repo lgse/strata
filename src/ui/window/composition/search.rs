@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gtk::{gio, prelude::*};
 
 use crate::{
-    app::Browser,
+    app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
-    services::SearchItem,
+    services::{NavigationHistory, SearchItem},
     ui::{preview::PreviewDrawer, search::SearchDialog, theme::ThemeManager},
 };
 
@@ -22,6 +22,8 @@ pub(super) fn install(
     preferences: &Rc<ThemeManager>,
 ) {
     let controller = content.browser.browser();
+    let history = NavigationHistory::shared();
+    install_history_recorder(&controller, &history);
     let preview = content.preview.clone();
     let search_preferences = preferences.clone();
     let activate =
@@ -34,7 +36,7 @@ pub(super) fn install(
     });
     let dialog = SearchDialog::new(activate, dismiss);
     content.overlay.add_overlay(&dialog.widget());
-    let toggle = toggle_handler(dialog, content, preferences);
+    let toggle = toggle_handler(dialog.clone(), content, preferences);
     let clicked_search = toggle.clone();
     content
         .header
@@ -43,6 +45,51 @@ pub(super) fn install(
     let action = gio::SimpleAction::new("search", None);
     action.connect_activate(move |_, _| toggle());
     window.add_action(&action);
+
+    let jump = folder_jump_handler(dialog, content, history);
+    let action = gio::SimpleAction::new("jump-folder", None);
+    action.connect_activate(move |_, _| jump());
+    window.add_action(&action);
+}
+
+#[derive(Default)]
+struct VisitRecorder {
+    // Failed loads stay pending so a later successful retry records the visit.
+    pending: Vec<Option<Location>>,
+}
+
+impl VisitRecorder {
+    fn handle(&mut self, event: &BrowserEvent) -> Option<std::path::PathBuf> {
+        match event {
+            BrowserEvent::Reset => self.pending.clear(),
+            BrowserEvent::ColumnsTruncated { len } => self.pending.truncate(*len),
+            BrowserEvent::ColumnAdded { depth, location } => {
+                if self.pending.len() <= *depth {
+                    self.pending.resize(depth + 1, None);
+                }
+                self.pending[*depth] = Some(location.clone());
+            }
+            BrowserEvent::LoadFinished { depth, .. } => {
+                return self
+                    .pending
+                    .get_mut(*depth)
+                    .and_then(Option::take)
+                    .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
+            }
+            _ => {}
+        }
+        None
+    }
+}
+
+fn install_history_recorder(controller: &Rc<Browser>, history: &Rc<NavigationHistory>) {
+    let recorder = Rc::new(RefCell::new(VisitRecorder::default()));
+    let history = history.clone();
+    controller.observe(move |event| {
+        if let Some(path) = recorder.borrow_mut().handle(event) {
+            history.record(&path);
+        }
+    });
 }
 
 fn toggle_handler(
@@ -62,6 +109,24 @@ fn toggle_handler(
         button.add_css_class("active");
         root.set_blurred(true);
         dialog.show(roots, preferences.sort_preferences().show_hidden);
+    })
+}
+
+fn folder_jump_handler(
+    dialog: SearchDialog,
+    content: &WindowContent,
+    history: Rc<NavigationHistory>,
+) -> Rc<dyn Fn()> {
+    let button = content.header.search.clone();
+    let root = content.blurred_root.clone();
+    Rc::new(move || {
+        if dialog.is_visible() {
+            dialog.hide();
+            return;
+        }
+        button.remove_css_class("active");
+        root.set_blurred(true);
+        dialog.show_history(history.clone());
     })
 }
 
@@ -92,6 +157,7 @@ fn activate_result(
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
                 image_dimensions: MetadataValue::Unknown,

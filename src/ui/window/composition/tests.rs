@@ -136,6 +136,17 @@ fn search_button_and_action_share_one_dialog_and_dismissal_state() {
             button.emit_clicked();
             wait_until_hidden(&layer);
             assert!(!button.has_css_class("active"));
+
+            let jump = fixture
+                .window
+                .lookup_action("jump-folder")
+                .expect("folder jump action");
+            jump.activate(None);
+            assert!(layer.is_visible());
+            assert!(!button.has_css_class("active"));
+            jump.activate(None);
+            wait_until_hidden(&layer);
+
             assert_eq!(fixture.layer("search-backdrop"), Some(layer));
             fixture.close();
         },

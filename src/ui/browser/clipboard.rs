@@ -344,7 +344,7 @@ pub(super) fn install_directory_drop_target(
     widget: &impl IsA<gtk::Widget>,
     destination: Location,
 ) {
-    if is_trash_location(&destination) {
+    if is_trash_location(&destination) || destination.is_recent_location() {
         return;
     }
     widget.add_css_class("file-drop-zone");
@@ -451,6 +451,9 @@ fn classify_file_drop(
     let Some(destination) = destination else {
         return DropCommit::Forbidden;
     };
+    if destination.is_recent_location() {
+        return DropCommit::Forbidden;
+    }
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
     let source_actions = drop
         .as_ref()
@@ -873,7 +876,7 @@ impl ViewState {
     }
 
     pub(super) fn paste_into(self: &Rc<Self>, destination: Location) {
-        if is_trash_location(&destination) {
+        if is_trash_location(&destination) || destination.is_recent_location() {
             return;
         }
         let Some(display) = gtk::gdk::Display::default() else {
