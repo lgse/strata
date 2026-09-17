@@ -2,7 +2,9 @@
 
 use super::super::*;
 use crate::{
-    model::{SortDirection, SortKey, ViewPreferences},
+    model::{
+        EntryKind, FileEntry, Location, MetadataValue, SortDirection, SortKey, ViewPreferences,
+    },
     test_support::gtk_test,
     ui::browser_modes::{BrowserDensity, BrowserMode, ClickCount},
 };
@@ -61,6 +63,7 @@ fn non_default_preferences() -> Preferences {
         auto_refresh_interval: 600,
         cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
         open_folder_after_drop: true,
+        date_format: "iso".into(),
         release_channel: "nightly".into(),
         default_directory: Some("/fixture/default".into()),
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
@@ -124,12 +127,14 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     saved.remove("filter_include_subfolders");
     saved.remove("open_folder_after_drop");
+    saved.remove("date_format");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
         Preferences {
             filter_include_subfolders: true,
             open_folder_after_drop: false,
+            date_format: "relative".into(),
             ..non_default_preferences()
         }
     );
@@ -465,6 +470,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.cross_volume_drop_strategy(),
                 CrossVolumeDropStrategy::Move
             );
+            assert_eq!(manager.date_format(), crate::util::DateFormat::Iso8601);
             assert_eq!(
                 manager.default_directory(),
                 Some(std::path::PathBuf::from("/fixture/default"))
@@ -585,6 +591,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_text_wrap(false),
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
+                |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
@@ -628,6 +635,65 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 changed_keys, all_keys,
                 "every stored field needs setter and notification coverage"
             );
+        },
+    );
+}
+
+#[test]
+fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
+    gtk_test(
+        "ui::theme::tests::preferences::saved_date_format_renders_before_settings_and_updates_bound_labels",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::shared();
+            let seconds = glib::DateTime::now_local().expect("local time").to_unix() - 120;
+            let entry = FileEntry {
+                location: Location::local("/fixture/recent.txt"),
+                native_name: "recent.txt".into(),
+                display_name: "recent.txt".into(),
+                thumbnail_path: None,
+                kind: EntryKind::File,
+                size: MetadataValue::Known(4),
+                modified_unix_seconds: MetadataValue::Known(seconds),
+                mode: MetadataValue::Known(0o100644),
+                recent_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let absolute = |pattern: &str| {
+                glib::DateTime::from_unix_local(seconds)
+                    .expect("modified date")
+                    .format(pattern)
+                    .expect("format")
+                    .to_string()
+            };
+            let windows = [gtk::Window::new(), gtk::Window::new()];
+            let labels: Vec<gtk::Label> = windows
+                .iter()
+                .map(|window| {
+                    let label = gtk::Label::new(None);
+                    window.set_child(Some(&label));
+                    crate::util::set_modified_date(&label, Some(&entry), "—");
+                    label
+                })
+                .collect();
+            for label in &labels {
+                assert_eq!(label.label(), absolute("%Y-%m-%d %H:%M"));
+            }
+            manager.set_date_format(crate::util::DateFormat::Long);
+            for label in &labels {
+                assert_eq!(label.label(), absolute("%B %-d, %Y, %H:%M"));
+            }
+            manager.set_date_format(crate::util::DateFormat::Relative);
+            for label in &labels {
+                let text = label.label();
+                assert!(text == "just now" || text.ends_with(" ago"), "{text}");
+            }
+            for window in windows {
+                window.close();
+            }
         },
     );
 }

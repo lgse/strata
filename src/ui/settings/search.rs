@@ -126,6 +126,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance font typography pixels zoom scaling",
     },
     Target {
+        id: "date-format",
+        page: "theme",
+        title: "Modified date format",
+        aliases: "date time format relative iso 8601 long absolute modified timestamp clock appearance",
+    },
+    Target {
         id: "glow",
         page: "theme",
         title: "Element glow",
