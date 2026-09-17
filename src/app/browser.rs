@@ -2451,8 +2451,12 @@ impl Browser {
         }
         // Only a fill's own id releases its handle; terminals from superseded fills
         // cannot affect a sort or a newer request.
-        if let Some(fill) = self.fill_tokens.borrow_mut().remove(&request_id) {
+        let fill = self.fill_tokens.borrow_mut().remove(&request_id);
+        if let Some(fill) = fill {
             self.metadata_loads.borrow_mut().remove(&fill.depth);
+            if self.metadata_pending.borrow().contains_key(&fill.depth) {
+                self.schedule_metadata_fill();
+            }
         }
     }
 
@@ -2524,8 +2528,18 @@ impl Browser {
 
     fn flush_metadata_fills(self: &Rc<Self>) {
         self.metadata_idle.borrow_mut().take();
-        let pending: Vec<(usize, Vec<ViewportTarget>)> =
-            self.metadata_pending.borrow_mut().drain().collect();
+        // Newly bound rows must not cancel late details for cards that remain bound.
+        let active_depths: HashSet<usize> = self
+            .fill_tokens
+            .borrow()
+            .values()
+            .map(|fill| fill.depth)
+            .collect();
+        let pending: Vec<(usize, Vec<ViewportTarget>)> = self
+            .metadata_pending
+            .borrow_mut()
+            .extract_if(|depth, _| !active_depths.contains(depth))
+            .collect();
         for (depth, targets) in pending {
             let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
                 continue;
@@ -2543,10 +2557,6 @@ impl Browser {
                 .collect();
             let include_icon_details = targets.iter().any(|target| target.include_icon_details);
             // Stored before the provider runs: synchronous fills answer inside the call.
-            self.fill_tokens
-                .borrow_mut()
-                .retain(|_, fill| fill.depth != depth);
-            self.metadata_loads.borrow_mut().remove(&depth);
             self.fill_tokens.borrow_mut().insert(
                 fill_request,
                 ViewportFill {

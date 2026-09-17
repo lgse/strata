@@ -770,6 +770,12 @@ fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
                 pump_until(|| bound_row(&pane, 1).is_some());
                 let card = bound_row(&pane, 1).expect("bound card");
                 let details = crate::ui::icons_cell::details_label(&card).expect("details label");
+                fixture.browser.set_selection(0, &[1], Some(1));
+                fixture.views.handle(&BrowserEvent::FocusChanged {
+                    depth: 0,
+                    position: Some(1),
+                });
+                assert_eq!(fixture.views.selected_positions(), Some((0, vec![1])));
                 assert_eq!(details.label(), "10 B");
                 let changed = Rc::new(Cell::new(false));
                 let observed = changed.clone();
@@ -783,6 +789,8 @@ fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
                 });
                 assert!(details.is_visible());
                 assert_eq!(details.label(), "1920×1080");
+                assert_eq!(fixture.views.selected_positions(), Some((0, vec![1])));
+                assert_eq!(bound_row(&pane, 1).as_ref(), Some(&card));
                 assert!(!changed.get());
             }
         },

@@ -390,10 +390,20 @@ fn metadata_dispatch_coalesces_on_idle_and_reuses_covered_in_flight_requests() {
     );
     browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
     drain_idle();
+    assert_eq!(source.fill_calls.borrow().len(), 1);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone())
+    };
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    drain_idle();
     assert_eq!(
         source.fill_calls.borrow().len(),
         2,
-        "richer requests still reach the source"
+        "richer requests reach the source after the active fill finishes"
     );
     assert!(source.fill_calls.borrow()[1].include_icon_details);
     browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
@@ -413,6 +423,79 @@ fn metadata_dispatch_coalesces_on_idle_and_reuses_covered_in_flight_requests() {
         source.fill_calls.borrow().len(),
         3,
         "completed work releases its claim"
+    );
+}
+
+#[test]
+fn newly_visible_rows_do_not_discard_late_dimensions_for_the_focused_file() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, events, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["alpha", "beta", "gamma"],
+        vec![FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    browser.set_selection(0, &[0], Some(0));
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone())
+    };
+    let mut update = MetadataUpdate {
+        location: Location::local("/fixture/alpha"),
+        size: MetadataValue::Known(2048),
+        modified_unix_seconds: MetadataValue::Known(7),
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+    };
+    emit(DirectoryEvent::MetadataFilled {
+        request_id: id,
+        updates: vec![update.clone()],
+    });
+    for (position, name) in [(1, "beta"), (2, "gamma")] {
+        browser.request_metadata_fill(
+            0,
+            position,
+            Location::local(format!("/fixture/{name}")),
+            true,
+        );
+        pump_until(|| browser.metadata_idle.borrow().is_none());
+        assert_eq!(source.fill_calls.borrow().len(), 1);
+    }
+    events.borrow_mut().clear();
+    update.image_dimensions = MetadataValue::Known((1920, 1080));
+    emit(DirectoryEvent::MetadataFilled {
+        request_id: id,
+        updates: vec![update],
+    });
+    assert_eq!(
+        browser
+            .entry_at(0, 0)
+            .expect("focused file")
+            .image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::MetadataFilled { depth: 0, updates }
+            if updates.iter().any(|(position, entry)| *position == 0
+                && entry.image_dimensions == MetadataValue::Known((1920, 1080)))
+    )));
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| source.fill_calls.borrow().len() == 2);
+    assert_eq!(
+        source.fill_calls.borrow()[1].entries,
+        vec![
+            Location::local("/fixture/beta"),
+            Location::local("/fixture/gamma")
+        ]
     );
 }
 
