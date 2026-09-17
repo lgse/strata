@@ -253,6 +253,7 @@ impl FileSource for MenuSource {
                         },
                         size: MetadataValue::Known(5),
                         modified_unix_seconds: MetadataValue::Known(0),
+                        recent_unix_seconds: MetadataValue::Unknown,
                         is_hidden: false,
                         mode: MetadataValue::Known(if name == "folder" { 0o755 } else { 0o644 }),
                         image_dimensions: MetadataValue::Unknown,
