@@ -915,7 +915,7 @@ impl ViewState {
         location: Location,
         is_directory: bool,
     ) {
-        if is_trash_location(&location) {
+        if is_trash_location(&location) || location.is_recent_location() {
             return;
         }
         self.cancel_new_entry();

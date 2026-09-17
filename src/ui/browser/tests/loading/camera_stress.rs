@@ -82,6 +82,7 @@ fn camera_batches_keep_the_top_until_the_user_scrolls() {
                                     image_dimensions: crate::model::MetadataValue::Unknown,
                                     child_count: crate::model::MetadataValue::Unknown,
                                     duration_seconds: crate::model::MetadataValue::Unknown,
+                                    recent_unix_seconds: crate::model::MetadataValue::Unknown,
                                     is_hidden: false,
                                 }
                             })
@@ -222,6 +223,7 @@ fn camera_streaming_interleaved_names_survives_scrolling() {
                                 size: crate::model::MetadataValue::Known(100),
                                 modified_unix_seconds: crate::model::MetadataValue::Known(1),
                                 mode: crate::model::MetadataValue::Unavailable,
+                                recent_unix_seconds: crate::model::MetadataValue::Unknown,
                                 is_hidden: false,
                                 image_dimensions: crate::model::MetadataValue::Unknown,
                                 child_count: crate::model::MetadataValue::Unknown,

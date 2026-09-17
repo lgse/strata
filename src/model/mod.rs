@@ -62,7 +62,23 @@ impl Location {
         }
     }
 
+    /// Directory operations must reject virtual children as well as the root.
+    pub fn is_recent_location(&self) -> bool {
+        self.uri_value()
+            .is_some_and(|uri| gio::File::for_uri(uri).has_uri_scheme("recent"))
+    }
+
+    pub fn is_recent_root(&self) -> bool {
+        self.uri_value().is_some_and(|uri| {
+            let file = gio::File::for_uri(uri);
+            file.has_uri_scheme("recent") && file.parent().is_none()
+        })
+    }
+
     pub fn parent(&self) -> Option<Self> {
+        if self.is_recent_root() {
+            return None;
+        }
         match &self.kind {
             LocationKind::Native(path) => {
                 let parent = path.parent()?;
@@ -263,6 +279,9 @@ impl Location {
     }
 
     pub fn display_name(&self) -> String {
+        if self.is_recent_root() {
+            return "Recent".into();
+        }
         if self.is_camera_photo_root() {
             return "Photos".into();
         }
@@ -288,6 +307,9 @@ impl Location {
     }
 
     pub fn breadcrumbs(&self) -> Vec<Self> {
+        if self.is_recent_root() {
+            return vec![self.clone()];
+        }
         if let Some(path) = self.native_path() {
             let mut locations: Vec<_> = path.ancestors().map(Self::local).collect();
             locations.reverse();
@@ -309,6 +331,8 @@ impl Location {
 pub enum SortKey {
     /// Camera-library-local streaming order; never a saved folder default.
     DeviceOrder,
+    /// Recent-library-local use time; never a saved folder default.
+    Recency,
     Name,
     Type,
     Size,
@@ -367,6 +391,7 @@ pub struct FileEntry {
     pub kind: EntryKind,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub recent_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,

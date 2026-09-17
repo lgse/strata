@@ -15,6 +15,7 @@ fn render_text(drawer: &PreviewDrawer) {
             size: crate::model::MetadataValue::Known(100),
             modified_unix_seconds: crate::model::MetadataValue::Unknown,
             mode: crate::model::MetadataValue::Unknown,
+            recent_unix_seconds: crate::model::MetadataValue::Unknown,
             is_hidden: false,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,

@@ -24,6 +24,7 @@ pub mod icons {
     pub const CIRCLE_CHECK: &str = "strata-circle-check";
     pub const CHECK_ON_PRIMARY: &str = "strata-check-on-primary";
     pub const CHEVRON_RIGHT: &str = "strata-chevron-right";
+    pub const CLOCK: &str = "strata-clock";
     pub const CLIPBOARD_PASTE: &str = "strata-clipboard-paste";
     pub const COPY: &str = "strata-copy";
     pub const CORNER_DOWN_LEFT: &str = "strata-corner-down-left";

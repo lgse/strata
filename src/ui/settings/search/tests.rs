@@ -10,6 +10,7 @@ fn ranks_exact_labels_aliases_and_small_typing_errors() {
         ("Items shown in sidebar", "general", "sidebar-places"),
         ("sidebar downloads", "general", "sidebar-places"),
         ("show network", "general", "sidebar-places"),
+        ("show recent", "general", "sidebar-places"),
         ("tezt size", "theme", "text"),
         ("font size", "theme", "text"),
         ("nightly", "updates", "channel"),

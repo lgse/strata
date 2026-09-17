@@ -268,24 +268,29 @@ pub(in crate::ui) fn install_folder_context_menu(
     let customize = context_menu_option(crate::assets::icons::PALETTE, "Customize…", "");
     let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
     let in_trash = is_trash_location(&location);
-    customize.set_visible(!in_trash && location.native_path().is_some());
-    new_folder.set_visible(!in_trash);
-    new_file.set_visible(!in_trash);
-    open_with.set_visible(!in_trash);
-    open_terminal.set_visible(!in_trash);
-    paste.set_visible(!in_trash);
+    let in_recent = location.is_recent_location();
+    let directory_actions = !in_trash && !in_recent;
+    customize.set_visible(directory_actions && location.native_path().is_some());
+    new_folder.set_visible(directory_actions);
+    new_file.set_visible(directory_actions);
+    open_with.set_visible(directory_actions);
+    open_terminal.set_visible(directory_actions);
+    paste.set_visible(directory_actions);
+    properties.set_visible(!in_recent);
     content.append(&new_folder);
     content.append(&new_file);
     content.append(&open_with);
     content.append(&open_terminal);
-    if !in_trash {
+    if directory_actions {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     }
     content.append(&paste);
     content.append(&select_all);
     content.append(&refresh);
     content.append(&toggle_hidden);
-    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    if customize.get_visible() || properties.get_visible() {
+        content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    }
     content.append(&customize);
     content.append(&properties);
 
@@ -403,6 +408,9 @@ pub(in crate::ui) fn install_folder_context_menu(
         let Some(state) = weak.upgrade() else {
             return;
         };
+        if open_with_location.is_recent_location() {
+            return;
+        }
         let file = gio_file_for_location(&open_with_location);
         let requires_uris =
             crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(&file));

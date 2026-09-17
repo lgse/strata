@@ -227,7 +227,38 @@ fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
     )));
     assert!(!sidebar_accepts_file_drop(&Location::uri("trash:///")));
     assert!(!sidebar_accepts_file_drop(&Location::uri("network:///")));
+    assert!(!sidebar_accepts_file_drop(&Location::uri("recent:///")));
     assert!(!sidebar_accepts_file_drop(&Location::uri(
         "smb://host.example/share"
     )));
+}
+
+fn recent_available() -> RecentAvailability {
+    RecentAvailability {
+        platform_tracking_enabled: true,
+        runtime_backend_supported: true,
+    }
+}
+
+#[test]
+fn recent_sidebar_requires_preference_platform_backend_and_nonlocal_context() {
+    assert!(should_show_recent_place(true, false, recent_available()));
+    assert!(!should_show_recent_place(false, false, recent_available()));
+    assert!(!should_show_recent_place(
+        true,
+        false,
+        RecentAvailability {
+            platform_tracking_enabled: false,
+            ..recent_available()
+        },
+    ));
+    assert!(!should_show_recent_place(
+        true,
+        false,
+        RecentAvailability {
+            runtime_backend_supported: false,
+            ..recent_available()
+        },
+    ));
+    assert!(!should_show_recent_place(true, true, recent_available()));
 }

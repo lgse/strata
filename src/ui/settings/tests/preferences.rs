@@ -76,6 +76,11 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             );
             assert_eq!(active_switches(&first), active_switches(&second));
             assert_eq!(active_choices(&first), active_choices(&second));
+            assert!(
+                descendants::<gtk::Label>(&first)
+                    .iter()
+                    .any(|label| label.text() == "Recent")
+            );
             for page in [&first, &second] {
                 for button in descendants::<gtk::ToggleButton>(page)
                     .into_iter()

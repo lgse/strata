@@ -32,6 +32,7 @@ fn entry_executable_policy_accepts_regular_files_and_file_links() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Known(mode),
         image_dimensions: crate::model::MetadataValue::Unknown,
@@ -141,6 +142,7 @@ fn terminal_shortcut_prefers_one_selected_directory() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
         image_dimensions: crate::model::MetadataValue::Unknown,
@@ -157,6 +159,11 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[directory, file.clone()]), None);
     assert_eq!(selected_terminal_location(&[file]), None);
     assert_eq!(selected_terminal_location(&[]), None);
+}
+
+#[test]
+fn recent_root_is_not_a_terminal_working_directory() {
+    assert!(!can_open_terminal(&Location::uri("recent:///")));
 }
 
 #[test]

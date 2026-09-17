@@ -63,6 +63,7 @@ fn rename_handlers_do_not_keep_the_active_editor_alive_after_the_view_drops() {
                 thumbnail_path: None,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
                 image_dimensions: MetadataValue::Unknown,
