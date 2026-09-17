@@ -1468,8 +1468,10 @@ impl ViewState {
             let Some(state) = weak.upgrade() else {
                 return;
             };
+            state.suppress_focus_scroll.set(true);
             state.browser.set_active_column(depth);
             state.browser.focus_active();
+            state.suppress_focus_scroll.set(false);
             let shell = state
                 .columns
                 .borrow()

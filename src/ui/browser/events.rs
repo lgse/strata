@@ -558,7 +558,7 @@ impl ViewState {
                             .filter_map(|position| column.map.view_position(position))
                             .collect();
                         set_column_selections(&column, &positions);
-                        if !editing {
+                        if !editing && !self.suppress_focus_scroll.get() {
                             scroll_column_to(&column, filtered_position);
                         }
                     }
