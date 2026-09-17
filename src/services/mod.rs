@@ -3,6 +3,7 @@
 pub(crate) mod camera_preview;
 mod document;
 pub(crate) mod document_media;
+pub(crate) mod docx;
 mod file_source;
 mod install_source;
 mod mime_type;
@@ -11,6 +12,7 @@ mod navigation_history;
 mod operations;
 mod preview;
 mod release_channel;
+pub(crate) mod rtf;
 mod search;
 pub(crate) mod table;
 mod transfer_action;

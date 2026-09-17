@@ -269,9 +269,17 @@ impl LocalPreviewProvider {
                 content_type = queried_type;
             }
 
-            if crate::services::table::is_workbook(&content_type, &entry.native_name) {
+            let sandboxed = if crate::services::table::is_workbook(&content_type, &entry.native_name)
+            {
+                Some(ParseOperation::PreviewWorkbook)
+            } else if crate::services::docx::is_document(&content_type, &entry.native_name) {
+                Some(ParseOperation::PreviewDocument)
+            } else {
+                None
+            };
+            if let Some(operation) = sandboxed {
                 let Some(path) = entry.location.native_path().map(ToOwned::to_owned) else {
-                    emit(PreviewEvent::Failed { request_id, entry, message: "Copy this workbook locally before previewing it".into() });
+                    emit(PreviewEvent::Failed { request_id, entry, message: "Copy this file locally before previewing it".into() });
                     return;
                 };
                 // Share the full-document parser slot with PDF rendering. Keep it
@@ -285,9 +293,13 @@ impl LocalPreviewProvider {
                 abort_safe_for_task.set(false);
                 let cancellation = cancellation_for_task.clone();
                 let result = gio::spawn_blocking(move || {
-                    let output = render(&path, ParseOperation::PreviewWorkbook, 0, media_preview_backend, &cancellation)?;
-                    let parsed = crate::services::table::TableData::from_json(&output.data)?.into_document();
-                    layout_document(parsed.document, &cancellation).map(|document| PreviewContent::Workbook { document, warnings: parsed.warnings })
+                    let output = render(&path, operation, 0, media_preview_backend, &cancellation)?;
+                    let parsed = if operation == ParseOperation::PreviewWorkbook {
+                        crate::services::table::TableData::from_json(&output.data)?.into_document()
+                    } else {
+                        crate::services::docx::RichTextData::from_json(&output.data)?.into_document(&cancellation)?
+                    };
+                    layout_document(parsed.document, &cancellation).map(|document| PreviewContent::Rendered { document, warnings: parsed.warnings })
                 }).await;
                 abort_safe_for_task.set(true);
                 drop(permit);
@@ -376,7 +388,7 @@ impl LocalPreviewProvider {
                 PreviewContent::Media => None,
                 PreviewContent::Text { .. }
                 | PreviewContent::Document { .. }
-                | PreviewContent::Workbook { .. }
+                | PreviewContent::Rendered { .. }
                 | PreviewContent::Rasterized { .. }
                 | PreviewContent::SandboxedMedia { .. }
                 | PreviewContent::Unsupported => None,

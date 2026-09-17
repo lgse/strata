@@ -15,6 +15,7 @@ async-io = "2.6.0"
 cairo-rs = { version = "0.22.9", features = ["pdf", "png"] }
 calamine = "0.36.1"
 csv = "1.4.0"
+docx-rs = { version = "0.4.22", default-features = false }
 flate2 = "1.1.10"
 fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }
 futures-channel = "0.3.31"

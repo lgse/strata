@@ -207,6 +207,36 @@ fn workbook_parser_uses_resource_limited_sandbox_and_validated_output() {
 }
 
 #[test]
+fn word_document_parser_uses_resource_limited_sandbox_and_validated_output() {
+    let command = sandbox_command(
+        Path::new("/app/strata"),
+        Path::new("/fixtures/report.docx"),
+        Path::new("/private-output"),
+        ParseOperation::PreviewDocument,
+        0,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let arguments = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(arguments.contains("--unshare-all --die-with-parent --new-session --clearenv"));
+    assert!(arguments.contains("--as=2147483648 --cpu=10"));
+    assert!(arguments.contains("preview-document /input.docx /output/result.json"));
+    assert!(!arguments.contains("--share-net"));
+    assert!(valid_output(
+        ParseOperation::PreviewDocument,
+        br#"{"html":"<p>a</p>","truncated":false}"#
+    ));
+    assert!(!valid_output(
+        ParseOperation::PreviewDocument,
+        br#"{"rows":[["a"]],"truncated":false}"#
+    ));
+}
+
+#[test]
 fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
     let command = sandbox_command(
         Path::new("/tmp/strata"),
