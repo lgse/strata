@@ -500,6 +500,58 @@ fn newly_visible_rows_do_not_discard_late_dimensions_for_the_focused_file() {
 }
 
 #[test]
+fn viewport_metadata_reprioritizes_between_bounded_batches() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async lock");
+    let names: Vec<&'static str> = "abcdefghijklmnopqrstuvwxyz"
+        .as_bytes()
+        .chunks(1)
+        .map(|name| std::str::from_utf8(name).expect("ASCII name"))
+        .collect();
+    let (browser, _, source) = scripted_browser(ScriptedSource::scripted(
+        names.clone(),
+        vec![FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    for (position, name) in names.iter().enumerate() {
+        browser.request_metadata_fill(
+            0,
+            position,
+            Location::local(format!("/fixture/{name}")),
+            true,
+        );
+    }
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let (id, emit, first_count) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone(), calls[0].entries.len())
+    };
+    assert!(
+        first_count < names.len(),
+        "offscreen backlog must leave room for reprioritization"
+    );
+    let visible = Location::local("/fixture/z");
+    browser.prioritize_metadata_fills(0, std::slice::from_ref(&visible));
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| source.fill_calls.borrow().len() == 2);
+    let calls = source.fill_calls.borrow();
+    assert_eq!(calls[1].entries.first(), Some(&visible));
+    let filled: HashSet<_> = calls
+        .iter()
+        .flat_map(|call| call.entries.iter().cloned())
+        .collect();
+    assert_eq!(
+        filled.len(),
+        names.len(),
+        "reprioritization retains unfinished files"
+    );
+}
+
+#[test]
 fn shifted_viewport_rows_go_stale_without_repaint() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

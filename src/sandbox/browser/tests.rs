@@ -161,6 +161,8 @@ fn cancelled_admission_never_starts_a_worker_or_strands_a_waiter() {
         let state = pool.state.lock().expect("pool");
         assert_eq!(state.count, 0);
         assert_eq!(state.thumbnail_waiters, 0);
+        assert_eq!(state.metadata_waiters, 0);
+        assert_eq!(state.metadata_running, 0);
         assert_eq!(state.slow_running, 0);
     }
 }
@@ -195,6 +197,85 @@ fn slow_work_preserves_capacity_for_visible_images_and_releases_its_permit() {
     drop(slow);
     assert_eq!(pool.state.lock().expect("pool").slow_running, 0);
     assert_eq!(pool.state.lock().expect("pool").idle.len(), 2);
+}
+
+#[test]
+fn metadata_gets_a_bounded_turn_during_continuous_thumbnail_work() {
+    let pool = Pool {
+        state: Mutex::new(PoolState {
+            count: 1,
+            idle: vec![IdleWorker {
+                worker: Worker::OneShot,
+                since: Instant::now(),
+            }],
+            ..Default::default()
+        }),
+        changed: Condvar::new(),
+        limit: 1,
+        idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+    };
+    let cancellation = Cancellation::default();
+    let first = pool
+        .acquire(Operation::Image, &cancellation)
+        .expect("first thumbnail");
+    std::thread::scope(|scope| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        for operation in [Operation::Image; 6]
+            .into_iter()
+            .chain([Operation::MediaMetadata; 2])
+        {
+            let tx = tx.clone();
+            let pool = &pool;
+            let cancellation = &cancellation;
+            scope.spawn(move || {
+                if let Ok(lease) = pool.acquire(operation, cancellation) {
+                    tx.send(operation).expect("admission receiver");
+                    drop(lease);
+                }
+            });
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let state = pool.state.lock().expect("pool");
+            if state.thumbnail_waiters == 6 && state.metadata_waiters == 2 {
+                break;
+            }
+            if Instant::now() >= deadline {
+                cancellation.cancel();
+                panic!("workers did not queue");
+            }
+            drop(state);
+            std::thread::yield_now();
+        }
+        drop(first);
+        let mut order = Vec::new();
+        for _ in 0..8 {
+            match rx.recv_timeout(Duration::from_secs(5)) {
+                Ok(operation) => order.push(operation),
+                Err(error) => {
+                    cancellation.cancel();
+                    panic!("admissions stalled: {error}");
+                }
+            }
+        }
+        assert_eq!(&order[..3], &[Operation::Image; 3]);
+        assert_eq!(order[3], Operation::MediaMetadata);
+        assert_eq!(
+            order.iter().filter(|op| **op == Operation::Image).count(),
+            6
+        );
+        assert_eq!(
+            order
+                .iter()
+                .filter(|op| **op == Operation::MediaMetadata)
+                .count(),
+            2
+        );
+    });
+    let state = pool.state.lock().expect("pool");
+    assert_eq!(state.metadata_running, 0);
+    assert_eq!(state.metadata_waiters, 0);
+    assert_eq!(state.thumbnail_waiters, 0);
 }
 
 #[test]

@@ -3586,7 +3586,7 @@ fn metadata_fill_position(
     })
 }
 
-fn icon_details_need_fill(entry: &FileEntry) -> bool {
+pub(super) fn icon_details_need_fill(entry: &FileEntry) -> bool {
     let path = Path::new(&entry.native_name);
     (entry.is_directory() && entry.child_count == MetadataValue::Unknown)
         || (!entry.is_directory()

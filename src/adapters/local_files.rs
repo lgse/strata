@@ -1476,13 +1476,7 @@ fn fill_parallel_with_details(
                                 truncated = true;
                                 break;
                             }
-                            updates.push(update);
-                            if updates.len() >= 8 {
-                                let _ = tx.unbounded_send(std::mem::take(&mut updates));
-                            }
-                        }
-                        if !updates.is_empty() {
-                            let _ = tx.unbounded_send(updates);
+                            let _ = tx.unbounded_send(vec![update]);
                         }
                         (attempted, failed, truncated)
                     }));

@@ -1822,7 +1822,7 @@ fn cheap_metadata_is_published_while_details_are_waiting() {
         let (finished, done) = futures_channel::oneshot::channel();
         let finished = RefCell::new(Some(finished));
         let saw_cheap = Rc::new(Cell::new(0));
-        let saw_details = Rc::new(Cell::new(false));
+        let saw_details = Rc::new(Cell::new(0));
         let cheap = saw_cheap.clone();
         let details = saw_details.clone();
         let emit = Rc::new(move |event| match event {
@@ -1838,12 +1838,14 @@ fn cheap_metadata_is_published_while_details_are_waiting() {
                         cheap.set(cheap.get() + 1);
                         if cheap.get() == 2 {
                             release.send(()).expect("release first probe");
-                            release.send(()).expect("release second probe");
                         }
                     } else {
                         assert_eq!(cheap.get(), 2);
                         assert_eq!(update.image_dimensions, MetadataValue::Known((20, 30)));
-                        details.set(true);
+                        details.set(details.get() + 1);
+                        if details.get() == 1 {
+                            release.send(()).expect("release second probe");
+                        }
                     }
                 }
             }
@@ -1869,14 +1871,14 @@ fn cheap_metadata_is_published_while_details_are_waiting() {
                 wait.lock()
                     .expect("probe receiver")
                     .recv_timeout(Duration::from_secs(5))
-                    .expect("basic metadata published before probe finishes");
+                    .expect("preceding metadata published before probe finishes");
                 update.image_dimensions = MetadataValue::Known((20, 30));
                 true
             },
         );
         done.await.expect("metadata completion");
         assert_eq!(saw_cheap.get(), 2);
-        assert!(saw_details.get());
+        assert_eq!(saw_details.get(), 2);
         drop(handle);
     });
 }

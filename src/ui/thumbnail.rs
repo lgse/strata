@@ -801,7 +801,17 @@ async fn run_thumbnail_job(mut job: ThumbnailJob) {
         }
     } else if let Some(png) = cached {
         tracing::debug!("browser thumbnail disk hit");
-        finish_thumbnail_job(job, Ok((png, false))).await;
+        finish_thumbnail_job(
+            job,
+            Ok((
+                crate::sandbox::browser::Thumbnail {
+                    png,
+                    metadata: None,
+                },
+                false,
+            )),
+        )
+        .await;
     } else if !job.cancellation.is_cancelled() {
         RENDER_QUEUE.with(|queue| queue.borrow_mut().push_back(job));
     }
@@ -857,7 +867,15 @@ async fn run_render_job(job: ThumbnailJob) {
     let result = if job.kind == ThumbnailKind::Camera {
         camera::render(&job.key.path, &job.cancellation)
             .await
-            .map(|png| (png, false))
+            .map(|png| {
+                (
+                    crate::sandbox::browser::Thumbnail {
+                        png,
+                        metadata: None,
+                    },
+                    false,
+                )
+            })
     } else {
         let path = job.key.path.clone();
         let kind = job.kind;
@@ -880,13 +898,24 @@ async fn run_render_job(job: ThumbnailJob) {
     retry_deferred_thumbnails();
 }
 
-async fn finish_thumbnail_job(job: ThumbnailJob, result: Result<(Vec<u8>, bool), String>) {
+async fn finish_thumbnail_job(
+    job: ThumbnailJob,
+    result: Result<(crate::sandbox::browser::Thumbnail, bool), String>,
+) {
     let targets = take_pending_targets(&job.key, job.id);
     let key = job.resolved;
     let path = key.path.clone();
     if let Some(targets) = targets {
         match result {
-            Ok((png, rendered)) => {
+            Ok((thumbnail, rendered)) => {
+                if let Some(metadata) = thumbnail.metadata {
+                    for target in &targets {
+                        if request_is_live(target) {
+                            viewport::publish_thumbnail_metadata(target.image_id, &path, &metadata);
+                        }
+                    }
+                }
+                let png = thumbnail.png;
                 crate::metrics::mark_thumbnail_completed();
                 let bytes = glib::Bytes::from_owned(png.clone());
                 let texture = background::cache(move || gdk::Texture::from_bytes(&bytes).ok())
@@ -1356,7 +1385,7 @@ fn render_thumbnail(
     path: &Path,
     kind: ThumbnailKind,
     cancellation: &Cancellation,
-) -> Result<Vec<u8>, String> {
+) -> Result<crate::sandbox::browser::Thumbnail, String> {
     let operation = match kind {
         ThumbnailKind::Camera => return Err("Camera thumbnails require their preview icon".into()),
         ThumbnailKind::Image => ParseOperation::ThumbnailImage,

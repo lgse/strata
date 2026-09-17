@@ -434,6 +434,7 @@ fn pending_undo_entry() -> Option<UndoEntry> {
 const METADATA_FILL_TIME_BUDGET: Duration = Duration::from_secs(5);
 /// Defensive cap per depth: the UI only ever asks for its visible window.
 const MAX_PENDING_FILL_LOCATIONS: usize = 1024;
+const MAX_VIEWPORT_FILL_BATCH: usize = 16;
 
 /// Remote loads only (native loads stage instead): entries accumulate this far
 /// before an early flush bounds first-result latency.
@@ -2381,6 +2382,24 @@ impl Browser {
         self.schedule_metadata_fill();
     }
 
+    pub(crate) fn prioritize_metadata_fills(&self, depth: usize, visible: &[Location]) {
+        let mut pending = self.metadata_pending.borrow_mut();
+        let Some(targets) = pending.get_mut(&depth) else {
+            return;
+        };
+        let priorities: HashMap<_, _> = visible
+            .iter()
+            .enumerate()
+            .map(|(i, path)| (path, i))
+            .collect();
+        targets.sort_by_key(|target| {
+            priorities
+                .get(&target.location)
+                .copied()
+                .unwrap_or(usize::MAX)
+        });
+    }
+
     fn request_sort_fill(
         self: &Rc<Self>,
         depth: usize,
@@ -2582,10 +2601,15 @@ impl Browser {
             .borrow_mut()
             .extract_if(|depth, _| !active_depths.contains(depth))
             .collect();
-        for (depth, targets) in pending {
+        for (depth, mut targets) in pending {
             let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
                 continue;
             };
+            // Bound the non-preemptible batch so scrolling can reprioritize the backlog.
+            if targets.len() > MAX_VIEWPORT_FILL_BATCH {
+                let remainder = targets.split_off(MAX_VIEWPORT_FILL_BATCH);
+                self.metadata_pending.borrow_mut().insert(depth, remainder);
+            }
             let fill_request = self.new_request_id();
             let weak: Weak<Self> = Rc::downgrade(self);
             let emit = Rc::new(move |event| {
