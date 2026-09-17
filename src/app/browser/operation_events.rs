@@ -92,6 +92,10 @@ impl OperationCompletion {
             Some(false) => {
                 let mut all_created = created;
                 all_created.extend(merged.created);
+                // A replaced target reports as created through transfer
+                // progress; it must undo through the overwritten restore
+                // path instead, or the restored original would be trashed.
+                all_created.retain(|location| !merged.overwritten.contains(location));
                 push_pending_undo(UndoEntry::Merge {
                     created: all_created,
                     overwritten: merged.overwritten,
@@ -338,15 +342,28 @@ impl Browser {
                     has_non_retryable_failures,
                 });
             }
-            OperationEvent::Deleted { locations, .. }
-            | OperationEvent::Restored { locations, .. } => {
+            OperationEvent::Deleted { locations, .. } => {
+                self.remove_completed_locations(&completion, &locations);
+            }
+            OperationEvent::Restored {
+                locations,
+                restored,
+                ..
+            } => {
+                if completion.restoring && !completion.undoing && !restored.is_empty() {
+                    push_pending_undo(UndoEntry::Copy(restored));
+                }
                 self.remove_completed_locations(&completion, &locations);
             }
             OperationEvent::RestoreCompletedWithErrors {
                 restored_locations,
+                restored,
                 message,
                 ..
             } => {
+                if completion.restoring && !completion.undoing && !restored.is_empty() {
+                    push_pending_undo(UndoEntry::Copy(restored));
+                }
                 self.remove_completed_locations(&completion, &restored_locations);
                 self.emit(BrowserEvent::OperationCompletedWithErrors {
                     message,
@@ -363,7 +380,14 @@ impl Browser {
                 });
                 self.refresh_unmonitored_operation_locations(context);
             }
-            OperationEvent::Compressed { archive_name, .. } => {
+            OperationEvent::Compressed {
+                archive_name,
+                archive,
+                ..
+            } => {
+                if !completion.undoing {
+                    push_pending_undo(UndoEntry::Copy(vec![archive]));
+                }
                 self.emit(BrowserEvent::ArchiveCompleted {
                     select_name: archive_name,
                 });
@@ -375,6 +399,9 @@ impl Browser {
             }
             OperationEvent::Pasted { .. } => self.publish_completed_transfer(context, completion),
             OperationEvent::EntryCreated { location, .. } => {
+                if !completion.undoing {
+                    push_pending_undo(UndoEntry::Copy(vec![location.clone()]));
+                }
                 if self.validation_generation.get() == context.navigation_generation {
                     self.emit(BrowserEvent::EntryCreated { location });
                 }
@@ -457,6 +484,9 @@ impl Browser {
             locations.extend(result.affected_locations);
             locations
         };
+        if completion.restoring && !completion.undoing && !result.completed.is_empty() {
+            push_pending_undo(UndoEntry::Copy(result.completed.clone()));
+        }
         if completion.archiving {
             self.emit(BrowserEvent::ArchiveCompleted {
                 select_name: String::new(),

@@ -1335,6 +1335,7 @@ async fn replace_local_with(
     cancellable: gio::Cancellable,
     affected_locations: Option<&mut HashSet<Location>>,
     copy_to_stage: StageCopy,
+    on_replaced: &dyn Fn(),
 ) -> Result<(), glib::Error> {
     if let Some(locations) = affected_locations {
         locations.extend([&source, &target].into_iter().filter_map(location_for_file));
@@ -1410,37 +1411,79 @@ async fn replace_local_with(
     }
 
     let staged_path = staged.path().to_owned();
-    let exchanged = gio::spawn_blocking(move || {
-        rustix::fs::renameat_with(
-            rustix::fs::CWD,
-            &staged_path,
-            rustix::fs::CWD,
-            &target_path,
-            rustix::fs::RenameFlags::EXCHANGE,
-        )
+    // Trash the original first so undo can restore it; keep the atomic
+    // exchange with permanent delete where Trash is unsupported.
+    let trashed = match await_cancellable(&target, &cancellable, |target, cancellable, result| {
+        target.trash_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+            result.resolve(output)
+        });
     })
     .await
-    .map_err(|_| io_error("The replacement worker stopped unexpectedly"));
-    let exchanged = match exchanged {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => Err(io_error(format!(
-            "Could not safely replace the item: {error}"
-        ))),
-        Err(error) => Err(error),
+    {
+        Ok(()) => true,
+        Err(error) if is_trash_unsupported_failure(false, &error) => false,
+        Err(error) => {
+            discard_staged(staged).await;
+            return Err(error);
+        }
     };
-    if let Err(error) = exchanged {
-        discard_staged(staged).await;
-        return Err(error);
-    }
+    if trashed {
+        // Report before the rename: if it fails, the original is still
+        // recoverable and the recorded plan lets undo restore it.
+        on_replaced();
+        let renamed = gio::spawn_blocking(move || {
+            rustix::fs::renameat(rustix::fs::CWD, &staged_path, rustix::fs::CWD, &target_path)
+        })
+        .await
+        .map_err(|_| io_error("The replacement worker stopped unexpectedly"));
+        match renamed {
+            Ok(Ok(())) => {
+                let _kept = staged.keep();
+            }
+            Ok(Err(error)) => {
+                discard_staged(staged).await;
+                return Err(io_error(format!(
+                    "Could not place the replacement item: {error}"
+                )));
+            }
+            Err(error) => {
+                discard_staged(staged).await;
+                return Err(error);
+            }
+        }
+    } else {
+        let exchanged = gio::spawn_blocking(move || {
+            rustix::fs::renameat_with(
+                rustix::fs::CWD,
+                &staged_path,
+                rustix::fs::CWD,
+                &target_path,
+                rustix::fs::RenameFlags::EXCHANGE,
+            )
+        })
+        .await
+        .map_err(|_| io_error("The replacement worker stopped unexpectedly"));
+        let exchanged = match exchanged {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(io_error(format!(
+                "Could not safely replace the item: {error}"
+            ))),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = exchanged {
+            discard_staged(staged).await;
+            return Err(error);
+        }
 
-    let staged_file = gio::File::for_path(staged.keep().map_err(io_error)?);
-    permanently_delete_maybe_local_if_unchanged(
-        staged_file,
-        target_is_directory,
-        target_identity,
-        gio::Cancellable::new(),
-    )
-    .await?;
+        let staged_file = gio::File::for_path(staged.keep().map_err(io_error)?);
+        permanently_delete_maybe_local_if_unchanged(
+            staged_file,
+            target_is_directory,
+            target_identity,
+            gio::Cancellable::new(),
+        )
+        .await?;
+    }
     if move_source {
         permanently_delete_maybe_local_if_unchanged(
             source,
@@ -1460,6 +1503,7 @@ async fn replace_local_with_progress(
     cancellable: gio::Cancellable,
     affected_locations: Option<&mut HashSet<Location>>,
     progress: Option<Rc<TransferProgressTracker>>,
+    on_replaced: &dyn Fn(),
 ) -> Result<(), glib::Error> {
     replace_local_with(
         source,
@@ -1477,6 +1521,7 @@ async fn replace_local_with_progress(
                 progress.clone(),
             )
         }),
+        on_replaced,
     )
     .await
 }
@@ -1496,6 +1541,7 @@ async fn replace_local(
         cancellable,
         affected_locations,
         None,
+        &|| {},
     )
     .await
 }
@@ -2752,6 +2798,17 @@ async fn trashed_entries_for_originals(
         .collect())
 }
 
+/// Where a successful restore lands: the confirmed destination for a Trash
+/// dialog restore, the trashinfo original path for an undo restore.
+fn restored_destination(entry: &RestoreEntry) -> Location {
+    entry
+        .confirmed_destination
+        .as_ref()
+        .map(|path| Location::local(path.clone()))
+        .or_else(|| entry.original_target.clone())
+        .unwrap_or_else(|| entry.source.clone())
+}
+
 async fn restore_trash_entry(
     entry: &RestoreEntry,
     context: &RestoreContext,
@@ -2874,6 +2931,7 @@ async fn run_merge_undo(
     }
     let context = RestoreContext::current();
     let mut completed_locations = Vec::new();
+    let mut restored = Vec::new();
     let mut failed_locations = Vec::new();
     let mut errors = Vec::new();
     let mut completed = 0usize;
@@ -2908,6 +2966,7 @@ async fn run_merge_undo(
         let restored_location = match result {
             Ok(()) => {
                 completed_locations.push(location.clone());
+                restored.push(location.clone());
                 Some(location.clone())
             }
             Err(error) if was_cancelled(&error) => {
@@ -3018,6 +3077,7 @@ async fn run_merge_undo(
         emit(OperationEvent::Restored {
             request_id,
             locations: Vec::new(),
+            restored,
         });
     } else {
         emit(OperationEvent::CompletedWithErrors {
@@ -3557,6 +3617,8 @@ impl OperationProvider for LocalOperationProvider {
                     )
                     .await
                 } else if item.conflict == TransferConflict::ReplaceExisting {
+                    let replaced_target = target_location.clone();
+                    let emit = emit.clone();
                     replace_local_with_progress(
                         source,
                         target,
@@ -3564,6 +3626,22 @@ impl OperationProvider for LocalOperationProvider {
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
                         Some(progress.clone()),
+                        &move || {
+                            // Only copies get the restore-the-original undo
+                            // entry; a replaced move keeps the move-back
+                            // record and leaves the original in Trash.
+                            if request.move_sources {
+                                return;
+                            }
+                            if let Some(target) = &replaced_target {
+                                emit(OperationEvent::Merged {
+                                    request_id: request.id,
+                                    source: item.source.clone(),
+                                    created: Vec::new(),
+                                    overwritten: vec![target.clone()],
+                                });
+                            }
+                        },
                     )
                     .await
                 } else if request.move_sources {
@@ -3695,6 +3773,7 @@ impl OperationProvider for LocalOperationProvider {
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
                         Some(progress.clone()),
+                        &|| {},
                     )
                     .await
                 } else {
@@ -3879,6 +3958,7 @@ impl OperationProvider for LocalOperationProvider {
             let total = entries.len();
             let mut errors = Vec::new();
             let mut restored_locations = Vec::new();
+            let mut restored = Vec::new();
             let mut failed_locations = Vec::new();
             let mut affected_locations = HashSet::from([Location::uri("trash:///")]);
             let context = RestoreContext::current();
@@ -3886,7 +3966,7 @@ impl OperationProvider for LocalOperationProvider {
                 if operation_cancellable.is_cancelled() {
                     emit(cancelled_event(
                         request.id,
-                        restored_locations,
+                        restored,
                         failed_locations,
                         entries[index..]
                             .iter()
@@ -3908,7 +3988,7 @@ impl OperationProvider for LocalOperationProvider {
                         failed_locations.push(entry.source.clone());
                         emit(cancelled_event(
                             request.id,
-                            restored_locations,
+                            restored,
                             failed_locations,
                             entries[index + 1..]
                                 .iter()
@@ -3923,7 +4003,8 @@ impl OperationProvider for LocalOperationProvider {
                     None
                 } else {
                     restored_locations.push(entry.source.clone());
-                    Some(entry.source.clone())
+                    restored.push(restored_destination(entry));
+                    Some(restored_destination(entry))
                 };
                 emit(OperationEvent::RestoreProgress {
                     request_id: request.id,
@@ -3936,11 +4017,13 @@ impl OperationProvider for LocalOperationProvider {
                 emit(OperationEvent::Restored {
                     request_id: request.id,
                     locations: restored_locations,
+                    restored,
                 });
             } else {
                 emit(OperationEvent::RestoreCompletedWithErrors {
                     request_id: request.id,
                     restored_locations,
+                    restored,
                     message: operation_error_summary(&errors, "restored"),
                 });
             }

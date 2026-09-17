@@ -67,6 +67,25 @@ def test_keep_both_preserves_archives_and_selects_each_numbered_output(strata, m
         assert previous.read_bytes() == b"previous archive"
 
 
+@pytest.mark.parametrize("extension", ["zip"])
+def test_undoing_a_compression_trashes_the_numbered_archive(strata, extension):
+    fixture = strata.fixture
+    trashed = strata.environment.trash_files
+
+    request_archive_collision(strata)
+    strata.pointer.click(strata.dialog_button("Keep Both"))
+    numbered = fixture.path("archive (2).zip")
+    strata.wait(numbered.exists, "numbered archive publication")
+    strata.wait(lambda: strata.dialog() is None, "archive progress dismissal")
+
+    strata.keyboard.press("ctrl+z")
+
+    strata.wait(lambda: not numbered.exists(), "compress undo to trash the archive")
+    strata.wait(lambda: any(trashed.iterdir()), "the archive to land in Trash")
+    assert fixture.path("archive.zip").read_bytes() == b"original archive"
+    assert fixture.path("archive (1).zip").read_bytes() == b"previous archive"
+
+
 @pytest.mark.parametrize("choice", ["Cancel", "Escape", "Replace"])
 def test_archive_conflict_keyboard_choices_preserve_cancel_and_replace_behavior(strata, choice):
     original = strata.fixture.path("archive.zip")

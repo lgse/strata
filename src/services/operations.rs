@@ -287,11 +287,17 @@ pub enum OperationEvent {
     },
     Restored {
         request_id: OperationRequestId,
+        /// Trash entries that left the trash view.
         locations: Vec<Location>,
+        /// Where the restored items landed, recorded for undo.
+        restored: Vec<Location>,
     },
     RestoreCompletedWithErrors {
         request_id: OperationRequestId,
+        /// Trash entries that left the trash view.
         restored_locations: Vec<Location>,
+        /// Where the restored items landed, recorded for undo.
+        restored: Vec<Location>,
         message: String,
     },
     Cancelled {
@@ -305,6 +311,8 @@ pub enum OperationEvent {
     Compressed {
         request_id: OperationRequestId,
         archive_name: String,
+        /// The finished archive, recorded so undo can trash it.
+        archive: Location,
     },
     Extracted {
         request_id: OperationRequestId,

@@ -154,6 +154,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         match result {
             Ok(archive_name) => emit(OperationEvent::Compressed {
                 request_id: request.id,
+                // Keep Both may publish under a renamed name, so rebuild the
+                // location from the returned name rather than `archive_path`.
+                archive: Location::local(dest_dir.join(&archive_name)),
                 archive_name,
             }),
             Err(ArchiveError::Cancelled) => emit(cancelled_archive_event(

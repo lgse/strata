@@ -668,6 +668,7 @@ impl OperationProvider for ImmediateOperationProvider {
         emit(OperationEvent::Restored {
             request_id: request.id,
             locations: Vec::new(),
+            restored: Vec::new(),
         });
         LoadHandle::new(|| {})
     }
@@ -685,17 +686,30 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let restored = match &request.source {
+            RestoreSource::TrashEntries(items) => items
+                .iter()
+                .map(|item| Location::local(item.destination.clone()))
+                .collect(),
+            RestoreSource::OriginalLocations(locations) => locations.clone(),
+        };
         emit(OperationEvent::Restored {
             request_id: request.id,
             locations: Vec::new(),
+            restored,
         });
         LoadHandle::new(|| {})
     }
 
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let archive = request
+            .destination
+            .child(std::ffi::OsStr::new(&request.archive_name))
+            .unwrap_or_else(|| request.destination.clone());
         emit(OperationEvent::Compressed {
             request_id: request.id,
             archive_name: request.archive_name,
+            archive,
         });
         LoadHandle::new(|| {})
     }

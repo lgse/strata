@@ -131,7 +131,9 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
         let kept = run_compression(request(TransferConflict::KeepBoth));
         let expected_name = format!("existing ({suffix}).zip");
         assert!(kept.iter().any(|event| matches!(event,
-            OperationEvent::Compressed { archive_name, .. } if archive_name == &expected_name
+            OperationEvent::Compressed { archive_name, archive, .. }
+                if archive_name == &expected_name
+                    && archive == &Location::local(destination.join(&expected_name))
         )));
         let extracted = destination.join(format!("kept-{suffix}"));
         fs::create_dir(&extracted)?;

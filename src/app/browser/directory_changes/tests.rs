@@ -157,6 +157,7 @@ fn stale_watchers_cannot_queue_a_rescan_during_file_operations() {
             OperationEvent::Restored {
                 request_id,
                 locations: Vec::new(),
+                restored: Vec::new(),
             }
         } else {
             OperationEvent::Deleted {

@@ -180,6 +180,7 @@ fn restoration_monitor_changes_publish_once_after_the_terminal_event() {
     complete(OperationEvent::Restored {
         request_id,
         locations: vec![first.location, second.location],
+        restored: Vec::new(),
     });
 
     assert_eq!(
