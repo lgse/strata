@@ -35,11 +35,18 @@ impl Dispatcher {
         if event.text_has_focus() {
             return None;
         }
-        if event.control() && matches!(event.key, Key::k | Key::K) {
-            if let Err(error) =
-                gtk::prelude::WidgetExt::activate_action(&self.window, "win.search", None)
+        if event.control()
+            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::k | Key::K)
+        {
+            let (action, label) = if event.shift() {
+                ("win.jump-folder", "folder jump")
+            } else {
+                ("win.search", "global search")
+            };
+            if let Err(error) = gtk::prelude::WidgetExt::activate_action(&self.window, action, None)
             {
-                tracing::warn!(%error, "unable to activate global search shortcut");
+                tracing::warn!(%error, "unable to activate {label} shortcut");
             }
             return Some(Propagation::Stop);
         }

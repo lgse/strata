@@ -1849,6 +1849,25 @@ scrollbar slider:active {
   min-height: 6px;
 }
 
+.sidebar-scroll scrollbar.vertical {
+  min-width: 5px;
+}
+
+.sidebar-scroll scrollbar.vertical > range > trough > slider {
+  min-width: 3px;
+  margin: 0 1px;
+  border: none;
+  background: alpha(@theme_text, 0.35);
+}
+
+.sidebar-scroll scrollbar.vertical:hover > range > trough > slider {
+  background: alpha(@theme_accent, 0.65);
+}
+
+.sidebar-scroll scrollbar.vertical > range > trough > slider:active {
+  background: @theme_accent;
+}
+
 .columns-scroll scrollbar.horizontal {
   background: @theme_bg;
 }
@@ -1866,10 +1885,9 @@ scrollbar slider:active {
   min-width: 22px;
 }
 
-/* Reserve the overlay scrollbar's width so it cannot cover device controls. */
 .sidebar {
   background: @theme_surface;
-  padding: 8px 14px 8px 7px;
+  padding: 8px 7px;
 }
 
 .sidebar-update {
@@ -2047,9 +2065,9 @@ scrollbar slider:active {
   background-image: none;
   border: none;
   /* Offset sidebar padding; min-width keeps measurement nonnegative. */
-  margin: 6px -14px 6px -7px;
+  margin: 6px -7px;
   min-height: 1px;
-  min-width: 21px;
+  min-width: 14px;
 }
 
 .sidebar-update-separator {
@@ -2103,7 +2121,7 @@ paned > separator {
 }
 
 .preview-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.32);
+  border-bottom: 1px solid alpha(@theme_border, 0.6);
   min-height: 40px;
   padding: 0 6px 0 12px;
 }
@@ -2156,20 +2174,9 @@ paned > separator {
   opacity: 0.46;
 }
 
-.preview-metadata {
-  border-bottom: 1px solid alpha(@theme_border, 0.24);
-  padding: 10px 12px;
-}
-
-.preview-metadata-label {
+.preview-metadata label {
   color: @theme_dim_text;
-  font-size: 0.72em;
-  font-weight: 700;
-}
-
-.preview-metadata-value {
-  color: @theme_text;
-  font-size: 0.86em;
+  font-size: 0.65em;
 }
 
 .preview-content,
@@ -2305,16 +2312,25 @@ paned > separator {
   outline-offset: 1px;
 }
 
-.preview-document-table {
-  background: alpha(@theme_border, 0.5);
-  border: 1px solid alpha(@theme_border, 0.5);
-  border-radius: 5px;
+.preview-table-interactive > scrolledwindow,
+.preview-table-interactive > scrolledwindow > viewport,
+.preview-document-table,
+.preview-document-table > listview {
+  background: @theme_surface;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .preview-document-table-cell {
   background: @theme_surface;
   color: @theme_text;
-  padding: 6px 8px;
+  padding: 0;
+}
+
+.preview-document-table-cell selection {
+  background: @theme_accent;
+  color: @theme_bg;
 }
 
 .preview-document-table-cell.header {
@@ -2342,8 +2358,8 @@ paned > separator {
   outline-offset: 1px;
 }
 
-.preview-document-table.selected .preview-document-table-cell,
-.preview-document-table.selected .preview-document-table-cell.header {
+.preview-table-interactive.selected .preview-document-table-cell,
+.preview-table-interactive.selected .preview-document-table-cell.header {
   background: @theme_accent;
   color: @theme_bg;
 }
@@ -2370,6 +2386,91 @@ paned > separator {
   color: @theme_dim_text;
   font-size: 0.8em;
   padding: 6px 10px;
+}
+
+.preview-document-table > header,
+.preview-document-table > header button {
+  background: @theme_muted;
+  color: @theme_text;
+  border-color: @theme_border;
+}
+
+.preview-document-table > header {
+  border: none;
+  box-shadow: none;
+}
+
+.preview-document-table > header button {
+  padding: 4px 6px;
+  min-height: 0;
+  background-image: none;
+  box-shadow: none;
+  border-width: 0 0 1px 1px;
+  border-style: solid;
+  border-radius: 0;
+}
+
+.preview-document-table > header button:first-child {
+  border-left-width: 0;
+}
+
+.preview-document-table > header button:hover {
+  background: @theme_highlight;
+  color: @theme_accent;
+}
+
+.preview-document-table > header button:active {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document-table > header button:focus-visible,
+.preview-document-table row:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.preview-document-table listview,
+.preview-document-table row,
+.preview-document-table cell {
+  background: @theme_surface;
+  color: @theme_text;
+  border-color: @theme_border;
+}
+
+.preview-document-table row {
+  padding: 0;
+  min-height: 0;
+}
+
+.preview-document-table cell {
+  padding: 4px 6px;
+  min-height: 0;
+}
+
+.preview-document-table row:hover {
+  background: @theme_highlight;
+}
+
+.preview-document-table > header separator,
+.preview-document-table > header sort-indicator {
+  color: @theme_accent;
+}
+
+.preview-document-table > header sort-indicator.ascending,
+.preview-document-table > header sort-indicator.descending {
+  -gtk-icon-source: -gtk-recolor(url("resource:///io/github/lgse/Strata/icons/scalable/actions/strata-caret.svg"));
+  -gtk-icon-size: 10px;
+  min-width: 12px;
+  min-height: 12px;
+}
+
+.preview-document-table > header sort-indicator.ascending {
+  -gtk-icon-transform: none;
+}
+
+.preview-document-table > header sort-indicator.descending {
+  -gtk-icon-transform: rotate(180deg);
 }
 
 .preview-volume-toggle {

@@ -68,6 +68,7 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Known(10),
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
         image_dimensions: crate::model::MetadataValue::Unknown,
@@ -95,6 +96,7 @@ fn quick_preview_is_offered_only_for_supported_files() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
         image_dimensions: crate::model::MetadataValue::Unknown,
@@ -110,7 +112,17 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "notes.txt",
         crate::model::EntryKind::FileSymbolicLink,
     )));
-    for name in ["notes.mdown", "notes.mkdn", "notes.mdwn", "page.xhtml"] {
+    for name in [
+        "notes.mdown",
+        "notes.mkdn",
+        "notes.mdwn",
+        "page.xhtml",
+        "data.csv",
+        "data.tsv",
+        "book.xls",
+        "book.xlsx",
+        "book.ods",
+    ] {
         assert!(
             crate::ui::preview::entry_supports_quick_preview(&entry(
                 name,
@@ -160,6 +172,7 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,
@@ -237,6 +250,7 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
         image_dimensions: crate::model::MetadataValue::Unknown,
@@ -251,6 +265,7 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         kind: crate::model::EntryKind::Directory,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: true,
         mode: crate::model::MetadataValue::Unknown,
         image_dimensions: crate::model::MetadataValue::Unknown,

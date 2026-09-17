@@ -52,17 +52,20 @@ pub(super) fn general_page(
     append_auto_refresh_option(&performance, &manager);
     append_video_preview_option(&performance, &manager);
 
-    append_heading(&preferences, "DESKTOP INTEGRATION");
+    let desktop = super::settings_group(&preferences, "DESKTOP INTEGRATION");
     let portal_row = crate::ui::portal_preferences::settings_row();
     super::search::tag(&portal_row, "Desktop integration");
-    preferences.append(&portal_row);
+    desktop.append(&portal_row);
+    let udiskie_row = crate::ui::udiskie_preferences::settings_row();
+    super::search::tag(&udiskie_row, "Unlock encrypted volumes");
+    desktop.append(&udiskie_row);
 
     let startup = super::settings_group(&preferences, "STARTUP");
     append_default_directory_option(&startup, &manager);
 
     (
         scrollable_page(&preferences, None),
-        vec![portal_row],
+        vec![portal_row, udiskie_row],
         responsive_activation_rows,
     )
 }
@@ -247,6 +250,7 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         icons::HOME,
         icons::TRASH,
         icons::GLOBE,
+        icons::CLOCK,
         icons::MONITOR,
         icons::DOCUMENTS,
         icons::DOWNLOADS,
@@ -271,6 +275,12 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             description: "Show Network in the sidebar.",
             read: ThemeManager::sidebar_show_network,
             write: ThemeManager::set_sidebar_show_network,
+        },
+        PreferenceSwitch {
+            title: "Show Recent in sidebar",
+            description: "Show Recent files in the sidebar.",
+            read: ThemeManager::sidebar_show_recent,
+            write: ThemeManager::set_sidebar_show_recent,
         },
         PreferenceSwitch {
             title: "Show Desktop in sidebar",

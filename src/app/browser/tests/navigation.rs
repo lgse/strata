@@ -85,6 +85,45 @@ fn navigating_to_the_active_location_is_a_noop() {
 }
 
 #[test]
+fn recent_is_consumed_as_a_parentless_browser_location() {
+    let browser = Browser::new(Rc::new(ScriptedSource::scripted(
+        vec!["target.txt"],
+        vec![],
+    )));
+    let recent = Location::uri("recent:///");
+
+    browser.navigate(Location::local("/fixture"));
+    browser.navigate(recent.clone());
+
+    assert_eq!(browser.active_location(), Some(recent.clone()));
+    assert!(!browser.can_go_parent());
+    assert_eq!(
+        browser
+            .entry_at(0, 0)
+            .expect("Recent should publish a normal entry")
+            .location,
+        Location::local("/fixture/target.txt")
+    );
+
+    browser.back();
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    browser.forward();
+    assert_eq!(browser.active_location(), Some(recent));
+}
+
+#[test]
+fn empty_recent_load_finishes_as_an_empty_column() {
+    let browser = Browser::new(Rc::new(ScriptedSource::scripted(vec![], vec![])));
+
+    browser.navigate(Location::uri("recent:///"));
+
+    let snapshot = browser.column_snapshot(0).expect("Recent column");
+    assert_eq!(snapshot.count, 0);
+    assert!(!snapshot.loading);
+    assert_eq!(snapshot.error, None);
+}
+
+#[test]
 fn file_source_can_be_replaced_without_constructing_the_ui() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));

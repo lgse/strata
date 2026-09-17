@@ -234,9 +234,9 @@ fn view_shortcuts_work_from_the_pane_filter() {
 }
 
 #[test]
-fn inline_editing_and_location_edit_own_filter_and_global_search_keys() {
+fn inline_editing_and_location_edit_own_search_shortcuts() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::inline_editing_and_location_edit_own_filter_and_global_search_keys",
+        "ui::window::tests::keyboard_dispatch::inline_editing_and_location_edit_own_search_shortcuts",
         || {
             let fixture = KeyboardFixture::new();
             let searches = Rc::new(Cell::new(0));
@@ -244,13 +244,22 @@ fn inline_editing_and_location_edit_own_filter_and_global_search_keys() {
             let action = gio::SimpleAction::new("search", None);
             action.connect_activate(move |_, _| observed.set(observed.get() + 1));
             fixture.window.add_action(&action);
-
+            let jumps = Rc::new(Cell::new(0));
+            let observed = jumps.clone();
+            let action = gio::SimpleAction::new("jump-folder", None);
+            action.connect_activate(move |_, _| observed.set(observed.get() + 1));
+            fixture.window.add_action(&action);
             assert!(fixture.press(Key::F2, ModifierType::empty()));
             assert!(fixture.view.rename_is_active());
             assert!(!fixture.press(Key::f, ModifierType::CONTROL_MASK));
             assert!(!fixture.view.filter_has_focus());
             assert!(!fixture.press(Key::k, ModifierType::CONTROL_MASK));
+            assert!(!fixture.press(
+                Key::k,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
             assert_eq!(searches.get(), 0);
+            assert_eq!(jumps.get(), 0);
             assert!(!fixture.press(Key::_2, ModifierType::CONTROL_MASK));
             assert_eq!(fixture.view.view_mode(), BrowserMode::Columns);
             assert!(fixture.view.rename_is_active());
@@ -265,7 +274,12 @@ fn inline_editing_and_location_edit_own_filter_and_global_search_keys() {
             assert!(fixture.press(Key::l, ModifierType::CONTROL_MASK));
             wait_until(|| fixture.view.location_has_focus());
             assert!(!fixture.press(Key::k, ModifierType::CONTROL_MASK));
+            assert!(!fixture.press(
+                Key::k,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
             assert_eq!(searches.get(), 0);
+            assert_eq!(jumps.get(), 0);
             assert!(!fixture.press(Key::_2, ModifierType::CONTROL_MASK));
             assert_eq!(fixture.view.view_mode(), BrowserMode::Columns);
             assert!(fixture.view.location_has_focus());
@@ -274,6 +288,11 @@ fn inline_editing_and_location_edit_own_filter_and_global_search_keys() {
 
             assert!(fixture.press(Key::k, ModifierType::CONTROL_MASK));
             assert_eq!(searches.get(), 1);
+            assert!(fixture.press(
+                Key::k,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
+            assert_eq!(jumps.get(), 1);
         },
     );
 }

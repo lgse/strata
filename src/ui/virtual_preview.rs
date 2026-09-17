@@ -48,7 +48,7 @@ impl PreviewUnit {
     fn selection_len(&self) -> usize {
         match self {
             Self::Document(DocumentUnit {
-                kind: DocumentUnitKind::Table { .. },
+                kind: DocumentUnitKind::Table { .. } | DocumentUnitKind::Media { .. },
                 ..
             }) => 1,
             _ => self
@@ -99,11 +99,12 @@ impl DocumentSelection {
 struct BoundRow {
     root: glib::WeakRef<gtk::Box>,
     view: glib::WeakRef<super::document_view::DocumentTextView>,
-    table: glib::WeakRef<gtk::Grid>,
+    table: glib::WeakRef<gtk::Box>,
 }
 
 pub(super) struct VirtualPreviewState {
     units: Rc<Vec<PreviewUnit>>,
+    tables: RefCell<HashMap<usize, Rc<super::table_view::TableState>>>,
     wrapped: Cell<bool>,
     selection: Cell<Option<DocumentSelection>>,
     bound: RefCell<HashMap<usize, BoundRow>>,
@@ -113,19 +114,21 @@ pub(super) struct VirtualPreviewState {
     drag_generation: Cell<u64>,
     hovered: Cell<Option<(usize, usize)>>,
     pressed_link: RefCell<Option<String>>,
+    media_cache: Rc<super::document_media::MediaCache>,
 }
 
 pub(super) fn rendered_document(
     layout: DocumentLayout,
     warnings: Vec<String>,
     wrapped: bool,
+    document_path: Option<std::path::PathBuf>,
 ) -> (gtk::Box, Rc<VirtualPreviewState>) {
     let units = layout
         .units
         .into_iter()
         .map(PreviewUnit::Document)
         .collect();
-    virtual_preview(units, warnings, false, wrapped)
+    virtual_preview(units, warnings, false, wrapped, document_path)
 }
 
 pub(super) fn source_document(
@@ -136,7 +139,7 @@ pub(super) fn source_document(
     let content = normalize_preview_text(content);
     let (source, split_lines) = source_units(&content);
     let units = source.into_iter().map(PreviewUnit::Source).collect();
-    let (container, state) = virtual_preview(units, Vec::new(), true, wrapped);
+    let (container, state) = virtual_preview(units, Vec::new(), true, wrapped, None);
     if truncated || split_lines {
         let message = match (truncated, split_lines) {
             (true, true) => {
@@ -169,9 +172,11 @@ fn virtual_preview(
     warnings: Vec<String>,
     source: bool,
     wrapped: bool,
+    document_path: Option<std::path::PathBuf>,
 ) -> (gtk::Box, Rc<VirtualPreviewState>) {
     let state = Rc::new(VirtualPreviewState {
         units: Rc::new(units),
+        tables: RefCell::new(HashMap::new()),
         wrapped: Cell::new(wrapped),
         selection: Cell::new(None),
         bound: RefCell::new(HashMap::new()),
@@ -181,7 +186,25 @@ fn virtual_preview(
         drag_generation: Cell::new(0),
         hovered: Cell::new(None),
         pressed_link: RefCell::new(None),
+        media_cache: super::document_media::MediaCache::new(document_path),
     });
+    if let [
+        PreviewUnit::Document(DocumentUnit {
+            kind: DocumentUnitKind::Table { rows, .. },
+            ..
+        }),
+    ] = state.units.as_slice()
+    {
+        let table = super::table_view::TableState::new(rows.clone());
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        container.set_vexpand(true);
+        for warning in warnings {
+            container.append(&super::preview::document_notice(&warning));
+        }
+        container.append(&table.widget_with_height(true));
+        state.tables.borrow_mut().insert(0, table);
+        return (container, state);
+    }
     let model = gtk::StringList::new(&vec![""; state.units.len()]);
     let selection = gtk::NoSelection::new(Some(model.clone()));
     let document_tags = (!source).then(document_tag_table);
@@ -210,16 +233,36 @@ fn virtual_preview(
         let Some(unit) = state_for_bind.units.get(index) else {
             return;
         };
-        let bound = bind_unit(
-            &row,
-            unit,
-            index,
-            state_for_bind.units.len(),
-            state_for_bind.units.clone(),
-            document_tags_for_bind.as_ref(),
-            state_for_bind.wrapped.get(),
-        );
+        let bound = if let PreviewUnit::Document(DocumentUnit {
+            kind: DocumentUnitKind::Media { source, list_depth },
+            text,
+            ..
+        }) = unit
+        {
+            clear_box(&row);
+            row.set_margin_start(16 + list_indent(*list_depth));
+            row.set_margin_end(16);
+            row.set_margin_top(8);
+            row.set_margin_bottom(12);
+            state_for_bind
+                .media_cache
+                .bind((index, None), source, text, &row);
+            let bound = BoundRow::default();
+            bound.root.set(Some(&row));
+            bound
+        } else {
+            bind_unit(
+                &row,
+                unit,
+                index,
+                &state_for_bind,
+                document_tags_for_bind.as_ref(),
+            )
+        };
         if !source && let Some(view) = bound.view.upgrade() {
+            if let PreviewUnit::Document(unit) = unit {
+                bind_inline_math(&view, unit, index, &state_for_bind.media_cache);
+            }
             schedule_document_view_size(&view, row.width());
         }
         let mut bound_rows = state_for_bind.bound.borrow_mut();
@@ -363,11 +406,12 @@ fn bind_unit(
     row: &gtk::Box,
     unit: &PreviewUnit,
     index: usize,
-    unit_count: usize,
-    units: Rc<Vec<PreviewUnit>>,
+    state: &VirtualPreviewState,
     document_tags: Option<&gtk::TextTagTable>,
-    wrapped: bool,
 ) -> BoundRow {
+    let unit_count = state.units.len();
+    let units = state.units.clone();
+    let wrapped = state.wrapped.get();
     row.set_margin_top(if index == 0 { 12 } else { 0 });
     row.set_margin_bottom(if index + 1 == unit_count { 20 } else { 0 });
     row.set_margin_start(0);
@@ -392,7 +436,15 @@ fn bind_unit(
             row.set_margin_start(16 + list_indent(*list_depth));
             row.set_margin_end(16);
             row.set_margin_bottom(if index + 1 == unit_count { 20 } else { 10 });
-            let table = bind_document_table_row(row, rows);
+            clear_box(row);
+            let table_state = state
+                .tables
+                .borrow_mut()
+                .entry(index)
+                .or_insert_with(|| super::table_view::TableState::new(rows.clone()))
+                .clone();
+            let table = table_state.widget();
+            row.append(&table);
             let bound = BoundRow::default();
             bound.root.set(Some(row));
             bound.table.set(Some(&table));
@@ -549,7 +601,10 @@ fn size_document_row(bound: &BoundRow, width: i32) {
     size_document_text_view(&view, width);
 }
 
-fn schedule_document_view_size(view: &super::document_view::DocumentTextView, fallback_width: i32) {
+pub(super) fn schedule_document_view_size(
+    view: &super::document_view::DocumentTextView,
+    fallback_width: i32,
+) {
     let view = view.downgrade();
     glib::idle_add_local_once(move || {
         let Some(view) = view.upgrade().filter(|view| view.is_mapped()) else {
@@ -697,6 +752,36 @@ fn bind_document_text_view(
     view.set_selection_range(None);
     view.set_wrap_mode(document_wrap_mode(wrapped));
     set_document_accessibility(view, unit);
+}
+
+fn bind_inline_math(
+    view: &super::document_view::DocumentTextView,
+    unit: &DocumentUnit,
+    index: usize,
+    cache: &Rc<super::document_media::MediaCache>,
+) {
+    let buffer = view.buffer();
+    for span in &unit.spans {
+        let DocumentSpanStyle::Math(source) = &span.style else {
+            continue;
+        };
+        let mut start = buffer.iter_at_offset(span.range.start as i32);
+        let mut end = buffer.iter_at_offset(span.range.end as i32);
+        buffer.delete(&mut start, &mut end);
+        let anchor = buffer.create_child_anchor(&mut start);
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        content.set_valign(gtk::Align::Baseline);
+        view.add_child_at_anchor(&content, &anchor);
+        cache.bind(
+            (index, Some(span.range.start)),
+            &crate::services::DocumentMedia::Math {
+                source: source.to_string(),
+                display: false,
+            },
+            source,
+            &content,
+        );
+    }
 }
 
 fn highlighted_code_language(unit: &DocumentUnit) -> Option<&'static str> {
@@ -852,7 +937,10 @@ fn apply_document_unit_tags(buffer: &gtk::TextBuffer, unit: &DocumentUnit) {
                 apply(&format!("document-list-child-{}", depth.min(&32)));
             }
         }
-        DocumentUnitKind::Paragraph | DocumentUnitKind::Table { .. } | DocumentUnitKind::Gap => {}
+        DocumentUnitKind::Paragraph
+        | DocumentUnitKind::Table { .. }
+        | DocumentUnitKind::Media { .. }
+        | DocumentUnitKind::Gap => {}
     }
 
     for span in &unit.spans {
@@ -868,6 +956,7 @@ fn apply_document_unit_tags(buffer: &gtk::TextBuffer, unit: &DocumentUnit) {
                 DocumentSpanStyle::Monospace => "document-monospace",
                 DocumentSpanStyle::Underline => "document-underline",
                 DocumentSpanStyle::Link(_) => "document-link",
+                DocumentSpanStyle::Math(_) => "document-monospace",
             },
         );
         buffer.apply_tag(&tag, &start, &end);
@@ -886,6 +975,11 @@ fn document_tag(buffer: &gtk::TextBuffer, name: &str) -> gtk::TextTag {
 
 fn set_document_accessibility(view: &super::document_view::DocumentTextView, unit: &DocumentUnit) {
     view.reset_property(gtk::AccessibleProperty::Level);
+    view.reset_property(gtk::AccessibleProperty::Label);
+    let has_math = unit
+        .spans
+        .iter()
+        .any(|span| matches!(span.style, DocumentSpanStyle::Math(_)));
     match unit.kind {
         DocumentUnitKind::Heading(level)
         | DocumentUnitKind::ListChild {
@@ -898,7 +992,16 @@ fn set_document_accessibility(view: &super::document_view::DocumentTextView, uni
         DocumentUnitKind::ListItem { .. } => {
             view.set_accessible_role(gtk::AccessibleRole::ListItem);
         }
-        _ => view.set_accessible_role(gtk::AccessibleRole::Generic),
+        _ => view.set_accessible_role(if has_math {
+            gtk::AccessibleRole::Group
+        } else {
+            gtk::AccessibleRole::Generic
+        }),
+    }
+    if has_math {
+        // GTK's Text interface omits child anchors. Keep complete prose and TeX
+        // available to assistive technology rather than exposing an empty object.
+        view.update_property(&[gtk::accessible::Property::Label(unit.copy_text.trim_end())]);
     }
 }
 
@@ -1015,95 +1118,32 @@ fn document_tag_table() -> gtk::TextTagTable {
     table
 }
 
-fn document_table_widget() -> gtk::Grid {
-    let table = gtk::Grid::builder()
-        .column_homogeneous(true)
-        .column_spacing(1)
-        .row_spacing(1)
-        .hexpand(true)
-        .build();
-    table.add_css_class("preview-document-table");
-    table.set_accessible_role(gtk::AccessibleRole::Table);
-    table.set_margin_top(super::document_view::DOCUMENT_PANEL_MARGIN);
-    table.set_margin_bottom(super::document_view::DOCUMENT_PANEL_MARGIN);
-    table
-}
-
-fn bind_document_table_row(row: &gtk::Box, rows: &[Vec<DocumentTableCellLayout>]) -> gtk::Grid {
-    let table = row
-        .first_child()
-        .and_then(|child| child.downcast::<gtk::Grid>().ok())
-        .unwrap_or_else(|| {
-            clear_box(row);
-            let table = document_table_widget();
-            row.append(&table);
-            table
-        });
-    bind_document_table(&table, rows);
-    table
-}
-
-fn bind_document_table(table: &gtk::Grid, rows: &[Vec<DocumentTableCellLayout>]) {
-    let mut labels = Vec::new();
-    let mut child = table.first_child();
-    while let Some(widget) = child {
-        child = widget.next_sibling();
-        table.remove(&widget);
-        if let Ok(label) = widget.downcast::<gtk::Label>() {
-            labels.push(label);
-        }
+pub(super) fn set_table_cell(label: &gtk::Label, cell: &DocumentTableCellLayout) {
+    label.set_tooltip_text(None);
+    if cell.text.len() > TABLE_CELL_DISPLAY_BYTES {
+        label.set_text(&format!(
+            "{}…",
+            bounded_text_prefix(&cell.text, TABLE_CELL_DISPLAY_BYTES)
+        ));
+        label.set_tooltip_text(Some(
+            "Cell shortened for responsive preview; copying the table keeps the complete text.",
+        ));
+    } else if let Some(markup) = styled_markup(&cell.text, &cell.spans) {
+        label.set_markup(&markup);
+    } else {
+        label.set_text(&cell.text);
+        label.set_tooltip_text(Some(
+            "Cell formatting omitted for responsive preview; copying keeps the complete text.",
+        ));
     }
-    for (row, cells) in rows.iter().enumerate() {
-        for (column, cell) in cells.iter().enumerate() {
-            let label = labels.pop().unwrap_or_else(document_table_cell);
-            label.set_tooltip_text(None);
-            if cell.text.len() > TABLE_CELL_DISPLAY_BYTES {
-                label.set_text(&format!(
-                    "{}…",
-                    bounded_text_prefix(&cell.text, TABLE_CELL_DISPLAY_BYTES)
-                ));
-                label.set_tooltip_text(Some(
-                    "Cell shortened for responsive preview; copying the table keeps the complete text.",
-                ));
-            } else if let Some(markup) = styled_markup(&cell.text, &cell.spans) {
-                label.set_markup(&markup);
-            } else {
-                label.set_text(&cell.text);
-                label.set_tooltip_text(Some(
-                    "Cell formatting omitted for responsive preview; copying keeps the complete text.",
-                ));
-            }
-            if cell.header {
-                label.add_css_class("header");
-                label.set_accessible_role(gtk::AccessibleRole::ColumnHeader);
-            } else {
-                label.remove_css_class("header");
-                label.set_accessible_role(gtk::AccessibleRole::Cell);
-            }
-            table.attach(&label, column as i32, row as i32, 1, 1);
-        }
+    if cell.header {
+        label.add_css_class("header");
+    } else {
+        label.remove_css_class("header");
     }
 }
 
-fn document_table_cell() -> gtk::Label {
-    let label = gtk::Label::new(None);
-    label.add_css_class("preview-document-table-cell");
-    label.set_use_markup(true);
-    label.set_wrap(true);
-    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    label.set_xalign(0.0);
-    label.set_yalign(0.0);
-    label.set_hexpand(true);
-    label.connect_activate_link(|label, uri| {
-        if has_web_scheme(uri) {
-            open_web_link(uri, label);
-        }
-        glib::Propagation::Stop
-    });
-    label
-}
-
-fn open_web_link(uri: &str, parent: &impl IsA<gtk::Widget>) {
+pub(super) fn open_web_link(uri: &str, parent: &impl IsA<gtk::Widget>) {
     if let Err(error) = gio::AppInfo::launch_default_for_uri(uri, None::<&gio::AppLaunchContext>) {
         super::modal::show_error_dialog(parent, "Unable to open link", &error.to_string());
     }
@@ -1167,7 +1207,7 @@ fn append_table_markup(output: &mut String, markup: &str) -> Option<()> {
 
 fn span_open(style: &DocumentSpanStyle) -> String {
     match style {
-        DocumentSpanStyle::Accent => String::new(),
+        DocumentSpanStyle::Accent | DocumentSpanStyle::Math(_) => String::new(),
         DocumentSpanStyle::Bold => "<b>".to_owned(),
         DocumentSpanStyle::Italic => "<i>".to_owned(),
         DocumentSpanStyle::Strikethrough => "<s>".to_owned(),
@@ -1181,7 +1221,7 @@ fn span_open(style: &DocumentSpanStyle) -> String {
 
 fn span_close(style: &DocumentSpanStyle) -> &'static str {
     match style {
-        DocumentSpanStyle::Accent => "",
+        DocumentSpanStyle::Accent | DocumentSpanStyle::Math(_) => "",
         DocumentSpanStyle::Bold => "</b>",
         DocumentSpanStyle::Italic => "</i>",
         DocumentSpanStyle::Strikethrough => "</s>",
@@ -1209,7 +1249,9 @@ fn install_pointer_selection(
             return;
         };
         state_for_press.pressed_link.borrow_mut().take();
-        if point_hits_class(&list, x, y, "preview-code-copy") {
+        if point_hits_class(&list, x, y, "preview-code-copy")
+            || point_hits_class(&list, x, y, "preview-table-interactive")
+        {
             return;
         }
         state_for_press
@@ -1256,7 +1298,8 @@ fn install_pointer_selection(
         let Some(list) = weak_list.upgrade() else {
             return;
         };
-        let allowed = !point_hits_class(&list, x, y, "preview-code-copy");
+        let allowed = !point_hits_class(&list, x, y, "preview-code-copy")
+            && !point_hits_class(&list, x, y, "preview-table-interactive");
         drag_allowed_for_begin.set(allowed);
         if !allowed {
             return;
@@ -1778,9 +1821,18 @@ fn selection_text(state: &VirtualPreviewState) -> Option<String> {
             continue;
         }
         if from == 0 && to == len {
-            output.push_str(unit.copy_text());
+            if let Some(table) = state.tables.borrow().get(&index) {
+                output.push_str(&table.copy_text());
+            } else {
+                output.push_str(unit.copy_text());
+            }
         } else {
-            output.push_str(&char_slice(unit.display_text(), from, to));
+            match unit {
+                PreviewUnit::Document(unit) => output.push_str(&unit.copy_range(from..to)),
+                PreviewUnit::Source(_) => {
+                    output.push_str(&char_slice(unit.display_text(), from, to))
+                }
+            }
             if to == len && index < end.unit && unit.copy_text().ends_with('\n') {
                 output.push('\n');
             }

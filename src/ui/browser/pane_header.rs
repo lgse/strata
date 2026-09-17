@@ -21,6 +21,13 @@ pub(in crate::ui) fn pane_new_folder_button(
     )));
     crate::ui::controls::pane_header_action(&button);
     button.add_css_class("chooser-new-folder");
+    if state
+        .upgrade()
+        .and_then(|state| state.browser.location_at(depth))
+        .is_some_and(|location| location.is_recent_location())
+    {
+        button.set_visible(false);
+    }
     button.update_property(&[gtk::accessible::Property::Label("New Folder")]);
     button.connect_clicked(move |_| {
         if let Some(state) = state.upgrade()
@@ -66,17 +73,20 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     popover.add_css_class("column-popover");
     crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let popover_weak = popover.downgrade();
-    let camera_photos = browser
-        .location_at(depth)
+    let location = browser.location_at(depth);
+    let camera_photos = location
+        .as_ref()
         .is_some_and(|location| location.is_camera_photo_root());
+    let recent = location.is_some_and(|location| location.is_recent_root());
     for (label, key) in [
         ("Device order", SortKey::DeviceOrder),
+        ("Recency", SortKey::Recency),
         ("Name", SortKey::Name),
         ("Size", SortKey::Size),
         ("Modified", SortKey::Modified),
         ("Type", SortKey::Type),
     ] {
-        if key == SortKey::DeviceOrder && !camera_photos {
+        if (key == SortKey::DeviceOrder && !camera_photos) || (key == SortKey::Recency && !recent) {
             continue;
         }
         let (option, check) = menu_option(label, preferences.sort_key == key);
@@ -101,25 +111,31 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         content.append(&option);
     }
 
-    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    let (folders_first, folders_check) = menu_option("Folders first", preferences.folders_first);
-    let folders_enabled = Rc::new(Cell::new(preferences.folders_first));
-    let weak_browser = Rc::downgrade(browser);
-    let folders_enabled_for_click = folders_enabled.clone();
-    let folders_check_for_click = folders_check.clone();
-    let popover_weak = popover_weak.clone();
-    folders_first.connect_clicked(move |_| {
-        let enabled = !folders_enabled_for_click.get();
-        folders_enabled_for_click.set(enabled);
-        folders_check_for_click.set_visible(enabled);
-        if let Some(browser) = weak_browser.upgrade() {
-            browser.set_folders_first(depth, enabled);
-        }
-        if let Some(popover) = popover_weak.upgrade() {
-            popover.popdown();
-        }
-    });
-    content.append(&folders_first);
+    let folders_state = if !recent {
+        content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        let (folders_first, folders_check) =
+            menu_option("Folders first", preferences.folders_first);
+        let folders_enabled = Rc::new(Cell::new(preferences.folders_first));
+        let weak_browser = Rc::downgrade(browser);
+        let folders_enabled_for_click = folders_enabled.clone();
+        let folders_check_for_click = folders_check.clone();
+        let popover_weak = popover_weak.clone();
+        folders_first.connect_clicked(move |_| {
+            let enabled = !folders_enabled_for_click.get();
+            folders_enabled_for_click.set(enabled);
+            folders_check_for_click.set_visible(enabled);
+            if let Some(browser) = weak_browser.upgrade() {
+                browser.set_folders_first(depth, enabled);
+            }
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+        content.append(&folders_first);
+        Some((folders_enabled, folders_check))
+    } else {
+        None
+    };
 
     popover.set_child(Some(&content));
     let keys = gtk::EventControllerKey::new();
@@ -150,8 +166,6 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     popover.add_controller(keys);
     let weak_browser = Rc::downgrade(browser);
     let checks = selected_checks.clone();
-    let folders_enabled_for_map = folders_enabled.clone();
-    let folders_check_for_map = folders_check.clone();
     popover.connect_map(move |_| {
         let Some(preferences) = weak_browser
             .upgrade()
@@ -162,8 +176,10 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         for (key, check) in checks.borrow().iter() {
             check.set_visible(*key == preferences.sort_key);
         }
-        folders_enabled_for_map.set(preferences.folders_first);
-        folders_check_for_map.set_visible(preferences.folders_first);
+        if let Some((folders_enabled, folders_check)) = folders_state.as_ref() {
+            folders_enabled.set(preferences.folders_first);
+            folders_check.set_visible(preferences.folders_first);
+        }
     });
     let button = gtk::MenuButton::builder()
         .tooltip_text("Choose sort field")

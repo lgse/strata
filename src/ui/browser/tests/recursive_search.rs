@@ -105,6 +105,7 @@ fn trash_entry(name: &str) -> FileEntry {
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,
         duration_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
     }
 }

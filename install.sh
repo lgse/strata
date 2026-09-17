@@ -19,6 +19,7 @@ WITH_FOLDER_ASSOCIATION=ask
 WITH_FILE_MANAGER=ask
 WITH_FILE_CHOOSER=ask
 WITH_OMARCHY_KEYBINDS=ask
+WITH_UDISKIE_UNLOCK=ask
 
 info() {
   printf '\n\033[1;34m==>\033[0m %s\n' "$*"
@@ -113,6 +114,7 @@ Options:
   --with-file-chooser           Use Strata for portal Open and Save dialogs
   --without-file-chooser        Keep the current chooser; suppress the app offer
   --with-omarchy-keybinds       Replace Omarchy's file-manager keybinds
+  --with-udiskie-unlock         Use Strata for udiskie encrypted-volume unlock
   -h, --help                    Show this help
 
 Integration flags imply --non-interactive. Folder association also installs the
@@ -137,6 +139,7 @@ parse_args() {
       --with-file-chooser) NON_INTERACTIVE=yes; WITH_FILE_CHOOSER=yes ;;
       --without-file-chooser) NON_INTERACTIVE=yes; WITH_FILE_CHOOSER=no ;;
       --with-omarchy-keybinds) NON_INTERACTIVE=yes; WITH_OMARCHY_KEYBINDS=yes ;;
+      --with-udiskie-unlock) NON_INTERACTIVE=yes; WITH_UDISKIE_UNLOCK=yes ;;
       -h | --help) usage; exit 0 ;;
       *) die "Unknown option: $1 (run with --help for usage)." ;;
     esac
@@ -369,6 +372,61 @@ EOF
   return 0
 }
 
+udiskie_on_path() {
+  command -v udiskie >/dev/null 2>&1
+}
+
+release_supports_udiskie_unlock() {
+  local extracted=$1
+  [[ -r $extracted/udiskie/unlock ]]
+}
+
+configure_udiskie_unlock() {
+  local extracted=$1
+  local omarchy_major=$2
+  local arch_based=${3:-no}
+
+  if [[ -n $omarchy_major ]]; then
+    if ! udiskie_on_path; then
+      if [[ $WITH_UDISKIE_UNLOCK == yes ]]; then
+        die "udiskie is not on PATH; --with-udiskie-unlock requires udiskie."
+      fi
+      warn "Omarchy usually ships udiskie, but it is not on PATH. Skipping encrypted-volume unlock."
+      return 0
+    fi
+  elif [[ $arch_based == yes ]] && udiskie_on_path; then
+    :
+  elif [[ $WITH_UDISKIE_UNLOCK == yes ]]; then
+    die "--with-udiskie-unlock requires Omarchy 3 or 4, or an Arch-based system with udiskie on PATH."
+  else
+    return 0
+  fi
+
+  if ! release_supports_udiskie_unlock "$extracted"; then
+    [[ $WITH_UDISKIE_UNLOCK == yes ]] \
+      && die "This release does not include encrypted-volume integration. Install a newer release."
+    warn "This Strata release does not include encrypted-volume unlock; skipping."
+    return 0
+  fi
+
+  local question restore_hint
+  if [[ -n $omarchy_major ]]; then
+    restore_hint='Restore later in Settings or with strata --uninstall-udiskie-unlock.'
+  else
+    restore_hint='Restore later with strata --uninstall-udiskie-unlock.'
+  fi
+  question="Use Strata to unlock encrypted drives instead of udiskie's dialog? (Writes your udiskie config.yml, turns off LUKS automount, and restarts udiskie. ${restore_hint})"
+
+  if want_option "$WITH_UDISKIE_UNLOCK" "$question" no; then
+    if ! "$BIN_PATH" --install-udiskie-unlock; then
+      if [[ -n $omarchy_major ]]; then
+        die "Encrypted-volume unlock setup failed. Strata is installed; retry in Settings → General → Unlock encrypted volumes or run: $BIN_PATH --install-udiskie-unlock"
+      fi
+      die "Encrypted-volume unlock setup failed. Strata is installed; retry with: $BIN_PATH --install-udiskie-unlock"
+    fi
+  fi
+}
+
 configure_file_chooser() {
   local extracted=$1 arch_based=${2:-no}
   if [[ ! -r $extracted/portal/strata.portal ]]; then
@@ -513,6 +571,8 @@ main() {
       || die "--with-omarchy-keybinds requires Omarchy 3 or 4."
     configure_omarchy_bindings "$omarchy_major"
   fi
+
+  configure_udiskie_unlock "$extracted" "$omarchy_major" "$arch_based"
 
   info "Installation complete"
   printf 'Installed Strata v%s from the stable release.\n' "$version"

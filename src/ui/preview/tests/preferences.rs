@@ -15,6 +15,7 @@ fn render_text(drawer: &PreviewDrawer) {
             size: crate::model::MetadataValue::Known(100),
             modified_unix_seconds: crate::model::MetadataValue::Unknown,
             mode: crate::model::MetadataValue::Unknown,
+            recent_unix_seconds: crate::model::MetadataValue::Unknown,
             is_hidden: false,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
@@ -119,6 +120,10 @@ fn document_defaults_apply_before_settings_and_after_reopening_in_two_windows() 
                 "<h1>Heading</h1><p>Document text.</p>",
             )
             .expect("HTML fixture");
+            std::fs::write(fixture.path().join("data.csv"), "name,value\nalpha,1\n")
+                .expect("CSV fixture");
+            std::fs::write(fixture.path().join("data.tsv"), "name\tvalue\nalpha\t1\n")
+                .expect("TSV fixture");
             std::fs::write(fixture.path().join("broken.html"), "<p>text</span>")
                 .expect("malformed fixture");
             let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
@@ -126,8 +131,15 @@ fn document_defaults_apply_before_settings_and_after_reopening_in_two_windows() 
             crate::ui::media::tests::wait(|| {
                 browser.column_snapshot(0).is_some_and(|s| !s.loading)
             });
-            let entries = ["notes.md", "page.html", "broken.html"].map(|name| {
-                (0..3)
+            let entries = [
+                "notes.md",
+                "page.html",
+                "broken.html",
+                "data.csv",
+                "data.tsv",
+            ]
+            .map(|name| {
+                (0..5)
                     .filter_map(|index| browser.entry_at(0, index))
                     .find(|entry| entry.display_name == name)
                     .expect("loaded document entry")
@@ -155,32 +167,35 @@ fn document_defaults_apply_before_settings_and_after_reopening_in_two_windows() 
                         preview.stack.visible_child_name().as_deref() == Some(name)
                     })
             };
-            for (drawer, entry) in drawers.iter().zip(&entries) {
-                drawer.show(entry.clone(), Some(0));
-                crate::ui::media::tests::wait(|| visible_view(drawer, "source"));
-                assert!(
-                    drawer
-                        .state
-                        .document_preview
-                        .borrow()
-                        .as_ref()
-                        .expect("source document awaiting render")
-                        .render_pending
-                );
-            }
-            drawers[0].state.document_view_button.emit_clicked();
-            crate::ui::media::tests::wait(|| visible_view(&drawers[0], "rendered"));
-            assert!(visible_view(&drawers[1], "source"));
-            assert!(!manager.render_documents_by_default());
-            manager.set_render_documents_by_default(true);
-            assert!(visible_view(&drawers[1], "source"));
-            for (drawer, entry) in drawers.iter().zip(&entries) {
-                drawer.close();
-                drawer.show(entry.clone(), Some(0));
-                crate::ui::media::tests::wait(|| visible_view(drawer, "rendered"));
-                drawer.state.document_view_button.emit_clicked();
-                assert!(visible_view(drawer, "source"));
-                assert!(manager.render_documents_by_default());
+            for pair in [&entries[..2], &entries[3..]] {
+                manager.set_render_documents_by_default(false);
+                for (drawer, entry) in drawers.iter().zip(pair) {
+                    drawer.show(entry.clone(), Some(0));
+                    crate::ui::media::tests::wait(|| visible_view(drawer, "source"));
+                    assert!(
+                        drawer
+                            .state
+                            .document_preview
+                            .borrow()
+                            .as_ref()
+                            .expect("source document awaiting render")
+                            .render_pending
+                    );
+                }
+                drawers[0].state.document_view_button.emit_clicked();
+                crate::ui::media::tests::wait(|| visible_view(&drawers[0], "rendered"));
+                assert!(visible_view(&drawers[1], "source"));
+                assert!(!manager.render_documents_by_default());
+                manager.set_render_documents_by_default(true);
+                assert!(visible_view(&drawers[1], "source"));
+                for (drawer, entry) in drawers.iter().zip(pair) {
+                    drawer.close();
+                    drawer.show(entry.clone(), Some(0));
+                    crate::ui::media::tests::wait(|| visible_view(drawer, "rendered"));
+                    drawer.state.document_view_button.emit_clicked();
+                    assert!(visible_view(drawer, "source"));
+                    assert!(manager.render_documents_by_default());
+                }
             }
             drawers[0].show(entries[2].clone(), Some(0));
             crate::ui::media::tests::wait(|| {

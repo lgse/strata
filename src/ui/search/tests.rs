@@ -785,6 +785,54 @@ fn deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset
     );
 }
 
+#[test]
+fn folder_history_opens_ranked_results_and_filters_without_indexing() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::folder_history_opens_ranked_results_and_filters_without_indexing",
+        || {
+            let fixture = tempfile::tempdir().expect("history fixture");
+            let alpha = fixture.path().join("alpha-project");
+            let beta = fixture.path().join("beta-project");
+            std::fs::create_dir(&alpha).expect("alpha folder");
+            std::fs::create_dir(&beta).expect("beta folder");
+            let history = Rc::new(NavigationHistory::open(fixture.path().join("history.json")));
+            history.record(&alpha);
+            history.record(&beta);
+
+            let activated = Rc::new(RefCell::new(None));
+            let observed = activated.clone();
+            let dialog = SearchDialog::new(
+                Rc::new(move |item| {
+                    observed.replace(Some(item.path));
+                }),
+                Rc::new(|| {}),
+            );
+            let window = gtk::Window::builder().child(&dialog.widget()).build();
+            window.present();
+            dialog.show_history(history);
+
+            assert_eq!(
+                dialog.state.field.placeholder_text().as_deref(),
+                Some("Jump to a folder…")
+            );
+            assert!(!dialog.state.indexing_spinner.is_visible());
+            assert_eq!(dialog.state.visible_results.borrow().len(), 2);
+            dialog.state.field.set_text("alpha");
+            assert_eq!(dialog.state.visible_results.borrow().len(), 1);
+            assert_eq!(dialog.state.visible_results.borrow()[0].path, alpha);
+
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Return,
+                gtk::gdk::ModifierType::empty(),
+            ));
+            assert_eq!(*activated.borrow(), Some(alpha));
+            wait_until(|| !dialog.is_visible());
+            window.destroy();
+        },
+    );
+}
+
 fn mapped_dialog(activate: Rc<dyn Fn(SearchItem)>) -> (SearchDialog, gtk::Window) {
     let dialog = SearchDialog::new(activate, Rc::new(|| {}));
     let window = gtk::Window::builder()

@@ -106,7 +106,9 @@ def test_media_details_are_properties_only(strata):
     strata.wait(lambda: strata.dialog() is None, "Properties to close")
     preview = strata.preview()
     assert preview is not None
-    for name in ["SIZE", "MODIFIED", "TYPE"]:
-        assert preview.find(role="label", name=name, rendered=False)
+    for description in ["Size", "Modified", "Type"]:
+        value = preview.find(role="label", description=description, rendered=False)
+        assert value is not None and value.name not in ("", "—")
+    assert preview.find(role="label", name="video/mp4", rendered=False)
     for name in ["RESOLUTION", "DURATION", "BITRATE", "VIDEO CODEC", "FRAME RATE", "AUDIO CODEC", "SAMPLE RATE", "CHANNELS"]:
         assert preview.find(role="label", name=name, rendered=False) is None

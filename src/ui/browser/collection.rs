@@ -519,6 +519,7 @@ pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::
         kind: item.kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: item.mode.clone(),
         image_dimensions: MetadataValue::Unknown,

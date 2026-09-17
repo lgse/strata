@@ -1204,7 +1204,8 @@ fn set_release_note_blocks(notes: &gtk::Box, blocks: &[DocumentBlock]) {
             DocumentBlock::Quote(_)
             | DocumentBlock::TableRow { .. }
             | DocumentBlock::ListTableRow { .. }
-            | DocumentBlock::ContainerBoundary => {}
+            | DocumentBlock::ContainerBoundary
+            | DocumentBlock::Image { .. } => {}
         }
     }
 }

@@ -2,6 +2,44 @@
 
 use super::*;
 
+struct RecentMonitorSource;
+
+impl FileSource for RecentMonitorSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn watch(
+        &self,
+        location: Location,
+        include_hidden: bool,
+        notify: Rc<dyn Fn(DirectoryChange)>,
+    ) -> Option<LoadHandle> {
+        crate::adapters::LocalFileSource.watch(location, include_hidden, notify)
+    }
+}
+
+#[test]
+fn recent_navigation_keeps_the_normal_monitor_lifecycle() {
+    let browser = Browser::new(Rc::new(RecentMonitorSource));
+
+    browser.navigate(Location::uri("recent:///"));
+
+    assert_eq!(browser.monitors.borrow().len(), 1);
+    assert_eq!(browser.location_at(0), Some(Location::uri("recent:///")));
+    assert_eq!(browser.column_snapshot(0).expect("Recent column").count, 0);
+}
+
 #[test]
 fn filesystem_notifications_update_the_affected_column_incrementally() {
     let notify = Rc::new(RefCell::new(None::<WatchCallback>));
@@ -27,6 +65,7 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         kind: EntryKind::File,
         size: MetadataValue::Known(4),
         modified_unix_seconds: MetadataValue::Known(1),
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,

@@ -11,7 +11,9 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
-use crate::services::{SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees};
+use crate::services::{
+    NavigationHistory, SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees,
+};
 
 const MAX_RESULT_UPDATES_PER_FRAME: usize = 8;
 
@@ -36,6 +38,7 @@ struct SearchState {
     requested_thumbnails: RefCell<HashSet<PathBuf>>,
     rendered_query: RefCell<String>,
     search: RefCell<Option<SearchHandle>>,
+    history: RefCell<Option<Rc<NavigationHistory>>>,
     generation: Cell<u64>,
     interaction_revision: Cell<u64>,
     navigation_started: Cell<bool>,
@@ -159,6 +162,7 @@ impl SearchDialog {
             requested_thumbnails: RefCell::new(HashSet::new()),
             rendered_query: RefCell::new(String::new()),
             search: RefCell::new(None),
+            history: RefCell::new(None),
             generation: Cell::new(0),
             interaction_revision: Cell::new(0),
             navigation_started: Cell::new(false),
@@ -274,6 +278,10 @@ impl SearchDialog {
         self.state.generation.set(self.state.generation.get() + 1);
         let generation = self.state.generation.get();
         self.state.search.borrow_mut().take();
+        self.state.history.borrow_mut().take();
+        self.state
+            .field
+            .set_placeholder_text(Some("Search files and folders…"));
         let locations = roots
             .iter()
             .map(|root| root.display().to_string())
@@ -350,6 +358,29 @@ impl SearchDialog {
         });
     }
 
+    pub(crate) fn show_history(&self, history: Rc<NavigationHistory>) {
+        self.state.generation.set(self.state.generation.get() + 1);
+        self.state.search.borrow_mut().take();
+        self.state.history.replace(Some(history));
+        self.state
+            .field
+            .set_placeholder_text(Some("Jump to a folder…"));
+        self.state
+            .field
+            .set_tooltip_text(Some("Folders previously visited in Strata"));
+        self.state.field.set_sensitive(true);
+        clear_results(&self.state);
+        self.state.field.set_text("");
+        self.state.status.set_visible(true);
+        self.state.truncated_hint.set_visible(false);
+        self.state.indexing_spinner.stop();
+        self.state.indexing_spinner.set_visible(false);
+        self.state.layer.set_visible(true);
+        super::browser::animate_in(&self.state.layer);
+        self.state.field.grab_focus_without_selecting();
+        begin_query(&self.state, "");
+    }
+
     pub fn hide(&self) {
         hide(&self.state);
     }
@@ -362,6 +393,15 @@ impl SearchDialog {
 fn begin_query(state: &Rc<SearchState>, query: &str) {
     record_interaction(state);
     state.navigation_started.set(false);
+    if let Some(history) = state.history.borrow().clone() {
+        render_results(
+            state,
+            history.search(query),
+            false,
+            SearchCoverage::default(),
+        );
+        return;
+    }
     if query.trim().is_empty() {
         clear_results(state);
         state.results.set_visible_child_name("status");
@@ -456,6 +496,7 @@ fn render_results(
         state.reconciling_results.set(false);
     }
 
+    let query_empty = query.is_empty();
     state.rendered_query.replace(query);
     let has_results = !state.visible_results.borrow().is_empty();
     state.truncated_hint.set_text(&coverage.message());
@@ -485,11 +526,18 @@ fn render_results(
             .list
             .select_row(state.list.row_at_index(restored as i32).as_ref());
     } else if !has_results {
-        state.status.set_text(if indexing {
+        let message = if state.history.borrow().is_some() {
+            if query_empty {
+                "No folder history yet"
+            } else {
+                "No matching folders"
+            }
+        } else if indexing {
             "Searching…"
         } else {
             "No matching files or folders"
-        });
+        };
+        state.status.set_text(message);
     }
 
     if results_changed
