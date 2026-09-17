@@ -1207,8 +1207,15 @@ impl PreviewState {
                 }),
                 DocumentView::Rendered => preview.rendered.take().map(|(document, warnings)| {
                     let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
-                    let (view, state) =
-                        super::virtual_preview::rendered_document(document, warnings, wrapped);
+                    let (view, state) = super::virtual_preview::rendered_document(
+                        document,
+                        warnings,
+                        wrapped,
+                        self.current
+                            .borrow()
+                            .as_ref()
+                            .and_then(|entry| entry.location.native_path().map(ToOwned::to_owned)),
+                    );
                     preview.rendered_state.replace(Some(state));
                     view.upcast()
                 }),

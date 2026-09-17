@@ -6,6 +6,7 @@ mod browser;
 mod browser_modes;
 mod chooser;
 mod controls;
+mod document_media;
 mod document_view;
 mod entry_list_model;
 mod focus_navigation;
