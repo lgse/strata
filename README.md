@@ -56,6 +56,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
+- **Custom actions:** add your own scripts to the file and folder context menus, with a manager in **Settings → Actions** and background progress in the Jobs dashboard. See [Custom actions](docs/custom-actions.md).
 - **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
 - **Encrypted-volume unlock:** opt in through the installer, **Settings → General → Desktop integration** on Omarchy, or `strata --install-udiskie-unlock`; restore with `strata --uninstall-udiskie-unlock` (Settings **Restore default** on Omarchy only).
 
@@ -558,6 +559,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dee
 - [Architecture principles](docs/architecture.md)
 - [Preview sandbox](docs/preview-sandbox.md)
 - [Performance baseline](docs/performance-baseline.md)
+- [Custom actions](docs/custom-actions.md)
 - [Themes and Omarchy integration](docs/themes.md)
 - [Unsafe code policy](docs/unsafe-code.md)
 - [Releasing](docs/releasing.md)
