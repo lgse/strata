@@ -32,7 +32,7 @@ struct SearchState {
     scroller: gtk::ScrolledWindow,
     results: gtk::Stack,
     status: gtk::Label,
-    truncated_hint: gtk::Label,
+    truncated_hint: gtk::Box,
     visible_results: RefCell<Vec<SearchItem>>,
     positions: Rc<RefCell<HashMap<gtk::ListBoxRow, usize>>>,
     requested_thumbnails: RefCell<HashSet<PathBuf>>,
@@ -144,9 +144,12 @@ impl SearchDialog {
         let reveal_hint = gtk::Label::new(Some("Alt+Enter  open containing folder"));
         reveal_hint.add_css_class("search-hint");
         footer.append(&reveal_hint);
-        let truncated_hint = gtk::Label::new(None);
-        truncated_hint.set_wrap(true);
-        truncated_hint.set_max_width_chars(58);
+        let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        truncated_hint.append(&crate::assets::primary_icon(
+            crate::assets::icons::TRIANGLE_ALERT,
+            14,
+        ));
+        truncated_hint.append(&gtk::Label::new(Some("Partial results")));
         truncated_hint.add_css_class("search-hint");
         truncated_hint.add_css_class("search-hint-warning");
         truncated_hint.set_hexpand(true);
@@ -373,7 +376,9 @@ impl SearchDialog {
                     state.indexing_spinner.set_visible(false);
                 }
                 if query == state.field.text().trim() {
-                    state.truncated_hint.set_text(&coverage.message());
+                    state
+                        .truncated_hint
+                        .set_tooltip_text(Some(&coverage.message()));
                     state.truncated_hint.set_visible(coverage.is_partial());
                 }
                 if !query.is_empty() && query == state.field.text().trim() {
@@ -525,7 +530,9 @@ fn render_results(
     let query_empty = query.is_empty();
     state.rendered_query.replace(query);
     let has_results = !state.visible_results.borrow().is_empty();
-    state.truncated_hint.set_text(&coverage.message());
+    state
+        .truncated_hint
+        .set_tooltip_text(Some(&coverage.message()));
     state.truncated_hint.set_visible(coverage.is_partial());
     state
         .results

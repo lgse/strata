@@ -1127,7 +1127,12 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             };
             render_results(&dialog.state, Vec::new(), false, coverage);
             assert!(dialog.state.truncated_hint.is_visible());
-            assert_eq!(dialog.state.truncated_hint.text(), coverage.message());
+            assert_eq!(
+                dialog.state.truncated_hint.tooltip_text().as_deref(),
+                Some(coverage.message().as_str())
+            );
+            render_results(&dialog.state, Vec::new(), false, SearchCoverage::default());
+            assert!(!dialog.state.truncated_hint.is_visible());
 
             dialog.show(vec![home, usb.clone()], false);
             dialog.state.field.set_text("needle");
