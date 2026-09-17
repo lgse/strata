@@ -44,7 +44,7 @@ fn rendered_documents_keep_one_block_per_paragraph() {
 }
 
 #[test]
-fn cancellation_and_unparseable_input_report_errors() {
+fn cancellation_and_invalid_input_report_errors() {
     let cancellation = Cancellation::default();
     cancellation.cancel();
     assert!(to_html(SAMPLE, &cancellation).is_err());
