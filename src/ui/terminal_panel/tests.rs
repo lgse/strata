@@ -80,3 +80,25 @@ fn only_submitted_or_discarded_input_leaves_the_prompt_empty() {
         assert!(!line_was_ended(pending), "{pending:?}");
     }
 }
+
+#[test]
+fn the_panel_releases_its_state_when_dropped() {
+    crate::test_support::gtk_test(
+        "ui::terminal_panel::tests::the_panel_releases_its_state_when_dropped",
+        || {
+            let preferences = super::ThemeManager::shared();
+            let panel = super::TerminalPanel::new(&preferences, std::rc::Rc::new(|| None));
+            let state = std::rc::Rc::downgrade(&panel.state);
+
+            drop(panel);
+
+            // Callbacks the panel installs on its own widgets must not own it,
+            // or a closed window keeps its terminal and child alive.
+            assert!(
+                state.upgrade().is_none(),
+                "the panel is still held by {} reference(s)",
+                state.strong_count()
+            );
+        },
+    );
+}
