@@ -351,6 +351,18 @@ pub(super) fn set_thumbnail_or_icon(
                 thumbnail_size,
                 wait_for_metadata: false,
             });
+        } else if let Some((mirror_path, kind)) = remote_mirror_thumbnail(entry) {
+            set_thumbnail_for_path(ThumbnailRequest {
+                image,
+                path: &mirror_path,
+                kind: Some(kind),
+                modified: known_metadata(&entry.modified_unix_seconds),
+                file_size: known_metadata(&entry.size),
+                fallback_icon,
+                icon_size,
+                thumbnail_size,
+                wait_for_metadata: true,
+            });
         } else {
             show_fallback_icon(image, fallback_icon, icon_size);
         }
@@ -371,6 +383,17 @@ pub(super) fn set_thumbnail_or_icon(
         thumbnail_size,
         wait_for_metadata: true,
     });
+}
+
+// GVfs FUSE paths are render inputs only; navigation must retain the URI identity.
+fn remote_mirror_thumbnail(entry: &FileEntry) -> Option<(PathBuf, ThumbnailKind)> {
+    if entry.is_directory() {
+        return None;
+    }
+    let kind = thumbnail_kind(Path::new(&entry.display_name))?;
+    let uri = entry.location.uri_value()?;
+    let path = gio::File::for_uri(uri).path()?;
+    Some((path, kind))
 }
 
 pub(super) fn set_thumbnail_or_icon_for_path(
@@ -830,14 +853,14 @@ pub(super) fn note_metadata(path: &Path, modified: Option<i64>, file_size: Optio
     }
 }
 pub(super) fn note_metadata_entry(entry: &FileEntry) {
-    let Some(path) = entry.local_thumbnail_path() else {
-        return;
-    };
-    note_metadata(
-        path,
-        known_metadata(&entry.modified_unix_seconds),
-        known_metadata(&entry.size),
-    );
+    let modified = known_metadata(&entry.modified_unix_seconds);
+    let file_size = known_metadata(&entry.size);
+    // Release metadata waiters using the same path chosen at bind time.
+    if let Some(path) = entry.local_thumbnail_path() {
+        note_metadata(path, modified, file_size);
+    } else if let Some((mirror_path, _)) = remote_mirror_thumbnail(entry) {
+        note_metadata(&mirror_path, modified, file_size);
+    }
 }
 
 fn park_into_group(

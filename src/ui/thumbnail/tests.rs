@@ -17,9 +17,9 @@ use super::{
     SETTLE_VIEWS, SettledPark, THUMBNAIL_CACHE, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey,
     ThumbnailKind, ThumbnailQueue, ViewSettle, cancel_thumbnail, clear_thumbnail_runtime,
     finish_thumbnail_targets, fire_settled_thumbnails, has_pending_thumbnail,
-    hold_thumbnail_workers, note_metadata, refresh_all_customized_icons, retry_deferred_thumbnail,
-    schedule_or_defer, set_thumbnail_or_icon, show_customized_icon, take_pending_targets,
-    thumbnail_kind,
+    hold_thumbnail_workers, note_metadata, note_metadata_entry, refresh_all_customized_icons,
+    retry_deferred_thumbnail, schedule_or_defer, set_thumbnail_or_icon, show_customized_icon,
+    take_pending_targets, thumbnail_kind,
 };
 use crate::{
     model::{EntryKind, FileEntry, FolderColor, FolderColorValue, Location, MetadataValue},
@@ -729,6 +729,120 @@ fn cache_miss_enqueues_sandbox_job_without_settle_timeout() {
                     assert!(settle.pending.is_empty());
                 }
             });
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn uri_entries_with_a_local_mirror_render_via_the_mirror_path() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_with_a_local_mirror_render_via_the_mirror_path",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            // file:// exercises URI routing, not GVfs/FUSE integration.
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(has_pending_thumbnail(mirror.path()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn a_metadata_fill_releases_a_mirror_rendered_uri_entry() {
+    gtk_test(
+        "ui::thumbnail::tests::a_metadata_fill_releases_a_mirror_rendered_uri_entry",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            let mut entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(
+                !has_pending_thumbnail(mirror.path()),
+                "unknown metadata must park rather than render"
+            );
+
+            entry.size = MetadataValue::Known(42);
+            entry.modified_unix_seconds = MetadataValue::Known(7);
+            note_metadata_entry(&entry);
+            drain_main_loop();
+            assert!(
+                has_pending_thumbnail(mirror.path()),
+                "metadata fill must release the parked mirror thumbnail"
+            );
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri("smb://example.invalid/share/photo.png"),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(PENDING_THUMBNAILS.with(|pending| pending.borrow().is_empty()));
             clear_thumbnail_runtime();
         },
     );
