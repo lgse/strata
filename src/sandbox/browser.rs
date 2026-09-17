@@ -121,11 +121,16 @@ fn cache_entry(key: FileKey) -> Arc<Mutex<Cached>> {
     result
 }
 
+pub(crate) struct Thumbnail {
+    pub(crate) png: Vec<u8>,
+    pub(crate) metadata: Option<MediaMetadata>,
+}
+
 pub(crate) fn thumbnail(
     path: &Path,
     operation: ParseOperation,
     cancellation: &Cancellation,
-) -> Result<Vec<u8>, String> {
+) -> Result<Thumbnail, String> {
     let operation = match operation {
         ParseOperation::ThumbnailImage => Operation::Image,
         ParseOperation::ThumbnailRaw => Operation::Raw,
@@ -133,9 +138,11 @@ pub(crate) fn thumbnail(
         ParseOperation::ThumbnailVideo => Operation::Video,
         _ => return Err("Not a browser thumbnail operation".into()),
     };
-    request(path, operation, cancellation)?
-        .png
-        .ok_or_else(|| "Thumbnail unavailable".into())
+    let result = request(path, operation, cancellation)?;
+    Ok(Thumbnail {
+        png: result.png.ok_or("Thumbnail unavailable")?,
+        metadata: result.metadata,
+    })
 }
 
 pub(crate) fn metadata(
@@ -293,6 +300,9 @@ struct PoolState {
     count: usize,
     slow_running: usize,
     thumbnail_waiters: usize,
+    metadata_waiters: usize,
+    metadata_running: usize,
+    thumbnail_streak: usize,
 }
 
 fn pool() -> &'static Pool {
@@ -366,22 +376,41 @@ impl Pool {
         );
         let slow = operation != Operation::Image;
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        if !metadata {
+        if metadata {
+            state.metadata_waiters += 1;
+        } else {
             state.thumbnail_waiters += 1;
         }
         loop {
             if cancellation.is_cancelled() {
-                if !metadata {
+                if metadata {
+                    state.metadata_waiters -= 1;
+                } else {
                     state.thumbnail_waiters -= 1;
                 }
                 self.changed.notify_all();
                 return Err("Browser request cancelled".into());
             }
-            let admitted = (!metadata || state.thumbnail_waiters == 0)
-                && (!slow || state.slow_running < self.limit.saturating_sub(1).max(1));
+            let slow_available = state.slow_running < self.limit.saturating_sub(1).max(1);
+            // At most one probe competes with thumbnails; continuous scrolling still
+            // yields a turn after four thumbnail admissions, without reserving an idle worker.
+            let metadata_turn = state.metadata_waiters > 0
+                && state.metadata_running == 0
+                && slow_available
+                && (state.thumbnail_waiters == 0 || state.thumbnail_streak >= 4);
+            let admitted = if metadata {
+                metadata_turn
+            } else {
+                !metadata_turn && (!slow || slow_available)
+            };
             if admitted && (!state.idle.is_empty() || state.count < self.limit) {
-                if !metadata {
+                if metadata {
+                    state.metadata_waiters -= 1;
+                    state.metadata_running += 1;
+                    state.thumbnail_streak = 0;
+                } else {
                     state.thumbnail_waiters -= 1;
+                    state.thumbnail_streak = (state.thumbnail_streak + 1).min(4);
                 }
                 if slow {
                     state.slow_running += 1;
@@ -395,6 +424,7 @@ impl Pool {
                     pool: self,
                     worker,
                     slow,
+                    metadata,
                 };
                 if lease.worker.is_none() {
                     lease.worker = Some(Worker::spawn().map_err(|e| e.to_string())?);
@@ -414,6 +444,7 @@ struct Lease<'a> {
     pool: &'a Pool,
     worker: Option<Worker>,
     slow: bool,
+    metadata: bool,
 }
 
 impl Lease<'_> {
@@ -464,6 +495,9 @@ impl Drop for Lease<'_> {
         }
         if self.slow {
             state.slow_running = state.slow_running.saturating_sub(1);
+        }
+        if self.metadata {
+            state.metadata_running = state.metadata_running.saturating_sub(1);
         }
         self.pool.changed.notify_all();
         drop(state);

@@ -67,7 +67,9 @@ see [the unsafe-code policy](unsafe-code.md#browser-sandbox-fork-boundary).
 
 Source versions include device/inode, size, and nanosecond mtime/ctime. Shared
 in-flight gates and a bounded result cache reuse image dimensions returned by
-thumbnail decoding. Image metadata-only jobs prefer the image header over
+thumbnail decoding. Fresh thumbnail results also deliver these details directly
+to still-bound browser entries, without waiting for the metadata queue. Recycled
+and unbound targets cannot receive these updates. Image metadata-only jobs prefer the image header over
 `ffprobe`; video/audio metadata still uses a bounded `ffprobe` operation. Video
 thumbnailing and probing retain their existing separate tools, but no longer
 start independent bubblewrap instances on the persistent path. Metadata and
@@ -95,7 +97,19 @@ them. This removes fixed scheduling waits, not the time needed for I/O or decodi
 With more than one render slot, slow
 RAW/PDF/video work leaves capacity for ordinary images. Browser metadata admission
 uses the same viewport policy; cheap filesystem metadata is published before
-media inspection or directory counting.
+media inspection or directory counting. Each completed detail is published
+without waiting for other probes. Viewport fills keep one active batch per folder,
+with at most 16 entries; new requests do not cancel it. Scroll updates reorder the
+remaining backlog with visible entries first, then overscan, then offscreen work.
+
+At most one metadata probe occupies the shared worker pool at a time. While both
+classes are waiting, a probe gets a turn after four thumbnail admissions, rather
+than waiting indefinitely for the thumbnail queue to empty. No worker is reserved
+when metadata is absent, and the existing slow-work limit still leaves room for
+ordinary images when the pool has multiple slots. This is admission fairness,
+not a wall-clock guarantee: long probes, source I/O, and the existing fill budget
+can still delay details; a one-worker configuration must serialize decoding and
+probing.
 
 `RUST_LOG=strata::sandbox::browser=debug` records supervisor starts and operation
 latencies and idle retirements without source paths. It is useful for verifying

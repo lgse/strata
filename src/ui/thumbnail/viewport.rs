@@ -45,6 +45,46 @@ pub(in crate::ui) fn request_metadata(
     schedule_refresh();
 }
 
+pub(super) fn publish_thumbnail_metadata(
+    image_id: usize,
+    path: &Path,
+    metadata: &crate::sandbox::metadata::MediaMetadata,
+) {
+    let target = METADATA.with(|pending| {
+        let pending = pending.borrow();
+        let target = pending.get(&image_id)?;
+        if target.location.native_path() != Some(path) {
+            return None;
+        }
+        Some((
+            target.browser.upgrade()?,
+            target.depth,
+            target.position,
+            target.location.clone(),
+        ))
+    });
+    let Some((browser, depth, position, location)) = target else {
+        return;
+    };
+    browser.apply_thumbnail_metadata(
+        depth,
+        position,
+        crate::services::MetadataUpdate {
+            location,
+            size: MetadataValue::Unknown,
+            modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
+            image_dimensions: metadata
+                .dimensions
+                .map_or(MetadataValue::Unknown, MetadataValue::Known),
+            child_count: MetadataValue::Unknown,
+            duration_seconds: metadata.duration.map_or(MetadataValue::Unknown, |seconds| {
+                MetadataValue::Known(seconds.round() as u64)
+            }),
+        },
+    );
+}
+
 pub(super) fn cancel_metadata(image_id: usize) {
     METADATA.with(|pending| {
         pending.borrow_mut().remove(&image_id);
@@ -65,28 +105,45 @@ pub(super) fn schedule_refresh() {
                 else {
                     return false;
                 };
-                hook_ancestors(&item);
-                if visibility(&item).0 >= 2 {
-                    return true;
-                }
-                if browser
+                let Some(entry) = browser
                     .entry_at(target.depth, target.position)
-                    .is_some_and(|entry| entry.location == target.location)
+                    .filter(|entry| entry.location == target.location)
+                else {
+                    return false;
+                };
+                if !crate::ui::browser::metadata_needs_fill(&entry)
+                    && entry.mode != MetadataValue::Unknown
+                    && !(target.details && crate::ui::browser_modes::icon_details_need_fill(&entry))
                 {
-                    ready.push((
-                        browser,
-                        target.depth,
-                        target.position,
-                        target.location.clone(),
-                        target.details,
-                    ));
+                    return false;
                 }
-                false
+                hook_ancestors(&item);
+                ready.push((
+                    visibility(&item),
+                    browser,
+                    target.depth,
+                    target.position,
+                    target.location.clone(),
+                    target.details,
+                ));
+                true
             });
             ready
         });
-        for (browser, depth, position, location, details) in ready {
-            browser.request_metadata_fill(depth, position, location, details);
+        let mut ready = ready;
+        ready.sort_by_key(|(priority, ..)| *priority);
+        let mut viewports = HashMap::new();
+        for (priority, browser, depth, position, location, details) in ready {
+            let (_, visible) = viewports
+                .entry((Rc::as_ptr(&browser) as usize, depth))
+                .or_insert_with(|| (browser.clone(), Vec::new()));
+            if priority.0 < 2 {
+                visible.push(location.clone());
+                browser.request_metadata_fill(depth, position, location, details);
+            }
+        }
+        for ((_, depth), (browser, visible)) in viewports {
+            browser.prioritize_metadata_fills(depth, &visible);
         }
         demote_offscreen();
         retry_deferred_thumbnails();
@@ -127,6 +184,9 @@ pub(super) fn hook_ancestors(widget: &impl IsA<gtk::Widget>) {
 pub(in crate::ui) fn near_viewport(widget: &impl IsA<gtk::Widget>) -> bool {
     visibility(widget).0 < 2
 }
+
+#[cfg(test)]
+mod tests;
 
 type Priority = (u8, i32, i32, u64);
 

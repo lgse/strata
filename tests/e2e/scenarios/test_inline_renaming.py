@@ -249,6 +249,7 @@ def test_rename_and_undo_restores_the_original_item(strata, kind):
     wait_for_edit_closed(strata)
     renamed_path = strata.fixture.path("undo-target")
     strata.wait(renamed_path.exists, "the renamed item")
+    strata.wait(lambda: strata.focused_name() == "undo-target", "the committed rename cursor")
 
     strata.keyboard.press("ctrl+z")
     strata.wait(

@@ -88,6 +88,7 @@ pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<V
             .map_err(|error| error.to_string())?;
         input.write_all(&bytes).map_err(|error| error.to_string())?;
         render_thumbnail(input.path(), ThumbnailKind::Image, &cancellation)
+            .map(|thumbnail| thumbnail.png)
     })
     .await
     .map_err(|_| "Camera thumbnail worker failed".to_owned())?
