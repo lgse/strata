@@ -13,6 +13,7 @@ use crate::sandbox::{self, Cancellation, MediaPreviewBackend, ParseOperation};
 
 pub(crate) const IMAGE_INPUT_LIMIT: u64 = 8 * 1024 * 1024;
 pub(crate) const DIAGRAM_INPUT_LIMIT: usize = 16 * 1024;
+pub(crate) const MATH_INPUT_LIMIT: usize = 4096;
 pub(crate) const DOCUMENT_MEDIA_LIMIT: usize = 16;
 
 pub(crate) fn render(
@@ -30,6 +31,16 @@ pub(crate) fn render(
                 .ok_or("Local images are unavailable for remote documents")?;
             let (bytes, suffix) = read_image(parent, destination)?;
             (bytes, suffix, ParseOperation::DocumentImage)
+        }
+        DocumentMedia::Math { source, display } => {
+            if source.len() > MATH_INPUT_LIMIT {
+                return Err("Equation exceeds the 4 KB preview limit".into());
+            }
+            (
+                source.as_bytes().to_vec(),
+                ".tex".into(),
+                ParseOperation::DocumentMath { display: *display },
+            )
         }
         DocumentMedia::Mermaid(source) => {
             if source.len() > DIAGRAM_INPUT_LIMIT || source.lines().count() > 256 {

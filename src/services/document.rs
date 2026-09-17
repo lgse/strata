@@ -138,6 +138,7 @@ pub enum DocumentUnitKind {
 pub enum DocumentMedia {
     Image(String),
     Mermaid(String),
+    Math { source: String, display: bool },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -162,6 +163,7 @@ pub enum DocumentSpanStyle {
     Monospace,
     Underline,
     Link(Arc<str>),
+    Math(Arc<str>),
 }
 
 struct StyledText {
@@ -404,7 +406,7 @@ fn parse_markdown_bounded(
     let mut completed_blocks = 0;
     let mut options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     if document_features {
-        options |= Options::ENABLE_TABLES;
+        options |= Options::ENABLE_TABLES | Options::ENABLE_MATH;
     }
 
     for event in Parser::new_ext(markdown, options) {
@@ -643,7 +645,7 @@ fn parse_markdown_bounded(
             }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = markdown_code_language(kind);
-                if language == Some("mermaid") {
+                if matches!(language, Some("mermaid" | "latex")) {
                     finish_block(&mut active, &mut blocks);
                 }
                 if matches!(
@@ -689,6 +691,39 @@ fn parse_markdown_bounded(
                     append_markup(&mut active, &mut table_cell, "</tt>");
                 }
             }
+            Event::InlineMath(source)
+                if table_cell.is_none()
+                    && image.is_none()
+                    && source.len() <= super::document_media::MATH_INPUT_LIMIT =>
+            {
+                append_markup(
+                    &mut active,
+                    &mut table_cell,
+                    "<span font_family=\"strata-math\">",
+                );
+                append_escaped(&mut active, &mut table_cell, source);
+                append_markup(&mut active, &mut table_cell, "</span>");
+            }
+            Event::DisplayMath(source) if table_cell.is_none() && image.is_none() => {
+                finish_block(&mut active, &mut blocks);
+                blocks.push(if let Some(depth) = list_items.last() {
+                    DocumentBlock::ListChild {
+                        depth: *depth,
+                        kind: DocumentListChildKind::Code(Some("latex")),
+                        markup: glib::markup_escape_text(source).to_string(),
+                    }
+                } else {
+                    DocumentBlock::Code {
+                        markup: glib::markup_escape_text(source).to_string(),
+                        language: Some("latex"),
+                    }
+                });
+            }
+            Event::InlineMath(source) | Event::DisplayMath(source) => {
+                append_markup(&mut active, &mut table_cell, "<tt>$");
+                append_escaped(&mut active, &mut table_cell, source);
+                append_markup(&mut active, &mut table_cell, "$</tt>");
+            }
             Event::Code(text) => {
                 append_markup(&mut active, &mut table_cell, "<tt>");
                 append_escaped(&mut active, &mut table_cell, text);
@@ -715,11 +750,7 @@ fn parse_markdown_bounded(
                 &mut table_cell,
                 if *checked { "☑ " } else { "☐ " },
             ),
-            Event::Start(_)
-            | Event::End(_)
-            | Event::FootnoteReference(_)
-            | Event::InlineMath(_)
-            | Event::DisplayMath(_) => {}
+            Event::Start(_) | Event::End(_) | Event::FootnoteReference(_) => {}
         }
         if matches!(event, Event::End(_)) {
             budget.leave();
@@ -1592,7 +1623,7 @@ fn layout_document_bounded(
     while let Some(mut unit) = units.next() {
         if let DocumentUnitKind::Code {
             list_depth,
-            language: Some("mermaid"),
+            language: Some(language @ ("mermaid" | "latex")),
         } = unit.kind
         {
             let mut source_units = vec![unit.clone()];
@@ -1605,14 +1636,24 @@ fn layout_document_bounded(
                 unit.last = continuation.last;
                 source_units.push(continuation);
             }
-            if unit.copy_text.len() > super::document_media::DIAGRAM_INPUT_LIMIT
-                || unit.copy_text.lines().count() > 256
-            {
+            let limit = if language == "latex" {
+                super::document_media::MATH_INPUT_LIMIT
+            } else {
+                super::document_media::DIAGRAM_INPUT_LIMIT
+            };
+            if unit.copy_text.len() > limit || unit.copy_text.lines().count() > 256 {
                 rendered_units.extend(source_units);
                 continue;
             }
             unit.kind = DocumentUnitKind::Media {
-                source: DocumentMedia::Mermaid(unit.copy_text.clone()),
+                source: if language == "latex" {
+                    DocumentMedia::Math {
+                        source: unit.copy_text.clone(),
+                        display: true,
+                    }
+                } else {
+                    DocumentMedia::Mermaid(unit.copy_text.clone())
+                },
                 list_depth,
             };
         }
@@ -1672,6 +1713,26 @@ fn decode_document_markup(markup: &str, budget: &LayoutBudget<'_>) -> Result<Sty
             return Err("Rendered preview contains unsupported document structure".to_owned());
         };
         let tag = &remaining[start + 1..start + 1 + end];
+        if tag == "span font_family=\"strata-math\"" {
+            let body = &remaining[start + end + 2..];
+            let close = body.find("</span>").ok_or("Unclosed equation span")?;
+            let source = decode_markup_text(&body[..close])?;
+            let offset = characters;
+            append_styled_text(
+                &mut text,
+                &mut spans,
+                &active,
+                "\u{fffc}",
+                &mut characters,
+                budget,
+            )?;
+            spans.push(DocumentSpan {
+                range: offset..characters,
+                style: DocumentSpanStyle::Math(Arc::from(source)),
+            });
+            remaining = &body[close + "</span>".len()..];
+            continue;
+        }
         if let Some(closing) = tag.strip_prefix('/') {
             if active.pop().map(|(name, _)| name) != Some(closing) {
                 return Err("Rendered preview contains unsupported document structure".to_owned());
@@ -1858,7 +1919,45 @@ fn push_styled_units(
             }
         }
     }
+    for unit in &mut units[first_unit..] {
+        if unit
+            .spans
+            .iter()
+            .any(|span| matches!(span.style, DocumentSpanStyle::Math(_)))
+        {
+            let newline = unit.copy_text.ends_with('\n');
+            unit.copy_text = unit.copy_range(0..unit.text.chars().count());
+            if newline {
+                unit.copy_text.push('\n');
+            }
+        }
+    }
     budget.check()
+}
+
+impl DocumentUnit {
+    pub(crate) fn copy_range(&self, range: Range<usize>) -> String {
+        let mut output = String::new();
+        for (index, character) in self
+            .text
+            .chars()
+            .enumerate()
+            .skip(range.start)
+            .take(range.end.saturating_sub(range.start))
+        {
+            if let Some(source) = self.spans.iter().find_map(|span| match &span.style {
+                DocumentSpanStyle::Math(source) if span.range.contains(&index) => Some(source),
+                _ => None,
+            }) {
+                output.push('$');
+                output.push_str(source);
+                output.push('$');
+            } else {
+                output.push(character);
+            }
+        }
+        output
+    }
 }
 
 fn document_unit_ranges(
@@ -2026,6 +2125,8 @@ fn has_balanced_markup(markup: &str) -> bool {
         } else {
             let name = if tag.starts_with("a href=\"") && tag.ends_with('"') {
                 "a"
+            } else if tag == "span font_family=\"strata-math\"" {
+                "span"
             } else if matches!(tag, "i" | "b" | "s" | "tt" | "u") {
                 tag
             } else {
@@ -2095,6 +2196,7 @@ fn code_language(hint: &str) -> Option<&'static str> {
         "make" | "makefile" => Some("makefile"),
         "markdown" | "md" => Some("markdown"),
         "mermaid" => Some("mermaid"),
+        "latex" | "math" => Some("latex"),
         "php" => Some("php"),
         "powershell" | "ps1" => Some("powershell"),
         "py" | "python" | "python3" => Some("python3"),

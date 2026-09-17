@@ -137,6 +137,28 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
         }));
         assert_eq!(selection_text(&state).as_deref(), Some(content.as_str()));
     }
+    let cancellation = crate::sandbox::Cancellation::default();
+    let parsed = crate::services::parse_document(
+        crate::services::document_kind("text/markdown", std::ffi::OsStr::new("math.md"), true)
+            .expect("Markdown"),
+        "Before $E=mc^2$ after",
+        &cancellation,
+    )
+    .expect("equation paragraph");
+    let layout =
+        crate::services::layout_document(parsed.document, &cancellation).expect("equation layout");
+    state.units = Rc::new(
+        layout
+            .units
+            .into_iter()
+            .map(PreviewUnit::Document)
+            .collect(),
+    );
+    state.selection.set(Some(DocumentSelection {
+        anchor: SelectionPoint { unit: 0, offset: 7 },
+        focus: SelectionPoint { unit: 0, offset: 8 },
+    }));
+    assert_eq!(selection_text(&state).as_deref(), Some("$E=mc^2$"));
 }
 
 #[test]

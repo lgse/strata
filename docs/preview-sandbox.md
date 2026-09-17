@@ -18,7 +18,9 @@ parsing and decoding run inside bubblewrap, never in the application.
   cannot initiate filesystem access, network access, JavaScript execution, or
   subresource loading. Relative Markdown images are separately confined to the
   document directory and staged as bounded private files. Their decoders and the
-  native Mermaid renderer run in sandbox helpers with a three-second deadline;
+  native Mermaid renderer and bundled MathJax equation renderer run in sandbox
+  helpers with a three-second deadline. QuickJS has no host APIs or module loader,
+  and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
 
 ## Bundled interface icons
@@ -32,7 +34,7 @@ raster images. Emoji icons retain Pango/Cairo rendering
 but pass raw pixels to GTK instead of encoding and decoding an intermediate PNG.
 
 This in-process icon path is not used for user SVGs, phone photos, or thumbnails
-of originals; those keep their sandbox boundary. Markdown SVGs and Mermaid
+of originals; those keep their sandbox boundary. Markdown SVGs, Mermaid diagrams, and equation
 output use a separate `resvg` path inside the sandbox, with font loading enabled
 there and image references disabled. No toolkit libraries or private media
 runtime patches are updated by this change.

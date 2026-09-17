@@ -225,7 +225,9 @@ fn virtual_preview(
             row.set_margin_end(16);
             row.set_margin_top(8);
             row.set_margin_bottom(12);
-            state_for_bind.media_cache.bind(index, source, text, &row);
+            state_for_bind
+                .media_cache
+                .bind((index, None), source, text, &row);
             let bound = BoundRow::default();
             bound.root.set(Some(&row));
             bound
@@ -241,6 +243,9 @@ fn virtual_preview(
             )
         };
         if !source && let Some(view) = bound.view.upgrade() {
+            if let PreviewUnit::Document(unit) = unit {
+                bind_inline_math(&view, unit, index, &state_for_bind.media_cache);
+            }
             schedule_document_view_size(&view, row.width());
         }
         let mut bound_rows = state_for_bind.bound.borrow_mut();
@@ -570,7 +575,10 @@ fn size_document_row(bound: &BoundRow, width: i32) {
     size_document_text_view(&view, width);
 }
 
-fn schedule_document_view_size(view: &super::document_view::DocumentTextView, fallback_width: i32) {
+pub(super) fn schedule_document_view_size(
+    view: &super::document_view::DocumentTextView,
+    fallback_width: i32,
+) {
     let view = view.downgrade();
     glib::idle_add_local_once(move || {
         let Some(view) = view.upgrade().filter(|view| view.is_mapped()) else {
@@ -718,6 +726,36 @@ fn bind_document_text_view(
     view.set_selection_range(None);
     view.set_wrap_mode(document_wrap_mode(wrapped));
     set_document_accessibility(view, unit);
+}
+
+fn bind_inline_math(
+    view: &super::document_view::DocumentTextView,
+    unit: &DocumentUnit,
+    index: usize,
+    cache: &Rc<super::document_media::MediaCache>,
+) {
+    let buffer = view.buffer();
+    for span in &unit.spans {
+        let DocumentSpanStyle::Math(source) = &span.style else {
+            continue;
+        };
+        let mut start = buffer.iter_at_offset(span.range.start as i32);
+        let mut end = buffer.iter_at_offset(span.range.end as i32);
+        buffer.delete(&mut start, &mut end);
+        let anchor = buffer.create_child_anchor(&mut start);
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        content.set_valign(gtk::Align::Baseline);
+        view.add_child_at_anchor(&content, &anchor);
+        cache.bind(
+            (index, Some(span.range.start)),
+            &crate::services::DocumentMedia::Math {
+                source: source.to_string(),
+                display: false,
+            },
+            source,
+            &content,
+        );
+    }
 }
 
 fn highlighted_code_language(unit: &DocumentUnit) -> Option<&'static str> {
@@ -892,6 +930,7 @@ fn apply_document_unit_tags(buffer: &gtk::TextBuffer, unit: &DocumentUnit) {
                 DocumentSpanStyle::Monospace => "document-monospace",
                 DocumentSpanStyle::Underline => "document-underline",
                 DocumentSpanStyle::Link(_) => "document-link",
+                DocumentSpanStyle::Math(_) => "document-monospace",
             },
         );
         buffer.apply_tag(&tag, &start, &end);
@@ -910,6 +949,11 @@ fn document_tag(buffer: &gtk::TextBuffer, name: &str) -> gtk::TextTag {
 
 fn set_document_accessibility(view: &super::document_view::DocumentTextView, unit: &DocumentUnit) {
     view.reset_property(gtk::AccessibleProperty::Level);
+    view.reset_property(gtk::AccessibleProperty::Label);
+    let has_math = unit
+        .spans
+        .iter()
+        .any(|span| matches!(span.style, DocumentSpanStyle::Math(_)));
     match unit.kind {
         DocumentUnitKind::Heading(level)
         | DocumentUnitKind::ListChild {
@@ -922,7 +966,16 @@ fn set_document_accessibility(view: &super::document_view::DocumentTextView, uni
         DocumentUnitKind::ListItem { .. } => {
             view.set_accessible_role(gtk::AccessibleRole::ListItem);
         }
-        _ => view.set_accessible_role(gtk::AccessibleRole::Generic),
+        _ => view.set_accessible_role(if has_math {
+            gtk::AccessibleRole::Group
+        } else {
+            gtk::AccessibleRole::Generic
+        }),
+    }
+    if has_math {
+        // GTK's Text interface omits child anchors. Keep complete prose and TeX
+        // available to assistive technology rather than exposing an empty object.
+        view.update_property(&[gtk::accessible::Property::Label(unit.copy_text.trim_end())]);
     }
 }
 
@@ -1191,7 +1244,7 @@ fn append_table_markup(output: &mut String, markup: &str) -> Option<()> {
 
 fn span_open(style: &DocumentSpanStyle) -> String {
     match style {
-        DocumentSpanStyle::Accent => String::new(),
+        DocumentSpanStyle::Accent | DocumentSpanStyle::Math(_) => String::new(),
         DocumentSpanStyle::Bold => "<b>".to_owned(),
         DocumentSpanStyle::Italic => "<i>".to_owned(),
         DocumentSpanStyle::Strikethrough => "<s>".to_owned(),
@@ -1205,7 +1258,7 @@ fn span_open(style: &DocumentSpanStyle) -> String {
 
 fn span_close(style: &DocumentSpanStyle) -> &'static str {
     match style {
-        DocumentSpanStyle::Accent => "",
+        DocumentSpanStyle::Accent | DocumentSpanStyle::Math(_) => "",
         DocumentSpanStyle::Bold => "</b>",
         DocumentSpanStyle::Italic => "</i>",
         DocumentSpanStyle::Strikethrough => "</s>",
@@ -1804,7 +1857,12 @@ fn selection_text(state: &VirtualPreviewState) -> Option<String> {
         if from == 0 && to == len {
             output.push_str(unit.copy_text());
         } else {
-            output.push_str(&char_slice(unit.display_text(), from, to));
+            match unit {
+                PreviewUnit::Document(unit) => output.push_str(&unit.copy_range(from..to)),
+                PreviewUnit::Source(_) => {
+                    output.push_str(&char_slice(unit.display_text(), from, to))
+                }
+            }
             if to == len && index < end.unit && unit.copy_text().ends_with('\n') {
                 output.push('\n');
             }

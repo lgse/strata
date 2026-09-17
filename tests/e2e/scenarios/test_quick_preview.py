@@ -256,6 +256,32 @@ def test_preview_renders_markdown(strata, fixture_tree):
     assert strata.preview().find(role="image", description="Mermaid diagram") is None
 
 
+def test_markdown_equations_preserve_inline_prose_source_and_fallbacks(strata, fixture_tree):
+    fixture_tree.path("page.md").write_text(
+        "# Equations\n\nEnergy $E=mc^2$ in prose.\n\n"
+        "$$\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}$$\n\n"
+        "```latex\n\\sum_{n=1}^{\\infty}\\frac{1}{n^2}=\\frac{\\pi^2}{6}\n```\n\n"
+        "Unsupported $\\unknowncommand{x}$ remains readable.\n"
+    )
+    strata.select_entry_with_keyboard("page.md")
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: len(strata.preview().find_all(role="image", description="LaTeX equation")) == 3,
+        "inline, display, and fenced equations rendered through the sandbox",
+    )
+    assert strata.preview_shows("Energy") and strata.preview_shows("in prose."), "\n".join(
+        repr((node.role, node.text)) for node in strata.preview().find_all(rendered=False) if node.text
+    )
+    strata.wait(lambda: strata.preview_shows("$\\unknowncommand{x}$"), "unsupported equation fallback")
+    strata.pointer.click(strata.preview().find(role="button", name="View source"))
+    strata.wait(lambda: strata.preview_shows("$E=mc^2$"), "unchanged equation source")
+    strata.pointer.click(strata.preview().find(role="button", name="View rendered"))
+    strata.wait(
+        lambda: len(strata.preview().find_all(role="image", description="LaTeX equation")) == 3,
+        "equations retained across view switching",
+    )
+
+
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(strata):
     def adjacent():

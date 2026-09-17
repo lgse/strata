@@ -100,6 +100,7 @@ pub(crate) enum ParseOperation {
     PreviewImage,
     DocumentImage,
     DocumentMermaid,
+    DocumentMath { display: bool },
     MediaMetadata,
     PreviewPdf(PdfRenderSize),
     PreviewMedia(MediaPreviewSize),
@@ -115,6 +116,8 @@ impl ParseOperation {
             Self::PreviewImage => "preview-image",
             Self::DocumentImage => "document-image",
             Self::DocumentMermaid => "document-mermaid",
+            Self::DocumentMath { display: true } => "document-math",
+            Self::DocumentMath { display: false } => "document-inline-math",
             Self::MediaMetadata => "media-metadata",
             Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewMedia(_) => "preview-media",
@@ -141,9 +144,10 @@ impl ParseOperation {
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
-            Self::PreviewImage | Self::DocumentImage | Self::DocumentMermaid => {
-                Some((800, 800, 800 * 800))
-            }
+            Self::PreviewImage
+            | Self::DocumentImage
+            | Self::DocumentMermaid
+            | Self::DocumentMath { .. } => Some((800, 800, 800 * 800)),
             Self::PreviewPdf(size) => Some(size.image_limits()),
             Self::PreviewMedia(_) | Self::MediaMetadata => None,
         }
@@ -159,6 +163,9 @@ impl ParseOperation {
             Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
             Self::DocumentMermaid => {
                 Some(crate::services::document_media::DIAGRAM_INPUT_LIMIT as u64)
+            }
+            Self::DocumentMath { .. } => {
+                Some(crate::services::document_media::MATH_INPUT_LIMIT as u64)
             }
             Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata => None,
         }
@@ -234,7 +241,9 @@ pub(crate) fn parse(
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
     let timeout = if matches!(
         operation,
-        ParseOperation::DocumentImage | ParseOperation::DocumentMermaid
+        ParseOperation::DocumentImage
+            | ParseOperation::DocumentMermaid
+            | ParseOperation::DocumentMath { .. }
     ) {
         Duration::from_secs(3)
     } else {

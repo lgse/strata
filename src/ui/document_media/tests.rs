@@ -19,7 +19,7 @@ fn cached_images_rebind_with_alt_text_and_release_cancelled_previews() {
             .upcast::<gdk::Texture>();
             let source = DocumentMedia::Image("image.png".into());
             cache.entries.borrow_mut().insert(
-                0,
+                (0, None),
                 Entry {
                     source: source.clone(),
                     alt: "A test image".into(),
@@ -29,7 +29,7 @@ fn cached_images_rebind_with_alt_text_and_release_cancelled_previews() {
             );
             for _ in 0..2 {
                 let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
-                cache.bind(0, &source, "A test image", &row);
+                cache.bind((0, None), &source, "A test image", &row);
                 let picture = row
                     .first_child()
                     .expect("content")
@@ -46,6 +46,42 @@ fn cached_images_rebind_with_alt_text_and_release_cancelled_previews() {
                     "a cached image must not restart the decoder"
                 );
             }
+            for index in 1..DOCUMENT_MEDIA_LIMIT {
+                cache.entries.borrow_mut().insert(
+                    (0, Some(index)),
+                    Entry {
+                        source: DocumentMedia::Math {
+                            source: "x^2".into(),
+                            display: false,
+                        },
+                        alt: String::new(),
+                        result: Some(Ok(texture.clone())),
+                        rows: Vec::new(),
+                    },
+                );
+            }
+            let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            cache.bind(
+                (1, None),
+                &DocumentMedia::Math {
+                    source: "y^2".into(),
+                    display: false,
+                },
+                "",
+                &row,
+            );
+            let fallback = row
+                .first_child()
+                .expect("content")
+                .first_child()
+                .expect("fallback")
+                .downcast::<gtk::Label>()
+                .expect("source label");
+            assert_eq!(fallback.text(), "$y^2$");
+            assert!(
+                !cache.running.get(),
+                "excess equations must not start another helper"
+            );
             drop(cache);
             assert!(cancellation.is_cancelled());
         },

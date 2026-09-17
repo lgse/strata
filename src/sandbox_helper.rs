@@ -65,6 +65,8 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         "preview-image" => (render_raw(input, 800)?, None),
         "document-image" => (document_media::image(input)?, None),
         "document-mermaid" => (document_media::mermaid(input)?, None),
+        "document-math" => (document_media::math(input, true)?, None),
+        "document-inline-math" => (document_media::math(input, false)?, None),
         "preview-pdf" => {
             let (page, size) = pdf_render_request(value)?;
             let (png, page, pages) = render_pdf_page(input, page, size)?;

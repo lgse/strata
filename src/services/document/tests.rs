@@ -1390,6 +1390,49 @@ fn markdown_media_keeps_nested_content_and_large_code_fallbacks() {
 }
 
 #[test]
+fn markdown_math_preserves_prose_copy_and_code_boundaries() {
+    use super::DocumentMedia;
+    let cancellation = Cancellation::default();
+    let parsed = parse_document(DocumentKind::Markdown,
+        "Before $E=mc^2$ after.\n\n$$\\frac{a}{b}$$\n\n```latex\n\\sqrt{x}\n```\n\n`$not math$` and \\$5\n\n| Value |\n|---|\n| $x^2$ |", &cancellation).expect("math Markdown");
+    let layout = layout_document(parsed.document, &cancellation).expect("math layout");
+    assert_eq!(layout.units[0].text, "Before \u{fffc} after.");
+    assert_eq!(layout.units[0].copy_text, "Before $E=mc^2$ after.\n");
+    assert_eq!(layout.units[0].copy_range(7..8), "$E=mc^2$");
+    assert!(layout.units[0].spans.iter().any(
+        |span| matches!(&span.style, DocumentSpanStyle::Math(source) if source.as_ref() == "E=mc^2")
+    ));
+    let equations: Vec<_> = layout
+        .units
+        .iter()
+        .filter_map(|unit| match &unit.kind {
+            DocumentUnitKind::Media {
+                source:
+                    DocumentMedia::Math {
+                        source,
+                        display: true,
+                    },
+                ..
+            } => Some(source.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(equations, vec!["\\frac{a}{b}\n", "\\sqrt{x}\n"]);
+    assert!(
+        layout
+            .units
+            .iter()
+            .any(|unit| unit.text == "$not math$ and $5")
+    );
+    assert!(
+        layout
+            .units
+            .iter()
+            .any(|unit| unit.copy_text.contains("$x^2$"))
+    );
+}
+
+#[test]
 fn cancelled_document_layout_stops_before_publishing_units() {
     let cancellation = Cancellation::default();
     cancellation.cancel();

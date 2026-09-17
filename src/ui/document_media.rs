@@ -15,6 +15,8 @@ use std::{
     rc::Rc,
 };
 
+type MediaKey = (usize, Option<usize>);
+
 struct Entry {
     source: DocumentMedia,
     alt: String,
@@ -25,8 +27,8 @@ struct Entry {
 pub(super) struct MediaCache {
     path: Option<PathBuf>,
     cancellation: Cancellation,
-    entries: RefCell<HashMap<usize, Entry>>,
-    pending: RefCell<VecDeque<usize>>,
+    entries: RefCell<HashMap<MediaKey, Entry>>,
+    pending: RefCell<VecDeque<MediaKey>>,
     running: Cell<bool>,
 }
 
@@ -49,7 +51,7 @@ impl MediaCache {
 
     pub(super) fn bind(
         self: &Rc<Self>,
-        index: usize,
+        index: MediaKey,
         source: &DocumentMedia,
         alt: &str,
         row: &gtk::Box,
@@ -63,7 +65,7 @@ impl MediaCache {
                 &content,
                 source,
                 alt,
-                "Preview limited to 16 images and diagrams",
+                "Preview limited to 16 images, diagrams, and equations",
             );
             return;
         }
@@ -116,6 +118,15 @@ impl MediaCache {
                     for row in &entry.rows {
                         if let Some(row) = row.upgrade() {
                             show_entry(&row, entry);
+                            if let Some(view) = row
+                                .ancestor(super::document_view::DocumentTextView::static_type())
+                                .and_downcast::<super::document_view::DocumentTextView>()
+                            {
+                                super::virtual_preview::schedule_document_view_size(
+                                    &view,
+                                    view.width(),
+                                );
+                            }
                         }
                     }
                 }
@@ -132,7 +143,13 @@ fn show_entry(row: &gtk::Box, entry: &Entry) {
     }
     match &entry.result {
         None => {
-            let label = gtk::Label::new(Some("Loading image…"));
+            let label = gtk::Label::new(Some(
+                if matches!(entry.source, DocumentMedia::Math { display: false, .. }) {
+                    "…"
+                } else {
+                    "Loading preview…"
+                },
+            ));
             label.add_css_class("preview-note");
             row.append(&label);
         }
@@ -144,6 +161,10 @@ fn show_entry(row: &gtk::Box, entry: &Entry) {
             picture.set_hexpand(true);
             picture.set_vexpand(true);
             let frame: MediaPicture = glib::Object::new();
+            frame.imp().inline.set(matches!(
+                entry.source,
+                DocumentMedia::Math { display: false, .. }
+            ));
             frame
                 .imp()
                 .natural_size
@@ -153,10 +174,22 @@ fn show_entry(row: &gtk::Box, entry: &Entry) {
             picture.set_alternative_text(Some(match &entry.source {
                 DocumentMedia::Image(_) => &entry.alt,
                 DocumentMedia::Mermaid(_) => "Mermaid diagram",
+                DocumentMedia::Math { .. } => "LaTeX equation",
             }));
-            if let DocumentMedia::Mermaid(source) = &entry.source {
+            if matches!(&entry.source, DocumentMedia::Math { display: false, .. }) {
                 register_diagram(&frame);
-                let button = gtk::Button::with_label("Copy diagram source");
+            }
+            let source_to_copy = match &entry.source {
+                DocumentMedia::Mermaid(source) => Some((source, "Copy diagram source")),
+                DocumentMedia::Math {
+                    source,
+                    display: true,
+                } => Some((source, "Copy equation source")),
+                _ => None,
+            };
+            if let Some((source, label)) = source_to_copy {
+                register_diagram(&frame);
+                let button = gtk::Button::with_label(label);
                 button.add_css_class("preview-header-action");
                 button.set_halign(gtk::Align::End);
                 let source = source.clone();
@@ -178,7 +211,19 @@ fn image_description(alt: &str) -> String {
 
 fn show_error(row: &gtk::Box, source: &DocumentMedia, alt: &str, message: &str) {
     let alt = image_description(alt);
+    if let DocumentMedia::Math {
+        source,
+        display: false,
+    } = source
+    {
+        let label = gtk::Label::new(Some(&format!("${source}$")));
+        label.set_tooltip_text(Some(message));
+        label.add_css_class("preview-document");
+        row.append(&label);
+        return;
+    }
     let description = match source {
+        DocumentMedia::Math { .. } => format!("Equation unavailable: {message}"),
         DocumentMedia::Image(_) => format!("Image: {alt}\n{message}"),
         DocumentMedia::Mermaid(_) => format!("Mermaid diagram unavailable: {message}"),
     };
@@ -188,7 +233,7 @@ fn show_error(row: &gtk::Box, source: &DocumentMedia, alt: &str, message: &str) 
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     label.set_xalign(0.0);
     row.append(&label);
-    if let DocumentMedia::Mermaid(source) = source {
+    if let DocumentMedia::Mermaid(source) | DocumentMedia::Math { source, .. } = source {
         let label = gtk::Label::new(Some(source));
         label.add_css_class("monospace");
         label.set_selectable(true);
@@ -205,6 +250,7 @@ mod imp {
     pub struct MediaPicture {
         pub colors: Cell<Option<(gdk::RGBA, gdk::RGBA)>>,
         pub natural_size: Cell<(i32, i32)>,
+        pub inline: Cell<bool>,
     }
     #[glib::object_subclass]
     impl ObjectSubclass for MediaPicture {
@@ -233,7 +279,7 @@ mod imp {
         fn measure(&self, orientation: gtk::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
             let (width, height) = self.natural_size.get();
             if orientation == gtk::Orientation::Horizontal {
-                (0, width, -1, -1)
+                (if self.inline.get() { width } else { 0 }, width, -1, -1)
             } else {
                 let available = if for_size < 0 { width } else { for_size };
                 let scale = (f64::from(available) / f64::from(width.max(1))).min(1.0);

@@ -28,7 +28,8 @@ gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 html5gum = { version = "0.8", default-features = false }
 ignore = "0.4.23"
-mermaid-rs-renderer = { version = "0.3.1", default-features = false }
+mermaid-svg = "0.7.0"
+rquickjs = "0.13.0"
 pangocairo = "0.22.0"
 poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
