@@ -23,10 +23,7 @@ const DRAG_PROXY_MIN_SIZE: f64 = 32.0;
 const DRAG_PROXY_PADDING: f64 = 3.0;
 const DRAG_PROXY_STACK_OFFSET: f64 = 5.0;
 
-/// Renders a compact Finder-style drag icon — a scaled file thumbnail, plus a
-/// count badge and stacked rears for multi-file drags — and returns its pointer
-/// hotspot. Keeping the icon small and near-centered keeps the pointer's real
-/// position close to the visual edge the user steers with.
+/// Renders a compact Finder-style file pile and returns its pointer hotspot.
 #[expect(
     deprecated,
     reason = "lookup_color is the only way to read custom named CSS colors"
@@ -35,7 +32,7 @@ pub(in crate::ui) fn drag_icon_with_count(
     base: &gtk::Widget,
     count: usize,
 ) -> Option<(gtk::gdk::Texture, i32, i32)> {
-    if count == 0 {
+    if count <= 1 {
         return None;
     }
 
@@ -54,34 +51,24 @@ pub(in crate::ui) fn drag_icon_with_count(
     let paintable = gtk::WidgetPaintable::new(Some(base));
 
     let style = base.style_context();
+    let accent = style.lookup_color("theme_accent")?;
+    let surface = style
+        .lookup_color("theme_surface")
+        .or_else(|| style.lookup_color("theme_bg"))?;
     let text = style.lookup_color("theme_text")?;
-    let badge = if count > 1 {
-        let accent = style.lookup_color("theme_accent")?;
-        let surface = style
-            .lookup_color("theme_surface")
-            .or_else(|| style.lookup_color("theme_bg"))?;
-        let badge_text = contrasting_badge_text(&accent, &text, &surface);
-        let layout = base.create_pango_layout(Some(&count.to_string()));
-        if let Some(mut font) = layout.font_description() {
-            font.set_weight(gtk::pango::Weight::Semibold);
-            layout.set_font_description(Some(&font));
-        }
-        let (ink, _) = layout.pixel_extents();
-        let (badge_w, badge_h) = badge_dimensions(f64::from(ink.width()), f64::from(ink.height()));
-        Some((layout, ink, badge_w, badge_h, accent, surface, badge_text))
-    } else {
-        None
-    };
-    let (badge_w, badge_h) = badge
-        .as_ref()
-        .map_or((0.0, 0.0), |badge| (badge.2, badge.3));
+    let badge_text = contrasting_badge_text(&accent, &text, &surface);
+
+    let label = count.to_string();
+    let layout = base.create_pango_layout(Some(&label));
+    if let Some(mut font) = layout.font_description() {
+        font.set_weight(gtk::pango::Weight::Semibold);
+        layout.set_font_description(Some(&font));
+    }
+    let (ink, _) = layout.pixel_extents();
+    let (badge_w, badge_h) = badge_dimensions(f64::from(ink.width()), f64::from(ink.height()));
     let badge_x = front_x + icon_w - badge_w * 0.4;
     let badge_y = front_y + icon_h - badge_h * 0.4;
-    let rear_extent = if count > 1 {
-        DRAG_PROXY_STACK_OFFSET + DRAG_PROXY_PADDING
-    } else {
-        0.0
-    };
+    let rear_extent = DRAG_PROXY_STACK_OFFSET + DRAG_PROXY_PADDING;
     let canvas_w = (badge_x + badge_w).max(front_x + icon_w) + DRAG_PROXY_PADDING;
     let canvas_h = (badge_y + badge_h).max(front_y + icon_h) + DRAG_PROXY_PADDING;
     let canvas_w = canvas_w.max(icon_w + rear_extent + DRAG_PROXY_PADDING);
@@ -94,18 +81,16 @@ pub(in crate::ui) fn drag_icon_with_count(
         &graphene::Rect::new(0.0, 0.0, canvas_w as f32, canvas_h as f32),
     );
 
-    if count > 1 {
-        for (offset, opacity) in [(DRAG_PROXY_STACK_OFFSET, 0.32), (2.5, 0.6)] {
-            snapshot.push_opacity(opacity);
-            snapshot.save();
-            snapshot.translate(&graphene::Point::new(
-                (front_x + offset) as f32,
-                (front_y + offset) as f32,
-            ));
-            paintable.snapshot(&snapshot, icon_w, icon_h);
-            snapshot.restore();
-            snapshot.pop();
-        }
+    for (offset, opacity) in [(DRAG_PROXY_STACK_OFFSET, 0.32), (2.5, 0.6)] {
+        snapshot.push_opacity(opacity);
+        snapshot.save();
+        snapshot.translate(&graphene::Point::new(
+            (front_x + offset) as f32,
+            (front_y + offset) as f32,
+        ));
+        paintable.snapshot(&snapshot, icon_w, icon_h);
+        snapshot.restore();
+        snapshot.pop();
     }
 
     let mut shadow_color = text;
@@ -117,31 +102,29 @@ pub(in crate::ui) fn drag_icon_with_count(
     snapshot.restore();
     snapshot.pop();
 
-    if let Some((layout, ink, badge_w, badge_h, accent, surface, badge_text)) = badge {
-        let badge_rect = gtk::gsk::RoundedRect::from_rect(
-            graphene::Rect::new(
-                badge_x as f32,
-                badge_y as f32,
-                badge_w as f32,
-                badge_h as f32,
-            ),
-            (badge_h / 2.0) as f32,
-        );
-        snapshot.push_rounded_clip(&badge_rect);
-        snapshot.append_color(&accent, badge_rect.bounds());
-        snapshot.pop();
-        snapshot.append_border(
-            &badge_rect,
-            &[1.0; 4],
-            &[surface, surface, surface, surface],
-        );
-        let tx = badge_x + (badge_w - f64::from(ink.width())) / 2.0 - f64::from(ink.x());
-        let ty = badge_y + (badge_h - f64::from(ink.height())) / 2.0 - f64::from(ink.y());
-        snapshot.save();
-        snapshot.translate(&graphene::Point::new(tx as f32, ty as f32));
-        snapshot.append_layout(&layout, &badge_text);
-        snapshot.restore();
-    }
+    let badge_rect = gtk::gsk::RoundedRect::from_rect(
+        graphene::Rect::new(
+            badge_x as f32,
+            badge_y as f32,
+            badge_w as f32,
+            badge_h as f32,
+        ),
+        (badge_h / 2.0) as f32,
+    );
+    snapshot.push_rounded_clip(&badge_rect);
+    snapshot.append_color(&accent, badge_rect.bounds());
+    snapshot.pop();
+    snapshot.append_border(
+        &badge_rect,
+        &[1.0; 4],
+        &[surface, surface, surface, surface],
+    );
+    let tx = badge_x + (badge_w - f64::from(ink.width())) / 2.0 - f64::from(ink.x());
+    let ty = badge_y + (badge_h - f64::from(ink.height())) / 2.0 - f64::from(ink.y());
+    snapshot.save();
+    snapshot.translate(&graphene::Point::new(tx as f32, ty as f32));
+    snapshot.append_layout(&layout, &badge_text);
+    snapshot.restore();
 
     let renderer = base.native().and_then(|native| native.renderer())?;
     let node = snapshot.to_node()?;

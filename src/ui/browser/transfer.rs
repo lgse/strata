@@ -14,7 +14,6 @@ use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, compact_native_path, is_trash_location,
 };
-use crate::ui::browser_modes::BrowserMode;
 use crate::ui::controls::{
     ModalTone, form_check_button, form_entry, form_label, message_dialog_description,
     message_dialog_layout, modal_layout,
@@ -100,21 +99,6 @@ impl ViewState {
             .set(self.horizontal_scroll_generation.get().saturating_add(1));
         if !crate::ui::theme::ThemeManager::shared().open_folder_after_drop() {
             self.suppress_scroll_after_drop.set(true);
-        }
-        if self.mode_views.borrow().mode() == BrowserMode::Columns {
-            let drop_depth = (0..self.columns.borrow().len())
-                .find(|depth| self.browser.location_at(*depth).as_ref() == Some(&destination))
-                .or_else(|| {
-                    (0..self.columns.borrow().len())
-                        .find(|depth| self.browser.location_at(*depth) == destination.parent())
-                });
-            if let Some(depth) = drop_depth {
-                self.browser.set_active_column(depth);
-                if let Some(column) = self.columns.borrow().get(depth) {
-                    column.list.grab_focus();
-                }
-                self.refresh_destination_style();
-            }
         }
         let sources = transferable_drop_sources(&destination, &sources);
         if sources.is_empty() {
