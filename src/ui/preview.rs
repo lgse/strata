@@ -230,7 +230,7 @@ impl PreviewDrawer {
         header_handle.set_margin_end(8);
         header_handle.set_cursor_from_name(Some("grab"));
         header_handle.append(&icon);
-        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
+        let heading = gtk::Box::new(gtk::Orientation::Vertical, 0);
         heading.set_hexpand(true);
         heading.set_valign(gtk::Align::Center);
         heading.append(&title);
@@ -953,7 +953,8 @@ impl PreviewState {
         self.size.set_text(&metadata_size(&entry));
         crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
-        self.content_type.set_tooltip_text(Some(file_extension(&entry)));
+        self.content_type
+            .set_tooltip_text(Some(file_extension(&entry)));
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -1013,7 +1014,8 @@ impl PreviewState {
 
     fn render(self: &Rc<Self>, preview: Preview) {
         self.content_type.set_text(&preview.content_type);
-        self.content_type.set_tooltip_text(Some(&preview.content_type));
+        self.content_type
+            .set_tooltip_text(Some(&preview.content_type));
         self.clear_content();
         match preview.content {
             PreviewContent::Text { content, truncated } => {
@@ -1063,7 +1065,7 @@ impl PreviewState {
             }
             PreviewContent::Workbook { document, warnings } => {
                 let (view, _) =
-                    super::virtual_preview::rendered_document(document, warnings, false);
+                    super::virtual_preview::rendered_document(document, warnings, false, None);
                 self.content.append(&view);
             }
             PreviewContent::Rasterized { png } => {
@@ -1216,8 +1218,15 @@ impl PreviewState {
                 }),
                 DocumentView::Rendered => preview.rendered.take().map(|(document, warnings)| {
                     let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
-                    let (view, state) =
-                        super::virtual_preview::rendered_document(document, warnings, wrapped);
+                    let (view, state) = super::virtual_preview::rendered_document(
+                        document,
+                        warnings,
+                        wrapped,
+                        self.current
+                            .borrow()
+                            .as_ref()
+                            .and_then(|entry| entry.location.native_path().map(ToOwned::to_owned)),
+                    );
                     preview.rendered_state.replace(Some(state));
                     view.upcast()
                 }),

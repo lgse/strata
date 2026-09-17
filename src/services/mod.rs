@@ -2,6 +2,7 @@
 
 pub(crate) mod camera_preview;
 mod document;
+pub(crate) mod document_media;
 mod file_source;
 mod install_source;
 mod mime_type;
@@ -16,9 +17,9 @@ mod update_check;
 mod update_install;
 
 pub(crate) use document::{
-    DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentSpan, DocumentSpanStyle,
-    DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind, has_web_scheme,
-    layout_document, parse_document, parse_markdown,
+    DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
+    DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
+    has_web_scheme, layout_document, parse_document, parse_markdown,
 };
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,

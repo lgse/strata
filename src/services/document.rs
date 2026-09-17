@@ -61,6 +61,11 @@ pub enum DocumentBlock {
     },
     Rule,
     ContainerBoundary,
+    Image {
+        destination: String,
+        alt: String,
+        list_depth: Option<usize>,
+    },
     TableRow {
         cells: Vec<DocumentTableCell>,
     },
@@ -124,7 +129,18 @@ pub enum DocumentUnitKind {
         list_depth: Option<usize>,
         rows: Vec<Vec<DocumentTableCellLayout>>,
     },
+    Media {
+        source: DocumentMedia,
+        list_depth: Option<usize>,
+    },
     Gap,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DocumentMedia {
+    Image(String),
+    Mermaid(String),
+    Math { source: String, display: bool },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -149,6 +165,7 @@ pub enum DocumentSpanStyle {
     Monospace,
     Underline,
     Link(Arc<str>),
+    Math(Arc<str>),
 }
 
 struct StyledText {
@@ -390,17 +407,27 @@ fn parse_markdown_bounded(
     let mut table_cell: Option<String> = None;
     let mut table_depth = None;
     let mut raw_html = false;
+    let mut blocked_images = false;
+    let mut image = None::<(String, String)>;
+    let mut pending_images = Vec::new();
     let mut completed_markup = 0usize;
     let mut completed_blocks = 0;
     let mut options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
     if document_features {
-        options |= Options::ENABLE_TABLES;
+        options |= Options::ENABLE_TABLES | Options::ENABLE_MATH;
     }
 
     for event in Parser::new_ext(markdown, options) {
         budget.event()?;
         if matches!(event, Event::Start(_)) {
             budget.enter()?;
+        }
+        if let Some((_, alt)) = image.as_mut() {
+            match &event {
+                Event::Text(text) | Event::Code(text) => alt.push_str(text),
+                Event::SoftBreak | Event::HardBreak => alt.push(' '),
+                _ => {}
+            }
         }
         match &event {
             Event::Start(Tag::Heading { level, .. }) => {
@@ -604,12 +631,31 @@ fn parse_markdown_bounded(
                     "</u>"
                 },
             ),
-            Event::Start(Tag::Image { .. }) => {
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                if document_features && table_cell.is_none() {
+                    if !dest_url.contains(':') && !dest_url.starts_with('/') {
+                        image = Some((dest_url.to_string(), String::new()));
+                    } else {
+                        blocked_images = true;
+                    }
+                }
                 append_markup(&mut active, &mut table_cell, "[Image: ");
             }
-            Event::End(TagEnd::Image) => append_markup(&mut active, &mut table_cell, "]"),
+            Event::End(TagEnd::Image) => {
+                append_markup(&mut active, &mut table_cell, "]");
+                if let Some((destination, alt)) = image.take() {
+                    pending_images.push(DocumentBlock::Image {
+                        destination,
+                        alt,
+                        list_depth: list_items.last().copied(),
+                    });
+                }
+            }
             Event::Start(Tag::CodeBlock(kind)) => {
                 let language = markdown_code_language(kind);
+                if matches!(language, Some("mermaid" | "latex")) {
+                    finish_block(&mut active, &mut blocks);
+                }
                 if matches!(
                     active,
                     Some(
@@ -653,6 +699,39 @@ fn parse_markdown_bounded(
                     append_markup(&mut active, &mut table_cell, "</tt>");
                 }
             }
+            Event::InlineMath(source)
+                if table_cell.is_none()
+                    && image.is_none()
+                    && source.len() <= super::document_media::MATH_INPUT_LIMIT =>
+            {
+                append_markup(
+                    &mut active,
+                    &mut table_cell,
+                    "<span font_family=\"strata-math\">",
+                );
+                append_escaped(&mut active, &mut table_cell, source);
+                append_markup(&mut active, &mut table_cell, "</span>");
+            }
+            Event::DisplayMath(source) if table_cell.is_none() && image.is_none() => {
+                finish_block(&mut active, &mut blocks);
+                blocks.push(if let Some(depth) = list_items.last() {
+                    DocumentBlock::ListChild {
+                        depth: *depth,
+                        kind: DocumentListChildKind::Code(Some("latex")),
+                        markup: glib::markup_escape_text(source).to_string(),
+                    }
+                } else {
+                    DocumentBlock::Code {
+                        markup: glib::markup_escape_text(source).to_string(),
+                        language: Some("latex"),
+                    }
+                });
+            }
+            Event::InlineMath(source) | Event::DisplayMath(source) => {
+                append_markup(&mut active, &mut table_cell, "<tt>$");
+                append_escaped(&mut active, &mut table_cell, source);
+                append_markup(&mut active, &mut table_cell, "$</tt>");
+            }
             Event::Code(text) => {
                 append_markup(&mut active, &mut table_cell, "<tt>");
                 append_escaped(&mut active, &mut table_cell, text);
@@ -679,16 +758,33 @@ fn parse_markdown_bounded(
                 &mut table_cell,
                 if *checked { "☑ " } else { "☐ " },
             ),
-            Event::Start(_)
-            | Event::End(_)
-            | Event::FootnoteReference(_)
-            | Event::InlineMath(_)
-            | Event::DisplayMath(_) => {}
+            Event::Start(_) | Event::End(_) | Event::FootnoteReference(_) => {}
         }
         if matches!(event, Event::End(_)) {
             budget.leave();
         }
-        completed_markup += blocks[completed_blocks..]
+        if !pending_images.is_empty()
+            && (blocks.len() > completed_blocks
+                || matches!(
+                    event,
+                    Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item)
+                ))
+        {
+            if matches!(
+                event,
+                Event::End(TagEnd::Paragraph | TagEnd::Heading(_) | TagEnd::Item)
+            ) {
+                finish_block(&mut active, &mut blocks);
+            }
+            if let [DocumentBlock::Image { alt, .. }] = pending_images.as_slice()
+                && let Some(DocumentBlock::Paragraph(markup)) = blocks.last()
+                && *markup == format!("[Image: {}]", glib::markup_escape_text(alt))
+            {
+                blocks.pop();
+            }
+            blocks.append(&mut pending_images);
+        }
+        completed_markup += blocks[completed_blocks.min(blocks.len())..]
             .iter()
             .map(block_markup_bytes)
             .sum::<usize>();
@@ -699,7 +795,8 @@ fn parse_markdown_bounded(
         {
             return Err("Rendered preview exceeded the column budget for one table".to_owned());
         }
-        let pending_markup = active.as_ref().map_or(0, |block| block.markup().len())
+        let pending_markup = pending_images.iter().map(block_markup_bytes).sum::<usize>()
+            + active.as_ref().map_or(0, |block| block.markup().len())
             + table_cell.as_ref().map_or(0, String::len)
             + table_row.as_ref().map_or(0, |row| {
                 row.iter().map(|cell| cell.markup.len()).sum::<usize>()
@@ -711,10 +808,10 @@ fn parse_markdown_bounded(
     finish_block(&mut active, &mut blocks);
     Ok(ParsedDocument {
         document: Document { blocks },
-        warnings: raw_html
-            .then(|| "Raw HTML is shown as inert text in Markdown previews.".to_owned())
-            .into_iter()
-            .collect(),
+        warnings: [
+            raw_html.then(|| "Raw HTML is shown as inert text in Markdown previews.".to_owned()),
+            blocked_images.then(|| "Remote and absolute image URLs are not loaded. Use images inside the document's folder.".to_owned()),
+        ].into_iter().flatten().collect(),
     })
 }
 
@@ -1465,6 +1562,24 @@ fn layout_document_bounded(
                 None,
                 &budget,
             )?,
+            DocumentBlock::Image {
+                destination,
+                alt,
+                list_depth,
+            } => {
+                units.push(DocumentUnit {
+                    kind: DocumentUnitKind::Media {
+                        source: DocumentMedia::Image(destination),
+                        list_depth,
+                    },
+                    text: alt.clone(),
+                    copy_text: format!("[Image: {alt}]\n"),
+                    spans: Vec::new(),
+                    wrap: true,
+                    first: true,
+                    last: true,
+                });
+            }
             DocumentBlock::Rule => units.push(rule_unit(None)),
             DocumentBlock::ListRule { depth } => units.push(rule_unit(Some(depth))),
             DocumentBlock::ContainerBoundary => {
@@ -1511,8 +1626,52 @@ fn layout_document_bounded(
         }
     }
 
+    let mut rendered_units = Vec::with_capacity(units.len());
+    let mut units = units.into_iter().peekable();
+    while let Some(mut unit) = units.next() {
+        if let DocumentUnitKind::Code {
+            list_depth,
+            language: Some(language @ ("mermaid" | "latex")),
+        } = unit.kind
+        {
+            let mut source_units = vec![unit.clone()];
+            while !unit.last {
+                let Some(continuation) = units.next() else {
+                    break;
+                };
+                unit.text.push_str(&continuation.text);
+                unit.copy_text.push_str(&continuation.copy_text);
+                unit.last = continuation.last;
+                source_units.push(continuation);
+            }
+            let limit = if language == "latex" {
+                super::document_media::MATH_INPUT_LIMIT
+            } else {
+                super::document_media::DIAGRAM_INPUT_LIMIT
+            };
+            if unit.copy_text.len() > limit || unit.copy_text.lines().count() > 256 {
+                rendered_units.extend(source_units);
+                continue;
+            }
+            unit.kind = DocumentUnitKind::Media {
+                source: if language == "latex" {
+                    DocumentMedia::Math {
+                        source: unit.copy_text.clone(),
+                        display: true,
+                    }
+                } else {
+                    DocumentMedia::Mermaid(unit.copy_text.clone())
+                },
+                list_depth,
+            };
+        }
+        rendered_units.push(unit);
+        budget.check()?;
+    }
     budget.check()?;
-    Ok(DocumentLayout { units })
+    Ok(DocumentLayout {
+        units: rendered_units,
+    })
 }
 
 struct LayoutBudget<'a> {
@@ -1562,6 +1721,26 @@ fn decode_document_markup(markup: &str, budget: &LayoutBudget<'_>) -> Result<Sty
             return Err("Rendered preview contains unsupported document structure".to_owned());
         };
         let tag = &remaining[start + 1..start + 1 + end];
+        if tag == "span font_family=\"strata-math\"" {
+            let body = &remaining[start + end + 2..];
+            let close = body.find("</span>").ok_or("Unclosed equation span")?;
+            let source = decode_markup_text(&body[..close])?;
+            let offset = characters;
+            append_styled_text(
+                &mut text,
+                &mut spans,
+                &active,
+                "\u{fffc}",
+                &mut characters,
+                budget,
+            )?;
+            spans.push(DocumentSpan {
+                range: offset..characters,
+                style: DocumentSpanStyle::Math(Arc::from(source)),
+            });
+            remaining = &body[close + "</span>".len()..];
+            continue;
+        }
         if let Some(closing) = tag.strip_prefix('/') {
             if active.pop().map(|(name, _)| name) != Some(closing) {
                 return Err("Rendered preview contains unsupported document structure".to_owned());
@@ -1748,7 +1927,45 @@ fn push_styled_units(
             }
         }
     }
+    for unit in &mut units[first_unit..] {
+        if unit
+            .spans
+            .iter()
+            .any(|span| matches!(span.style, DocumentSpanStyle::Math(_)))
+        {
+            let newline = unit.copy_text.ends_with('\n');
+            unit.copy_text = unit.copy_range(0..unit.text.chars().count());
+            if newline {
+                unit.copy_text.push('\n');
+            }
+        }
+    }
     budget.check()
+}
+
+impl DocumentUnit {
+    pub(crate) fn copy_range(&self, range: Range<usize>) -> String {
+        let mut output = String::new();
+        for (index, character) in self
+            .text
+            .chars()
+            .enumerate()
+            .skip(range.start)
+            .take(range.end.saturating_sub(range.start))
+        {
+            if let Some(source) = self.spans.iter().find_map(|span| match &span.style {
+                DocumentSpanStyle::Math(source) if span.range.contains(&index) => Some(source),
+                _ => None,
+            }) {
+                output.push('$');
+                output.push_str(source);
+                output.push('$');
+            } else {
+                output.push(character);
+            }
+        }
+        output
+    }
 }
 
 fn document_unit_ranges(
@@ -1875,6 +2092,7 @@ fn block_has_balanced_markup(block: &DocumentBlock) -> bool {
         | DocumentBlock::ListChild { markup, .. }
         | DocumentBlock::Quote(markup)
         | DocumentBlock::Code { markup, .. } => has_balanced_markup(markup),
+        DocumentBlock::Image { .. } => true,
         DocumentBlock::TableRow { cells } | DocumentBlock::ListTableRow { cells, .. } => {
             cells.iter().all(|cell| has_balanced_markup(&cell.markup))
         }
@@ -1899,6 +2117,8 @@ fn has_balanced_markup(markup: &str) -> bool {
         } else {
             let name = if tag.starts_with("a href=\"") && tag.ends_with('"') {
                 "a"
+            } else if tag == "span font_family=\"strata-math\"" {
+                "span"
             } else if matches!(tag, "i" | "b" | "s" | "tt" | "u") {
                 tag
             } else {
@@ -1919,6 +2139,9 @@ fn block_markup_bytes(block: &DocumentBlock) -> usize {
         | DocumentBlock::ListChild { markup, .. }
         | DocumentBlock::Quote(markup)
         | DocumentBlock::Code { markup, .. } => markup.len(),
+        DocumentBlock::Image {
+            destination, alt, ..
+        } => destination.len() + alt.len(),
         DocumentBlock::TableRow { cells } | DocumentBlock::ListTableRow { cells, .. } => {
             cells.iter().map(|cell| cell.markup.len()).sum()
         }
@@ -1964,6 +2187,8 @@ fn code_language(hint: &str) -> Option<&'static str> {
         "lua" => Some("lua"),
         "make" | "makefile" => Some("makefile"),
         "markdown" | "md" => Some("markdown"),
+        "mermaid" => Some("mermaid"),
+        "latex" | "math" => Some("latex"),
         "php" => Some("php"),
         "powershell" | "ps1" => Some("powershell"),
         "py" | "python" | "python3" => Some("python3"),

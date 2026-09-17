@@ -34,7 +34,7 @@ fn standalone_table_keeps_copy_model_alive_without_document_state() {
                 .expect("CSV");
             let layout =
                 crate::services::layout_document(parsed.document, &cancellation).expect("layout");
-            let (widget, state) = rendered_document(layout, Vec::new(), false);
+            let (widget, state) = rendered_document(layout, Vec::new(), false, None);
             let table = Rc::downgrade(state.tables.borrow().get(&0).expect("standalone table"));
             drop(state);
             assert_eq!(
@@ -121,6 +121,7 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
     ]);
     let mut state = VirtualPreviewState {
         tables: Default::default(),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         units,
         wrapped: std::cell::Cell::new(false),
         selection: std::cell::Cell::new(Some(DocumentSelection {
@@ -163,6 +164,28 @@ fn cross_row_selection_copies_full_middle_units_from_the_model() {
         }));
         assert_eq!(selection_text(&state).as_deref(), Some(content.as_str()));
     }
+    let cancellation = crate::sandbox::Cancellation::default();
+    let parsed = crate::services::parse_document(
+        crate::services::document_kind("text/markdown", std::ffi::OsStr::new("math.md"), true)
+            .expect("Markdown"),
+        "Before $E=mc^2$ after",
+        &cancellation,
+    )
+    .expect("equation paragraph");
+    let layout =
+        crate::services::layout_document(parsed.document, &cancellation).expect("equation layout");
+    state.units = Rc::new(
+        layout
+            .units
+            .into_iter()
+            .map(PreviewUnit::Document)
+            .collect(),
+    );
+    state.selection.set(Some(DocumentSelection {
+        anchor: SelectionPoint { unit: 0, offset: 7 },
+        focus: SelectionPoint { unit: 0, offset: 8 },
+    }));
+    assert_eq!(selection_text(&state).as_deref(), Some("$E=mc^2$"));
 }
 
 #[test]
@@ -176,6 +199,7 @@ fn selection_does_not_invent_newlines_between_line_chunks() {
             focus: SelectionPoint { unit: 1, offset: 1 },
         })),
         tables: Default::default(),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         bound: std::cell::RefCell::default(),
         dragging: std::cell::Cell::new(false),
         press: std::cell::Cell::new((0.0, 0.0)),
@@ -215,6 +239,7 @@ fn table_selection_is_atomic_and_copies_tsv() {
             focus: SelectionPoint { unit: 0, offset: 1 },
         })),
         tables: Default::default(),
+        media_cache: crate::ui::document_media::MediaCache::new(None),
         bound: std::cell::RefCell::default(),
         dragging: std::cell::Cell::new(false),
         press: std::cell::Cell::new((0.0, 0.0)),
@@ -559,6 +584,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 },
                 Vec::new(),
                 false,
+                None,
             )
             .0;
             let weak = root.downgrade();
@@ -595,7 +621,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
             let (source, _) = source_units(&content);
             let units = source.into_iter().map(PreviewUnit::Source).collect();
             let (source_root, source_state) =
-                super::virtual_preview(units, Vec::new(), true, false);
+                super::virtual_preview(units, Vec::new(), true, false, None);
             stack.add_named(&source_root, Some("source"));
             stack.set_visible_child_name("source");
             while gtk::glib::MainContext::default().pending() {
@@ -632,6 +658,7 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
                 vec!["Unsupported content omitted".to_owned()],
                 false,
                 false,
+                None,
             );
             stack.add_named(&rendered_root, Some("rendered-again"));
             stack.set_visible_child_name("rendered-again");
@@ -693,6 +720,7 @@ fn wrap_toggle_reflows_bound_rendered_and_source_rows() {
                 },
                 Vec::new(),
                 false,
+                None,
             );
             stack.add_named(&rendered, Some("rendered"));
             stack.set_visible_child_name("rendered");

@@ -2307,7 +2307,12 @@ paned > separator {
 .preview-document-table-cell {
   background: @theme_surface;
   color: @theme_text;
-  padding: 6px 8px;
+  padding: 0;
+}
+
+.preview-document-table-cell selection {
+  background: @theme_accent;
+  color: @theme_bg;
 }
 
 .preview-document-table-cell.header {
@@ -2378,6 +2383,8 @@ paned > separator {
 }
 
 .preview-document-table > header button {
+  padding: 4px 6px;
+  min-height: 0;
   background-image: none;
   box-shadow: none;
   border-width: 0 0 1px 1px;
@@ -2411,6 +2418,16 @@ paned > separator {
   background: @theme_surface;
   color: @theme_text;
   border-color: @theme_border;
+}
+
+.preview-document-table row {
+  padding: 0;
+  min-height: 0;
+}
+
+.preview-document-table cell {
+  padding: 4px 6px;
+  min-height: 0;
 }
 
 .preview-document-table row:hover {

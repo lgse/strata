@@ -1120,6 +1120,7 @@ impl ThemeManager {
     }
 
     fn apply_tokens(&self, tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
+        super::document_media::apply_theme(tokens);
         let root_font_px =
             snapped_root_font_px(self.text_size().root_font_px(), desktop_text_scale_factor());
         let glow = if self.element_glow() {

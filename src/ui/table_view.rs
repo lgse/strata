@@ -100,7 +100,11 @@ impl TableState {
             for (index, cell) in row.iter().enumerate() {
                 for line in cell.text.lines().take(8) {
                     layout.set_text(&line.chars().take(128).collect::<String>());
-                    let padding = if row_index == 0 && self.header { 40 } else { 36 };
+                    let padding = if row_index == 0 && self.header {
+                        40
+                    } else {
+                        36
+                    };
                     widths[index] = widths[index].max((layout.pixel_size().0 + padding).min(640));
                 }
             }
@@ -131,7 +135,7 @@ impl TableState {
         let desired_widths = self.measure_columns(&view);
         let automatic_resize = Rc::new(Cell::new(false));
         let mut columns = Vec::new();
-        for index in 0..self.widths.borrow().len() {
+        for (index, desired_width) in desired_widths.iter().enumerate() {
             let factory = gtk::SignalListItemFactory::new();
             factory.connect_setup(|_, item| {
                 let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -140,6 +144,7 @@ impl TableState {
                 let label = gtk::Label::new(None);
                 label.add_css_class("preview-document-table-cell");
                 label.set_xalign(0.0);
+                label.set_selectable(true);
                 label.set_ellipsize(gtk::pango::EllipsizeMode::End);
                 label.connect_activate_link(|label, uri| {
                     if crate::services::has_web_scheme(uri) {
@@ -161,6 +166,7 @@ impl TableState {
                     return;
                 };
                 let row = *object.borrow::<usize>();
+                label.select_region(0, 0);
                 label.set_tooltip_text(None);
                 if let Some(cell) = rows[row].get(index) {
                     super::virtual_preview::set_table_cell(&label, cell);
@@ -179,7 +185,11 @@ impl TableState {
             };
             let column = gtk::ColumnViewColumn::new(Some(&title), Some(factory));
             column.set_resizable(true);
-            column.set_fixed_width(if self.manually_sized.get() { self.widths.borrow()[index] } else { desired_widths[index] });
+            column.set_fixed_width(if self.manually_sized.get() {
+                self.widths.borrow()[index]
+            } else {
+                *desired_width
+            });
             let weak = Rc::downgrade(self);
             let automatic_resize = automatic_resize.clone();
             column.connect_fixed_width_notify(move |column| {
@@ -235,7 +245,8 @@ impl TableState {
             }
         }
         if let (Some(header), Some(column)) = (view.first_child(), columns.last())
-            && let Some(title) = header.last_child() {
+            && let Some(title) = header.last_child()
+        {
             install_last_column_resize(&title, column);
         }
         if let Some((index, direction)) = self.sort.get() {
@@ -288,22 +299,43 @@ impl TableState {
             .build();
         scroll.add_css_class("fixed-scrollbar");
         let weak = Rc::downgrade(self);
-        let weak_columns = columns.iter().map(|column| column.downgrade()).collect::<Vec<_>>();
+        let weak_columns = columns
+            .iter()
+            .map(|column| column.downgrade())
+            .collect::<Vec<_>>();
         let measured_width = Cell::new(0);
         view.add_tick_callback(move |view, _| {
-            let Some(state) = weak.upgrade() else { return glib::ControlFlow::Break; };
+            let Some(state) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
             let available = (view.width() - 2).max(0);
-            if state.manually_sized.get() || available == 0 || measured_width.replace(available) == available {
+            if state.manually_sized.get()
+                || available == 0
+                || measured_width.replace(available) == available
+            {
                 return glib::ControlFlow::Continue;
             }
-            let minimum_total = desired_widths.iter().map(|width| (*width).min(160)).sum::<i32>();
+            let minimum_total = desired_widths
+                .iter()
+                .map(|width| (*width).min(160))
+                .sum::<i32>();
             let extra = (available - minimum_total).max(0);
-            let weights = desired_widths.iter().map(|width| (width - (*width).min(160)).max(1)).sum::<i32>().max(1);
+            let weights = desired_widths
+                .iter()
+                .map(|width| (width - (*width).min(160)).max(1))
+                .sum::<i32>()
+                .max(1);
             let mut remaining = extra;
             automatic_resize.set(true);
             for (index, weak_column) in weak_columns.iter().enumerate() {
-                let share = if index + 1 == weak_columns.len() { remaining } else {
-                    (i64::from(extra) * i64::from((desired_widths[index] - desired_widths[index].min(160)).max(1)) / i64::from(weights)) as i32
+                let share = if index + 1 == weak_columns.len() {
+                    remaining
+                } else {
+                    (i64::from(extra)
+                        * i64::from(
+                            (desired_widths[index] - desired_widths[index].min(160)).max(1),
+                        )
+                        / i64::from(weights)) as i32
                 };
                 remaining -= share;
                 if let Some(column) = weak_column.upgrade() {
@@ -347,7 +379,9 @@ fn install_last_column_resize(title: &gtk::Widget, column: &gtk::ColumnViewColum
     let weak_title = title.downgrade();
     let weak_column = column.downgrade();
     drag.connect_drag_begin(move |gesture, x, _| {
-        let (Some(title), Some(column)) = (weak_title.upgrade(), weak_column.upgrade()) else { return; };
+        let (Some(title), Some(column)) = (weak_title.upgrade(), weak_column.upgrade()) else {
+            return;
+        };
         let resizing = x >= f64::from(title.width() - 8);
         active_begin.set(resizing);
         if resizing {
@@ -359,7 +393,9 @@ fn install_last_column_resize(title: &gtk::Widget, column: &gtk::ColumnViewColum
     });
     let weak_column = column.downgrade();
     drag.connect_drag_update(move |_, offset, _| {
-        if active.get() && let Some(column) = weak_column.upgrade() {
+        if active.get()
+            && let Some(column) = weak_column.upgrade()
+        {
             column.set_fixed_width((start_width.get() + offset.round() as i32).max(48));
         }
     });
@@ -368,12 +404,18 @@ fn install_last_column_resize(title: &gtk::Widget, column: &gtk::ColumnViewColum
     let weak_title = title.downgrade();
     motion.connect_motion(move |_, x, _| {
         if let Some(title) = weak_title.upgrade() {
-            title.set_cursor_from_name(Some(if x >= f64::from(title.width() - 8) { "col-resize" } else { "pointer" }));
+            title.set_cursor_from_name(Some(if x >= f64::from(title.width() - 8) {
+                "col-resize"
+            } else {
+                "pointer"
+            }));
         }
     });
     let weak_title = title.downgrade();
     motion.connect_leave(move |_| {
-        if let Some(title) = weak_title.upgrade() { title.set_cursor(None); }
+        if let Some(title) = weak_title.upgrade() {
+            title.set_cursor(None);
+        }
     });
     title.add_controller(motion);
 }
