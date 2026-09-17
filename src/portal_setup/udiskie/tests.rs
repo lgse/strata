@@ -347,16 +347,18 @@ fn json_only_migrates_and_uninstall_restores_json() {
         "JSON backup should remain until uninstall"
     );
 
+    let mut updated = root;
+    updated.insert("keep".into(), Value::Number(2.into()));
+    fs::write(&yml, super::emit_managed(&updated).expect("yaml")).expect("user edit");
     uninstall_at(&context).expect("uninstall");
 
     assert!(json.is_file(), "uninstall should restore config.json");
     assert!(!yml.exists(), "uninstall should remove the YAML we created");
     let restored: serde_json::Value =
         serde_json::from_slice(&fs::read(&json).expect("restored json")).expect("parse json");
-    assert_eq!(
-        restored, original,
-        "JSON bytes should round-trip from backup"
-    );
+    let mut expected = original;
+    expected["keep"] = 2.into();
+    assert_eq!(restored, expected, "restore must preserve unrelated edits");
     assert!(
         !state_directory(&context).join("config.json.bak").exists(),
         "JSON backup should be removed after uninstall"
@@ -365,6 +367,59 @@ fn json_only_migrates_and_uninstall_restores_json() {
         read_state(&state_directory(&context))
             .expect("state")
             .is_none()
+    );
+}
+
+#[test]
+fn reinstall_failure_preserves_current_configuration_and_restore_state() {
+    for original in [None, Some("program_options: {}\n")] {
+        let fixture = fixture();
+        let context = context(fixture.path());
+        let executable = executable(fixture.path());
+        if let Some(original) = original {
+            write_yml(&context, original);
+        }
+        install_at(&context, &executable).expect("install");
+        let yml = config_yml(&context);
+        let mut root = mapping(&yml);
+        root.insert("keep".into(), Value::Bool(true));
+        fs::write(&yml, super::emit_managed(&root).expect("yaml")).expect("user edit");
+        let before = fs::read(&yml).expect("current configuration");
+        let directory = state_directory(&context);
+        let state = fs::read(directory.join(super::STATE_FILE)).expect("state");
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o555))
+            .expect("read-only state directory");
+        let result = install_at(&context, &executable);
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755))
+            .expect("restore permissions");
+        assert!(result.is_err());
+        assert_eq!(fs::read(&yml).expect("preserved configuration"), before);
+        assert_eq!(
+            fs::read(directory.join(super::STATE_FILE)).expect("preserved state"),
+            state
+        );
+    }
+}
+
+#[test]
+fn json_restore_refuses_to_overwrite_a_new_configuration() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let json = config_json(&context);
+    fs::create_dir_all(json.parent().expect("parent")).expect("directory");
+    fs::write(&json, b"{}").expect("original JSON");
+    install_at(&context, &executable(fixture.path())).expect("install");
+    fs::write(&json, b"{\"keep\":true}").expect("new JSON");
+    assert!(uninstall_at(&context).is_err());
+    assert_eq!(
+        fs::read(&json).expect("new JSON survives"),
+        b"{\"keep\":true}"
+    );
+    assert!(config_yml(&context).exists());
+    assert!(
+        read_state(&state_directory(&context))
+            .expect("state")
+            .is_some()
     );
 }
 
@@ -464,6 +519,20 @@ fn discover_matches_cmdline_basename_udiskie() {
     );
     write_process(&proc_root, 16, euid, "cat", &["cat", "/usr/bin/udiskie"]);
     write_process(&proc_root, 17, euid, "man", &["man", "udiskie"]);
+    write_process(
+        &proc_root,
+        18,
+        euid,
+        "python3",
+        &["python3", "backup.py", "/usr/bin/udiskie"],
+    );
+    write_process(
+        &proc_root,
+        19,
+        euid,
+        "python3",
+        &["python3", "-c", "print('hello')", "udiskie"],
+    );
 
     let pids: Vec<u32> = discover_udiskie_at(&proc_root, euid, current)
         .into_iter()

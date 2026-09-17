@@ -146,6 +146,17 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
 
     let state_directory = state_directory(context);
     let existing_state = read_state(&state_directory)?;
+    let original_yml = snapshot_config(&yml)?;
+    let original_json = snapshot_config(&json)?;
+    let state_path = state_directory.join(STATE_FILE);
+    let original_state = snapshot_config(&state_path)?;
+    if existing_state
+        .as_ref()
+        .is_some_and(|state| state.source_format == SourceFormat::Json)
+        && original_json.is_some()
+    {
+        return Err("Refusing to overwrite a JSON configuration created after installation".into());
+    }
 
     let (source_format, original, yml_existed, parse_as_json) = if existing_state.is_some() {
         let bytes = if yml.exists() {
@@ -219,12 +230,10 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
     if existing_state.is_none() {
         match source_format {
             SourceFormat::Yaml => {
-                fs::write(&yaml_backup, &original)
-                    .map_err(|error| path_error("write", &yaml_backup, error))?;
+                write_config(&yaml_backup, &original, mode)?;
             }
             SourceFormat::Json => {
-                fs::write(&json_backup, &original)
-                    .map_err(|error| path_error("write", &json_backup, error))?;
+                write_config(&json_backup, &original, mode)?;
             }
             SourceFormat::Missing => {}
         }
@@ -250,7 +259,15 @@ fn install_at(context: &SetupContext, executable: &Path) -> Result<PathBuf, Stri
     })();
 
     if let Err(error) = written {
-        restore_original(&yml, &json, source_format, &original, yml_existed);
+        for (path, snapshot) in [
+            (&yml, &original_yml),
+            (&json, &original_json),
+            (&state_path, &original_state),
+        ] {
+            if let Err(rollback) = restore_snapshot(path, snapshot) {
+                return Err(format!("{error}; rollback failed: {rollback}"));
+            }
+        }
         return Err(error);
     }
 
@@ -272,16 +289,29 @@ fn uninstall_at(context: &SetupContext) -> Result<(), String> {
 
     match state.source_format {
         SourceFormat::Json => {
-            let backup = state_directory.join(JSON_BACKUP);
-            if backup.exists() {
-                let bytes =
-                    fs::read(&backup).map_err(|error| path_error("read", &backup, error))?;
-                if let Some(parent) = json.parent() {
-                    fs::create_dir_all(parent)
-                        .map_err(|error| path_error("create", parent, error))?;
-                }
-                write_config(&json, &bytes, file_mode(&backup))?;
+            ensure_udiskie_target(&json)?;
+            ensure_udiskie_target(&yml)?;
+            if json.exists() {
+                return Err(
+                    "Refusing to overwrite a JSON configuration created after installation".into(),
+                );
             }
+            let backup = state_directory.join(JSON_BACKUP);
+            let (bytes, mode) = if yml.exists() {
+                let mut root = into_mapping(parse_yaml(&read_utf8(&yml)?)?)?;
+                restore_managed(&mut root, &state);
+                let bytes = serde_json::to_vec_pretty(&root).map_err(|error| {
+                    format!("Could not restore udiskie JSON configuration: {error}")
+                })?;
+                (bytes, file_mode(&yml))
+            } else {
+                ensure_udiskie_target(&backup)?;
+                (
+                    fs::read(&backup).map_err(|error| path_error("read", &backup, error))?,
+                    file_mode(&backup),
+                )
+            };
+            write_config(&json, &bytes, mode)?;
             remove_if_exists(&yml)?;
         }
         SourceFormat::Yaml | SourceFormat::Missing => {
@@ -632,26 +662,19 @@ fn validate_managed(path: &Path, executable: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn restore_original(
-    yml: &Path,
-    json: &Path,
-    source_format: SourceFormat,
-    original: &[u8],
-    yml_existed: bool,
-) {
-    match source_format {
-        SourceFormat::Yaml => {
-            let _ = write_config(yml, original, file_mode(yml));
-        }
-        SourceFormat::Json => {
-            let _ = write_config(json, original, file_mode(json));
-            if !yml_existed {
-                let _ = remove_if_exists(yml);
-            }
-        }
-        SourceFormat::Missing => {
-            let _ = remove_if_exists(yml);
-        }
+fn snapshot_config(path: &Path) -> Result<Option<(Vec<u8>, u32)>, String> {
+    ensure_udiskie_target(path)?;
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some((bytes, file_mode(path)))),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(path_error("read", path, error)),
+    }
+}
+
+fn restore_snapshot(path: &Path, snapshot: &Option<(Vec<u8>, u32)>) -> Result<(), String> {
+    match snapshot {
+        Some((bytes, mode)) => write_config(path, bytes, *mode),
+        None => remove_if_exists(path),
     }
 }
 
@@ -838,9 +861,8 @@ fn cmdline_is_udiskie(tokens: &[&[u8]]) -> bool {
     }
     token_is_python(argv0)
         && rest
-            .iter()
-            .copied()
-            .any(|token| token_basename_is(token, "udiskie"))
+            .first()
+            .is_some_and(|token| token_basename_is(token, "udiskie"))
 }
 
 fn token_basename_is(token: &[u8], name: &str) -> bool {
