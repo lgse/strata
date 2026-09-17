@@ -1182,6 +1182,7 @@ impl ViewState {
             marquee.group_background_click(&click);
         }
         if self.interactive {
+            install_directory_drop_target(self, &column, location.clone());
             install_directory_drop_target(self, &presentation.stack, location.clone());
         }
         let folder_context_trigger = install_folder_context_menu(
@@ -1372,6 +1373,28 @@ impl ViewState {
                 state.reveal_column_only(depth, &revealed_location);
             }
         });
+        let peek_motion = gtk::EventControllerMotion::new();
+        let weak = Rc::downgrade(self);
+        peek_motion.connect_enter(move |_, _, _| {
+            if let Some(state) = weak.upgrade() {
+                state.hovered_column.set(Some(depth));
+                state.refresh_destination_style();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        peek_motion.connect_leave(move |_| {
+            if let Some(state) = weak.upgrade()
+                && state.hovered_column.get() == Some(depth)
+            {
+                state.hovered_column.set(None);
+                state.refresh_destination_style();
+            }
+        });
+        reveal_button.add_controller(peek_motion);
+        if self.interactive {
+            install_directory_drop_target(self, &reveal_button, location.clone());
+            install_directory_drop_target(self, &resize_handle, location.clone());
+        }
         column_overlay.add_overlay(&reveal_button);
         let animation_generation = Rc::new(Cell::new(0));
         let previous = depth
@@ -1573,6 +1596,7 @@ impl ViewState {
     }
 }
 
+pub(super) mod drag_scroll;
 mod reveal;
 mod rows;
 mod search;
