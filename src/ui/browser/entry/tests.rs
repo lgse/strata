@@ -110,6 +110,15 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "notes.txt",
         crate::model::EntryKind::FileSymbolicLink,
     )));
+    for name in ["notes.mdown", "notes.mkdn", "notes.mdwn", "page.xhtml"] {
+        assert!(
+            crate::ui::preview::entry_supports_quick_preview(&entry(
+                name,
+                crate::model::EntryKind::File
+            )),
+            "{name} should reach the preview provider"
+        );
+    }
     assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
         ".steampath",
         crate::model::EntryKind::File,

@@ -129,6 +129,13 @@ impl Default for ClickActivation {
     }
 }
 
+// Capture must snapshot selection before GTK changes it for the bubble gesture.
+#[derive(Default)]
+struct SlowClickRename {
+    was_selected: Cell<bool>,
+    selected_count_before: Cell<u64>,
+}
+
 /// Maps a `StringList` item to its source index. Filter, sort, and flatten models
 /// pass those objects through, so bind can resolve without scanning the source.
 #[derive(Clone, Default)]
@@ -795,6 +802,15 @@ impl ModeViews {
 
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
         self.single_pane()?.search.selected_entries()
+    }
+
+    pub(in crate::ui) fn filter_active(&self) -> bool {
+        self.selected_search_results().is_some()
+            || self
+                .visible_panes()
+                .into_iter()
+                .filter_map(|pane| pane.filter_entry.as_ref())
+                .any(|entry| !entry.text().trim().is_empty())
     }
 
     pub fn item_view_has_focus(&self) -> bool {
@@ -1978,6 +1994,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     };
     let transfers_for_setup = context.transfer.clone();
     let peek_for_setup = context.state.clone();
+    let state_for_clicks = context.state.clone();
     let thumbnail_size_for_setup = context.thumbnail_size.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -1989,23 +2006,29 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             return;
         };
         install_icons_content_hover(&card);
+        let slow_click = Rc::new(SlowClickRename::default());
+        let weak_state_for_clicks = state_for_clicks.clone().unwrap_or_default();
         install_preview_click(
             &card,
             item,
             browser_for_setup.clone(),
+            weak_state_for_clicks.clone(),
             previews_for_setup.clone(),
             activation_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
             filter_query_for_setup.clone(),
+            slow_click.clone(),
         );
         let content_click = install_modified_selection_click(
             &card,
             item,
             selection_for_setup.clone(),
             browser_for_setup.clone(),
+            weak_state_for_clicks.clone(),
             depth,
             positions_for_setup.clone(),
+            slow_click.clone(),
         );
         install_icons_peek(
             &card,
@@ -2087,9 +2110,13 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     );
 
     let weak_browser = Rc::downgrade(&context.browser);
+    let weak_state_for_activate = context.state.clone();
     let source_index_for_activation = context.source_index.clone();
     let filtered_for_activation = view_model.clone();
     view.connect_activate(move |_, position| {
+        if let Some(state) = weak_state_for_activate.as_ref().and_then(Weak::upgrade) {
+            state.cancel_click_rename();
+        }
         if let Some(browser) = weak_browser.upgrade()
             && let Some(position) = source_position_for_view(
                 &source_index_for_activation,
@@ -2672,9 +2699,13 @@ fn build_list_pane(
         install_mode_directory_drop_target(&view, destination, transfer_handler.clone());
     }
     let weak_browser = Rc::downgrade(&browser);
+    let weak_state_for_activate = options.state.clone();
     let source_index_for_activation = source_index.clone();
     let view_model_for_activation = view_model_object.clone();
     view.connect_activate(move |_, position| {
+        if let Some(state) = weak_state_for_activate.as_ref().and_then(Weak::upgrade) {
+            state.cancel_click_rename();
+        }
         if let Some(browser) = weak_browser.upgrade()
             && let Some(position) = source_position_for_view(
                 &source_index_for_activation,
@@ -3403,18 +3434,25 @@ impl PanePositions {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mode-specific click setup keeps these inputs explicit"
+)]
 fn install_modified_selection_click(
     widget: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
     selection: gtk::MultiSelection,
     browser: Weak<Browser>,
+    weak_state: Weak<super::browser::ViewState>,
     depth: usize,
     positions: PanePositions,
+    slow_click: Rc<SlowClickRename>,
 ) -> gtk::GestureClick {
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let item = item.downgrade();
+    let weak_state_for_pressed = weak_state.clone();
     click.connect_pressed(move |gesture, _, x, y| {
         let Some(item) = item.upgrade() else {
             return;
@@ -3426,14 +3464,21 @@ fn install_modified_selection_click(
         let Some(browser) = browser.upgrade() else {
             return;
         };
+        if let Some(state) = weak_state_for_pressed.upgrade() {
+            state.cancel_click_rename();
+        }
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let selected_before = selection.is_selected(position);
+        let selected_count_before = selection.selection().size();
+        slow_click.was_selected.set(selected_before);
+        slow_click.selected_count_before.set(selected_count_before);
         let preserve_group = !control
             && !shift
             && super::browser::should_preserve_drag_selection(
-                selection.is_selected(position),
-                selection.selection().size(),
+                selected_before,
+                selected_count_before,
             );
         if shift {
             let anchor = browser
@@ -3464,6 +3509,12 @@ fn install_modified_selection_click(
             item_widget.grab_focus();
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
+    });
+    let weak_state_for_cancel = weak_state.clone();
+    click.connect_cancel(move |_, _| {
+        if let Some(state) = weak_state_for_cancel.upgrade() {
+            state.cancel_click_rename();
+        }
     });
     click.connect_released(|gesture, _, _, _| {
         if gesture
@@ -3575,11 +3626,13 @@ fn install_preview_click(
     widget: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
     browser: Weak<Browser>,
+    weak_state: Weak<super::browser::ViewState>,
     enabled: Rc<Cell<bool>>,
     click_activation: Rc<Cell<ClickActivation>>,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
     filter_query: Rc<RefCell<String>>,
+    slow_click: Rc<SlowClickRename>,
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(1);
@@ -3634,6 +3687,20 @@ fn install_preview_click(
             gesture.set_state(gtk::EventSequenceState::Claimed);
             if !browser.is_chooser_mode() {
                 browser.activate_in_place(depth, position);
+            }
+        } else if press_count == 1
+            && !modifiers.intersects(
+                gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK
+                    | gtk::gdk::ModifierType::META_MASK,
+            )
+            && slow_click.was_selected.get()
+            && slow_click.selected_count_before.get() == 1
+            && !browser.is_chooser_mode()
+            && !is_trash_location(&entry.location)
+        {
+            if let Some(state) = weak_state.upgrade() {
+                state.schedule_click_rename(depth, position);
             }
         } else if press_count == 1
             && enabled.get()

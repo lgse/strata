@@ -64,9 +64,9 @@ fn indexed_items(root: &std::path::Path) -> Vec<SearchItem> {
 }
 
 #[test]
-fn same_folder_search_preview_closes_after_deletion_without_focus_change() {
+fn same_folder_search_preview_follows_focus_after_deletion() {
     gtk_test(
-        "ui::window::composition::search::tests::same_folder_search_preview_closes_after_deletion_without_focus_change",
+        "ui::window::composition::search::tests::same_folder_search_preview_follows_focus_after_deletion",
         || {
             let root = tempfile::tempdir().expect("fixture directory");
             let path = root.path().join("fixture.txt");
@@ -92,9 +92,10 @@ fn same_folder_search_preview_closes_after_deletion_without_focus_change() {
                 fixture
                     .browser
                     .column_snapshot(0)
-                    .is_some_and(|s| s.count == 1)
+                    .is_some_and(|s| s.count == 1 && s.selected_positions == [0])
             });
-            assert!(!fixture.preview.is_open());
+            assert!(fixture.preview.is_open());
+            assert!(fixture.events.borrow().is_empty());
             fixture.browser.clear_observer();
         },
     );

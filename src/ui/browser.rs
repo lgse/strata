@@ -172,6 +172,8 @@ pub(super) struct ViewState {
     pending_rename: RefCell<Option<PendingRename>>,
     rename_generation: Cell<u64>,
     rename_reveal_generation: Cell<u64>,
+    pending_click_rename: RefCell<Option<glib::SourceId>>,
+    click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
@@ -492,6 +494,8 @@ impl BrowserView {
             pending_rename: RefCell::new(None),
             rename_generation: Cell::new(0),
             rename_reveal_generation: Cell::new(0),
+            pending_click_rename: RefCell::new(None),
+            click_rename_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
@@ -564,6 +568,28 @@ impl BrowserView {
         state
             .browser
             .observe(move |event| observer_state.handle(event));
+
+        let click = gtk::GestureClick::new();
+        click.set_button(0);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_state = Rc::downgrade(&state);
+        click.connect_pressed(move |_, _, _, _| {
+            if let Some(state) = weak_state.upgrade() {
+                state.cancel_click_rename();
+            }
+        });
+        state.overlay.add_controller(click);
+
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_state = Rc::downgrade(&state);
+        keys.connect_key_pressed(move |_, _, _, _| {
+            if let Some(state) = weak_state.upgrade() {
+                state.cancel_click_rename();
+            }
+            glib::Propagation::Proceed
+        });
+        state.overlay.add_controller(keys);
 
         let weak_state = Rc::downgrade(&state);
         state.location_entry.connect_activate(move |_| {
@@ -1368,6 +1394,9 @@ impl BrowserView {
     }
 
     pub fn undo_last_operation(&self) -> bool {
+        if let Some((generation, _, _)) = self.state.browser.pending_undo_rename() {
+            return self.state.browser.undo_rename(generation);
+        }
         if let Some((generation, records)) = self.state.browser.pending_undo_move() {
             return self.state.undo_move(generation, records);
         }

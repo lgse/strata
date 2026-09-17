@@ -188,3 +188,269 @@ fn restore_shared_trash_moves_the_item_and_removes_its_metadata() -> Result<(), 
     assert!(!fixture.path().join(".Trash/Documents/report").exists());
     Ok(())
 }
+
+#[test]
+fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refreshed()
+-> Result<(), Box<dyn Error>> {
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let fixture = std::env::temp_dir().join(format!("strata-home-trash-fallback-{unique}"));
+    let trash = fixture.join("Trash");
+    let original = fixture.join("original report.txt");
+    fs::create_dir_all(trash.join("files"))?;
+    fs::create_dir_all(trash.join("info"))?;
+    std::os::unix::fs::symlink("missing-target", trash.join("files/report.txt"))?;
+    let encoded = original.display().to_string().replace(' ', "%20");
+    fs::write(
+        trash.join("info/report.txt.trashinfo"),
+        format!("[Trash Info]\nPath={encoded}\nDeletionDate=2026-09-03T16:05:39\n"),
+    )?;
+
+    let entries = home_trash_entries_at(
+        &trash,
+        &HashSet::from([original.clone()]),
+        &gio::Cancellable::new(),
+    );
+
+    let entry = entries.get(&original).expect("fallback entry");
+    assert_eq!(
+        entry.source,
+        Location::local(trash.join("files/report.txt"))
+    );
+    assert_eq!(entry.original_target, Some(Location::local(&original)));
+    assert_eq!(
+        entry.trash_info.as_deref(),
+        Some(trash.join("info/report.txt.trashinfo").as_path())
+    );
+    let cancellable = gio::Cancellable::new();
+    cancellable.cancel();
+    assert!(home_trash_entries_at(&trash, &HashSet::from([original]), &cancellable).is_empty());
+    assert!(fs::symlink_metadata(trash.join("files/report.txt")).is_ok());
+    assert!(trash.join("info/report.txt.trashinfo").exists());
+    fs::remove_dir_all(fixture)?;
+    Ok(())
+}
+
+#[test]
+fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let location = Location::local("/fixture/trashed.txt");
+    for (source, expected) in [
+        (
+            RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry: file_entry(Path::new("/fixture/trashed.txt")),
+                destination: PathBuf::from("/fixture/trashed.txt"),
+            }]),
+            vec![location.clone()],
+        ),
+        (
+            RestoreSource::OriginalLocations(vec![location.clone()]),
+            vec![location],
+        ),
+        (RestoreSource::OriginalLocations(Vec::new()), Vec::new()),
+    ] {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let emitted = events.clone();
+        let operation = LocalOperationProvider.restore(
+            RestoreRequest {
+                id: OperationRequestId(9),
+                source,
+            },
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+        );
+
+        drop(operation);
+        while events.borrow().is_empty() {
+            glib::MainContext::default().iteration(true);
+        }
+
+        assert!(matches!(
+            events.borrow().as_slice(),
+            [OperationEvent::Cancelled { result, .. }]
+                if result.completed.is_empty()
+                    && result.failed.is_empty()
+                    && result.not_attempted == expected
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn restore_rejects_a_volume_orig_path_on_another_device() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "restore_rejects_a_volume_orig_path_on_another_device",
+    ) else {
+        return Ok(());
+    };
+    let dest = home.path().join(".config/autostart/payload.desktop");
+    let (source, entry) = volume_trash_entry(
+        stick.path(),
+        "payload",
+        &dest.to_string_lossy(),
+        b"ssh-ed25519 AAAA attacker",
+    )?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(478),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: dest.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::RestoreCompletedWithErrors { message, .. })
+                if message.contains("outside the trash volume")
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"ssh-ed25519 AAAA attacker");
+    assert!(!dest.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_returns_a_volume_item_to_a_path_on_the_same_volume() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    let destination = fixture.path().canonicalize()?.join("Documents/report.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(479),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: destination.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::Restored { .. })
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(&destination)?, b"notes");
+    assert!(!source.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_fails_when_the_confirmed_destination_no_longer_matches() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    let confirmed = fixture.path().canonicalize()?.join("Documents/other.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(480),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: confirmed.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::RestoreCompletedWithErrors { message, .. })
+                if message.contains("no longer matches the confirmed destination")
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(source.exists());
+    assert!(!confirmed.exists());
+    assert!(!fixture.path().join("Documents/report.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, mut entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    entry.location = Location::uri("trash:///report.txt");
+    entry.thumbnail_path = Some(source.clone());
+    let destination = fixture.path().canonicalize()?.join("Documents/report.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(481),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: destination.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::Restored { .. })
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(&destination)?, b"notes");
+    assert!(!source.exists());
+    Ok(())
+}

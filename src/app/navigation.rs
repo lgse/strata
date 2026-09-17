@@ -461,6 +461,9 @@ impl NavigationState {
                             .get(position.min(column.entries.len().saturating_sub(1)))
                             .map(|entry| entry.location.clone())
                     });
+                    if let Some(ref replacement) = selected_location {
+                        column.selected_locations.insert(replacement.clone());
+                    }
                 }
             }
             DirectoryChange::Move { from, entry } => {

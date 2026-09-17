@@ -15,14 +15,16 @@ use crate::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict, UndoCopyRequest,
-        UndoMoveItem, UndoMoveRequest, validate_basename, validate_uri_credentials,
+        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRecord,
+        RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
+        TransferConflict, UndoCopyRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
+        validate_basename, validate_uri_credentials,
     },
 };
 
 pub use crate::app::navigation::ColumnEntryCounts;
 
+mod deferred;
 mod directory_changes;
 mod loading;
 mod operation_events;
@@ -257,6 +259,7 @@ pub enum UndoEntry {
     Trash(Vec<Location>),
     Move(Vec<MoveRecord>),
     Copy(Vec<Location>),
+    Rename(RenameRecord),
 }
 
 impl UndoEntry {
@@ -264,6 +267,7 @@ impl UndoEntry {
         match self {
             Self::Trash(locations) | Self::Copy(locations) => locations.is_empty(),
             Self::Move(records) => records.is_empty(),
+            Self::Rename(_) => false,
         }
     }
 }
@@ -349,6 +353,7 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
             UndoEntry::Move(records) => {
                 records.retain(|record| &record.current != location);
             }
+            UndoEntry::Rename(_) => {}
         }
     });
 }
@@ -388,6 +393,14 @@ fn retain_pending_copy_items(generation: u64, locations: &[Location]) {
             created.retain(|location| locations.contains(location));
         }
     });
+}
+
+fn undo_move_parents(items: &[UndoMoveItem]) -> HashSet<Location> {
+    items
+        .iter()
+        .flat_map(|item| [&item.record.current, &item.record.original])
+        .filter_map(Location::parent)
+        .collect()
 }
 
 /// Pairs each moved source with where the transfer left it. Items that never
@@ -1263,6 +1276,16 @@ impl Browser {
         self.focused_item().map(|(_, _, entry)| entry)
     }
 
+    fn entry_at_location(&self, location: &Location) -> Option<FileEntry> {
+        self.state
+            .borrow()
+            .columns
+            .iter()
+            .flat_map(|column| column.entries.iter())
+            .find(|entry| &entry.location == location)
+            .cloned()
+    }
+
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
         self.state.borrow().selected_positions(depth)
     }
@@ -1382,13 +1405,24 @@ impl Browser {
         renamed.display_name = new_name.clone();
         renamed.is_hidden = new_name.starts_with('.');
         let old_location = entry.location.clone();
+        let original_native_name = entry.native_name.clone();
+        let original_display_name = entry.display_name.clone();
+        let original_is_hidden = entry.is_hidden;
         let weak = Rc::downgrade(self);
         let publish = Rc::new(move |event: OperationEvent| {
             if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
                 && let Some(browser) = weak.upgrade()
                 && browser.is_current_operation(request_id)
                 && let Some(location) = new_location.as_ref()
+                && location != &old_location
             {
+                push_pending_undo(UndoEntry::Rename(RenameRecord {
+                    original: old_location.clone(),
+                    current: location.clone(),
+                    native_name: original_native_name.clone(),
+                    display_name: original_display_name.clone(),
+                    is_hidden: original_is_hidden,
+                }));
                 let mut renamed = renamed.clone();
                 renamed.location = location.clone();
                 browser.publish_rename(&old_location, renamed);
@@ -1573,7 +1607,7 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Copy(_)) => None,
+            (_, UndoEntry::Trash(_) | UndoEntry::Copy(_) | UndoEntry::Rename(_)) => None,
         }
     }
 
@@ -1583,7 +1617,22 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Copy(locations)) => Some((generation, locations)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Move(_)) => None,
+            (_, UndoEntry::Trash(_) | UndoEntry::Move(_) | UndoEntry::Rename(_)) => None,
+        }
+    }
+
+    pub fn pending_undo_rename(&self) -> Option<(u64, Location, Location)> {
+        if self.current_operation.get().is_some() {
+            return None;
+        }
+        match peek_pending_undo()? {
+            (
+                generation,
+                UndoEntry::Rename(RenameRecord {
+                    original, current, ..
+                }),
+            ) => Some((generation, current, original)),
+            (_, UndoEntry::Trash(_) | UndoEntry::Move(_) | UndoEntry::Copy(_)) => None,
         }
     }
 
@@ -1646,14 +1695,7 @@ impl Browser {
         };
         retain_pending_move_items(generation, &items);
         let total = items.len();
-        let mut refresh_locations = HashSet::new();
-        for item in &items {
-            for location in [&item.record.current, &item.record.original] {
-                if let Some(parent) = location.parent() {
-                    refresh_locations.insert(parent);
-                }
-            }
-        }
+        let refresh_locations = undo_move_parents(&items);
         let request_id = self.begin_operation();
         self.transfer_operation.set(Some(true));
         self.undo_claim.replace(Some((
@@ -1708,6 +1750,76 @@ impl Browser {
                 locations,
             },
             self.operation_callback(request_id, false, refresh_locations),
+        );
+        self.install_operation_load(request_id, load);
+        true
+    }
+
+    pub fn undo_rename(self: &Rc<Self>, generation: u64) -> bool {
+        if self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Rename(RenameRecord {
+            original,
+            current,
+            native_name,
+            display_name,
+            is_hidden,
+        }) = entry
+        else {
+            finish_undo(generation, false);
+            return false;
+        };
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_undo(generation, false);
+            return false;
+        };
+        let refresh_locations = [current.parent(), original.parent()]
+            .into_iter()
+            .flatten()
+            .collect();
+        let request_id = self.begin_operation();
+        self.undo_claim.replace(Some((
+            generation,
+            UndoEntry::Rename(RenameRecord {
+                original: original.clone(),
+                current: current.clone(),
+                native_name: native_name.clone(),
+                display_name: display_name.clone(),
+                is_hidden,
+            }),
+        )));
+        let current_for_publish = current.clone();
+        let original_for_publish = original.clone();
+        let weak = Rc::downgrade(self);
+        let emit = self.operation_callback(request_id, true, refresh_locations);
+        let publish = Rc::new(move |event: OperationEvent| {
+            if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
+                && let Some(browser) = weak.upgrade()
+                && browser.is_current_operation(request_id)
+            {
+                if let Some(mut restored) = browser.entry_at_location(&current_for_publish) {
+                    restored.location = original_for_publish.clone();
+                    restored.native_name = native_name.clone();
+                    restored.display_name = display_name.clone();
+                    restored.is_hidden = is_hidden;
+                    browser.publish_rename(&current_for_publish, restored);
+                } else {
+                    browser.relocate_open_columns(&current_for_publish, &original_for_publish);
+                }
+            }
+            emit(event);
+        });
+        let load = provider.undo_rename(
+            UndoRenameRequest {
+                id: request_id,
+                current,
+                original,
+            },
+            publish,
         );
         self.install_operation_load(request_id, load);
         true
@@ -2224,16 +2336,7 @@ impl Browser {
                 });
             }
         }
-        if let Some(source) = self.metadata_timer.borrow_mut().take() {
-            source.remove();
-        }
-        let weak: Weak<Self> = Rc::downgrade(self);
-        let source = gio::glib::timeout_add_local_once(METADATA_FILL_DEBOUNCE, move || {
-            if let Some(browser) = weak.upgrade() {
-                browser.flush_metadata_fills();
-            }
-        });
-        *self.metadata_timer.borrow_mut() = Some(source);
+        self.schedule_metadata_fill();
     }
 
     fn request_sort_fill(
@@ -2377,58 +2480,6 @@ impl Browser {
         }
     }
 
-    fn truncate_deferred_from(self: &Rc<Self>, len: usize) {
-        if let Some(source) = self.metadata_timer.borrow_mut().take() {
-            source.remove();
-        }
-        self.metadata_pending
-            .borrow_mut()
-            .retain(|depth, _| *depth < len);
-        if !self.metadata_pending.borrow().is_empty() {
-            let weak: Weak<Self> = Rc::downgrade(self);
-            let source = gio::glib::timeout_add_local_once(METADATA_FILL_DEBOUNCE, move || {
-                if let Some(browser) = weak.upgrade() {
-                    browser.flush_metadata_fills();
-                }
-            });
-            *self.metadata_timer.borrow_mut() = Some(source);
-        }
-        self.metadata_loads
-            .borrow_mut()
-            .retain(|depth, _| *depth < len);
-        let state = self.state.borrow();
-        self.fill_tokens.borrow_mut().retain(|_, fill| {
-            fill.depth < len
-                && state.request_id_for_depth(fill.depth) == Some(fill.directory_request)
-        });
-        let awaiting = *self.sort_awaiting_fill.borrow();
-        if let Some(awaiting) = awaiting
-            && awaiting.depth >= len
-        {
-            self.abandon_awaited_sort(
-                awaiting.depth,
-                awaiting.generation,
-                MetadataOutcome::Cancelled,
-            );
-        } else {
-            self.sort_loads.borrow_mut().retain(|depth, _| *depth < len);
-        }
-        self.remote.borrow_mut().retain_depths(len);
-        self.last_batch_selection
-            .borrow_mut()
-            .retain(|depth, _| *depth < len);
-        self.staging.borrow_mut().retain(|depth, _| *depth < len);
-        self.sorting.borrow_mut().retain(|depth, _| *depth < len);
-        self.staged_publishes
-            .borrow_mut()
-            .retain(|depth, _| *depth < len);
-        if self.staged_publishes.borrow().is_empty()
-            && let Some(source) = self.publish_timer.borrow_mut().take()
-        {
-            source.remove();
-        }
-    }
-
     fn ensure_sorted_after_load(self: &Rc<Self>, depth: usize) {
         let (needs, preferences) = {
             let state = self.state.borrow();
@@ -2507,40 +2558,6 @@ impl Browser {
                 self.metadata_loads.borrow_mut().insert(depth, handle);
             }
         }
-    }
-
-    /// Drops everything a discarded load queued. Coalesced rows are safe to drop
-    /// because every site that clears loads replaces the data source wholesale;
-    /// dropping a sort's fill handle aborts provider work without a terminal event.
-    fn cancel_deferred_work(&self) {
-        if let Some(source) = self.metadata_timer.borrow_mut().take() {
-            source.remove();
-        }
-        self.metadata_pending.borrow_mut().clear();
-        self.metadata_loads.borrow_mut().clear();
-        self.fill_tokens.borrow_mut().clear();
-        let awaiting = self.sort_awaiting_fill.borrow_mut().take();
-        if let Some(awaiting) = awaiting {
-            self.abandon_awaited_sort(
-                awaiting.depth,
-                awaiting.generation,
-                MetadataOutcome::Cancelled,
-            );
-        } else {
-            self.sort_loads.borrow_mut().clear();
-            if let Some((_, depth)) = self.pending_sort.take() {
-                self.emit(BrowserEvent::SortingFinished { depth });
-            }
-        }
-        self.remote.borrow_mut().clear();
-        self.last_batch_selection.borrow_mut().clear();
-        self.staging.borrow_mut().clear();
-        self.sorting.borrow_mut().clear();
-        self.staged_publishes.borrow_mut().clear();
-        if let Some(source) = self.publish_timer.borrow_mut().take() {
-            source.remove();
-        }
-        self.cancel_remote_timer();
     }
 
     fn request_directory(

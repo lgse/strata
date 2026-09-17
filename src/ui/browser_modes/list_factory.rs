@@ -63,23 +63,28 @@ impl ListFactory {
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
+        let slow_click = Rc::new(super::SlowClickRename::default());
         install_preview_click(
             &row.widget,
             item,
             self.browser.clone(),
+            self.state.clone().unwrap_or_default(),
             self.previews.clone(),
             self.activation.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
             self.filter_query.clone(),
+            slow_click.clone(),
         );
         let content_click = install_modified_selection_click(
             &row.widget,
             item,
             self.selection.clone(),
             self.browser.clone(),
+            self.state.clone().unwrap_or_default(),
             self.depth,
             self.positions.clone(),
+            slow_click.clone(),
         );
         install_list_drag_drop(
             &row.widget,

@@ -22,7 +22,7 @@ fn render_text(drawer: &PreviewDrawer) {
         },
         content_type: "text/plain".into(),
         content: crate::services::PreviewContent::Text {
-            content: "A long line of preview text. ".repeat(100),
+            content: "A long line of preview text. ".repeat(20),
             truncated: false,
         },
     });
@@ -95,6 +95,109 @@ fn saved_and_live_wrap_preferences_reach_existing_and_rebuilt_previews() {
                         gtk::WrapMode::None
                     },
                 );
+            }
+        },
+    );
+}
+
+#[test]
+fn document_defaults_apply_before_settings_and_after_reopening_in_two_windows() {
+    gtk_test(
+        "ui::preview::tests::preferences::document_defaults_apply_before_settings_and_after_reopening_in_two_windows",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::shared();
+            assert!(!manager.render_documents_by_default());
+            let fixture = tempfile::tempdir().expect("document fixtures");
+            std::fs::write(
+                fixture.path().join("notes.md"),
+                "# Heading\n\nDocument text.",
+            )
+            .expect("Markdown fixture");
+            std::fs::write(
+                fixture.path().join("page.html"),
+                "<h1>Heading</h1><p>Document text.</p>",
+            )
+            .expect("HTML fixture");
+            std::fs::write(fixture.path().join("broken.html"), "<p>text</span>")
+                .expect("malformed fixture");
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            browser.navigate(crate::model::Location::local(fixture.path()));
+            crate::ui::media::tests::wait(|| {
+                browser.column_snapshot(0).is_some_and(|s| !s.loading)
+            });
+            let entries = ["notes.md", "page.html", "broken.html"].map(|name| {
+                (0..3)
+                    .filter_map(|index| browser.entry_at(0, index))
+                    .find(|entry| entry.display_name == name)
+                    .expect("loaded document entry")
+            });
+            let drawers = [true, false].map(|external_open| {
+                PreviewDrawer::new(
+                    Rc::new(crate::adapters::LocalPreviewProvider::new(Rc::new(|| {
+                        crate::sandbox::MediaPreviewBackend::Software
+                    }))),
+                    external_open,
+                )
+            });
+            let windows = drawers.each_ref().map(|drawer| {
+                let window = gtk::Window::builder().child(&drawer.widget()).build();
+                window.present();
+                window
+            });
+            let visible_view = |drawer: &PreviewDrawer, name: &str| {
+                drawer
+                    .state
+                    .document_preview
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|preview| {
+                        preview.stack.visible_child_name().as_deref() == Some(name)
+                    })
+            };
+            for (drawer, entry) in drawers.iter().zip(&entries) {
+                drawer.show(entry.clone(), Some(0));
+                crate::ui::media::tests::wait(|| visible_view(drawer, "source"));
+                assert!(
+                    drawer
+                        .state
+                        .document_preview
+                        .borrow()
+                        .as_ref()
+                        .expect("source document awaiting render")
+                        .render_pending
+                );
+            }
+            drawers[0].state.document_view_button.emit_clicked();
+            crate::ui::media::tests::wait(|| visible_view(&drawers[0], "rendered"));
+            assert!(visible_view(&drawers[1], "source"));
+            assert!(!manager.render_documents_by_default());
+            manager.set_render_documents_by_default(true);
+            assert!(visible_view(&drawers[1], "source"));
+            for (drawer, entry) in drawers.iter().zip(&entries) {
+                drawer.close();
+                drawer.show(entry.clone(), Some(0));
+                crate::ui::media::tests::wait(|| visible_view(drawer, "rendered"));
+                drawer.state.document_view_button.emit_clicked();
+                assert!(visible_view(drawer, "source"));
+                assert!(manager.render_documents_by_default());
+            }
+            drawers[0].show(entries[2].clone(), Some(0));
+            crate::ui::media::tests::wait(|| {
+                visible_view(&drawers[0], "source")
+                    && !drawers[0].state.document_view_button.is_visible()
+            });
+            assert!(
+                !drawers[0]
+                    .state
+                    .document_preview
+                    .borrow()
+                    .as_ref()
+                    .expect("source fallback document")
+                    .render_pending
+            );
+            for window in windows {
+                window.close();
             }
         },
     );

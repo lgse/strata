@@ -371,7 +371,7 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
 
 
 @pytest.mark.preferences(search_open_files_directly=False)
-def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata):
+def test_global_search_preview_follows_neighbor_when_same_folder_result_is_deleted(strata):
     folder = strata.environment.home / "preview-deletion"
     folder.mkdir()
     previewed = folder / "preview-deletion-fixture.txt"
@@ -394,7 +394,10 @@ def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata)
         "search result preview",
     )
     previewed.unlink()
-    strata.wait(lambda: strata.preview() is None, "deleted result preview to close")
+    strata.wait(
+        lambda: strata.preview_shows("remaining file"),
+        "deleted result preview to follow the remaining file",
+    )
     assert "remaining.txt" in strata.entry_names()
 
 

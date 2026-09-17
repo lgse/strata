@@ -3,8 +3,17 @@
 use super::{
     MediaPreviewSize, PreviewContent, content_family, has_plain_text_extension,
     is_extensionless_dotfile, is_image_path, is_media_path,
-    is_non_executable_extensionless_dotfile,
+    is_non_executable_extensionless_dotfile, normalize_preview_text,
 };
+
+#[test]
+fn preview_text_normalizes_nul_before_any_gtk_view() {
+    assert_eq!(normalize_preview_text("before\0after"), "before�after");
+    assert!(matches!(
+        normalize_preview_text("ordinary text"),
+        std::borrow::Cow::Borrowed(_)
+    ));
+}
 
 #[test]
 fn media_viewport_sizes_follow_display_scale_without_exceeding_the_pixel_budget() {

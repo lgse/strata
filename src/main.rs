@@ -150,6 +150,7 @@ fn main() -> gtk::glib::ExitCode {
         LaunchMode::Application => {}
     }
 
+    install_application_identity();
     metrics::initialize();
     if let Err(error) = tracing_subscriber::fmt::try_init() {
         eprintln!("Unable to initialize logging: {error}");
@@ -191,6 +192,7 @@ fn main() -> gtk::glib::ExitCode {
         Some("DEVICE"),
     );
     application.connect_handle_local_options(|_, _| ControlFlow::Continue(()));
+    application.connect_startup(|_| install_x11_program_class());
     application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
@@ -278,6 +280,21 @@ fn handle_command_line(
             glib::ExitCode::FAILURE
         }
     }
+}
+
+fn install_application_identity() {
+    glib::set_prgname(Some(APPLICATION_ID));
+    glib::set_application_name("Strata");
+}
+
+fn install_x11_program_class() {
+    let Some(display) = gtk::gdk::Display::default() else {
+        return;
+    };
+    let Ok(x11) = display.downcast::<gdk4_x11::X11Display>() else {
+        return;
+    };
+    x11.set_program_class(APPLICATION_ID);
 }
 
 fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {

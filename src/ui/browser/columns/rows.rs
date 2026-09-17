@@ -364,8 +364,28 @@ pub(super) fn column_rows(
         let pending_activation_for_motion = pending_activation.clone();
         let pending_activation_for_release = pending_activation.clone();
         let pending_activation_for_cancel = pending_activation;
+        let was_selected = Rc::new(Cell::new(false));
+        let was_selected_for_press = was_selected.clone();
+        let was_selected_for_release = was_selected.clone();
+        let press_moved = Rc::new(Cell::new(false));
+        let press_moved_for_press = press_moved.clone();
+        let press_moved_for_update = press_moved.clone();
+        let press_moved_for_release = press_moved.clone();
+        let press_origin = Rc::new(Cell::new((0.0, 0.0)));
+        let press_origin_for_press = press_origin.clone();
+        let press_origin_for_update = press_origin.clone();
+        let rename_position = Rc::new(Cell::new(None::<usize>));
+        let rename_position_for_press = rename_position.clone();
+        let rename_position_for_release = rename_position.clone();
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
+            rename_position_for_press.set(None);
+            was_selected_for_press.set(false);
+            press_moved_for_press.set(false);
+            press_origin_for_press.set((x, y));
+            if let Some(state) = weak_state_for_click.upgrade() {
+                state.cancel_click_rename();
+            }
             if gesture
                 .widget()
                 .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
@@ -383,12 +403,12 @@ pub(super) fn column_rows(
             let modifiers = gesture.current_event_state();
             let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
             let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            let selected_before = selection_for_click.is_selected(position);
+            let selected_count_before = selection_for_click.selection().size();
+            was_selected_for_press.set(selected_before);
             let preserve_group = !control
                 && !shift
-                && should_preserve_drag_selection(
-                    selection_for_click.is_selected(position),
-                    selection_for_click.selection().size(),
-                );
+                && should_preserve_drag_selection(selected_before, selected_count_before);
             modified_for_click.set(control || shift);
             if shift {
                 let anchor =
@@ -493,7 +513,27 @@ pub(super) fn column_rows(
                         shift,
                         preserve_group,
                     );
+                    let slow_click_rename = press_count == 1
+                        && selected_before
+                        && selected_count_before == 1
+                        && !modifiers.intersects(
+                            gtk::gdk::ModifierType::CONTROL_MASK
+                                | gtk::gdk::ModifierType::SHIFT_MASK
+                                | gtk::gdk::ModifierType::ALT_MASK
+                                | gtk::gdk::ModifierType::SUPER_MASK
+                                | gtk::gdk::ModifierType::META_MASK,
+                        )
+                        && !preserve_group
+                        && !activate
+                        && !state.browser.is_chooser_mode()
+                        && !is_trash_location(&entry.location);
+                    rename_position_for_press.set(if slow_click_rename {
+                        Some(source_position)
+                    } else {
+                        None
+                    });
                     let preview = !activate
+                        && !slow_click_rename
                         && should_preview_pointer_press(
                             press_count,
                             control,
@@ -524,16 +564,39 @@ pub(super) fn column_rows(
             ) {
                 pending.update(x, y, widget.settings().gtk_dnd_drag_threshold());
             }
+            if let (Some((x, y)), Some(widget)) = (gesture.point(sequence), gesture.widget()) {
+                let origin = press_origin_for_update.get();
+                if crate::ui::pointer::exceeds_drag_threshold(
+                    origin,
+                    (x, y),
+                    widget.settings().gtk_dnd_drag_threshold(),
+                ) {
+                    press_moved_for_update.set(true);
+                }
+            }
         });
         let weak_state_for_release = weak_state.clone();
         let search_results_for_release = search_results_for_factory.clone();
-        selection_click.connect_released(move |gesture, _, x, y| {
+        selection_click.connect_released(move |gesture, count, x, y| {
             if gesture.current_event_state().intersects(
                 gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
             ) {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
-            let Some(mut pending) = pending_activation_for_release.take() else {
+            let pending = pending_activation_for_release.take();
+            if pending.is_none()
+                && count == 1
+                && !press_moved_for_release.get()
+                && !gesture.current_event_state().intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+                )
+                && was_selected_for_release.get()
+                && let Some(state) = weak_state_for_release.upgrade()
+                && let Some(position) = rename_position_for_release.get()
+            {
+                state.schedule_click_rename(depth, position);
+            }
+            let Some(mut pending) = pending else {
                 return;
             };
             let Some(widget) = gesture.widget() else {
@@ -603,8 +666,12 @@ pub(super) fn column_rows(
                 }
             }
         });
+        let weak_state_for_cancel = weak_state.clone();
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
+            if let Some(state) = weak_state_for_cancel.upgrade() {
+                state.cancel_click_rename();
+            }
         });
         row.add_controller(selection_click.clone());
         if let Some(drag) = &content_drag {
