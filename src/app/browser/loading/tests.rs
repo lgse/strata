@@ -70,6 +70,7 @@ impl Fixture {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
+            recent_unix_seconds: MetadataValue::Unknown,
             is_hidden: name.starts_with('.'),
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,

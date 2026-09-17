@@ -317,6 +317,7 @@ enum ThumbnailKind {
     RawImage,
     Pdf,
     Video,
+    AppImage,
 }
 
 pub(super) fn set_thumbnail_or_icon(
@@ -1343,6 +1344,7 @@ fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
         | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
         | "x3f" => Some(ThumbnailKind::RawImage),
         "pdf" => Some(ThumbnailKind::Pdf),
+        "appimage" => Some(ThumbnailKind::AppImage),
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
             Some(ThumbnailKind::Video)
         }
@@ -1361,6 +1363,7 @@ fn render_thumbnail(
         ThumbnailKind::RawImage => ParseOperation::ThumbnailRaw,
         ThumbnailKind::Pdf => ParseOperation::ThumbnailPdf,
         ThumbnailKind::Video => ParseOperation::ThumbnailVideo,
+        ThumbnailKind::AppImage => ParseOperation::ThumbnailAppImage,
     };
     crate::sandbox::browser::thumbnail(path, operation, cancellation)
 }

@@ -28,6 +28,7 @@ fn camera_thumbnail_bindings_keep_duplicate_names_distinct_and_discard_stale_res
                         size: MetadataValue::Unknown,
                         modified_unix_seconds: MetadataValue::Unknown,
                         mode: MetadataValue::Unavailable,
+                        recent_unix_seconds: MetadataValue::Unknown,
                         is_hidden: false,
                         image_dimensions: MetadataValue::Unknown,
                         child_count: MetadataValue::Unknown,

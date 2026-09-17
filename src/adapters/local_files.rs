@@ -4,9 +4,11 @@ use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, VecDeque},
     fs,
+    future::Future,
     io::ErrorKind,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
+    pin::Pin,
     rc::Rc,
     sync::{
         Mutex, OnceLock,
@@ -32,6 +34,7 @@ mod camera_photos;
 
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::target-uri,access::can-trash,access::can-delete";
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
+const RECENT_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::target-uri,recent::modified";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 const MAX_ICON_DETAILS_CACHE_ENTRIES: usize = 10_000;
@@ -216,6 +219,30 @@ enum NativeEnumeration {
     Cancelled,
 }
 
+enum RecentEntryResolution {
+    Entry(Box<FileEntry>),
+    Stale,
+    TimedOut,
+}
+
+type RecentEnumerationFuture<T> = Pin<Box<dyn Future<Output = T> + 'static>>;
+
+enum RecentSourceError {
+    Failed(String),
+    TimedOut,
+}
+
+trait RecentEnumerationSource {
+    fn open(&self, deadline: Instant) -> RecentEnumerationFuture<Result<(), RecentSourceError>>;
+
+    fn next_batch(
+        &self,
+        batch_size: usize,
+        include_metadata: bool,
+        deadline: Instant,
+    ) -> RecentEnumerationFuture<Result<Option<Vec<RecentEntryResolution>>, RecentSourceError>>;
+}
+
 fn map_validation_error(error: std::io::Error) -> LocationValidationError {
     match error.kind() {
         ErrorKind::NotFound => LocationValidationError::Missing,
@@ -334,11 +361,97 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         kind,
         size,
         modified_unix_seconds,
+        recent_unix_seconds: MetadataValue::Unknown,
         mode: info_mode(&info),
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
         is_hidden: info_is_hidden(&info),
+    }
+}
+
+fn recent_unix_seconds(info: &gio::FileInfo) -> MetadataValue<i64> {
+    if info.has_attribute(gio::FILE_ATTRIBUTE_RECENT_MODIFIED) {
+        MetadataValue::Known(info.attribute_int64(gio::FILE_ATTRIBUTE_RECENT_MODIFIED))
+    } else {
+        MetadataValue::Unknown
+    }
+}
+
+fn recent_target_location(info: &gio::FileInfo) -> Option<Location> {
+    let target_uri = info.attribute_string(gio::FILE_ATTRIBUTE_STANDARD_TARGET_URI)?;
+    let target_file = gio::File::for_uri(target_uri.as_str());
+    if target_file.has_uri_scheme("recent") {
+        return None;
+    }
+    location_for_file(&target_file)
+}
+
+fn recent_entry_from_target(
+    recent_info: &gio::FileInfo,
+    target_location: Location,
+    target_info: gio::FileInfo,
+) -> Option<FileEntry> {
+    let mut entry = entry_from_info(target_location, target_info);
+    entry.recent_unix_seconds = recent_unix_seconds(recent_info);
+    let final_location_is_recent = entry
+        .location
+        .uri_value()
+        .is_some_and(|uri| gio::File::for_uri(uri).has_uri_scheme("recent"));
+    (!final_location_is_recent).then_some(entry)
+}
+
+// Resolve concurrently so one unreachable target cannot consume the batch's deadline.
+async fn resolve_recent_batch(
+    infos: Vec<gio::FileInfo>,
+    include_metadata: bool,
+    deadline: Instant,
+) -> Vec<RecentEntryResolution> {
+    let context = glib::MainContext::default();
+    let pending: Vec<_> = infos
+        .into_iter()
+        .map(|info| context.spawn_local(resolve_recent_entry(info, include_metadata, deadline)))
+        .collect();
+    let mut resolutions = Vec::with_capacity(pending.len());
+    for handle in pending {
+        resolutions.push(handle.await.unwrap_or(RecentEntryResolution::Stale));
+    }
+    resolutions
+}
+
+async fn resolve_recent_entry(
+    recent_info: gio::FileInfo,
+    include_metadata: bool,
+    deadline: Instant,
+) -> RecentEntryResolution {
+    let Some(target_location) = recent_target_location(&recent_info) else {
+        return RecentEntryResolution::Stale;
+    };
+    let target_file = gio_file_for_location(&target_location);
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return RecentEntryResolution::TimedOut;
+    }
+    let attributes = if include_metadata {
+        FULL_ATTRIBUTES
+    } else {
+        LIST_ATTRIBUTES
+    };
+    match glib::future_with_timeout(
+        remaining,
+        target_file.query_info_future(
+            attributes,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        ),
+    )
+    .await
+    {
+        Ok(Ok(target_info)) => recent_entry_from_target(&recent_info, target_location, target_info)
+            .map(Box::new)
+            .map_or(RecentEntryResolution::Stale, RecentEntryResolution::Entry),
+        Ok(Err(_)) => RecentEntryResolution::Stale,
+        Err(_) => RecentEntryResolution::TimedOut,
     }
 }
 
@@ -440,6 +553,7 @@ fn scan_native_directory(
             kind,
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            recent_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
@@ -595,6 +709,217 @@ fn enumerate_native(
     })
 }
 
+fn enumerate_recent(
+    request: DirectoryRequest,
+    emit: Rc<dyn Fn(DirectoryEvent)>,
+    started: Instant,
+) -> LoadHandle {
+    let source = Box::new(GioRecentEnumerationSource::new(gio_file_for_location(
+        &request.location,
+    )));
+    enumerate_recent_with_source(request, emit, started, source)
+}
+
+struct GioRecentEnumerationSource {
+    directory: gio::File,
+    enumerator: Rc<RefCell<Option<gio::FileEnumerator>>>,
+}
+
+impl GioRecentEnumerationSource {
+    fn new(directory: gio::File) -> Self {
+        Self {
+            directory,
+            enumerator: Rc::new(RefCell::new(None)),
+        }
+    }
+}
+
+impl RecentEnumerationSource for GioRecentEnumerationSource {
+    fn open(&self, deadline: Instant) -> RecentEnumerationFuture<Result<(), RecentSourceError>> {
+        let directory = self.directory.clone();
+        let enumerator = self.enumerator.clone();
+        Box::pin(async move {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(RecentSourceError::TimedOut);
+            }
+            match glib::future_with_timeout(
+                remaining,
+                directory.enumerate_children_future(
+                    RECENT_ATTRIBUTES,
+                    gio::FileQueryInfoFlags::NONE,
+                    glib::Priority::DEFAULT,
+                ),
+            )
+            .await
+            {
+                Ok(Ok(value)) => {
+                    enumerator.replace(Some(value));
+                    Ok(())
+                }
+                Ok(Err(error)) => Err(RecentSourceError::Failed(error.to_string())),
+                Err(_) => Err(RecentSourceError::TimedOut),
+            }
+        })
+    }
+
+    fn next_batch(
+        &self,
+        batch_size: usize,
+        include_metadata: bool,
+        deadline: Instant,
+    ) -> RecentEnumerationFuture<Result<Option<Vec<RecentEntryResolution>>, RecentSourceError>>
+    {
+        let enumerator = self.enumerator.borrow().clone();
+        Box::pin(async move {
+            let Some(enumerator) = enumerator else {
+                return Err(RecentSourceError::Failed(
+                    "Recent enumeration was not opened".to_owned(),
+                ));
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(RecentSourceError::TimedOut);
+            }
+            let files = match glib::future_with_timeout(
+                remaining,
+                enumerator.next_files_future(batch_size as i32, glib::Priority::DEFAULT),
+            )
+            .await
+            {
+                Ok(Ok(files)) => files,
+                Ok(Err(error)) => return Err(RecentSourceError::Failed(error.to_string())),
+                Err(_) => return Err(RecentSourceError::TimedOut),
+            };
+            if files.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(
+                resolve_recent_batch(files, include_metadata, deadline).await,
+            ))
+        })
+    }
+}
+
+fn enumerate_recent_with_source(
+    request: DirectoryRequest,
+    emit: Rc<dyn Fn(DirectoryEvent)>,
+    started: Instant,
+    source: Box<dyn RecentEnumerationSource>,
+) -> LoadHandle {
+    let request_id = request.id;
+    let task = glib::MainContext::default().spawn_local(async move {
+        let deadline = started + request.time_budget;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            emit(DirectoryEvent::Finished {
+                request_id,
+                truncated: true,
+                can_trash: None,
+                can_delete: None,
+            });
+            return;
+        }
+        match source.open(deadline).await {
+            Ok(()) => {}
+            Err(RecentSourceError::Failed(message)) => {
+                emit(DirectoryEvent::Failed {
+                    request_id,
+                    message,
+                });
+                return;
+            }
+            Err(RecentSourceError::TimedOut) => {
+                emit(DirectoryEvent::Finished {
+                    request_id,
+                    truncated: true,
+                    can_trash: None,
+                    can_delete: None,
+                });
+                return;
+            }
+        }
+
+        let mut total_entries = 0usize;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                emit(DirectoryEvent::Finished {
+                    request_id,
+                    truncated: true,
+                    can_trash: None,
+                    can_delete: None,
+                });
+                break;
+            }
+            let resolutions = match source
+                .next_batch(request.batch_size, request.include_metadata, deadline)
+                .await
+            {
+                Ok(Some(resolutions)) => resolutions,
+                Ok(None) => {
+                    emit(DirectoryEvent::Finished {
+                        request_id,
+                        truncated: false,
+                        can_trash: None,
+                        can_delete: None,
+                    });
+                    break;
+                }
+                Err(RecentSourceError::Failed(message)) => {
+                    emit(DirectoryEvent::Failed {
+                        request_id,
+                        message,
+                    });
+                    break;
+                }
+                Err(RecentSourceError::TimedOut) => {
+                    emit(DirectoryEvent::Finished {
+                        request_id,
+                        truncated: true,
+                        can_trash: None,
+                        can_delete: None,
+                    });
+                    break;
+                }
+            };
+
+            let mut entries = Vec::new();
+            let mut truncated = false;
+            for resolution in resolutions {
+                if total_entries >= request.max_entries {
+                    truncated = true;
+                    break;
+                }
+                match resolution {
+                    RecentEntryResolution::Entry(entry) => {
+                        total_entries += 1;
+                        entries.push(*entry);
+                    }
+                    RecentEntryResolution::Stale => {}
+                    RecentEntryResolution::TimedOut => truncated = true,
+                }
+            }
+            if !entries.is_empty() {
+                emit(DirectoryEvent::Batch {
+                    request_id,
+                    entries,
+                });
+            }
+            if truncated {
+                emit(DirectoryEvent::Finished {
+                    request_id,
+                    truncated: true,
+                    can_trash: None,
+                    can_delete: None,
+                });
+                break;
+            }
+        }
+    });
+    LoadHandle::new(move || task.abort())
+}
+
 impl FileSource for LocalFileSource {
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
         if let Some(path) = location.native_path() {
@@ -653,6 +978,9 @@ impl FileSource for LocalFileSource {
 
         if let Some(path) = location.native_path() {
             return enumerate_native(request, emit, started, path.to_path_buf());
+        }
+        if location.is_recent_root() {
+            return enumerate_recent(request, emit, started);
         }
         if location.is_camera_photo_root() {
             return camera_photos::enumerate(request, emit);
@@ -962,33 +1290,12 @@ impl FileSource for LocalFileSource {
             if pending_for_change.borrow().contains_key(&None) {
                 return;
             }
-            let changed = monitored_change_target(&watched, location_for_file(file), event);
-            let other = other_file.and_then(location_for_file);
-            let change = match event {
-                gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut => {
-                    changed.map(PendingMonitorChange::Remove)
-                }
-                gio::FileMonitorEvent::Created | gio::FileMonitorEvent::MovedIn => {
-                    changed.map(PendingMonitorChange::Upsert)
-                }
-                gio::FileMonitorEvent::Changed
-                | gio::FileMonitorEvent::ChangesDoneHint
-                | gio::FileMonitorEvent::AttributeChanged => {
-                    changed.map(PendingMonitorChange::Upsert)
-                }
-                gio::FileMonitorEvent::Moved | gio::FileMonitorEvent::Renamed => changed
-                    .zip(other)
-                    .map(|(from, to)| PendingMonitorChange::Move { from, to }),
-                gio::FileMonitorEvent::PreUnmount | gio::FileMonitorEvent::Unmounted => {
-                    Some(PendingMonitorChange::Rescan)
-                }
-                _ => Some(PendingMonitorChange::Rescan),
-            };
-            let change = if watched.is_camera_photo_root() {
-                Some(PendingMonitorChange::Rescan)
-            } else {
-                change
-            };
+            let change = pending_monitor_change(
+                &watched,
+                location_for_file(file),
+                other_file.and_then(location_for_file),
+                event,
+            );
             let Some(change) = change else {
                 return;
             };
@@ -1468,6 +1775,42 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
         location = %location.diagnostic_path(),
         "directory load location"
     );
+}
+
+fn pending_monitor_change(
+    watched: &Location,
+    changed: Option<Location>,
+    other: Option<Location>,
+    event: gio::FileMonitorEvent,
+) -> Option<PendingMonitorChange> {
+    if watched.is_recent_root() {
+        return Some(PendingMonitorChange::Rescan);
+    }
+
+    let changed = monitored_change_target(watched, changed, event);
+    let change = match event {
+        gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut => {
+            changed.map(PendingMonitorChange::Remove)
+        }
+        gio::FileMonitorEvent::Created | gio::FileMonitorEvent::MovedIn => {
+            changed.map(PendingMonitorChange::Upsert)
+        }
+        gio::FileMonitorEvent::Changed
+        | gio::FileMonitorEvent::ChangesDoneHint
+        | gio::FileMonitorEvent::AttributeChanged => changed.map(PendingMonitorChange::Upsert),
+        gio::FileMonitorEvent::Moved | gio::FileMonitorEvent::Renamed => changed
+            .zip(other)
+            .map(|(from, to)| PendingMonitorChange::Move { from, to }),
+        gio::FileMonitorEvent::PreUnmount | gio::FileMonitorEvent::Unmounted => {
+            Some(PendingMonitorChange::Rescan)
+        }
+        _ => Some(PendingMonitorChange::Rescan),
+    };
+    if watched.is_camera_photo_root() {
+        Some(PendingMonitorChange::Rescan)
+    } else {
+        change
+    }
 }
 
 // GVfs can report content changes against the watched directory itself; keep only departures.

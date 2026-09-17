@@ -2,6 +2,18 @@
 
 Strata includes or derives assets from the following projects.
 
+## MathJax
+
+- Projects: <https://github.com/mathjax/MathJax-src>, <https://github.com/mathjax/MathJax-fonts>
+- Version: MathJax and MathJax TeX SVG font data 4.1.3
+- Copyright: 2017–2026 The MathJax Consortium
+- License: Apache License 2.0
+- Included asset: `data/math-renderer.js` (bundled/minified base and AMS renderer with TeX SVG glyph data)
+- Full license: [`data/licenses/MathJax-Apache-2.0.txt`](data/licenses/MathJax-Apache-2.0.txt)
+
+The bundle adds Strata's bounded offline rendering entry point. Build inputs and
+regeneration instructions are in [`packaging/math-renderer/`](packaging/math-renderer/README.md).
+
 ## JetBrains Mono
 
 - Project: <https://github.com/JetBrains/JetBrainsMono>
@@ -22,7 +34,7 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 - Included assets: curated and namespaced SVG icons under `data/icons/scalable/actions/`
 - Full license: [`data/licenses/Lucide-ISC.txt`](data/licenses/Lucide-ISC.txt)
 
-The SVGs retain Lucide geometry. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
+The SVGs retain Lucide geometry. The table sort caret uses the Lucide triangle with a filled foreground, rotated by GTK for descending order. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
 
 ## Tinted Theming schemes
 

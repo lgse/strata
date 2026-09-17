@@ -4,6 +4,9 @@ extend-exclude = [
   "data/icons/**",
   "data/licenses/**",
   "Cargo.lock",
+  # Reproducible upstream MathJax bundle and npm dependency lock.
+  "data/math-renderer.js",
+  "packaging/math-renderer/package-lock.json",
 ]
 
 [default]

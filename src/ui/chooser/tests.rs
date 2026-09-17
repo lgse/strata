@@ -22,6 +22,7 @@ fn entry(name: &str, kind: EntryKind) -> FileEntry {
         thumbnail_path: None,
         display_name: name.to_owned(),
         kind,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
         size: MetadataValue::Unknown,

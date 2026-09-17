@@ -85,6 +85,15 @@ pub(super) fn launch(
     files: &[gio::File],
     context: Option<&impl IsA<gio::AppLaunchContext>>,
 ) -> Result<(), glib::Error> {
+    launch_with_recent_registration(app, files, context, register_recent_file)
+}
+
+fn launch_with_recent_registration(
+    app: &gio::AppInfo,
+    files: &[gio::File],
+    context: Option<&impl IsA<gio::AppLaunchContext>>,
+    register_recent: impl Fn(&gio::File) -> bool + 'static,
+) -> Result<(), glib::Error> {
     // GIO drops files without a local path when expanding %f/%F.
     if !app.supports_uris() && requires_uri_handlers(files) {
         return Err(glib::Error::new(
@@ -92,7 +101,46 @@ pub(super) fn launch(
             "This application cannot open files at this location",
         ));
     }
-    app.launch(files, context)
+    app.launch(files, context)?;
+    let candidates: Vec<gio::File> = files
+        .iter()
+        .filter(|file| !file.has_uri_scheme("recent"))
+        .cloned()
+        .collect();
+    if candidates.is_empty() {
+        return Ok(());
+    }
+    // Advisory history updates must not block launching on slow mounts.
+    glib::MainContext::default().spawn_local(async move {
+        for file in candidates {
+            let file_type = file
+                .query_info_future(
+                    "standard::type",
+                    gio::FileQueryInfoFlags::NONE,
+                    glib::Priority::DEFAULT,
+                )
+                .await
+                .map(|info| info.file_type());
+            // A successful launch remains worth recording when metadata is unavailable.
+            if !matches!(
+                file_type,
+                Ok(gio::FileType::Directory | gio::FileType::Mountable)
+            ) {
+                register_recent(&file);
+            }
+        }
+    });
+    Ok(())
+}
+
+fn register_recent_file(file: &gio::File) -> bool {
+    let manager = gtk::RecentManager::default();
+    let uri = file.uri();
+    let added = manager.add_item(uri.as_str());
+    if !added {
+        tracing::debug!(uri = %uri, "unable to record file in Recent history");
+    }
+    added
 }
 
 fn application_icon(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::Image {

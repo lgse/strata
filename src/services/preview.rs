@@ -91,6 +91,10 @@ pub enum PreviewContent {
         warnings: Vec<String>,
         truncated: bool,
     },
+    Workbook {
+        document: DocumentLayout,
+        warnings: Vec<String>,
+    },
     Image,
     Media,
     Rasterized {

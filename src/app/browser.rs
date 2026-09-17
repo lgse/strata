@@ -1005,6 +1005,13 @@ impl Browser {
     }
 
     pub fn set_sort_key(self: &Rc<Self>, depth: usize, sort_key: SortKey) {
+        if sort_key == SortKey::Recency
+            && !self
+                .location_at(depth)
+                .is_some_and(|location| location.is_recent_root())
+        {
+            return;
+        }
         if sort_key == SortKey::DeviceOrder {
             let mut state = self.state.borrow_mut();
             if !state
@@ -1033,6 +1040,13 @@ impl Browser {
         sort_key: SortKey,
         sort_direction: SortDirection,
     ) {
+        if sort_key == SortKey::Recency
+            && !self
+                .location_at(depth)
+                .is_some_and(|location| location.is_recent_root())
+        {
+            return;
+        }
         if sort_key == SortKey::DeviceOrder {
             self.set_sort_key(depth, sort_key);
             return;
@@ -1130,6 +1144,10 @@ impl Browser {
                 self.emit(BrowserEvent::SortingFinished { depth });
                 return;
             };
+            let recent = state
+                .columns
+                .get(depth)
+                .is_some_and(|column| column.location.is_recent_root());
             update(&mut preferences);
             // Size/date sorts need the metadata streaming enumeration skipped:
             // fill the whole column first instead of sorting placeholders.
@@ -1147,7 +1165,9 @@ impl Browser {
                 defaults.sort_key = self.preferences.get().sort_key;
                 defaults.sort_direction = self.preferences.get().sort_direction;
             }
-            self.preferences.set(defaults);
+            if !recent {
+                self.preferences.set(defaults);
+            }
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
             result.and_then(|(focused, positions)| {
@@ -1160,7 +1180,12 @@ impl Browser {
                 })
             })
         };
-        self.notify_preferences_observers();
+        if self
+            .location_at(depth)
+            .is_none_or(|location| !location.is_recent_root())
+        {
+            self.notify_preferences_observers();
+        }
         if let Some(plan) = result {
             self.publish_staged(depth, plan);
         } else {
@@ -1449,6 +1474,9 @@ impl Browser {
         name: String,
         unique_name: bool,
     ) {
+        if parent.is_recent_location() {
+            return;
+        }
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
@@ -1480,6 +1508,9 @@ impl Browser {
     }
 
     fn create_file_with_naming(self: &Rc<Self>, parent: Location, name: String, unique_name: bool) {
+        if parent.is_recent_location() {
+            return;
+        }
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
@@ -1513,7 +1544,7 @@ impl Browser {
         move_sources: bool,
         reveal: bool,
     ) {
-        if items.is_empty() {
+        if items.is_empty() || destination.is_recent_location() {
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
@@ -2411,8 +2442,14 @@ impl Browser {
             if self.pending_sort.get() != Some((generation, depth)) {
                 return;
             }
+            let recent = state
+                .columns
+                .get(depth)
+                .is_some_and(|column| column.location.is_recent_root());
             let outcome = state.apply_sort_preferences(depth, preferences);
-            self.preferences.set(preferences);
+            if !recent {
+                self.preferences.set(preferences);
+            }
             self.pending_sort.set(None);
             outcome.and_then(|(focused, positions)| {
                 Some(PublicationPlan {
@@ -2424,7 +2461,12 @@ impl Browser {
                 })
             })
         };
-        self.notify_preferences_observers();
+        if self
+            .location_at(depth)
+            .is_none_or(|location| !location.is_recent_root())
+        {
+            self.notify_preferences_observers();
+        }
         match outcome {
             Some(plan) => self.publish_staged(depth, plan),
             _ => {
@@ -2897,11 +2939,11 @@ fn location_from_input_with_home(
     let normalized = scheme.to_ascii_lowercase();
     if !matches!(
         normalized.as_str(),
-        "smb" | "sftp" | "ftp" | "ftps" | "dav" | "davs" | "trash" | "network"
+        "smb" | "sftp" | "ftp" | "ftps" | "dav" | "davs" | "trash" | "network" | "recent"
     ) {
         return Err(LocationValidationError::UnsupportedScheme(format!(
             "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
-             smb://, sftp://, ftp://, ftps://, dav://, or davs://."
+             smb://, sftp://, ftp://, ftps://, dav://, davs://, or recent:///."
         )));
     }
     validate_uri_credentials(input)?;

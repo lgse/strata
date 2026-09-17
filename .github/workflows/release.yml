@@ -247,6 +247,8 @@ jobs:
           mkdir -p "dist/$package/docs" "dist/$package/portal"
           cp docs/portal-file-chooser.md "dist/$package/docs/"
           cp data/portal/* "dist/$package/portal/"
+          mkdir -p "dist/$package/udiskie"
+          cp data/udiskie/* "dist/$package/udiskie/"
           install -m 644 data/io.github.lgse.Strata.desktop "dist/$package/"
           install -m 644 data/io.github.lgse.Strata.FileManager1.service "dist/$package/"
           install -m 644 data/icons/scalable/apps/io.github.lgse.Strata.svg "dist/$package/"

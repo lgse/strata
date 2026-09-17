@@ -62,6 +62,7 @@ fn entry(name: &str, size: u64) -> FileEntry {
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Known(1),
         mode: MetadataValue::Known(0o100644),
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,

@@ -288,6 +288,7 @@ fn assert_preference_defaults(preferences: &Preferences) {
         preferences.sidebar_order,
         ["desktop", "documents", "downloads", "pictures", "videos"]
     );
+    assert!(preferences.sidebar_show_recent);
 }
 
 #[test]

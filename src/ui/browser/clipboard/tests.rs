@@ -279,6 +279,56 @@ fn file_drop_action_hover_matches_cross_volume_strategy() {
 }
 
 #[test]
+fn file_drop_commit_rejects_the_recent_collection() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::file_drop_commit_rejects_the_recent_collection",
+        || {
+            let recent = Location::uri("recent:///");
+            let prepared = prepare_file_drop_target({
+                let recent = recent.clone();
+                move || Some(recent.clone())
+            });
+
+            assert_eq!(
+                file_drop_commit(
+                    &prepared.target,
+                    &recent,
+                    &[Location::local("/fixture/source.txt")],
+                    &prepared.state,
+                ),
+                crate::services::DropCommit::Forbidden
+            );
+        },
+    );
+}
+
+#[test]
+fn paste_into_rejects_the_recent_collection_at_the_action_boundary() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::paste_into_rejects_the_recent_collection_at_the_action_boundary",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let observed = events.clone();
+            view.browser()
+                .observe(move |event| observed.borrow_mut().push(event.clone()));
+
+            view.state.paste_into(Location::uri("recent:///"));
+
+            assert!(
+                !events
+                    .borrow()
+                    .iter()
+                    .any(|event| matches!(event, crate::app::BrowserEvent::TransferStarted { .. }))
+            );
+        },
+    );
+}
+
+#[test]
 fn move_only_protocol_still_copies_across_volumes() {
     let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
     let offered = offered_file_actions(dest, gtk::gdk::DragAction::MOVE);
