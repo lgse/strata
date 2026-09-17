@@ -73,7 +73,6 @@ fn version_line() -> String {
     )
 }
 
-/// Accept only encrypted `device_added` events that carry a device path or UUID.
 fn classify_udiskie_hook(arguments: &[OsString]) -> Option<&str> {
     let [event, id_usage, device_file, id_uuid, ..] = arguments else {
         return None;

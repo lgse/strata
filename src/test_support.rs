@@ -35,7 +35,6 @@ pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
     gtk_test_with_env(name, std::iter::empty::<(&str, &std::ffi::OsStr)>(), run);
 }
 
-/// Like [`gtk_test`], with extra child environment (for example an isolated `PATH`).
 pub(crate) fn gtk_test_with_env(
     name: &str,
     extra_env: impl IntoIterator<Item = (impl AsRef<std::ffi::OsStr>, impl AsRef<std::ffi::OsStr>)>,

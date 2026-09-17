@@ -20,8 +20,6 @@ const CONNECTING_MESSAGE: &str = "Waiting for encrypted volume…";
 const NOT_ENCRYPTED_MESSAGE: &str = "This is not an encrypted volume";
 const NOT_FOUND_MESSAGE: &str = "The encrypted volume was not found";
 
-/// Same duration as `FOREIGN_VOLUME_MOUNT_WAIT`; this wait is for identity
-/// appearance, not a foreign mount.
 const UNLOCK_APPEARANCE_WAIT: Duration = Duration::from_secs(8);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,8 +59,7 @@ fn start_unlock(browser: BrowserView, target: UnlockTarget) {
     start_unlock_wait(browser, target, CONNECTING_DELAY, UNLOCK_APPEARANCE_WAIT);
 }
 
-/// Connect `volume-added` and `drive-connected` before the immediate re-check so a
-/// volume that appears between those steps is not missed.
+// Subscribe before scanning so a newly appearing volume cannot be missed.
 fn start_unlock_wait(
     browser: BrowserView,
     target: UnlockTarget,
