@@ -239,3 +239,16 @@ fn default_browser_preferences_allow_peeking_without_settings() {
         },
     );
 }
+
+#[test]
+fn startup_applies_disabled_single_click_previews_before_the_first_click() {
+    gtk_test(
+        "ui::window::tests::preferences::startup_applies_disabled_single_click_previews_before_the_first_click",
+        || {
+            let manager = ThemeManager::shared();
+            manager.set_single_click_previews(false);
+            let browser = browser_for_window();
+            assert!(!browser.single_click_previews_enabled());
+        },
+    );
+}
