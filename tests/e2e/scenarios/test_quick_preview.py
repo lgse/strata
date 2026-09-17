@@ -333,6 +333,62 @@ def test_large_table_header_sort_reaches_rows_beyond_old_limits(strata, filename
     strata.keyboard.press("ctrl+v")
     strata.wait(lambda: field.text == "999", "only the selected cell text to reach the clipboard")
     strata.keyboard.press("Escape")
+    first = strata.preview().find(role="label", name="999").screen_bounds()
+    last = strata.preview().find(role="label", name="997").screen_bounds()
+    start = (first.x, first.center[1])
+    end = (last.x + last.width - 1, last.center[1])
+    for origin, destination in [(start, end), (end, start)]:
+        strata.pointer.drag_points(origin, destination)
+        strata.keyboard.press("ctrl+c")
+        assert table_clipboard_text(strata) == "999\nrecord-998\t998\nrecord-997\t997"
+    def click_cell_and_copy():
+        strata.pointer.click(strata.preview().find(role="label", name="record-998"))
+        strata.keyboard.press("ctrl+c")
+
+    assert table_clipboard_text(strata, before_read=click_cell_and_copy) == "selection-cleared"
+    preview = strata.preview().screen_bounds()
+    strata.pointer.drag_points(start, (end[0], preview.y + preview.height - 12), release=False)
+    try:
+        strata.wait(lambda: strata.preview_shows("record-950"), "selection drag to autoscroll through recycled rows")
+    finally:
+        strata.pointer.connection.button(1, False)
+    strata.keyboard.press("ctrl+c")
+    copied = table_clipboard_text(strata)
+    assert copied.startswith("999\nrecord-998\t998\n")
+    assert "record-970\t970\n" in copied
+
+    def dismiss_and_copy():
+        strata.pointer.click(strata.preview(), at=(preview.x + 180, preview.y + 16))
+        strata.keyboard.press("ctrl+c")
+
+    assert table_clipboard_text(strata, before_read=dismiss_and_copy) == "selection-cleared"
+
+
+def table_clipboard_text(strata, *, before_read=None):
+    from gi.repository import Gdk, GLib
+
+    display = Gdk.Display.open(strata.display.display)
+    assert display is not None
+    result = []
+    try:
+        if before_read is not None:
+            display.get_clipboard().set("selection-cleared")
+            display.flush()
+            before_read()
+        display.get_clipboard().read_text_async(
+            None, lambda clipboard, response: result.append(clipboard.read_text_finish(response))
+        )
+
+        def received():
+            context = GLib.MainContext.default()
+            while context.pending():
+                context.iteration(False)
+            return bool(result)
+
+        strata.wait(received, "selected table text on the private display clipboard")
+        return result[0]
+    finally:
+        display.close()
 
 
 @pytest.mark.parametrize("fixture_tree,filename", [

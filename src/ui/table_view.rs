@@ -9,6 +9,8 @@ use std::{
 use crate::services::DocumentTableCellLayout;
 use gtk::{gio, glib, prelude::*};
 
+mod selection;
+
 pub(super) struct TableState {
     rows: Rc<Vec<Vec<DocumentTableCellLayout>>>,
     sort_keys: Rc<Vec<Vec<SortKey>>>,
@@ -134,6 +136,7 @@ impl TableState {
         view.set_show_row_separators(true);
         let desired_widths = self.measure_columns(&view);
         let automatic_resize = Rc::new(Cell::new(false));
+        let text_selection = selection::Selection::new(self.clone());
         let mut columns = Vec::new();
         for (index, desired_width) in desired_widths.iter().enumerate() {
             let factory = gtk::SignalListItemFactory::new();
@@ -155,6 +158,7 @@ impl TableState {
                 item.set_child(Some(&label));
             });
             let rows = self.rows.clone();
+            let selection_for_bind = text_selection.clone();
             factory.connect_bind(move |_, item| {
                 let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
                     return;
@@ -174,6 +178,7 @@ impl TableState {
                     label.remove_css_class("header");
                     label.set_text("");
                 }
+                selection_for_bind.bind(&label, item, index);
             });
             let title = if self.header {
                 self.rows[0]
@@ -260,7 +265,11 @@ impl TableState {
                 .map(|column| column.downgrade())
                 .collect::<Vec<_>>();
             let weak_view = view.downgrade();
+            let selection_for_sort = Rc::downgrade(&text_selection);
             sorter.connect_changed(move |sorter, _| {
+                if let Some(selection) = selection_for_sort.upgrade() {
+                    selection.clear();
+                }
                 let Some(view) = weak_view.upgrade() else {
                     return;
                 };
@@ -298,6 +307,7 @@ impl TableState {
             .vexpand(fill_height)
             .build();
         scroll.add_css_class("fixed-scrollbar");
+        text_selection.install(&view, &scroll);
         let weak = Rc::downgrade(self);
         let weak_columns = columns
             .iter()
