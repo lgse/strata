@@ -40,6 +40,7 @@ rustix = { version = "1.1.4", features = ["fs", "process", "event"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_norway = "0.9"
+sha2 = "0.11.0"
 sevenz-rust2 = "0.22.2"
 sourceview5 = { version = "0.11.2", features = ["gtk_v4_12"] }
 tar = "0.4.46"

@@ -7,9 +7,10 @@ use std::{
 
 use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, aur_repository_version_from_response,
-    desktop_entry_with_exec, find_binaries, first_hash_token, package_repository_version_for,
-    parse_aur_package_version, parse_package_version, refresh_desktop_metadata,
-    repository_database_version, stage_binary_path, stage_workdir, update_method_for,
+    desktop_entry_with_exec, file_sha256_hex, find_binaries, first_hash_token,
+    package_repository_version_for, parse_aur_package_version, parse_package_version,
+    refresh_desktop_metadata, repository_database_version, stage_binary_path, stage_workdir,
+    update_method_for, verify_archive_checksum,
 };
 
 const PACKAGED_ENTRY: &str =
@@ -226,6 +227,33 @@ fn first_hash_token_lowercases_and_ignores_trailing_filename() {
 #[test]
 fn first_hash_token_rejects_empty_input() {
     assert_eq!(first_hash_token("   \n"), None);
+}
+
+#[test]
+fn archive_checksum_hashes_in_process() {
+    let dir = scratch_dir("checksum", line!());
+    let empty = dir.join("empty.tar.gz");
+    fs::write(&empty, b"").expect("write empty archive");
+    const EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    assert_eq!(file_sha256_hex(&empty).expect("hash empty"), EMPTY);
+    verify_archive_checksum(&empty, &format!("{EMPTY}  empty.tar.gz\n"))
+        .expect("empty digest matches");
+
+    let nonempty = dir.join("payload.tar.gz");
+    fs::write(&nonempty, b"abc").expect("write nonempty archive");
+    const ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+    assert_eq!(file_sha256_hex(&nonempty).expect("hash abc"), ABC);
+    verify_archive_checksum(
+        &nonempty,
+        "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD  payload.tar.gz\n",
+    )
+    .expect("nonempty digest matches");
+    assert_eq!(
+        verify_archive_checksum(&nonempty, EMPTY).expect_err("mismatch"),
+        "Downloaded update failed checksum verification"
+    );
+
+    let _removed = fs::remove_dir_all(&dir);
 }
 
 #[test]
