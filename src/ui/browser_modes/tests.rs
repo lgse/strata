@@ -585,8 +585,8 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 }
             }
             assert!(
-                !crate::ui::thumbnail::has_pending_thumbnail(&path),
-                "scrolling bind must not enqueue thumbnail work"
+                crate::ui::thumbnail::has_pending_thumbnail(&path),
+                "scrolling bind must admit viewport-prioritized thumbnail work"
             );
             crate::ui::thumbnail::set_thumbnail_or_icon(
                 &icon,

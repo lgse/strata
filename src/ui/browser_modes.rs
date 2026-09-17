@@ -2089,11 +2089,19 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 scrolling_for_bind.get(),
                 state.as_deref(),
             );
-            if !scrolling_for_bind.get()
-                && let Some(position) = metadata_fill_position(source_position, &entry, false, true)
+            if let Some(position) = metadata_fill_position(source_position, &entry, false, true)
                 && let Some(browser) = browser.as_ref()
+                && let Some((icon, _)) = super::icons_cell::parts(&card)
             {
-                browser.request_metadata_fill(depth, position, entry.location.clone(), true);
+                super::thumbnail::request_metadata(
+                    &icon,
+                    &card,
+                    browser,
+                    depth,
+                    position,
+                    entry.location.clone(),
+                    true,
+                );
             }
         }
     });
@@ -4137,12 +4145,14 @@ fn apply_icons_entry(
     if label.text().as_deref() != Some(shown_name) {
         label.set_text(Some(shown_name));
     }
+    super::thumbnail::set_thumbnail_or_icon(
+        &icon,
+        entry,
+        super::browser::entry_icon(entry),
+        thumbnail_size,
+        thumbnail_size,
+    );
     if scrolling {
-        super::thumbnail::show_fallback_icon(
-            &icon,
-            super::browser::entry_icon(entry),
-            thumbnail_size,
-        );
         icon.set_hidden(entry.is_hidden);
         icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
@@ -4150,13 +4160,6 @@ fn apply_icons_entry(
             details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
         }
     } else {
-        super::thumbnail::set_thumbnail_or_icon(
-            &icon,
-            entry,
-            super::browser::entry_icon(entry),
-            thumbnail_size,
-            thumbnail_size,
-        );
         refresh_icons_card_chrome(item, card, &icon, &label, entry, cuts);
     }
     if let Some(item) = item.filter(|_| pending_name.is_some()) {
@@ -4219,7 +4222,15 @@ fn refresh_icons_section(
             icon.slot_size(),
         );
         if let Some(position) = metadata_fill_position(Some(position), &entry, false, true) {
-            browser.request_metadata_fill(depth, position, entry.location.clone(), true);
+            super::thumbnail::request_metadata(
+                &icon,
+                &card,
+                browser,
+                depth,
+                position,
+                entry.location.clone(),
+                true,
+            );
         }
     });
 }

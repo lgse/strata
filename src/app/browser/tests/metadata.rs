@@ -352,7 +352,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
 }
 
 #[test]
-fn settle_timer_restarts_while_rows_keep_arriving() {
+fn metadata_dispatch_is_not_starved_by_continuously_arriving_rows() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("the async test lock should not be poisoned");
@@ -362,18 +362,12 @@ fn settle_timer_restarts_while_rows_keep_arriving() {
     ));
     browser.navigate(Location::local("/fixture"));
     browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
-    let pump_until_elapsed = |millis: u64, start: std::time::Instant| {
-        while start.elapsed() < std::time::Duration::from_millis(millis) {
-            gtk::glib::MainContext::default().iteration(false);
-            std::thread::sleep(std::time::Duration::from_millis(2));
-        }
-    };
-    let start = std::time::Instant::now();
-    pump_until_elapsed(80, start);
-    browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
-    pump_until_elapsed(140, start);
-    assert!(source.fill_calls.borrow().is_empty());
-    pump_until_elapsed(400, start);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while source.fill_calls.borrow().is_empty() && std::time::Instant::now() < deadline {
+        browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
+        gtk::glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
     assert_eq!(source.fill_calls.borrow().len(), 1);
     assert!(!source.fill_calls.borrow()[0].full);
 }

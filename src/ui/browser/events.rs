@@ -184,9 +184,6 @@ impl ViewState {
                 }
             }
             BrowserEvent::MetadataFilled { depth, updates } => {
-                for (_, entry) in updates.iter() {
-                    crate::ui::thumbnail::note_metadata_entry(entry);
-                }
                 if self.mode_views.borrow().mode() == BrowserMode::Columns
                     && let Some(column) = self.columns.borrow().get(*depth).cloned()
                 {

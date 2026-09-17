@@ -88,9 +88,15 @@ fn trash_thumbnails_and_fallback_icons_work_in_every_view() {
     pixbuf.new_subpixbuf(0, 24, 64, 24).fill(0x448844ff);
     let png = pixbuf.save_to_bufferv("png", &[]).expect("PNG fixture");
     std::fs::write(&path, &png).expect("image file");
+    std::fs::File::open(&path)
+        .expect("image file")
+        .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(1))
+        .expect("fixture mtime");
     thumbnail_cache::store(&path, 1, &png);
     assert!(thumbnail_cache::lookup(&path, 1).is_some());
-    let image = entry("photo.png", EntryKind::File, &path);
+    let mut image = entry("photo.png", EntryKind::File, &path);
+    image.modified_unix_seconds = MetadataValue::Unknown;
+    image.size = MetadataValue::Unknown;
     let directory = entry(
         "folder.png",
         EntryKind::Directory,
@@ -135,47 +141,6 @@ fn trash_thumbnails_and_fallback_icons_work_in_every_view() {
     thumbnail::cancel_thumbnails_in(&view.widget());
     browser.clear_observer();
     window.destroy();
-}
-
-#[test]
-fn metadata_updates_use_the_local_trash_thumbnail_source() {
-    let path = Path::new("/fixture/Trash/files/photo.png.2");
-    let entry = entry("photo.png", EntryKind::File, path);
-    thumbnail::SETTLE_VIEWS.with(|views| {
-        views.borrow_mut().insert(
-            0,
-            thumbnail::ViewSettle {
-                viewport: glib::WeakRef::new(),
-                pending: vec![thumbnail::SettledPark {
-                    key: thumbnail::ThumbnailKey {
-                        path: path.to_owned(),
-                        modified: None,
-                        file_size: None,
-                        thumbnail_size: 64,
-                    },
-                    kind: thumbnail::ThumbnailKind::Image,
-                    target: thumbnail::PendingTarget {
-                        image_id: 1,
-                        request: 1,
-                        image: glib::WeakRef::new(),
-                    },
-                    wait_for_metadata: true,
-                }],
-                timer: None,
-                first_park: None,
-                hooked: false,
-            },
-        );
-    });
-    thumbnail::note_metadata_entry(&entry);
-    thumbnail::SETTLE_VIEWS.with(|views| {
-        let mut views = views.borrow_mut();
-        let pending = &views[&0].pending[0];
-        assert_eq!(pending.key.modified, Some(1));
-        assert_eq!(pending.key.file_size, Some(42));
-        assert!(!pending.wait_for_metadata);
-        views.clear();
-    });
 }
 
 fn has_visible_thumbnail(path: &Path) -> bool {

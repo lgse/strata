@@ -8,7 +8,9 @@ use super::{Browser, METADATA_FILL_DEBOUNCE};
 
 impl Browser {
     pub(super) fn schedule_metadata_fill(self: &Rc<Self>) {
-        self.cancel_metadata_timer();
+        if self.metadata_timer.borrow().is_some() {
+            return;
+        }
         let weak = Rc::downgrade(self);
         let source = gio::glib::timeout_add_local_once(METADATA_FILL_DEBOUNCE, move || {
             if let Some(browser) = weak.upgrade() {

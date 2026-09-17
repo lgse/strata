@@ -314,24 +314,43 @@ fn factory_does_not_keep_the_browser_alive() {
 }
 
 #[test]
-fn permissions_fill_is_deferred_during_scroll_and_uses_the_source_location() {
+fn permissions_fill_uses_the_visible_row_while_scrolling_even_without_its_icon() {
     gtk_test(
-        "ui::browser_modes::list_factory::tests::permissions_fill_is_deferred_during_scroll_and_uses_the_source_location",
+        "ui::browser_modes::list_factory::tests::permissions_fill_uses_the_visible_row_while_scrolling_even_without_its_icon",
         || {
             let fixture = Fixture::new();
-            let (item, _) = fixture.first();
+            fixture.window.set_child(None::<&gtk::Widget>);
+            let viewport = gtk::ScrolledWindow::builder().child(&fixture.view).build();
+            fixture.window.set_child(Some(&viewport));
+            let (item, row) = fixture.first();
+            row.icon.set_visible(false);
             fixture.source.entries.borrow_mut()[2].mode = MetadataValue::Unknown;
             fixture.browser.as_ref().expect("browser").refresh_all();
             fixture.scrolling.set(true);
             fixture.bind(&item);
             assert!(fixture.source.fills.borrow().is_empty());
-            fixture.scrolling.set(false);
-            fixture.bind(&item);
             pump_until(|| !fixture.source.fills.borrow().is_empty());
             let fills = fixture.source.fills.borrow();
             assert_eq!(fills.len(), 1);
             assert_eq!(fills[0].entries, vec![Location::local("/fixture/c.rs")]);
             assert!(!fills[0].full);
+        },
+    );
+}
+
+#[test]
+fn unbind_drops_metadata_before_viewport_admission() {
+    gtk_test(
+        "ui::browser_modes::list_factory::tests::unbind_drops_metadata_before_viewport_admission",
+        || {
+            let fixture = Fixture::new();
+            let (item, _) = fixture.first();
+            fixture.source.entries.borrow_mut()[2].mode = MetadataValue::Unknown;
+            fixture.browser.as_ref().expect("browser").refresh_all();
+            fixture.bind(&item);
+            fixture.factory.emit_by_name::<()>("unbind", &[&item]);
+            glib::MainContext::default().block_on(glib::timeout_future(Duration::from_millis(250)));
+            assert!(fixture.source.fills.borrow().is_empty());
         },
     );
 }

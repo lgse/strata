@@ -7,9 +7,10 @@ parsing and decoding run inside bubblewrap, never in the application.
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
   images to dimension- and size-bounded PNG images.
-- `ffmpegthumbnailer` produces bounded media thumbnails. One helper serves at most
-  64 queued unique requests; duplicate requests share work, obsolete targets
-  cancel it, and failures are cached for 30 seconds.
+- `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
+  media details share the bounded, reusable sandbox supervisors described below.
+  Duplicate requests share work, obsolete targets detach, and thumbnail failures
+  are cached for 30 seconds.
 - Media previews use the incremental decoded-frame transport described below.
 - Plain text stays in-process, invokes no native format parser, and is capped at
   1 MiB.
@@ -17,6 +18,71 @@ parsing and decoding run inside bubblewrap, never in the application.
   in-process by pure-Rust parsers that receive only the bounded source string and
   cannot initiate filesystem access, network access, JavaScript execution, or
   subresource loading.
+
+## Browser worker pool
+
+Columns, List, and Icons share one lazy process-wide pool, retained across
+navigation, view changes, and windows. `STRATA_THUMBNAIL_WORKERS` sets its maximum
+at process startup (default: available parallelism capped at four; range 1–16;
+invalid values use the default). This includes browser media-metadata probes,
+not preview playback or Properties inspection. No setting is stored in preferences.
+
+The main process opens regular sources read-only and sends descriptors over a
+private Unix socket. A persistent bubblewrap **supervisor** handles only this
+small control protocol, never original media. Each job forks a disposable decoder
+from that codec-free process image, avoiding a helper exec per file. The setup
+child creates fresh user/mount/PID/IPC namespaces and private `/tmp` and `/dev/shm`. The decoder receives no control socket or browsing-directory mount. A per-job,
+write-only pipe sends results straight to the application: the supervisor never
+buffers image/metadata bytes that a later fork could inherit. Exiting the job's
+PID namespace terminates all descendants. Per-job CPU, address-space,
+file-size and core limits do not accumulate over the supervisor's lifetime;
+parent-enforced absolute deadlines retire stuck supervisors. A process-lifetime
+launcher thread owns bubblewrap's parent-death relationship, independent of
+short-lived metadata threads. Ordinary unbinds
+remove subscribers without killing healthy supervisors.
+
+Read-only descriptors alone are not a read-only filesystem boundary: a codec
+could reopen `/proc/self/fd` for writing or change source attributes. Jobs require
+fully enforced Landlock filesystem-write protection, including truncation (ABI 3), permitting writes
+only to private scratch mounts and `/dev/null`. An inherited seccomp filter also
+blocks attribute mutation, filesystem ioctls, and io_uring, which Landlock does
+not fully mediate. It permits the Linux 6.6 syscall-number range except these
+operations; unknown syscalls, alternate ABIs, and newer mutation interfaces fail
+closed. All setup completes before parsing a file. On systems without Landlock
+ABI 3, the pool retains the original one-shot read-only-bind bubblewrap path,
+with the same concurrency budget; it never silently decodes without protection.
+No GPU, network, desktop display, or session bus is available to these workers.
+Fork/namespace setup is confined to a checked single-threaded helper boundary;
+see [the unsafe-code policy](unsafe-code.md#browser-sandbox-fork-boundary).
+
+Source versions include device/inode, size, and nanosecond mtime/ctime. Shared
+in-flight gates and a bounded result cache reuse image dimensions returned by
+thumbnail decoding. Image metadata-only jobs prefer the image header over
+`ffprobe`; video/audio metadata still uses a bounded `ffprobe` operation. Video
+thumbnailing and probing retain their existing separate tools, but no longer
+start independent bubblewrap instances on the persistent path. Metadata and
+thumbnail failures are independent. Worker results are checked against the source
+version, and row request IDs reject obsolete UI completions.
+
+Cache reads and rendering have separate bounded queues and dedicated thread
+executors; decoder waits never occupy GIO's listing threads. Thumbnail admission
+does not wait for a GIO metadata fill. Lookup resolves local size/mtime off the
+GTK thread, then rechecks the RAM cache before decoding a disk hit.
+All views reuse the canonical 256-pixel RAM rendition irrespective of icon size;
+the Freedesktop `large` disk cache remains unchanged. PNG texture decoding runs
+off the GTK thread. Persistence remains bounded and asynchronous.
+
+Scheduling ranks visible targets before a small overscan region across enclosing
+scrollers (including horizontally hidden Columns panes). Offscreen requests stay
+deferred, and scroll/map changes reprioritize work outside GTK layout callbacks.
+RAM hits remain available while scrolling. With more than one render slot, slow
+RAW/PDF/video work leaves capacity for ordinary images. Browser metadata admission
+uses the same viewport policy; cheap filesystem metadata is published before
+media inspection or directory counting.
+
+`RUST_LOG=strata::sandbox::browser=debug` records supervisor starts and operation
+latencies without source paths. It is useful for verifying reuse: repeated cold
+files should produce jobs, not a new `browser sandbox started` line per file.
 
 ## Bundled interface icons
 
@@ -78,7 +144,8 @@ Missing or failed previews leave the ordinary file icon; Strata does not fall
 back to downloading full photos for thumbnails.
 
 Retrieval is asynchronous, limited to 1 MiB and 15 seconds. These jobs share the
-existing four-worker, 64-waiting-job thumbnail queue and row-binding cancellation.
+configurable browser render admission budget and bounded thumbnail queues, with
+row-binding cancellation.
 The compressed preview is written to a random mode-0600 temporary file, decoded
 by the existing image-thumbnail sandbox, and removed after the decoder exits.
 Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded

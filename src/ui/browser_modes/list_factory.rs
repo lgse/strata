@@ -139,6 +139,7 @@ impl ListFactory {
             .and_then(|state| state.pending_rename_name(&binding.entry));
         row.bind_labels(item, &binding.entry, pending_name.as_deref());
         if self.scrolling.get() {
+            binding.request_thumbnail_and_metadata(&row);
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
             let is_cut = self.cuts.borrow().contains(&binding.entry.location);
@@ -237,6 +238,11 @@ struct ListBinding {
 impl ListBinding {
     /// Settling must not reset labels or an active rename editor.
     fn refresh_details(&self, row: &ListRow) {
+        self.request_thumbnail_and_metadata(row);
+        crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
+    }
+
+    fn request_thumbnail_and_metadata(&self, row: &ListRow) {
         thumbnail::set_thumbnail_or_icon(
             &row.icon,
             &self.entry,
@@ -247,14 +253,16 @@ impl ListBinding {
         if let Some(position) =
             metadata_fill_position(Some(self.position), &self.entry, true, false)
         {
-            self.browser.request_metadata_fill(
+            thumbnail::request_metadata(
+                &row.icon,
+                &row.widget,
+                &self.browser,
                 self.depth,
                 position,
                 self.entry.location.clone(),
                 false,
             );
         }
-        crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
     }
 }
 

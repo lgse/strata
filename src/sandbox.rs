@@ -17,6 +17,7 @@ use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::services::MediaPreviewSize;
 
+pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
 
@@ -316,15 +317,7 @@ fn wait_for_renderer(
     }
 }
 
-fn sandbox_command(
-    executable: &Path,
-    input: &Path,
-    output: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    devices: &[PathBuf],
-) -> Command {
+fn runtime_command(operation: ParseOperation) -> Command {
     let mut command = Command::new("bwrap");
     command.args([
         "--unshare-all",
@@ -389,6 +382,19 @@ fn sandbox_command(
             }
         }
     }
+    command
+}
+
+fn sandbox_command(
+    executable: &Path,
+    input: &Path,
+    output: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    devices: &[PathBuf],
+) -> Command {
+    let mut command = runtime_command(operation);
     let sandbox_input = sandbox_input_path(input);
     if operation != ParseOperation::ThumbnailVideo {
         command.arg("--ro-bind").arg(executable).arg("/app/strata");
