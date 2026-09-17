@@ -81,6 +81,13 @@ fn remote_locations_keep_uri_parents_and_breadcrumbs() {
     let location = Location::uri("smb://server/share/folder");
 
     assert_eq!(location.parent(), Some(Location::uri("smb://server/share")));
+    for (uri, parent) in [
+        ("sftp://host/share/a%2Fb", "sftp://host/share"),
+        ("sftp://host/share/a%2Fb/child", "sftp://host/share/a%2Fb"),
+        ("sftp://host/share/100%25/child", "sftp://host/share/100%25"),
+    ] {
+        assert_eq!(Location::uri(uri).parent(), Some(Location::uri(parent)));
+    }
     let breadcrumbs = location.breadcrumbs();
     assert_eq!(breadcrumbs.last(), Some(&location));
     assert!(breadcrumbs.contains(&Location::uri("smb://server/share")));

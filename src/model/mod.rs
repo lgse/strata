@@ -65,7 +65,9 @@ impl Location {
                 // and similar backends when many tests call it concurrently.
                 let parsed = gio::glib::Uri::parse(
                     uri,
-                    gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
+                    gio::glib::UriFlags::HAS_PASSWORD
+                        | gio::glib::UriFlags::HAS_AUTH_PARAMS
+                        | gio::glib::UriFlags::ENCODED,
                 )
                 .ok()?;
                 let path = parsed.path();
@@ -79,7 +81,7 @@ impl Location {
                     None => return None,
                 };
                 let parent_uri = gio::glib::Uri::build_with_user(
-                    gio::glib::UriFlags::empty(),
+                    gio::glib::UriFlags::ENCODED,
                     &parsed.scheme(),
                     parsed.user().as_deref(),
                     parsed.password().as_deref(),
