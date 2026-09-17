@@ -141,7 +141,13 @@ impl SearchDialog {
         open.add_css_class("search-hint");
         footer.append(&navigation);
         footer.append(&open);
-        let reveal_hint = gtk::Label::new(Some("Alt+Enter  open containing folder"));
+        let reveal_hint = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        reveal_hint.set_valign(gtk::Align::Center);
+        reveal_hint.append(&crate::assets::primary_icon(
+            crate::assets::icons::FOLDER_OPEN,
+            13,
+        ));
+        reveal_hint.append(&gtk::Label::new(Some("Alt+Enter  open containing folder")));
         reveal_hint.add_css_class("search-hint");
         footer.append(&reveal_hint);
         let truncated_hint = gtk::Box::new(gtk::Orientation::Horizontal, 4);
