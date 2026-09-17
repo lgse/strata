@@ -2305,11 +2305,6 @@ paned > separator {
   outline-offset: 1px;
 }
 
-.preview-table-interactive > .preview-code-copy {
-  opacity: 1;
-  margin: 0 0 6px 0;
-}
-
 .preview-document-table {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.5);
@@ -2406,6 +2401,15 @@ paned > separator {
   background: @theme_surface;
   color: @theme_text;
   border-color: @theme_border;
+}
+
+.preview-document-table > header button:last-child,
+.preview-document-table cell:last-child {
+  border-right: 1px solid @theme_border;
+}
+
+.preview-document-table row:last-child cell {
+  border-bottom: 1px solid @theme_border;
 }
 
 .preview-document-table row:hover {

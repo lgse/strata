@@ -39,9 +39,9 @@ When **Source** is the initial view, parsing is deferred until the user requests
 
 CSV and TSV use quote-aware parsing, preserve multiline fields, and tolerate ragged rows. The first row becomes column titles. Markdown and HTML tables share the same native `ColumnView`; HTML row headers remain styled cells when the first row is not entirely headers.
 
-Click a column title to sort ascending or descending, and drag its divider to resize it. Sorting uses finite numeric values first, case-insensitive text next, and empty values last in ascending order; descending reverses that order. Sorting changes only the preview, never the file. Column widths and sort order survive row recycling while that rendered view remains open.
+Tables open sorted ascending by the first column. Hover a column title for the pointer cursor, click to sort ascending or descending, and drag its divider to resize it. Sorting uses finite numeric values first, case-insensitive text next, and empty values last in ascending order; descending reverses that order. Sorting changes only the preview, never the file. Column widths and sort order survive row recycling while that rendered view remains open.
 
-**Copy table**, or **Ctrl+C** with table focus, copies all loaded rows in their current sorted order, with original full cell text and tab separators. Cross-document selection also copies tables in their current order. Native sortable column titles are plain text; body cells retain supported inline styling and safe links.
+**Ctrl+C** with table focus copies all loaded rows in their current sorted order, with original full cell text and tab separators. Cross-document selection also copies tables in their current order. Native sortable column titles are plain text; body cells retain supported inline styling and safe links.
 
 The old 200-row display cap is removed. Delimited/workbook output is instead bounded by 100,000 values, 4 MiB of cell text, and 256 columns, with a visible warning when output is limited. CSV/TSV retain the 1 MiB source-reading limit and Source fallback. Virtualization bounds resident row widgets; it does not make parsing or model memory unlimited.
 

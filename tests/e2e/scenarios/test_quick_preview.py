@@ -263,7 +263,7 @@ def test_large_table_header_sort_reaches_rows_beyond_old_limits(strata, filename
     strata.pointer.click(header)
     strata.pointer.click(header)
     strata.wait(lambda: strata.preview_shows("record-999"), "numeric descending sort across every loaded row")
-    assert strata.preview().find(role="button", name="Copy table") is not None
+    assert strata.preview().find(role="button", name="Copy table") is None
 
 
 @pytest.mark.parametrize("fixture_tree,filename", [
@@ -274,7 +274,7 @@ def test_workbook_uses_sandboxed_shared_table_preview(strata, filename):
     strata.select_entry_with_keyboard(filename)
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("3"), "the sandboxed workbook cells")
-    assert strata.preview().find(role="button", name="Copy table") is not None
+    assert strata.preview().find(role="button", name="Copy table") is None
     assert strata.preview().find(role="button", name="View source") is None
 
 

@@ -101,8 +101,11 @@ fn sorting_preserves_headers_full_copy_and_state_after_recycling() {
                 .expect("sortable column")
                 .downcast::<gtk::ColumnViewColumn>()
                 .expect("column");
-            view.sort_by_column(Some(&column), gtk::SortType::Ascending);
-            assert_eq!(state.copy_text(), "value\n2\n10\n\n");
+            assert_eq!(
+                state.copy_text(),
+                "value\n2\n10\n\n",
+                "first column sorts on initial display"
+            );
             view.sort_by_column(Some(&column), gtk::SortType::Descending);
             assert_eq!(state.copy_text(), "value\n\n10\n2\n");
             let weak = view.downgrade();

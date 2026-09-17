@@ -69,7 +69,7 @@ impl TableState {
             sort_keys: Rc::new(sort_keys),
             header,
             widths: RefCell::new(vec![160; columns]),
-            sort: Cell::new(None),
+            sort: Cell::new((columns > 0).then_some((0, gtk::SortType::Ascending))),
             model: gtk::SortListModel::new(Some(store), None::<gtk::Sorter>),
         })
     }
@@ -177,6 +177,12 @@ impl TableState {
             view.append_column(&column);
             columns.push(column);
         }
+        if let Some(header) = view
+            .first_child()
+            .filter(|child| child.css_name() == "header")
+        {
+            header.set_cursor_from_name(Some("pointer"));
+        }
         if let Some((index, direction)) = self.sort.get() {
             view.sort_by_column(columns.get(index), direction);
         }
@@ -224,15 +230,6 @@ impl TableState {
             .max_content_height(400)
             .propagate_natural_height(true)
             .build();
-        let copy = gtk::Button::with_label("Copy table");
-        copy.add_css_class("preview-code-copy");
-        copy.set_halign(gtk::Align::End);
-        let weak = Rc::downgrade(self);
-        copy.connect_clicked(move |button| {
-            if let Some(state) = weak.upgrade() {
-                button.clipboard().set_text(&state.copy_text());
-            }
-        });
         let key = gtk::EventControllerKey::new();
         let weak = Rc::downgrade(self);
         let weak_view = view.downgrade();
@@ -249,7 +246,6 @@ impl TableState {
         view.add_controller(key);
         let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
         container.add_css_class("preview-table-interactive");
-        container.append(&copy);
         container.append(&scroll);
         container
     }
