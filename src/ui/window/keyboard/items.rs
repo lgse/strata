@@ -92,7 +92,7 @@ impl Dispatcher {
             SinglePaneArrow::Native => self.native_selection(event),
             SinglePaneArrow::Stay => Propagation::Stop,
             SinglePaneArrow::Sidebar => {
-                self.sidebar.enter(&event.focused);
+                self.enter_sidebar(event);
                 Propagation::Stop
             }
         })
@@ -200,7 +200,7 @@ impl Dispatcher {
             && self.top_bar.sidebar_toggle().is_active()
             && !self.arrows_scoped_to_content()
         {
-            self.sidebar.enter(&event.focused);
+            self.enter_sidebar(event);
         } else {
             self.view.navigate_left();
         }
