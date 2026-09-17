@@ -741,14 +741,14 @@ fn uri_entries_with_a_local_mirror_render_via_the_mirror_path() {
         || {
             super::super::theme::ThemeManager::shared();
             hold_thumbnail_workers();
-            // A GVfs FUSE mirror is a real absolute path; a `file://` URI stands in for
-            // one here so the test needs no network mount. See `remote_mirror_thumbnail`.
+            // file:// exercises URI routing, not GVfs/FUSE integration.
             let mirror = tempfile::Builder::new()
                 .suffix(".png")
                 .tempfile()
                 .expect("temp mirror file");
             let entry = FileEntry {
-                location: Location::uri(format!("file://{}", mirror.path().display())),
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
                 thumbnail_path: None,
                 native_name: "photo.png".into(),
                 display_name: "photo.png".to_owned(),
@@ -781,10 +781,9 @@ fn a_metadata_fill_releases_a_mirror_rendered_uri_entry() {
                 .suffix(".png")
                 .tempfile()
                 .expect("temp mirror file");
-            // Listings without `include_metadata` leave mtime unknown, which is the
-            // default sort; the thumbnail must still render once the fill arrives.
             let mut entry = FileEntry {
-                location: Location::uri(format!("file://{}", mirror.path().display())),
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
                 thumbnail_path: None,
                 native_name: "photo.png".into(),
                 display_name: "photo.png".to_owned(),
@@ -826,8 +825,7 @@ fn uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon() {
             super::super::theme::ThemeManager::shared();
             hold_thumbnail_workers();
             let entry = FileEntry {
-                // smb:// has no `file://`-style mirror in this test environment, so
-                // `remote_mirror_thumbnail` must return `None` and fall back cleanly.
+                recent_unix_seconds: MetadataValue::Unavailable,
                 location: Location::uri("smb://example.invalid/share/photo.png"),
                 thumbnail_path: None,
                 native_name: "photo.png".into(),

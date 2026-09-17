@@ -385,12 +385,7 @@ pub(super) fn set_thumbnail_or_icon(
     });
 }
 
-/// Some non-native `Location`s (SMB, SFTP, ...) are additionally exposed through
-/// GVfs's FUSE mirror. `Location`/navigation must keep using the clean URI (see
-/// `location_for_file` and lgse/strata#5), but the mirror path is safe to use as
-/// pure render input for the sandboxed thumbnailer: it's never stored or shown.
-/// Returns `None` when there's no mirror (FUSE bridge not running, or a backend
-/// without one), in which case the caller falls back to a generic icon as before.
+// GVfs FUSE paths are render inputs only; navigation must retain the URI identity.
 fn remote_mirror_thumbnail(entry: &FileEntry) -> Option<(PathBuf, ThumbnailKind)> {
     if entry.is_directory() {
         return None;
@@ -860,8 +855,7 @@ pub(super) fn note_metadata(path: &Path, modified: Option<i64>, file_size: Optio
 pub(super) fn note_metadata_entry(entry: &FileEntry) {
     let modified = known_metadata(&entry.modified_unix_seconds);
     let file_size = known_metadata(&entry.size);
-    // Mirror-rendered entries park under the mirror path, so the fill must release
-    // that same path; `local_thumbnail_path` only knows about native sources.
+    // Release metadata waiters using the same path chosen at bind time.
     if let Some(path) = entry.local_thumbnail_path() {
         note_metadata(path, modified, file_size);
     } else if let Some((mirror_path, _)) = remote_mirror_thumbnail(entry) {
