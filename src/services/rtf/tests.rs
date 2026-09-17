@@ -44,6 +44,19 @@ fn rendered_documents_keep_one_block_per_paragraph() {
 }
 
 #[test]
+fn binary_payload_lengths_skip_whole_characters() {
+    let html =
+        to_html(r"{\rtf1\ansi\bin1 ékept\par}", &Cancellation::default()).expect("binary payload");
+    assert_eq!(html, "<p>kept</p>");
+    let wide = to_html(
+        r"{\rtf1\ansi\bin9999 é\par after\par}",
+        &Cancellation::default(),
+    )
+    .expect("payload longer than the document");
+    assert_eq!(wide, "");
+}
+
+#[test]
 fn cancellation_and_invalid_input_report_errors() {
     let cancellation = Cancellation::default();
     cancellation.cancel();

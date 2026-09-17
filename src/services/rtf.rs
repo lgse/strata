@@ -159,7 +159,9 @@ pub(crate) fn to_html(source: &str, cancellation: &Cancellation) -> Result<Strin
                     .position(|byte| matches!(byte, b'{' | b'}' | b'\\' | b'\r' | b'\n'))
                     .map_or(bytes.len(), |offset| index + offset);
                 if skipped == 0 {
-                    writer.text(&source[index..end], style(&groups));
+                    // Decoded from the bytes, never sliced off `source`: a control
+                    // word's stored length must not be able to panic the walk.
+                    writer.text(&String::from_utf8_lossy(&bytes[index..end]), style(&groups));
                 }
                 index = end;
             }
@@ -294,9 +296,19 @@ fn apply(
             }
         }
         // Binary data is not text: skipping it keeps braces inside it from nesting.
+        // The stored length counts original file bytes, but the preview source is a
+        // lossy decode, so skip that many characters instead: an invalid byte has
+        // already become one replacement character, and no skip splits one.
         "bin" => {
-            let length = parameter.unwrap_or(0).max(0) as usize;
-            return next.saturating_add(length).min(bytes.len());
+            let count = parameter.unwrap_or(0).max(0) as usize;
+            let mut index = next;
+            for _ in 0..count {
+                if index >= bytes.len() {
+                    break;
+                }
+                index = next_character(bytes, index);
+            }
+            return index;
         }
         "par" | "sect" | "page" | "row" | "pard" if *skipped == 0 => writer.end_paragraph(),
         "line" if *skipped == 0 => writer.line_break(),
@@ -323,13 +335,17 @@ fn skip_fallback(bytes: &[u8], mut index: usize, count: usize) -> usize {
                 index = control_word(bytes, index).2;
             }
             Some(b'{' | b'}') | None => break,
-            Some(_) => {
-                index += 1;
-                while bytes.get(index).is_some_and(|byte| byte & 0xc0 == 0x80) {
-                    index += 1;
-                }
-            }
+            Some(_) => index = next_character(bytes, index),
         }
+    }
+    index.min(bytes.len())
+}
+
+/// Advances past one whole character, so an index never splits a UTF-8 sequence.
+fn next_character(bytes: &[u8], mut index: usize) -> usize {
+    index += 1;
+    while bytes.get(index).is_some_and(|byte| byte & 0xc0 == 0x80) {
+        index += 1;
     }
     index.min(bytes.len())
 }
