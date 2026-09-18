@@ -40,7 +40,7 @@ impl MountTable {
         }
     }
 
-    pub(super) fn fs_type_for(&self, path: &Path) -> Option<&str> {
+    pub(crate) fn fs_type_for(&self, path: &Path) -> Option<&str> {
         self.innermost(path).map(|(_, fs_type)| fs_type.as_str())
     }
 

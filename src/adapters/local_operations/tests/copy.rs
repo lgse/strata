@@ -364,3 +364,151 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
     assert!(!target.join("pipe").exists());
     Ok(())
 }
+
+#[test]
+fn fat_sanitized_name_replaces_invalid_characters_and_trims_trailing_dots_and_spaces() {
+    assert_eq!(
+        fat_sanitized_name(OsStr::new("sc_macroorganizer?tabid:short=1.png")),
+        OsStr::new("sc_macroorganizer_tabid_short=1.png")
+    );
+    assert_eq!(
+        fat_sanitized_name(OsStr::new(r#"a"*/:<>?\|b"#)),
+        OsStr::new("a_________b")
+    );
+    assert_eq!(
+        fat_sanitized_name(OsStr::new("trailing dots.. ")),
+        OsStr::new("trailing dots")
+    );
+    assert_eq!(fat_sanitized_name(OsStr::new("...")), OsStr::new("_"));
+    assert_eq!(
+        fat_sanitized_name(OsStr::new("plain.txt")),
+        OsStr::new("plain.txt")
+    );
+}
+
+#[test]
+fn unique_fat_sibling_name_numbers_a_collision_instead_of_overwriting() {
+    let mut used = HashSet::new();
+    let first = unique_fat_sibling_name(OsString::from("a_b.txt"), &mut used);
+    let second = unique_fat_sibling_name(OsString::from("a_b.txt"), &mut used);
+    let third = unique_fat_sibling_name(OsString::from("a_b.txt"), &mut used);
+    assert_eq!(first, OsString::from("a_b.txt"));
+    assert_eq!(second, OsString::from("a_b (1).txt"));
+    assert_eq!(third, OsString::from("a_b (2).txt"));
+    assert_ne!(first, second);
+    assert_ne!(second, third);
+}
+
+#[test]
+fn target_is_fat_family_reads_the_reported_filesystem_type() {
+    let mount_point = std::env::temp_dir().join("strata-fat-family-mount-probe");
+    let mounts = MountTable::parse(format!(
+        "1 0 8:1 / / rw - ext4 /dev/sda1 rw\n22 1 8:2 / {} rw - exfat /dev/sdb1 rw\n",
+        mount_point.display()
+    ));
+    assert!(target_is_fat_family(
+        &gio::File::for_path(mount_point.join("photo.jpg")),
+        &mounts
+    ));
+    assert!(!target_is_fat_family(
+        &gio::File::for_path("/some/other/path"),
+        &mounts
+    ));
+    assert!(!target_is_fat_family(
+        &gio::File::for_uri("sftp://example.com/remote"),
+        &mounts
+    ));
+}
+
+#[test]
+fn fat_family_copy_sanitizes_an_invalid_name_instead_of_discarding_the_whole_tree()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::write(source.join("ok.txt"), b"fine")?;
+    fs::write(
+        source.join("nested/sc_macroorganizer?tabid:short=1.png"),
+        b"cached icon",
+    )?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively_fat_family(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target.join("ok.txt"))?, b"fine");
+    assert_eq!(
+        fs::read(target.join("nested/sc_macroorganizer_tabid_short=1.png"))?,
+        b"cached icon"
+    );
+    assert!(
+        !target
+            .join("nested/sc_macroorganizer?tabid:short=1.png")
+            .exists()
+    );
+    Ok(())
+}
+
+#[test]
+fn fat_family_copy_disambiguates_sibling_names_that_collide_after_sanitizing()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("a?.txt"), b"first")?;
+    fs::write(source.join("a:.txt"), b"second")?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively_fat_family(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    let mut contents = [
+        fs::read(target.join("a_.txt"))?,
+        fs::read(target.join("a_ (1).txt"))?,
+    ];
+    contents.sort();
+    assert_eq!(contents, [b"first".to_vec(), b"second".to_vec()]);
+    Ok(())
+}
+
+#[test]
+fn non_fat_copy_leaves_invalid_characters_untouched() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("a?b:c.txt"), b"unchanged")?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target.join("a?b:c.txt"))?, b"unchanged");
+    Ok(())
+}
