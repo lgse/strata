@@ -11,11 +11,12 @@ use crate::ui::browser::entry::{entry_icon, entry_supports_printing};
 use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, is_trash_item, is_trash_location,
 };
-use crate::ui::browser::{PinStatus, ViewState};
+use crate::ui::browser::{AgentRequest, PinStatus, ViewState, show_error_dialog};
 use crate::ui::browser_modes::BrowserMode;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
+use std::path::Path;
 use std::rc::Rc;
 
 mod keyboard;
@@ -246,6 +247,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     let open_with = context_menu_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
     let open_terminal =
         context_menu_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
+    let open_agent = context_menu_option(crate::assets::icons::TERMINAL, "Open with AI agent", "");
     let paste = context_menu_option(crate::assets::icons::CLIPBOARD_PASTE, "Paste", "Ctrl+V");
     let select_all = context_menu_option(crate::assets::icons::LIST_CHECKS, "Select All", "Ctrl+A");
     let refresh = context_menu_option(crate::assets::icons::REFRESH, "Refresh", "F5");
@@ -273,12 +275,14 @@ pub(in crate::ui) fn install_folder_context_menu(
     new_file.set_visible(directory_actions);
     open_with.set_visible(directory_actions);
     open_terminal.set_visible(directory_actions);
+    open_agent.set_visible(directory_actions && agent_is_configured());
     paste.set_visible(directory_actions);
     properties.set_visible(!in_recent);
     content.append(&new_folder);
     content.append(&new_file);
     content.append(&open_with);
     content.append(&open_terminal);
+    content.append(&open_agent);
     if directory_actions {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     }
@@ -440,6 +444,18 @@ pub(in crate::ui) fn install_folder_context_menu(
         }
     });
 
+    let weak = Rc::downgrade(state);
+    let agent_popover = popover.downgrade();
+    let agent_location = location.clone();
+    open_agent.connect_clicked(move |_| {
+        if let Some(popover) = agent_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            start_agent(&state, &agent_location, Vec::new());
+        }
+    });
+
     let popover_for_trigger = popover.clone();
     let browser_for_trigger = state.browser.clone();
     let scroll_for_trigger = scroll.clone();
@@ -454,6 +470,8 @@ pub(in crate::ui) fn install_folder_context_menu(
         }));
         select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location_for_trigger));
+        open_agent.set_visible(directory_actions && agent_is_configured());
+        open_agent.set_sensitive(can_open_terminal(&location_for_trigger));
         let hidden_files_shown = browser_for_trigger.preferences().show_hidden;
         toggle_hidden_label.set_text(if hidden_files_shown {
             "Hide Hidden Files"
@@ -585,6 +603,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let run = item_context_option(crate::assets::icons::PLAY, "Run", "");
     let open_terminal =
         item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
+    let open_agent = item_context_option(crate::assets::icons::TERMINAL, "Open with AI agent", "");
+    let open_agent_multiple =
+        item_context_option(crate::assets::icons::TERMINAL, "Open with AI agent", "");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
     let print = item_context_option(crate::assets::icons::PRINTER, "Print", "");
     let restore = item_context_option(crate::assets::icons::FOLDER, "Restore", "");
@@ -626,6 +647,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     single.append(&open_file_location);
     single.append(&run);
     single.append(&open_terminal);
+    single.append(&open_agent);
     single.append(&preview);
     single.append(&print);
     single.append(&restore);
@@ -684,6 +706,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
     multiple.append(&open_multiple);
     multiple.append(&open_with_multiple);
+    multiple.append(&open_agent_multiple);
     multiple.append(&restore_multiple);
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
@@ -929,6 +952,33 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             launch_terminal(&entry.location, &state.overlay);
         }
     });
+    for (button, agent_target) in [
+        (&open_agent, target.clone()),
+        (&open_agent_multiple, target.clone()),
+    ] {
+        let weak = Rc::downgrade(state);
+        let agent_popover = popover.downgrade();
+        button.connect_clicked(move |_| {
+            if let Some(popover) = agent_popover.upgrade() {
+                popover.popdown();
+            }
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let entries = context_entries(&state, &agent_target);
+            let Some(location) = agent_entries_location(&entries) else {
+                return;
+            };
+            let paths = match agent_entry_paths(&entries) {
+                Ok(paths) => paths,
+                Err(message) => {
+                    show_error_dialog(&state.overlay, "Unable to start the agent", &message);
+                    return;
+                }
+            };
+            start_agent(&state, &location, paths);
+        });
+    }
     let weak = Rc::downgrade(state);
     let pin_target = target.clone();
     let pin_popover = popover.downgrade();
@@ -1190,6 +1240,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         preview.set_visible(crate::ui::preview::entry_supports_quick_preview(&entry));
         print.set_visible(entry_supports_printing(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
+        let agent_available = agent_is_configured() && agent_entries_location(&entries).is_some();
+        open_agent.set_visible(agent_available);
+        open_agent_multiple.set_visible(agent_available);
         let search_or_filter = context_filter_or_search_active(&state, depth);
         let in_different_folder =
             state.browser.location_at(depth).as_ref() != entry.location.parent().as_ref();
@@ -1787,3 +1840,57 @@ fn common_applications(
 
 #[cfg(test)]
 mod tests;
+
+fn agent_is_configured() -> bool {
+    !crate::ui::theme::ThemeManager::shared()
+        .agent_command()
+        .is_empty()
+}
+
+/// Selected entries run the agent in the folder that holds them; a lone
+/// selected folder runs it inside that folder.
+fn agent_entries_location(entries: &[FileEntry]) -> Option<Location> {
+    let [entry] = entries else {
+        let parent = entries.first()?.location.parent()?;
+        return can_open_terminal(&parent).then_some(parent);
+    };
+    if entry.is_directory() && can_open_terminal(&entry.location) {
+        return Some(entry.location.clone());
+    }
+    let parent = entry.location.parent()?;
+    can_open_terminal(&parent).then_some(parent)
+}
+
+fn agent_entry_paths(entries: &[FileEntry]) -> Result<Vec<std::path::PathBuf>, String> {
+    entries
+        .iter()
+        .map(|entry| {
+            entry
+                .location
+                .native_path()
+                .map(Path::to_path_buf)
+                .ok_or_else(|| {
+                    "Every selected entry must have a local path before the agent can be started."
+                        .to_string()
+                })
+        })
+        .collect()
+}
+
+fn start_agent(state: &Rc<ViewState>, location: &Location, paths: Vec<std::path::PathBuf>) {
+    let Some(directory) = location.native_path().map(Path::to_path_buf) else {
+        show_error_dialog(
+            &state.overlay,
+            "Unable to start the agent",
+            "This location is not a local folder",
+        );
+        return;
+    };
+    let handler = state.agent_handler.borrow().clone();
+    let Some(handler) = handler else {
+        return;
+    };
+    if let Err(message) = handler(AgentRequest { directory, paths }) {
+        show_error_dialog(&state.overlay, "Unable to start the agent", &message);
+    }
+}

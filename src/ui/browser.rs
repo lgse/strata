@@ -96,6 +96,17 @@ type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
 type PrintHandler = Rc<dyn Fn(FileEntry)>;
 
+/// What an agent is pointed at: the folder it runs in, and the paths the user
+/// picked, if any. Each path reaches the agent as its own argument.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentRequest {
+    pub directory: std::path::PathBuf,
+    pub paths: Vec<std::path::PathBuf>,
+}
+
+/// Returns a message to show when the agent could not be started.
+type AgentHandler = Rc<dyn Fn(AgentRequest) -> Result<(), String>>;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PinStatus {
     Available,
@@ -183,6 +194,7 @@ pub(super) struct ViewState {
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
+    agent_handler: RefCell<Option<AgentHandler>>,
     pending_select: RefCell<Vec<String>>,
     pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
@@ -505,6 +517,7 @@ impl BrowserView {
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
+            agent_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
             pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
@@ -770,6 +783,10 @@ impl BrowserView {
         self.state.pin_handler.replace(Some(handler));
         self.state.unpin_handler.replace(Some(unpin_handler));
         self.state.pin_status_handler.replace(Some(status_handler));
+    }
+
+    pub(super) fn set_agent_handler(&self, handler: AgentHandler) {
+        self.state.agent_handler.replace(Some(handler));
     }
 
     pub(super) fn set_print_handler(&self, handler: PrintHandler) {
@@ -1355,10 +1372,9 @@ impl BrowserView {
         selected_terminal_location(&selected).or_else(|| self.listing_location())
     }
 
-    /// The local directory the embedded terminal starts in. Unlike Ctrl+T this
-    /// ignores the selection, which starts on the first entry of every folder,
-    /// and the hovered column, so it matches the location in the breadcrumb
-    /// rather than whatever the pointer happens to rest on.
+    /// The local directory where the embedded terminal starts. Unlike Ctrl+T,
+    /// this ignores the selection and hovered column and uses the location
+    /// shown in the breadcrumb.
     pub fn terminal_directory(&self) -> Option<std::path::PathBuf> {
         let depth = self.state.browser.active_depth()?;
         let location = self.state.browser.location_at(depth)?;

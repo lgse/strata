@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
 };
 
@@ -20,15 +20,23 @@ const SCROLLBACK_LINES: i64 = 10_000;
 const UNAVAILABLE: &str =
     "\r\n\u{1b}[7m The embedded terminal is only available for local folders. \u{1b}[0m\r\n";
 const BRIGHT_MIX: f64 = 0.35;
+/// Where selected paths go in a configured agent command.
+const PATHS_TOKEN: &str = "{}";
 
 type DirectorySource = Rc<dyn Fn() -> Option<PathBuf>>;
 type ChildPid = i32;
 type Generation = u64;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionKind {
+    Shell,
+    Agent,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SpawnProgress {
     Pending,
-    ExitSeen,
+    ExitSeen(i32),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -42,19 +50,26 @@ enum SessionState {
     Idle,
     Spawning {
         generation: Generation,
+        kind: SessionKind,
         progress: SpawnProgress,
     },
     Running {
         generation: Generation,
+        kind: SessionKind,
         pid: ChildPid,
     },
     Cancelling {
         generation: Generation,
+        kind: SessionKind,
         progress: CancellationProgress,
     },
     Stopping {
         generation: Generation,
+        kind: SessionKind,
         pid: ChildPid,
+    },
+    ExitedAgentOutput {
+        status: i32,
     },
 }
 
@@ -63,6 +78,7 @@ enum SpawnCompletion {
     Running,
     Terminate(ChildPid),
     TerminateAndBecomeIdle(ChildPid),
+    AgentCompleted(i32),
     BecomeIdle,
     Stale(Option<ChildPid>),
 }
@@ -71,6 +87,7 @@ enum SpawnCompletion {
 enum ChildExit {
     Recorded,
     BecameIdle,
+    AgentCompleted(i32),
     Ignored,
 }
 
@@ -100,7 +117,12 @@ impl SessionLifecycle {
         matches!(self.state, SessionState::Idle)
     }
 
+    #[cfg(test)]
     fn request_spawn(&mut self) -> Option<Generation> {
+        self.request_spawn_kind(SessionKind::Shell)
+    }
+
+    fn request_spawn_kind(&mut self, kind: SessionKind) -> Option<Generation> {
         if !matches!(self.state, SessionState::Idle) {
             return None;
         }
@@ -108,6 +130,7 @@ impl SessionLifecycle {
         self.next_generation = generation;
         self.state = SessionState::Spawning {
             generation,
+            kind,
             progress: SpawnProgress::Pending,
         };
         Some(generation)
@@ -116,6 +139,7 @@ impl SessionLifecycle {
     fn cancel_pending_spawn(&mut self) -> Option<Generation> {
         let SessionState::Spawning {
             generation,
+            kind,
             progress,
         } = self.state
         else {
@@ -123,16 +147,26 @@ impl SessionLifecycle {
         };
         self.state = SessionState::Cancelling {
             generation,
+            kind,
             progress: CancellationProgress::Waiting(progress),
         };
         Some(generation)
     }
 
     fn stop_running(&mut self) -> Option<ChildPid> {
-        let SessionState::Running { generation, pid } = self.state else {
+        let SessionState::Running {
+            generation,
+            kind,
+            pid,
+        } = self.state
+        else {
             return None;
         };
-        self.state = SessionState::Stopping { generation, pid };
+        self.state = SessionState::Stopping {
+            generation,
+            kind,
+            pid,
+        };
         Some(pid)
     }
 
@@ -159,24 +193,40 @@ impl SessionLifecycle {
         match (self.state, result) {
             (
                 SessionState::Spawning {
+                    kind,
                     progress: SpawnProgress::Pending,
                     ..
                 },
                 Ok(pid),
             ) => {
-                self.state = SessionState::Running { generation, pid };
+                self.state = SessionState::Running {
+                    generation,
+                    kind,
+                    pid,
+                };
                 SpawnCompletion::Running
             }
             (
                 SessionState::Spawning {
-                    progress: SpawnProgress::ExitSeen,
+                    kind: SessionKind::Agent,
+                    progress: SpawnProgress::ExitSeen(status),
+                    ..
+                },
+                Ok(_pid),
+            ) => {
+                self.state = SessionState::ExitedAgentOutput { status };
+                SpawnCompletion::AgentCompleted(status)
+            }
+            (
+                SessionState::Spawning {
+                    progress: SpawnProgress::ExitSeen(_),
                     ..
                 },
                 Ok(pid),
             )
             | (
                 SessionState::Cancelling {
-                    progress: CancellationProgress::Waiting(SpawnProgress::ExitSeen),
+                    progress: CancellationProgress::Waiting(SpawnProgress::ExitSeen(_)),
                     ..
                 },
                 Ok(pid),
@@ -186,6 +236,7 @@ impl SessionLifecycle {
             }
             (
                 SessionState::Cancelling {
+                    kind,
                     progress: CancellationProgress::Waiting(SpawnProgress::Pending),
                     ..
                 },
@@ -193,6 +244,7 @@ impl SessionLifecycle {
             ) => {
                 self.state = SessionState::Cancelling {
                     generation,
+                    kind,
                     progress: CancellationProgress::Child(pid),
                 };
                 SpawnCompletion::Terminate(pid)
@@ -205,19 +257,33 @@ impl SessionLifecycle {
         }
     }
 
+    #[cfg(test)]
     fn child_exited(&mut self) -> ChildExit {
+        self.child_exited_with_status(0)
+    }
+
+    fn child_exited_with_status(&mut self, status: i32) -> ChildExit {
         match self.state {
+            SessionState::Running {
+                kind: SessionKind::Agent,
+                ..
+            } => {
+                self.state = SessionState::ExitedAgentOutput { status };
+                ChildExit::AgentCompleted(status)
+            }
             SessionState::Running { .. } | SessionState::Stopping { .. } => {
                 self.state = SessionState::Idle;
                 ChildExit::BecameIdle
             }
             SessionState::Spawning {
                 generation,
+                kind,
                 progress: SpawnProgress::Pending,
             } => {
                 self.state = SessionState::Spawning {
                     generation,
-                    progress: SpawnProgress::ExitSeen,
+                    kind,
+                    progress: SpawnProgress::ExitSeen(status),
                 };
                 ChildExit::Recorded
             }
@@ -230,23 +296,32 @@ impl SessionLifecycle {
             }
             SessionState::Cancelling {
                 generation,
+                kind,
                 progress: CancellationProgress::Waiting(SpawnProgress::Pending),
             } => {
                 self.state = SessionState::Cancelling {
                     generation,
-                    progress: CancellationProgress::Waiting(SpawnProgress::ExitSeen),
+                    kind,
+                    progress: CancellationProgress::Waiting(SpawnProgress::ExitSeen(status)),
                 };
                 ChildExit::Recorded
             }
             SessionState::Idle
             | SessionState::Spawning {
-                progress: SpawnProgress::ExitSeen,
+                progress: SpawnProgress::ExitSeen(_),
                 ..
             }
             | SessionState::Cancelling {
-                progress: CancellationProgress::Waiting(SpawnProgress::ExitSeen),
+                progress: CancellationProgress::Waiting(SpawnProgress::ExitSeen(_)),
                 ..
-            } => ChildExit::Ignored,
+            }
+            | SessionState::ExitedAgentOutput { .. } => ChildExit::Ignored,
+        }
+    }
+
+    fn discard_completed_output(&mut self) {
+        if matches!(self.state, SessionState::ExitedAgentOutput { .. }) {
+            self.state = SessionState::Idle;
         }
     }
 }
@@ -296,9 +371,9 @@ impl TerminalPanel {
         panel.state.widget.append(&panel.state.terminal);
         panel.bind_theme(preferences);
         let weak = Rc::downgrade(&panel.state);
-        panel.state.terminal.connect_child_exited(move |_, _| {
+        panel.state.terminal.connect_child_exited(move |_, status| {
             if let Some(state) = weak.upgrade() {
-                Self { state }.child_exited();
+                Self { state }.child_exited(status);
             }
         });
         panel
@@ -346,6 +421,8 @@ impl TerminalPanel {
     /// session in whatever folder is active after the old one has exited.
     pub(super) fn close_session(&self) {
         self.shutdown();
+        self.state.lifecycle.borrow_mut().discard_completed_output();
+        self.state.terminal.reset(true, true);
         self.state.widget.set_visible(false);
     }
 
@@ -443,15 +520,40 @@ impl TerminalPanel {
             self.state.terminal.feed(UNAVAILABLE.as_bytes());
             return;
         };
-        let Some(generation) = self.state.lifecycle.borrow_mut().request_spawn() else {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        self.spawn(vec![shell], directory, SessionKind::Shell);
+    }
+
+    /// Starts an agent only when no terminal session currently occupies the panel.
+    pub(super) fn run_agent(&self, argv: Vec<String>, directory: PathBuf) -> Result<(), String> {
+        if argv.is_empty() {
+            return Err("No agent command is configured.".to_string());
+        }
+        if !self.state.lifecycle.borrow().is_idle() {
+            return Err(
+                "The embedded terminal already has a session. Close it with the \u{00d7} in the panel, or type exit, and run the agent again."
+                    .to_string(),
+            );
+        }
+        let directory = exact(&directory)?;
+        self.state.widget.set_visible(true);
+        self.restore_height();
+        self.spawn(argv, directory, SessionKind::Agent);
+        self.state.terminal.grab_focus();
+        Ok(())
+    }
+
+    fn spawn(&self, argv: Vec<String>, directory: String, kind: SessionKind) {
+        let Some(generation) = self.state.lifecycle.borrow_mut().request_spawn_kind(kind) else {
             return;
         };
-        // A replacement session must not open onto the dead one's scrollback.
+        // A new session must not open onto stale scrollback.
         self.state.terminal.reset(true, true);
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+        let arguments: Vec<&str> = argv.iter().map(String::as_str).collect();
         let weak = Rc::downgrade(&self.state);
-        let failed_shell = shell.clone();
+        let program = argv.first().cloned().unwrap_or_default();
         let cancellable = gio::Cancellable::new();
+        let callback_cancellable = cancellable.clone();
         self.state
             .spawn_cancellable
             .borrow_mut()
@@ -459,7 +561,7 @@ impl TerminalPanel {
         self.state.terminal.spawn_async(
             vte4::PtyFlags::DEFAULT,
             Some(directory.as_str()),
-            &[shell.as_str()],
+            &arguments,
             &[],
             glib::SpawnFlags::DEFAULT,
             || {},
@@ -472,7 +574,13 @@ impl TerminalPanel {
                     }
                     return;
                 };
-                Self { state }.spawn_finished(generation, result, &failed_shell);
+                Self { state }.spawn_finished(
+                    generation,
+                    kind,
+                    result,
+                    &program,
+                    callback_cancellable.is_cancelled(),
+                );
             },
         );
     }
@@ -480,10 +588,13 @@ impl TerminalPanel {
     fn spawn_finished(
         &self,
         generation: Generation,
+        kind: SessionKind,
         result: Result<glib::Pid, glib::Error>,
-        failed_shell: &str,
+        program: &str,
+        cancelled: bool,
     ) {
         let error = result.as_ref().err().map(ToString::to_string);
+        let spawn_error = result.as_ref().err().cloned();
         let failed = result.is_err();
         let completion = self
             .state
@@ -493,7 +604,7 @@ impl TerminalPanel {
         if failed && !matches!(completion, SpawnCompletion::Stale(_)) {
             tracing::warn!(
                 error = error.as_deref().unwrap_or("unknown spawn error"),
-                shell = failed_shell,
+                %program,
                 "unable to start embedded terminal"
             );
         }
@@ -508,9 +619,21 @@ impl TerminalPanel {
                 terminate(pid);
                 self.state.widget.set_visible(false);
             }
+            SpawnCompletion::AgentCompleted(status) => {
+                self.clear_spawn_cancellable(generation);
+                self.state.terminal.feed(exit_notice(status).as_bytes());
+            }
             SpawnCompletion::BecomeIdle => {
                 self.clear_spawn_cancellable(generation);
-                self.state.widget.set_visible(false);
+                if kind == SessionKind::Agent && !cancelled {
+                    if let Some(error) = spawn_error.as_ref() {
+                        self.state
+                            .terminal
+                            .feed(spawn_failure(program, error).as_bytes());
+                    }
+                } else {
+                    self.state.widget.set_visible(false);
+                }
             }
             SpawnCompletion::Stale(Some(pid)) => terminate(pid),
             SpawnCompletion::Stale(None) => {}
@@ -529,9 +652,18 @@ impl TerminalPanel {
         }
     }
 
-    fn child_exited(&self) {
-        if self.state.lifecycle.borrow_mut().child_exited() == ChildExit::BecameIdle {
-            self.state.widget.set_visible(false);
+    fn child_exited(&self, status: i32) {
+        match self
+            .state
+            .lifecycle
+            .borrow_mut()
+            .child_exited_with_status(status)
+        {
+            ChildExit::BecameIdle => self.state.widget.set_visible(false),
+            ChildExit::AgentCompleted(status) => {
+                self.state.terminal.feed(exit_notice(status).as_bytes());
+            }
+            ChildExit::Recorded | ChildExit::Ignored => {}
         }
     }
 }
@@ -541,6 +673,116 @@ fn terminate(pid: ChildPid) {
         return;
     };
     let _ = rustix::process::kill_process(pid, rustix::process::Signal::HUP);
+}
+
+/// VTE reports a failed execution long after the menu has closed, so the panel
+/// is the only place left to say so.
+fn spawn_failure(program: &str, error: &glib::Error) -> String {
+    let message = error.message();
+    format!(
+        "\r\n\u{1b}[7m {program} could not be started: {message} \u{1b}[0m\r\n\u{1b}[7m Press F4 to close this panel. \u{1b}[0m\r\n"
+    )
+}
+
+/// Shown in the panel itself, where the agent's own output is still visible.
+fn exit_notice(status: i32) -> String {
+    let signalled = status & 0x7f;
+    let describe = if signalled == 0 {
+        format!("exited with status {}", (status >> 8) & 0xff)
+    } else {
+        format!("was terminated by signal {signalled}")
+    };
+    format!("\r\n\u{1b}[7m The agent {describe}. Press F4 to close this panel. \u{1b}[0m\r\n")
+}
+
+/// Splits the configured command into words and places selected paths.
+/// Native paths are only ever passed through exactly: VTE spawns from UTF-8
+/// argv, so a path it cannot represent stops the launch instead of reaching
+/// the agent as a different path.
+pub(super) fn agent_argv(
+    command: &str,
+    directory: &Path,
+    paths: &[PathBuf],
+) -> Result<Vec<String>, String> {
+    exact(directory)?;
+
+    let words = glib::shell_parse_argv(command)
+        .map_err(|error| format!("The configured agent command could not be read: {error}"))?;
+    let mut argv: Vec<String> = Vec::with_capacity(words.len());
+    for word in &words {
+        argv.push(exact(Path::new(word))?);
+    }
+    let Some(program) = argv.first() else {
+        return Err("No agent command is configured. Set one in Settings.".to_string());
+    };
+    argv[0] = resolve_program(program, directory)?;
+    let text: Vec<String> = paths
+        .iter()
+        .map(|path| exact(path))
+        .collect::<Result<_, _>>()?;
+    Ok(place_paths(argv, &text))
+}
+
+/// A path that is not valid UTF-8 cannot cross the spawn boundary unchanged,
+/// and changing it would point the agent at a different file.
+fn exact(path: &Path) -> Result<String, String> {
+    path.to_str().map(str::to_owned).ok_or_else(|| {
+        format!(
+            "\u{201c}{}\u{201d} cannot be passed to a program without changing it",
+            path.display()
+        )
+    })
+}
+
+/// VTE spawns without G_SPAWN_SEARCH_PATH, so the program is resolved here.
+/// A relative command resolves against the folder the agent will run in, not
+/// against whatever directory Strata itself was started from.
+fn resolve_program(program: &str, directory: &Path) -> Result<String, String> {
+    let path = Path::new(program);
+    if path.is_absolute() {
+        return is_executable_file(path)
+            .then(|| program.to_owned())
+            .ok_or_else(|| format!("\u{201c}{program}\u{201d} is not an executable file"));
+    }
+    if program.contains('/') {
+        let candidate =
+            std::path::absolute(directory.join(path)).unwrap_or_else(|_| directory.join(path));
+        return is_executable_file(&candidate)
+            .then(|| exact(&candidate))
+            .transpose()?
+            .ok_or_else(|| {
+                format!(
+                    "\u{201c}{program}\u{201d} is not an executable file in {}",
+                    directory.display()
+                )
+            });
+    }
+    let resolved = super::terminal::find_on_path(std::env::var_os("PATH").as_deref(), program)
+        .ok_or_else(|| format!("\u{201c}{program}\u{201d} was not found on your PATH"))?;
+    exact(Path::new(&resolved))
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .is_ok_and(|data| data.is_file() && data.permissions().mode() & 0o111 != 0)
+}
+
+/// A bare `{}` word becomes one argument per path. Inside a word it produces
+/// one textual argument, and without a placeholder paths follow the command.
+fn place_paths(argv: Vec<String>, text: &[String]) -> Vec<String> {
+    if !argv.iter().skip(1).any(|word| word.contains(PATHS_TOKEN)) {
+        return argv.into_iter().chain(text.iter().cloned()).collect();
+    }
+    let mut placed = Vec::with_capacity(argv.len() + text.len());
+    for (index, word) in argv.into_iter().enumerate() {
+        match () {
+            _ if index == 0 || !word.contains(PATHS_TOKEN) => placed.push(word),
+            _ if word == PATHS_TOKEN => placed.extend(text.iter().cloned()),
+            _ => placed.push(word.replace(PATHS_TOKEN, &text.join(" "))),
+        }
+    }
+    placed
 }
 
 /// Strata sets its monospace family and size on the GTK settings, so the

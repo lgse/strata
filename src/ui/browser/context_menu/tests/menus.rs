@@ -778,3 +778,44 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
         },
     );
 }
+
+#[test]
+fn the_agent_action_appears_only_once_an_agent_is_configured() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::the_agent_action_appears_only_once_an_agent_is_configured",
+        || {
+            let fixture = tempfile::tempdir().expect("normal directory fixture");
+            let manager = crate::ui::theme::ThemeManager::shared();
+            let open_view = || {
+                let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(850)
+                    .build();
+                window.present();
+                view.browser().navigate(Location::local(fixture.path()));
+                wait_until(|| label(&view.widget(), "notes.txt").is_some());
+                view
+            };
+
+            assert!(manager.agent_command().is_empty());
+            let view = open_view();
+            for target in [None, Some("notes.txt"), Some("folder")] {
+                let menu = open_menu(&view, target);
+                assert_actions(&menu, &[], &["Open with AI agent"]);
+                menu.popdown();
+                wait_until(|| menu.parent().is_none());
+            }
+
+            manager.set_agent_command("sh -c 'exit 0'");
+            let view = open_view();
+            for target in [None, Some("notes.txt"), Some("folder")] {
+                let menu = open_menu(&view, target);
+                assert_actions(&menu, &["Open with AI agent"], &[]);
+                menu.popdown();
+                wait_until(|| menu.parent().is_none());
+            }
+        },
+    );
+}

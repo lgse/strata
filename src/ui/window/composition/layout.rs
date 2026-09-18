@@ -101,8 +101,19 @@ pub(super) fn terminal_panel(
     browser: &BrowserView,
     preferences: &Rc<ThemeManager>,
 ) -> TerminalPanel {
-    let browser = browser.clone();
-    TerminalPanel::new(preferences, Rc::new(move || browser.terminal_directory()))
+    let source = browser.clone();
+    let panel = TerminalPanel::new(preferences, Rc::new(move || source.terminal_directory()));
+    let agent_panel = panel.clone();
+    let agent_preferences = preferences.clone();
+    browser.set_agent_handler(Rc::new(move |request| {
+        let argv = crate::ui::terminal_panel::agent_argv(
+            &agent_preferences.agent_command(),
+            &request.directory,
+            &request.paths,
+        )?;
+        agent_panel.run_agent(argv, request.directory)
+    }));
+    panel
 }
 
 pub(super) fn browser_layout(

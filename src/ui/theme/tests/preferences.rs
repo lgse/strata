@@ -63,6 +63,7 @@ fn non_default_preferences() -> Preferences {
         open_folder_after_drop: true,
         release_channel: "nightly".into(),
         default_directory: Some("/fixture/default".into()),
+        agent_command: "fixture-agent --flag".into(),
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
         custom_icons: HashMap::from([(
             "/fixture/folder".into(),
@@ -586,6 +587,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_default_directory(None),
+                |m| m.set_agent_command("other-agent --flag"),
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),

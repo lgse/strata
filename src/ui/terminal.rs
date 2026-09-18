@@ -233,7 +233,7 @@ fn explicit_terminal(path_var: Option<&OsStr>, terminal_var: Option<&OsStr>) -> 
     })
 }
 
-fn find_on_path(path_var: Option<&OsStr>, program: &str) -> Option<OsString> {
+pub(super) fn find_on_path(path_var: Option<&OsStr>, program: &str) -> Option<OsString> {
     if program.contains('/') {
         return is_executable(Path::new(program))
             .then(|| std::path::absolute(program).ok())

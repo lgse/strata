@@ -214,6 +214,155 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
 }
 
 #[test]
+fn agent_command_requires_enter_and_clears_reverted_feedback() {
+    gtk_test(
+        "ui::settings::tests::preferences::agent_command_requires_enter_and_clears_reverted_feedback",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::shared();
+            let (page, _, _) = general_page(manager.clone());
+            let window = gtk::Window::builder()
+                .default_width(800)
+                .default_height(900)
+                .child(&page)
+                .build();
+            window.present();
+            let context = glib::MainContext::default();
+            while context.pending() {
+                context.iteration(false);
+            }
+
+            let entry = descendants::<gtk::Entry>(&page)
+                .into_iter()
+                .find(|entry| entry.has_css_class("form-control"))
+                .expect("agent command entry");
+            let status = descendants::<gtk::Label>(&page)
+                .into_iter()
+                .find(|label| label.has_css_class("settings-status"))
+                .expect("agent command status");
+            let focus_target = descendants::<gtk::Switch>(&page)
+                .into_iter()
+                .next()
+                .expect("focus target");
+            let saved = manager.agent_command();
+            let pending = format!("{saved} --pending");
+
+            gtk::prelude::RootExt::set_focus(&window, Some(&entry));
+            for _ in 0..20 {
+                if entry.has_focus() {
+                    break;
+                }
+                context.iteration(false);
+            }
+            assert!(entry.has_focus(), "agent command entry should take focus");
+
+            entry.set_text(&pending);
+            assert_eq!(manager.agent_command(), saved);
+            assert_eq!(status.text(), "Press Enter to save");
+
+            gtk::prelude::RootExt::set_focus(&window, Some(&focus_target));
+            for _ in 0..20 {
+                if !entry.has_focus() {
+                    break;
+                }
+                context.iteration(false);
+            }
+            assert!(!entry.has_focus(), "focus should leave the entry");
+            assert_eq!(manager.agent_command(), saved);
+            assert_eq!(status.text(), "Press Enter to save");
+
+            entry.set_text(&saved);
+            assert_eq!(status.text(), "");
+
+            entry.set_text(&pending);
+            entry.emit_by_name::<()>("activate", &[]);
+            assert_eq!(manager.agent_command(), pending);
+            assert_eq!(status.text(), "Saved");
+        },
+    );
+}
+
+#[test]
+fn agent_command_external_update_clears_matching_pending_feedback() {
+    gtk_test(
+        "ui::settings::tests::preferences::agent_command_external_update_clears_matching_pending_feedback",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::shared();
+            let (saving_page, _, _) = general_page(manager.clone());
+            let (pending_page, _, _) = general_page(manager.clone());
+            let saving_entry = descendants::<gtk::Entry>(&saving_page)
+                .into_iter()
+                .find(|entry| entry.has_css_class("form-control"))
+                .expect("saving agent command entry");
+            let pending_entry = descendants::<gtk::Entry>(&pending_page)
+                .into_iter()
+                .find(|entry| entry.has_css_class("form-control"))
+                .expect("pending agent command entry");
+            let pending_status = descendants::<gtk::Label>(&pending_page)
+                .into_iter()
+                .find(|label| label.has_css_class("settings-status"))
+                .expect("pending agent command status");
+            let pending = format!("{} --external", manager.agent_command());
+
+            pending_entry.set_text(&pending);
+            assert_eq!(pending_status.text(), "Press Enter to save");
+
+            saving_entry.set_text(&pending);
+            saving_entry.emit_by_name::<()>("activate", &[]);
+
+            assert_eq!(manager.agent_command(), pending);
+            assert_eq!(pending_entry.text(), pending);
+            assert_eq!(pending_status.text(), "");
+        },
+    );
+}
+
+#[test]
+fn agent_command_external_update_preserves_another_pending_edit() {
+    gtk_test(
+        "ui::settings::tests::preferences::agent_command_external_update_preserves_another_pending_edit",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::shared();
+            let (saving_page, _, _) = general_page(manager.clone());
+            let (pending_page, _, _) = general_page(manager.clone());
+            let (clean_page, _, _) = general_page(manager.clone());
+            let entry_for = |page: &gtk::Widget| {
+                descendants::<gtk::Entry>(page)
+                    .into_iter()
+                    .find(|entry| entry.has_css_class("form-control"))
+                    .expect("agent command entry")
+            };
+            let status_for = |page: &gtk::Widget| {
+                descendants::<gtk::Label>(page)
+                    .into_iter()
+                    .find(|label| label.has_css_class("settings-status"))
+                    .expect("agent command status")
+            };
+            let saving_entry = entry_for(&saving_page);
+            let pending_entry = entry_for(&pending_page);
+            let pending_status = status_for(&pending_page);
+            let clean_entry = entry_for(&clean_page);
+            let saved = manager.agent_command();
+            let local = format!("{saved} --local");
+            let external = format!("{saved} --external");
+
+            pending_entry.set_text(&local);
+            assert_eq!(pending_status.text(), "Press Enter to save");
+
+            saving_entry.set_text(&external);
+            saving_entry.emit_by_name::<()>("activate", &[]);
+
+            assert_eq!(manager.agent_command(), external);
+            assert_eq!(pending_entry.text(), local);
+            assert_eq!(pending_status.text(), "Press Enter to save");
+            assert_eq!(clean_entry.text(), external);
+        },
+    );
+}
+
+#[test]
 fn theme_hint_and_channel_controls_follow_external_changes() {
     gtk_test(
         "ui::settings::tests::preferences::theme_hint_and_channel_controls_follow_external_changes",

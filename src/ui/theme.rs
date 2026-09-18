@@ -194,6 +194,10 @@ struct Preferences {
     release_channel: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     default_directory: Option<PathBuf>,
+    /// A command line, shell-word split at use. Empty means no agent is
+    /// configured; Strata never assumes a particular one.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    agent_command: String,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -250,6 +254,7 @@ impl Default for Preferences {
             open_folder_after_drop: false,
             release_channel: default_release_channel(),
             default_directory: None,
+            agent_command: String::new(),
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
         }
@@ -697,6 +702,15 @@ impl ThemeManager {
 
     pub fn set_default_directory(&self, path: Option<PathBuf>) {
         self.preferences.borrow_mut().default_directory = path;
+        self.save_preferences();
+    }
+
+    pub fn agent_command(&self) -> String {
+        self.preferences.borrow().agent_command.clone()
+    }
+
+    pub fn set_agent_command(&self, command: &str) {
+        self.preferences.borrow_mut().agent_command = command.trim().to_string();
         self.save_preferences();
     }
 

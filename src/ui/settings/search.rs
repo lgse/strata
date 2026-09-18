@@ -18,6 +18,12 @@ const TARGETS: &[Target] = &[
         aliases: "startup launch home folder reset",
     },
     Target {
+        id: "agent-command",
+        page: "general",
+        title: "AI agent command",
+        aliases: "terminal embedded agent cli command shell",
+    },
+    Target {
         id: "peeking",
         page: "general",
         title: "Folder peeking",

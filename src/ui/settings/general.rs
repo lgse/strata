@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
+use gtk::glib;
 use gtk::prelude::*;
 
 use crate::{
@@ -13,6 +18,8 @@ use crate::{
         theme::ThemeManager,
     },
 };
+
+const SAVED_NOTICE: Duration = Duration::from_secs(2);
 
 use super::{
     ResponsiveActivationRow, append_heading,
@@ -59,6 +66,9 @@ pub(super) fn general_page(
     let udiskie_row = crate::ui::udiskie_preferences::settings_row();
     super::search::tag(&udiskie_row, "Unlock encrypted volumes");
     desktop.append(&udiskie_row);
+
+    let terminal = super::settings_group(&preferences, "EMBEDDED TERMINAL");
+    append_agent_option(&terminal, &manager);
 
     let startup = super::settings_group(&preferences, "STARTUP");
     append_default_directory_option(&startup, &manager);
@@ -144,6 +154,111 @@ fn append_preference_switch(
         super::indent_row(&row);
     }
     content.append(&row);
+}
+
+fn append_agent_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let entry = gtk::Entry::builder()
+        .text(manager.agent_command())
+        .placeholder_text("No agent configured")
+        .valign(gtk::Align::Center)
+        .width_request(220)
+        .build();
+    entry.add_css_class("form-control");
+    super::super::accessibility::set_label(&entry, "AI agent command");
+
+    // Typing edits nothing until it is committed, so the row has to say which
+    // state it is in; an entry that silently keeps a stale value reads as broken.
+    // Stacked, not beside the field: a narrow Settings panel squeezes a
+    // side-by-side label until it wraps mid-word.
+    let status = gtk::Label::new(None);
+    status.add_css_class("settings-status");
+    status.set_wrap(false);
+    status.set_single_line_mode(true);
+    status.set_halign(gtk::Align::End);
+    status.set_xalign(1.0);
+    let controls = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    controls.set_valign(gtk::Align::Center);
+    controls.append(&entry);
+    controls.append(&status);
+
+    let row = super::control_row(
+        "AI agent command",
+        "Run this command in the embedded terminal for “Open with AI agent”. Selected paths replace {} in the command, or follow it when there is no {}.",
+        &controls,
+    );
+    content.append(&row);
+
+    let saved_notice = Rc::new(Cell::new(0u32));
+    let last_saved = Rc::new(RefCell::new(manager.agent_command()));
+    let show_pending = {
+        let status = status.clone();
+        let manager = manager.clone();
+        let saved_notice = saved_notice.clone();
+        move |entry: &gtk::Entry| {
+            if entry.text() == manager.agent_command() {
+                clear_agent_command_feedback(&status, &saved_notice);
+                return;
+            }
+            show_agent_command_pending_feedback(&status, &saved_notice);
+        }
+    };
+    let commit = {
+        let status = status.clone();
+        let manager = manager.clone();
+        let saved_notice = saved_notice.clone();
+        let last_saved = last_saved.clone();
+        move |entry: &gtk::Entry| {
+            manager.set_agent_command(&entry.text());
+            let saved = manager.agent_command();
+            last_saved.replace(saved.clone());
+            entry.set_text(&saved);
+            status.add_css_class("saved");
+            status.set_text("Saved");
+            let generation = saved_notice.get().wrapping_add(1);
+            saved_notice.set(generation);
+            let status = status.clone();
+            let saved_notice = saved_notice.clone();
+            glib::timeout_add_local_once(SAVED_NOTICE, move || {
+                if saved_notice.get() == generation {
+                    status.set_text("");
+                }
+            });
+        }
+    };
+
+    entry.connect_changed(show_pending);
+    let activated = commit.clone();
+    entry.connect_activate(move |entry| activated(entry));
+
+    let status_for_binding = status.clone();
+    let saved_notice_for_binding = saved_notice.clone();
+    let last_saved_for_binding = last_saved.clone();
+    manager.bind_preference(&entry, ThemeManager::agent_command, move |widget, value| {
+        if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
+            let text = entry.text();
+            let was_clean = text == *last_saved_for_binding.borrow();
+            last_saved_for_binding.replace(value.clone());
+            if text == value {
+                clear_agent_command_feedback(&status_for_binding, &saved_notice_for_binding);
+            } else if was_clean {
+                entry.set_text(&value);
+            } else {
+                show_agent_command_pending_feedback(&status_for_binding, &saved_notice_for_binding);
+            }
+        }
+    });
+}
+
+fn show_agent_command_pending_feedback(status: &gtk::Label, saved_notice: &Cell<u32>) {
+    saved_notice.set(saved_notice.get().wrapping_add(1));
+    status.remove_css_class("saved");
+    status.set_text("Press Enter to save");
+}
+
+fn clear_agent_command_feedback(status: &gtk::Label, saved_notice: &Cell<u32>) {
+    saved_notice.set(saved_notice.get().wrapping_add(1));
+    status.remove_css_class("saved");
+    status.set_text("");
 }
 
 fn append_default_directory_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
