@@ -1444,6 +1444,22 @@ impl BrowserView {
         self.state.browser.undo_last_trash()
     }
 
+    pub fn redo_last_operation(&self) -> bool {
+        if let Some((generation, _, _)) = self.state.browser.pending_redo_rename() {
+            return self.state.browser.redo_rename(generation);
+        }
+        if let Some((generation, records)) = self.state.browser.pending_redo_move() {
+            return self.state.redo_move(generation, records);
+        }
+        if let Some((generation, locations)) = self.state.browser.pending_redo_copy() {
+            return self.state.browser.redo_copy(generation, locations);
+        }
+        if let Some((generation, locations)) = self.state.browser.pending_redo_trash() {
+            return self.state.redo_trash(generation, locations);
+        }
+        false
+    }
+
     pub fn show_filter(&self) -> bool {
         self.show_filter_with_optional_query(None)
     }

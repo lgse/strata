@@ -425,6 +425,17 @@ fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bo
         && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
+fn is_redo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    let modifiers = modifiers
+        & (gtk::gdk::ModifierType::CONTROL_MASK
+            | gtk::gdk::ModifierType::SHIFT_MASK
+            | gtk::gdk::ModifierType::ALT_MASK);
+    (modifiers == gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK
+        && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z))
+        || (modifiers == gtk::gdk::ModifierType::CONTROL_MASK
+            && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y))
+}
+
 fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         && !modifiers
