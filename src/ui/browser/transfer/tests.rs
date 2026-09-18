@@ -796,6 +796,23 @@ fn cross_device_confirmation_reads_the_live_drop_open_preference() {
                         observed.set(true);
                     }
                 });
+                manager.set_open_folder_after_drop(false);
+                view.state.commit_file_drop(
+                    Location::local(&destination),
+                    vec![Location::local(&source)],
+                    DropCommit::Ask {
+                        default: TransferKind::Copy,
+                        volume: VolumeRelation::Different,
+                    },
+                );
+                assert!(wait_for_modal_layer(&overlay));
+                click_button(&overlay, "Cancel");
+                assert!(source.exists());
+                assert!(!destination.join("file.txt").exists());
+                assert!(
+                    !view.state.suppress_scroll_after_drop.get(),
+                    "cancelling confirmation must not suppress subsequent focus and reveal"
+                );
                 manager.set_open_folder_after_drop(!enabled);
                 view.state.commit_file_drop(
                     Location::local(&destination),

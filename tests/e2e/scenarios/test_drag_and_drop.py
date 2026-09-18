@@ -325,8 +325,6 @@ def test_dragging_from_a_clipped_column_in_a_narrow_window(strata):
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 def test_dragging_a_file_to_the_strip_edge_scrolls_columns_in(strata):
-    """A drag held at the strip edge scrolls off-screen columns into reach."""
-
     fixture = strata.fixture
     nested = fixture.path("documents/deep/deeper")
     nested.mkdir(parents=True)
@@ -376,8 +374,6 @@ def test_dragging_a_file_to_the_strip_edge_scrolls_columns_in(strata):
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 def test_dragging_a_file_to_the_column_edge_scrolls_its_listing(strata):
-    """A drag held at a column's listing edge scrolls that column only."""
-
     fixture = strata.fixture
     documents = fixture.path("documents")
     for index in range(300):
@@ -414,8 +410,6 @@ def test_dragging_a_file_to_the_column_edge_scrolls_its_listing(strata):
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
 def test_dropping_on_partially_visible_column_moves_file_without_jumping(strata):
-    """Dropping a file onto a partially visible column moves the file and keeps view stable."""
-
     fixture = strata.fixture
     deep = fixture.path("documents/deep")
     deep.mkdir(parents=True)

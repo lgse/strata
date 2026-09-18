@@ -1,6 +1,4 @@
 // SPDX-License-Identifier: MIT
-//
-//! Edge autoscroll while a file drag hovers the column strip.
 
 use crate::ui::browser::ViewState;
 use crate::ui::scrolling::advance;
@@ -18,10 +16,7 @@ const RAMP: Duration = Duration::from_millis(350);
 const FRAME: Duration = Duration::from_millis(16);
 const MAX_FRAME: Duration = Duration::from_millis(50);
 
-/// Tracks a file drag over the column strip. Positions stay in the scrolled
-/// window's coordinates, which do not move while the content scrolls — the
-/// blank strip past the last column carries no drop target, so the strip's own
-/// `DropControllerMotion` is the only source of drag positions there.
+// Scroller-relative coordinates stay fixed as content moves beneath the drag.
 pub(in crate::ui::browser) struct DragAutoscroll {
     state: Weak<ViewState>,
     controller: glib::WeakRef<gtk::DropControllerMotion>,
@@ -33,8 +28,7 @@ pub(in crate::ui::browser) struct DragAutoscroll {
 }
 
 impl ViewState {
-    /// One controller watches the whole strip, including headers and the blank
-    /// area no drop target covers.
+    // Blank strip space has no drop target, so track motion on the scroller.
     pub(in crate::ui::browser) fn install_drag_autoscroll(self: &Rc<Self>) {
         let controller = gtk::DropControllerMotion::new();
         let tracker = Rc::new(DragAutoscroll {
@@ -110,8 +104,6 @@ impl DragAutoscroll {
         })
     }
 
-    /// Applies one frame of edge scrolling, reporting whether the tick should
-    /// keep running.
     fn apply_scroll(&self, dt: Duration) -> bool {
         let Some(state) = self.state.upgrade() else {
             return false;
@@ -217,8 +209,6 @@ impl DragAutoscroll {
     }
 }
 
-/// Signed edge proximity in -1..=1 for a coordinate inside a `size`-long
-/// viewport: 0 outside the margin, smoothly easing to ±1 at and near the edge.
 fn edge_direction(position: f64, size: f64) -> f64 {
     if size <= EDGE_MARGIN * 2.0 {
         return 0.0;
@@ -244,8 +234,6 @@ fn edge_direction(position: f64, size: f64) -> f64 {
     0.0
 }
 
-/// Edge direction inside a column's listing band. The header, the destination
-/// hint, and the strip around the listing never scroll it.
 pub(super) fn listing_band_direction(y: f64, band_top: f64, band_height: f64) -> f64 {
     if y < band_top || y >= band_top + band_height {
         return 0.0;
@@ -253,10 +241,6 @@ pub(super) fn listing_band_direction(y: f64, band_top: f64, band_height: f64) ->
     edge_direction(y - band_top, band_height)
 }
 
-/// Smooth speed in px/s for an edge `direction`:
-/// Starts with zero velocity at the boundary and uses quadratic proximity
-/// response for fine control near the inner margin, combined with a smooth
-/// dwell ramp (Hermite curve) so a parked drag eases in smoothly.
 pub(super) fn scroll_speed(direction: f64, dwell: Duration, max_speed: f64) -> f64 {
     let proximity = direction.abs().clamp(0.0, 1.0);
     if proximity <= 0.0 {
@@ -268,8 +252,6 @@ pub(super) fn scroll_speed(direction: f64, dwell: Duration, max_speed: f64) -> f
     direction.signum() * speed
 }
 
-/// Whether the adjustment can still move in `direction`; an exhausted edge
-/// stops ticking instead of spinning idle.
 fn advanceable(adjustment: &gtk::Adjustment, direction: f64) -> bool {
     if direction < 0.0 {
         adjustment.value() > adjustment.lower()

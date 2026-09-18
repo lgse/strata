@@ -97,9 +97,6 @@ impl ViewState {
         self.stop_drag_autoscroll();
         self.horizontal_scroll_generation
             .set(self.horizontal_scroll_generation.get().saturating_add(1));
-        if !crate::ui::theme::ThemeManager::shared().open_folder_after_drop() {
-            self.suppress_scroll_after_drop.set(true);
-        }
         let sources = transferable_drop_sources(&destination, &sources);
         if sources.is_empty() {
             self.suppress_scroll_after_drop.set(false);
@@ -277,6 +274,9 @@ impl ViewState {
         reveal: bool,
     ) {
         if collisions.is_empty() {
+            if !accepted.is_empty() {
+                self.suppress_scroll_after_drop.set(!reveal);
+            }
             self.browser
                 .transfer(destination, accepted, move_sources, reveal);
             return;
