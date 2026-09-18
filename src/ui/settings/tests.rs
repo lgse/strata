@@ -579,7 +579,22 @@ fn restart_waiter_ignores_path_shadowing_and_preserves_application_path() {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("executable fixture");
     }
 
-    let status = restart_waiter(&application, u32::MAX)
+    // The waiter loops until its target process is gone. A PID that is out of
+    // range is not a portable way to say "already gone": bash, which some
+    // distributions install as /bin/sh, wraps it and lets `kill -0` report every
+    // process as alive, so the loop never exits. A reaped PID is gone by
+    // definition and keeps the test meaningful on every shell.
+    let gone_pid = {
+        let mut child = crate::trusted_command::command("true")
+            .expect("trusted true")
+            .spawn()
+            .expect("spawn a short-lived process");
+        let pid = child.id();
+        child.wait().expect("reap the short-lived process");
+        pid
+    };
+
+    let status = restart_waiter(&application, gone_pid)
         .expect("trusted restart helpers")
         .env("PATH", dir.path())
         .env("HIJACK_MARKER", &hijacked)
