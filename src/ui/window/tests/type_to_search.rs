@@ -75,10 +75,14 @@ fn exercise_type_to_search() {
             shortcuts: ShortcutFooter::new(BrowserMode::Columns),
         },
     );
-    let keys = window
-        .observe_controllers()
-        .item(0)
-        .and_downcast::<gtk::EventControllerKey>()
+    let controllers = window.observe_controllers();
+    let keys = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .next()
         .expect("keyboard controller");
     window.present();
     browser.navigate(Location::local(fixture.path()));
