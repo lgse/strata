@@ -1118,10 +1118,6 @@ impl PreviewState {
                     media.set_muted(muted);
                     self.append_media_controls(&media, &preferences, &section, &center_play, false);
                 }
-                // Autoplay is off by default: opening a preview should not start
-                // playback/sound on its own. `play_or_defer` also queues playback to
-                // resume once a resized-hidden preview becomes visible again, so it
-                // must still run when autoplay is on even while suspended.
                 if preferences.preview_autoplay() {
                     self.sizing.play_or_defer(&media);
                 } else {

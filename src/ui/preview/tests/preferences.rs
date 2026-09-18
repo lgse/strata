@@ -34,13 +34,13 @@ fn synthetic_video(path: &str) -> SandboxedMedia {
     }
 }
 
-fn render_video(drawer: &PreviewDrawer, request_id: u64, name: &str, path: &str) {
+fn render_media(drawer: &PreviewDrawer, request_id: u64, content_type: &str) {
     drawer.state.render(crate::services::Preview {
         request_id: crate::services::PreviewRequestId(request_id),
-        entry: media_entry(name),
-        content_type: "video/mp4".into(),
+        entry: media_entry("media"),
+        content_type: content_type.into(),
         content: crate::services::PreviewContent::SandboxedMedia {
-            media: synthetic_video(path),
+            media: synthetic_video("/synthetic-media"),
         },
     });
 }
@@ -339,7 +339,7 @@ fn autoplay_preference_gates_new_media_previews_and_defaults_off() {
             assert!(!manager.preview_autoplay(), "autoplay is off by default");
             let drawer = PreviewDrawer::new(Rc::new(super::NoopPreviewProvider), true);
 
-            render_video(&drawer, 1, "clip.mp4", "/synthetic-video.mp4");
+            render_media(&drawer, 1, "video/mp4");
             let media = drawer.state.media.borrow().clone().expect("media stream");
             let decoded = media
                 .downcast_ref::<crate::ui::media::DecodedMedia>()
@@ -364,15 +364,74 @@ fn autoplay_preference_gates_new_media_previews_and_defaults_off() {
                 "the play affordance must be visible while paused"
             );
 
+            center_play.emit_clicked();
+            crate::ui::media::tests::wait(|| media.is_playing() && media.timestamp() > 0);
+            assert!(!center_play.is_visible());
+
             manager.set_preview_autoplay(true);
             drawer.state.clear_content();
-            render_video(&drawer, 2, "clip2.mp4", "/synthetic-video-2.mp4");
+            render_media(&drawer, 2, "video/mp4");
             let media = drawer.state.media.borrow().clone().expect("second stream");
             let decoded = media
                 .downcast_ref::<crate::ui::media::DecodedMedia>()
                 .expect("raw texture player");
             crate::ui::media::tests::use_test_decoder(decoded, false, 2_000_000);
             crate::ui::media::tests::wait(|| media.is_playing() && media.timestamp() > 0);
+        },
+    );
+}
+
+#[test]
+fn saved_autoplay_and_live_changes_apply_to_reopened_media_in_two_windows() {
+    gtk_test(
+        "ui::preview::tests::preferences::saved_autoplay_and_live_changes_apply_to_reopened_media_in_two_windows",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let manager = ThemeManager::shared();
+            assert!(manager.preview_autoplay());
+            let drawers = [true, false]
+                .map(|browser| PreviewDrawer::new(Rc::new(super::NoopPreviewProvider), browser));
+            let windows = drawers
+                .each_ref()
+                .map(|drawer| gtk::Window::builder().child(&drawer.widget()).build());
+            for content_type in ["video/mp4", "audio/mpeg", "image/gif"] {
+                for autoplay in [true, false, true] {
+                    manager.set_preview_autoplay(autoplay);
+                    for drawer in &drawers {
+                        drawer.state.clear_content();
+                        render_media(drawer, 1, content_type);
+                        let media = drawer.state.media.borrow().clone().expect("media stream");
+                        let decoded = media
+                            .downcast_ref::<crate::ui::media::DecodedMedia>()
+                            .expect("raw texture player");
+                        crate::ui::media::tests::use_test_decoder(
+                            decoded,
+                            content_type == "audio/mpeg",
+                            30_000_000,
+                        );
+                        crate::ui::media::tests::wait(|| media.is_prepared());
+                        assert_eq!(media.is_loop(), content_type == "image/gif");
+                        assert_eq!(media.is_playing(), autoplay, "{content_type}");
+                    }
+                    manager.set_preview_autoplay(!autoplay);
+                    for drawer in &drawers {
+                        assert_eq!(
+                            drawer
+                                .state
+                                .media
+                                .borrow()
+                                .as_ref()
+                                .expect("open player")
+                                .is_playing(),
+                            autoplay,
+                            "changing the preference must not interrupt an open player",
+                        );
+                    }
+                }
+            }
+            for window in windows {
+                window.close();
+            }
         },
     );
 }
