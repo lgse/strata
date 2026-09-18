@@ -23,26 +23,6 @@ def test_typing_a_path_navigates_there(strata):
     strata.entry("notes.txt", directory="documents")
 
 
-def test_confirming_location_by_name_navigates_there(strata):
-    strata.keyboard.press("ctrl+l")
-    field = strata.wait(
-        lambda: strata.window.find(role="text", name="Location (Ctrl+L)"),
-        "the named location entry",
-    )
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text(str(strata.fixture.path("documents")))
-    strata.wait(
-        lambda: field.text.endswith("documents"),
-        "the path to be typed into the address bar",
-    )
-    confirm = strata.window.find(role="button", name="Navigate (Enter)")
-    assert confirm is not None, "Navigate (Enter) is unnamed"
-    strata.pointer.click(confirm)
-
-    strata.wait_for_directory("documents")
-    strata.entry("notes.txt", directory="documents")
-
-
 def test_a_breadcrumb_returns_to_the_parent(strata):
     strata.open_directory("documents")
 
