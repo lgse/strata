@@ -282,7 +282,7 @@ fn a_partial_copy_undo_keeps_the_destinations_still_to_remove() {
     push_pending_undo(UndoEntry::Copy(vec![first.clone(), second.clone()]));
     let (generation, _) = claim_pending_undo(None).expect("undo claim");
 
-    mark_undo_item_completed(generation, &first);
+    mark_replay_item_completed(false, generation, &first);
     finish_undo(generation, false);
 
     assert_eq!(pending_undo_entry(), Some(UndoEntry::Copy(vec![second])));
@@ -393,7 +393,7 @@ fn an_undo_claim_from_an_earlier_operation_is_rejected() {
         current: Location::local("/fixture/archive/report.txt"),
     };
     push_pending_undo(UndoEntry::Move(vec![record.clone()]));
-    let (stale_generation, _) = peek_pending_undo().expect("pending undo");
+    let (stale_generation, _) = peek_replay(false).expect("pending undo");
     push_pending_undo(UndoEntry::Trash(vec![Location::local("/fixture/note.txt")]));
 
     assert!(!browser.undo_move(
@@ -458,8 +458,8 @@ fn a_partial_move_undo_does_not_retry_items_excluded_before_transfer() {
         conflict: TransferConflict::FailIfExists,
     });
 
-    retain_pending_move_items(generation, &submitted);
-    mark_undo_item_completed(generation, &completed.current);
+    retain_replay_move_items(false, generation, &submitted);
+    mark_replay_item_completed(false, generation, &completed.current);
     finish_undo(generation, false);
 
     assert_eq!(pending_undo_entry(), Some(UndoEntry::Move(vec![retryable])));
@@ -536,7 +536,7 @@ fn failed_and_partial_undo_operations_can_be_retried() {
     push_pending_undo(UndoEntry::Trash(vec![first.clone(), second.clone()]));
     let (generation, _) = claim_pending_undo(None).expect("undo claim");
 
-    mark_undo_item_completed(generation, &first);
+    mark_replay_item_completed(false, generation, &first);
     finish_undo(generation, false);
 
     assert_eq!(
@@ -1017,7 +1017,7 @@ fn a_partial_merge_undo_keeps_the_paths_still_to_revert() {
     });
     let (generation, _) = claim_pending_undo(None).expect("undo claim");
 
-    mark_undo_item_completed(generation, &first);
+    mark_replay_item_completed(false, generation, &first);
     finish_undo(generation, false);
 
     assert_eq!(
@@ -1085,6 +1085,181 @@ fn a_completed_compression_records_the_archive_for_undo() {
         Some(UndoEntry::Copy(vec![Location::local(
             "/fixture/report.zip"
         )]))
+    );
+}
+
+#[test]
+fn an_undone_trash_operation_can_be_redone() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    browser.delete(vec![fixture_entry("/fixture/report.txt")], false);
+
+    assert!(browser.undo_last_trash());
+    assert_eq!(pending_undo_entry(), None);
+    assert_eq!(
+        pending_redo_entry(),
+        Some(UndoEntry::Trash(vec![location.clone()]))
+    );
+
+    let (generation, locations) = browser.pending_redo_trash().expect("pending redo trash");
+    UNDO_COPY_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    assert!(browser.redo_trash(generation, locations));
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![location.clone()]))
+    );
+    UNDO_COPY_REQUESTS.with(|requests| {
+        assert_eq!(&*requests.borrow(), &vec![vec![location]]);
+    });
+}
+
+#[test]
+fn a_new_operation_clears_the_redo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.delete(vec![fixture_entry("/fixture/report.txt")], false);
+    assert!(browser.undo_last_trash());
+    assert!(pending_redo_entry().is_some());
+
+    browser.delete(vec![fixture_entry("/fixture/note.txt")], false);
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![Location::local("/fixture/note.txt")]))
+    );
+}
+
+#[test]
+fn an_undone_move_can_be_redone() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+        true,
+    );
+    let record = MoveRecord {
+        original: Location::local("/fixture/report.txt"),
+        current: Location::local("/fixture/archive/report.txt"),
+    };
+
+    let (generation, records) = browser.pending_undo_move().expect("pending undo move");
+    assert!(
+        browser.undo_move(
+            generation,
+            records
+                .into_iter()
+                .map(|record| UndoMoveItem {
+                    record,
+                    conflict: TransferConflict::FailIfExists,
+                })
+                .collect()
+        )
+    );
+    assert_eq!(
+        pending_redo_entry(),
+        Some(UndoEntry::Move(vec![record.clone()]))
+    );
+
+    let (generation, records) = browser.pending_redo_move().expect("pending redo move");
+    UNDO_MOVE_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    assert!(
+        browser.redo_move(
+            generation,
+            records
+                .into_iter()
+                .map(|record| UndoMoveItem {
+                    record,
+                    conflict: TransferConflict::FailIfExists,
+                })
+                .collect()
+        )
+    );
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Move(vec![record.clone()]))
+    );
+    // The redo replays the forward move original -> current through the
+    // undo_move request with swapped endpoints.
+    UNDO_MOVE_REQUESTS.with(|requests| {
+        assert_eq!(
+            &*requests.borrow(),
+            &vec![vec![MoveRecord {
+                original: record.current,
+                current: record.original,
+            }]]
+        );
+    });
+}
+
+#[test]
+fn an_undone_copy_can_be_redone() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let created = Location::local("/fixture/archive/report.txt");
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+        true,
+    );
+
+    let (generation, locations) = browser.pending_undo_copy().expect("pending undo copy");
+    assert!(browser.undo_copy(generation, locations));
+    assert_eq!(
+        pending_redo_entry(),
+        Some(UndoEntry::Copy(vec![created.clone()]))
+    );
+
+    let (generation, locations) = browser.pending_redo_copy().expect("pending redo copy");
+    assert!(browser.redo_copy(generation, locations));
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Copy(vec![created])));
+}
+
+#[test]
+fn a_put_back_can_be_retrashed_and_redone() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let destination = Location::local("/fixture/report.txt");
+    let mut trash_entry = fixture_entry("/fixture/report.txt");
+    trash_entry.location = Location::uri("trash:///report.txt");
+    browser.restore(vec![RestoreTrashItem {
+        entry: trash_entry,
+        destination: PathBuf::from("/fixture/report.txt"),
+    }]);
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Copy(vec![destination.clone()]))
+    );
+    let (generation, locations) = browser.pending_undo_copy().expect("pending undo copy");
+    assert!(browser.undo_copy(generation, locations));
+    assert_eq!(
+        pending_redo_entry(),
+        Some(UndoEntry::Copy(vec![destination.clone()]))
+    );
+
+    let (generation, locations) = browser.pending_redo_copy().expect("pending redo copy");
+    assert!(browser.redo_copy(generation, locations));
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Copy(vec![destination]))
     );
 }
 
@@ -1210,6 +1385,36 @@ fn undoing_a_trash_delete_does_not_record_the_restore_it_performed() {
 }
 
 #[test]
+fn a_partial_undo_only_redoes_the_completed_items() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let first = Location::local("/fixture/first.txt");
+    let second = Location::local("/fixture/second.txt");
+    push_pending_undo(UndoEntry::Copy(vec![first.clone(), second.clone()]));
+    let (generation, claimed) = claim_pending_undo(None).expect("undo claim");
+    let request_id = browser.begin_operation();
+    browser.undo_claim.replace(Some((generation, claimed)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::CompletedWithErrors {
+        request_id,
+        deleted_locations: vec![first.clone()],
+        retryable_locations: Vec::new(),
+        has_non_retryable_failures: true,
+        message: "one copy could not be removed".into(),
+    });
+
+    assert_eq!(
+        pending_redo_entry(),
+        Some(UndoEntry::Copy(vec![first.clone()]))
+    );
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Copy(vec![second.clone()]))
+    );
+}
+
+#[test]
 fn a_replaced_copy_records_the_overwritten_original_for_undo() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
@@ -1287,4 +1492,89 @@ fn a_replaced_move_keeps_the_move_undo_record() {
         }])),
         "a move-replace restores the moved item to its source; the original stays in Trash"
     );
+}
+
+#[test]
+fn a_failed_undo_offers_no_redo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    push_pending_undo(UndoEntry::Trash(vec![location.clone()]));
+    let (generation, claimed) = claim_pending_undo(None).expect("undo claim");
+    let request_id = browser.begin_operation();
+    browser.undo_claim.replace(Some((generation, claimed)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Failed {
+        request_id,
+        message: "restore failed".into(),
+    });
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Trash(vec![location])));
+}
+
+#[test]
+fn an_undone_rename_can_be_redone() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let expected = rename_undo_entry();
+    push_pending_undo(expected.clone());
+
+    let (generation, _, _) = browser.pending_undo_rename().expect("pending undo rename");
+    assert!(browser.undo_rename(generation));
+    assert_eq!(pending_redo_entry(), Some(expected.clone()));
+
+    let (generation, _, _) = browser.pending_redo_rename().expect("pending redo rename");
+    UNDO_RENAME_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    assert!(browser.redo_rename(generation));
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(pending_undo_entry(), Some(expected));
+    UNDO_RENAME_REQUESTS.with(|requests| {
+        assert_eq!(
+            &*requests.borrow(),
+            &vec![(
+                Location::local("/fixture/original.txt"),
+                Location::local("/fixture/renamed.txt"),
+            )]
+        );
+    });
+}
+
+#[test]
+fn a_failed_rename_undo_offers_no_redo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let expected = rename_undo_entry();
+    push_pending_undo(expected.clone());
+    let (generation, claimed) = claim_pending_undo(None).expect("undo claim");
+    let request_id = browser.begin_operation();
+    browser.undo_claim.replace(Some((generation, claimed)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Failed {
+        request_id,
+        message: "rename failed".into(),
+    });
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(pending_undo_entry(), Some(expected));
+}
+
+#[test]
+fn another_browser_can_redo_the_undone_operation() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let other = Browser::new(Rc::new(FakeFileSource));
+    other.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    browser.delete(vec![fixture_entry("/fixture/report.txt")], false);
+
+    assert!(browser.undo_last_trash());
+    let (generation, locations) = other.pending_redo_trash().expect("shared pending redo");
+    assert!(other.redo_trash(generation, locations));
+
+    assert_eq!(pending_redo_entry(), None);
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Trash(vec![location])));
 }

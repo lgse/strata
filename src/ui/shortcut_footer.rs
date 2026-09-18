@@ -19,7 +19,10 @@ const FILES: &[Shortcut] = &[
     ("Ctrl+D", "Duplicate selected items"),
     ("Delete", "Move selected items to Trash, when supported"),
     ("Shift+Delete", "Permanently delete selected items"),
-    ("Ctrl+Z", "Undo the last file operation"),
+    (
+        "Ctrl+Z / Ctrl+Shift+Z",
+        "Undo / redo the last file operation",
+    ),
     ("F2 / Ctrl+R", "Rename"),
     ("Ctrl+Shift+N", "Create a folder"),
     ("Ctrl+A", "Select all items in the focused pane"),
