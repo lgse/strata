@@ -133,7 +133,7 @@ pub(super) fn install(
     let weak = Rc::downgrade(&palette);
     keys.connect_key_pressed(move |_, key, _, modifiers| {
         weak.upgrade()
-            .filter(|palette| palette.layer.is_visible())
+            .filter(|palette| palette.owns_keyboard())
             .map_or(glib::Propagation::Proceed, |palette| {
                 palette.key(key, modifiers)
             })
@@ -149,12 +149,21 @@ pub(super) fn install(
 }
 
 impl Palette {
+    fn owns_keyboard(&self) -> bool {
+        self.window
+            .upgrade()
+            .and_then(|window| super::super::visible_modal_layer(&window))
+            .is_some_and(|layer| layer == self.layer)
+    }
+
     fn show(&self) {
         let Some(window) = self.window.upgrade() else {
             return;
         };
         if self.layer.is_visible() {
-            self.hide();
+            if self.owns_keyboard() {
+                self.hide();
+            }
             return;
         }
         if super::super::visible_modal_layer(&window).is_some()
@@ -332,7 +341,7 @@ impl Palette {
                     if let Some(row) = self.list.row_at_index(next) {
                         self.list.select_row(Some(&row));
                         row.grab_focus();
-                        self.field.grab_focus();
+                        self.field.grab_focus_without_selecting();
                     }
                 }
             }

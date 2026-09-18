@@ -182,6 +182,63 @@ fn palette_file_commands_keep_selection_and_disabled_commands_do_not_run() {
 }
 
 #[test]
+fn palette_defers_keyboard_to_a_newer_error_dialog() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_defers_keyboard_to_a_newer_error_dialog",
+        || {
+            let fixture = Fixture::new();
+            let original_mode = fixture.content.browser.view_mode();
+            let layer = search(&fixture, "Switch to Icons");
+            crate::ui::modal::show_error_dialog(
+                &fixture.window,
+                "Unable to complete operation",
+                "Background copy failed",
+            );
+            let error = super::super::super::visible_modal_layer(&fixture.window)
+                .expect("foreground error dialog");
+            assert_ne!(error, layer);
+            for key in [Key::Return, Key::Up, Key::Down, Key::Escape] {
+                assert!(
+                    !press(&fixture.window, key, ModifierType::empty()),
+                    "window controllers must leave the key to the foreground dialog"
+                );
+            }
+            fixture
+                .window
+                .lookup_action("command-palette")
+                .expect("palette action")
+                .activate(None);
+            assert!(layer.is_visible());
+            assert_eq!(fixture.content.browser.view_mode(), original_mode);
+            let field = descendant::<gtk::Entry>(&layer).expect("palette search field");
+            assert_eq!(field.text(), "Switch to Icons");
+
+            let controllers = error.observe_controllers();
+            assert!(
+                (0..controllers.n_items())
+                    .filter_map(|index| {
+                        controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                    })
+                    .any(|keys| keys.emit_by_name::<bool>(
+                        "key-pressed",
+                        &[&Key::Escape, &0u32, &ModifierType::empty()],
+                    ))
+            );
+            wait_for(|| error.parent().is_none());
+            assert!(layer.is_visible());
+            assert_eq!(field.text(), "Switch to Icons");
+            assert!(field.grab_focus_without_selecting());
+            assert!(press(&fixture.window, Key::Return, ModifierType::empty()));
+            assert!(!layer.is_visible());
+            assert_eq!(fixture.content.browser.view_mode(), BrowserMode::Icons);
+            fixture.close();
+        },
+    );
+}
+
+#[test]
 fn palette_undo_becomes_available_after_background_copy_completes() {
     gtk_test(
         "ui::window::composition::tests::palette::palette_undo_becomes_available_after_background_copy_completes",

@@ -175,6 +175,9 @@ pub(super) fn matches(query: &str) -> Vec<usize> {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase();
+    if query.is_empty() {
+        return (0..COMMANDS.len()).collect();
+    }
     let mut matches: Vec<_> = COMMANDS
         .iter()
         .enumerate()
@@ -191,7 +194,7 @@ pub(super) fn matches(query: &str) -> Vec<usize> {
 }
 
 fn score(query: &str, text: &str) -> Option<usize> {
-    if query.is_empty() || query == text {
+    if query == text {
         return Some(0);
     }
     if text.starts_with(query) {

@@ -28,7 +28,14 @@ def run_command(strata, query):
 
 def test_palette_keyboard_recent_commands_and_settings_handoff(strata):
     strata.select_entry_with_keyboard("todo.txt")
-    field = open_palette(strata, "Switch to Icons")
+    field = open_palette(strata, "term")
+    for direction, character, expected in [("Down", "i", "termi"), ("Up", "n", "termin")]:
+        strata.keyboard.press(direction)
+        strata.keyboard.type_text(character)
+        strata.wait(lambda: field.text == expected, "typing extends the query after navigation")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("Switch to Icons")
+    strata.wait(lambda: field.text == "Switch to Icons", "view command query")
     strata.keyboard.press("ctrl+k")
     strata.wait(lambda: field.has_state("focused"), "palette retains keyboard ownership")
     assert strata.window.find(name="Search files and folders…") is None
