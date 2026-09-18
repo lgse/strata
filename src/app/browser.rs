@@ -1342,6 +1342,18 @@ impl Browser {
         state.entry_at(parent_depth, position).into_iter().collect()
     }
 
+    /// Entries loaded in any open column whose display name is in `names`.
+    pub fn entries_named(&self, names: &HashSet<String>) -> Vec<FileEntry> {
+        self.state
+            .borrow()
+            .columns
+            .iter()
+            .flat_map(|column| column.entries.iter())
+            .filter(|entry| names.contains(&entry.display_name))
+            .cloned()
+            .collect()
+    }
+
     pub fn set_selection(&self, depth: usize, positions: &[usize], focused: Option<usize>) {
         let mut state = self.state.borrow_mut();
         if state.set_selection(depth, positions, focused) {
@@ -1663,6 +1675,17 @@ impl Browser {
                 }),
             ) => Some((generation, current, original)),
             (_, UndoEntry::Trash(_) | UndoEntry::Move(_) | UndoEntry::Copy(_)) => None,
+        }
+    }
+
+    /// Original locations of the latest trash operation still awaiting undo.
+    pub fn pending_undo_trash(&self) -> Option<Vec<Location>> {
+        if self.current_operation.get().is_some() {
+            return None;
+        }
+        match peek_pending_undo()? {
+            (_, UndoEntry::Trash(locations)) => Some(locations),
+            (_, UndoEntry::Move(_) | UndoEntry::Copy(_) | UndoEntry::Rename(_)) => None,
         }
     }
 

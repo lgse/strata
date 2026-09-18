@@ -34,6 +34,56 @@ fn a_completed_trash_operation_can_be_undone_once() {
 }
 
 #[test]
+fn pending_trash_undo_reports_original_locations_until_claimed() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    let entry = FileEntry {
+        location: location.clone(),
+        thumbnail_path: None,
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+    };
+
+    browser.delete(vec![entry], false);
+
+    assert_eq!(browser.pending_undo_trash(), Some(vec![location]));
+    // Peeking does not claim the entry.
+    assert!(browser.pending_undo_trash().is_some());
+    assert!(browser.undo_last_trash());
+    assert_eq!(browser.pending_undo_trash(), None);
+}
+
+#[test]
+fn entries_named_returns_loaded_entries_matching_display_names() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    let entries = browser.entries_named(&HashSet::from(["child".to_owned()]));
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["child"]
+    );
+    assert!(
+        browser
+            .entries_named(&HashSet::from(["missing".to_owned()]))
+            .is_empty()
+    );
+}
+
+#[test]
 fn another_browser_can_undo_the_latest_trash_operation() {
     let deleting_browser = Browser::new(Rc::new(FakeFileSource));
     deleting_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));

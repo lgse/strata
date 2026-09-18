@@ -73,29 +73,33 @@ pub(super) fn collect_entry_targets(
     });
 
     let mut used = HashSet::new();
-    entries
-        .iter()
-        .filter_map(|entry| {
-            let display_path = entry.location.display_path();
-            let matching_path = candidates.iter().position(|row| {
-                !used.contains(row)
-                    && row
-                        .tooltip_text()
-                        .is_some_and(|tooltip| tooltip == display_path)
-            });
-            let index = matching_path.or_else(|| {
-                candidates.iter().position(|row| {
-                    !used.contains(row) && contains_entry_name(row, &entry.display_name)
-                })
-            })?;
+    let mut targets = Vec::new();
+    for entry in entries {
+        if used.len() == candidates.len() {
+            break;
+        }
+        let display_path = entry.location.display_path();
+        let matching_path = candidates.iter().position(|row| {
+            !used.contains(row)
+                && row
+                    .tooltip_text()
+                    .is_some_and(|tooltip| tooltip == display_path)
+        });
+        let index = matching_path.or_else(|| {
+            candidates.iter().position(|row| {
+                !used.contains(row) && contains_entry_name(row, &entry.display_name)
+            })
+        });
+        if let Some(index) = index {
             let row = candidates[index].clone();
             used.insert(row.clone());
-            Some(EntryAnimationTarget {
+            targets.push(EntryAnimationTarget {
                 entry: entry.clone(),
                 row,
-            })
-        })
-        .collect()
+            });
+        }
+    }
+    targets
 }
 
 pub(super) fn bounds_in_overlay(

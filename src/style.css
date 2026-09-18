@@ -3884,11 +3884,10 @@ textview > popover.menu button.model:focus-visible {
 }
 
 .fly-to-trash {
-  background: alpha(@theme_surface, 0.92);
-  border: 1px solid alpha(@theme_accent, 0.38);
-  border-radius: 999px;
-  box-shadow: 0 4px 12px alpha(@theme_text, 0.18), 0 0 10px alpha(@theme_glow, 0.12);
-  padding: 3px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
   transform: scale(1);
   transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
@@ -3901,17 +3900,114 @@ textview > popover.menu button.model:focus-visible {
   padding: 1px;
 }
 
-.fly-to-trash-count {
+.fly-to-trash-release {
+  transform: scale(0.85);
+  transition: transform 160ms cubic-bezier(0.18, 0.9, 0.25, 1.35);
+}
+
+.fly-to-trash-release.fly-launch-left {
+  transform: rotate(-13deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-launch-right {
+  transform: rotate(13deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-launch-straight {
+  transform: rotate(3deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-insurrection-dispersal {
+  transform: scale(1.35);
+}
+
+@keyframes trash-insurrection-blast {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-shockwave {
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 50%;
+  border: 2px solid @theme_accent;
+  animation: trash-insurrection-blast 300ms cubic-bezier(0.1, 1, 0.2, 1) forwards;
+}
+
+@keyframes trash-insurrection-plume {
+  0% {
+    transform: translate(0, 0) scale(1.2, 0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, -38px) scale(0.6, 2.0);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-beam {
+  min-width: 3px;
+  min-height: 38px;
+  border-radius: 2px;
+  background: linear-gradient(to top, @theme_accent, transparent);
+  animation: trash-insurrection-plume 320ms cubic-bezier(0.15, 1, 0.25, 1) forwards;
+}
+
+@keyframes trash-insurrection-spark-left {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-20px, -28px) scale(0.2);
+    opacity: 0;
+  }
+}
+
+@keyframes trash-insurrection-spark-right {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(20px, -24px) scale(0.2);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-spark {
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 50%;
   background: @theme_accent;
-  border: 1px solid alpha(@theme_bg, 0.72);
-  border-radius: 999px;
-  color: @theme_bg;
-  font-size: 9px;
-  font-weight: 700;
-  min-height: 14px;
-  min-width: 14px;
-  padding: 0 3px;
-  transform: translate(7px, -7px);
+  animation: trash-insurrection-spark-left 300ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+}
+
+.trash-resurrect-spark-alt {
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 50%;
+  background: @theme_accent;
+  animation: trash-insurrection-spark-right 300ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+}
+
+@keyframes trash-rebel-shudder {
+  0% { transform: scale(1) rotate(0deg); }
+  18% { transform: scale(0.92) rotate(-8deg); }
+  38% { transform: scale(1.14) rotate(8deg); }
+  58% { transform: scale(0.95) rotate(-5deg); }
+  78% { transform: scale(1.05) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.trash-rebel-shudder {
+  animation: trash-rebel-shudder 340ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 @keyframes trash-receiving {

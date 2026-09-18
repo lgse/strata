@@ -25,7 +25,7 @@ fn trash_drops_reject_empty_roots_and_already_trashed_sources() {
 #[test]
 fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_trash() {
     assert_eq!(
-        trash_menu_visibility(TrashContents::NonEmpty),
+        trash_menu_visibility(TrashContents::NonEmpty(1)),
         TrashMenuVisibility {
             separator: true,
             empty: true,
@@ -48,9 +48,37 @@ fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_tra
 }
 
 #[test]
+fn the_trash_row_icon_fill_follows_the_probed_item_count() {
+    assert_eq!(
+        trash_icon(TrashContents::NonEmpty(1)),
+        crate::assets::icons::TRASH_LOW
+    );
+    assert_eq!(
+        trash_icon(TrashContents::NonEmpty(4)),
+        crate::assets::icons::TRASH_LOW
+    );
+    assert_eq!(
+        trash_icon(TrashContents::NonEmpty(9)),
+        crate::assets::icons::TRASH_HALF
+    );
+    assert_eq!(
+        trash_icon(TrashContents::NonEmpty(40)),
+        crate::assets::icons::TRASH_FULL
+    );
+    assert_eq!(
+        trash_icon(TrashContents::Empty),
+        crate::assets::icons::TRASH
+    );
+    assert_eq!(
+        trash_icon(TrashContents::Unknown),
+        crate::assets::icons::TRASH
+    );
+}
+
+#[test]
 fn trash_probe_results_map_to_menu_state() {
-    assert_eq!(trash_contents_from_probe(Ok(true)), TrashContents::NonEmpty);
-    assert_eq!(trash_contents_from_probe(Ok(false)), TrashContents::Empty);
+    assert_eq!(trash_contents_from_probe(Ok(3)), TrashContents::NonEmpty(3));
+    assert_eq!(trash_contents_from_probe(Ok(0)), TrashContents::Empty);
     assert_eq!(
         trash_contents_from_probe(Err(glib::Error::new(
             gtk::gio::IOErrorEnum::NotSupported,
@@ -80,22 +108,25 @@ fn trash_mutating_operations_refresh_the_context_menu() {
 }
 
 #[test]
-fn the_trash_probe_reports_emptiness_from_the_first_entry_alone() {
+fn the_trash_probe_counts_entries_up_to_the_icon_cap() {
     let fixture = tempfile::tempdir().expect("fixture");
     let root = gtk::gio::File::for_path(fixture.path());
 
     let empty = glib::MainContext::new()
-        .block_on(trash_has_entries(&root))
+        .block_on(trash_item_count(&root))
         .expect("an empty directory should enumerate");
-    assert!(!empty);
+    assert_eq!(empty, 0);
 
-    std::fs::write(fixture.path().join("note.txt"), b"trashed").expect("fixture entry");
-    let non_empty = glib::MainContext::new()
-        .block_on(trash_has_entries(&root))
+    for index in 0..3 {
+        std::fs::write(fixture.path().join(format!("note{index}.txt")), b"trashed")
+            .expect("fixture entry");
+    }
+    let count = glib::MainContext::new()
+        .block_on(trash_item_count(&root))
         .expect("a populated directory should enumerate");
-    assert!(non_empty);
+    assert_eq!(count, 3);
 
-    let missing = glib::MainContext::new().block_on(trash_has_entries(&gtk::gio::File::for_path(
+    let missing = glib::MainContext::new().block_on(trash_item_count(&gtk::gio::File::for_path(
         fixture.path().join("absent"),
     )));
     assert!(missing.is_err());

@@ -24,6 +24,7 @@ use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, Mod
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -1437,7 +1438,41 @@ impl BrowserView {
         if let Some((generation, locations)) = self.state.browser.pending_undo_copy() {
             return self.state.undo_copy(generation, locations);
         }
-        self.state.browser.undo_last_trash()
+        let Some(locations) = self.state.browser.pending_undo_trash() else {
+            return self.state.browser.undo_last_trash();
+        };
+        // Flyers need the items' rows on screen: in Trash they are already visible,
+        // elsewhere they only appear once the restore lands and the view reloads.
+        let names: Rc<HashSet<String>> = Rc::new(
+            locations
+                .iter()
+                .filter_map(|location| location.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .collect(),
+        );
+        let entries = self.state.browser.entries_named(&names);
+        let Some(trash_button) = self.state.trash_button.borrow().clone() else {
+            return self.state.browser.undo_last_trash();
+        };
+        if entries.is_empty() {
+            let undone = self.state.browser.undo_last_trash();
+            if undone {
+                fly_undo_from_trash_when_visible(Rc::downgrade(&self.state), names, 20);
+            }
+            return undone;
+        }
+        let weak = Rc::downgrade(&self.state);
+        fly_to_trash::fly_from_trash(
+            self.state.overlay.upcast_ref(),
+            &entries,
+            &trash_button,
+            move || {
+                if let Some(state) = weak.upgrade() {
+                    state.browser.undo_last_trash();
+                }
+            },
+        );
+        true
     }
 
     pub fn show_filter(&self) -> bool {
@@ -2046,6 +2081,33 @@ fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
         gtk::gdk::Key::l => Some(gtk::DirectionType::Right),
         _ => None,
     }
+}
+
+/// Retries while the restored rows materialize in the reloaded view, then flies the
+/// entries out of the trash button onto them. Gives up when nothing shows up.
+fn fly_undo_from_trash_when_visible(
+    state: Weak<ViewState>,
+    names: Rc<HashSet<String>>,
+    retries: u32,
+) {
+    glib::timeout_add_local_once(Duration::from_millis(70), move || {
+        let Some(state) = state.upgrade() else {
+            return;
+        };
+        let entries = state.browser.entries_named(&names);
+        let landed = !entries.is_empty()
+            && !entry_animation::collect_entry_targets(state.overlay.upcast_ref(), &entries)
+                .is_empty();
+        if landed {
+            if let Some(button) = state.trash_button.borrow().clone() {
+                fly_to_trash::fly_from_trash(state.overlay.upcast_ref(), &entries, &button, || {});
+            }
+            return;
+        }
+        if retries > 1 {
+            fly_undo_from_trash_when_visible(Rc::downgrade(&state), names, retries - 1);
+        }
+    });
 }
 
 mod chooser_context;

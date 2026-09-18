@@ -561,7 +561,7 @@ impl ViewState {
 
         let count = resolved.len();
         let layout = message_dialog_layout(
-            crate::assets::icons::FOLDER,
+            crate::assets::icons::UNDO_2,
             &restore_confirmation_title(count),
             &entry_kind_summary(
                 &resolved
@@ -643,6 +643,7 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
+        let confirmed_state = Rc::downgrade(self);
         let items = resolved
             .into_iter()
             .map(|(entry, destination)| RestoreTrashItem { entry, destination })
@@ -653,8 +654,30 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
-            browser.restore(items.clone());
-            browser.focus_active();
+            let run_restore = {
+                let browser = browser.clone();
+                let items = items.clone();
+                move || {
+                    browser.restore(items);
+                    browser.focus_active();
+                }
+            };
+            if let Some(state) = confirmed_state.upgrade()
+                && let Some(trash_button) = state.trash_button.borrow().as_ref()
+            {
+                let entries = items
+                    .iter()
+                    .map(|item| item.entry.clone())
+                    .collect::<Vec<_>>();
+                super::fly_to_trash::fly_from_trash(
+                    state.overlay.upcast_ref(),
+                    &entries,
+                    trash_button,
+                    run_restore,
+                );
+            } else {
+                run_restore();
+            }
         });
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
