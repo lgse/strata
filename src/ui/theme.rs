@@ -72,13 +72,13 @@ pub struct ThemeTokens {
     pub syntax_preprocessor: Option<String>,
 }
 
-#[derive(Clone)]
-struct SourcePalette {
-    statement: String,
-    string: String,
-    constant: String,
-    type_color: String,
-    preprocessor: String,
+#[derive(Clone, PartialEq, Eq)]
+pub(super) struct SourcePalette {
+    pub(super) statement: String,
+    pub(super) string: String,
+    pub(super) constant: String,
+    pub(super) type_color: String,
+    pub(super) preprocessor: String,
 }
 
 #[derive(Clone, Debug)]
@@ -1110,6 +1110,22 @@ impl ThemeManager {
         self.starter_tokens()
     }
 
+    /// The theme's own syntax colors, when it carries a real spread of hues.
+    /// The accent-derived fallback is deliberately not returned here: it is
+    /// readable as syntax highlighting but collapses the ANSI palette a
+    /// terminal needs to keep distinct.
+    pub(super) fn appearance_source_palette(&self) -> Option<SourcePalette> {
+        if self.follows_omarchy()
+            && let Some(palette) = load_omarchy_source_palette()
+        {
+            return Some(palette);
+        }
+        let tokens = self.appearance_tokens();
+        tokens
+            .defines_syntax_colors()
+            .then(|| resolved_source_palette(&tokens, None))
+    }
+
     pub fn starter_tokens(&self) -> ThemeTokens {
         self.current_tokens().unwrap_or_else(azure_tokens)
     }
@@ -1737,6 +1753,20 @@ fn resolved_source_palette(tokens: &ThemeTokens, palette: Option<&SourcePalette>
 }
 
 impl ThemeTokens {
+    /// Whether the theme names its own syntax colors rather than leaning on the
+    /// accent-derived spread, which collapses the hues a terminal needs apart.
+    pub(super) fn defines_syntax_colors(&self) -> bool {
+        [
+            &self.syntax_keyword,
+            &self.syntax_string,
+            &self.syntax_constant,
+            &self.syntax_type,
+            &self.syntax_preprocessor,
+        ]
+        .iter()
+        .all(|token| token.is_some())
+    }
+
     pub(super) fn initialize_syntax_colors(&mut self) {
         let palette = resolved_source_palette(self, None);
         self.syntax_keyword = Some(palette.statement);
@@ -1879,7 +1909,7 @@ pub(crate) fn color_to_hex(value: &str) -> String {
         .unwrap_or_else(|| value.to_owned())
 }
 
-fn blend(left: &str, right: &str, amount: f64) -> String {
+pub(super) fn blend(left: &str, right: &str, amount: f64) -> String {
     let (Some(left), Some(right)) = (parse_rgb_channels(left), parse_rgb_channels(right)) else {
         return right.to_owned();
     };

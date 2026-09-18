@@ -12,7 +12,7 @@ use crate::{
     app::Browser,
     ui::{
         browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
-        top_bar_navigation::TopBarNavigation,
+        terminal_panel::TerminalPanel, top_bar_navigation::TopBarNavigation,
     },
 };
 
@@ -31,6 +31,7 @@ pub(super) struct Bindings {
     pub preview: PreviewDrawer,
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
+    pub terminal: TerminalPanel,
 }
 
 pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bindings: Bindings) {
@@ -44,6 +45,7 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         preview: bindings.preview,
         type_to_search: bindings.type_to_search,
         shortcuts: bindings.shortcuts,
+        terminal: bindings.terminal,
         sidebar: SidebarFocus {
             state: sidebar.state.clone(),
             widget: sidebar.widget.clone(),
@@ -67,6 +69,7 @@ struct Dispatcher {
     preview: PreviewDrawer,
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
+    terminal: TerminalPanel,
 }
 
 struct KeyEvent {
@@ -176,6 +179,9 @@ impl Dispatcher {
         {
             return Some(Propagation::Proceed);
         }
+        if let Some(result) = self.terminal_commands(key, modifiers) {
+            return Some(result);
+        }
         if !self.inline_editing_active()
             && let Some(result) = self.shortcuts.handle_key(key, modifiers)
         {
@@ -185,6 +191,21 @@ impl Dispatcher {
             return Some(Propagation::Stop);
         }
         None
+    }
+
+    /// The embedded terminal owns every key while it is focused, so file
+    /// shortcuts cannot act on the browser behind it.
+    fn terminal_commands(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+        if key == Key::F4 && modifiers.is_empty() {
+            if !self.terminal.toggle() {
+                self.view.browser().focus_active();
+            }
+            return Some(Propagation::Stop);
+        }
+        let focused = gtk::prelude::RootExt::focus(&self.window);
+        self.terminal
+            .owns_focus(focused.as_ref())
+            .then_some(Propagation::Proceed)
     }
 
     fn inline_editing_active(&self) -> bool {

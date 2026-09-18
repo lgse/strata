@@ -73,6 +73,7 @@ fn exercise_type_to_search() {
             preview: preview.clone(),
             type_to_search,
             shortcuts: ShortcutFooter::new(BrowserMode::Columns),
+            terminal: crate::ui::terminal_panel::TerminalPanel::new(&preferences, Rc::new(|| None)),
         },
     );
     let keys = window

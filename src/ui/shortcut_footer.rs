@@ -43,6 +43,7 @@ const TOOLS: &[Shortcut] = &[
     ("Alt+Enter", "Open containing folder (global search)"),
     ("Ctrl+L", "Edit the location"),
     ("Ctrl+T", "Open a terminal"),
+    ("F4", "Show or hide the embedded terminal"),
     ("F5", "Refresh"),
     ("Ctrl+H / Ctrl+.", "Show or hide hidden files"),
     ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),

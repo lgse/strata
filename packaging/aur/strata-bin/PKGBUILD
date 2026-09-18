@@ -19,6 +19,7 @@ depends=(
   'gtksourceview5'
   'gvfs'
   'poppler-glib'
+  'vte4'
 )
 optdepends=(
   'ffmpeg: video previews'

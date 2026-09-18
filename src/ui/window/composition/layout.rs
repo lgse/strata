@@ -12,7 +12,7 @@ use crate::{
     assets::{self, icons},
     ui::{
         browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
-        theme::ThemeManager,
+        terminal_panel::TerminalPanel, theme::ThemeManager,
     },
 };
 
@@ -97,11 +97,20 @@ pub(super) fn preview(browser: &BrowserView, preferences: &Rc<ThemeManager>) -> 
     preview
 }
 
+pub(super) fn terminal_panel(
+    browser: &BrowserView,
+    preferences: &Rc<ThemeManager>,
+) -> TerminalPanel {
+    let browser = browser.clone();
+    TerminalPanel::new(preferences, Rc::new(move || browser.terminal_directory()))
+}
+
 pub(super) fn browser_layout(
     browser: &BrowserView,
     preview: &PreviewDrawer,
     sidebar: &SidebarView,
     header: &Header,
+    terminal: &TerminalPanel,
 ) -> gtk::Box {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header.widget);
@@ -121,8 +130,23 @@ pub(super) fn browser_layout(
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
     preview.attach_split(&preview_split, &content, browser);
-    root.append(&preview_split);
+    root.append(&terminal_split(&preview_split, terminal));
     root
+}
+
+fn terminal_split(content: &gtk::Paned, terminal: &TerminalPanel) -> gtk::Paned {
+    let split = gtk::Paned::new(gtk::Orientation::Vertical);
+    split.add_css_class("terminal-split");
+    split.set_wide_handle(true);
+    split.set_resize_start_child(true);
+    split.set_resize_end_child(false);
+    split.set_shrink_start_child(false);
+    split.set_shrink_end_child(false);
+    split.set_start_child(Some(content));
+    split.set_end_child(Some(terminal.widget()));
+    split.set_vexpand(true);
+    terminal.attach_split(&split);
+    split
 }
 
 fn bind_pin_handlers(browser: &BrowserView, sidebar: &SidebarView) {

@@ -33,6 +33,7 @@ KEYSYMS: dict[str, int] = {
     "space": 0x0020,
     "F1": 0xFFBE,
     "F2": 0xFFBF,
+    "F4": 0xFFC1,
     "F5": 0xFFC2,
     "F10": 0xFFC7,
     "Menu": 0xFF67,

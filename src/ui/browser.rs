@@ -10,7 +10,7 @@ use crate::ui::browser::clipboard::{copy_locations, register_cut_view};
 use crate::ui::browser::collection::cancel_source;
 pub(super) use crate::ui::browser::columns::COLUMN_WIDTH;
 use crate::ui::browser::columns::ColumnView;
-use crate::ui::browser::desktop::selected_terminal_location;
+use crate::ui::browser::desktop::{can_open_terminal, selected_terminal_location};
 use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
 use crate::ui::browser::location::{
     MountCredentials, UnlockProgressSlot, is_breadcrumb_button_target,
@@ -1347,19 +1347,37 @@ impl BrowserView {
         }
     }
 
-    pub fn open_terminal(&self) {
+    /// The folder Ctrl+T acts on: a single selected directory, otherwise the
+    /// active listing.
+    pub fn terminal_location(&self) -> Option<Location> {
         self.state.sync_mode_selection();
         let selected = self.state.browser.selected_entries();
-        let location = selected_terminal_location(&selected).or_else(|| {
-            let mode = self.view_mode();
-            let depth = if mode == BrowserMode::Columns {
-                self.state.destination_depth()
-            } else {
-                self.state.browser.active_depth()
-            };
-            depth.and_then(|depth| self.state.browser.location_at(depth))
-        });
-        let Some(location) = location else {
+        selected_terminal_location(&selected).or_else(|| self.listing_location())
+    }
+
+    /// The local directory the embedded terminal starts in. Unlike Ctrl+T this
+    /// ignores the selection, which starts on the first entry of every folder,
+    /// and the hovered column, so it matches the location in the breadcrumb
+    /// rather than whatever the pointer happens to rest on.
+    pub fn terminal_directory(&self) -> Option<std::path::PathBuf> {
+        let depth = self.state.browser.active_depth()?;
+        let location = self.state.browser.location_at(depth)?;
+        can_open_terminal(&location)
+            .then(|| location.native_path().map(std::path::Path::to_path_buf))
+            .flatten()
+    }
+
+    fn listing_location(&self) -> Option<Location> {
+        let depth = if self.view_mode() == BrowserMode::Columns {
+            self.state.destination_depth()
+        } else {
+            self.state.browser.active_depth()
+        };
+        depth.and_then(|depth| self.state.browser.location_at(depth))
+    }
+
+    pub fn open_terminal(&self) {
+        let Some(location) = self.terminal_location() else {
             return;
         };
         launch_terminal(&location, &self.state.overlay);

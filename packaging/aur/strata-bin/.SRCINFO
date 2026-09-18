@@ -16,6 +16,7 @@ pkgbase = strata-bin
 	depends = gtksourceview5
 	depends = gvfs
 	depends = poppler-glib
+	depends = vte4
 	optdepends = ffmpeg: video previews
 	optdepends = ffmpegthumbnailer: video thumbnails
 	optdepends = gst-libav: additional media format playback

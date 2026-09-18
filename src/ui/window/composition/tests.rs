@@ -344,23 +344,15 @@ fn sidebar_toggle_preserves_split_constraints() {
         || {
             let fixture = Fixture::new();
             fixture.preferences.set_reduce_motion(true);
-            let root = fixture
+            let content = fixture
                 .content
-                .blurred_root
-                .first_child()
-                .expect("window root");
-            let preview_split = root
-                .first_child()
-                .expect("header")
-                .next_sibling()
-                .expect("preview split")
-                .downcast::<gtk::Paned>()
-                .expect("preview paned");
-            let content = preview_split
-                .start_child()
+                .browser
+                .widget()
+                .parent()
                 .expect("sidebar/browser split")
                 .downcast::<gtk::Paned>()
                 .expect("sidebar/browser paned");
+            assert!(content.has_css_class("sidebar-split"));
             assert_eq!(content.position(), super::super::SIDEBAR_WIDTH);
             assert!(!content.resizes_start_child());
             fixture.content.header.sidebar_toggle.set_active(false);

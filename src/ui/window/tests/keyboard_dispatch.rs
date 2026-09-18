@@ -6,7 +6,8 @@ use gtk::gdk::{Key, ModifierType};
 
 use super::super::*;
 use crate::ui::{
-    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, terminal_panel::TerminalPanel,
+    top_bar_navigation::TopBarNavigation,
 };
 
 struct KeyboardFixture {
@@ -15,6 +16,7 @@ struct KeyboardFixture {
     view: BrowserView,
     sidebar: SidebarView,
     preview: PreviewDrawer,
+    terminal: TerminalPanel,
     keys: gtk::EventControllerKey,
     _directory: tempfile::TempDir,
 }
@@ -46,9 +48,15 @@ impl KeyboardFixture {
         row.append(&sidebar.widget);
         row.append(&view.widget());
         row.append(&preview.widget());
+        let terminal_directory = directory.path().to_path_buf();
+        let terminal = TerminalPanel::new(
+            &preferences,
+            Rc::new(move || Some(terminal_directory.clone())),
+        );
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.append(&header);
         content.append(&row);
+        content.append(terminal.widget());
         let overlay = gtk::Overlay::builder().child(&content).build();
         let window = gtk::ApplicationWindow::builder()
             .child(&overlay)
@@ -67,6 +75,7 @@ impl KeyboardFixture {
                     preferences,
                 },
                 shortcuts: ShortcutFooter::new(BrowserMode::Columns),
+                terminal: terminal.clone(),
             },
         );
         let keys = window
@@ -90,6 +99,7 @@ impl KeyboardFixture {
             view,
             sidebar,
             preview,
+            terminal,
             keys,
             _directory: directory,
         }
@@ -107,6 +117,7 @@ impl KeyboardFixture {
 
 impl Drop for KeyboardFixture {
     fn drop(&mut self) {
+        self.terminal.shutdown();
         self.view.browser().clear_observer();
         self.sidebar.disconnect();
         self.window.destroy();
@@ -544,6 +555,104 @@ fn arrow_scope_preference_keeps_up_in_the_file_list() {
                     }
                 }
             }
+        },
+    );
+}
+
+#[test]
+fn f4_toggles_the_embedded_terminal() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::f4_toggles_the_embedded_terminal",
+        || {
+            let fixture = KeyboardFixture::new();
+            assert!(!fixture.terminal.is_visible());
+            assert!(fixture.press(Key::F4, ModifierType::empty()));
+            assert!(fixture.terminal.is_visible());
+            assert!(fixture.press(Key::F4, ModifierType::empty()));
+            assert!(!fixture.terminal.is_visible());
+            wait_until(|| fixture.view.item_view_has_focus());
+        },
+    );
+}
+
+#[test]
+fn focused_terminal_keeps_keys_away_from_file_commands() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::focused_terminal_keeps_keys_away_from_file_commands",
+        || {
+            let fixture = KeyboardFixture::new();
+            assert!(fixture.press(Key::F4, ModifierType::empty()));
+            wait_until(|| {
+                fixture
+                    .terminal
+                    .owns_focus(gtk::prelude::RootExt::focus(&fixture.window).as_ref())
+            });
+            for (key, modifiers) in [
+                (Key::Delete, ModifierType::empty()),
+                (Key::c, ModifierType::CONTROL_MASK),
+                (Key::v, ModifierType::CONTROL_MASK),
+                (Key::a, ModifierType::CONTROL_MASK),
+                (Key::Down, ModifierType::empty()),
+            ] {
+                assert!(
+                    !fixture.press(key, modifiers),
+                    "{key:?} reached the browser"
+                );
+            }
+            assert_eq!(fixture.selected(), vec![0]);
+        },
+    );
+}
+
+#[test]
+fn embedded_terminal_starts_in_the_listing_not_the_selected_folder() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::embedded_terminal_starts_in_the_listing_not_the_selected_folder",
+        || {
+            let fixture = KeyboardFixture::new();
+            let listing = fixture._directory.path().canonicalize().expect("listing");
+            std::fs::create_dir(listing.join("aa-folder")).expect("fixture folder");
+            fixture.view.refresh();
+            wait_until(|| {
+                fixture
+                    .view
+                    .browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 4)
+            });
+            fixture.view.browser().select(0, 0);
+            wait_until(|| fixture.selected() == [0]);
+            assert_eq!(
+                fixture
+                    .view
+                    .terminal_location()
+                    .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
+                Some(listing.join("aa-folder")),
+                "Ctrl+T still follows a selected folder"
+            );
+            assert_eq!(fixture.view.terminal_directory(), Some(listing));
+        },
+    );
+}
+
+#[test]
+fn closing_the_terminal_session_lets_the_next_one_start_elsewhere() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::closing_the_terminal_session_lets_the_next_one_start_elsewhere",
+        || {
+            let fixture = KeyboardFixture::new();
+            assert!(fixture.press(Key::F4, ModifierType::empty()));
+            wait_until(|| fixture.terminal.has_session());
+
+            // Hiding keeps the shell; closing ends it.
+            assert!(fixture.press(Key::F4, ModifierType::empty()));
+            assert!(fixture.terminal.has_session());
+            fixture.terminal.close_session();
+            wait_until(|| !fixture.terminal.has_session());
+            assert!(!fixture.terminal.is_visible());
+
+            assert!(fixture.press(Key::F4, ModifierType::empty()));
+            wait_until(|| fixture.terminal.has_session());
         },
     );
 }

@@ -7,7 +7,7 @@ APP_ID="io.github.lgse.Strata"
 MIN_GLIBC="2.39"
 REQUIRED_PACKAGES=(
   bubblewrap desktop-file-utils ffmpeg ffmpegthumbnailer fontconfig gst-libav gstreamer
-  gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib xdg-utils
+  gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib vte4 xdg-utils
 )
 RAW_PREVIEW_PACKAGES=(imagemagick libraw dcraw)
 

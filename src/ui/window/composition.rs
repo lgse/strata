@@ -6,7 +6,7 @@ use gtk::{gio, prelude::*};
 
 use crate::ui::{
     blur::BlurBin, browser::BrowserView, preview::PreviewDrawer, settings::UpdateNoticeHandler,
-    theme::ThemeManager,
+    terminal_panel::TerminalPanel, theme::ThemeManager,
 };
 
 use super::{SidebarView, TypeToSearch, keyboard};
@@ -20,6 +20,7 @@ pub(super) struct WindowContent {
     pub(super) browser: BrowserView,
     pub(super) sidebar: SidebarView,
     preview: PreviewDrawer,
+    terminal: TerminalPanel,
     header: layout::Header,
     overlay: gtk::Overlay,
     blurred_root: BlurBin,
@@ -32,7 +33,8 @@ impl WindowContent {
         let preview = layout::preview(&browser, preferences);
         let header = layout::Header::new(window, &browser, &preview, preferences);
         let sidebar = super::build_sidebar(browser.clone(), preferences.clone(), false);
-        let root = layout::browser_layout(&browser, &preview, &sidebar, &header);
+        let terminal = layout::terminal_panel(&browser, preferences);
+        let root = layout::browser_layout(&browser, &preview, &sidebar, &header, &terminal);
         let footer = layout::FooterBinding::new(window, &root, &browser, preferences);
         input::install_mouse_history(&root, &browser);
         crate::ui::scrolling::install_autoscroll_stop(&root);
@@ -47,6 +49,7 @@ impl WindowContent {
             overlay,
             blurred_root,
             footer,
+            terminal,
         }
     }
 
@@ -90,6 +93,7 @@ impl WindowContent {
                     preferences: preferences.clone(),
                 },
                 shortcuts: self.footer.shortcuts.clone(),
+                terminal: self.terminal.clone(),
             },
         );
         notice
@@ -99,7 +103,9 @@ impl WindowContent {
         let browser = self.browser.browser();
         let sidebar = self.sidebar;
         let footer = self.footer;
+        let terminal = self.terminal;
         window.connect_destroy(move |_| {
+            terminal.shutdown();
             footer.disconnect_clipboard();
             browser.bump_navigation_generation();
             browser.clear_observer();

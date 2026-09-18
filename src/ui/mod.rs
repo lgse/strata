@@ -29,6 +29,7 @@ mod settings;
 mod shortcut_footer;
 mod table_view;
 mod terminal;
+mod terminal_panel;
 mod theme;
 mod thumbnail;
 pub(crate) mod thumbnail_cache;

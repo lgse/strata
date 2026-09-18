@@ -50,6 +50,7 @@ tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 unicode-normalization = "0.1.25"
 ureq = { version = "3.4", features = ["json"] }
+vte4 = "0.10.0"
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zstd = "0.13.3"
 zip = "8.6.0"
