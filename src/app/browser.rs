@@ -17,8 +17,8 @@ use crate::{
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRecord,
         RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
-        TransferConflict, UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest,
-        UndoRenameRequest, validate_basename, validate_uri_credentials,
+        TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveItem,
+        UndoMoveRequest, UndoRenameRequest, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -264,6 +264,7 @@ pub enum UndoEntry {
     Merge {
         created: Vec<Location>,
         overwritten: Vec<Location>,
+        originals: HashMap<Location, TrashedOriginal>,
     },
     Rename(RenameRecord),
 }
@@ -275,6 +276,7 @@ impl UndoEntry {
             Self::Merge {
                 created,
                 overwritten,
+                ..
             } => created.is_empty() && overwritten.is_empty(),
             Self::Move(records) => records.is_empty(),
             Self::Rename(_) => false,
@@ -373,9 +375,11 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
             UndoEntry::Merge {
                 created,
                 overwritten,
+                originals,
             } => {
                 created.retain(|candidate| candidate != location);
                 overwritten.retain(|candidate| candidate != location);
+                originals.remove(location);
             }
             UndoEntry::Move(records) => {
                 records.retain(|record| &record.current != location);
@@ -429,10 +433,12 @@ fn retain_pending_merge_items(generation: u64, created: &[Location], overwritten
             && let UndoEntry::Merge {
                 created: kept_created,
                 overwritten: kept_overwritten,
+                originals,
             } = &mut pending.entry
         {
             kept_created.retain(|location| created.contains(location));
             kept_overwritten.retain(|location| overwritten.contains(location));
+            originals.retain(|location, _| overwritten.contains(location));
         }
     });
 }
@@ -1725,6 +1731,7 @@ impl Browser {
                 UndoEntry::Merge {
                     created,
                     overwritten,
+                    ..
                 },
             ) => Some((generation, created, overwritten)),
             (
@@ -1891,7 +1898,7 @@ impl Browser {
         let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
             return false;
         };
-        let UndoEntry::Merge { .. } = entry else {
+        let UndoEntry::Merge { mut originals, .. } = entry else {
             finish_undo(generation, false);
             return false;
         };
@@ -1900,6 +1907,7 @@ impl Browser {
             return false;
         };
         retain_pending_merge_items(generation, &created, &overwritten);
+        originals.retain(|location, _| overwritten.contains(location));
         let total = created.len() + overwritten.len();
         let refresh_locations = created
             .iter()
@@ -1913,6 +1921,7 @@ impl Browser {
             UndoEntry::Merge {
                 created: created.clone(),
                 overwritten: overwritten.clone(),
+                originals: originals.clone(),
             },
         )));
         self.emit(BrowserEvent::RestorationStarted { total });
@@ -1921,6 +1930,7 @@ impl Browser {
                 id: request_id,
                 created,
                 overwritten,
+                originals,
             },
             self.operation_callback(request_id, false, refresh_locations),
         );

@@ -40,8 +40,8 @@ pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
     OperationRequestId, PasteItem, PasteRequest, RenameRecord, RenameRequest, RestoreRequest,
-    RestoreSource, RestoreTrashItem, TransferConflict, UndoCopyRequest, UndoMergeRequest,
-    UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
+    RestoreSource, RestoreTrashItem, TransferConflict, TrashedOriginal, UndoCopyRequest,
+    UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
 };
 pub use preview::{
     MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,

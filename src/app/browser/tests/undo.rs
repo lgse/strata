@@ -865,6 +865,7 @@ fn a_merged_copy_records_created_and_overwritten_paths_for_undo() {
         Some(UndoEntry::Merge {
             created: vec![created.clone()],
             overwritten: vec![overwritten.clone()],
+            originals: HashMap::new(),
         })
     );
     let Some((generation, created, overwritten)) = browser.pending_undo_merge() else {
@@ -873,7 +874,7 @@ fn a_merged_copy_records_created_and_overwritten_paths_for_undo() {
     assert!(browser.undo_merge(generation, created.clone(), overwritten.clone()));
     assert_eq!(
         UNDO_MERGE_REQUESTS.with(|requests| requests.borrow().clone()),
-        vec![(created, overwritten)]
+        vec![(created, overwritten, HashMap::new())]
     );
     assert_eq!(pending_undo_entry(), None);
 }
@@ -918,6 +919,7 @@ fn a_paste_mixing_plain_copies_and_a_merge_records_one_merge_undo() {
         Some(UndoEntry::Merge {
             created: vec![copied, merged_created],
             overwritten: vec![merged_overwritten],
+            originals: HashMap::new(),
         })
     );
 }
@@ -991,6 +993,7 @@ fn a_cancelled_merge_still_records_the_staged_originals_for_undo() {
         Some(UndoEntry::Merge {
             created: Vec::new(),
             overwritten: vec![overwritten],
+            originals: HashMap::new(),
         }),
         "originals staged before the cancelled copy still need restoring"
     );
@@ -1000,9 +1003,17 @@ fn a_cancelled_merge_still_records_the_staged_originals_for_undo() {
 fn a_partial_merge_undo_keeps_the_paths_still_to_revert() {
     let first = Location::local("/fixture/archive/first.txt");
     let second = Location::local("/fixture/archive/second.txt");
+    let originals = HashMap::from([(
+        second.clone(),
+        TrashedOriginal {
+            device: 1,
+            inode: 42,
+        },
+    )]);
     push_pending_undo(UndoEntry::Merge {
         created: vec![first.clone()],
         overwritten: vec![second.clone()],
+        originals: originals.clone(),
     });
     let (generation, _) = claim_pending_undo(None).expect("undo claim");
 
@@ -1014,6 +1025,7 @@ fn a_partial_merge_undo_keeps_the_paths_still_to_revert() {
         Some(UndoEntry::Merge {
             created: Vec::new(),
             overwritten: vec![second],
+            originals,
         })
     );
 }
@@ -1074,6 +1086,43 @@ fn a_completed_compression_records_the_archive_for_undo() {
             "/fixture/report.zip"
         )]))
     );
+}
+
+#[test]
+fn a_replaced_archive_restores_the_original_on_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    UNDO_MERGE_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    let archive = Location::local("/fixture/report.zip");
+    let original = TrashedOriginal {
+        device: 1,
+        inode: 42,
+    };
+    let request_id = browser.begin_operation();
+    browser.archive_operation.set(true);
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Compressed {
+        request_id,
+        archive_name: "report.zip".to_owned(),
+        archive: archive.clone(),
+        original: Some(original),
+    });
+
+    let (generation, created, overwritten) =
+        browser.pending_undo_merge().expect("replacement undo");
+    assert!(created.is_empty());
+    assert_eq!(overwritten, vec![archive.clone()]);
+    assert!(browser.undo_merge(generation, created, overwritten));
+    assert_eq!(
+        UNDO_MERGE_REQUESTS.with(|requests| requests.borrow().clone()),
+        vec![(
+            Vec::new(),
+            vec![archive.clone()],
+            HashMap::from([(archive, original)])
+        )]
+    );
+    assert_eq!(pending_undo_entry(), None);
 }
 
 #[test]
@@ -1199,6 +1248,7 @@ fn a_replaced_copy_records_the_overwritten_original_for_undo() {
         Some(UndoEntry::Merge {
             created: Vec::new(),
             overwritten: vec![target.clone()],
+            originals: HashMap::new(),
         }),
         "the replaced path must undo through the restore path, not be trashed"
     );
@@ -1208,7 +1258,7 @@ fn a_replaced_copy_records_the_overwritten_original_for_undo() {
     assert!(browser.undo_merge(generation, created.clone(), overwritten.clone()));
     assert_eq!(
         UNDO_MERGE_REQUESTS.with(|requests| requests.borrow().clone()),
-        vec![(created, overwritten)]
+        vec![(created, overwritten, HashMap::new())]
     );
 }
 

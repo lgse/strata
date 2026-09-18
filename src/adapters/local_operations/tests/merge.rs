@@ -460,6 +460,79 @@ fn staged_lookup(entries: HashMap<PathBuf, RestoreEntry>) -> StagedOriginalLooku
 }
 
 #[test]
+fn merge_undo_uses_recorded_identity_when_trash_dates_collide() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for chosen in ["older.zip", "current.zip", "removed.zip"] {
+        let root = tempfile::tempdir()?;
+        let target = root.path().join("archive.zip");
+        fs::write(&target, b"incoming archive")?;
+        let mut staged = HashMap::new();
+        for name in ["older.zip", "current.zip", "removed.zip"] {
+            let entry = staged_trash_fixture(root.path(), name, &target, name.as_bytes())?;
+            staged.insert(
+                name,
+                entry.source.native_path().expect("staged path").to_owned(),
+            );
+        }
+        let original = TrashedOriginal::from_metadata(&fs::symlink_metadata(&staged[chosen])?);
+        if chosen == "removed.zip" {
+            fs::remove_file(&staged[chosen])?;
+        }
+        let trash_root = staged[chosen]
+            .parent()
+            .expect("trash files directory")
+            .parent()
+            .expect("trash root")
+            .to_owned();
+        let location = Location::local(&target);
+        let originals = HashMap::from([(location.clone(), original)]);
+        let lookup: StagedOriginalLookup = Rc::new(move |location, cancellable| {
+            let path = location.native_path().expect("local original").to_owned();
+            let entry = home_trash_entries_at(
+                &trash_root,
+                &HashSet::from([path.clone()]),
+                &cancellable,
+                &originals,
+            )
+            .remove(&path);
+            Box::pin(async move { entry.ok_or_else(|| io_error("Recorded original is missing")) })
+        });
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let emitted = events.clone();
+        glib::MainContext::default().block_on(run_merge_undo(
+            OperationRequestId(91),
+            Vec::new(),
+            vec![location],
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+            gio::Cancellable::new(),
+            lookup,
+        ));
+
+        if chosen == "removed.zip" {
+            assert_eq!(fs::read(&target)?, b"incoming archive");
+            assert!(matches!(
+                events.borrow().last(),
+                Some(OperationEvent::CompletedWithErrors { .. })
+            ));
+        } else {
+            assert_eq!(fs::read(&target)?, chosen.as_bytes());
+            assert!(matches!(
+                events.borrow().last(),
+                Some(OperationEvent::Restored { .. })
+            ));
+        }
+        for (name, path) in &staged {
+            if *name != chosen {
+                assert_eq!(fs::read(path)?, name.as_bytes());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn merge_undo_restores_staged_originals_and_removes_created() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

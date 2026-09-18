@@ -39,8 +39,8 @@ use crate::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
         DeleteRequest, ExtractRequest, LoadHandle, OperationEvent, OperationProvider,
         OperationRequestId, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
-        TransferConflict, UndoCopyRequest, UndoMergeRequest, UndoMoveRequest, UndoRenameRequest,
-        validate_basename,
+        TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveRequest,
+        UndoRenameRequest, validate_basename,
     },
 };
 
@@ -1428,29 +1428,10 @@ async fn replace_local_with(
         }
     };
     if trashed {
-        // Report before the rename: if it fails, the original is still
-        // recoverable and the recorded plan lets undo restore it.
+        publish_staged_replacement(staged, target_path).await?;
+        // A failed publication must not register an undo that would delete
+        // a concurrent arrival. The original remains recoverable in Trash.
         on_replaced();
-        let renamed = gio::spawn_blocking(move || {
-            rustix::fs::renameat(rustix::fs::CWD, &staged_path, rustix::fs::CWD, &target_path)
-        })
-        .await
-        .map_err(|_| io_error("The replacement worker stopped unexpectedly"));
-        match renamed {
-            Ok(Ok(())) => {
-                let _kept = staged.keep();
-            }
-            Ok(Err(error)) => {
-                discard_staged(staged).await;
-                return Err(io_error(format!(
-                    "Could not place the replacement item: {error}"
-                )));
-            }
-            Err(error) => {
-                discard_staged(staged).await;
-                return Err(error);
-            }
-        }
     } else {
         let exchanged = gio::spawn_blocking(move || {
             rustix::fs::renameat_with(
@@ -1494,6 +1475,37 @@ async fn replace_local_with(
         .await?;
     }
     Ok(())
+}
+
+async fn publish_staged_replacement(
+    staged: StagedSibling,
+    target_path: PathBuf,
+) -> Result<(), glib::Error> {
+    let staged_path = staged.path().to_owned();
+    let renamed = gio::spawn_blocking(move || {
+        rustix::fs::renameat_with(
+            rustix::fs::CWD,
+            &staged_path,
+            rustix::fs::CWD,
+            &target_path,
+            rustix::fs::RenameFlags::NOREPLACE,
+        )
+    })
+    .await
+    .map_err(|_| io_error("The replacement worker stopped unexpectedly"))
+    .and_then(|result| result.map_err(io_error));
+    match renamed {
+        Ok(()) => {
+            let _kept = staged.keep();
+            Ok(())
+        }
+        Err(error) => {
+            discard_staged(staged).await;
+            Err(io_error(format!(
+                "Could not place the replacement item; the original is in Trash: {error}"
+            )))
+        }
+    }
 }
 
 async fn replace_local_with_progress(
@@ -2671,6 +2683,20 @@ fn deletion_error_message(name: &str, permanent: bool, error: &glib::Error) -> S
     }
 }
 
+impl TrashedOriginal {
+    fn from_metadata(metadata: &std::fs::Metadata) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+        }
+    }
+
+    fn matches_path(self, path: &Path) -> bool {
+        std::fs::symlink_metadata(path).is_ok_and(|metadata| self == Self::from_metadata(&metadata))
+    }
+}
+
 #[derive(Clone)]
 struct RestoreEntry {
     source: Location,
@@ -2684,6 +2710,7 @@ struct RestoreEntry {
 async fn trashed_entries_for_originals(
     original_locations: &[Location],
     cancellable: &gio::Cancellable,
+    originals: &HashMap<Location, TrashedOriginal>,
 ) -> Result<Vec<RestoreEntry>, glib::Error> {
     if cancellable.is_cancelled() {
         return Err(cancelled_local_operation());
@@ -2696,10 +2723,16 @@ async fn trashed_entries_for_originals(
     // authoritative freedesktop.org metadata for the home trash before consulting trash:///.
     let fallback_requested = requested.clone();
     let fallback_cancellable = cancellable.clone();
-    let mut fallback =
-        gio::spawn_blocking(move || home_trash_entries(&fallback_requested, &fallback_cancellable))
-            .await
-            .map_err(|_| glib::Error::new(gio::IOErrorEnum::Failed, "Trash lookup task failed"))?;
+    let fallback_originals = originals.clone();
+    let mut fallback = gio::spawn_blocking(move || {
+        home_trash_entries(
+            &fallback_requested,
+            &fallback_cancellable,
+            &fallback_originals,
+        )
+    })
+    .await
+    .map_err(|_| glib::Error::new(gio::IOErrorEnum::Failed, "Trash lookup task failed"))?;
     if cancellable.is_cancelled() {
         return Err(cancelled_local_operation());
     }
@@ -2758,6 +2791,20 @@ async fn trashed_entries_for_originals(
             let Some(location) = location_for_file(&trash.child(info.name())) else {
                 continue;
             };
+            let original = Location::local(&original_path);
+            if let Some(expected) = originals.get(&original) {
+                let plan = plan_restore_for_location(
+                    &location,
+                    Some(&original),
+                    None,
+                    None,
+                    &RestoreContext::current(),
+                )
+                .await;
+                if !plan.is_ok_and(|plan| expected.matches_path(&plan.source_path)) {
+                    continue;
+                }
+            }
             let candidate = (deletion_date, location, info.display_name().to_string());
             match newest.get(&original_path) {
                 Some(current) if current.0 >= candidate.0 => {}
@@ -2858,10 +2905,15 @@ async fn restore_trash_entry(
 fn trashed_merge_original(
     location: Location,
     cancellable: gio::Cancellable,
+    originals: HashMap<Location, TrashedOriginal>,
 ) -> Pin<Box<dyn Future<Output = Result<RestoreEntry, glib::Error>>>> {
     Box::pin(async move {
-        let entries =
-            trashed_entries_for_originals(std::slice::from_ref(&location), &cancellable).await?;
+        let entries = trashed_entries_for_originals(
+            std::slice::from_ref(&location),
+            &cancellable,
+            &originals,
+        )
+        .await?;
         entries.into_iter().next().ok_or_else(|| {
             glib::Error::new(
                 gio::IOErrorEnum::NotFound,
@@ -3093,14 +3145,21 @@ async fn run_merge_undo(
 fn home_trash_entries(
     requested: &HashSet<PathBuf>,
     cancellable: &gio::Cancellable,
+    originals: &HashMap<Location, TrashedOriginal>,
 ) -> HashMap<PathBuf, RestoreEntry> {
-    home_trash_entries_at(&glib::user_data_dir().join("Trash"), requested, cancellable)
+    home_trash_entries_at(
+        &glib::user_data_dir().join("Trash"),
+        requested,
+        cancellable,
+        originals,
+    )
 }
 
 fn home_trash_entries_at(
     trash_root: &Path,
     requested: &HashSet<PathBuf>,
     cancellable: &gio::Cancellable,
+    originals: &HashMap<Location, TrashedOriginal>,
 ) -> HashMap<PathBuf, RestoreEntry> {
     let info_root = trash_root.join("info");
     let files_root = trash_root.join("files");
@@ -3137,7 +3196,13 @@ fn home_trash_entries_at(
             continue;
         }
         let source_path = files_root.join(OsString::from_vec(file_name.to_vec()));
-        if std::fs::symlink_metadata(&source_path).is_err() {
+        let Ok(metadata) = std::fs::symlink_metadata(&source_path) else {
+            continue;
+        };
+        if originals
+            .get(&Location::local(&original_path))
+            .is_some_and(|expected| *expected != TrashedOriginal::from_metadata(&metadata))
+        {
             continue;
         }
         let entry = RestoreEntry {
@@ -3909,7 +3974,9 @@ impl OperationProvider for LocalOperationProvider {
                 request.overwritten,
                 emit,
                 operation_cancellable,
-                Rc::new(trashed_merge_original),
+                Rc::new(move |location, cancellable| {
+                    trashed_merge_original(location, cancellable, request.originals.clone())
+                }),
             )
             .await;
         });
@@ -3932,28 +3999,32 @@ impl OperationProvider for LocalOperationProvider {
                         physical_path: item.entry.thumbnail_path,
                     })
                     .collect(),
-                RestoreSource::OriginalLocations(locations) => {
-                    match trashed_entries_for_originals(&locations, &operation_cancellable).await {
-                        Ok(entries) => entries,
-                        Err(error) if was_cancelled(&error) => {
-                            emit(cancelled_event(
-                                request.id,
-                                Vec::new(),
-                                Vec::new(),
-                                locations,
-                                HashSet::from([Location::uri("trash:///")]),
-                            ));
-                            return;
-                        }
-                        Err(error) => {
-                            emit(OperationEvent::Failed {
-                                request_id: request.id,
-                                message: format!("Unable to find items in Trash: {error}"),
-                            });
-                            return;
-                        }
+                RestoreSource::OriginalLocations(locations) => match trashed_entries_for_originals(
+                    &locations,
+                    &operation_cancellable,
+                    &HashMap::new(),
+                )
+                .await
+                {
+                    Ok(entries) => entries,
+                    Err(error) if was_cancelled(&error) => {
+                        emit(cancelled_event(
+                            request.id,
+                            Vec::new(),
+                            Vec::new(),
+                            locations,
+                            HashSet::from([Location::uri("trash:///")]),
+                        ));
+                        return;
                     }
-                }
+                    Err(error) => {
+                        emit(OperationEvent::Failed {
+                            request_id: request.id,
+                            message: format!("Unable to find items in Trash: {error}"),
+                        });
+                        return;
+                    }
+                },
             };
             let total = entries.len();
             let mut errors = Vec::new();

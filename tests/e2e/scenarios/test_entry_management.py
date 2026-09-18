@@ -291,6 +291,3 @@ def test_undo_restores_a_completed_move(strata):
         "undo to put the file back",
     )
     assert not fixture.path("archive/todo.txt").exists()
-
-
-

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashSet, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use crate::{
     model::Location,
@@ -99,6 +102,7 @@ impl OperationCompletion {
                 push_pending_undo(UndoEntry::Merge {
                     created: all_created,
                     overwritten: merged.overwritten,
+                    originals: HashMap::new(),
                 });
             }
             None => {}
@@ -383,10 +387,19 @@ impl Browser {
             OperationEvent::Compressed {
                 archive_name,
                 archive,
+                original,
                 ..
             } => {
                 if !completion.undoing {
-                    push_pending_undo(UndoEntry::Copy(vec![archive]));
+                    push_pending_undo(if let Some(original) = original {
+                        UndoEntry::Merge {
+                            created: Vec::new(),
+                            overwritten: vec![archive.clone()],
+                            originals: HashMap::from([(archive, original)]),
+                        }
+                    } else {
+                        UndoEntry::Copy(vec![archive])
+                    });
                 }
                 self.emit(BrowserEvent::ArchiveCompleted {
                     select_name: archive_name,
