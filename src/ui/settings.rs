@@ -1945,14 +1945,16 @@ fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Comm
     use std::{os::unix::process::CommandExt, process::Stdio};
 
     let mut command = crate::trusted_command::command("sh").ok()?;
+    let sleep = crate::trusted_command::resolve("sleep").ok()?;
     command
         .args([
             "-c",
-            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; sleep 0.5; exec \"$2\"",
+            "while kill -0 \"$1\" 2>/dev/null; do \"$3\" 0.1; done; \"$3\" 0.5; exec \"$2\"",
             "strata-restart",
         ])
         .arg(parent_pid.to_string())
         .arg(current_exe)
+        .arg(sleep)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

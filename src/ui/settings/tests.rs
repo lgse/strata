@@ -540,9 +540,7 @@ fn update_method_resolves_and_caches() {
 
 #[test]
 fn restart_waiter_uses_absolute_sh() {
-    let Some(command) = restart_waiter(Path::new("/tmp/strata"), 1) else {
-        return;
-    };
+    let command = restart_waiter(Path::new("/tmp/strata"), 1).expect("trusted restart helpers");
     let program = Path::new(command.get_program());
     assert!(program.is_absolute());
     assert_eq!(
@@ -555,5 +553,44 @@ fn restart_waiter_uses_absolute_sh() {
             .any(|root| program.starts_with(root)),
         "restart waiter program {}",
         program.display()
+    );
+}
+
+#[test]
+fn restart_waiter_ignores_path_shadowing_and_preserves_application_path() {
+    use std::{fs, os::unix::fs::PermissionsExt};
+
+    let dir = tempfile::tempdir().expect("restart fixtures");
+    let sh = crate::trusted_command::resolve("sh").expect("trusted shell");
+    let hijacked = dir.path().join("hijacked");
+    let restarted = dir.path().join("restarted");
+    let application = dir.path().join("application");
+    for (path, script) in [
+        (
+            dir.path().join("sleep"),
+            "printf hijacked > \"$HIJACK_MARKER\"",
+        ),
+        (
+            application.clone(),
+            "printf '%s' \"$PATH\" > \"$RESTART_MARKER\"",
+        ),
+    ] {
+        fs::write(&path, format!("#!{}\n{script}\n", sh.display())).expect("write fixture");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("executable fixture");
+    }
+
+    let status = restart_waiter(&application, u32::MAX)
+        .expect("trusted restart helpers")
+        .env("PATH", dir.path())
+        .env("HIJACK_MARKER", &hijacked)
+        .env("RESTART_MARKER", &restarted)
+        .status()
+        .expect("run restart waiter");
+
+    assert!(status.success());
+    assert!(!hijacked.exists());
+    assert_eq!(
+        fs::read(&restarted).expect("application restarted"),
+        dir.path().as_os_str().as_encoded_bytes()
     );
 }
