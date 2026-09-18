@@ -662,6 +662,39 @@ headerbar menubutton.header-action > button:focus-visible {
   opacity: 0.9;
 }
 
+.command-group {
+  background: @theme_surface;
+  color: @theme_dim_text;
+  padding: 8px 18px;
+  font-weight: 650;
+}
+
+.command-unavailable .search-result-name {
+  color: @theme_dim_text;
+}
+
+.command-palette-backdrop scrollbar,
+.command-palette-backdrop scrollbar range,
+.command-palette-backdrop scrollbar trough {
+  background: transparent;
+  border: none;
+}
+
+.command-palette-backdrop scrollbar slider {
+  background: alpha(@theme_dim_text, 0.45);
+  border: none;
+  border-radius: 4px;
+}
+
+.command-palette-backdrop scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.command-palette-backdrop scrollbar slider:active,
+.command-palette-backdrop scrollbar slider:focus {
+  background: @theme_accent;
+}
+
 .settings-backdrop {
   background: alpha(@theme_bg, 0.82);
   transition: opacity 200ms ease-out;

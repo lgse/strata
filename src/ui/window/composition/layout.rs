@@ -26,6 +26,7 @@ pub(super) struct Header {
     pub(super) content: gtk::Box,
     pub(super) sidebar_toggle: gtk::ToggleButton,
     pub(super) search: gtk::Button,
+    pub(super) commands: gtk::Button,
     pub(super) settings: gtk::Button,
     #[cfg(test)]
     pub(super) close: gtk::Button,
@@ -51,6 +52,8 @@ impl Header {
         location.set_hexpand(true);
         let search = header_action(icons::SEARCH, "Search (Ctrl+K)");
         crate::ui::tenxer_mode::hide_while_enabled(&search);
+        let commands = header_action(icons::KEYBOARD, "Command palette (Ctrl+Shift+P)");
+        commands.set_focus_on_click(false);
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
@@ -60,6 +63,7 @@ impl Header {
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
         actions.append(&search);
+        actions.append(&commands);
         actions.append(&appearance);
         actions.append(&settings);
         actions.append(&close);
@@ -75,6 +79,7 @@ impl Header {
             content,
             sidebar_toggle,
             search,
+            commands,
             settings,
             #[cfg(test)]
             close,

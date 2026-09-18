@@ -226,6 +226,12 @@ const DEFAULT_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Application",
+        action: "Command palette",
+        note: "",
+        keys: "Ctrl + Shift + P",
+    },
+    Binding {
+        category: "Application",
         action: "Open terminal",
         note: "",
         keys: "Ctrl + T",
@@ -541,6 +547,12 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Application",
+        action: "Command palette",
+        note: "",
+        keys: "Ctrl + Shift + P",
+    },
+    Binding {
+        category: "Application",
         action: "Refresh",
         note: "",
         keys: "F5",
@@ -852,6 +864,7 @@ const TENXER_MODE: &[(&str, &str)] = &[
 ];
 
 const DEFAULT_TOOLS: &[(&str, &str)] = &[
+    ("Ctrl+Shift+P", "Open command palette"),
     ("Ctrl+F", "Filter the current pane"),
     ("Ctrl+K", "Open global search"),
     ("Ctrl+Shift+K", "Jump to a recent folder"),
@@ -869,6 +882,7 @@ const DEFAULT_TOOLS: &[(&str, &str)] = &[
 ];
 
 const TENXER_TOOLS: &[(&str, &str)] = &[
+    ("Ctrl+Shift+P", "Open command palette"),
     ("Tab", "Focus the window header"),
     (
         "Enter / Space in the header",

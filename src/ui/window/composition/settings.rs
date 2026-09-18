@@ -48,6 +48,10 @@ pub(super) fn install(
         .header
         .settings
         .connect_clicked(move |_| clicked_settings.show());
+    let action_launcher = launcher.clone();
+    let action = gtk::gio::SimpleAction::new("settings", None);
+    action.connect_activate(move |_, _| action_launcher.show());
+    window.add_action(&action);
     let shortcut = gtk::EventControllerKey::new();
     shortcut.connect_key_pressed(move |_, key, _, modifiers| {
         if key != gtk::gdk::Key::comma || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)

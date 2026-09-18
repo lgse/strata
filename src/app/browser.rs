@@ -2156,6 +2156,10 @@ impl Browser {
         peek_replay(redo)
     }
 
+    pub(crate) fn can_undo(&self) -> bool {
+        self.pending_replay_entry(false).is_some()
+    }
+
     pub fn pending_undo_move(&self) -> Option<(u64, Vec<MoveRecord>)> {
         match self.pending_replay_entry(false)? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
