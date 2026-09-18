@@ -124,3 +124,54 @@ fn marquee_does_not_pin_the_collection_view() {
         .expect("isolated GTK marquee test should start");
     assert!(status.success(), "isolated GTK marquee test failed");
 }
+
+#[test]
+fn marquee_selection_preserves_preview_and_keyboard_navigation() {
+    crate::test_support::gtk_test(
+        "ui::marquee::tests::marquee_selection_preserves_preview_and_keyboard_navigation",
+        || {
+            let fixture = tempfile::tempdir().expect("selection fixtures");
+            for name in ["first.txt", "second.txt"] {
+                std::fs::write(fixture.path().join(name), name).expect("text fixture");
+            }
+            let browser = crate::app::Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            browser.navigate(crate::model::Location::local(fixture.path()));
+            crate::ui::media::tests::wait(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            let drawer = crate::ui::preview::PreviewDrawer::new(
+                Rc::new(crate::adapters::LocalPreviewProvider::new(Rc::new(|| {
+                    crate::sandbox::MediaPreviewBackend::Software
+                }))),
+                true,
+            );
+            drawer.observe_browser(&browser);
+            drawer.toggle(None, None);
+            assert!(!drawer.is_open());
+
+            for positions in [&[0][..], &[0, 1][..], &[1][..], &[][..]] {
+                super::with_selection_update(|| {
+                    browser.set_selection(0, positions, positions.last().copied());
+                });
+                assert!(!drawer.is_open(), "native selection must not open preview");
+            }
+
+            browser.preview(0, 0);
+            assert!(drawer.is_open(), "explicit preview still opens the drawer");
+            super::with_selection_update(|| {
+                browser.set_selection(0, &[1], Some(1));
+            });
+            assert!(drawer.is_open(), "marquee preserves an existing preview");
+            drawer.clear_target();
+            assert!(!drawer.is_open());
+            browser.set_selection(0, &[0], Some(0));
+            assert!(
+                drawer.is_open(),
+                "keyboard focus still opens enabled preview"
+            );
+            drawer.close();
+        },
+    );
+}

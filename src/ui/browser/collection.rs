@@ -289,9 +289,9 @@ pub(crate) fn bind_filter_query(
     let weak_callback = Rc::downgrade(&callback);
     let pending_for_binding = pending.clone();
     let scope_for_binding = scope.clone();
-    crate::ui::theme::ThemeManager::shared().bind_preference(
+    crate::ui::preferences::PreferenceManager::shared().bind_preference(
         entry,
-        crate::ui::theme::ThemeManager::filter_include_subfolders,
+        crate::ui::preferences::PreferenceManager::filter_include_subfolders,
         move |entry, recursive| {
             scope_for_binding.set(recursive);
             cancel_source(&pending_for_binding);

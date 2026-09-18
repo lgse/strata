@@ -8,7 +8,7 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{NavigationHistory, SearchItem},
-    ui::{preview::PreviewDrawer, search::SearchDialog, theme::ThemeManager},
+    ui::{preferences::PreferenceManager, preview::PreviewDrawer, search::SearchDialog},
 };
 
 use super::WindowContent;
@@ -19,7 +19,7 @@ mod tests;
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
     content: &WindowContent,
-    preferences: &Rc<ThemeManager>,
+    preferences: &Rc<PreferenceManager>,
 ) {
     let controller = content.browser.browser();
     let history = NavigationHistory::shared();
@@ -34,7 +34,13 @@ pub(super) fn install(
         dismissed_root.set_blurred(false);
         dismissed_button.remove_css_class("active");
     });
-    let dialog = SearchDialog::new(activate, dismiss);
+    let browser = content.browser.clone();
+    let preview = content.preview.clone();
+    let reveal = Rc::new(move |item: SearchItem| {
+        preview.clear_target();
+        browser.reveal_location(Location::local(item.path));
+    });
+    let dialog = SearchDialog::new(activate, reveal, dismiss);
     content.overlay.add_overlay(&dialog.widget());
     let toggle = toggle_handler(dialog.clone(), content, preferences);
     let clicked_search = toggle.clone();
@@ -95,7 +101,7 @@ fn install_history_recorder(controller: &Rc<Browser>, history: &Rc<NavigationHis
 fn toggle_handler(
     dialog: SearchDialog,
     content: &WindowContent,
-    preferences: &Rc<ThemeManager>,
+    preferences: &Rc<PreferenceManager>,
 ) -> Rc<dyn Fn()> {
     let button = content.header.search.clone();
     let root = content.blurred_root.clone();
@@ -133,7 +139,7 @@ fn folder_jump_handler(
 fn activate_result(
     controller: &Rc<Browser>,
     preview: &PreviewDrawer,
-    preferences: &ThemeManager,
+    preferences: &PreferenceManager,
     item: SearchItem,
 ) {
     let location = Location::local(item.path.clone());

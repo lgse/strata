@@ -10,7 +10,7 @@ fn custom_text_size_keeps_oversized_dialogs_scrollable_inside_small_windows() {
         "ui::modal::tests::custom_text_size_keeps_oversized_dialogs_scrollable_inside_small_windows",
         || {
             crate::ui::prepare_portal_ui();
-            let manager = crate::ui::theme::ThemeManager::shared();
+            let manager = crate::ui::preferences::PreferenceManager::shared();
             let overlay = gtk::Overlay::new();
             overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
             let window = gtk::Window::builder()
@@ -38,7 +38,7 @@ fn custom_text_size_keeps_oversized_dialogs_scrollable_inside_small_windows() {
                 .and_downcast::<gtk::ScrolledWindow>()
                 .expect("modal scroller");
             for pixels in [13, 32, 48, 13] {
-                manager.set_text_size(crate::ui::theme::TextSize::new(pixels));
+                manager.set_text_size(crate::ui::preferences::TextSize::new(pixels));
                 let main_loop = glib::MainLoop::new(None, false);
                 let stop = main_loop.clone();
                 glib::timeout_add_local_once(Duration::from_millis(100), move || stop.quit());

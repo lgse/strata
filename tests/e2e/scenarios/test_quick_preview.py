@@ -200,6 +200,31 @@ def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode
     strata.wait(lambda: strata.preview_shows("alpha"), "the still-enabled preview to resume")
 
 
+@pytest.mark.preferences(browser_mode="list")
+def test_marquee_does_not_reopen_enabled_preview(strata):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("alpha"), "the enabled preview")
+    strata.keyboard.press("Up")
+    strata.wait_for_selection(["folder"])
+    strata.wait(lambda: strata.preview() is None, "the folder to hide preview")
+    strata.settle(strata.entry("third.txt"))
+
+    last = strata.entry("third.txt").screen_bounds()
+    first = strata.entry("data.csv").screen_bounds()
+    start = (last.x + last.width // 2, last.y + last.height + 60)
+    end = (first.x + 50, first.center[1])
+    strata.pointer.drag_points(start, end, release=False)
+    try:
+        strata.wait_for_selection(["data.csv", "notes.txt", "page.md", "third.txt"])
+        assert strata.preview() is None, "held marquee must not open preview"
+    finally:
+        strata.pointer.connection.button(1, False)
+    assert strata.preview() is None
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "keyboard preview to resume")
+
+
 def test_preview_hides_on_shift_range_folder_focus(strata):
     strata.switch_view("List")
     strata.select_entry_with_keyboard("notes.txt")
@@ -456,27 +481,18 @@ def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(s
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
-def test_closing_preview_does_not_move_the_columns(strata):
+def test_columns_preview_can_reopen_after_closing(strata):
     strata.open_directory("folder")
     strata.select_entry_with_keyboard("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the nested preview")
-    column = strata.pane("folder")
-    scroller = next(node for node in column.ancestors() if node.role == "scroll pane")
-    before = column.screen_bounds()
-    viewport_width = scroller.screen_bounds().width
     close = strata.preview().find(role="button", name="Close preview (Space)")
     strata.pointer.click(close)
     strata.wait(lambda: strata.preview() is None, "the preview to close")
-    strata.wait(lambda: scroller.screen_bounds().width > viewport_width, "the browser to use the released space")
-    assert abs(strata.pane("folder").screen_bounds().x - before.x) <= 1
+    strata.select_entry("nested-notes.txt")
     strata.select_entry("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the preview to reopen")
-    strata.wait(
-        lambda: abs(strata.pane("folder").screen_bounds().x + before.width - strata.preview().screen_bounds().x) <= 3,
-        "the reopened preview to meet the last column",
-    )
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)

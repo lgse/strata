@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::*;
-use crate::ui::theme::{TextSize, ThemeManager};
+use crate::ui::preferences::{PreferenceManager, TextSize};
 
 fn settle() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
@@ -78,11 +78,11 @@ fn mode_fits_default_width_and_remains_resizable() {
     crate::test_support::gtk_test(
         "ui::browser_modes::tests::column_widths::mode_fits_default_width_and_remains_resizable",
         || {
-            let themes = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             crate::ui::prepare_portal_ui();
             let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
             for size in [11, 48].map(TextSize::new) {
-                themes.set_text_size(size);
+                preferences.set_text_size(size);
                 for density in ["density-compact", "density-airy"] {
                     for width in [480, 1000] {
                         let columns = ListColumnLayout::new();
@@ -127,7 +127,7 @@ fn mode_fits_default_width_and_remains_resizable() {
                                 scroll.hadjustment().upper() > scroll.hadjustment().page_size()
                             );
                         }
-                        for resized in [80, (220.0 * themes.interface_scale()).ceil() as i32] {
+                        for resized in [80, (220.0 * preferences.interface_scale()).ceil() as i32] {
                             set_list_column_width(&columns, 1, resized);
                             settle();
                             assert_eq!(mode.width_request(), resized);

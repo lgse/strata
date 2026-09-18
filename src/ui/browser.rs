@@ -32,7 +32,7 @@ pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;
-mod context_menu;
+pub(super) mod context_menu;
 mod customization;
 mod desktop;
 mod destination;
@@ -157,6 +157,7 @@ pub(super) struct ViewState {
     context_menu_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
+    suppress_focus_scroll: Cell<bool>,
     source_generation: Rc<Cell<u64>>,
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
@@ -184,7 +185,7 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
-    pending_transfer_selection: RefCell<Option<(Location, Vec<Location>)>>,
+    pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
     /// dialog opens once the entry it describes is actually loaded.
     pending_select_properties: Cell<bool>,
@@ -206,6 +207,8 @@ pub(super) struct ViewState {
     unlock_slots: RefCell<Vec<UnlockProgressSlot>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
     trash_button: RefCell<Option<gtk::Button>>,
+    drag_autoscroll: RefCell<Option<Rc<columns::drag_scroll::DragAutoscroll>>>,
+    suppress_scroll_after_drop: Cell<bool>,
     browser: Rc<Browser>,
 }
 
@@ -273,6 +276,9 @@ impl BrowserView {
         scroller.add_css_class("fixed-scrollbar");
         scroller.add_css_class("mode-scroll");
         scroller.add_css_class("columns-scroll");
+        if let Some(viewport) = scroller.child().and_downcast::<gtk::Viewport>() {
+            viewport.set_scroll_to_focus(false);
+        }
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
@@ -449,7 +455,7 @@ impl BrowserView {
         location_control.append(&location_stack);
         location_control.append(&global_activity_spinner);
 
-        let preferences = super::theme::ThemeManager::shared();
+        let preferences = super::preferences::PreferenceManager::shared();
         let browser = Browser::with_preferences(source, preferences.sort_preferences());
         browser.set_chooser_mode(!interactive);
         let preferences_for_sorting = preferences.clone();
@@ -479,6 +485,7 @@ impl BrowserView {
             context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
+            suppress_focus_scroll: Cell::new(false),
             source_generation,
             peek: RefCell::new(None),
             pending_peek: RefCell::new(None),
@@ -506,7 +513,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
-            pending_transfer_selection: RefCell::new(None),
+            pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
@@ -521,6 +528,8 @@ impl BrowserView {
             unlock_slots: RefCell::new(Vec::new()),
             auto_refresh: RefCell::new(None),
             trash_button: RefCell::new(None),
+            drag_autoscroll: RefCell::new(None),
+            suppress_scroll_after_drop: Cell::new(false),
             browser,
         });
 
@@ -529,8 +538,10 @@ impl BrowserView {
         register_cut_view(&state);
         state.install_input_ownership();
         state.install_column_peek_targets();
+        state.install_drag_autoscroll();
 
         let weak_state = Rc::downgrade(&state);
+        columns::install_horizontal_scroll(&state);
         super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
             let state = weak_state.upgrade()?;
             let laid_out = state.columns_widget.compute_bounds(surface)?;
@@ -731,6 +742,30 @@ impl BrowserView {
     pub fn select_after_load(&self, names: Vec<String>, properties: bool) {
         self.state.pending_select.borrow_mut().extend(names);
         self.state.pending_select_properties.set(properties);
+    }
+
+    pub(super) fn reveal_location(&self, location: Location) {
+        let Some(parent) = location.parent() else {
+            return;
+        };
+        self.state.pending_archive_destination.take();
+        self.state.pending_navigate.take();
+        self.state.pending_select.take();
+        self.state.pending_select_properties.set(false);
+        self.state
+            .pending_location_selection
+            .replace(Some((parent.clone(), vec![location])));
+        if self.state.browser.active_location().as_ref() == Some(&parent) {
+            if let Some(depth) = self.state.browser.active_depth() {
+                if let Some(column) = self.state.columns.borrow().get(depth) {
+                    column.filter_entry.set_text("");
+                }
+                self.state.mode_views.borrow().clear_filter(depth);
+            }
+            self.state.browser.reload_active();
+        } else {
+            self.state.browser.navigate_location(parent, false);
+        }
     }
 
     pub fn browser(&self) -> Rc<Browser> {
@@ -1243,7 +1278,7 @@ impl BrowserView {
     pub fn copy_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.selected_entries()
+            self.state.browser.transfer_entries()
         });
         if entries.is_empty() {
             return false;
@@ -1254,7 +1289,7 @@ impl BrowserView {
 
     pub fn duplicate_selection(&self) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.selected_entries();
+        let entries = self.state.browser.transfer_entries();
         let Some((destination, sources)) = duplicate_transfer(&entries) else {
             return false;
         };
@@ -1265,7 +1300,7 @@ impl BrowserView {
     pub fn cut_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.selected_entries()
+            self.state.browser.transfer_entries()
         });
         if entries.is_empty() {
             return false;
@@ -1402,6 +1437,9 @@ impl BrowserView {
         }
         if let Some((generation, locations)) = self.state.browser.pending_undo_copy() {
             return self.state.undo_copy(generation, locations);
+        }
+        if let Some((generation, created, overwritten)) = self.state.browser.pending_undo_merge() {
+            return self.state.undo_merge(generation, created, overwritten);
         }
         self.state.browser.undo_last_trash()
     }
@@ -1584,6 +1622,29 @@ impl BrowserView {
         true
     }
 
+    pub fn jump_parked_selection(&self, direction: i32) -> bool {
+        if !self.item_view_has_focus()
+            || !self
+                .state
+                .overlay
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focused| focused.is::<gtk::Stack>())
+        {
+            return false;
+        }
+        let order = self
+            .state
+            .browser
+            .active_depth()
+            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+            .filter(|order| !order.is_empty());
+        self.state
+            .browser
+            .page_along(direction, usize::MAX, order.as_deref());
+        true
+    }
+
     pub fn dismiss_empty_focused_filter(&self) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let empty = self.state.mode_views.borrow().empty_filter_has_focus()
@@ -1692,6 +1753,12 @@ impl BrowserView {
 }
 
 impl ViewState {
+    pub(in crate::ui::browser) fn stop_drag_autoscroll(&self) {
+        if let Some(tracker) = self.drag_autoscroll.borrow().as_ref() {
+            tracker.stop();
+        }
+    }
+
     pub(in crate::ui) fn cancel_peek(&self) {
         cancel_source(&self.pending_peek);
         self.browser.close_peek();

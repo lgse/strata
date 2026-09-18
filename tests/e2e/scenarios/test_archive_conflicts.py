@@ -67,9 +67,38 @@ def test_keep_both_preserves_archives_and_selects_each_numbered_output(strata, m
         assert previous.read_bytes() == b"previous archive"
 
 
+@pytest.mark.parametrize("extension", ["zip"])
+def test_undoing_a_compression_trashes_the_numbered_archive(strata, extension):
+    fixture = strata.fixture
+    trashed = strata.environment.trash_files
+
+    request_archive_collision(strata)
+    strata.pointer.click(strata.dialog_button("Keep Both"))
+    numbered = fixture.path(f"archive (2).{extension}")
+    strata.wait(numbered.exists, "numbered archive publication")
+    strata.wait(lambda: strata.dialog() is None, "archive progress dismissal")
+
+    strata.keyboard.press("ctrl+z")
+
+    strata.wait(lambda: not numbered.exists(), "compress undo to trash the archive")
+    strata.wait(lambda: any(trashed.iterdir()), "the archive to land in Trash")
+    assert fixture.path(f"archive.{extension}").read_bytes() == b"original archive"
+    assert fixture.path(f"archive (1).{extension}").read_bytes() == b"previous archive"
+
+
 @pytest.mark.parametrize("choice", ["Cancel", "Escape", "Replace"])
 def test_archive_conflict_keyboard_choices_preserve_cancel_and_replace_behavior(strata, choice):
     original = strata.fixture.path("archive.zip")
+    if choice == "Replace":
+        older = strata.environment.trash_files / "older-archive.zip"
+        older.parent.mkdir(parents=True, exist_ok=True)
+        older.write_bytes(b"older trashed archive")
+        trash_info = strata.environment.data_home / "Trash" / "info"
+        trash_info.mkdir(parents=True, exist_ok=True)
+        encoded_path = original.as_uri().removeprefix("file://")
+        (trash_info / "older-archive.zip.trashinfo").write_text(
+            f"[Trash Info]\nPath={encoded_path}\nDeletionDate=2026-01-01T00:00:00\n"
+        )
     request_archive_collision(strata)
     strata.wait(lambda: strata.dialog_button("Replace").has_state("focused"), "initial Replace focus")
     if choice == "Escape":
@@ -84,8 +113,24 @@ def test_archive_conflict_keyboard_choices_preserve_cancel_and_replace_behavior(
     assert strata.fixture.path("archive (1).zip").read_bytes() == b"previous archive"
     assert not strata.fixture.path("archive (2).zip").exists()
     if choice == "Replace":
+        strata.wait(lambda: zipfile.is_zipfile(original), "replacement archive publication")
         with zipfile.ZipFile(original) as archive:
             assert archive.namelist() == ["todo.txt"]
             assert archive.read("todo.txt") == strata.fixture.path("todo.txt").read_bytes()
+        strata.wait(lambda: strata.dialog() is None, "archive progress dismissal")
+        # Equal deletion timestamps must not redirect undo to the older entry.
+        for info in trash_info.glob("*.trashinfo"):
+            lines = info.read_text().splitlines()
+            info.write_text("\n".join(
+                "DeletionDate=2026-01-01T00:00:00" if line.startswith("DeletionDate=") else line
+                for line in lines
+            ) + "\n")
+        strata.keyboard.press("ctrl+z")
+        strata.wait(
+            lambda: original.exists() and original.read_bytes() == b"original archive",
+            "compression undo to restore the replaced archive",
+        )
+        assert strata.fixture.path("archive (1).zip").read_bytes() == b"previous archive"
+        assert older.read_bytes() == b"older trashed archive"
     else:
         assert original.read_bytes() == b"original archive"

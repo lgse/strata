@@ -131,7 +131,7 @@ fn save_modal(mode: BrowserMode, root: &Path) {
         current_filter: None,
         choices: Vec::new(),
     };
-    ThemeManager::shared().set_browser_mode(mode);
+    PreferenceManager::shared().set_browser_mode(mode);
     let state =
         build_chooser(request, Arc::new(AtomicBool::new(false)), |_| {}).expect("save chooser");
     state.view.set_view_mode(mode);
@@ -227,8 +227,8 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
                 Choice::boolean("compress", "Compress files", false),
             ],
         };
-        ThemeManager::shared().set_browser_mode(mode);
-        ThemeManager::shared().set_group_by_type(grouped);
+        PreferenceManager::shared().set_browser_mode(mode);
+        PreferenceManager::shared().set_group_by_type(grouped);
         let state =
             build_chooser(request, Arc::new(AtomicBool::new(false)), |_| {}).expect("chooser");
         state.view.set_view_mode(mode);

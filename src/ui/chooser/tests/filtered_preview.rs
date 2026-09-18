@@ -58,7 +58,7 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
             std::fs::write(root.path().join("folder/nested.txt"), "Nested preview")
                 .expect("nested file");
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 for save in [false, true] {
                     let request = ChooserRequest {
                         token: format!("preview-{mode:?}-{save}"),

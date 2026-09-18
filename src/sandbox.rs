@@ -17,6 +17,7 @@ use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::services::MediaPreviewSize;
 
+pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
 
@@ -243,8 +244,11 @@ pub(crate) fn parse(
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable =
         resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
+    let bwrap = crate::trusted_command::resolve("bwrap")
+        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
     let devices = Vec::new();
     let mut command = sandbox_command(
+        &bwrap,
         &executable,
         &input,
         output.path(),
@@ -361,16 +365,8 @@ fn wait_for_renderer(
     }
 }
 
-fn sandbox_command(
-    executable: &Path,
-    input: &Path,
-    output: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    devices: &[PathBuf],
-) -> Command {
-    let mut command = Command::new("bwrap");
+fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
+    let mut command = Command::new(bwrap);
     command.args([
         "--unshare-all",
         "--die-with-parent",
@@ -434,10 +430,26 @@ fn sandbox_command(
             }
         }
     }
+    command
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "explicit executable path permits testing without installed bubblewrap"
+)]
+fn sandbox_command(
+    bwrap: &Path,
+    executable: &Path,
+    input: &Path,
+    output: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    devices: &[PathBuf],
+) -> Command {
+    let mut command = runtime_command(bwrap, operation);
     let sandbox_input = sandbox_input_path(input);
-    if operation != ParseOperation::ThumbnailVideo {
-        command.arg("--ro-bind").arg(executable).arg("/app/strata");
-    }
+    command.arg("--ro-bind").arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
     if !operation.is_media() {
         command.arg("--bind").arg(output).arg("/output");
@@ -468,15 +480,6 @@ fn sandbox_command(
                 }
             ))
             .arg("--");
-    }
-    if operation == ParseOperation::ThumbnailVideo {
-        command
-            .args(["/usr/bin/ffmpegthumbnailer", "-i", &sandbox_input, "-o"])
-            .arg(format!("/output/{}", operation.output_name()))
-            .arg("-s")
-            .arg(value.to_string())
-            .args(["-q", "8"]);
-        return command;
     }
     command.args([
         "/app/strata",

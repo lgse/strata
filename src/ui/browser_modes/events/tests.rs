@@ -285,6 +285,54 @@ fn reload_reconnects_with_the_restored_multi_selection() {
 }
 
 #[test]
+fn reload_restores_a_parked_cursor_without_taking_external_focus() {
+    gtk_test(
+        "ui::browser_modes::events::tests::reload_restores_a_parked_cursor_without_taking_external_focus",
+        || {
+            for (mode, grouped) in presentations() {
+                for parked in [true, false] {
+                    let mut fixture = Fixture::new(mode, grouped);
+                    fixture.show();
+                    fixture.browser.set_selection(0, &[0, 2], Some(2));
+                    let pane = fixture.pane();
+                    fixture
+                        .views
+                        .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+                    if parked {
+                        assert!(pane.stack.grab_focus());
+                    } else {
+                        assert!(fixture.outside.grab_focus());
+                    }
+                    fixture
+                        .views
+                        .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 3 });
+                    fixture.views.handle(&BrowserEvent::LoadFinished {
+                        depth: 0,
+                        truncated: false,
+                    });
+                    if parked {
+                        pump_until(|| fixture.views.focused_position() == Some((0, 2)));
+                    } else {
+                        let done = Rc::new(Cell::new(false));
+                        let flag = done.clone();
+                        let _frame =
+                            crate::ui::frame::FrameTask::new(Some(&pane.section.view), move || {
+                                flag.set(true)
+                            });
+                        pump_until(|| done.get());
+                        assert!(super::super::widget_has_focus(
+                            &fixture.outside,
+                            gtk::prelude::RootExt::focus(&fixture.window).as_ref(),
+                        ));
+                    }
+                    assert_eq!(fixture.browser.selected_positions(0), vec![0, 2]);
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn busy_insertions_and_splices_preserve_distinct_presentation_rules() {
     gtk_test(
         "ui::browser_modes::events::tests::busy_insertions_and_splices_preserve_distinct_presentation_rules",
@@ -771,6 +819,12 @@ fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
                 pump_until(|| bound_row(&pane, 1).is_some());
                 let card = bound_row(&pane, 1).expect("bound card");
                 let details = crate::ui::icons_cell::details_label(&card).expect("details label");
+                fixture.browser.set_selection(0, &[1], Some(1));
+                fixture.views.handle(&BrowserEvent::FocusChanged {
+                    depth: 0,
+                    position: Some(1),
+                });
+                assert_eq!(fixture.views.selected_positions(), Some((0, vec![1])));
                 assert_eq!(details.label(), "10 B");
                 let changed = Rc::new(Cell::new(false));
                 let observed = changed.clone();
@@ -784,6 +838,8 @@ fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
                 });
                 assert!(details.is_visible());
                 assert_eq!(details.label(), "1920×1080");
+                assert_eq!(fixture.views.selected_positions(), Some((0, vec![1])));
+                assert_eq!(bound_row(&pane, 1).as_ref(), Some(&card));
                 assert!(!changed.get());
             }
         },

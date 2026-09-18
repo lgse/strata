@@ -50,6 +50,7 @@ fn media_modifiers_leave_plain_arrows_and_space_to_the_browser() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::media_keys::media_modifiers_leave_plain_arrows_and_space_to_the_browser",
         || {
+            crate::ui::preferences::PreferenceManager::shared().set_preview_autoplay(true);
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
                 let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
                 fixture.view.set_view_mode(mode);
@@ -59,7 +60,7 @@ fn media_modifiers_leave_plain_arrows_and_space_to_the_browser() {
                 let media = player(&fixture.preview.widget()).expect("preview player");
                 crate::ui::media::tests::use_test_decoder(&media, false, 20_000_000);
                 wait_until(|| media.is_prepared());
-                let manager = ThemeManager::shared();
+                let manager = PreferenceManager::shared();
                 manager.set_preview_volume(0.5);
                 manager.set_preview_muted(false);
                 let modifiers = ModifierType::CONTROL_MASK | ModifierType::ALT_MASK;

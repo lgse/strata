@@ -201,7 +201,7 @@ fn scrollable(adjustment: &gtk::Adjustment) -> bool {
     adjustment.upper() - adjustment.lower() > adjustment.page_size()
 }
 
-fn advance(adjustment: &gtk::Adjustment, step: f64) {
+pub(super) fn advance(adjustment: &gtk::Adjustment, step: f64) {
     if step == 0.0 {
         return;
     }

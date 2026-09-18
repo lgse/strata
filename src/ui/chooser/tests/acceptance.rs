@@ -175,7 +175,7 @@ fn directory_confirmation_distinguishes_load_cursor_from_explicit_selection() {
         || {
             crate::ui::prepare_portal_ui();
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 for explicit in [false, true] {
                     let root = tempfile::tempdir().expect("fixture");
                     let child = root.path().join("child");
@@ -238,7 +238,7 @@ fn filter_dropdown_select_file_click_open_accepts_filtered_file() {
         || {
             crate::ui::prepare_portal_ui();
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 let root = tempfile::tempdir().expect("fixture");
                 std::fs::write(root.path().join("readme.md"), "readme").expect("file");
                 std::fs::write(root.path().join("notes.txt"), "notes").expect("file");
@@ -315,7 +315,7 @@ fn filter_text_select_file_click_open_accepts_root_file() {
         || {
             crate::ui::prepare_portal_ui();
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 let root = tempfile::tempdir().expect("fixture");
                 std::fs::write(root.path().join("readme.md"), "readme").expect("file");
                 std::fs::write(root.path().join("todo.txt"), "todo").expect("file");
@@ -392,7 +392,7 @@ fn columns_filter_after_navigating_into_subfolder_accepts_search_result() {
         "ui::chooser::tests::acceptance::columns_filter_after_navigating_into_subfolder_accepts_search_result",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::Columns);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::Columns);
             let root = tempfile::tempdir().expect("fixture");
             std::fs::write(root.path().join("readme.md"), "readme").expect("file");
             std::fs::create_dir(root.path().join("folder")).expect("folder");
@@ -463,7 +463,7 @@ fn columns_filter_in_non_active_column_accepts_search_result_on_open() {
         "ui::chooser::tests::acceptance::columns_filter_in_non_active_column_accepts_search_result_on_open",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::Columns);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::Columns);
             let root = tempfile::tempdir().expect("fixture");
             std::fs::write(root.path().join("readme.md"), "readme").expect("file");
             std::fs::create_dir(root.path().join("folder")).expect("folder");
@@ -559,7 +559,7 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
         "ui::chooser::tests::acceptance::filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
             let root = tempfile::tempdir().expect("fixture");
             let first = root.path().join("folder/nested-a.txt");
             let nested = root.path().join("folder/nested-b.txt");
@@ -649,7 +649,7 @@ fn dismissing_recursive_results_then_extending_widget_selection_accepts_current_
         "ui::chooser::tests::acceptance::dismissing_recursive_results_then_extending_widget_selection_accepts_current_files",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::Icons);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::Icons);
             let root = tempfile::tempdir().expect("fixture");
             let nested = root.path().join("folder/nested.txt");
             std::fs::create_dir(root.path().join("folder")).expect("folder");
@@ -724,7 +724,7 @@ fn active_recursive_search_without_selection_does_not_accept_hidden_browser_sele
         "ui::chooser::tests::acceptance::active_recursive_search_without_selection_does_not_accept_hidden_browser_selection",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::Icons);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::Icons);
             let root = tempfile::tempdir().expect("fixture");
             let hidden_selection = root.path().join("selected.txt");
             let nested = root.path().join("folder/nested.txt");
@@ -794,7 +794,7 @@ fn recursive_multi_selection_accepts_every_selected_file_in_all_modes() {
         || {
             crate::ui::prepare_portal_ui();
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 let root = tempfile::tempdir().expect("fixture");
                 let paths = [
                     root.path().join("one/nested-a.txt"),
@@ -936,7 +936,7 @@ fn save_file_accepts_selected_folder_without_navigating_into_it() {
         "ui::chooser::tests::acceptance::save_file_accepts_selected_folder_without_navigating_into_it",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
             let root = tempfile::tempdir().expect("fixture");
             let target_folder = root.path().join("target_folder");
             std::fs::create_dir(&target_folder).expect("folder");
@@ -993,7 +993,7 @@ fn save_files_accepts_selected_folder_without_navigating_into_it() {
         "ui::chooser::tests::acceptance::save_files_accepts_selected_folder_without_navigating_into_it",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
             let root = tempfile::tempdir().expect("fixture");
             let target_folder = root.path().join("target_folder");
             std::fs::create_dir(&target_folder).expect("folder");
@@ -1055,7 +1055,7 @@ fn save_file_in_icons_mode_accepts_selected_folder_without_navigating_into_it() 
         "ui::chooser::tests::acceptance::save_file_in_icons_mode_accepts_selected_folder_without_navigating_into_it",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::Icons);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::Icons);
             let root = tempfile::tempdir().expect("fixture");
             let target_folder = root.path().join("target_folder");
             std::fs::create_dir(&target_folder).expect("folder");
@@ -1112,7 +1112,7 @@ fn save_file_with_search_results_accepts_selected_folder_without_navigating_into
         "ui::chooser::tests::acceptance::save_file_with_search_results_accepts_selected_folder_without_navigating_into_it",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
             let root = tempfile::tempdir().expect("fixture");
             let target_folder = root.path().join("sub/target_folder");
             std::fs::create_dir_all(&target_folder).expect("folders");
@@ -1171,7 +1171,7 @@ fn save_file_with_selected_file_saves_to_active_folder() {
         "ui::chooser::tests::acceptance::save_file_with_selected_file_saves_to_active_folder",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
             let root = tempfile::tempdir().expect("fixture");
             let existing_file = root.path().join("existing.txt");
             std::fs::write(&existing_file, "existing").expect("file");
@@ -1248,13 +1248,13 @@ fn arrow_scope_keeps_left_in_the_chooser_file_view() {
         "ui::chooser::tests::acceptance::arrow_scope_keeps_left_in_the_chooser_file_view",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_arrow_navigation_scoped(true);
+            PreferenceManager::shared().set_arrow_navigation_scoped(true);
             let root = tempfile::tempdir().expect("fixture");
             for name in ["a.txt", "b.txt", "c.txt"] {
                 std::fs::write(root.path().join(name), "text").expect("fixture file");
             }
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 let state = build_chooser(
                     request(root.path().to_path_buf()),
                     Arc::new(AtomicBool::new(false)),
@@ -1269,7 +1269,7 @@ fn arrow_scope_keeps_left_in_the_chooser_file_view() {
                         .is_some_and(|column| !column.loading && column.count == 3)
                 });
                 for scoped in [true, false, true] {
-                    ThemeManager::shared().set_arrow_navigation_scoped(scoped);
+                    PreferenceManager::shared().set_arrow_navigation_scoped(scoped);
                     for key in [gtk::gdk::Key::Left, gtk::gdk::Key::Up] {
                         browser.select(0, 0);
                         browser.focus_active();

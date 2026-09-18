@@ -189,7 +189,9 @@ dependency cache is not advertised as a full quality hit.
 
 The Rust suite runs with `--all-targets --all-features --locked` inside private
 Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
-GTK initialization failures cannot silently skip tests. Formatting, compiler,
+The shared Xvfb server uses `-noreset` so consecutive test processes do not
+race a server reset when the last display client exits. GTK initialization
+failures cannot silently skip tests. Formatting, compiler,
 lint, and test failures remain blocking. Lightweight policy/helper jobs retain
 their existing runners rather than downloading a large GUI image unnecessarily.
 

@@ -9,8 +9,8 @@ fn live_preferences_reach_existing_and_future_browsers_but_preserve_chooser_poli
     gtk_test(
         "ui::window::tests::preferences::live_preferences_reach_existing_and_future_browsers_but_preserve_chooser_policy",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let first = browser_for_window();
             let second = browser_for_window();
             let chooser = crate::ui::browser::BrowserView::new_chooser(
@@ -75,8 +75,8 @@ fn sidebar_order_and_update_notices_follow_preferences_without_settings() {
     gtk_test(
         "ui::window::tests::preferences::sidebar_order_and_update_notices_follow_preferences_without_settings",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let first = super::super::build_sidebar(browser_for_window(), manager.clone(), true);
             let second = super::super::build_sidebar(browser_for_window(), manager.clone(), true);
             manager.set_sidebar_order(vec![
@@ -147,7 +147,7 @@ sort_direction = "descending"
 auto_refresh_interval = 600
 "#;
             std::fs::write(&path, saved).expect("persist non-default startup preferences");
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             assert!(!manager.folder_peeking());
             assert!(!manager.single_click_previews());
             assert_eq!(manager.browser_mode(), BrowserMode::List);
@@ -190,7 +190,7 @@ fn startup_directory_loads_without_settings_and_clears_stale_paths() {
                 toml::to_string(&saved).expect("serialized preferences"),
             )
             .expect("saved preferences");
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             assert_eq!(startup_location(&manager), Location::local(&chosen));
             std::fs::remove_dir(&chosen).expect("remove chosen folder");
             assert_eq!(
@@ -227,7 +227,7 @@ fn default_browser_preferences_allow_peeking_without_settings() {
     gtk_test(
         "ui::window::tests::preferences::default_browser_preferences_allow_peeking_without_settings",
         || {
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             let browser = browser_for_window();
             assert!(manager.folder_peeking());
             browser.assert_saved_preferences(&manager);
@@ -245,7 +245,7 @@ fn startup_applies_disabled_single_click_previews_before_the_first_click() {
     gtk_test(
         "ui::window::tests::preferences::startup_applies_disabled_single_click_previews_before_the_first_click",
         || {
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             manager.set_single_click_previews(false);
             let browser = browser_for_window();
             assert!(!browser.single_click_previews_enabled());

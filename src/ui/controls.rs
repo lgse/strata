@@ -2,6 +2,36 @@
 
 use gtk::prelude::*;
 
+pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
+    let control = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    control.add_css_class("appearance-text-stepper");
+    control.set_hexpand(true);
+    control.set_halign(gtk::Align::End);
+    let buttons = std::array::from_fn(|index| {
+        let button = gtk::Button::new();
+        if index == 1 {
+            button.add_css_class("appearance-text-value");
+            button.set_hexpand(true);
+        } else {
+            let icon = if index == 0 {
+                crate::assets::icons::MINUS
+            } else {
+                crate::assets::icons::PLUS
+            };
+            let image = crate::assets::primary_icon(icon, 16);
+            image.set_halign(gtk::Align::Center);
+            image.set_valign(gtk::Align::Center);
+            button.set_child(Some(&image));
+            button.add_css_class("appearance-text-step");
+            super::accessibility::set_label(&button, labels[index]);
+        }
+        button.set_tooltip_text(Some(labels[index]));
+        control.append(&button);
+        button
+    });
+    (control, buttons)
+}
+
 pub(super) fn pane_header_action(widget: &impl IsA<gtk::Widget>) {
     widget.add_css_class("column-header-action");
     widget.set_valign(gtk::Align::Center);

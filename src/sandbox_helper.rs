@@ -104,10 +104,14 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
 }
 
 fn write_media_metadata(input: &Path, output: &Path) -> Result<(), String> {
+    fs::write(output, read_media_metadata(input)?).map_err(|error| error.to_string())
+}
+
+fn read_media_metadata(input: &Path) -> Result<Vec<u8>, String> {
     let probe = bounded_output_with_timeout(
         Command::new("ffprobe")
             .args([
-                "-v", "error", "-show_entries",
+                "-v", "error", "-threads", "1", "-show_entries",
                 "stream=codec_type,codec_name,width,height,duration,avg_frame_rate,r_frame_rate,sample_rate,channels:stream_disposition=attached_pic:stream_side_data=rotation:format=duration,bit_rate",
                 "-of", "json",
             ])
@@ -127,7 +131,53 @@ fn write_media_metadata(input: &Path, output: &Path) -> Result<(), String> {
             .map_err(|error| error.to_string())?
         }
     };
-    fs::write(output, bytes).map_err(|error| error.to_string())
+    Ok(bytes)
+}
+
+pub(crate) fn browser_render(
+    input: &Path,
+    operation: crate::sandbox::browser::wire::Operation,
+) -> crate::sandbox::browser::wire::Response {
+    use crate::sandbox::browser::wire::{Operation, Response};
+    let mut response = Response::default();
+    let dimensions = || {
+        gdk_pixbuf::Pixbuf::file_info(input)
+            .filter(|(_, width, height)| *width > 0 && *height > 0)
+            .map(|(_, width, height)| (width, height))
+    };
+    let encode_dimensions = |(width, height)| {
+        serde_json::to_vec(&serde_json::json!({
+            "streams": [{"codec_type": "video", "width": width, "height": height}]
+        }))
+        .unwrap_or_default()
+    };
+    match operation {
+        Operation::Image => {
+            if let Some(size) = dimensions() {
+                response.metadata = encode_dimensions(size);
+                response.png =
+                    render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+            }
+            if response.png.is_empty() {
+                response.png = render_imagemagick(input, 256)
+                    .or_else(|_| render_dcraw(input, 256))
+                    .unwrap_or_default();
+            }
+        }
+        Operation::Raw => response.png = render_raw_thumbnail(input, 256).unwrap_or_default(),
+        Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
+        Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
+        Operation::ImageMetadata => {
+            response.metadata = dimensions()
+                .map(encode_dimensions)
+                .or_else(|| read_media_metadata(input).ok())
+                .unwrap_or_default();
+        }
+        Operation::MediaMetadata => {
+            response.metadata = read_media_metadata(input).unwrap_or_default()
+        }
+    }
+    response
 }
 
 fn render_pixbuf(path: &Path, size: i32) -> Result<Vec<u8>, String> {
@@ -480,21 +530,51 @@ pub(crate) fn run_command_with_timeout(
 }
 
 fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let output_path = directory.path().join("thumbnail.png");
     let output = bounded_output(
         Command::new("ffmpegthumbnailer")
             .arg("-i")
             .arg(path)
-            .args(["-o", "/dev/stdout", "-s"])
+            .arg("-o")
+            .arg(&output_path)
+            .arg("-s")
             .arg(size.to_string())
             .args(["-q", "8"]),
         MAX_OUTPUT_BYTES,
-    )
-    .map_err(|error| error.to_string())?;
-    if output.status.success() && !output.stdout.is_empty() {
-        Ok(output.stdout)
-    } else {
-        Err("Unable to render media thumbnail".to_owned())
+    );
+    if !output.is_ok_and(|output| output.status.success()) {
+        let fallback = bounded_output(
+            Command::new("ffmpeg")
+                .args(["-v", "error", "-y", "-threads", "1", "-i"])
+                .arg(path)
+                .args([
+                    "-an",
+                    "-frames:v",
+                    "1",
+                    "-threads",
+                    "1",
+                    "-filter_threads",
+                    "1",
+                    "-vf",
+                ])
+                .arg(format!(
+                    "thumbnail=10,scale={size}:{size}:force_original_aspect_ratio=decrease"
+                ))
+                .arg(&output_path),
+            MAX_OUTPUT_BYTES,
+        )
+        .map_err(|error| error.to_string())?;
+        if !fallback.status.success() {
+            return Err("Unable to render media thumbnail".into());
+        }
     }
+    let file = fs::File::open(output_path).map_err(|error| error.to_string())?;
+    let png = read_limited(file, MAX_OUTPUT_BYTES).map_err(|error| error.to_string())?;
+    if png.is_empty() {
+        return Err("Empty media thumbnail".into());
+    }
+    Ok(png)
 }
 
 fn read_limited(reader: impl Read, max_bytes: u64) -> io::Result<Vec<u8>> {
@@ -514,7 +594,7 @@ fn bounded_output(command: &mut Command, max_bytes: u64) -> io::Result<Output> {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()?;
     let read = child
         .stdout

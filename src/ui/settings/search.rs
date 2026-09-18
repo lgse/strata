@@ -12,6 +12,12 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "thumbnail-workers",
+        page: "general",
+        title: "Thumbnail workers",
+        aliases: "performance parallel concurrency cpu memory sandbox decoder pool",
+    },
+    Target {
         id: "default-directory",
         page: "general",
         title: "Default directory",
@@ -28,6 +34,12 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Single-click file previews",
         aliases: "browsing quick preview selecting supported files",
+    },
+    Target {
+        id: "preview-autoplay",
+        page: "general",
+        title: "Autoplay media previews",
+        aliases: "browsing video audio gif playback paused sound",
     },
     Target {
         id: "arrow-scope",

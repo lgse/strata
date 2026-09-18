@@ -21,7 +21,7 @@ fn shortcut_search_filters_actions_keys_and_categories_and_recovers_from_no_matc
     gtk_test(
         "ui::settings::tests::reference::shortcut_search_filters_actions_keys_and_categories_and_recovers_from_no_matches",
         || {
-            let page = keybindings_page(ThemeManager::shared());
+            let page = keybindings_page(PreferenceManager::shared());
             let search = descendants::<gtk::Entry>(&page).remove(0);
             let rows = descendants::<gtk::Box>(&page)
                 .into_iter()
@@ -94,7 +94,7 @@ fn managed_channel_cannot_be_changed_from_the_settings_menu() {
         "ui::settings::tests::reference::managed_channel_cannot_be_changed_from_the_settings_menu",
         || {
             let source = super::packaged();
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             let row = channel_option(manager, source.managed());
             let menu = descendants::<gtk::MenuButton>(row.upcast_ref()).remove(0);
             assert!(!menu.is_sensitive());
