@@ -81,9 +81,8 @@ impl Header {
             (&maximize, PreferenceManager::window_show_maximize),
             (&close, PreferenceManager::window_show_close),
         ] {
-            preferences.bind_preference(button, read, |widget, visible| {
-                widget.set_visible(visible)
-            });
+            preferences
+                .bind_preference(button, read, |widget, visible| widget.set_visible(visible));
         }
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
