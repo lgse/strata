@@ -9,7 +9,10 @@ use std::{
     os::unix::{fs::MetadataExt, net::UnixStream},
     path::{Path, PathBuf},
     process::{Child, Stdio},
-    sync::{Arc, Condvar, Mutex, OnceLock},
+    sync::{
+        Arc, Condvar, Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -24,18 +27,26 @@ pub(crate) use worker::run;
 const CACHE_ENTRIES: usize = 64;
 const CACHE_TTL: Duration = Duration::from_secs(30);
 const WAIT_QUANTUM: Duration = Duration::from_millis(20);
-const MAX_WORKERS: usize = 16;
+pub(crate) const MAX_WORKERS: usize = 16;
 const DEFAULT_WORKER_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
+pub(crate) fn default_worker_limit() -> usize {
+    let default = std::thread::available_parallelism().map_or(2, |n| n.get().min(4));
+    configured_limit(
+        std::env::var("STRATA_THUMBNAIL_WORKERS").ok().as_deref(),
+        default,
+    )
+}
+
 pub(crate) fn worker_limit() -> usize {
-    static LIMIT: OnceLock<usize> = OnceLock::new();
-    *LIMIT.get_or_init(|| {
-        let default = std::thread::available_parallelism().map_or(2, |n| n.get().min(4));
-        configured_limit(
-            std::env::var("STRATA_THUMBNAIL_WORKERS").ok().as_deref(),
-            default,
-        )
-    })
+    pool().limit.load(Ordering::Relaxed)
+}
+
+pub(crate) fn set_worker_limit(limit: usize) {
+    pool().set_limit(limit);
+    if let Some(Ok(launcher)) = LAUNCHER.get() {
+        let _ = launcher.send(LauncherMessage::Idle);
+    }
 }
 
 fn configured_limit(value: Option<&str>, default: usize) -> usize {
@@ -285,7 +296,7 @@ fn open_source(path: &Path) -> io::Result<File> {
 struct Pool {
     state: Mutex<PoolState>,
     changed: Condvar,
-    limit: usize,
+    limit: AtomicUsize,
     idle_timeout: Duration,
 }
 
@@ -310,7 +321,7 @@ fn pool() -> &'static Pool {
     POOL.get_or_init(|| Pool {
         state: Mutex::default(),
         changed: Condvar::new(),
-        limit: worker_limit(),
+        limit: AtomicUsize::new(default_worker_limit()),
         idle_timeout: configured_idle_timeout(
             std::env::var("STRATA_THUMBNAIL_IDLE_SECONDS")
                 .ok()
@@ -320,6 +331,13 @@ fn pool() -> &'static Pool {
 }
 
 impl Pool {
+    fn set_limit(&self, limit: usize) {
+        let _state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+        self.limit
+            .store(limit.clamp(1, MAX_WORKERS), Ordering::Relaxed);
+        self.changed.notify_all();
+    }
+
     fn next_expiration(&self, now: Instant) -> Option<Duration> {
         self.state
             .lock()
@@ -336,10 +354,19 @@ impl Pool {
     fn retire_idle(&self, now: Instant) -> usize {
         let expired = {
             let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
+            let mut excess = state
+                .count
+                .saturating_sub(self.limit.load(Ordering::Relaxed));
             state
                 .idle
                 .extract_if(.., |idle| {
-                    now.saturating_duration_since(idle.since) >= self.idle_timeout
+                    if excess > 0 || now.saturating_duration_since(idle.since) >= self.idle_timeout
+                    {
+                        excess = excess.saturating_sub(1);
+                        true
+                    } else {
+                        false
+                    }
                 })
                 .collect::<Vec<_>>()
         };
@@ -391,7 +418,8 @@ impl Pool {
                 self.changed.notify_all();
                 return Err("Browser request cancelled".into());
             }
-            let slow_available = state.slow_running < self.limit.saturating_sub(1).max(1);
+            let limit = self.limit.load(Ordering::Relaxed);
+            let slow_available = state.slow_running < limit.saturating_sub(1).max(1);
             // At most one probe competes with thumbnails; continuous scrolling still
             // yields a turn after four thumbnail admissions, without reserving an idle worker.
             let metadata_turn = state.metadata_waiters > 0
@@ -403,7 +431,10 @@ impl Pool {
             } else {
                 !metadata_turn && (!slow || slow_available)
             };
-            if admitted && (!state.idle.is_empty() || state.count < self.limit) {
+            if admitted
+                && state.count.saturating_sub(state.idle.len()) < limit
+                && (!state.idle.is_empty() || state.count < limit)
+            {
                 if metadata {
                     state.metadata_waiters -= 1;
                     state.metadata_running += 1;

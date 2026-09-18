@@ -12,6 +12,12 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "thumbnail-workers",
+        page: "general",
+        title: "Thumbnail workers",
+        aliases: "performance parallel concurrency cpu memory sandbox decoder pool",
+    },
+    Target {
         id: "default-directory",
         page: "general",
         title: "Default directory",

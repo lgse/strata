@@ -42,6 +42,28 @@ fn cache_work_progresses_while_every_render_thread_is_busy() {
 }
 
 #[test]
+fn increasing_executor_capacity_starts_work_while_old_jobs_are_busy() {
+    static EXECUTOR: OnceLock<Executor> = OnceLock::new();
+    let (release, wait) = mpsc::channel();
+    let (started, ready) = mpsc::channel();
+    let first = submit(&EXECUTOR, 1, "test-render-growth", move || {
+        started.send(()).expect("started");
+        wait.recv_timeout(Duration::from_secs(5)).expect("release");
+    });
+    ready
+        .recv_timeout(Duration::from_secs(5))
+        .expect("first job started");
+    let second = submit(&EXECUTOR, 2, "test-render-growth", || 42);
+    let result = futures_lite::future::block_on(futures_lite::future::race(second, async {
+        async_io::Timer::after(Duration::from_secs(2)).await;
+        Err("executor did not grow".to_owned())
+    }));
+    release.send(()).expect("release first job");
+    futures_lite::future::block_on(first).expect("first job finished");
+    assert_eq!(result.expect("new worker ran"), 42);
+}
+
+#[test]
 fn a_panicking_task_does_not_retire_executor_threads() {
     for _ in 0..super::super::MAX_CACHE_READERS {
         assert!(

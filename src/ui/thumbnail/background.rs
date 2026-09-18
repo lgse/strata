@@ -5,10 +5,14 @@ use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use futures_channel::oneshot;
 
 type Task = Box<dyn FnOnce() + Send>;
-type Executor = OnceLock<Result<mpsc::SyncSender<Task>, String>>;
+struct Executor {
+    sender: mpsc::SyncSender<Task>,
+    receiver: Arc<Mutex<mpsc::Receiver<Task>>>,
+    threads: Mutex<usize>,
+}
 
-static CACHE: Executor = OnceLock::new();
-static RENDER: Executor = OnceLock::new();
+static CACHE: OnceLock<Executor> = OnceLock::new();
+static RENDER: OnceLock<Executor> = OnceLock::new();
 
 #[cfg(test)]
 mod tests;
@@ -31,16 +35,23 @@ pub(super) fn render<T: Send + 'static>(
 }
 
 fn submit<T: Send + 'static>(
-    executor: &'static Executor,
+    executor: &'static OnceLock<Executor>,
     threads: usize,
     name: &'static str,
     task: impl FnOnce() -> T + Send + 'static,
 ) -> impl Future<Output = Result<T, String>> {
-    let sender = executor.get_or_init(|| {
+    let executor = executor.get_or_init(|| {
         let (sender, receiver) = mpsc::sync_channel::<Task>(super::MAX_QUEUED_THUMBNAILS);
-        let receiver = Arc::new(Mutex::new(receiver));
-        for _ in 0..threads {
-            let receiver = receiver.clone();
+        Executor {
+            sender,
+            receiver: Arc::new(Mutex::new(receiver)),
+            threads: Mutex::new(0),
+        }
+    });
+    let ready = (|| {
+        let mut started = executor.threads.lock().unwrap_or_else(|p| p.into_inner());
+        while *started < threads {
+            let receiver = executor.receiver.clone();
             std::thread::Builder::new()
                 .name(name.into())
                 .spawn(move || {
@@ -54,12 +65,14 @@ fn submit<T: Send + 'static>(
                     }
                 })
                 .map_err(|error| error.to_string())?;
+            *started += 1;
         }
-        Ok(sender)
-    });
+        Ok::<_, String>(())
+    })();
     let (send, receive) = oneshot::channel();
-    let submitted = sender.as_ref().map_err(Clone::clone).and_then(|sender| {
-        sender
+    let submitted = ready.and_then(|()| {
+        executor
+            .sender
             .try_send(Box::new(move || {
                 let _ = send.send(task());
             }))

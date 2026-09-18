@@ -186,6 +186,8 @@ struct Preferences {
     preview_text_wrap: bool,
     #[serde(default)]
     auto_refresh_interval: u32,
+    #[serde(default = "crate::sandbox::browser::default_worker_limit")]
+    thumbnail_workers: usize,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
     #[serde(default)]
@@ -246,6 +248,7 @@ impl Default for Preferences {
             preview_volume: default_full_volume(),
             preview_text_wrap: false,
             auto_refresh_interval: 0,
+            thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
             release_channel: default_release_channel(),
@@ -377,6 +380,9 @@ impl ThemeManager {
             Preferences::default()
         });
         preferences.preview_volume = normalized_volume(preferences.preview_volume);
+        preferences.thumbnail_workers = preferences
+            .thumbnail_workers
+            .clamp(1, crate::sandbox::browser::MAX_WORKERS);
         if !themes.iter().any(|theme| theme.id == preferences.theme) {
             preferences.theme = "azure-glow".to_owned();
         }
@@ -680,6 +686,16 @@ impl ThemeManager {
         } else {
             self.save_preferences();
         }
+    }
+
+    pub fn thumbnail_workers(&self) -> usize {
+        self.preferences.borrow().thumbnail_workers
+    }
+
+    pub fn set_thumbnail_workers(&self, workers: usize) {
+        self.preferences.borrow_mut().thumbnail_workers =
+            workers.clamp(1, crate::sandbox::browser::MAX_WORKERS);
+        self.save_preferences();
     }
 
     pub fn auto_refresh_interval(&self) -> u32 {

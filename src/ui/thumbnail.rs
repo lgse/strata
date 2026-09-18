@@ -850,6 +850,11 @@ fn heavy(kind: ThumbnailKind) -> bool {
     )
 }
 
+pub(in crate::ui) fn set_worker_limit(workers: usize) {
+    crate::sandbox::browser::set_worker_limit(workers);
+    start_render_jobs();
+}
+
 fn start_render_jobs() {
     let limit = crate::sandbox::browser::worker_limit();
     while RENDER_RUNNING.with(Cell::get) < limit {

@@ -19,6 +19,9 @@ impl BrowserView {
     }
 
     pub(super) fn bind_preferences(&self, manager: &ThemeManager) {
+        self.bind_view_preference(manager, ThemeManager::thumbnail_workers, |_, workers| {
+            super::super::thumbnail::set_worker_limit(workers);
+        });
         self.bind_view_preference(manager, ThemeManager::browser_mode, Self::set_view_mode);
         self.bind_view_preference(manager, ThemeManager::browser_density, Self::set_density);
         self.bind_view_preference(

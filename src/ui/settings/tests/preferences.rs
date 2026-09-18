@@ -47,6 +47,7 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
             );
+            assert_eq!(crate::sandbox::browser::worker_limit(), 6);
             let path = glib::user_config_dir().join("strata/settings.toml");
             let udiskie_config = glib::user_config_dir().join("udiskie/config.yml");
             let udiskie_state = glib::user_data_dir().join("strata/udiskie-install/state.toml");
@@ -76,6 +77,46 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             );
             assert_eq!(active_switches(&first), active_switches(&second));
             assert_eq!(active_choices(&first), active_choices(&second));
+            let worker_button = |page: &gtk::Widget, label: &str| {
+                descendants::<gtk::Button>(page)
+                    .into_iter()
+                    .find(|button| button.tooltip_text().as_deref() == Some(label))
+                    .expect("thumbnail worker control")
+            };
+            for (page, label, expected) in [
+                (&first, "Increase thumbnail workers", 7),
+                (&second, "Decrease thumbnail workers", 6),
+            ] {
+                worker_button(page, label).emit_clicked();
+                assert_eq!(crate::sandbox::browser::worker_limit(), expected);
+                for other in [&first, &second] {
+                    assert_eq!(
+                        worker_button(other, "Reset thumbnail workers")
+                            .label()
+                            .as_deref(),
+                        Some(expected.to_string().as_str())
+                    );
+                }
+                for browser in [&first_browser, &second_browser] {
+                    browser.set_view_mode(crate::ui::browser_modes::BrowserMode::Icons);
+                    browser.set_view_mode(crate::ui::browser_modes::BrowserMode::List);
+                    assert_eq!(crate::sandbox::browser::worker_limit(), expected);
+                }
+            }
+            manager.set_thumbnail_workers(0);
+            assert_eq!(crate::sandbox::browser::worker_limit(), 1);
+            assert!(!worker_button(&first, "Decrease thumbnail workers").is_sensitive());
+            manager.set_thumbnail_workers(usize::MAX);
+            assert_eq!(
+                crate::sandbox::browser::worker_limit(),
+                crate::sandbox::browser::MAX_WORKERS
+            );
+            assert!(!worker_button(&second, "Increase thumbnail workers").is_sensitive());
+            worker_button(&first, "Reset thumbnail workers").emit_clicked();
+            assert_eq!(
+                crate::sandbox::browser::worker_limit(),
+                crate::sandbox::browser::default_worker_limit()
+            );
             assert!(
                 descendants::<gtk::Label>(&first)
                     .iter()

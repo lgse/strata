@@ -143,7 +143,7 @@ fn cancelled_admission_never_starts_a_worker_or_strands_a_waiter() {
     let pool = Pool {
         state: Mutex::default(),
         changed: Condvar::new(),
-        limit: 2,
+        limit: AtomicUsize::new(2),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
     };
     let cancellation = Cancellation::default();
@@ -168,6 +168,67 @@ fn cancelled_admission_never_starts_a_worker_or_strands_a_waiter() {
 }
 
 #[test]
+fn resizing_preserves_busy_leases_and_wakes_waiters_for_new_capacity() {
+    let pool = Pool {
+        state: Mutex::new(PoolState {
+            count: 3,
+            idle: (0..3)
+                .map(|_| IdleWorker {
+                    worker: Worker::OneShot,
+                    since: Instant::now(),
+                })
+                .collect(),
+            ..Default::default()
+        }),
+        changed: Condvar::new(),
+        limit: AtomicUsize::new(3),
+        idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+    };
+    let cancellation = Cancellation::default();
+    let first = pool
+        .acquire(Operation::Image, &cancellation)
+        .expect("first lease");
+    let second = pool
+        .acquire(Operation::Image, &cancellation)
+        .expect("second lease");
+    pool.set_limit(1);
+    assert_eq!(pool.retire_idle(Instant::now()), 1);
+    assert!(first.worker.is_some() && second.worker.is_some());
+    drop(first);
+    std::thread::scope(|scope| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let pool = &pool;
+        let cancellation = &cancellation;
+        scope.spawn(move || {
+            if let Ok(lease) = pool.acquire(Operation::Image, cancellation) {
+                let _ = tx.send(());
+                drop(lease);
+            }
+        });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while pool.state.lock().expect("pool").thumbnail_waiters == 0 {
+            if Instant::now() >= deadline {
+                cancellation.cancel();
+                panic!("request did not queue");
+            }
+            std::thread::yield_now();
+        }
+        assert!(matches!(
+            rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        ));
+        pool.set_limit(2);
+        let result = rx.recv_timeout(Duration::from_secs(5));
+        cancellation.cancel();
+        result.expect("larger limit admits the waiting request");
+    });
+    pool.set_limit(1);
+    drop(second);
+    assert_eq!(pool.retire_idle(Instant::now()), 1);
+    assert_eq!(pool.state.lock().expect("pool").count, 1);
+}
+
+#[test]
 fn slow_work_preserves_capacity_for_visible_images_and_releases_its_permit() {
     let pool = Pool {
         state: Mutex::new(PoolState {
@@ -181,7 +242,7 @@ fn slow_work_preserves_capacity_for_visible_images_and_releases_its_permit() {
             ..Default::default()
         }),
         changed: Condvar::new(),
-        limit: 2,
+        limit: AtomicUsize::new(2),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
     };
     let cancellation = Cancellation::default();
@@ -211,7 +272,7 @@ fn metadata_gets_a_bounded_turn_during_continuous_thumbnail_work() {
             ..Default::default()
         }),
         changed: Condvar::new(),
-        limit: 1,
+        limit: AtomicUsize::new(1),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
     };
     let cancellation = Cancellation::default();
@@ -295,7 +356,7 @@ fn idle_expiry_releases_only_expired_workers_and_can_empty_the_pool() {
             ..Default::default()
         }),
         changed: Condvar::new(),
-        limit: 2,
+        limit: AtomicUsize::new(2),
         idle_timeout: timeout,
     };
     assert_eq!(pool.next_expiration(now), Some(timeout));
@@ -328,7 +389,7 @@ fn idle_expiry_never_interrupts_a_lease_and_returning_it_resets_the_deadline() {
             ..Default::default()
         }),
         changed: Condvar::new(),
-        limit: 1,
+        limit: AtomicUsize::new(1),
         idle_timeout: timeout,
     };
     let lease = pool
@@ -357,7 +418,7 @@ fn saturated_pool_wait_is_cancellable() {
             ..Default::default()
         }),
         changed: Condvar::new(),
-        limit: 2,
+        limit: AtomicUsize::new(2),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
     };
     let cancellation = Cancellation::default();
