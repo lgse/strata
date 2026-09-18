@@ -57,7 +57,7 @@ fn shifted_anchor_y(
     }
 }
 
-pub(super) fn context_menu_popover(
+pub(in crate::ui) fn context_menu_popover(
     content: &impl IsA<gtk::Widget>,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
     let viewport = gtk::Viewport::builder()
@@ -187,7 +187,7 @@ pub(super) fn focus_context_entry(
     focus_context_column(state, depth);
 }
 
-pub(super) fn show_context_popover(
+pub(in crate::ui) fn show_context_popover(
     popover: &gtk::Popover,
     scroll: &gtk::ScrolledWindow,
     anchor: &gtk::Widget,
@@ -1578,7 +1578,11 @@ fn context_menu_row(
     (row, icon, title)
 }
 
-pub(super) fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
+pub(in crate::ui) fn context_menu_option(
+    icon: &str,
+    label: &str,
+    accelerator: &str,
+) -> gtk::Button {
     let (row, _, _) = context_menu_row(icon, label, accelerator);
     let button = crate::ui::accessibility::menu_item_button();
     crate::ui::accessibility::describe_menu_item(&button, label, accelerator);

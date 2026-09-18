@@ -392,7 +392,7 @@ fn cancelled_archive_clears_flag_and_following_load_restores_transfer_selection(
                 .pending_select
                 .borrow_mut()
                 .push("pasted.txt".to_owned());
-            state.pending_transfer_selection.replace(Some((
+            state.pending_location_selection.replace(Some((
                 Location::local(destination.path()),
                 vec![Location::local(destination.path().join("pasted.txt"))],
             )));

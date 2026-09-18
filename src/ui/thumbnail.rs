@@ -342,6 +342,17 @@ pub(super) fn set_thumbnail_or_icon(
                 icon_size,
                 thumbnail_size,
             });
+        } else if let Some((mirror_path, kind)) = remote_mirror_thumbnail(entry) {
+            set_thumbnail_for_path(ThumbnailRequest {
+                image,
+                path: &mirror_path,
+                kind: Some(kind),
+                modified: known_metadata(&entry.modified_unix_seconds),
+                file_size: known_metadata(&entry.size),
+                fallback_icon,
+                icon_size,
+                thumbnail_size,
+            });
         } else {
             show_fallback_icon(image, fallback_icon, icon_size);
         }
@@ -361,6 +372,17 @@ pub(super) fn set_thumbnail_or_icon(
         icon_size,
         thumbnail_size,
     });
+}
+
+// GVfs FUSE paths are render inputs only; navigation must retain the URI identity.
+fn remote_mirror_thumbnail(entry: &FileEntry) -> Option<(PathBuf, ThumbnailKind)> {
+    if entry.is_directory() {
+        return None;
+    }
+    let kind = thumbnail_kind(Path::new(&entry.display_name))?;
+    let uri = entry.location.uri_value()?;
+    let path = gio::File::for_uri(uri).path()?;
+    Some((path, kind))
 }
 
 pub(super) fn set_thumbnail_or_icon_for_path(

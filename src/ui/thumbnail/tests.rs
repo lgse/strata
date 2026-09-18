@@ -607,6 +607,111 @@ fn cache_miss_enqueues_sandbox_job_without_settle_timeout() {
 }
 
 #[test]
+fn uri_entries_with_a_local_mirror_render_via_the_mirror_path() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_with_a_local_mirror_render_via_the_mirror_path",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            // file:// exercises URI routing, not GVfs/FUSE integration.
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(has_pending_thumbnail(mirror.path()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn mirror_rendering_does_not_wait_for_a_metadata_fill() {
+    gtk_test(
+        "ui::thumbnail::tests::mirror_rendering_does_not_wait_for_a_metadata_fill",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(
+                has_pending_thumbnail(mirror.path()),
+                "mirror rendering must not depend on a metadata producer"
+            );
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri("smb://example.invalid/share/photo.png"),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(PENDING_THUMBNAILS.with(|pending| pending.borrow().is_empty()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
 fn stale_request_id_does_not_apply_completed_texture() {
     gtk_test(
         "ui::thumbnail::tests::stale_request_id_does_not_apply_completed_texture",
