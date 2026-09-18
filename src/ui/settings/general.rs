@@ -53,6 +53,30 @@ pub(super) fn general_page(
     append_thumbnail_workers_option(&performance, &manager);
     append_video_preview_option(&performance, &manager);
 
+    let window_buttons = super::settings_group(&preferences, "WINDOW BUTTONS");
+    for switch in [
+        PreferenceSwitch {
+            title: "Show minimize button",
+            description: "Add a minimize button to the top bar.",
+            read: PreferenceManager::window_show_minimize,
+            write: PreferenceManager::set_window_show_minimize,
+        },
+        PreferenceSwitch {
+            title: "Show maximize button",
+            description: "Add a maximize and restore button to the top bar.",
+            read: PreferenceManager::window_show_maximize,
+            write: PreferenceManager::set_window_show_maximize,
+        },
+        PreferenceSwitch {
+            title: "Show close button",
+            description: "Keep the close button in the top bar. Hide it when the window manager already closes windows.",
+            read: PreferenceManager::window_show_close,
+            write: PreferenceManager::set_window_show_close,
+        },
+    ] {
+        append_preference_switch(&window_buttons, &manager, switch);
+    }
+
     let desktop = super::settings_group(&preferences, "DESKTOP INTEGRATION");
     let portal_row = crate::ui::portal_preferences::settings_row();
     super::search::tag(&portal_row, "Desktop integration");

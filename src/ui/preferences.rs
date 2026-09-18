@@ -52,6 +52,12 @@ pub(in crate::ui) struct Preferences {
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
     show_keybinding_hints: bool,
+    #[serde(default = "default_enabled")]
+    window_show_close: bool,
+    #[serde(default)]
+    window_show_minimize: bool,
+    #[serde(default)]
+    window_show_maximize: bool,
     #[serde(default)]
     reduce_motion: bool,
     #[serde(default = "default_enabled")]
@@ -147,6 +153,9 @@ impl Default for Preferences {
             arrow_navigation_scoped: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
+            window_show_close: true,
+            window_show_minimize: false,
+            window_show_maximize: false,
             reduce_motion: false,
             element_glow: true,
             browser_mode: default_browser_mode(),
@@ -566,6 +575,33 @@ impl PreferenceManager {
         refresh: impl Fn(&gtk::Widget, bool) + 'static,
     ) {
         self.bind_preference(anchor, Self::show_keybinding_hints, refresh);
+    }
+
+    pub fn window_show_close(&self) -> bool {
+        self.preferences.borrow().window_show_close
+    }
+
+    pub fn set_window_show_close(&self, enabled: bool) {
+        self.preferences.borrow_mut().window_show_close = enabled;
+        self.save_preferences();
+    }
+
+    pub fn window_show_minimize(&self) -> bool {
+        self.preferences.borrow().window_show_minimize
+    }
+
+    pub fn set_window_show_minimize(&self, enabled: bool) {
+        self.preferences.borrow_mut().window_show_minimize = enabled;
+        self.save_preferences();
+    }
+
+    pub fn window_show_maximize(&self) -> bool {
+        self.preferences.borrow().window_show_maximize
+    }
+
+    pub fn set_window_show_maximize(&self, enabled: bool) {
+        self.preferences.borrow_mut().window_show_maximize = enabled;
+        self.save_preferences();
     }
 
     pub fn element_glow(&self) -> bool {

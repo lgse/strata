@@ -302,6 +302,9 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.arrow_navigation_scoped());
             assert!(!manager.filter_include_subfolders());
             assert!(!manager.show_keybinding_hints());
+            assert!(!manager.window_show_close());
+            assert!(manager.window_show_minimize());
+            assert!(manager.window_show_maximize());
             assert!(manager.reduce_motion());
             assert!(!manager.element_glow());
             let windows = [gtk::Window::new(), gtk::Window::new()];
@@ -468,6 +471,9 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_arrow_navigation_scoped(false),
                 |m| m.set_filter_include_subfolders(true),
                 |m| m.set_show_keybinding_hints(true),
+                |m| m.set_window_show_close(true),
+                |m| m.set_window_show_minimize(false),
+                |m| m.set_window_show_maximize(false),
                 |m| m.set_reduce_motion(false),
                 |m| m.set_element_glow(true),
                 |m| m.set_browser_mode(BrowserMode::Icons),
