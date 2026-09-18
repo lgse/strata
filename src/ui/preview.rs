@@ -30,8 +30,6 @@ const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 560;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
-pub(super) const SOURCE_HIGHLIGHT_BYTE_LIMIT: usize = 128 * 1024;
-pub(super) const SOURCE_HIGHLIGHT_LINE_LIMIT: usize = 512;
 const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;
 const SOURCE_INSERT_CHUNK_LINES: usize = 64;
 const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
@@ -2148,7 +2146,9 @@ impl SourcePreviewView {
                 self.view.unparent();
             }
         }
-        if super::virtual_preview::use_virtual_source(content) {
+        let languages = sourceview5::LanguageManager::default();
+        let language = languages.guess_language(entry.location.native_path(), Some(content_type));
+        if language.is_none() && super::virtual_preview::use_virtual_plain_source(content) {
             let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
             let (container, state) =
                 super::virtual_preview::source_document(content, truncated, wrapped);
@@ -2158,10 +2158,6 @@ impl SourcePreviewView {
         let display = normalize_preview_text(content).into_owned();
         let buffer = sourceview5::Buffer::new(None);
         super::theme::register_source_buffer(&buffer);
-        let languages = sourceview5::LanguageManager::default();
-        let language = languages.guess_language(entry.location.native_path(), Some(content_type));
-        let highlight_syntax = display.len() <= SOURCE_HIGHLIGHT_BYTE_LIMIT
-            && display.lines().count() <= SOURCE_HIGHLIGHT_LINE_LIMIT;
         buffer.set_highlight_syntax(false);
         buffer.set_language(language.as_ref());
         self.view.set_buffer(Some(&buffer));
@@ -2172,7 +2168,7 @@ impl SourcePreviewView {
             display,
             self.generation.clone(),
             self.generation.get(),
-            highlight_syntax,
+            language.is_some(),
         );
 
         let scroll = gtk::ScrolledWindow::builder()

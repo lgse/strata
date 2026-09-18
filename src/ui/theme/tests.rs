@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod preferences;
+mod syntax;
 mod text_size;
 
 use std::{cell::RefCell, collections::HashSet};
@@ -131,6 +132,11 @@ fn source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview() {
                 highlight: "rgb(36,77,104)".to_owned(),
                 border: "rgb(49,91,117)".to_owned(),
                 dim_text: "rgb(111,141,163)".to_owned(),
+                syntax_keyword: None,
+                syntax_string: None,
+                syntax_constant: None,
+                syntax_type: None,
+                syntax_preprocessor: None,
             };
             let xml = source_style_scheme_xml(&tokens, None);
             let values = scheme_color_values(&xml);
@@ -181,6 +187,20 @@ color8 = "#123247"
     assert_eq!(theme.background, "#0d1b2a");
     assert_eq!(theme.accent, "#00aaff");
     assert_eq!(theme.border, "#487089");
+    let derived = super::resolved_source_palette(&theme, None);
+    for (source, expected) in [
+        ("color2 = \"#00ff00\"", "#00ff00"),
+        ("color2 = \"#00ff00\"\ngreen = \"#009900\"", "#009900"),
+        ("green = \"invalid\"", derived.string.as_str()),
+    ] {
+        let source = format!(
+            "background = \"#0a0f1a\"\nforeground = \"#a8dfff\"\naccent = \"#00aaff\"\nselection = \"#a8dfff\"\ncolor8 = \"#123247\"\n{source}"
+        );
+        let tokens = tokens_from_quattro("azure-glow", &source).expect("partial Quattro palette");
+        let palette = super::resolved_source_palette(&tokens, None);
+        assert_eq!(palette.string, expected);
+        assert_eq!(palette.statement, derived.statement);
+    }
 }
 
 #[test]
