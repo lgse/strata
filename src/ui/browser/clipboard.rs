@@ -344,7 +344,7 @@ pub(super) fn install_directory_drop_target(
     widget: &impl IsA<gtk::Widget>,
     destination: Location,
 ) {
-    if is_trash_location(&destination) {
+    if is_trash_location(&destination) || destination.is_recent_location() {
         return;
     }
     widget.add_css_class("file-drop-zone");
@@ -451,6 +451,9 @@ fn classify_file_drop(
     let Some(destination) = destination else {
         return DropCommit::Forbidden;
     };
+    if destination.is_recent_location() {
+        return DropCommit::Forbidden;
+    }
     let (relation, is_noop) = state.classify(target, destination, sources.clone());
     let source_actions = drop
         .as_ref()
@@ -699,6 +702,13 @@ fn refresh_cut_views() {
     }
 }
 
+pub(crate) fn set_cut_result_style(row: &gtk::Box, location: &Location) {
+    let cut = shared_cut_locations()
+        .iter()
+        .any(|cut| locations_equal(cut, location));
+    set_cut_path_style(row, cut);
+}
+
 pub(super) fn shared_cut_locations() -> Vec<Location> {
     SHARED_CUT_LOCATIONS.with(|cut| cut.borrow().clone())
 }
@@ -846,11 +856,19 @@ impl ViewState {
                 let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
                     return false;
                 };
-                let is_cut = column
-                    .map
-                    .source_position(item.position())
-                    .and_then(|position| self.browser.entry_at(depth, position))
-                    .is_some_and(|entry| cut_lookup.contains(&entry.location));
+                let entry = if column.search_handle.borrow().is_some() {
+                    column
+                        .search_results
+                        .borrow()
+                        .get(item.position() as usize)
+                        .map(super::search_result_entry)
+                } else {
+                    column
+                        .map
+                        .source_position(item.position())
+                        .and_then(|position| self.browser.entry_at(depth, position))
+                };
+                let is_cut = entry.is_some_and(|entry| cut_lookup.contains(&entry.location));
                 set_cut_path_style(&row, is_cut);
                 true
             });
@@ -858,7 +876,7 @@ impl ViewState {
     }
 
     pub(super) fn paste_into(self: &Rc<Self>, destination: Location) {
-        if is_trash_location(&destination) {
+        if is_trash_location(&destination) || destination.is_recent_location() {
             return;
         }
         let Some(display) = gtk::gdk::Display::default() else {

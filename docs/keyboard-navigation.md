@@ -91,9 +91,11 @@ While the input is focused, Space types into the query if no result is selected.
 
 ## Shortcut footer
 
-Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. **Settings → Keybindings → Show keybinding hints** controls its visibility (on by default). The preference is saved and updates all open windows immediately. F1 still opens the reference with hints disabled; closing it hides the footer again. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.
+Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open.
 
-After copying or cutting files, a highlighted **Ctrl+V · Paste available** hint appears beside the reference button. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. With hints disabled, the paste shortcut still works, but the footer stays hidden.
+With no selection, the footer shows the directory's item count. Selections show a folder/file breakdown, such as **1 folder, 2 files selected (64 MB)**. Sizes sum available metadata for selected files only; folder contents are not scanned or included. Missing file sizes are marked incomplete or unavailable.
+
+After copying or cutting files, a highlighted **Files on clipboard** pill appears to the left of the item count. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. The clipboard status and paste shortcut remain available when the F1 Shortcuts button is hidden.
 
 The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
 

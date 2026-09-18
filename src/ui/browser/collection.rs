@@ -222,6 +222,33 @@ pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
     }
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct ActivePaneFilter {
+    pub query: String,
+    pub revealed: bool,
+}
+
+impl ActivePaneFilter {
+    pub fn should_restore(&self) -> bool {
+        self.revealed || !self.query.is_empty()
+    }
+}
+
+pub(crate) fn restore_filter_controls(
+    button: &gtk::ToggleButton,
+    entry: &gtk::Entry,
+    filter: &ActivePaneFilter,
+) {
+    if !filter.should_restore() {
+        // Icons/List panes are reused, so empty+off must dismiss leftover query/toggle.
+        button.set_active(false);
+        entry.set_text("");
+        return;
+    }
+    button.set_active(true);
+    entry.set_text(&filter.query);
+}
+
 pub(crate) fn focus_filter_entry(entry: &gtk::Entry, query: Option<&str>) {
     if let Some(query) = query {
         entry.set_text(query);
@@ -492,8 +519,12 @@ pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::
         kind: item.kind,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: item.mode.clone(),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 

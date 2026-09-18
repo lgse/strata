@@ -167,7 +167,11 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let first = entry("/fixture/selected/first.txt");
     let second = entry("/fixture/selected/second.txt");
@@ -187,6 +191,9 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
     for uri in ["trash:///file.txt", "trash:///folder/file.txt"] {
         let trashed = FileEntry {
             location: Location::uri(uri),
+            image_dimensions: crate::model::MetadataValue::Unknown,
+            child_count: crate::model::MetadataValue::Unknown,
+            duration_seconds: crate::model::MetadataValue::Unknown,
             ..entry("file.txt")
         };
         assert_eq!(duplicate_transfer(&[trashed]), None);

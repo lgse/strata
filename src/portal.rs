@@ -509,13 +509,13 @@ where
 
 async fn accessible_folder(suggestion: Option<PathBuf>) -> ashpd::backend::Result<PathBuf> {
     run_on_main(move || async move {
-        let home = crate::ui::home_directory();
+        let default = crate::ui::default_save_folder();
         let Some(path) = suggestion.filter(|path| path.is_absolute()) else {
-            return home;
+            return default;
         };
         match glib::future_with_timeout(PATH_IO_TIMEOUT, directory_is_accessible(&path)).await {
             Ok(true) => path,
-            Ok(false) | Err(_) => home,
+            Ok(false) | Err(_) => default,
         }
     })
     .await
@@ -538,8 +538,8 @@ async fn save_file_suggestion(
     current_name: Option<String>,
 ) -> ashpd::backend::Result<(PathBuf, Option<OsString>)> {
     run_on_main(move || async move {
-        let home = crate::ui::home_directory();
-        let fallback = (home.clone(), None);
+        let default = crate::ui::default_save_folder();
+        let fallback = (default.clone(), None);
         glib::future_with_timeout(
             PATH_IO_TIMEOUT,
             resolve_save_file_suggestion(current_file, current_folder, current_name),
@@ -579,7 +579,7 @@ async fn resolve_save_file_suggestion(
         {
             return (parent.to_path_buf(), Some(name.to_owned()));
         }
-        return (crate::ui::home_directory(), None);
+        return (crate::ui::default_save_folder(), None);
     }
 
     let name = current_name
@@ -591,7 +591,7 @@ async fn resolve_save_file_suggestion(
     {
         folder
     } else {
-        crate::ui::home_directory()
+        crate::ui::default_save_folder()
     };
     (folder, name)
 }

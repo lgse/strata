@@ -32,6 +32,13 @@ pub struct EntrySplice {
     pub entries: Vec<FileEntry>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ColumnEntryCounts {
+    pub total: usize,
+    pub files: usize,
+    pub folders: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct ColumnState {
     pub location: Location,
@@ -175,6 +182,7 @@ impl NavigationState {
             .into_iter()
             .zip(request_ids)
             .map(|(location, request_id)| ColumnState {
+                preferences: preferences_for_location(preferences, &location),
                 location,
                 entries: Vec::new(),
                 selected: None,
@@ -186,7 +194,6 @@ impl NavigationState {
                 truncated: false,
                 can_trash: None,
                 can_delete: None,
-                preferences,
                 request_id,
                 select_first_on_load: false,
                 load_cursor: None,
@@ -247,6 +254,7 @@ impl NavigationState {
 
     fn push_column(&mut self, location: Location, request_id: RequestId) {
         self.columns.push(ColumnState {
+            preferences: preferences_for_location(self.preferences, &location),
             location,
             entries: Vec::new(),
             selected: None,
@@ -258,7 +266,6 @@ impl NavigationState {
             truncated: false,
             can_trash: None,
             can_delete: None,
-            preferences: self.preferences,
             request_id,
             select_first_on_load: false,
             load_cursor: None,
@@ -454,6 +461,9 @@ impl NavigationState {
                             .get(position.min(column.entries.len().saturating_sub(1)))
                             .map(|entry| entry.location.clone())
                     });
+                    if let Some(ref replacement) = selected_location {
+                        column.selected_locations.insert(replacement.clone());
+                    }
                 }
             }
             DirectoryChange::Move { from, entry } => {
@@ -594,19 +604,36 @@ impl NavigationState {
         if depth >= self.columns.len() {
             return None;
         }
-        self.preferences.sort_key = preferences.sort_key;
-        self.preferences.sort_direction = preferences.sort_direction;
-        self.preferences.folders_first = preferences.folders_first;
+        let recent = self.columns[depth].location.is_recent_root();
+        if !recent && preferences.sort_key == SortKey::Recency {
+            return None;
+        }
+        let preferences = if recent {
+            ViewPreferences {
+                folders_first: false,
+                ..preferences
+            }
+        } else {
+            preferences
+        };
+        if !recent && preferences.sort_key != SortKey::DeviceOrder {
+            self.preferences.sort_key = preferences.sort_key;
+            self.preferences.sort_direction = preferences.sort_direction;
+        }
+        if !recent {
+            self.preferences.folders_first = preferences.folders_first;
+        }
         let column = &mut self.columns[depth];
         let selected_location = column
             .selected
             .and_then(|position| column.entries.get(position))
             .map(|entry| entry.location.clone());
         column.preferences = preferences;
-        // Unstable: tie-breakers in `compare_entries` keep distinct entries ordered.
-        column
-            .entries
-            .sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+        if preferences.sort_key != SortKey::DeviceOrder {
+            column
+                .entries
+                .sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+        }
         column.selected = selected_location.and_then(|location| {
             column
                 .entries
@@ -1136,6 +1163,29 @@ impl NavigationState {
         self.columns.get(depth)?.entries.get(position).cloned()
     }
 
+    pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
+        let column = self.columns.get(depth)?;
+        let show_hidden = column.preferences.show_hidden;
+        let mut folders = 0;
+        let mut files = 0;
+        let mut total = 0;
+        for entry in &column.entries {
+            if show_hidden || !entry.is_hidden {
+                total += 1;
+                if entry.is_directory() {
+                    folders += 1;
+                } else {
+                    files += 1;
+                }
+            }
+        }
+        Some(ColumnEntryCounts {
+            total,
+            files,
+            folders,
+        })
+    }
+
     pub fn active_child_position(&self, depth: usize) -> Option<usize> {
         let child = &self.columns.get(depth + 1)?.location;
         self.columns
@@ -1252,7 +1302,37 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         entry.mode = update.mode.clone();
         changed = true;
     }
+    if update.image_dimensions != MetadataValue::Unknown
+        && entry.image_dimensions != update.image_dimensions
+    {
+        entry.image_dimensions = update.image_dimensions.clone();
+        changed = true;
+    }
+    if update.child_count != MetadataValue::Unknown && entry.child_count != update.child_count {
+        entry.child_count = update.child_count.clone();
+        changed = true;
+    }
+    if update.duration_seconds != MetadataValue::Unknown
+        && entry.duration_seconds != update.duration_seconds
+    {
+        entry.duration_seconds = update.duration_seconds.clone();
+        changed = true;
+    }
     changed
+}
+
+fn preferences_for_location(
+    mut preferences: ViewPreferences,
+    location: &Location,
+) -> ViewPreferences {
+    if location.is_recent_root() {
+        preferences.folders_first = false;
+        preferences.sort_key = SortKey::Recency;
+        preferences.sort_direction = SortDirection::Descending;
+    } else if location.is_camera_photo_root() {
+        preferences.sort_key = SortKey::DeviceOrder;
+    }
+    preferences
 }
 
 fn merge_entries(
@@ -1260,6 +1340,14 @@ fn merge_entries(
     mut incoming: Vec<FileEntry>,
     preferences: ViewPreferences,
 ) -> (Vec<FileEntry>, Vec<EntryInsertion>) {
+    if preferences.sort_key == SortKey::DeviceOrder {
+        let insertion = EntryInsertion {
+            position: existing.len(),
+            entries: incoming.clone(),
+        };
+        existing.append(&mut incoming);
+        return (existing, vec![insertion]);
+    }
     incoming.sort_unstable_by(|left, right| compare_entries(left, right, preferences));
     if existing.is_empty() {
         let insertion = EntryInsertion {
@@ -1312,7 +1400,9 @@ pub(crate) fn sort_entries(
     mut entries: Vec<FileEntry>,
     preferences: ViewPreferences,
 ) -> Vec<FileEntry> {
-    entries.sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+    if preferences.sort_key != SortKey::DeviceOrder {
+        entries.sort_unstable_by(|left, right| compare_entries(left, right, preferences));
+    }
     entries
 }
 
@@ -1370,9 +1460,13 @@ fn insert_monitored_entry(
     preferences: ViewPreferences,
     splices: &mut Vec<EntrySplice>,
 ) {
-    let position = entries
-        .binary_search_by(|current| compare_entries(current, &entry, preferences))
-        .unwrap_or_else(|position| position);
+    let position = if preferences.sort_key == SortKey::DeviceOrder {
+        entries.len()
+    } else {
+        entries
+            .binary_search_by(|current| compare_entries(current, &entry, preferences))
+            .unwrap_or_else(|position| position)
+    };
     entries.insert(position, entry.clone());
     splices.push(EntrySplice {
         position,
@@ -1382,6 +1476,9 @@ fn insert_monitored_entry(
 }
 
 fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPreferences) -> Ordering {
+    if preferences.sort_key == SortKey::DeviceOrder {
+        return Ordering::Equal;
+    }
     if preferences.folders_first {
         let directory_order = right.is_directory().cmp(&left.is_directory());
         if directory_order != Ordering::Equal {
@@ -1390,8 +1487,10 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
     }
 
     let ordering = match preferences.sort_key {
+        SortKey::DeviceOrder => Ordering::Equal,
+        SortKey::Recency => compare_metadata(&left.recent_unix_seconds, &right.recent_unix_seconds),
         SortKey::Name => compare_display_names(&left.display_name, &right.display_name),
-        SortKey::Type => left.kind.cmp(&right.kind),
+        SortKey::Type => compare_entry_types(left, right),
         SortKey::Size => compare_metadata(&left.size, &right.size),
         SortKey::Modified => {
             compare_metadata(&left.modified_unix_seconds, &right.modified_unix_seconds)
@@ -1406,7 +1505,19 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
         .then_with(|| left.location.compare(&right.location))
 }
 
-fn compare_display_names(left: &str, right: &str) -> Ordering {
+fn compare_entry_types(left: &FileEntry, right: &FileEntry) -> Ordering {
+    use crate::services::EntryType;
+    let left_type = crate::services::entry_type(left);
+    let right_type = crate::services::entry_type(right);
+    match (&left_type, &right_type) {
+        (EntryType::Other, EntryType::Other) => Ordering::Equal,
+        (EntryType::Other, _) => Ordering::Greater,
+        (_, EntryType::Other) => Ordering::Less,
+        _ => compare_display_names(left_type.description(), right_type.description()),
+    }
+}
+
+pub(crate) fn compare_display_names(left: &str, right: &str) -> Ordering {
     if left.is_ascii() && right.is_ascii() {
         natural_compare(left.as_bytes(), right.as_bytes())
     } else {

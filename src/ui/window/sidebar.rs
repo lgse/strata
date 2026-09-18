@@ -13,8 +13,9 @@ use crate::{
 };
 
 use super::{
-    SIDEBAR_WIDTH, SidebarState, SidebarView, TrashContents, event_changes_trash_contents,
-    install_sidebar_file_drop, load_pinned_places, resolve_place_order, select_sidebar_row,
+    RecentAvailability, SIDEBAR_WIDTH, SidebarState, SidebarView, TrashContents,
+    event_changes_trash_contents, install_sidebar_file_drop, load_pinned_places,
+    resolve_place_order, select_sidebar_row,
 };
 
 pub(in crate::ui) fn build_sidebar(
@@ -27,6 +28,7 @@ pub(in crate::ui) fn build_sidebar(
     state.bind_order();
     state.observe_navigation_and_trash();
     let (handlers, mount_handler) = connect_device_changes(&state);
+    let recent_setting_handler = connect_recent_setting_changes(&state);
     // Device discovery remains deferred to the window's first-paint callback.
     state.append_static_places();
     state.sync_active_place();
@@ -38,7 +40,24 @@ pub(in crate::ui) fn build_sidebar(
         update_label: shell.update_label,
         handlers: RefCell::new(handlers),
         mount_handler: RefCell::new(Some(mount_handler)),
+        recent_setting_handler: RefCell::new(recent_setting_handler),
     }
+}
+
+fn connect_recent_setting_changes(
+    state: &Rc<SidebarState>,
+) -> Option<(gtk::Settings, glib::SignalHandlerId)> {
+    let settings = gtk::Settings::default()?;
+    let weak = Rc::downgrade(state);
+    let handler = settings.connect_gtk_recent_files_enabled_notify(move |_| {
+        if let Some(state) = weak.upgrade() {
+            state
+                .recent_availability
+                .set(RecentAvailability::from_runtime());
+            state.queue_rebuild();
+        }
+    });
+    Some((settings, handler))
 }
 
 struct SidebarShell {
@@ -57,6 +76,7 @@ impl SidebarShell {
             .child(&places)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .overlay_scrolling(false)
             .width_request(SIDEBAR_WIDTH)
             .vexpand(true)
             .build();
@@ -114,6 +134,7 @@ impl SidebarState {
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
         let place_order = resolve_place_order(&theme_manager.sidebar_order());
+        let places_visibility = theme_manager.sidebar_places_visibility();
         Rc::new(Self {
             widget,
             browser: view.browser(),
@@ -122,6 +143,7 @@ impl SidebarState {
             mount_monitor: gio_unix::MountMonitor::get(),
             theme_manager,
             place_order: RefCell::new(place_order),
+            places_visibility: RefCell::new(places_visibility),
             pinned_places: Rc::new(RefCell::new(load_pinned_places().unwrap_or_default())),
             place_rows: RefCell::new(Vec::new()),
             trash_contents: Cell::new(TrashContents::Unknown),
@@ -130,6 +152,7 @@ impl SidebarState {
             trash_probe_running: Cell::new(false),
             trash_probe_pending: Cell::new(false),
             local_only,
+            recent_availability: Cell::new(RecentAvailability::from_runtime()),
             pending_scroll: Cell::new(None),
             rebuild_queued: Cell::new(false),
             scroll_restore_queued: Cell::new(false),
@@ -148,6 +171,19 @@ impl SidebarState {
                         state.place_order.replace(order);
                         state.rebuild();
                     }
+                }
+            },
+        );
+        let weak = Rc::downgrade(self);
+        self.theme_manager.bind_preference(
+            &self.widget,
+            ThemeManager::sidebar_places_visibility,
+            move |_, visibility| {
+                if let Some(state) = weak.upgrade()
+                    && *state.places_visibility.borrow() != visibility
+                {
+                    state.places_visibility.replace(visibility);
+                    state.rebuild();
                 }
             },
         );

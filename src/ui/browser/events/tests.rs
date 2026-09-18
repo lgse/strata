@@ -134,8 +134,12 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 kind: EntryKind::File,
                 size: MetadataValue::Known(7),
                 modified_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             };
             let dissolve = RefCell::new(None);
             wait_until(
@@ -388,7 +392,7 @@ fn cancelled_archive_clears_flag_and_following_load_restores_transfer_selection(
                 .pending_select
                 .borrow_mut()
                 .push("pasted.txt".to_owned());
-            state.pending_transfer_selection.replace(Some((
+            state.pending_location_selection.replace(Some((
                 Location::local(destination.path()),
                 vec![Location::local(destination.path().join("pasted.txt"))],
             )));
@@ -456,8 +460,12 @@ fn operation_failed_password_prompt_drops_pending_navigate_for_later_completion(
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
             };
             state
                 .pending_extract_retry
@@ -517,8 +525,12 @@ fn password_retry_preserves_extract_here_and_extract_to_navigation_intent() {
                     kind: EntryKind::File,
                     size: MetadataValue::Unknown,
                     modified_unix_seconds: MetadataValue::Unknown,
+                    recent_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     mode: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
                 };
                 state
                     .pending_extract_retry

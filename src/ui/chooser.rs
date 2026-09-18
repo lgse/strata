@@ -502,10 +502,13 @@ impl ChooserState {
                     self.show_error("Choose an accessible local folder");
                     return;
                 };
-                let entries = self
-                    .view
-                    .selected_search_results()
-                    .unwrap_or_else(|| browser.selected_entries());
+                let entries = self.view.selected_search_results().unwrap_or_else(|| {
+                    if *directory && browser.selection_is_load_cursor() {
+                        Vec::new()
+                    } else {
+                        browser.selected_entries()
+                    }
+                });
                 let entries = eligible_open_entries(entries, *directory);
                 match open_selection(&entries, &current, *directory, *multiple) {
                     Ok(paths) => self.complete_paths(
@@ -863,6 +866,7 @@ fn build_chooser(
     header.set_title_widget(Some(&header_content));
 
     let sidebar = build_sidebar(view.clone(), theme, true);
+    sidebar.schedule_after_first_paint(&window);
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
     content.set_wide_handle(false);
     content.set_position(SIDEBAR_WIDTH);

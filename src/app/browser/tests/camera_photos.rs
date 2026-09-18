@@ -2,6 +2,186 @@
 
 use super::*;
 
+#[test]
+fn camera_device_order_appends_batches_and_keeps_selection_through_completion_and_refresh() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async test lock");
+    let captured: CapturedLoad = Rc::new(RefCell::new(None));
+    let browser = Browser::new(Rc::new(BatchReplaySource {
+        captured: captured.clone(),
+    }));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.navigate(Location::uri("gphoto2://camera/"));
+    let (request_id, emit) = captured.borrow().clone().expect("initial Photos request");
+    let entries = |names: &[&str]| {
+        names
+            .iter()
+            .map(|name| FileEntry {
+                location: Location::uri(format!("gphoto2://camera/202609_a/{name}")),
+                ..batch_entry(name)
+            })
+            .collect()
+    };
+    emit(DirectoryEvent::Batch {
+        request_id,
+        entries: entries(&["z.jpg", "m.jpg"]),
+    });
+    browser.flush_coalesced_capped(None);
+    browser.select(0, 1);
+    emit(DirectoryEvent::Batch {
+        request_id,
+        entries: entries(&["b.jpg", "a.jpg"]),
+    });
+    browser.flush_coalesced_capped(None);
+    assert_eq!(
+        column_names(&browser, 0),
+        ["z.jpg", "m.jpg", "b.jpg", "a.jpg"]
+    );
+    assert_eq!(browser.state.borrow().selected_positions(0), [1]);
+    emit(DirectoryEvent::Finished {
+        request_id,
+        truncated: false,
+        can_trash: Some(false),
+        can_delete: Some(true),
+    });
+    browser.flush_coalesced_capped(None);
+    assert_eq!(
+        column_names(&browser, 0),
+        ["z.jpg", "m.jpg", "b.jpg", "a.jpg"]
+    );
+    assert_eq!(browser.state.borrow().selected_positions(0), [1]);
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesReplaced { .. }))
+    );
+    let positions: Vec<_> = events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            BrowserEvent::EntriesInserted { insertions, .. } => Some(insertions),
+            _ => None,
+        })
+        .flatten()
+        .map(|insertion| insertion.position)
+        .collect();
+    assert_eq!(positions, [0, 2]);
+
+    browser.retry_column(0);
+    let (request_id, emit) = captured.borrow().clone().expect("refreshed Photos request");
+    emit(DirectoryEvent::Batch {
+        request_id,
+        entries: entries(&["z.jpg", "m.jpg", "b.jpg", "a.jpg"]),
+    });
+    browser.flush_coalesced_capped(None);
+    assert_eq!(
+        column_names(&browser, 0),
+        ["z.jpg", "m.jpg", "b.jpg", "a.jpg"]
+    );
+    assert_eq!(browser.state.borrow().selected_positions(0), [1]);
+
+    browser.set_sort_key(0, SortKey::Name);
+    browser.set_sort_key(0, SortKey::DeviceOrder);
+    let (request_id, emit) = captured.borrow().clone().expect("device-order reload");
+    emit(DirectoryEvent::Batch {
+        request_id,
+        entries: entries(&["z.jpg", "m.jpg", "b.jpg", "a.jpg"]),
+    });
+    browser.flush_coalesced_capped(None);
+    glib::MainContext::default().block_on(glib::timeout_future(Duration::from_millis(30)));
+    assert_eq!(
+        column_names(&browser, 0),
+        ["z.jpg", "m.jpg", "b.jpg", "a.jpg"]
+    );
+    assert_eq!(
+        browser
+            .column_preferences(0)
+            .expect("Photos preferences")
+            .sort_key,
+        SortKey::DeviceOrder
+    );
+}
+
+#[test]
+fn camera_explicit_sorts_work_and_device_order_can_be_restored_without_leaking_to_folders() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async test lock");
+    for (key, expected) in [
+        (SortKey::Name, ["a.jpg", "b.jpg", "z.jpg"]),
+        (SortKey::Modified, ["b.jpg", "z.jpg", "a.jpg"]),
+    ] {
+        let captured: CapturedLoad = Rc::new(RefCell::new(None));
+        let browser = Browser::new(Rc::new(BatchReplaySource {
+            captured: captured.clone(),
+        }));
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let observed = events.clone();
+        browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+        browser.navigate(Location::uri("gphoto2://camera/"));
+        let (request_id, emit) = captured.borrow().clone().expect("initial Photos request");
+        let entries = || {
+            [("z.jpg", 20), ("b.jpg", 10), ("a.jpg", 30)]
+                .into_iter()
+                .map(|(name, modified)| FileEntry {
+                    location: Location::uri(format!("gphoto2://camera/202609_a/{name}")),
+                    size: MetadataValue::Known(1),
+                    modified_unix_seconds: MetadataValue::Known(modified),
+                    ..batch_entry(name)
+                })
+                .collect()
+        };
+        emit(DirectoryEvent::Batch {
+            request_id,
+            entries: entries(),
+        });
+        browser.flush_coalesced_capped(None);
+        browser.select(0, 0);
+        browser.set_sort(0, key, SortDirection::Ascending);
+        pump_until(|| finish_count(&events) == 1);
+        assert_eq!(column_names(&browser, 0), expected);
+        assert_eq!(
+            browser.state.borrow().selected_entries()[0].display_name,
+            "z.jpg"
+        );
+        browser.set_sort_key(0, SortKey::DeviceOrder);
+        let (new_request, new_emit) = captured.borrow().clone().expect("device-order reload");
+        assert_ne!(new_request, request_id);
+        emit(DirectoryEvent::Batch {
+            request_id,
+            entries: vec![batch_entry("stale.jpg")],
+        });
+        new_emit(DirectoryEvent::Batch {
+            request_id: new_request,
+            entries: entries(),
+        });
+        browser.flush_coalesced_capped(None);
+        assert_eq!(column_names(&browser, 0), ["z.jpg", "b.jpg", "a.jpg"]);
+        assert_eq!(browser.state.borrow().selected_positions(0), [0]);
+        assert_eq!(browser.preferences.get().sort_key, key);
+        browser.navigate(Location::local("/fixture"));
+        assert_eq!(
+            browser
+                .column_preferences(0)
+                .expect("folder preferences")
+                .sort_key,
+            key
+        );
+        browser.set_sort_key(0, SortKey::DeviceOrder);
+        assert_eq!(
+            browser
+                .column_preferences(0)
+                .expect("folder preferences")
+                .sort_key,
+            key
+        );
+    }
+}
+
 struct CameraLoadSource(Rc<RefCell<Vec<DirectoryRequest>>>);
 
 impl FileSource for CameraLoadSource {

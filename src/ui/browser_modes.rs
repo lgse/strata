@@ -9,6 +9,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
+    path::Path,
     rc::{Rc, Weak},
 };
 
@@ -128,6 +129,13 @@ impl Default for ClickActivation {
     }
 }
 
+// Capture must snapshot selection before GTK changes it for the bubble gesture.
+#[derive(Default)]
+struct SlowClickRename {
+    was_selected: Cell<bool>,
+    selected_count_before: Cell<u64>,
+}
+
 /// Maps a `StringList` item to its source index. Filter, sort, and flatten models
 /// pass those objects through, so bind can resolve without scanning the source.
 #[derive(Clone, Default)]
@@ -220,6 +228,7 @@ struct Pane {
     location: Option<Location>,
     group_by_type: bool,
     sorting: Option<ListSorting>,
+    sort_direction_button: Option<gtk::Button>,
     shell: gtk::Box,
     header: gtk::Box,
     model: gtk::StringList,
@@ -244,6 +253,7 @@ struct Pane {
     empty_trash_button: Option<gtk::Button>,
     show_hidden: Rc<Cell<bool>>,
     filter: gtk::CustomFilter,
+    filter_query: Rc<RefCell<String>>,
     folder_context_trigger: Rc<dyn Fn(f64, f64)>,
 }
 
@@ -768,9 +778,10 @@ impl ModeViews {
 
     pub fn filter_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
+        // Previous-mode panes stay in the tree unmapped; a just-revealed field
+        // can have focus before GTK maps it.
+        self.visible_panes()
+            .into_iter()
             .filter_map(|pane| pane.filter_entry.as_ref())
             .any(|entry| widget_has_focus(entry, focused.as_ref()))
     }
@@ -784,8 +795,22 @@ impl ModeViews {
             .is_some_and(|pane| pane.search.focus_result(path))
     }
 
+    pub fn select_all_search_results(&self) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.select_all())
+    }
+
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
         self.single_pane()?.search.selected_entries()
+    }
+
+    pub(in crate::ui) fn filter_active(&self) -> bool {
+        self.selected_search_results().is_some()
+            || self
+                .visible_panes()
+                .into_iter()
+                .filter_map(|pane| pane.filter_entry.as_ref())
+                .any(|entry| !entry.text().trim().is_empty())
     }
 
     pub fn item_view_has_focus(&self) -> bool {
@@ -804,9 +829,8 @@ impl ModeViews {
 
     pub fn empty_filter_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
+        self.visible_panes()
+            .into_iter()
             .filter_map(|pane| pane.filter_entry.as_ref())
             .any(|entry| entry.text().is_empty() && widget_has_focus(entry, focused.as_ref()))
     }
@@ -827,6 +851,44 @@ impl ModeViews {
         button.set_active(true);
         super::browser::focus_filter_entry(entry, query);
         true
+    }
+
+    pub(crate) fn capture_active_filter(&self) -> super::browser::ActivePaneFilter {
+        let Some(depth) = self.browser.active_depth() else {
+            return super::browser::ActivePaneFilter::default();
+        };
+        let Some(pane) = self.panes_at(depth).into_iter().next() else {
+            return super::browser::ActivePaneFilter::default();
+        };
+        super::browser::ActivePaneFilter {
+            query: pane
+                .filter_entry
+                .as_ref()
+                .map(|entry| entry.text().to_string())
+                .unwrap_or_default(),
+            revealed: pane
+                .filter_button
+                .as_ref()
+                .is_some_and(|button| button.is_active()),
+        }
+    }
+
+    pub(crate) fn restore_active_filter(&self, filter: &super::browser::ActivePaneFilter) {
+        let Some(depth) = self.browser.active_depth() else {
+            return;
+        };
+        let Some(pane) = self.panes_at(depth).into_iter().next() else {
+            return;
+        };
+        let (Some(entry), Some(button)) = (pane.filter_entry.as_ref(), pane.filter_button.as_ref())
+        else {
+            return;
+        };
+        super::browser::restore_filter_controls(button, entry, filter);
+        super::browser::notify_filter_query(&pane.filter, &pane.filter_query, filter.query.clone());
+        if filter.query.trim().is_empty() {
+            pane.search.show_directory_listing();
+        }
     }
 
     pub fn dismiss_focused_filter(&self) -> bool {
@@ -883,10 +945,18 @@ impl ModeViews {
         self.rebuild_icons();
     }
 
-    fn grouping_for_snapshot(&self, snapshot: &BrowserColumnSnapshot) -> bool {
-        // GTK 4.22 can abort in gtk_list_item_manager_ensure_items when a
-        // sectioned list receives interleaved camera batches while scrolling.
-        self.group_by_type && !(snapshot.loading && snapshot.location.is_camera_photo_root())
+    fn grouping_for_snapshot(&self, depth: usize, snapshot: &BrowserColumnSnapshot) -> bool {
+        if snapshot.location.is_recent_root() {
+            return false;
+        }
+        // GTK 4.22 cannot safely section interleaved camera batches. Device order
+        // must also remain ungrouped after completion rather than reshuffling rows.
+        let device_order = self
+            .browser
+            .column_preferences(depth)
+            .is_some_and(|preferences| preferences.sort_key == SortKey::DeviceOrder);
+        self.group_by_type
+            && !(snapshot.location.is_camera_photo_root() && (snapshot.loading || device_order))
     }
 
     fn prepare_list(&mut self) {
@@ -900,7 +970,7 @@ impl ModeViews {
         if let Some(pane) = self.list_pane.as_ref()
             && pane.depth == depth
             && pane.location.as_ref() == Some(&snapshot.location)
-            && pane.group_by_type == self.grouping_for_snapshot(&snapshot)
+            && pane.group_by_type == self.grouping_for_snapshot(depth, &snapshot)
             && pane.sorting.as_ref().map(|sorting| sorting.get())
                 == self
                     .browser
@@ -1402,7 +1472,7 @@ impl ModeViews {
             ListOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
-                group_by_type: self.grouping_for_snapshot(&snapshot),
+                group_by_type: self.grouping_for_snapshot(depth, &snapshot),
             },
             depth,
             &snapshot.location.display_name(),
@@ -1522,6 +1592,7 @@ fn install_mode_rename_handlers(
 }
 
 struct IconsControls {
+    sort_direction_button: gtk::Button,
     leading: gtk::Box,
     actions: gtk::Box,
     filter_entry: gtk::Entry,
@@ -1628,14 +1699,14 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     actions.append(&empty_trash);
     actions.append(&super::browser::pane_refresh_button(browser, depth));
     actions.append(&thumbnail_menu);
-    actions.append(&super::browser::column_sort_direction_toggle(
-        browser, depth,
-    ));
+    let sort_direction_button = super::browser::column_sort_direction_toggle(browser, depth);
+    actions.append(&sort_direction_button);
     actions.append(&super::browser::column_sort_menu(browser, depth));
 
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter icons (Ctrl+F)");
     actions.append(&filter_button);
     IconsControls {
+        sort_direction_button,
         leading,
         actions,
         filter_entry,
@@ -1740,7 +1811,7 @@ fn build_icons_pane(
     let view_model = if options.group_by_type {
         let sorted =
             gtk::SortListModel::new(Some(filtered_model.clone()), None::<gtk::CustomSorter>);
-        let sorter = type_group_sorter();
+        let sorter = pane_type_group_sorter(&context.browser, depth, &model);
         sorted.set_sorter(Some(&sorter));
         sorted.upcast::<gio::ListModel>()
     } else {
@@ -1888,8 +1959,10 @@ fn build_icons_pane(
         filter_entry: Some(controls.filter_entry),
         filter_button: Some(controls.filter_button),
         empty_trash_button: controls.empty_trash_button,
+        sort_direction_button: Some(controls.sort_direction_button),
         show_hidden,
         filter: filter_for_pane,
+        filter_query,
         folder_context_trigger: Rc::new(|_, _| {}),
     };
     refresh_marquee_targets(&pane);
@@ -1924,6 +1997,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     };
     let transfers_for_setup = context.transfer.clone();
     let peek_for_setup = context.state.clone();
+    let state_for_clicks = context.state.clone();
     let thumbnail_size_for_setup = context.thumbnail_size.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -1934,23 +2008,30 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
         let Some((icon, rename_label)) = super::icons_cell::parts(&card) else {
             return;
         };
+        install_icons_content_hover(&card);
+        let slow_click = Rc::new(SlowClickRename::default());
+        let weak_state_for_clicks = state_for_clicks.clone().unwrap_or_default();
         install_preview_click(
             &card,
             item,
             browser_for_setup.clone(),
+            weak_state_for_clicks.clone(),
             previews_for_setup.clone(),
             activation_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
             filter_query_for_setup.clone(),
+            slow_click.clone(),
         );
         let content_click = install_modified_selection_click(
             &card,
             item,
             selection_for_setup.clone(),
             browser_for_setup.clone(),
+            weak_state_for_clicks.clone(),
             depth,
             positions_for_setup.clone(),
+            slow_click.clone(),
         );
         install_icons_peek(
             &card,
@@ -2012,10 +2093,10 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 state.as_deref(),
             );
             if !scrolling_for_bind.get()
-                && let Some(position) = metadata_fill_position(source_position, &entry, false)
+                && let Some(position) = metadata_fill_position(source_position, &entry, false, true)
                 && let Some(browser) = browser.as_ref()
             {
-                browser.request_metadata_fill(depth, position, entry.location.clone());
+                browser.request_metadata_fill(depth, position, entry.location.clone(), true);
             }
         }
     });
@@ -2032,9 +2113,13 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     );
 
     let weak_browser = Rc::downgrade(&context.browser);
+    let weak_state_for_activate = context.state.clone();
     let source_index_for_activation = context.source_index.clone();
     let filtered_for_activation = view_model.clone();
     view.connect_activate(move |_, position| {
+        if let Some(state) = weak_state_for_activate.as_ref().and_then(Weak::upgrade) {
+            state.cancel_click_rename();
+        }
         if let Some(browser) = weak_browser.upgrade()
             && let Some(position) = source_position_for_view(
                 &source_index_for_activation,
@@ -2532,6 +2617,20 @@ fn build_list_pane(
         ));
     }
     actions.append(&super::browser::pane_refresh_button(&browser, depth));
+    let camera_photos = location
+        .as_ref()
+        .is_some_and(|location| location.is_camera_photo_root());
+    let recent = location
+        .as_ref()
+        .is_some_and(|location| location.is_recent_root());
+    if recent {
+        actions.append(&super::browser::column_sort_direction_toggle(
+            &browser, depth,
+        ));
+    }
+    if camera_photos || recent {
+        actions.append(&super::browser::column_sort_menu(&browser, depth));
+    }
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter list (Ctrl+F)");
     actions.append(&filter_button);
     let columns = ListColumnLayout::new();
@@ -2564,7 +2663,7 @@ fn build_list_pane(
     let view_model =
         gtk::SortListModel::new(Some(filtered_model.clone()), None::<gtk::CustomSorter>);
     if options.group_by_type {
-        let sorter = type_group_sorter();
+        let sorter = pane_type_group_sorter(&browser, depth, &model);
         view_model.set_sorter(Some(&sorter));
         view_model.set_section_sorter(Some(&sorter));
     }
@@ -2611,9 +2710,13 @@ fn build_list_pane(
         install_mode_directory_drop_target(&view, destination, transfer_handler.clone());
     }
     let weak_browser = Rc::downgrade(&browser);
+    let weak_state_for_activate = options.state.clone();
     let source_index_for_activation = source_index.clone();
     let view_model_for_activation = view_model_object.clone();
     view.connect_activate(move |_, position| {
+        if let Some(state) = weak_state_for_activate.as_ref().and_then(Weak::upgrade) {
+            state.cancel_click_rename();
+        }
         if let Some(browser) = weak_browser.upgrade()
             && let Some(position) = source_position_for_view(
                 &source_index_for_activation,
@@ -2749,8 +2852,10 @@ fn build_list_pane(
         filter_entry: Some(filter_entry),
         filter_button: Some(filter_button),
         empty_trash_button: is_trash.then_some(empty_trash),
+        sort_direction_button: None,
         show_hidden,
         filter: filter_for_pane,
+        filter_query,
         folder_context_trigger: Rc::new(|_, _| {}),
     };
     refresh_marquee_targets(&pane);
@@ -3004,6 +3109,32 @@ fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widge
     None
 }
 
+fn set_icons_content_hover(card: &gtk::Box, x: f64, y: f64) {
+    if super::pointer::hits_icon_card_content(card.upcast_ref(), x, y) {
+        card.add_css_class("content-hover");
+    } else {
+        card.remove_css_class("content-hover");
+    }
+}
+
+fn update_icons_content_hover(controller: &gtk::EventControllerMotion, x: f64, y: f64) {
+    if let Some(card) = controller.widget().and_downcast::<gtk::Box>() {
+        set_icons_content_hover(&card, x, y);
+    }
+}
+
+fn install_icons_content_hover(card: &gtk::Box) {
+    let motion = gtk::EventControllerMotion::new();
+    motion.connect_enter(update_icons_content_hover);
+    motion.connect_motion(update_icons_content_hover);
+    motion.connect_leave(|controller| {
+        if let Some(card) = controller.widget() {
+            card.remove_css_class("content-hover");
+        }
+    });
+    card.add_controller(motion);
+}
+
 fn install_icons_peek(
     card: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
@@ -3052,7 +3183,10 @@ fn install_mode_directory_drop_target(
     destination: Location,
     transfer_handler: TransferHandlerSlot,
 ) {
-    if transfer_handler.borrow().is_none() || is_trash_location(&destination) {
+    if transfer_handler.borrow().is_none()
+        || is_trash_location(&destination)
+        || destination.is_recent_location()
+    {
         return;
     }
     widget.add_css_class("file-drop-zone");
@@ -3129,7 +3263,7 @@ fn install_list_drag_drop(
             {
                 return None;
             }
-        } else if !super::pointer::hits_item_content(&prepare_row, x, y) {
+        } else if !super::pointer::hits_icon_card_content(&prepare_row, x, y) {
             return None;
         }
         source.set_actions(super::browser::drag_actions_for_modifiers(
@@ -3314,18 +3448,25 @@ impl PanePositions {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mode-specific click setup keeps these inputs explicit"
+)]
 fn install_modified_selection_click(
     widget: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
     selection: gtk::MultiSelection,
     browser: Weak<Browser>,
+    weak_state: Weak<super::browser::ViewState>,
     depth: usize,
     positions: PanePositions,
+    slow_click: Rc<SlowClickRename>,
 ) -> gtk::GestureClick {
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let item = item.downgrade();
+    let weak_state_for_pressed = weak_state.clone();
     click.connect_pressed(move |gesture, _, x, y| {
         let Some(item) = item.upgrade() else {
             return;
@@ -3337,14 +3478,21 @@ fn install_modified_selection_click(
         let Some(browser) = browser.upgrade() else {
             return;
         };
+        if let Some(state) = weak_state_for_pressed.upgrade() {
+            state.cancel_click_rename();
+        }
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let selected_before = selection.is_selected(position);
+        let selected_count_before = selection.selection().size();
+        slow_click.was_selected.set(selected_before);
+        slow_click.selected_count_before.set(selected_count_before);
         let preserve_group = !control
             && !shift
             && super::browser::should_preserve_drag_selection(
-                selection.is_selected(position),
-                selection.selection().size(),
+                selected_before,
+                selected_count_before,
             );
         if shift {
             let anchor = browser
@@ -3369,12 +3517,18 @@ fn install_modified_selection_click(
             return;
         }
         if let Some(widget) = gesture.widget()
-            && super::pointer::hits_item_content(&widget, x, y)
+            && super::pointer::hits_icon_card_content(&widget, x, y)
             && let Some(item_widget) = widget.parent()
         {
             item_widget.grab_focus();
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
+    });
+    let weak_state_for_cancel = weak_state.clone();
+    click.connect_cancel(move |_, _| {
+        if let Some(state) = weak_state_for_cancel.upgrade() {
+            state.cancel_click_rename();
+        }
     });
     click.connect_released(|gesture, _, _, _| {
         if gesture
@@ -3409,11 +3563,23 @@ fn metadata_fill_position(
     position: Option<usize>,
     entry: &FileEntry,
     include_mode: bool,
+    include_icon_details: bool,
 ) -> Option<usize> {
     position.filter(|_| {
         super::browser::metadata_needs_fill(entry)
             || (include_mode && entry.mode == MetadataValue::Unknown)
+            || (include_icon_details && icon_details_need_fill(entry))
     })
+}
+
+fn icon_details_need_fill(entry: &FileEntry) -> bool {
+    let path = Path::new(&entry.native_name);
+    (entry.is_directory() && entry.child_count == MetadataValue::Unknown)
+        || (!entry.is_directory()
+            && ((entry.image_dimensions == MetadataValue::Unknown
+                && crate::services::is_image_path(path))
+                || (entry.duration_seconds == MetadataValue::Unknown
+                    && crate::services::is_media_path(path))))
 }
 
 fn view_position_for_source(
@@ -3474,11 +3640,13 @@ fn install_preview_click(
     widget: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
     browser: Weak<Browser>,
+    weak_state: Weak<super::browser::ViewState>,
     enabled: Rc<Cell<bool>>,
     click_activation: Rc<Cell<ClickActivation>>,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
     filter_query: Rc<RefCell<String>>,
+    slow_click: Rc<SlowClickRename>,
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(1);
@@ -3533,6 +3701,20 @@ fn install_preview_click(
             gesture.set_state(gtk::EventSequenceState::Claimed);
             if !browser.is_chooser_mode() {
                 browser.activate_in_place(depth, position);
+            }
+        } else if press_count == 1
+            && !modifiers.intersects(
+                gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK
+                    | gtk::gdk::ModifierType::META_MASK,
+            )
+            && slow_click.was_selected.get()
+            && slow_click.selected_count_before.get() == 1
+            && !browser.is_chooser_mode()
+            && !is_trash_location(&entry.location)
+        {
+            if let Some(state) = weak_state.upgrade() {
+                state.schedule_click_rename(depth, position);
             }
         } else if press_count == 1
             && enabled.get()
@@ -3776,6 +3958,7 @@ fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {
 }
 
 fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
+    pane.search.refresh_cut_rows();
     for section in pane.item_sections() {
         section.bound_items.borrow_mut().retain(|bound| {
             let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
@@ -3958,6 +4141,7 @@ fn apply_icons_entry(
     let Some((icon, label)) = super::icons_cell::parts(card) else {
         return;
     };
+    set_icons_entry_details(card, entry);
     label.set_visible(true);
     if let Some(field) = super::icons_cell::rename_field(card) {
         field.set_visible(false);
@@ -3976,6 +4160,9 @@ fn apply_icons_entry(
         icon.set_hidden(entry.is_hidden);
         icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+        if let Some(details) = super::icons_cell::details_label(card) {
+            details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+        }
     } else {
         super::thumbnail::set_thumbnail_or_icon(
             &icon,
@@ -4009,6 +4196,9 @@ fn refresh_icons_card_chrome(
     icon.set_hidden(entry.is_hidden);
     icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
     label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+    if let Some(details) = super::icons_cell::details_label(card) {
+        details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
+    }
 }
 
 fn refresh_icons_section(
@@ -4042,8 +4232,8 @@ fn refresh_icons_section(
             icon.slot_size(),
             icon.slot_size(),
         );
-        if let Some(position) = metadata_fill_position(Some(position), &entry, false) {
-            browser.request_metadata_fill(depth, position, entry.location.clone());
+        if let Some(position) = metadata_fill_position(Some(position), &entry, false, true) {
+            browser.request_metadata_fill(depth, position, entry.location.clone(), true);
         }
     });
 }
@@ -4068,16 +4258,8 @@ fn entry_size(entry: &FileEntry) -> String {
     }
 }
 
-fn entry_type(entry: &FileEntry) -> &'static str {
-    use crate::model::EntryKind;
-    match entry.kind {
-        EntryKind::Directory => "Folder",
-        EntryKind::DirectorySymbolicLink => "Folder link",
-        EntryKind::File => "File",
-        EntryKind::FileSymbolicLink => "File link",
-        EntryKind::SymbolicLink => "Broken link",
-        EntryKind::Other => "Other",
-    }
+fn entry_type(entry: &FileEntry) -> String {
+    crate::services::entry_type_description(entry)
 }
 
 fn entry_mode(entry: &FileEntry) -> String {
@@ -4121,13 +4303,85 @@ fn update_bound_list_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
     }
 }
 
-/// Orders empty model values first, then folders and the remaining type labels
-/// alphabetically, independently of which entries have loaded.
+fn update_bound_icons_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
+    let updates: HashMap<usize, &FileEntry> = updates
+        .iter()
+        .map(|(position, entry)| (*position, entry))
+        .collect();
+    for section in pane.item_sections() {
+        section.bound_items.borrow_mut().retain(|bound| {
+            let (Some(item), Some(card)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
+                return false;
+            };
+            let Some(position) = source_position_for_view(
+                &pane.source_index,
+                Some(&section.view_model),
+                item.position(),
+            ) else {
+                return true;
+            };
+            let Some(entry) = updates.get(&position) else {
+                return true;
+            };
+            let Some(card) = card.downcast::<gtk::Box>().ok() else {
+                return true;
+            };
+            set_icons_entry_details(&card, entry);
+            true
+        });
+    }
+}
+
+fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
+    let Some(label) = super::icons_cell::details_label(card) else {
+        return;
+    };
+    if let Some(details) = entry_icons_item_info(entry) {
+        set_label_if_changed(&label, &details);
+        label.set_visible(true);
+    } else {
+        label.set_visible(false);
+    }
+}
+
+fn format_duration(seconds: u64) -> String {
+    let hours = seconds / 3_600;
+    let minutes = (seconds % 3_600) / 60;
+    let seconds = seconds % 60;
+    if hours == 0 {
+        format!("{minutes}:{seconds:02}")
+    } else {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    }
+}
+
+fn entry_icons_item_info(entry: &FileEntry) -> Option<String> {
+    if entry.is_directory() {
+        return match entry.child_count {
+            MetadataValue::Known(0) => Some("No items".to_owned()),
+            MetadataValue::Known(1) => Some("1 item".to_owned()),
+            MetadataValue::Known(count) => Some(format!("{count} items")),
+            MetadataValue::Unknown | MetadataValue::Unavailable => None,
+        };
+    }
+    if let MetadataValue::Known(seconds) = entry.duration_seconds {
+        return Some(format_duration(seconds));
+    }
+    if let MetadataValue::Known((width, height)) = entry.image_dimensions {
+        return Some(format!("{width}×{height}"));
+    }
+    match entry.size {
+        MetadataValue::Known(bytes) => Some(super::browser::format_file_size(bytes)),
+        MetadataValue::Unknown | MetadataValue::Unavailable => None,
+    }
+}
+
 fn compare_type_groups(left: &str, right: &str) -> std::cmp::Ordering {
     fn rank(label: &str) -> u8 {
         match label {
             "" => 0,
             super::browser::FOLDER_TYPE_GROUP => 1,
+            super::browser::OTHER_TYPE_GROUP => 3,
             _ => 2,
         }
     }
@@ -4150,17 +4404,66 @@ fn value_type_group(value: &str) -> String {
     super::browser::model_type_group(value)
 }
 
-/// Sorts entries into their file-type groups. `GtkSortListModel` sorts stably, so
-/// entries keep the pane's own sort order inside each group. List also uses this
-/// sorter as `section_sorter` so headings mark where one type ends and the next begins.
-fn type_group_sorter() -> gtk::CustomSorter {
-    gtk::CustomSorter::new(|left, right| {
-        compare_type_groups(
+// GTK's stable sort preserves the pane's filename ordering within each type.
+fn type_group_sorter(
+    preferences: impl Fn() -> crate::model::ViewPreferences + 'static,
+) -> gtk::CustomSorter {
+    gtk::CustomSorter::new(move |left, right| {
+        compare_type_groups_for_preferences(
             &value_type_group(&model_value(left)),
             &value_type_group(&model_value(right)),
+            preferences(),
         )
         .into()
     })
+}
+
+fn pane_type_group_sorter(
+    browser: &Rc<Browser>,
+    depth: usize,
+    model: &gtk::StringList,
+) -> gtk::CustomSorter {
+    let browser = Rc::downgrade(browser);
+    let sorter = type_group_sorter(move || {
+        browser
+            .upgrade()
+            .and_then(|browser| browser.column_preferences(depth))
+            .unwrap_or_default()
+    });
+    let weak_sorter = sorter.downgrade();
+    model.connect_items_changed(move |_, _, _, _| {
+        if let Some(sorter) = weak_sorter.upgrade() {
+            sorter.changed(gtk::SorterChange::Different);
+        }
+    });
+    sorter
+}
+
+fn compare_type_groups_for_preferences(
+    left: &str,
+    right: &str,
+    preferences: crate::model::ViewPreferences,
+) -> std::cmp::Ordering {
+    if preferences.sort_key != SortKey::Type {
+        return compare_type_groups(left, right);
+    }
+    if left.is_empty() || right.is_empty() {
+        return left.cmp(right);
+    }
+    if preferences.folders_first {
+        let folders = (right == super::browser::FOLDER_TYPE_GROUP)
+            .cmp(&(left == super::browser::FOLDER_TYPE_GROUP));
+        if folders != std::cmp::Ordering::Equal {
+            return folders;
+        }
+    }
+    let order = (left == super::browser::OTHER_TYPE_GROUP)
+        .cmp(&(right == super::browser::OTHER_TYPE_GROUP))
+        .then_with(|| crate::app::compare_display_names(left, right));
+    match preferences.sort_direction {
+        SortDirection::Ascending => order,
+        SortDirection::Descending => order.reverse(),
+    }
 }
 
 #[cfg(test)]

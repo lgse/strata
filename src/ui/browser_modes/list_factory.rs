@@ -63,23 +63,28 @@ impl ListFactory {
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
+        let slow_click = Rc::new(super::SlowClickRename::default());
         install_preview_click(
             &row.widget,
             item,
             self.browser.clone(),
+            self.state.clone().unwrap_or_default(),
             self.previews.clone(),
             self.activation.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
             self.filter_query.clone(),
+            slow_click.clone(),
         );
         let content_click = install_modified_selection_click(
             &row.widget,
             item,
             self.selection.clone(),
             self.browser.clone(),
+            self.state.clone().unwrap_or_default(),
             self.depth,
             self.positions.clone(),
+            slow_click.clone(),
         );
         install_list_drag_drop(
             &row.widget,
@@ -197,7 +202,7 @@ impl ListRow {
             .set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
         set_label_if_changed(&self.mode, &entry_mode(entry));
         set_label_if_changed(&self.size, &entry_size(entry));
-        set_label_if_changed(&self.kind, entry_type(entry));
+        set_label_if_changed(&self.kind, &entry_type(entry));
         accessibility::describe_entry(
             item,
             pending_name.unwrap_or(&entry.display_name),
@@ -239,9 +244,15 @@ impl ListBinding {
             18,
             18,
         );
-        if let Some(position) = metadata_fill_position(Some(self.position), &self.entry, true) {
-            self.browser
-                .request_metadata_fill(self.depth, position, self.entry.location.clone());
+        if let Some(position) =
+            metadata_fill_position(Some(self.position), &self.entry, true, false)
+        {
+            self.browser.request_metadata_fill(
+                self.depth,
+                position,
+                self.entry.location.clone(),
+                false,
+            );
         }
         crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
     }

@@ -169,6 +169,69 @@ fn request(root: PathBuf) -> ChooserRequest {
 }
 
 #[test]
+fn directory_confirmation_distinguishes_load_cursor_from_explicit_selection() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::directory_confirmation_distinguishes_load_cursor_from_explicit_selection",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                ThemeManager::shared().set_browser_mode(mode);
+                for explicit in [false, true] {
+                    let root = tempfile::tempdir().expect("fixture");
+                    let child = root.path().join("child");
+                    std::fs::create_dir(&child).expect("child folder");
+                    let result = Rc::new(RefCell::new(None));
+                    let received = result.clone();
+                    let mut chooser_request = request(root.path().to_path_buf());
+                    chooser_request.kind = ChooserKind::Open {
+                        directory: true,
+                        multiple: false,
+                    };
+                    let state = build_chooser(
+                        chooser_request,
+                        Arc::new(AtomicBool::new(false)),
+                        move |value| {
+                            received.replace(Some(value));
+                        },
+                    )
+                    .expect("chooser");
+                    let browser = state.view.browser();
+                    wait_until(|| {
+                        browser
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading && column.count == 1)
+                    });
+                    assert!(browser.selection_is_load_cursor(), "{mode:?}");
+                    if explicit {
+                        browser.select(0, 0);
+                        assert!(!browser.selection_is_load_cursor(), "{mode:?}");
+                    }
+                    state.accept_button.emit_clicked();
+                    wait_until(|| result.borrow().is_some());
+                    let selected = result
+                        .borrow_mut()
+                        .take()
+                        .expect("result")
+                        .expect("accepted");
+                    let expected = if explicit {
+                        child.as_path()
+                    } else {
+                        root.path()
+                    };
+                    assert_eq!(selected.uris().len(), 1, "{mode:?}, explicit={explicit}");
+                    assert_eq!(
+                        selected.uris()[0].to_string(),
+                        gio::File::for_path(expected).uri(),
+                        "{mode:?}, explicit={explicit}"
+                    );
+                    state.window.close();
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn filter_dropdown_select_file_click_open_accepts_filtered_file() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::filter_dropdown_select_file_click_open_accepts_filtered_file",
@@ -539,6 +602,7 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
                 first_selected == Location::local(&first)
                     || first_selected == Location::local(&nested)
             );
+            list.unselect_all();
             list.select_row(list.row_at_index(1).as_ref());
             wait_until(|| {
                 state.view.selected_search_results().is_some_and(|entries| {
@@ -724,74 +788,81 @@ fn active_recursive_search_without_selection_does_not_accept_hidden_browser_sele
 }
 
 #[test]
-fn columns_recursive_multi_selection_accepts_every_selected_file() {
+fn recursive_multi_selection_accepts_every_selected_file_in_all_modes() {
     crate::test_support::gtk_test(
-        "ui::chooser::tests::acceptance::columns_recursive_multi_selection_accepts_every_selected_file",
+        "ui::chooser::tests::acceptance::recursive_multi_selection_accepts_every_selected_file_in_all_modes",
         || {
             crate::ui::prepare_portal_ui();
-            ThemeManager::shared().set_browser_mode(BrowserMode::Columns);
-            let root = tempfile::tempdir().expect("fixture");
-            let paths = [
-                root.path().join("one/nested-a.txt"),
-                root.path().join("two/nested-b.txt"),
-            ];
-            for path in &paths {
-                std::fs::create_dir(path.parent().expect("parent")).expect("folder");
-                std::fs::write(path, "nested").expect("nested file");
-            }
-            let result = Rc::new(RefCell::new(None));
-            let received = result.clone();
-            let mut chooser_request = request(root.path().to_path_buf());
-            chooser_request.kind = ChooserKind::Open {
-                directory: false,
-                multiple: true,
-            };
-            let state = build_chooser(
-                chooser_request,
-                Arc::new(AtomicBool::new(false)),
-                move |value| {
-                    received.replace(Some(value));
-                },
-            )
-            .expect("chooser");
-            let browser = state.view.browser();
-            wait_until(|| {
-                browser
-                    .column_snapshot(0)
-                    .is_some_and(|column| !column.loading)
-            });
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                ThemeManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                let paths = [
+                    root.path().join("one/nested-a.txt"),
+                    root.path().join("two/nested-b.txt"),
+                ];
+                for path in &paths {
+                    std::fs::create_dir(path.parent().expect("parent")).expect("folder");
+                    std::fs::write(path, "nested").expect("nested file");
+                }
+                let result = Rc::new(RefCell::new(None));
+                let received = result.clone();
+                let mut chooser_request = request(root.path().to_path_buf());
+                chooser_request.kind = ChooserKind::Open {
+                    directory: false,
+                    multiple: true,
+                };
+                let state = build_chooser(
+                    chooser_request,
+                    Arc::new(AtomicBool::new(false)),
+                    move |value| {
+                        received.replace(Some(value));
+                    },
+                )
+                .expect("chooser");
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
 
-            // Startup's deferred focus restoration must precede simulated filter input.
-            let initialized = Rc::new(Cell::new(false));
-            let initialized_at_idle = initialized.clone();
-            glib::idle_add_local_once(move || initialized_at_idle.set(true));
-            wait_until(|| initialized.get());
-            state.view.show_filter_with_query("nested");
-            wait_until(|| state.view.selected_search_results().is_some());
-            wait_until(|| {
-                select_first_two_file_list_items(&state.view.widget());
-                state
-                    .view
-                    .selected_search_results()
-                    .is_some_and(|entries| entries.len() == 2)
-            });
-            state.accept_button.emit_clicked();
-            wait_until(|| result.borrow().is_some());
-            let mut uris = result
-                .borrow_mut()
-                .take()
-                .expect("result")
-                .expect("accepted")
-                .uris()
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>();
-            uris.sort();
-            let mut expected = paths
-                .map(|path| gio::File::for_path(path).uri().to_string())
-                .to_vec();
-            expected.sort();
-            assert_eq!(uris, expected);
+                // Startup's deferred focus restoration must precede simulated filter input.
+                let initialized = Rc::new(Cell::new(false));
+                let initialized_at_idle = initialized.clone();
+                glib::idle_add_local_once(move || initialized_at_idle.set(true));
+                wait_until(|| initialized.get());
+                state.view.show_filter_with_query("nested");
+                wait_until(|| state.view.selected_search_results().is_some());
+                wait_until(|| {
+                    if let Some(list) = search_results_list(&state.view.widget()) {
+                        list.select_row(list.row_at_index(0).as_ref());
+                        list.select_row(list.row_at_index(1).as_ref());
+                    } else {
+                        select_first_two_file_list_items(&state.view.widget());
+                    }
+                    state
+                        .view
+                        .selected_search_results()
+                        .is_some_and(|entries| entries.len() == 2)
+                });
+                state.accept_button.emit_clicked();
+                wait_until(|| result.borrow().is_some());
+                let mut uris = result
+                    .borrow_mut()
+                    .take()
+                    .expect("result")
+                    .expect("accepted")
+                    .uris()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>();
+                uris.sort();
+                let mut expected = paths
+                    .map(|path| gio::File::for_path(path).uri().to_string())
+                    .to_vec();
+                expected.sort();
+                assert_eq!(uris, expected);
+            }
         },
     );
 }

@@ -187,6 +187,9 @@ pub(super) fn column_rows(
             let dragged_item = item.downgrade();
             let map_for_drag = map_for_hover.clone();
             let prepare_row = row.downgrade();
+            let search_active_for_drag = search_active_for_factory.clone();
+            let search_results_for_drag = search_results_for_factory.clone();
+            let selection_for_drag = selection_for_rows.clone();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
                 if prepare_row
@@ -198,9 +201,26 @@ pub(super) fn column_rows(
                 source.set_actions(drag_actions_for_modifiers(source.current_event_state()));
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
-                let source_position = map_for_drag.source_position(dragged_item.position())?;
-                let entry = state.browser.entry_at(depth, source_position)?;
-                let selected = state.browser.selected_entries();
+                let position = dragged_item.position();
+                let (entry, selected) = if search_active_for_drag.get() {
+                    let results = search_results_for_drag.borrow();
+                    let entry =
+                        crate::ui::browser::search_result_entry(results.get(position as usize)?);
+                    let selected = crate::ui::browser::collection::bitset_positions(
+                        &selection_for_drag.selection(),
+                    )
+                    .into_iter()
+                    .filter_map(|position| results.get(position as usize))
+                    .map(crate::ui::browser::search_result_entry)
+                    .collect();
+                    (entry, selected)
+                } else {
+                    let source_position = map_for_drag.source_position(position)?;
+                    (
+                        state.browser.entry_at(depth, source_position)?,
+                        state.browser.selected_entries(),
+                    )
+                };
                 let entries = if selected
                     .iter()
                     .any(|selected| selected.location == entry.location)
@@ -344,8 +364,28 @@ pub(super) fn column_rows(
         let pending_activation_for_motion = pending_activation.clone();
         let pending_activation_for_release = pending_activation.clone();
         let pending_activation_for_cancel = pending_activation;
+        let was_selected = Rc::new(Cell::new(false));
+        let was_selected_for_press = was_selected.clone();
+        let was_selected_for_release = was_selected.clone();
+        let press_moved = Rc::new(Cell::new(false));
+        let press_moved_for_press = press_moved.clone();
+        let press_moved_for_update = press_moved.clone();
+        let press_moved_for_release = press_moved.clone();
+        let press_origin = Rc::new(Cell::new((0.0, 0.0)));
+        let press_origin_for_press = press_origin.clone();
+        let press_origin_for_update = press_origin.clone();
+        let rename_position = Rc::new(Cell::new(None::<usize>));
+        let rename_position_for_press = rename_position.clone();
+        let rename_position_for_release = rename_position.clone();
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
+            rename_position_for_press.set(None);
+            was_selected_for_press.set(false);
+            press_moved_for_press.set(false);
+            press_origin_for_press.set((x, y));
+            if let Some(state) = weak_state_for_click.upgrade() {
+                state.cancel_click_rename();
+            }
             if gesture
                 .widget()
                 .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
@@ -363,12 +403,12 @@ pub(super) fn column_rows(
             let modifiers = gesture.current_event_state();
             let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
             let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            let selected_before = selection_for_click.is_selected(position);
+            let selected_count_before = selection_for_click.selection().size();
+            was_selected_for_press.set(selected_before);
             let preserve_group = !control
                 && !shift
-                && should_preserve_drag_selection(
-                    selection_for_click.is_selected(position),
-                    selection_for_click.selection().size(),
-                );
+                && should_preserve_drag_selection(selected_before, selected_count_before);
             modified_for_click.set(control || shift);
             if shift {
                 let anchor =
@@ -473,7 +513,27 @@ pub(super) fn column_rows(
                         shift,
                         preserve_group,
                     );
+                    let slow_click_rename = press_count == 1
+                        && selected_before
+                        && selected_count_before == 1
+                        && !modifiers.intersects(
+                            gtk::gdk::ModifierType::CONTROL_MASK
+                                | gtk::gdk::ModifierType::SHIFT_MASK
+                                | gtk::gdk::ModifierType::ALT_MASK
+                                | gtk::gdk::ModifierType::SUPER_MASK
+                                | gtk::gdk::ModifierType::META_MASK,
+                        )
+                        && !preserve_group
+                        && !activate
+                        && !state.browser.is_chooser_mode()
+                        && !is_trash_location(&entry.location);
+                    rename_position_for_press.set(if slow_click_rename {
+                        Some(source_position)
+                    } else {
+                        None
+                    });
                     let preview = !activate
+                        && !slow_click_rename
                         && should_preview_pointer_press(
                             press_count,
                             control,
@@ -504,16 +564,39 @@ pub(super) fn column_rows(
             ) {
                 pending.update(x, y, widget.settings().gtk_dnd_drag_threshold());
             }
+            if let (Some((x, y)), Some(widget)) = (gesture.point(sequence), gesture.widget()) {
+                let origin = press_origin_for_update.get();
+                if crate::ui::pointer::exceeds_drag_threshold(
+                    origin,
+                    (x, y),
+                    widget.settings().gtk_dnd_drag_threshold(),
+                ) {
+                    press_moved_for_update.set(true);
+                }
+            }
         });
         let weak_state_for_release = weak_state.clone();
         let search_results_for_release = search_results_for_factory.clone();
-        selection_click.connect_released(move |gesture, _, x, y| {
+        selection_click.connect_released(move |gesture, count, x, y| {
             if gesture.current_event_state().intersects(
                 gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
             ) {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
-            let Some(mut pending) = pending_activation_for_release.take() else {
+            let pending = pending_activation_for_release.take();
+            if pending.is_none()
+                && count == 1
+                && !press_moved_for_release.get()
+                && !gesture.current_event_state().intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+                )
+                && was_selected_for_release.get()
+                && let Some(state) = weak_state_for_release.upgrade()
+                && let Some(position) = rename_position_for_release.get()
+            {
+                state.schedule_click_rename(depth, position);
+            }
+            let Some(mut pending) = pending else {
                 return;
             };
             let Some(widget) = gesture.widget() else {
@@ -583,8 +666,12 @@ pub(super) fn column_rows(
                 }
             }
         });
+        let weak_state_for_cancel = weak_state.clone();
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
+            if let Some(state) = weak_state_for_cancel.upgrade() {
+                state.cancel_click_rename();
+            }
         });
         row.add_controller(selection_click.clone());
         if let Some(drag) = &content_drag {
@@ -752,7 +839,7 @@ pub(super) fn column_rows(
             {
                 state
                     .browser
-                    .request_metadata_fill(depth, position, entry.location.clone());
+                    .request_metadata_fill(depth, position, entry.location.clone(), false);
             }
         } else {
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);

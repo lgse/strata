@@ -194,8 +194,8 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata):
     assert len(launch_counter.read_text().splitlines()) == 1
 
 
-@pytest.mark.preferences(browser_mode="columns")
-def test_filtered_columns_result_waits_for_release_before_launching(launch_counter, strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_result_waits_for_release_before_launching(launch_counter, strata, mode):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")
@@ -371,7 +371,7 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
 
 
 @pytest.mark.preferences(search_open_files_directly=False)
-def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata):
+def test_global_search_preview_follows_neighbor_when_same_folder_result_is_deleted(strata):
     folder = strata.environment.home / "preview-deletion"
     folder.mkdir()
     previewed = folder / "preview-deletion-fixture.txt"
@@ -394,7 +394,10 @@ def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata)
         "search result preview",
     )
     previewed.unlink()
-    strata.wait(lambda: strata.preview() is None, "deleted result preview to close")
+    strata.wait(
+        lambda: strata.preview_shows("remaining file"),
+        "deleted result preview to follow the remaining file",
+    )
     assert "remaining.txt" in strata.entry_names()
 
 
@@ -423,3 +426,53 @@ def test_global_search_finds_a_file_under_home(strata, root):
         lambda: strata.window.find(role="text", states={"editable"}) is None,
         "Escape to close the search palette",
     )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("directory", [False, True], ids=["file", "directory"])
+@pytest.mark.parametrize("route", ["menu", "shortcut"])
+def test_global_search_reveal(strata, mode, directory, route):
+    parent = strata.environment.home / "reveal-parent"
+    parent.mkdir()
+    target = parent / "reveal-target"
+    if directory:
+        target.mkdir()
+    else:
+        target.write_text("reveal without opening\n")
+    strata.keyboard.press("ctrl+k")
+    field = strata.editable_field()
+    strata.keyboard.type_text(target.name)
+    result = strata.wait(
+        lambda: next(
+            (node for node in strata.window.find_all(role="list item")
+             if node.name.endswith(f"/{target.name}")),
+            None,
+        ),
+        "global search result",
+    )
+    if route == "shortcut":
+        strata.keyboard.press("alt+Return")
+    else:
+        strata.pointer.right_click(result)
+        strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder"),
+            "reveal context menu",
+        )
+        assert field.text == target.name
+        assert strata.window.find(role="text", states={"editable"}) is not None
+        strata.keyboard.press("Escape")
+        strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder") is None,
+            "dismissed menu",
+        )
+        assert field.text == target.name
+        strata.pointer.right_click(result)
+        reveal = strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder"),
+            "reopened reveal menu",
+        )
+        strata.pointer.click(reveal)
+    strata.wait_for_directory(parent.name)
+    strata.wait_for_selection([target.name], directory=parent.name)
+    strata.wait_for_focused_entry(target.name)
+    assert strata.window.find(role="text", states={"editable"}) is None

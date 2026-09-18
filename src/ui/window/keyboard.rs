@@ -137,6 +137,11 @@ impl Dispatcher {
                     && !event.text_has_focus()
                     && event.key != Key::Delete
                 {
+                    if matches!(event.key, Key::c | Key::x | Key::v | Key::a)
+                        && let Some(result) = self.clipboard_command(&event)
+                    {
+                        return Some(result);
+                    }
                     if event.vim_navigation {
                         crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
                         Some(Propagation::Stop)

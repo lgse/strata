@@ -69,7 +69,11 @@ impl HeldSource {
                 size: crate::model::MetadataValue::Unknown,
                 modified_unix_seconds: crate::model::MetadataValue::Unknown,
                 mode: crate::model::MetadataValue::Unknown,
+                recent_unix_seconds: crate::model::MetadataValue::Unknown,
                 is_hidden: false,
+                image_dimensions: crate::model::MetadataValue::Unknown,
+                child_count: crate::model::MetadataValue::Unknown,
+                duration_seconds: crate::model::MetadataValue::Unknown,
             }],
         });
     }
@@ -144,6 +148,10 @@ fn camera_first_batch_is_visible_before_discovery_finishes_in_every_view() {
                     source.batch_at(Location::uri("gphoto2://camera/202606/IMG_0001.JPG"));
                     settle();
                     assert_page(&panes, "content");
+                    assert!(browser.column_snapshot(0).expect("camera root").loading);
+                    crate::ui::thumbnail::tests::complete_pending_thumbnail(std::path::Path::new(
+                        "gphoto2://camera/202606/IMG_0001.JPG",
+                    ));
                     assert!(browser.column_snapshot(0).expect("camera root").loading);
                     let alternate = match mode {
                         BrowserMode::Columns => BrowserMode::List,

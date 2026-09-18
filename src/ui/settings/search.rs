@@ -54,6 +54,12 @@ const TARGETS: &[Target] = &[
         aliases: "launch files quick preview",
     },
     Target {
+        id: "sidebar-places",
+        page: "general",
+        title: "Items shown in sidebar",
+        aliases: "sidebar places hide show home trash network recent shares desktop documents downloads pictures videos folder",
+    },
+    Target {
         id: "opening",
         page: "general",
         title: "Opening items",
@@ -87,7 +93,13 @@ const TARGETS: &[Target] = &[
         id: "desktop",
         page: "general",
         title: "Desktop integration",
-        aliases: "configure portal file chooser open save dialog default file manager",
+        aliases: "configure portal file chooser open save dialog default file manager encrypted udiskie",
+    },
+    Target {
+        id: "udiskie-unlock",
+        page: "general",
+        title: "Unlock encrypted volumes",
+        aliases: "encrypted luks password udiskie automount usb volume desktop integration omarchy",
     },
     Target {
         id: "omarchy",
@@ -128,8 +140,8 @@ const TARGETS: &[Target] = &[
     Target {
         id: "hints",
         page: "keybindings",
-        title: "Show keybinding hints",
-        aliases: "keyboard shortcuts footer navigation paste",
+        title: "Show F1 Shortcuts button",
+        aliases: "keyboard keybinding hints shortcuts footer navigation paste",
     },
     Target {
         id: "shortcuts",
@@ -200,12 +212,7 @@ pub(super) fn tag(widget: &impl IsA<gtk::Widget>, title: &str) {
 }
 
 pub(super) fn set_available(widget: &impl IsA<gtk::Widget>, available: bool) {
-    if available {
-        widget.remove_css_class("settings-search-unavailable");
-    } else {
-        widget.add_css_class("settings-search-unavailable");
-    }
-    widget.set_visible(available);
+    crate::ui::desktop_integration::set_search_available(widget, available);
 }
 
 fn normalized(text: &str) -> String {
@@ -366,11 +373,18 @@ fn filter_tree(widget: &gtk::Widget, matches: Option<&Matches>) -> Option<bool> 
             if child.has_css_class("menu-heading")
                 || child.has_css_class("settings-section-description")
             {
-                let following = results[index + 1..]
-                    .iter()
-                    .find_map(|result| *result)
-                    .unwrap_or(true);
-                child.set_visible(following);
+                let mut any_tagged = false;
+                let mut any_visible = false;
+                for (result, sibling) in results[index + 1..].iter().zip(&children[index + 1..]) {
+                    if sibling.has_css_class("menu-heading") {
+                        break;
+                    }
+                    if let Some(visible) = *result {
+                        any_tagged = true;
+                        any_visible |= visible;
+                    }
+                }
+                child.set_visible(any_visible || !any_tagged);
             }
         }
     }

@@ -307,6 +307,9 @@ fn remember_properties_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cel
 
 impl ViewState {
     pub(super) fn show_folder_properties(self: &Rc<Self>, location: &Location) {
+        if location.is_recent_location() {
+            return;
+        }
         self.show_properties(location.clone(), None);
     }
 
@@ -578,8 +581,10 @@ impl ViewState {
         let opening_overlay = window_overlay.clone();
         let opening_root = blurred_root.clone();
         let opening_location = location.clone();
+        let opening_parent = self.overlay.clone();
+        let opening_browser = self.browser.clone();
         open.connect_clicked(move |_| {
-            open_location(&opening_location, &opening_layer);
+            open_location(&opening_location, &opening_parent, &opening_browser);
             dismiss_modal_layer(&opening_layer, &opening_overlay, opening_root.as_ref());
         });
         let renamed_layer = layer.clone();

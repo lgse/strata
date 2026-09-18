@@ -36,6 +36,7 @@ under `.agents/`.
 
 ## Git workflow
 
+- **One conversation, one PR by default.** Treat follow-up requests in the same conversation as changes to the existing task and PR unless the owner explicitly requests a separate PR. Keep implementing, committing, and pushing to that PR's branch; do not create stacked PRs or split follow-ups onto separate task branches. If isolation requires a temporary worktree, integrate its changes into the existing PR rather than opening another one.
 - Never commit or push directly to `main`. Work from a GitHub issue and submit changes through a pull request.
 - Name branches `<type>/<issue-number>-<short-kebab-description>`, for example `feat/6-sandbox-previews`. Use Conventional Commit types such as `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`, and `chore`.
 - Write commits and pull request titles in Conventional Commits format: `<type>(optional-scope): <imperative description>`.

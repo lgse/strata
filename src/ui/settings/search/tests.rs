@@ -7,6 +7,10 @@ use crate::ui::{blur::BlurBin, theme::ThemeManager};
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),
+        ("Items shown in sidebar", "general", "sidebar-places"),
+        ("sidebar downloads", "general", "sidebar-places"),
+        ("show network", "general", "sidebar-places"),
+        ("show recent", "general", "sidebar-places"),
         ("tezt size", "theme", "text"),
         ("font size", "theme", "text"),
         ("nightly", "updates", "channel"),
@@ -19,6 +23,32 @@ fn ranks_exact_labels_aliases_and_small_typing_errors() {
         assert!(matches.ids.contains(id), "{query}");
     }
     assert!(find_matches("unfindablequantumsetting").ids.is_empty());
+}
+
+#[test]
+fn luks_and_udiskie_queries_hit_unlock_target() {
+    let luks = find_matches(&normalized("luks"));
+    assert!(
+        luks.ids.contains("udiskie-unlock"),
+        "luks should match Unlock encrypted volumes, got {:?}",
+        luks.ids
+    );
+    assert!(
+        !luks.ids.contains("desktop"),
+        "luks should not match System file manager, got {:?}",
+        luks.ids
+    );
+    let udiskie = find_matches(&normalized("udiskie"));
+    assert!(
+        udiskie.ids.contains("udiskie-unlock"),
+        "udiskie should match Unlock encrypted volumes, got {:?}",
+        udiskie.ids
+    );
+    assert!(
+        udiskie.ids.contains("desktop"),
+        "udiskie should still surface Desktop integration, got {:?}",
+        udiskie.ids
+    );
 }
 
 fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
@@ -121,6 +151,59 @@ fn late_page_filter_uses_the_current_query_and_recovers_its_sections() {
                 assert_eq!(item(&page, "channel").is_visible(), channel_available);
                 assert!(!empty.is_visible());
             }
+        },
+    );
+}
+
+#[test]
+fn luks_keeps_desktop_heading_and_hides_portal_row() {
+    crate::test_support::gtk_test(
+        "ui::settings::search::tests::luks_keeps_desktop_heading_and_hides_portal_row",
+        || {
+            let preferences = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            preferences.add_css_class("settings-preferences");
+            let heading = gtk::Label::new(Some("DESKTOP INTEGRATION"));
+            heading.add_css_class("menu-heading");
+            let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            group.add_css_class("settings-group");
+            let portal = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            tag(&portal, "Desktop integration");
+            let udiskie = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            tag(&udiskie, "Unlock encrypted volumes");
+            set_available(&udiskie, true);
+            group.append(&portal);
+            group.append(&udiskie);
+            preferences.append(&heading);
+            preferences.append(&group);
+            let later = gtk::Label::new(Some("STARTUP"));
+            later.add_css_class("menu-heading");
+            let directory = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            tag(&directory, "Default directory");
+            preferences.append(&later);
+            preferences.append(&directory);
+            let state = Rc::new(RefCell::new(Some(find_matches(&normalized("luks")))));
+            apply(&preferences, &state);
+            assert!(
+                udiskie.is_visible(),
+                "luks should show Unlock encrypted volumes"
+            );
+            assert!(!portal.is_visible(), "luks should hide System file manager");
+            assert!(
+                group.is_visible(),
+                "luks should keep the Desktop integration group"
+            );
+            assert!(
+                heading.is_visible(),
+                "luks should keep the DESKTOP INTEGRATION heading"
+            );
+            assert!(
+                !later.is_visible(),
+                "luks should not keep a later section heading"
+            );
+            assert!(
+                !directory.is_visible(),
+                "luks should hide Default directory"
+            );
         },
     );
 }

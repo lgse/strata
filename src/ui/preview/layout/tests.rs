@@ -80,7 +80,8 @@ impl Fixture {
     fn new(chooser: bool) -> Self {
         crate::ui::prepare_portal_ui();
         let root = tempfile::tempdir().expect("column fixture");
-        std::fs::create_dir_all(root.path().join("child/grandchild")).expect("nested folders");
+        std::fs::create_dir_all(root.path().join("child/grandchild/g3/g4/g5"))
+            .expect("nested folders");
         let browser = if chooser {
             BrowserView::new_chooser(Rc::new(crate::adapters::LocalFileSource), false)
         } else {
@@ -158,7 +159,11 @@ impl Fixture {
     }
 
     fn enter_children(&self) {
-        for depth in 0..2 {
+        self.enter_descendants(2);
+    }
+
+    fn enter_descendants(&self, levels: usize) {
+        for depth in 0..levels {
             self.browser.browser().select(depth, 0);
             self.browser.browser().enter_focused_directory();
             wait_until(|| {

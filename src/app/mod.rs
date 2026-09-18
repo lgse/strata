@@ -5,4 +5,4 @@ mod navigation;
 mod peek;
 
 pub use browser::{Browser, BrowserColumnSnapshot, BrowserEvent};
-pub(crate) use navigation::{EntryInsertion, EntrySplice};
+pub(crate) use navigation::{EntryInsertion, EntrySplice, compare_display_names};

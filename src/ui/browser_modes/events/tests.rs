@@ -47,7 +47,11 @@ fn entry(name: &str) -> FileEntry {
         size: MetadataValue::Known(10),
         modified_unix_seconds: MetadataValue::Known(1),
         mode: MetadataValue::Known(0o100644),
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: name.starts_with('.'),
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
     }
 }
 
@@ -160,6 +164,47 @@ fn assert_attached(pane: &Pane, attached: bool) {
     if let Some(filtered) = &pane.filter_model {
         assert_eq!(filtered.model().is_some(), attached);
     }
+}
+
+#[test]
+fn camera_device_order_does_not_enable_saved_type_grouping_at_completion() {
+    gtk_test(
+        "ui::browser_modes::events::tests::camera_device_order_does_not_enable_saved_type_grouping_at_completion",
+        || {
+            use crate::model::SortKey;
+            let mut fixture = Fixture::new(BrowserMode::List, true);
+            fixture.browser.navigate(Location::uri("gphoto2://camera/"));
+            fixture.views.prepare_list();
+            fixture.views.handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            });
+            assert!(!fixture.pane().group_by_type);
+            fixture.browser.set_sort_key(0, SortKey::Name);
+            pump_until(|| {
+                fixture
+                    .browser
+                    .column_preferences(0)
+                    .is_some_and(|preferences| preferences.sort_key == SortKey::Name)
+            });
+            fixture
+                .views
+                .handle(&BrowserEvent::SortingFinished { depth: 0 });
+            assert!(fixture.pane().group_by_type);
+            fixture.browser.set_sort_key(0, SortKey::DeviceOrder);
+            fixture
+                .views
+                .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+            fixture.views.handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            });
+            assert!(!fixture.pane().group_by_type);
+            fixture.browser.navigate(Location::local("/fixture"));
+            fixture.views.prepare_list();
+            assert!(fixture.pane().group_by_type);
+        },
+    );
 }
 
 #[test]
@@ -712,6 +757,37 @@ fn bound_row(pane: &Pane, source: usize) -> Option<gtk::Box> {
             .then(|| bound.widget.upgrade()?.downcast::<gtk::Box>().ok())
             .flatten()
     })
+}
+
+#[test]
+fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
+    gtk_test(
+        "ui::browser_modes::events::tests::icons_metadata_updates_bound_cards_without_replacing_the_model",
+        || {
+            for grouped in [false, true] {
+                let mut fixture = Fixture::new(BrowserMode::Icons, grouped);
+                fixture.show();
+                let pane = fixture.pane();
+                pump_until(|| bound_row(&pane, 1).is_some());
+                let card = bound_row(&pane, 1).expect("bound card");
+                let details = crate::ui::icons_cell::details_label(&card).expect("details label");
+                assert_eq!(details.label(), "10 B");
+                let changed = Rc::new(Cell::new(false));
+                let observed = changed.clone();
+                pane.model
+                    .connect_items_changed(move |_, _, _, _| observed.set(true));
+                let mut update = entry("b.png");
+                update.image_dimensions = MetadataValue::Known((1920, 1080));
+                fixture.views.handle(&BrowserEvent::MetadataFilled {
+                    depth: 0,
+                    updates: vec![(1, update)],
+                });
+                assert!(details.is_visible());
+                assert_eq!(details.label(), "1920×1080");
+                assert!(!changed.get());
+            }
+        },
+    );
 }
 
 #[test]

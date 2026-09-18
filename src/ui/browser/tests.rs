@@ -15,6 +15,7 @@ mod recursive_search;
 mod restore;
 mod search_result_mutations;
 mod sidebar;
+mod view_mode_filter;
 
 #[test]
 fn global_activity_uses_the_latest_active_label() {
@@ -61,7 +62,11 @@ fn paste_prefers_only_a_single_selected_directory() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         mode: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let folder = entry("folder", crate::model::EntryKind::Directory);
     let file = entry("file.txt", crate::model::EntryKind::File);
@@ -98,10 +103,19 @@ fn paste_prefers_only_a_single_selected_directory() {
         }
         let folder = FileEntry {
             location,
+            image_dimensions: crate::model::MetadataValue::Unknown,
+            child_count: crate::model::MetadataValue::Unknown,
+            duration_seconds: crate::model::MetadataValue::Unknown,
             ..entry("folder", crate::model::EntryKind::Directory)
         };
         assert_eq!(
             paste_destination(&[folder], Some(Location::local("/fixture")), false),
+            None
+        );
+    }
+    for load_cursor in [false, true] {
+        assert_eq!(
+            paste_destination(&[], Some(Location::uri("recent:///")), load_cursor),
             None
         );
     }

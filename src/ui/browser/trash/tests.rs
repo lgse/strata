@@ -34,8 +34,12 @@ fn retryable_delete_entries_keeps_only_the_named_locations() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
     let retryable = entry("share-file.txt");
     let denied = entry("locked-file.txt");
@@ -56,8 +60,12 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     };
 
     let kept = retryable_delete_entries(vec![entry], &[]);
@@ -140,7 +148,11 @@ fn confirmation_entry(index: usize) -> FileEntry {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
     }
 }

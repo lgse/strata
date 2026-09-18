@@ -4,6 +4,7 @@
 mod tests;
 
 mod omarchy;
+pub(crate) mod udiskie;
 
 use std::{
     env, fs, io,
@@ -19,6 +20,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use glib::{KeyFile, KeyFileFlags};
+
+pub(crate) use omarchy::omarchy_is_present;
 
 const FILE_CHOOSER_KEY: &str = "org.freedesktop.impl.portal.FileChooser";
 const PORTAL_FILE: &str = "strata.portal";

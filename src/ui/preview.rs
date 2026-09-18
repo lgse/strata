@@ -15,8 +15,8 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, MetadataValue},
     services::{
-        LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
-        PreviewRequest, PreviewRequestId,
+        DocumentLayout, LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent,
+        PreviewProvider, PreviewRequest, PreviewRequestId, normalize_preview_text,
     },
 };
 
@@ -30,6 +30,11 @@ const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 560;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
+pub(super) const SOURCE_HIGHLIGHT_BYTE_LIMIT: usize = 128 * 1024;
+pub(super) const SOURCE_HIGHLIGHT_LINE_LIMIT: usize = 512;
+const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;
+const SOURCE_INSERT_CHUNK_LINES: usize = 64;
+const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
@@ -51,6 +56,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
     let content = crate::services::content_family(&content_type);
+    if crate::services::table::is_workbook(&content_type, &entry.native_name) {
+        return entry.location.native_path().is_some();
+    }
     if entry.location.native_path().is_none()
         && (matches!(content, PreviewContent::Pdf { .. })
             || (matches!(content, PreviewContent::Media)
@@ -74,6 +82,34 @@ struct PrintProgress {
     progress: gtk::ProgressBar,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DocumentView {
+    Rendered,
+    Source,
+}
+
+struct PendingSourcePreview {
+    entry: FileEntry,
+    content_type: String,
+    content: String,
+    truncated: bool,
+}
+
+struct SourcePreviewView {
+    view: sourceview5::View,
+    scroll: RefCell<Option<gtk::ScrolledWindow>>,
+    virtual_state: RefCell<Option<Rc<super::virtual_preview::VirtualPreviewState>>>,
+    generation: Rc<Cell<u64>>,
+}
+
+struct DocumentPreview {
+    stack: gtk::Stack,
+    source: Option<PendingSourcePreview>,
+    rendered: Option<(DocumentLayout, Vec<String>)>,
+    rendered_state: RefCell<Option<Rc<super::virtual_preview::VirtualPreviewState>>>,
+    render_pending: bool,
+}
+
 struct PreviewState {
     provider: Rc<dyn PreviewProvider>,
     revealer: gtk::Revealer,
@@ -85,6 +121,11 @@ struct PreviewState {
     modified: gtk::Label,
     content_type: gtk::Label,
     content: gtk::Box,
+    document_view_button: gtk::Button,
+    document_view_icon: gtk::Image,
+    document_view: Cell<DocumentView>,
+    document_preview: RefCell<Option<DocumentPreview>>,
+    source_preview: SourcePreviewView,
     metadata: gtk::Box,
     open: gtk::Button,
     print: gtk::Button,
@@ -100,6 +141,7 @@ struct PreviewState {
     sizing: layout::SplitSizing,
     current: RefCell<Option<FileEntry>>,
     current_depth: Cell<Option<usize>>,
+    pending_show: RefCell<Option<glib::SourceId>>,
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
@@ -146,6 +188,15 @@ impl PreviewDrawer {
         )));
         open.add_css_class("preview-header-action");
         open.set_visible(allow_external_open);
+        let document_view_icon = crate::assets::primary_icon(crate::assets::icons::FILE_CODE, 16);
+        let document_view_button = gtk::Button::builder()
+            .tooltip_text("View source")
+            .valign(gtk::Align::Center)
+            .visible(false)
+            .build();
+        document_view_button.set_child(Some(&document_view_icon));
+        document_view_button.add_css_class("preview-header-action");
+        document_view_button.update_property(&[gtk::accessible::Property::Label("View source")]);
         let print = gtk::Button::builder()
             .tooltip_text("Print")
             .valign(gtk::Align::Center)
@@ -168,7 +219,9 @@ impl PreviewDrawer {
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
             .build();
-        close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
+        close.set_child(Some(&crate::assets::chrome_icon(
+            crate::assets::icons::PANEL_RIGHT_CLOSE,
+        )));
         close.add_css_class("preview-close");
         close.add_css_class("preview-header-action");
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -177,32 +230,30 @@ impl PreviewDrawer {
         header_handle.set_margin_end(8);
         header_handle.set_cursor_from_name(Some("grab"));
         header_handle.append(&icon);
-        header_handle.append(&title);
+        let heading = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
+        heading.append(&title);
+        let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 3);
+        metadata.add_css_class("preview-metadata");
+        let size = metadata_value("Size");
+        let modified = metadata_value("Modified");
+        let content_type = metadata_value("Type");
+        content_type.set_hexpand(true);
+        metadata.append(&size);
+        metadata.append(&gtk::Label::new(Some("·")));
+        metadata.append(&modified);
+        metadata.append(&gtk::Label::new(Some("·")));
+        metadata.append(&content_type);
+        heading.append(&metadata);
+        header_handle.append(&heading);
         header.append(&header_handle);
+        header.append(&document_view_button);
         header.append(&open);
         header.append(&print);
         header.append(&wrap);
         header.append(&close);
         pane.append(&header);
-
-        let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 18);
-        metadata.add_css_class("preview-metadata");
-        let (size_group, size) = metadata_value("SIZE");
-        let (modified_group, modified) = metadata_value("MODIFIED");
-        let (type_group, content_type) = metadata_value("TYPE");
-        metadata.append(&size_group);
-        metadata.append(&modified_group);
-        metadata.append(&type_group);
-        super::theme::ThemeManager::shared().bind_interface_scale(&metadata, |widget, scale| {
-            let metadata = widget.downcast_ref::<gtk::Box>().expect("preview metadata");
-            metadata.set_orientation(if scale > 1.5 {
-                gtk::Orientation::Vertical
-            } else {
-                gtk::Orientation::Horizontal
-            });
-            metadata.set_spacing(if scale > 1.5 { 6 } else { 18 });
-        });
-        pane.append(&metadata);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         content.add_css_class("preview-content");
@@ -227,6 +278,11 @@ impl PreviewDrawer {
             modified,
             content_type,
             content,
+            document_view_button: document_view_button.clone(),
+            document_view_icon,
+            document_view: Cell::new(DocumentView::Rendered),
+            document_preview: RefCell::new(None),
+            source_preview: SourcePreviewView::new(),
             metadata,
             open: open.clone(),
             print: print.clone(),
@@ -242,6 +298,7 @@ impl PreviewDrawer {
             sizing: layout::SplitSizing::default(),
             current: RefCell::new(None),
             current_depth: Cell::new(None),
+            pending_show: RefCell::new(None),
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
@@ -277,26 +334,20 @@ impl PreviewDrawer {
         });
         install_preview_drag(&header_handle, &state);
         let weak = Rc::downgrade(&state);
-        state.pane.connect_unrealize(move |_| {
-            if let Some(state) = weak.upgrade() {
-                state.stop();
-            }
-        });
-        let weak = Rc::downgrade(&state);
-        open.connect_clicked(move |_| {
+        document_view_button.connect_clicked(move |_| {
             let Some(state) = weak.upgrade() else {
                 return;
             };
-            let location = state
-                .current
-                .borrow()
-                .as_ref()
-                .map(|entry| entry.location.clone());
-            if let Some(location) = location {
-                if let Some(stream) = state.media.borrow().as_ref() {
-                    stream.set_playing(false);
-                }
-                super::browser::open_location(&location, &state.pane);
+            let next = match state.document_view.get() {
+                DocumentView::Rendered => DocumentView::Source,
+                DocumentView::Source => DocumentView::Rendered,
+            };
+            state.show_document_view(next);
+        });
+        let weak = Rc::downgrade(&state);
+        state.pane.connect_unrealize(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.stop();
             }
         });
         let weak = Rc::downgrade(&state);
@@ -336,6 +387,26 @@ impl PreviewDrawer {
     }
 
     pub fn observe_browser(&self, browser: &Rc<Browser>) {
+        let weak_state = Rc::downgrade(&self.state);
+        let weak_browser = Rc::downgrade(browser);
+        self.state.open.connect_clicked(move |_| {
+            let (Some(state), Some(browser)) = (weak_state.upgrade(), weak_browser.upgrade())
+            else {
+                return;
+            };
+            let Some(location) = state
+                .current
+                .borrow()
+                .as_ref()
+                .map(|entry| entry.location.clone())
+            else {
+                return;
+            };
+            if let Some(stream) = state.media.borrow().as_ref() {
+                stream.set_playing(false);
+            }
+            super::browser::open_location(&location, &state.pane, &browser);
+        });
         let preview = self.clone();
         let weak_browser = Rc::downgrade(browser);
         browser.observe(move |event| {
@@ -368,7 +439,7 @@ impl PreviewDrawer {
                     .entry_at(*depth, *position)
                     .and_then(|entry| preview_target(Some(entry)))
                 {
-                    self.show(entry, Some(*depth));
+                    self.show_after_focus_change(entry, Some(*depth));
                 } else {
                     self.clear_target();
                 }
@@ -482,6 +553,10 @@ impl PreviewDrawer {
         }
     }
 
+    pub fn show_after_focus_change(&self, entry: FileEntry, depth: Option<usize>) {
+        self.state.show_after_focus_change(entry, depth);
+    }
+
     pub fn close(&self) {
         self.state.close();
     }
@@ -502,11 +577,47 @@ impl Drop for PreviewState {
 }
 
 impl PreviewState {
+    fn cancel_pending_show(&self) {
+        if let Some(source) = self.pending_show.borrow_mut().take() {
+            source.remove();
+        }
+    }
+
+    fn show_after_focus_change(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
+        self.cancel_pending_show();
+        if self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some() {
+            return;
+        }
+        if !self.revealer.reveals_child() {
+            self.show(entry, depth);
+            return;
+        }
+        self.current_request.set(None);
+        self.load.borrow_mut().take();
+        self.pdf_loads.borrow_mut().clear();
+        // Keep the displayed target during debounce: split synchronization must
+        // not mistake a replacement request for an empty, closed drawer.
+
+        let weak = Rc::downgrade(self);
+        let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_show.borrow_mut().take();
+            if state.is_enabled() {
+                state.show(entry, depth);
+            }
+        });
+        self.pending_show.replace(Some(source));
+    }
+
     fn show(self: &Rc<Self>, entry: FileEntry, depth: Option<usize>) {
+        self.cancel_pending_show();
         self.current_depth.set(depth);
         self.set_enabled(true);
         let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
-        let already_showing = self.current.borrow().as_ref() == Some(&entry);
+        let already_showing =
+            self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some();
         let split = self.split.borrow().clone();
         if let Some(split) = split.as_ref()
             && (!self.can_show_in(split) || self.sizing.is_suspended())
@@ -694,6 +805,7 @@ impl PreviewState {
                 id: request_id,
                 entry,
                 text_byte_limit: PRINT_TEXT_BYTE_LIMIT,
+                render_document: false,
                 pdf_page,
                 media_size: self.media_preview_size(),
             },
@@ -728,6 +840,18 @@ impl PreviewState {
                             print_text(content, &entry.display_name, parent.as_ref());
                         }
                     }
+                    PreviewContent::Document {
+                        source, truncated, ..
+                    } => {
+                        if truncated {
+                            show_print_error(
+                                parent.as_ref(),
+                                "This text file is too large to print safely.",
+                            );
+                        } else {
+                            print_text(source, &entry.display_name, parent.as_ref());
+                        }
+                    }
                     PreviewContent::Rasterized { png } => {
                         self.dismiss_print_progress();
                         print_rasterized(vec![png], &entry.display_name, parent.as_ref());
@@ -749,6 +873,7 @@ impl PreviewState {
                     PreviewContent::Image
                     | PreviewContent::Media
                     | PreviewContent::SandboxedMedia { .. }
+                    | PreviewContent::Workbook { .. }
                     | PreviewContent::Unsupported => {
                         self.dismiss_print_progress();
                         show_print_error(parent.as_ref(), "This file type cannot be printed.");
@@ -806,6 +931,16 @@ impl PreviewState {
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
+        let render_document = super::theme::ThemeManager::shared().render_documents_by_default();
+        self.document_view.set(if render_document {
+            DocumentView::Rendered
+        } else {
+            DocumentView::Source
+        });
+        self.load_request(entry, pdf_page, render_document);
+    }
+
+    fn load_request(self: &Rc<Self>, entry: FileEntry, pdf_page: i32, render_document: bool) {
         self.metadata.set_visible(true);
         self.icon.set_visible(true);
         self.open.set_sensitive(true);
@@ -818,6 +953,8 @@ impl PreviewState {
         self.size.set_text(&metadata_size(&entry));
         crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
+        self.content_type
+            .set_tooltip_text(Some(file_extension(&entry)));
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -838,6 +975,7 @@ impl PreviewState {
                 id: request_id,
                 entry,
                 text_byte_limit: TEXT_BYTE_LIMIT,
+                render_document,
                 pdf_page,
                 media_size: self.media_preview_size(),
             },
@@ -847,7 +985,11 @@ impl PreviewState {
     }
 
     fn handle_event(self: &Rc<Self>, expected: PreviewRequestId, event: PreviewEvent) {
-        if self.current_request.get() != Some(expected) {
+        let response = match &event {
+            PreviewEvent::Ready(preview) => preview.request_id,
+            PreviewEvent::Failed { request_id, .. } => *request_id,
+        };
+        if !accepts_preview_event(self.current_request.get(), expected, response) {
             return;
         }
         match event {
@@ -872,52 +1014,59 @@ impl PreviewState {
 
     fn render(self: &Rc<Self>, preview: Preview) {
         self.content_type.set_text(&preview.content_type);
+        self.content_type
+            .set_tooltip_text(Some(&preview.content_type));
         self.clear_content();
         match preview.content {
             PreviewContent::Text { content, truncated } => {
                 self.print.set_visible(true);
                 self.wrap.set_visible(true);
-                let buffer = sourceview5::Buffer::new(None);
-                let languages = sourceview5::LanguageManager::default();
-                let language = languages.guess_language(
-                    preview.entry.location.native_path(),
-                    Some(&preview.content_type),
+                let (view, virtualized) = self.source_preview.show(
+                    &preview.entry,
+                    &preview.content_type,
+                    &content,
+                    truncated,
                 );
-                buffer.set_language(language.as_ref());
-                super::theme::register_source_buffer(&buffer);
-                buffer.set_highlight_syntax(true);
-                buffer.set_text(&content);
-                let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
-                let view = sourceview5::View::builder()
-                    .buffer(&buffer)
-                    .cursor_visible(false)
-                    .editable(false)
-                    .highlight_current_line(false)
-                    .left_margin(14)
-                    .right_margin(14)
-                    .top_margin(12)
-                    .bottom_margin(12)
-                    .monospace(true)
-                    .show_line_numbers(true)
-                    .wrap_mode(text_wrap_mode(wrapped))
-                    .build();
-                view.add_css_class("preview-text");
-                let scroll = gtk::ScrolledWindow::builder()
-                    .child(&view)
-                    .hscrollbar_policy(text_hscroll_policy(wrapped))
-                    .vscrollbar_policy(gtk::PolicyType::Automatic)
-                    .hexpand(true)
-                    .vexpand(true)
-                    .build();
-                self.text_view.replace(Some(view.clone()));
-                self.text_scroll.replace(Some(scroll.clone()));
-                self.content.append(&scroll);
-                self.wrap.set_active(wrapped);
-                if truncated {
+                self.content.append(&view);
+                self.text_view
+                    .replace(Some(self.source_preview.view.clone()));
+                self.text_scroll
+                    .replace(self.source_preview.scroll.borrow().clone());
+                self.wrap
+                    .set_active(super::theme::ThemeManager::shared().preview_text_wrap());
+                if truncated && !virtualized {
                     let notice = gtk::Label::new(Some("Preview limited to the first 1 MB"));
                     notice.add_css_class("preview-note");
                     self.content.append(&notice);
                 }
+            }
+            PreviewContent::Document {
+                source,
+                document,
+                fallback_reason,
+                warnings,
+                truncated,
+            } => {
+                self.print.set_visible(true);
+                self.wrap.set_visible(true);
+                self.wrap
+                    .set_active(super::theme::ThemeManager::shared().preview_text_wrap());
+                self.render_document_preview(
+                    PendingSourcePreview {
+                        entry: preview.entry,
+                        content_type: preview.content_type,
+                        content: source,
+                        truncated,
+                    },
+                    document,
+                    fallback_reason,
+                    warnings,
+                );
+            }
+            PreviewContent::Workbook { document, warnings } => {
+                let (view, _) =
+                    super::virtual_preview::rendered_document(document, warnings, false, None);
+                self.content.append(&view);
             }
             PreviewContent::Rasterized { png } => {
                 self.print.set_visible(true);
@@ -1002,6 +1151,103 @@ impl PreviewState {
                 );
             }
         }
+    }
+
+    fn render_document_preview(
+        self: &Rc<Self>,
+        source: PendingSourcePreview,
+        document: Option<DocumentLayout>,
+        fallback_reason: Option<String>,
+        warnings: Vec<String>,
+    ) {
+        let render_pending = document.is_none() && fallback_reason.is_none();
+        let rendered_available = document.is_some() || render_pending;
+        let initial = initial_document_view(
+            self.document_view.get() == DocumentView::Rendered,
+            document.is_some(),
+        );
+
+        if let Some(reason) = fallback_reason.as_deref() {
+            self.content.append(&document_notice(reason));
+        }
+
+        let stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .transition_duration(100)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        self.document_preview.replace(Some(DocumentPreview {
+            stack: stack.clone(),
+            source: Some(source),
+            rendered: document.map(|document| (document, warnings)),
+            rendered_state: RefCell::new(None),
+            render_pending,
+        }));
+        self.content.append(&stack);
+        self.show_document_view(initial);
+        self.document_view_button.set_visible(rendered_available);
+    }
+
+    fn show_document_view(self: &Rc<Self>, view: DocumentView) {
+        let mut preview_guard = self.document_preview.borrow_mut();
+        let Some(preview) = preview_guard.as_mut() else {
+            return;
+        };
+        if view == DocumentView::Rendered && preview.render_pending {
+            preview.render_pending = false;
+            drop(preview_guard);
+            self.document_view.set(DocumentView::Rendered);
+            self.update_document_view_action();
+            let entry = self.current.borrow().clone();
+            if let Some(entry) = entry {
+                self.load_request(entry, 0, true);
+            }
+            return;
+        }
+        let name = document_view_name(view);
+        if preview.stack.child_by_name(name).is_none() {
+            let child = match view {
+                DocumentView::Source => preview.source.take().map(|source| {
+                    let (view, _) = self.source_preview.show(
+                        &source.entry,
+                        &source.content_type,
+                        &source.content,
+                        source.truncated,
+                    );
+                    view
+                }),
+                DocumentView::Rendered => preview.rendered.take().map(|(document, warnings)| {
+                    let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
+                    let (view, state) = super::virtual_preview::rendered_document(
+                        document,
+                        warnings,
+                        wrapped,
+                        self.current
+                            .borrow()
+                            .as_ref()
+                            .and_then(|entry| entry.location.native_path().map(ToOwned::to_owned)),
+                    );
+                    preview.rendered_state.replace(Some(state));
+                    view.upcast()
+                }),
+            };
+            let Some(child) = child else {
+                return;
+            };
+            preview.stack.add_named(&child, Some(name));
+        }
+        preview.stack.set_visible_child_name(name);
+        self.document_view.set(view);
+        self.update_document_view_action();
+    }
+
+    fn update_document_view_action(&self) {
+        let (label, icon) = document_view_action(self.document_view.get());
+        self.document_view_button.set_tooltip_text(Some(label));
+        self.document_view_button
+            .update_property(&[gtk::accessible::Property::Label(label)]);
+        crate::assets::set_primary_icon(&self.document_view_icon, icon);
     }
 
     fn build_media_view(self: &Rc<Self>, media: &gtk::MediaStream) -> (gtk::Overlay, gtk::Button) {
@@ -1208,6 +1454,7 @@ impl PreviewState {
                     id: request_id,
                     entry: entry_for_bind.clone(),
                     text_byte_limit: TEXT_BYTE_LIMIT,
+                    render_document: false,
                     pdf_page: page_index,
                     media_size: render_size,
                 },
@@ -1553,6 +1800,11 @@ impl PreviewState {
     }
 
     fn clear_content(&self) {
+        self.source_preview.cancel();
+        self.source_preview.scroll.borrow_mut().take();
+        self.source_preview.virtual_state.borrow_mut().take();
+        self.document_view_button.set_visible(false);
+        self.document_preview.borrow_mut().take();
         self.stop_media();
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
@@ -1565,11 +1817,11 @@ impl PreviewState {
     }
 
     fn apply_text_wrap(&self, wrapped: bool) {
-        if let Some(view) = self.text_view.borrow().as_ref() {
-            view.set_wrap_mode(text_wrap_mode(wrapped));
-        }
-        if let Some(scroll) = self.text_scroll.borrow().as_ref() {
-            scroll.set_hscrollbar_policy(text_hscroll_policy(wrapped));
+        self.source_preview.set_wrapped(wrapped);
+        if let Some(preview) = self.document_preview.borrow().as_ref()
+            && let Some(state) = preview.rendered_state.borrow().as_ref()
+        {
+            state.set_wrapped(wrapped);
         }
     }
 
@@ -1824,6 +2076,199 @@ fn paint_print_page(
     false
 }
 
+fn accepts_preview_event(
+    current: Option<PreviewRequestId>,
+    expected: PreviewRequestId,
+    response: PreviewRequestId,
+) -> bool {
+    current == Some(expected) && response == expected
+}
+
+fn initial_document_view(prefer_rendered: bool, rendered_available: bool) -> DocumentView {
+    if prefer_rendered && rendered_available {
+        DocumentView::Rendered
+    } else {
+        DocumentView::Source
+    }
+}
+
+fn document_view_name(view: DocumentView) -> &'static str {
+    match view {
+        DocumentView::Rendered => "rendered",
+        DocumentView::Source => "source",
+    }
+}
+
+fn document_view_action(view: DocumentView) -> (&'static str, &'static str) {
+    match view {
+        DocumentView::Rendered => ("View source", crate::assets::icons::FILE_CODE),
+        DocumentView::Source => ("View rendered", crate::assets::icons::DOCUMENTS),
+    }
+}
+
+impl SourcePreviewView {
+    fn new() -> Self {
+        let buffer = sourceview5::Buffer::new(None);
+        super::theme::register_source_buffer(&buffer);
+        let view = sourceview5::View::builder()
+            .buffer(&buffer)
+            .cursor_visible(false)
+            .editable(false)
+            .highlight_current_line(false)
+            .left_margin(14)
+            .right_margin(14)
+            .top_margin(12)
+            .bottom_margin(12)
+            .monospace(true)
+            .show_line_numbers(true)
+            .wrap_mode(gtk::WrapMode::None)
+            .build();
+        view.add_css_class("preview-text");
+        Self {
+            view,
+            scroll: RefCell::new(None),
+            virtual_state: RefCell::new(None),
+            generation: Rc::new(Cell::new(0)),
+        }
+    }
+
+    fn show(
+        &self,
+        entry: &FileEntry,
+        content_type: &str,
+        content: &str,
+        truncated: bool,
+    ) -> (gtk::Widget, bool) {
+        self.cancel();
+        self.scroll.borrow_mut().take();
+        self.virtual_state.borrow_mut().take();
+        if let Some(parent) = self.view.parent() {
+            if let Ok(scroll) = parent.downcast::<gtk::ScrolledWindow>() {
+                scroll.set_child(None::<&gtk::Widget>);
+            } else {
+                self.view.unparent();
+            }
+        }
+        if super::virtual_preview::use_virtual_source(content) {
+            let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
+            let (container, state) =
+                super::virtual_preview::source_document(content, truncated, wrapped);
+            self.virtual_state.replace(Some(state));
+            return (container.upcast(), true);
+        }
+        let display = normalize_preview_text(content).into_owned();
+        let buffer = sourceview5::Buffer::new(None);
+        super::theme::register_source_buffer(&buffer);
+        let languages = sourceview5::LanguageManager::default();
+        let language = languages.guess_language(entry.location.native_path(), Some(content_type));
+        let highlight_syntax = display.len() <= SOURCE_HIGHLIGHT_BYTE_LIMIT
+            && display.lines().count() <= SOURCE_HIGHLIGHT_LINE_LIMIT;
+        buffer.set_highlight_syntax(false);
+        buffer.set_language(language.as_ref());
+        self.view.set_buffer(Some(&buffer));
+        let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
+        self.view.set_wrap_mode(text_wrap_mode(wrapped));
+        fill_source_buffer(
+            &buffer,
+            display,
+            self.generation.clone(),
+            self.generation.get(),
+            highlight_syntax,
+        );
+
+        let scroll = gtk::ScrolledWindow::builder()
+            .child(&self.view)
+            .hscrollbar_policy(text_hscroll_policy(wrapped))
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .overlay_scrolling(false)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        scroll.add_css_class("fixed-scrollbar");
+        self.scroll.replace(Some(scroll.clone()));
+        (scroll.upcast(), false)
+    }
+
+    fn set_wrapped(&self, wrapped: bool) {
+        self.view.set_wrap_mode(text_wrap_mode(wrapped));
+        if let Some(scroll) = self.scroll.borrow().as_ref() {
+            scroll.set_hscrollbar_policy(text_hscroll_policy(wrapped));
+        }
+        if let Some(state) = self.virtual_state.borrow().as_ref() {
+            state.set_wrapped(wrapped);
+        }
+    }
+
+    fn cancel(&self) {
+        self.generation.set(self.generation.get().saturating_add(1));
+    }
+}
+
+fn fill_source_buffer(
+    buffer: &sourceview5::Buffer,
+    text: String,
+    generation: Rc<Cell<u64>>,
+    expected_generation: u64,
+    highlight_syntax: bool,
+) {
+    let text = normalize_preview_text(&text).into_owned();
+    let first_end = source_chunk_end(&text, 0);
+    buffer.set_text(&text[..first_end]);
+    if first_end == text.len() {
+        buffer.set_modified(false);
+        buffer.set_highlight_syntax(highlight_syntax);
+        return;
+    }
+
+    let weak_buffer = buffer.downgrade();
+    let mut offset = first_end;
+    glib::idle_add_local(move || {
+        if generation.get() != expected_generation {
+            return glib::ControlFlow::Break;
+        }
+        let Some(buffer) = weak_buffer.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let end = source_chunk_end(&text, offset);
+        buffer.insert(&mut buffer.end_iter(), &text[offset..end]);
+        offset = end;
+        if offset == text.len() {
+            buffer.set_modified(false);
+            buffer.set_highlight_syntax(highlight_syntax);
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+}
+
+fn source_chunk_end(text: &str, start: usize) -> usize {
+    let mut end = start
+        .saturating_add(SOURCE_INSERT_CHUNK_BYTES)
+        .min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if let Some(line_end) = text[start..end]
+        .match_indices('\n')
+        .nth(SOURCE_INSERT_CHUNK_LINES - 1)
+        .map(|(offset, _)| start + offset + 1)
+    {
+        end = line_end;
+    }
+    end
+}
+
+pub(super) fn document_notice(message: &str) -> gtk::Label {
+    let notice = gtk::Label::new(Some(message));
+    notice.add_css_class("preview-document-notice");
+    notice.set_hexpand(true);
+    notice.set_selectable(true);
+    notice.set_wrap(true);
+    notice.set_xalign(0.0);
+    notice
+}
+
 fn copyable_command(command: &str) -> gtk::Overlay {
     let overlay = gtk::Overlay::new();
     overlay.add_css_class("preview-command");
@@ -1897,20 +2342,12 @@ fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static
     )
 }
 
-fn metadata_value(label: &str) -> (gtk::Box, gtk::Label) {
-    let group = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    group.set_hexpand(true);
-    group.set_valign(gtk::Align::Center);
-    let heading = gtk::Label::new(Some(label));
-    heading.add_css_class("preview-metadata-label");
-    heading.set_xalign(0.0);
+fn metadata_value(description: &str) -> gtk::Label {
     let value = gtk::Label::new(Some("—"));
-    value.add_css_class("preview-metadata-value");
     value.set_ellipsize(gtk::pango::EllipsizeMode::End);
     value.set_xalign(0.0);
-    group.append(&heading);
-    group.append(&value);
-    (group, value)
+    value.update_property(&[gtk::accessible::Property::Description(description)]);
+    value
 }
 
 fn set_pdf_page_texture(

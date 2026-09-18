@@ -5,10 +5,10 @@ use crate::services::fold_for_search;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
-    ViewMap, activate_recursive_search_result, apply_filter_query, apply_selection_plan,
-    bind_filter_query, bitset_positions, cancel_source, deactivate_recursive_search,
-    detach_collection_view, recursive_search_activation_key, scroll_collection_when_allocated,
-    search_result_navigation_position,
+    ActivePaneFilter, ViewMap, activate_recursive_search_result, apply_filter_query,
+    apply_selection_plan, bind_filter_query, bitset_positions, cancel_source,
+    deactivate_recursive_search, detach_collection_view, recursive_search_activation_key,
+    restore_filter_controls, scroll_collection_when_allocated, search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 
 pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
-const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+pub(super) const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
@@ -78,6 +78,7 @@ pub(super) struct ColumnView {
     pub(super) map: ViewMap,
     pub(super) model_generation: Rc<Cell<u64>>,
     pub(super) header_actions: gtk::Box,
+    pub(super) sort_direction_button: gtk::Button,
     pub(super) header_actions_stack: gtk::Stack,
     pub(super) filter_entry: gtk::Entry,
     pub(super) filter_button: gtk::ToggleButton,
@@ -455,9 +456,29 @@ impl ViewState {
         self.refresh_destination_style();
     }
 
-    pub(super) fn rebuild_columns(self: &Rc<Self>) {
-        self.rebuild_columns_from(0);
-        self.focus_rebuilt_active_column();
+    pub(super) fn capture_active_column_filter(&self) -> ActivePaneFilter {
+        let Some(depth) = self.browser.active_depth() else {
+            return ActivePaneFilter::default();
+        };
+        let columns = self.columns.borrow();
+        let Some(column) = columns.get(depth) else {
+            return ActivePaneFilter::default();
+        };
+        ActivePaneFilter {
+            query: column.filter_entry.text().to_string(),
+            revealed: column.filter_button.is_active(),
+        }
+    }
+
+    pub(super) fn restore_active_column_filter(&self, filter: &ActivePaneFilter) {
+        let Some(depth) = self.browser.active_depth() else {
+            return;
+        };
+        let columns = self.columns.borrow();
+        let Some(column) = columns.get(depth) else {
+            return;
+        };
+        restore_filter_controls(&column.filter_button, &column.filter_entry, filter);
     }
 
     pub(super) fn rebuild_columns_from(self: &Rc<Self>, from_depth: usize) {
@@ -508,7 +529,7 @@ impl ViewState {
         }
     }
 
-    fn focus_rebuilt_active_column(&self) {
+    pub(super) fn focus_rebuilt_active_column(&self) {
         let Some(depth) = self.browser.active_depth() else {
             return;
         };
@@ -597,6 +618,7 @@ impl ViewState {
         heading.set_max_width_chars(1);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
+        truncated_hint.add_css_class("column-truncated-hint");
         truncated_hint.set_tooltip_text(Some(
             "This directory has more entries than could be loaded; showing a partial listing.",
         ));
@@ -619,7 +641,8 @@ impl ViewState {
             header_actions.append(&pane_new_folder_button(Rc::downgrade(self), depth));
         }
         header_actions.append(&pane_refresh_button(&self.browser, depth));
-        header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
+        let sort_direction_button = column_sort_direction_toggle(&self.browser, depth);
+        header_actions.append(&sort_direction_button);
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
         let (filter_entry, filter_revealer, filter_button) =
@@ -1051,10 +1074,14 @@ impl ViewState {
         list.add_controller(selection_keys);
 
         let weak_browser = Rc::downgrade(&self.browser);
+        let weak_state_for_activate = Rc::downgrade(self);
         let map_for_activation = map.clone();
         let search_handle_for_activate = search_handle.clone();
         let search_results_for_activate = search_results.clone();
         list.connect_activate(move |_, position| {
+            if let Some(state) = weak_state_for_activate.upgrade() {
+                state.cancel_click_rename();
+            }
             if search_handle_for_activate.borrow().is_some() {
                 activate_recursive_search_result(
                     &weak_browser,
@@ -1329,6 +1356,8 @@ impl ViewState {
         reveal_button.add_css_class("column-peek-target");
         reveal_button.set_focusable(false);
         reveal_button.set_focus_on_click(false);
+        // Let row drag sources receive presses through the peek overlay.
+        reveal_button.set_can_target(false);
         reveal_button.set_cursor_from_name(Some("pointer"));
         reveal_button.set_visible(false);
         crate::ui::accessibility::set_label(
@@ -1362,6 +1391,7 @@ impl ViewState {
             map,
             model_generation: self.source_generation.clone(),
             header_actions,
+            sort_direction_button,
             header_actions_stack,
             filter_entry,
             filter_button,
@@ -1456,6 +1486,7 @@ impl ViewState {
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
+        self.columns_widget.set_margin_end(0);
         let weak = Rc::downgrade(self);
         let measured_shell = shell.downgrade();
         let _tick = self.scroller.add_tick_callback(move |_, _| {
