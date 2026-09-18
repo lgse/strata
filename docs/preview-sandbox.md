@@ -5,7 +5,7 @@ parsing and decoding run inside bubblewrap, never in the application. The host
 starts bubblewrap from a trusted absolute path found under admin-managed system
 directories (FHS, NixOS/Guix system profiles, and NixOS wrappers), not inherited
 `PATH`. The executed path is the search hit; its canonical target must sit under
-FHS, `/nix/store`, or `/gnu/store`.
+FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
 
 ## Providers
 

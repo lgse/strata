@@ -5,9 +5,7 @@ use std::{
     process::Command,
 };
 
-/// Where a helper basename may appear. Admin-managed; never `$HOME` or `PATH`.
-/// NixOS `security.wrappers` is first so setuid wrappers win over store
-/// symlinks.
+// NixOS setuid wrappers must take precedence over store symlinks.
 pub(crate) const SEARCH_ROOTS: &[&str] = &[
     "/run/wrappers/bin",
     "/usr/bin",
@@ -18,8 +16,7 @@ pub(crate) const SEARCH_ROOTS: &[&str] = &[
     "/run/current-system/profile/bin",
 ];
 
-/// Where canonicalize of a search hit may land. Wrapper dirs stay here
-/// because NixOS wrappers are regular files, not `/nix/store` symlinks.
+// NixOS wrappers are regular files, not store symlinks.
 pub(crate) const TRUST_ROOTS: &[&str] = &[
     "/usr/bin",
     "/usr/sbin",
@@ -61,8 +58,7 @@ pub(crate) fn resolve_in(
             continue;
         };
         if sits_under(&canonical, trust_roots) {
-            // Exec the search hit, not the store target, so argv0 stays the
-            // profile path for busybox/coreutils and Nix wrappers.
+            // Preserve argv0 for multicall binaries and profile wrappers.
             return Ok(found_path(candidate));
         }
     }

@@ -357,7 +357,7 @@ fn wait_for_renderer(
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "tests inject the bubblewrap path so get_program can be asserted without requiring the file"
+    reason = "explicit executable path permits testing without installed bubblewrap"
 )]
 fn sandbox_command(
     bwrap: &Path,
