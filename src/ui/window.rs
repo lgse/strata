@@ -32,7 +32,7 @@ use super::{
     controls::{ModalTone, message_dialog_description, message_dialog_layout},
     modal::{ModalHost, dismiss_modal_layer, modal_layer},
     motion::{animations_enabled, emphasized_deceleration},
-    theme::ThemeManager,
+    preferences::PreferenceManager,
 };
 
 mod composition;
@@ -97,7 +97,7 @@ enum MouseHistoryAction {
 #[derive(Clone)]
 struct TypeToSearch {
     view: BrowserView,
-    preferences: Rc<ThemeManager>,
+    preferences: Rc<PreferenceManager>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -143,7 +143,7 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
 
 fn bind_update_notice_preferences(
     anchor: &impl IsA<gtk::Widget>,
-    manager: &ThemeManager,
+    manager: &PreferenceManager,
     notice: &super::settings::UpdateNoticeHandler,
 ) {
     let initial = Cell::new(true);
@@ -177,7 +177,8 @@ pub(super) fn present_target(
 ) -> BrowserView {
     let present_started = std::time::Instant::now();
     crate::assets::register_icon_theme();
-    let theme_manager = super::theme::ThemeManager::shared();
+    let _theme_manager = super::theme::ThemeManager::shared();
+    let preference_manager = super::preferences::PreferenceManager::shared();
     load_styles();
     tracing::debug!(
         elapsed_ms = present_started.elapsed().as_millis() as u64,
@@ -191,16 +192,16 @@ pub(super) fn present_target(
         .default_height(760)
         .build();
 
-    let content = composition::WindowContent::new(&window, &theme_manager);
-    content.bind(&window, &theme_manager);
+    let content = composition::WindowContent::new(&window, &preference_manager);
+    content.bind(&window, &preference_manager);
     let browser = content.browser.clone();
     browser.connect_navigation_cleanup(window.upcast_ref());
-    schedule_after_first_paint(&window, &content.sidebar, &theme_manager);
+    schedule_after_first_paint(&window, &content.sidebar, &preference_manager);
     content.connect_cleanup(&window);
     window.present();
     crate::metrics::mark_window_presented();
     if auto_navigate {
-        let pending_location = location.unwrap_or_else(|| startup_location(&theme_manager));
+        let pending_location = location.unwrap_or_else(|| startup_location(&preference_manager));
         if !selection.is_empty() {
             browser.select_after_load(selection, properties);
         }
@@ -220,7 +221,7 @@ pub(super) fn present_target(
 fn schedule_after_first_paint(
     window: &gtk::ApplicationWindow,
     sidebar: &SidebarView,
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
 ) {
     let state = sidebar.state.clone();
     let manager = manager.clone();
@@ -254,7 +255,7 @@ fn schedule_after_first_paint(
 }
 
 pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
-    ThemeManager::shared().bind_interface_scale(paned, |widget, scale| {
+    PreferenceManager::shared().bind_interface_scale(paned, |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
         if paned.position() > 0 {
             paned.set_position(scaled_sidebar_width(paned, scale));
@@ -284,7 +285,7 @@ fn animate_sidebar(
     animating.set(true);
     paned.set_shrink_start_child(true);
     let target = if expanded {
-        scaled_sidebar_width(paned, ThemeManager::shared().interface_scale())
+        scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
     } else {
         0
     };
@@ -576,7 +577,7 @@ pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {
 
 pub(super) fn apply_browser_mode(
     view: &BrowserView,
-    preferences: &super::theme::ThemeManager,
+    preferences: &super::preferences::PreferenceManager,
     mode: BrowserMode,
 ) {
     view.set_view_mode(mode);
@@ -595,7 +596,7 @@ pub(super) fn browser_mode_for_digit(key: gtk::gdk::Key) -> Option<BrowserMode> 
 pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
-    preferences: Rc<super::theme::ThemeManager>,
+    preferences: Rc<super::preferences::PreferenceManager>,
     preview: &super::preview::PreviewDrawer,
 ) -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -646,7 +647,7 @@ pub(super) fn build_appearance_menu(
     group_by_type.set_tooltip_text(Some("Group List entries under file-type headings"));
     preferences.bind_preference(
         &group_check,
-        ThemeManager::group_by_type,
+        PreferenceManager::group_by_type,
         |widget, enabled| widget.set_visible(enabled),
     );
     {
@@ -741,12 +742,12 @@ pub(super) fn build_appearance_menu(
     );
     preferences.bind_preference(
         &compact_check,
-        ThemeManager::browser_density,
+        PreferenceManager::browser_density,
         |widget, density| widget.set_visible(density == BrowserDensity::Compact),
     );
     preferences.bind_preference(
         &airy_check,
-        ThemeManager::browser_density,
+        PreferenceManager::browser_density,
         |widget, density| widget.set_visible(density == BrowserDensity::Airy),
     );
     {
@@ -789,14 +790,15 @@ pub(super) fn build_appearance_menu(
         let manager = preferences.clone();
         button.connect_clicked(move |_| manager.set_text_size(manager.text_size().stepped(delta)));
     }
-    preferences.bind_preference(&reset_size, ThemeManager::text_size, |widget, size| {
+    preferences.bind_preference(&reset_size, PreferenceManager::text_size, |widget, size| {
         widget
             .downcast_ref::<gtk::Button>()
             .expect("text size reset")
             .set_label(&format!("{} px", size.root_font_px()));
     });
     let manager = preferences.clone();
-    reset_size.connect_clicked(move |_| manager.set_text_size(super::theme::TextSize::default()));
+    reset_size
+        .connect_clicked(move |_| manager.set_text_size(super::preferences::TextSize::default()));
     content.append(&text_controls);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -933,7 +935,7 @@ pub(super) struct SidebarState {
     browser: Rc<Browser>,
     volume_monitor: gio::VolumeMonitor,
     mount_monitor: gio_unix::MountMonitor,
-    theme_manager: Rc<super::theme::ThemeManager>,
+    preference_manager: Rc<super::preferences::PreferenceManager>,
     place_order: RefCell<Vec<&'static str>>,
     places_visibility: RefCell<[bool; 9]>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
@@ -1152,29 +1154,29 @@ impl SidebarState {
     }
 
     fn append_static_places(self: &Rc<Self>) {
-        if self.theme_manager.sidebar_show_home() {
+        if self.preference_manager.sidebar_show_home() {
             let location = Location::local(home_directory());
             let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
             if !self.local_only {
                 self.attach_place_context_menu(&row, location, |state| {
-                    state.theme_manager.set_sidebar_show_home(false);
+                    state.preference_manager.set_sidebar_show_home(false);
                 });
             }
         }
         if !self.local_only {
-            if self.theme_manager.sidebar_show_trash() {
+            if self.preference_manager.sidebar_show_trash() {
                 self.append_trash_place();
             }
-            if self.theme_manager.sidebar_show_network() {
+            if self.preference_manager.sidebar_show_network() {
                 let location = Location::uri("network:///");
                 let row =
                     self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
                 self.attach_place_context_menu(&row, location, |state| {
-                    state.theme_manager.set_sidebar_show_network(false);
+                    state.preference_manager.set_sidebar_show_network(false);
                 });
             }
             if should_show_recent_place(
-                self.theme_manager.sidebar_show_recent(),
+                self.preference_manager.sidebar_show_recent(),
                 self.local_only,
                 self.recent_availability.get(),
             ) {
@@ -1200,7 +1202,7 @@ impl SidebarState {
     }
 
     fn standard_place_visible(&self, id: &str) -> bool {
-        sidebar_standard_place_visible(&self.theme_manager, id)
+        sidebar_standard_place_visible(&self.preference_manager, id)
     }
 
     fn append_standard_places(self: &Rc<Self>) {
@@ -1535,7 +1537,7 @@ impl SidebarState {
                 popover.popdown();
             }
             if let Some(state) = weak_state.upgrade() {
-                state.theme_manager.set_sidebar_show_trash(false);
+                state.preference_manager.set_sidebar_show_trash(false);
             }
         });
         let empty_popover = popover.downgrade();
@@ -1632,7 +1634,7 @@ impl SidebarState {
         row.set_tooltip_text(Some(&location.display_path()));
         self.bind_place_row(&row, location.clone(), PlaceNavigation::Direct);
         self.attach_place_context_menu(&row, location, move |state| {
-            let manager = &state.theme_manager;
+            let manager = &state.preference_manager;
             match id {
                 "desktop" => manager.set_sidebar_show_desktop(false),
                 "documents" => manager.set_sidebar_show_documents(false),
@@ -1668,7 +1670,7 @@ impl SidebarState {
                 .iter()
                 .map(|place| (*place).to_owned())
                 .collect();
-            self.theme_manager.set_sidebar_order(order);
+            self.preference_manager.set_sidebar_order(order);
             self.rebuild();
         }
     }
@@ -2923,7 +2925,10 @@ fn should_show_standard_place(id: &str, path: &std::path::Path, home: &std::path
     id != "desktop" || path != home
 }
 
-fn sidebar_standard_place_visible(manager: &super::theme::ThemeManager, id: &str) -> bool {
+fn sidebar_standard_place_visible(
+    manager: &super::preferences::PreferenceManager,
+    id: &str,
+) -> bool {
     match id {
         "desktop" => manager.sidebar_show_desktop(),
         "documents" => manager.sidebar_show_documents(),
@@ -3279,7 +3284,7 @@ pub(crate) fn default_save_folder() -> PathBuf {
     glib::user_special_dir(glib::UserDirectory::Downloads).unwrap_or_else(home_directory)
 }
 
-fn startup_location(manager: &ThemeManager) -> Location {
+fn startup_location(manager: &PreferenceManager) -> Location {
     let saved = manager.default_directory();
     if let Some(path) = &saved
         && path.is_dir()

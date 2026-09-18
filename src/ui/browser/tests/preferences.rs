@@ -51,9 +51,9 @@ fn camera_device_order_overrides_saved_sort_without_changing_other_windows_or_re
     crate::test_support::gtk_test(
         "ui::browser::tests::preferences::camera_device_order_overrides_saved_sort_without_changing_other_windows_or_rebuilt_views",
         || {
-            use crate::ui::theme::ThemeManager;
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            use crate::ui::preferences::PreferenceManager;
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let saved = manager.sort_preferences();
             assert_eq!(saved.sort_key, SortKey::Size);
             let wait = |done: &dyn Fn() -> bool| {
@@ -196,7 +196,10 @@ fn camera_device_order_overrides_saved_sort_without_changing_other_windows_or_re
 }
 
 impl BrowserView {
-    pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
+    pub(in crate::ui) fn assert_saved_preferences(
+        &self,
+        manager: &crate::ui::preferences::PreferenceManager,
+    ) {
         assert_eq!(self.state.peek_enabled.get(), manager.folder_peeking());
         assert_eq!(
             crate::sandbox::browser::worker_limit(),

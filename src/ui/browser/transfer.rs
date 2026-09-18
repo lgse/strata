@@ -218,7 +218,7 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
-        let reveal = crate::ui::theme::ThemeManager::shared().open_folder_after_drop();
+        let reveal = crate::ui::preferences::PreferenceManager::shared().open_folder_after_drop();
         self.start_transfer_with_reveal(destination, sources, move_sources, reveal);
     }
 

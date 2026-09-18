@@ -14,7 +14,10 @@ use std::process::Command;
 use std::{cell::RefCell, collections::HashSet};
 
 impl super::ModeViews {
-    pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
+    pub(in crate::ui) fn assert_saved_preferences(
+        &self,
+        manager: &crate::ui::preferences::PreferenceManager,
+    ) {
         assert_eq!(self.density, manager.browser_density());
         assert_eq!(self.group_by_type, manager.group_by_type());
         assert_eq!(
@@ -609,7 +612,7 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
     gtk_test(
         "ui::browser_modes::tests::icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome",
         || {
-            crate::ui::theme::ThemeManager::shared();
+            crate::ui::preferences::PreferenceManager::shared();
             crate::ui::thumbnail::hold_thumbnail_workers();
             let path = PathBuf::from("/fixture/icons-scroll.png");
             let entry = FileEntry {

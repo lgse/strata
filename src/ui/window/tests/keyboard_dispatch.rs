@@ -25,8 +25,8 @@ impl KeyboardFixture {
     }
 
     fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
-        ThemeManager::seed_saved_preferences_for_test();
-        let preferences = ThemeManager::shared();
+        PreferenceManager::seed_saved_preferences_for_test();
+        let preferences = PreferenceManager::shared();
         // Keyboard focus-return scenarios need a place to focus; the saved fixture hides all places.
         preferences.set_sidebar_show_home(true);
         let directory = tempfile::tempdir().expect("fixture");
@@ -515,7 +515,7 @@ fn arrow_scope_preference_keeps_up_in_the_file_list() {
         "ui::window::tests::keyboard_dispatch::arrow_scope_preference_keeps_up_in_the_file_list",
         || {
             let fixtures = [KeyboardFixture::new(), KeyboardFixture::new()];
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             assert!(preferences.arrow_navigation_scoped());
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
                 for scoped in [true, false, true] {

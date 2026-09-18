@@ -79,7 +79,7 @@ fn trash_thumbnails_and_fallback_icons_work_in_every_view() {
     }
     crate::assets::prepare().expect("assets");
     crate::assets::register_icon_theme();
-    crate::ui::theme::ThemeManager::shared();
+    crate::ui::preferences::PreferenceManager::shared();
     crate::ui::window::load_styles();
     let fixture = tempfile::tempdir().expect("fixture");
     let path = fixture.path().join("photo.png.2");

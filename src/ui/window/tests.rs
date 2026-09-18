@@ -18,7 +18,7 @@ use crate::{
     model::Location,
     services::{BuildKind, ReleaseMetadata},
     test_support::gtk_test,
-    ui::theme::ThemeManager,
+    ui::preferences::PreferenceManager,
 };
 
 use super::{

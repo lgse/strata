@@ -37,7 +37,7 @@ fn application_size_hint_survives_presentation() {
             crate::ui::prepare_portal_ui();
             let root = tempfile::tempdir().expect("fixture directory");
             std::fs::write(root.path().join("notes.txt"), "Notes").expect("fixture file");
-            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
             for (label, parent_size_hint) in [
                 ("monitor-fallback", None),
                 ("split-window", Some((960, 540))),

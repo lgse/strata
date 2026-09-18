@@ -42,8 +42,8 @@ use super::{
     controls::{
         ModalTone, form_check_button, form_entry, form_label, menu_option, message_dialog_layout,
     },
+    preferences::PreferenceManager,
     preview::{PreviewDrawer, preview_target},
-    theme::ThemeManager,
     window::{
         MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView, build_appearance_menu, build_sidebar,
         home_directory, install_modal_focus_trap, is_sidebar_focus_shortcut, vim_focus_direction,
@@ -805,7 +805,7 @@ fn build_chooser(
     );
     let multiple = matches!(&request.kind, ChooserKind::Open { multiple: true, .. });
     let view = BrowserView::new_chooser(source.clone(), multiple);
-    let theme = ThemeManager::shared();
+    let theme = PreferenceManager::shared();
     view.set_operation_provider(Rc::new(LocalOperationProvider));
     let browser = view.browser();
     let preview_preferences = theme.clone();
@@ -1299,7 +1299,7 @@ fn install_shortcuts(
         let Some(state) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        let preferences = ThemeManager::shared();
+        let preferences = PreferenceManager::shared();
         if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
             preferences.set_text_size(size);
             return glib::Propagation::Stop;
@@ -1358,7 +1358,7 @@ fn install_shortcuts(
         let key = super::focus_navigation::navigation_key(
             key,
             modifiers,
-            ThemeManager::shared().type_to_search(),
+            PreferenceManager::shared().type_to_search(),
             focused.as_ref(),
         );
         let vim_navigation = key != original_key;
@@ -1566,7 +1566,7 @@ fn install_shortcuts(
             && !alt
             && let Some(mode) = super::window::browser_mode_for_digit(key)
         {
-            super::window::apply_browser_mode(&state.view, &ThemeManager::shared(), mode);
+            super::window::apply_browser_mode(&state.view, &PreferenceManager::shared(), mode);
             return glib::Propagation::Stop;
         }
         if control {
@@ -1672,7 +1672,7 @@ fn install_shortcuts(
             && sidebar_toggle.is_active()
             && state.view.item_view_has_focus()
             && state.view.item_at_sidebar_edge()
-            && !ThemeManager::shared().arrow_navigation_scoped()
+            && !PreferenceManager::shared().arrow_navigation_scoped()
         {
             focus_before_sidebar.replace(focused.clone());
             sidebar_state.focus_active_place();
@@ -1710,7 +1710,7 @@ fn install_shortcuts(
             }
             if !shift
                 && key == gtk::gdk::Key::Up
-                && !ThemeManager::shared().arrow_navigation_scoped()
+                && !PreferenceManager::shared().arrow_navigation_scoped()
                 && state.view.focus_header_from_top_item()
             {
                 return glib::Propagation::Stop;
@@ -1754,7 +1754,7 @@ fn install_shortcuts(
         }
         if !shift
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
-            && !ThemeManager::shared().arrow_navigation_scoped()
+            && !PreferenceManager::shared().arrow_navigation_scoped()
             && state.view.focus_header_from_top_item()
         {
             return glib::Propagation::Stop;
@@ -1773,7 +1773,7 @@ fn install_shortcuts(
                 if !control
                     && state.view.first_column_has_focus()
                     && sidebar_toggle.is_active()
-                    && !ThemeManager::shared().arrow_navigation_scoped() =>
+                    && !PreferenceManager::shared().arrow_navigation_scoped() =>
             {
                 focus_before_sidebar.replace(focused.clone());
                 sidebar_state.focus_active_place();

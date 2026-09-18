@@ -3,7 +3,7 @@
 use super::super::*;
 use crate::sandbox::MediaPreviewBackend;
 use crate::test_support::gtk_test;
-use crate::ui::theme::TextSize;
+use crate::ui::{preferences::TextSize, theme::ThemeManager};
 
 fn descendants<T: IsA<gtk::Widget> + Clone>(root: &gtk::Widget) -> Vec<T> {
     let mut widgets = Vec::new();
@@ -37,8 +37,8 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
     gtk_test(
         "ui::settings::tests::preferences::every_general_control_stays_in_sync_without_initializing_browser_behavior",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let first_browser = crate::ui::browser::BrowserView::new(
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
@@ -259,11 +259,12 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
     gtk_test(
         "ui::settings::tests::preferences::theme_hint_and_channel_controls_follow_external_changes",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            ThemeManager::seed_omarchy_for_test();
-            let manager = ThemeManager::shared();
-            let first = theme_page(manager.clone()).widget;
-            let second = theme_page(manager.clone()).widget;
+            PreferenceManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_omarchy_for_test();
+            let manager = PreferenceManager::shared();
+            let themes = ThemeManager::shared();
+            let first = theme_page(manager.clone(), themes.clone()).widget;
+            let second = theme_page(manager.clone(), themes.clone()).widget;
             let first_hints = keybindings_page(manager.clone());
             let second_hints = keybindings_page(manager.clone());
             let first_channel = channel_option(manager.clone(), None);
@@ -281,10 +282,10 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
                     active_switches(updates[1].upcast_ref())
                 );
             }
-            manager.set_follow_omarchy(true);
+            themes.set_follow_omarchy(true);
             assert_eq!(active_switches(&first), [true, false, true]);
             assert_eq!(active_switches(&second), [true, false, true]);
-            manager.set_follow_omarchy(false);
+            themes.set_follow_omarchy(false);
             assert_eq!(active_switches(&first), [false, false, true]);
             assert_eq!(active_switches(&second), [false, false, true]);
             for (page, enabled) in [(&first, true), (&second, false)] {
@@ -315,7 +316,7 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
                     .count();
                 assert_eq!(selected_cards, 1);
             }
-            manager.select_theme("azure-glow");
+            themes.select_theme("azure-glow");
             for page in [&first, &second] {
                 let selected = descendants::<gtk::Button>(page)
                     .into_iter()
@@ -336,9 +337,9 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
                     .expect("theme search entry")
                     .set_text("Synchronized fixture");
             }
-            let mut custom = manager.starter_tokens();
+            let mut custom = themes.starter_tokens();
             custom.name = "Synchronized fixture".into();
-            manager
+            themes
                 .save_custom_theme(custom)
                 .expect("save shared custom theme");
             for page in [&first, &second] {
@@ -379,7 +380,7 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
                         .any(|label| label.text() == "Synchronized fixture")
                 );
             }
-            manager.set_follow_omarchy(true);
+            themes.set_follow_omarchy(true);
             let saved =
                 std::fs::read_to_string(glib::user_config_dir().join("strata/settings.toml"))
                     .expect("saved preference fixture");
@@ -480,12 +481,13 @@ fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
     gtk_test(
         "ui::settings::tests::preferences::follow_omarchy_hides_and_falls_back_when_quattro_state_disappears",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            ThemeManager::seed_omarchy_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_omarchy_for_test();
+            let manager = PreferenceManager::shared();
+            let themes = ThemeManager::shared();
             let pages = [
-                theme_page(manager.clone()).widget,
-                theme_page(manager.clone()).widget,
+                theme_page(manager.clone(), themes.clone()).widget,
+                theme_page(manager.clone(), themes.clone()).widget,
             ];
             let rows = pages.each_ref().map(|page| {
                 descendants::<gtk::Box>(page)
@@ -493,7 +495,7 @@ fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
                     .find(|widget| widget.widget_name() == "settings-search-omarchy")
                     .expect("Follow Omarchy row")
             });
-            manager.set_follow_omarchy(true);
+            themes.set_follow_omarchy(true);
             let theme = glib::home_dir().join(".local/state/omarchy/current/theme");
             let staged = theme.with_file_name("staged-theme");
             std::fs::rename(&theme, &staged).expect("stage theme switch");
@@ -501,8 +503,8 @@ fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
             let stop = loop_.clone();
             glib::timeout_add_local_once(Duration::from_millis(200), move || stop.quit());
             loop_.run();
-            assert!(manager.is_omarchy_available());
-            assert!(manager.follows_omarchy());
+            assert!(themes.is_omarchy_available());
+            assert!(themes.follows_omarchy());
             assert!(rows.iter().all(|row| row.is_visible()));
             std::fs::rename(staged, theme).expect("finish theme switch");
 
@@ -512,8 +514,8 @@ fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
                 Some(".local/state/omarchy"),
                 Some(".local/state"),
             ] {
-                manager.set_follow_omarchy(true);
-                assert!(manager.follows_omarchy());
+                themes.set_follow_omarchy(true);
+                assert!(themes.follows_omarchy());
                 assert!(rows.iter().all(|row| row.is_visible()));
                 let backup = glib::home_dir().join("omarchy-backup");
                 if let Some(path) = moved_path {
@@ -523,11 +525,11 @@ fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
                     std::fs::remove_dir_all(glib::home_dir().join(".local/state/omarchy"))
                         .expect("remove Omarchy state");
                 }
-                wait_for_omarchy_availability(&manager, false);
+                wait_for_omarchy_availability(&themes, false);
 
-                assert!(!manager.follows_omarchy());
+                assert!(!themes.follows_omarchy());
                 assert!(rows.iter().all(|row| !row.is_visible()));
-                assert_eq!(manager.appearance_tokens().name, "Nord");
+                assert_eq!(themes.appearance_tokens().name, "Nord");
                 let saved: toml::Table = toml::from_str(
                     &std::fs::read_to_string(glib::user_config_dir().join("strata/settings.toml"))
                         .expect("saved preferences"),
@@ -542,10 +544,10 @@ fn follow_omarchy_hides_and_falls_back_when_quattro_state_disappears() {
                     std::fs::rename(&backup, glib::home_dir().join(path))
                         .expect("restore Omarchy state");
                 } else {
-                    ThemeManager::seed_omarchy_for_test();
+                    PreferenceManager::seed_omarchy_for_test();
                 }
-                wait_for_omarchy_availability(&manager, true);
-                assert!(!manager.follows_omarchy());
+                wait_for_omarchy_availability(&themes, true);
+                assert!(!themes.follows_omarchy());
                 assert!(rows.iter().all(|row| row.is_visible()));
             }
         },

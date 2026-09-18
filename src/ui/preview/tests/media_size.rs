@@ -14,7 +14,7 @@ use crate::{
         LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
         PreviewRequest, PreviewRequestId, SandboxedMedia,
     },
-    ui::{preview::PreviewDrawer, theme::ThemeManager},
+    ui::{preferences::PreferenceManager, preview::PreviewDrawer},
 };
 
 pub(in crate::ui::preview) struct RecordingProvider(
@@ -220,8 +220,8 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                 assert!(media.is_playing());
                 use gtk::gdk::{Key, ModifierType as Modifiers};
                 let shortcut = Modifiers::CONTROL_MASK | Modifiers::ALT_MASK;
-                ThemeManager::shared().set_preview_volume(0.5);
-                ThemeManager::shared().set_preview_muted(false);
+                PreferenceManager::shared().set_preview_volume(0.5);
+                PreferenceManager::shared().set_preview_muted(false);
                 for modifiers in [
                     Modifiers::empty(),
                     Modifiers::CONTROL_MASK,
@@ -241,19 +241,19 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                         assert!(!drawer.handle_video_key(key, modifiers));
                     }
                     assert!(media.is_playing());
-                    assert_eq!(ThemeManager::shared().preview_volume(), 0.5);
-                    assert!(!ThemeManager::shared().preview_muted());
+                    assert_eq!(PreferenceManager::shared().preview_volume(), 0.5);
+                    assert!(!PreferenceManager::shared().preview_muted());
                 }
                 assert!(drawer.handle_video_key(Key::space, shortcut));
                 assert!(!media.is_playing());
                 assert!(drawer.handle_video_key(Key::Up, shortcut));
-                assert!((ThemeManager::shared().preview_volume() - 0.6).abs() < 0.001);
+                assert!((PreferenceManager::shared().preview_volume() - 0.6).abs() < 0.001);
                 assert!(drawer.handle_video_key(Key::Down, shortcut));
-                assert!((ThemeManager::shared().preview_volume() - 0.5).abs() < 0.001);
+                assert!((PreferenceManager::shared().preview_volume() - 0.5).abs() < 0.001);
                 assert!(drawer.handle_video_key(Key::m, shortcut));
-                assert!(ThemeManager::shared().preview_muted());
+                assert!(PreferenceManager::shared().preview_muted());
                 assert!(drawer.handle_video_key(Key::m, shortcut));
-                assert!(!ThemeManager::shared().preview_muted());
+                assert!(!PreferenceManager::shared().preview_muted());
                 assert!(drawer.handle_video_key(Key::space, shortcut));
                 assert!(media.is_playing());
                 window.close();
@@ -285,7 +285,7 @@ fn media_requests_use_the_opening_target_and_each_windows_resized_pane() {
     crate::test_support::gtk_test(
         "ui::preview::tests::media_size::media_requests_use_the_opening_target_and_each_windows_resized_pane",
         || {
-            ThemeManager::shared().set_reduce_motion(false);
+            PreferenceManager::shared().set_reduce_motion(false);
             let mut windows = Vec::new();
             for (allow_external_open, window_width) in [(true, 1400), (false, 1600)] {
                 let requests = Rc::new(RefCell::new(Vec::new()));

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::*;
-use crate::{test_support::gtk_test, ui::theme::ThemeManager};
+use crate::{test_support::gtk_test, ui::preferences::PreferenceManager};
 
 fn render_text(drawer: &PreviewDrawer) {
     drawer.state.render(crate::services::Preview {
@@ -34,8 +34,8 @@ fn saved_and_live_wrap_preferences_reach_existing_and_rebuilt_previews() {
     gtk_test(
         "ui::preview::tests::preferences::saved_and_live_wrap_preferences_reach_existing_and_rebuilt_previews",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let drawers = [true, false].map(|browser| {
                 let drawer = PreviewDrawer::new(Rc::new(super::NoopPreviewProvider), browser);
                 render_text(&drawer);
@@ -106,8 +106,8 @@ fn document_defaults_apply_before_settings_and_after_reopening_in_two_windows() 
     gtk_test(
         "ui::preview::tests::preferences::document_defaults_apply_before_settings_and_after_reopening_in_two_windows",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             assert!(!manager.render_documents_by_default());
             let fixture = tempfile::tempdir().expect("document fixtures");
             std::fs::write(
@@ -223,8 +223,8 @@ fn saved_and_live_audio_preferences_reach_every_open_player() {
     gtk_test(
         "ui::preview::tests::preferences::saved_and_live_audio_preferences_reach_every_open_player",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let mut players = Vec::new();
             for browser in [true, false] {
                 let drawer = PreviewDrawer::new(

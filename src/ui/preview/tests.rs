@@ -18,7 +18,7 @@ use crate::model::Location;
 use crate::services::{
     LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
 };
-use crate::ui::theme::ThemeManager;
+use crate::ui::preferences::PreferenceManager;
 
 struct UnusedPreviewProvider;
 
@@ -57,7 +57,7 @@ fn render_media_widgets(drawer: &PreviewDrawer, is_gif: bool) -> WeakMediaWidget
     drawer.state.content.append(&section);
     drawer.state.append_media_controls(
         media.upcast_ref(),
-        &ThemeManager::shared(),
+        &PreferenceManager::shared(),
         &section,
         &center_play,
         is_gif,

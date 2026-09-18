@@ -788,7 +788,7 @@ pub(super) fn column_rows(
         path.set_label(origin.as_deref().unwrap_or_default());
         path.set_visible(
             origin.is_some()
-                && crate::ui::theme::ThemeManager::shared().filter_include_subfolders(),
+                && crate::ui::preferences::PreferenceManager::shared().filter_include_subfolders(),
         );
         row.set_tooltip_text(origin.as_deref());
         let active = entry.as_ref().is_some_and(|entry| {

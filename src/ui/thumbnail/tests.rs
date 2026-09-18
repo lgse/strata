@@ -23,7 +23,7 @@ use super::{
 use crate::{
     model::{EntryKind, FileEntry, FolderColor, FolderColorValue, Location, MetadataValue},
     test_support::gtk_test,
-    ui::theme::ThemeManager,
+    ui::preferences::PreferenceManager,
 };
 use gtk::prelude::*;
 
@@ -448,7 +448,7 @@ fn cache_hit_applies_texture_on_idle_not_during_bind() {
     gtk_test(
         "ui::thumbnail::tests::cache_hit_applies_texture_on_idle_not_during_bind",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             let path = PathBuf::from("/fixture/cache-hit.png");
             let pending = super::ThumbnailSlot::new(64);
             bind_thumbnail(&pending, &sample_entry(&path));
@@ -488,7 +488,7 @@ fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
     gtk_test(
         "ui::thumbnail::tests::theme_refresh_does_not_reenter_tracked_icon_refcell",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             let list = gtk::ListBox::new();
             let scroll = gtk::ScrolledWindow::builder()
                 .child(&list)
@@ -518,7 +518,7 @@ fn path_customization_refreshes_rendered_icons() {
     gtk_test(
         "ui::thumbnail::tests::path_customization_refreshes_rendered_icons",
         || {
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             let customized = Path::new("/fixture/custom-folder");
             let other = Path::new("/fixture/plain-folder");
             let color = FolderColorValue::Preset(FolderColor::Red);
@@ -587,7 +587,7 @@ fn cache_miss_enqueues_sandbox_job_without_settle_timeout() {
     gtk_test(
         "ui::thumbnail::tests::cache_miss_enqueues_sandbox_job_without_settle_timeout",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             hold_thumbnail_workers();
             let path = PathBuf::from("/fixture/cache-miss.png");
             let image = super::ThumbnailSlot::new(64);
@@ -611,7 +611,7 @@ fn uri_entries_with_a_local_mirror_render_via_the_mirror_path() {
     gtk_test(
         "ui::thumbnail::tests::uri_entries_with_a_local_mirror_render_via_the_mirror_path",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             hold_thumbnail_workers();
             // file:// exercises URI routing, not GVfs/FUSE integration.
             let mirror = tempfile::Builder::new()
@@ -647,7 +647,7 @@ fn mirror_rendering_does_not_wait_for_a_metadata_fill() {
     gtk_test(
         "ui::thumbnail::tests::mirror_rendering_does_not_wait_for_a_metadata_fill",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             hold_thumbnail_workers();
             let mirror = tempfile::Builder::new()
                 .suffix(".png")
@@ -685,7 +685,7 @@ fn uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon() {
     gtk_test(
         "ui::thumbnail::tests::uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             hold_thumbnail_workers();
             let entry = FileEntry {
                 recent_unix_seconds: MetadataValue::Unavailable,
@@ -716,7 +716,7 @@ fn stale_request_id_does_not_apply_completed_texture() {
     gtk_test(
         "ui::thumbnail::tests::stale_request_id_does_not_apply_completed_texture",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             let path = PathBuf::from("/fixture/stale.png");
             let image = super::ThumbnailSlot::new(64);
             let image_id = image.as_ptr() as usize;

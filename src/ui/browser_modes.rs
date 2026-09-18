@@ -2439,20 +2439,23 @@ fn list_headings(
         headings.append(&cell);
     }
     let scaled_columns = columns.clone();
-    super::theme::ThemeManager::shared().bind_interface_scale(&headings, move |_, scale| {
-        let ratio = scale / scaled_columns.scale.replace(scale);
-        for (index, width) in scaled_columns.widths.iter().enumerate() {
-            let scaled = (f64::from(width.get()) * ratio).round() as i32;
-            width.set(scaled);
-            scaled_columns.cells[index].borrow_mut().retain(|weak| {
-                let Some(cell) = weak.upgrade() else {
-                    return false;
-                };
-                cell.set_width_request(scaled);
-                true
-            });
-        }
-    });
+    super::preferences::PreferenceManager::shared().bind_interface_scale(
+        &headings,
+        move |_, scale| {
+            let ratio = scale / scaled_columns.scale.replace(scale);
+            for (index, width) in scaled_columns.widths.iter().enumerate() {
+                let scaled = (f64::from(width.get()) * ratio).round() as i32;
+                width.set(scaled);
+                scaled_columns.cells[index].borrow_mut().retain(|weak| {
+                    let Some(cell) = weak.upgrade() else {
+                        return false;
+                    };
+                    cell.set_width_request(scaled);
+                    true
+                });
+            }
+        },
+    );
     (headings, sorting)
 }
 

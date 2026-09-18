@@ -1,11 +1,16 @@
 # Preference lifecycle
 
-Application-wide preferences live in `ui::theme::Preferences`. `ThemeManager`
-loads them once per application process and persists changes atomically to
+Application-wide preferences live in `ui::preferences::Preferences`. The
+`ui::preferences::PreferenceManager` loads them once per application process and
+persists changes atomically to
 `$XDG_CONFIG_HOME/strata/settings.toml` (normally `~/.config/strata/settings.toml`).
-The manager's historical name does not make non-theme settings window-local.
-Fresh installations select Tokyo Night, unless an available Omarchy theme is
-followed automatically. Saved theme choices remain unchanged.
+It owns the serialized schema, change notifications, and widget bindings for every
+settings consumer, theme-related or not. `ui::theme::ThemeManager` separately owns
+the theme catalog, shared CSS application, custom themes, and Omarchy following;
+it reads preferences through the `PreferenceManager` and reapplies shared CSS when
+appearance preferences change. Fresh installations select Tokyo Night, unless an
+available Omarchy theme is followed automatically. Saved theme choices remain
+unchanged.
 
 Settings-wide search is transient, panel-local UI state, not a saved preference.
 It filters the existing bound controls rather than creating copies. Register new
@@ -17,8 +22,10 @@ they finish loading.
 
 ## One initialization and update path
 
-Use `ThemeManager::bind_preference(anchor, read, apply)` for cached behavior and
-controls. The binding applies the current value immediately, then applies only
+Use `PreferenceManager::bind_preference(anchor, read, apply)` for cached behavior and
+controls, and `ThemeManager::bind_theme_preference(anchor, read, apply)` for values
+derived from the theme catalog or live Omarchy availability. The binding applies the
+current value immediately, then applies only
 changes to its selected value. There is no separate startup initializer to keep
 in sync with the change handler. Every setter goes through `save_preferences`,
 which deduplicates unchanged preferences and publishes changes through the same
@@ -54,9 +61,9 @@ control that might be midway through synchronization.
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Explicit field sorting updates the persisted defaults. Camera Photos libraries instead open in column-local Device order (see below). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
 | Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
-| Element glow | Shared semantic glow color is applied by the manager before Settings opens and updated live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
+| Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
-| Theme, Omarchy following, text size | Shared CSS is applied by the manager; controls and theme-card selections bind to preferences. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
+| Theme, Omarchy following, text size | `ThemeManager` applies shared CSS when theme selection, Omarchy following, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
 | Thumbnail workers | Browser construction binds the shared decoder limit before Settings opens. Changes apply across windows and rebuilt views; lowering the limit lets active work finish and retires excess idle supervisors. |
 | Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
@@ -167,7 +174,7 @@ Changing it refreshes active filters across windows and is saved for next launch
 2. Bind cached consumers at construction, or read directly at action dispatch.
    Do not add behavior initialization to a Settings page.
 3. Bind its controls with the shared helpers; document any deliberate override.
-4. Extend the **exhaustive** fixture in `ui/theme/tests/preferences.rs` (it has no
+4. Extend the **exhaustive** fixture in `ui/preferences/fixtures.rs` (it has no
    `..Default` escape hatch) and the setter notification/persistence coverage.
    That test compares the union of changed keys against every serialized field,
    so extending the fixture without exercising the new setter still fails.

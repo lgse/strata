@@ -36,9 +36,9 @@ fn type_to_search_shortcuts_work_in_all_view_modes() {
 }
 
 fn exercise_type_to_search() {
-    ThemeManager::seed_saved_preferences_for_test();
+    PreferenceManager::seed_saved_preferences_for_test();
     load_styles();
-    let preferences = ThemeManager::shared();
+    let preferences = PreferenceManager::shared();
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("notes.txt"), b"preview fixture").expect("fixture file");
     std::fs::create_dir(fixture.path().join("folder")).expect("fixture directory");

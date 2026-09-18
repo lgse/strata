@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use crate::ui::theme::{TextSize, ThemeManager};
-use gtk::{gdk, glib, prelude::*};
+use crate::{
+    test_support::gtk_test,
+    ui::{preferences::TextSize, theme::ThemeManager},
+};
+use gtk::{glib, prelude::*};
 
 fn settle() {
     let main_loop = glib::MainLoop::new(None, false);
@@ -12,11 +15,18 @@ fn settle() {
 
 #[test]
 fn custom_text_size_loads_and_updates_two_windows_and_new_content_with_desktop_scaling() {
-    crate::test_support::gtk_test(
+    gtk_test(
         "ui::theme::tests::text_size::custom_text_size_loads_and_updates_two_windows_and_new_content_with_desktop_scaling",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            let directory = glib::user_config_dir().join("strata");
+            std::fs::create_dir_all(&directory).expect("isolated preferences directory");
+            std::fs::write(
+                directory.join("settings.toml"),
+                "mode = \"theme\"\ntheme = \"tokyo-night\"\ntext_size = 24\n",
+            )
+            .expect("persist text size fixture");
+            ThemeManager::shared();
+            let manager = crate::ui::preferences::PreferenceManager::shared();
             crate::ui::prepare_portal_ui();
             let settings = gtk::Settings::default().expect("GTK settings");
             settings.set_gtk_xft_dpi(96 * 1024);
@@ -73,40 +83,4 @@ fn custom_text_size_loads_and_updates_two_windows_and_new_content_with_desktop_s
             }
         },
     );
-}
-
-#[test]
-fn custom_text_size_shortcuts_accept_standard_and_keypad_keys_without_stealing_alt_combinations() {
-    use gdk::{Key, ModifierType as M};
-    let size = TextSize::new(24);
-    for key in [Key::plus, Key::equal, Key::KP_Add] {
-        assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK),
-            Some(TextSize::new(25))
-        );
-        assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK | M::SHIFT_MASK),
-            Some(TextSize::new(25))
-        );
-    }
-    for key in [Key::minus, Key::KP_Subtract] {
-        assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK),
-            Some(TextSize::new(23))
-        );
-    }
-    for key in [Key::_0, Key::KP_0] {
-        assert_eq!(
-            size.for_shortcut(key, M::CONTROL_MASK),
-            Some(TextSize::default())
-        );
-    }
-    for modifiers in [
-        M::empty(),
-        M::SHIFT_MASK,
-        M::CONTROL_MASK | M::ALT_MASK,
-        M::CONTROL_MASK | M::SUPER_MASK,
-    ] {
-        assert_eq!(size.for_shortcut(Key::plus, modifiers), None);
-    }
 }

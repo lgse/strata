@@ -680,8 +680,8 @@ fn drop_open_preference_applies_before_settings_and_live_across_views() {
         "ui::browser::transfer::tests::drop_open_preference_applies_before_settings_and_live_across_views",
         || {
             use crate::ui::browser_modes::BrowserMode;
-            crate::ui::theme::ThemeManager::seed_saved_preferences_for_test();
-            let manager = crate::ui::theme::ThemeManager::shared();
+            crate::ui::preferences::PreferenceManager::seed_saved_preferences_for_test();
+            let manager = crate::ui::preferences::PreferenceManager::shared();
             assert!(manager.open_folder_after_drop());
             let views: Vec<_> = (0..2)
                 .map(|_| {
@@ -769,7 +769,7 @@ fn cross_device_confirmation_reads_the_live_drop_open_preference() {
     crate::test_support::gtk_test(
         "ui::browser::transfer::tests::cross_device_confirmation_reads_the_live_drop_open_preference",
         || {
-            let manager = crate::ui::theme::ThemeManager::shared();
+            let manager = crate::ui::preferences::PreferenceManager::shared();
             assert!(!manager.open_folder_after_drop());
             let view = crate::ui::browser::BrowserView::new(
                 Rc::new(crate::adapters::LocalFileSource),
@@ -831,8 +831,8 @@ fn conflict_dialog_verifies_theme_following() {
     crate::test_support::gtk_test(
         "ui::browser::transfer::tests::conflict_dialog_verifies_theme_following",
         || {
-            let manager = crate::ui::theme::ThemeManager::shared();
-            manager.select_theme("tokyo-night");
+            let themes = crate::ui::theme::ThemeManager::shared();
+            themes.select_theme("tokyo-night");
             crate::ui::window::load_styles();
 
             let fixture = tempfile::tempdir().expect("conflict fixture");
@@ -866,7 +866,7 @@ fn conflict_dialog_verifies_theme_following() {
             );
 
             let first = resolved_dialog_surface(&overlay);
-            manager.select_theme("everforest-light-medium");
+            themes.select_theme("everforest-light-medium");
             for _ in 0..3 {
                 glib::MainContext::default().iteration(false);
             }

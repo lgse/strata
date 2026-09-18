@@ -1277,7 +1277,7 @@ impl ViewState {
 
         shell.set_size_request(COLUMN_WIDTH, -1);
         let previous_scale = Cell::new(1.0);
-        crate::ui::theme::ThemeManager::shared().bind_interface_scale(
+        crate::ui::preferences::PreferenceManager::shared().bind_interface_scale(
             &shell,
             move |shell, scale| {
                 let ratio = scale / previous_scale.replace(scale);

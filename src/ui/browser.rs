@@ -449,7 +449,7 @@ impl BrowserView {
         location_control.append(&location_stack);
         location_control.append(&global_activity_spinner);
 
-        let preferences = super::theme::ThemeManager::shared();
+        let preferences = super::preferences::PreferenceManager::shared();
         let browser = Browser::with_preferences(source, preferences.sort_preferences());
         browser.set_chooser_mode(!interactive);
         let preferences_for_sorting = preferences.clone();

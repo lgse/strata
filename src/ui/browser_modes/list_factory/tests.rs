@@ -84,7 +84,7 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
-        crate::ui::theme::ThemeManager::shared();
+        crate::ui::preferences::PreferenceManager::shared();
         thumbnail::hold_thumbnail_workers();
         let entries = vec![entry("a.txt", 100), entry("b.png", 200), entry("c.rs", 300)];
         let values: Vec<_> = entries.iter().map(browser::entry_model_value).collect();

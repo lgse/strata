@@ -419,7 +419,7 @@ struct ThumbnailRequest<'a> {
 fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
     let customization_path = (request.kind != Some(ThumbnailKind::Camera)).then_some(request.path);
     let has_custom_icon = customization_path.is_some_and(|path| {
-        super::theme::ThemeManager::shared()
+        super::preferences::PreferenceManager::shared()
             .custom_icon(path)
             .is_some()
     });
@@ -1206,9 +1206,9 @@ fn path_icon_texture(path: Option<&Path>, fallback_icon: &str) -> (Option<gdk::T
     let Some(path) = path else {
         return (crate::assets::primary_icon_paintable(fallback_icon), false);
     };
-    let theme_manager = super::theme::ThemeManager::shared();
-    let custom_icon = theme_manager.custom_icon(path);
-    let color = theme_manager.folder_color(path);
+    let preference_manager = super::preferences::PreferenceManager::shared();
+    let custom_icon = preference_manager.custom_icon(path);
+    let color = preference_manager.folder_color(path);
     let customized = custom_icon.is_some() || color.is_some();
     let texture = if fallback_icon == crate::assets::icons::FOLDER
         && let Some(decoration) = custom_icon.as_deref()
@@ -1242,9 +1242,9 @@ fn apply_path_customization(image: &ThumbnailSlot, path: &Path, fallback_icon: &
 }
 
 fn apply_path_customization_image(image: &gtk::Image, path: &Path, fallback_icon: &str) -> bool {
-    let theme_manager = super::theme::ThemeManager::shared();
-    let custom_icon = theme_manager.custom_icon(path);
-    let color = theme_manager.folder_color(path);
+    let preference_manager = super::preferences::PreferenceManager::shared();
+    let custom_icon = preference_manager.custom_icon(path);
+    let color = preference_manager.folder_color(path);
     let customized = custom_icon.is_some() || color.is_some();
 
     if fallback_icon == crate::assets::icons::FOLDER
@@ -1331,7 +1331,7 @@ fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
             .collect::<Vec<_>>()
     });
     for (image, path, icon) in pending {
-        if super::theme::ThemeManager::shared()
+        if super::preferences::PreferenceManager::shared()
             .custom_icon(&path)
             .is_some()
         {

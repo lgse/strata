@@ -7,7 +7,7 @@ fn camera_thumbnail_bindings_keep_duplicate_names_distinct_and_discard_stale_res
     crate::test_support::gtk_test(
         "ui::thumbnail::camera::tests::camera_thumbnail_bindings_keep_duplicate_names_distinct_and_discard_stale_results",
         || {
-            crate::ui::theme::ThemeManager::shared();
+            crate::ui::preferences::PreferenceManager::shared();
             for extension in ["JPG", "HEIC", "HEIF", "MOV"] {
                 let name = format!("IMG_0001.{extension}");
                 clear_thumbnail_runtime();
@@ -118,7 +118,7 @@ fn camera_jobs_follow_visible_reading_order_instead_of_bind_order_and_reprioriti
     crate::test_support::gtk_test(
         "ui::thumbnail::camera::tests::camera_jobs_follow_visible_reading_order_instead_of_bind_order_and_reprioritize_on_scroll",
         || {
-            crate::ui::theme::ThemeManager::shared();
+            crate::ui::preferences::PreferenceManager::shared();
             for kind in [ThumbnailKind::Camera, ThumbnailKind::Image] {
                 clear_thumbnail_runtime();
                 hold_thumbnail_workers();
