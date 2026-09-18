@@ -11,7 +11,7 @@ use super::{
     document_tag_table, document_text_view, drag_threshold_crossed, highlighted_code_language,
     local_selection, matching_link, plain_text_view, rendered_document, selection_text,
     set_table_cell, source_document, source_line_numbers, source_units, styled_markup,
-    use_virtual_source, vertical_distance,
+    use_virtual_plain_source, vertical_distance,
 };
 use crate::{
     services::{
@@ -85,10 +85,10 @@ fn source_units_bound_normal_rows_and_isolate_pathological_lines() {
 
 #[test]
 fn small_pathological_lines_use_the_virtual_source_path() {
-    assert!(use_virtual_source(
+    assert!(use_virtual_plain_source(
         &"x".repeat(super::PATHOLOGICAL_TEXT_UNIT_BYTES + 1)
     ));
-    assert!(!use_virtual_source("ordinary source\n"));
+    assert!(!use_virtual_plain_source("ordinary source\n"));
 }
 
 #[test]

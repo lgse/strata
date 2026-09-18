@@ -40,6 +40,7 @@ const TOOLS: &[Shortcut] = &[
     ("Ctrl+F", "Filter the current pane"),
     ("Ctrl+K", "Open global search"),
     ("Ctrl+Shift+K", "Jump to a recent folder"),
+    ("Alt+Enter", "Open containing folder (global search)"),
     ("Ctrl+L", "Edit the location"),
     ("Ctrl+T", "Open a terminal"),
     ("F5", "Refresh"),

@@ -401,20 +401,20 @@ impl ViewState {
                         });
                     }
                 } else {
-                    let transfer_target_loaded = self
-                        .pending_transfer_selection
+                    let selection_target_loaded = self
+                        .pending_location_selection
                         .borrow()
                         .as_ref()
                         .is_some_and(|(target, _)| {
                             self.browser.location_at(*depth).as_ref() == Some(target)
                         });
-                    if transfer_target_loaded
+                    if selection_target_loaded
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
                     {
                         self.browser.set_active_column(*depth);
                     }
-                    let locations = if transfer_target_loaded {
-                        self.pending_transfer_selection
+                    let locations = if selection_target_loaded {
+                        self.pending_location_selection
                             .take()
                             .map(|(_, locations)| locations)
                             .unwrap_or_default()
@@ -875,7 +875,7 @@ impl ViewState {
                 self.pending_navigate.take();
                 self.pending_select.take();
                 self.pending_select_properties.set(false);
-                self.pending_transfer_selection
+                self.pending_location_selection
                     .replace(Some((destination.clone(), locations.clone())));
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     let open_depth = (0..self.columns.borrow().len()).find(|depth| {
