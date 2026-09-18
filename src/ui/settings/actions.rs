@@ -11,10 +11,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk::{gio, glib, prelude::*};
+use sourceview5::prelude::*;
 
 use crate::model::{
-    ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionRuntime, ErrorPolicy,
-    ExecutionMode, InputKind, MenuPlacement, RunSpec, WorkingDirectory, suggest_id,
+    ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionError, ActionRuntime,
+    ErrorPolicy, ExecutionMode, InputKind, MenuPlacement, RunSpec, WorkingDirectory, suggest_id,
 };
 use crate::services::{
     ActionHandle, ActionLoadFailure, ActionRegistry, ActionScript, ActionWriteRequest,
@@ -22,8 +23,8 @@ use crate::services::{
 use crate::ui::{
     actions::{ACTION_ICON_CHOICES, action_icon, is_known_action_icon},
     controls::{
-        ModalTone, form_entry, form_error_label, menu_option, message_dialog_description,
-        message_dialog_layout, modal_layout,
+        ModalTone, form_check_button, form_entry, form_error_label, message_dialog_description,
+        message_dialog_layout, modal_layout, segmented_control,
     },
     modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog},
 };
@@ -35,7 +36,9 @@ mod tests;
 
 const MAX_EXTENSION_FIELD_CHARS: usize = 256;
 const MAX_ARGUMENTS_FIELD_CHARS: usize = 2048;
-const SCRIPT_EDITOR_HEIGHT: i32 = 140;
+const GENERAL_TAB: u32 = 0;
+const SCRIPT_TAB: u32 = 1;
+const BEHAVIOR_TAB: u32 = 2;
 
 pub(super) fn actions_page() -> gtk::Widget {
     let content = page_content();
@@ -278,11 +281,20 @@ impl PageState {
         let layout = modal_layout(
             action_icon(action.definition.icon.as_deref()),
             title,
-            "Saved as action.toml under ~/.config/strata/actions",
-            "Save",
+            "Saved as action.toml under ~/.config/strata/actions/<id>",
+            match mode {
+                EditorMode::Create => "Create action",
+                EditorMode::Edit => "Save changes",
+            },
         );
+        layout.content.add_css_class("settings-action-dialog");
+        if let Some(icon) = layout.close.child() {
+            icon.set_halign(gtk::Align::Center);
+            icon.set_valign(gtk::Align::Center);
+        }
         let form = EditorForm::new(mode, &action, script);
         layout.body.append(&form.root);
+        layout.actions.prepend(&form.error);
         let content = layout.content;
         let layer = modal_layer(&content, &host.overlay, host.blurred_root.clone(), None);
         let overlay = host.overlay.clone();
@@ -535,23 +547,20 @@ struct EditorForm {
     mode: EditorMode,
     root: gtk::Box,
     error: gtk::Label,
+    tabs: gtk::Notebook,
     name: gtk::Entry,
     id: gtk::Entry,
     description: gtk::Entry,
     entrypoint: gtk::Entry,
-    script: gtk::TextView,
+    script: sourceview5::View,
     program: gtk::Entry,
-    arguments: gtk::Entry,
+    arguments: gtk::TextView,
     confirm: gtk::Switch,
     enabled: gtk::Switch,
     files: gtk::CheckButton,
     folders: gtk::CheckButton,
     extensions: gtk::Entry,
     max_items: gtk::Entry,
-    entrypoint_field: gtk::Box,
-    script_field: gtk::Box,
-    program_field: gtk::Box,
-    arguments_field: gtk::Box,
     selected_icon: Rc<std::cell::RefCell<Option<String>>>,
     selected_runtime: Rc<std::cell::Cell<ActionRuntime>>,
     selected_mode: Rc<std::cell::Cell<ExecutionMode>>,
@@ -563,27 +572,52 @@ struct EditorForm {
 impl EditorForm {
     fn new(mode: EditorMode, action: &ActionHandle, script: Option<ActionScript>) -> Self {
         let definition = &action.definition;
-        let root = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.add_css_class("settings-action-editor");
         let error = form_error_label();
+        error.set_wrap(true);
+        error.set_max_width_chars(44);
+        error.set_hexpand(true);
+        error.set_valign(gtk::Align::Center);
+        let tabs = gtk::Notebook::builder()
+            .show_border(false)
+            .height_request(520)
+            .build();
+        tabs.add_css_class("settings-action-tabs");
+        root.append(&tabs);
+        let general = editor_page(&tabs, "General");
+        let script_page = editor_page(&tabs, "Script");
+        let behavior = editor_page(&tabs, "Behavior");
+        behavior.set_spacing(0);
 
         let name = form_entry();
         name.set_text(&definition.name);
+        name.set_placeholder_text(Some("Batch rename"));
         let id = form_entry();
         id.set_text(&definition.id);
+        id.set_placeholder_text(Some("batch-rename"));
+        if mode == EditorMode::Create {
+            let weak_id = id.downgrade();
+            name.connect_changed(move |name| {
+                if let Some(id) = weak_id.upgrade() {
+                    let suggestion = suggest_id(name.text().trim());
+                    id.set_placeholder_text(Some(&suggestion));
+                }
+            });
+        }
         // Renaming an id would create a second action rather than renaming this
         // one, so an existing action keeps its identity.
         id.set_editable(mode == EditorMode::Create);
         id.set_sensitive(mode == EditorMode::Create);
         let description = form_entry();
         description.set_text(definition.description.as_deref().unwrap_or(""));
-        description.set_placeholder_text(Some("Shown as the menu tooltip (optional)"));
+        description.set_placeholder_text(Some("Shown as the menu tooltip"));
 
         let selected_icon = Rc::new(std::cell::RefCell::new(definition.icon.clone()));
         let icon = icon_chooser(&selected_icon);
 
         let selected_runtime = Rc::new(std::cell::Cell::new(definition.run.runtime));
-        let runtime = segmented(
+        let (runtime, runtime_buttons) = segmented(
             &selected_runtime,
             &[
                 ("Python", ActionRuntime::Python),
@@ -594,32 +628,48 @@ impl EditorForm {
 
         let entrypoint = form_entry();
         entrypoint.set_text(definition.run.entrypoint.as_deref().unwrap_or("main.py"));
-        let script_buffer = gtk::TextBuffer::new(None);
+        let python = script_buffer("python3", &python_template());
+        let bash = script_buffer("sh", bash_template());
         if let Some(script) = script.as_ref() {
-            script_buffer.set_text(&script.contents);
+            match definition.run.runtime {
+                ActionRuntime::Bash => bash.set_text(&script.contents),
+                _ => python.set_text(&script.contents),
+            }
         }
-        let script_view = gtk::TextView::builder()
-            .buffer(&script_buffer)
+        let script_view = sourceview5::View::builder()
             .monospace(true)
+            .show_line_numbers(true)
+            .tab_width(4)
+            .insert_spaces_instead_of_tabs(true)
+            .auto_indent(true)
+            .left_margin(12)
+            .right_margin(12)
+            .top_margin(10)
+            .bottom_margin(10)
             .wrap_mode(gtk::WrapMode::None)
-            .height_request(SCRIPT_EDITOR_HEIGHT)
             .build();
-        let script_scroll = gtk::ScrolledWindow::builder()
-            .child(&script_view)
-            .hscrollbar_policy(gtk::PolicyType::Automatic)
-            .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .build();
-        script_scroll.add_css_class("settings-action-script");
+        let script_scroll = editor_scroll(&script_view);
+        script_scroll.set_min_content_height(280);
+        script_scroll.set_vexpand(true);
 
         let program = form_entry();
         program.set_text(definition.run.program.as_deref().unwrap_or(""));
         program.set_placeholder_text(Some("Installed program, for example make"));
-        let arguments = form_entry();
-        arguments.set_text(&definition.run.args.join("\n"));
-        arguments.set_placeholder_text(Some("One per line; {path}, {paths}, or {parent}"));
+        let arguments = gtk::TextView::builder()
+            .monospace(true)
+            .accepts_tab(false)
+            .left_margin(12)
+            .right_margin(12)
+            .top_margin(10)
+            .bottom_margin(10)
+            .build();
+        arguments.buffer().set_text(&definition.run.args.join("\n"));
+        let arguments_scroll = editor_scroll(&arguments);
+        arguments_scroll.set_min_content_height(160);
+        arguments_scroll.set_vexpand(true);
 
         let selected_mode = Rc::new(std::cell::Cell::new(definition.run.mode));
-        let mode_control = segmented(
+        let (mode_control, mode_buttons) = segmented(
             &selected_mode,
             &[
                 ("Whole selection", ExecutionMode::WholeSelection),
@@ -627,7 +677,7 @@ impl EditorForm {
             ],
         );
         let selected_policy = Rc::new(std::cell::Cell::new(definition.run.on_error));
-        let on_error = segmented(
+        let (on_error, policy_buttons) = segmented(
             &selected_policy,
             &[
                 ("Continue", ErrorPolicy::Continue),
@@ -635,16 +685,16 @@ impl EditorForm {
             ],
         );
         let selected_directory = Rc::new(std::cell::Cell::new(definition.run.working_directory));
-        let working_directory = segmented(
+        let (working_directory, _) = segmented(
             &selected_directory,
             &[
-                ("Invoking folder", WorkingDirectory::Parent),
+                ("Invoking", WorkingDirectory::Parent),
                 ("Home", WorkingDirectory::Home),
-                ("Action folder", WorkingDirectory::Action),
+                ("Action", WorkingDirectory::Action),
             ],
         );
         let selected_placement = Rc::new(std::cell::Cell::new(definition.menu));
-        let placement = segmented(
+        let (placement, _) = segmented(
             &selected_placement,
             &[
                 ("Menu item", MenuPlacement::Top),
@@ -652,19 +702,18 @@ impl EditorForm {
             ],
         );
 
-        // A GtkSwitch fills whatever allocation it is given, which turns the
-        // editor's stacked fields into full-width ovals. Keep it at its natural
-        // size under its label instead.
-        let confirm = gtk::Switch::builder()
-            .active(definition.run.confirm)
-            .halign(gtk::Align::Start)
-            .build();
-        let enabled = gtk::Switch::builder()
-            .active(definition.enabled)
-            .halign(gtk::Align::Start)
-            .build();
-        let files = gtk::CheckButton::with_label("Files");
-        let folders = gtk::CheckButton::with_label("Folders");
+        let (confirm_row, confirm) = super::settings_option(
+            "Confirm",
+            "Ask before running this action",
+            definition.run.confirm,
+        );
+        confirm_row.add_css_class("settings-action-option");
+        let (enabled_row, enabled) =
+            super::settings_option("Enabled", "Show this action in menus", definition.enabled);
+        enabled_row.add_css_class("settings-action-option");
+        enabled_row.add_css_class("settings-action-enabled");
+        let files = form_check_button("Files");
+        let folders = form_check_button("Folders");
         if definition.when.kinds.is_empty() {
             files.set_active(true);
             folders.set_active(true);
@@ -674,7 +723,8 @@ impl EditorForm {
         }
         let extensions = form_entry();
         extensions.set_text(&definition.when.extensions.join(", "));
-        extensions.set_placeholder_text(Some("png, jpg (empty means every extension)"));
+        extensions.set_placeholder_text(Some("Any"));
+        extensions.set_width_chars(18);
         let max_items = form_entry();
         max_items.set_text(
             &definition
@@ -684,84 +734,151 @@ impl EditorForm {
                 .unwrap_or_default(),
         );
         max_items.set_placeholder_text(Some("No limit"));
+        max_items.set_width_chars(10);
+        max_items.set_input_purpose(gtk::InputPurpose::Digits);
 
-        let id_hint = if mode == EditorMode::Create {
-            "Folder name under the actions directory: lowercase letters, digits, dashes"
+        id.set_tooltip_text(Some(if mode == EditorMode::Create {
+            "Folder name: lowercase letters, digits, and dashes. Leave blank to use the name."
         } else {
-            "The action id cannot change; duplicate it to create a variant"
-        };
+            "The action id cannot change; duplicate it to create a variant."
+        }));
         let kind_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         kind_row.append(&files);
         kind_row.append(&folders);
-        let entrypoint_field = field(
-            "Script file",
-            "A plain file name beside action.toml",
-            &entrypoint,
-        );
+        let entrypoint_field = field("Script file", "Saved beside action.toml", &entrypoint);
         let script_field = field("Script", "Runs with your permissions", &script_scroll);
-        let program_field = field(
-            "Program",
-            "Required for command actions instead of a script",
-            &program,
-        );
+        let program_field = field("Program", "Installed executable", &program);
         let arguments_field = field(
             "Arguments",
-            "One per line: {path} is one item, {paths} the whole selection, {parent} the folder",
-            &arguments,
+            "One per line · {path}, {paths}, or {parent}",
+            &arguments_scroll,
         );
 
-        root.append(&error);
-        root.append(&field("Name", "Shown in the context menu", &name));
-        root.append(&field("Id", id_hint, &id));
-        root.append(&field("Description", "Optional tooltip", &description));
-        root.append(&field("Icon", "Bundled Lucide icon", &icon));
-        root.append(&field("Runtime", "How the action is started", &runtime));
-        root.append(&entrypoint_field);
-        root.append(&script_field);
-        root.append(&program_field);
-        root.append(&arguments_field);
-        root.append(&field(
+        let identity = gtk::Box::new(gtk::Orientation::Horizontal, 18);
+        let name_field = field("Name", "Shown in the context menu", &name);
+        name_field.set_hexpand(true);
+        identity.append(&name_field);
+        id.set_width_chars(28);
+        let id_field = field("Id", "Folder name", &id);
+        id_field.set_hexpand(false);
+        identity.append(&id_field);
+        general.append(&identity);
+        general.append(&field("Description", "Optional tooltip", &description));
+        general.append(&field("Icon", "Bundled Lucide icon", &icon));
+        general.append(&enabled_row);
+
+        let launch = gtk::Box::new(gtk::Orientation::Horizontal, 18);
+        let runtime_field = field("Runtime", "How it starts", &runtime);
+        runtime_field.set_hexpand(false);
+        launch.append(&runtime_field);
+        entrypoint_field.set_hexpand(true);
+        program_field.set_hexpand(true);
+        launch.append(&entrypoint_field);
+        launch.append(&program_field);
+        script_page.append(&launch);
+        script_field.set_vexpand(true);
+        arguments_field.set_vexpand(true);
+        script_page.append(&script_field);
+        script_page.append(&arguments_field);
+        label_control(&script_view, "Script", "Runs with your permissions");
+        label_control(
+            &arguments,
+            "Arguments",
+            "One argument per line; {path}, {paths}, or {parent}",
+        );
+
+        behavior.append(&option_row(
             "Run",
             "Once, or once per selected item",
             &mode_control,
         ));
-        root.append(&field(
-            "On failure",
-            "Only used when running per item",
-            &on_error,
-        ));
-        root.append(&field(
+        let failure_row = option_row("On failure", "Only used when running per item", &on_error);
+        failure_row.set_sensitive(selected_mode.get() == ExecutionMode::PerItem);
+        for button in &policy_buttons {
+            button.set_sensitive(selected_mode.get() == ExecutionMode::PerItem);
+        }
+        for button in mode_buttons {
+            let row = failure_row.downgrade();
+            let mode = selected_mode.clone();
+            let policy_buttons = policy_buttons.clone();
+            button.connect_toggled(move |_| {
+                let per_item = mode.get() == ExecutionMode::PerItem;
+                if let Some(row) = row.upgrade() {
+                    row.set_sensitive(per_item);
+                }
+                for button in &policy_buttons {
+                    button.set_sensitive(per_item);
+                }
+            });
+        }
+        behavior.append(&failure_row);
+        behavior.append(&option_row(
             "Working folder",
             "Where the process starts",
             &working_directory,
         ));
-        root.append(&field("Placement", "Where the action appears", &placement));
-        root.append(&field(
+        behavior.append(&option_row(
+            "Placement",
+            "Where the action appears",
+            &placement,
+        ));
+        behavior.append(&option_row(
             "Applies to",
             "Which selected entries offer this action",
             &kind_row,
         ));
-        root.append(&field(
+        behavior.append(&option_row(
             "Extensions",
             "Comma separated, without dots",
             &extensions,
         ));
-        root.append(&field(
+        behavior.append(&option_row(
             "Maximum items",
             "Optional selection limit",
             &max_items,
         ));
-        root.append(&field(
-            "Confirm",
-            "Ask before running this action",
-            &confirm,
-        ));
-        root.append(&field("Enabled", "Show this action in menus", &enabled));
+        behavior.append(&confirm_row);
 
-        let form = Self {
+        let sync_runtime: Rc<dyn Fn()> = Rc::new({
+            let selected = selected_runtime.clone();
+            let entrypoint = entrypoint.clone();
+            let view = script_view.clone();
+            move || {
+                let runtime = selected.get();
+                let is_script = runtime != ActionRuntime::Command;
+                entrypoint_field.set_visible(is_script);
+                script_field.set_visible(is_script);
+                program_field.set_visible(!is_script);
+                arguments_field.set_visible(!is_script);
+                if is_script {
+                    view.set_buffer(Some(match runtime {
+                        ActionRuntime::Bash => &bash,
+                        _ => &python,
+                    }));
+                    let current = entrypoint.text();
+                    if current.trim().is_empty()
+                        || default_entrypoint_for_any(current.trim()).is_some()
+                    {
+                        entrypoint.set_text(default_entrypoint(runtime));
+                    }
+                }
+            }
+        });
+        sync_runtime();
+        for button in runtime_buttons {
+            let sync_runtime = sync_runtime.clone();
+            button.connect_toggled(move |button| {
+                if button.is_active() {
+                    sync_runtime();
+                }
+            });
+        }
+
+        Self {
             mode,
             root,
             error,
+            tabs,
             name,
             id,
             description,
@@ -775,32 +892,13 @@ impl EditorForm {
             folders,
             extensions,
             max_items,
-            entrypoint_field,
-            script_field,
-            program_field,
-            arguments_field,
             selected_icon,
             selected_runtime,
             selected_mode,
             selected_policy,
             selected_directory,
             selected_placement,
-        };
-        // Script and command rows swap when the runtime changes.
-        let mut child = runtime.first_child();
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            let form = form.clone();
-            if let Some(toggle) = widget.downcast_ref::<gtk::ToggleButton>() {
-                toggle.connect_toggled(move |_| {
-                    if form.entrypoint.is_sensitive() || form.program.is_sensitive() {
-                        form.sync_runtime_rows();
-                    }
-                });
-            }
         }
-        form.sync_runtime_rows();
-        form
     }
 
     fn focus_first(&self) {
@@ -819,22 +917,15 @@ impl EditorForm {
         self.error.set_visible(true);
     }
 
-    /// Shows only the fields the selected runtime uses.
-    fn sync_runtime_rows(&self) {
-        let runtime = self.selected_runtime.get();
-        let is_script = runtime != ActionRuntime::Command;
-        self.entrypoint_field.set_visible(is_script);
-        self.script_field.set_visible(is_script);
-        self.program_field.set_visible(!is_script);
-        self.arguments_field.set_visible(!is_script);
-        if is_script {
-            let suggested = default_entrypoint(runtime);
-            let current = self.entrypoint.text();
-            let current = current.trim();
-            if current.is_empty() || default_entrypoint_for_any(current).is_some() {
-                self.entrypoint.set_text(suggested);
-            }
-        }
+    fn invalid_field(
+        &self,
+        tab: u32,
+        field: &impl IsA<gtk::Widget>,
+        message: impl Into<String>,
+    ) -> String {
+        self.tabs.set_current_page(Some(tab));
+        field.grab_focus();
+        message.into()
     }
 
     /// Builds the definition and script the store will write, or explains why it
@@ -842,7 +933,7 @@ impl EditorForm {
     fn read(&self) -> Result<(ActionDefinition, Option<ActionScript>), String> {
         let name = self.name.text().trim().to_owned();
         if name.is_empty() {
-            return Err("Enter a name".to_owned());
+            return Err(self.invalid_field(GENERAL_TAB, &self.name, "Enter a name"));
         }
         let id = match self.mode {
             EditorMode::Create => {
@@ -856,10 +947,21 @@ impl EditorForm {
             EditorMode::Edit => self.id.text().trim().to_owned(),
         };
         if self.extensions.text().chars().count() > MAX_EXTENSION_FIELD_CHARS {
-            return Err("That is too many extensions".to_owned());
+            return Err(self.invalid_field(
+                BEHAVIOR_TAB,
+                &self.extensions,
+                "That is too many extensions",
+            ));
         }
-        if self.arguments.text().chars().count() > MAX_ARGUMENTS_FIELD_CHARS {
-            return Err("That is too many arguments".to_owned());
+        let arguments = text_contents(&self.arguments);
+        if self.selected_runtime.get() == ActionRuntime::Command
+            && arguments.chars().count() > MAX_ARGUMENTS_FIELD_CHARS
+        {
+            return Err(self.invalid_field(
+                SCRIPT_TAB,
+                &self.arguments,
+                "That is too many arguments",
+            ));
         }
         let mut kinds = Vec::new();
         if self.files.is_active() {
@@ -868,23 +970,36 @@ impl EditorForm {
         if self.folders.is_active() {
             kinds.push(InputKind::Folder);
         }
+        if kinds.is_empty() {
+            return Err(self.invalid_field(
+                BEHAVIOR_TAB,
+                &self.files,
+                "Choose Files, Folders, or both",
+            ));
+        }
         let max_items = match self.max_items.text().trim() {
             "" => None,
-            value => Some(
-                value
-                    .parse::<usize>()
-                    .map_err(|_| "The maximum item count must be a number".to_owned())?,
-            ),
+            value => Some(value.parse::<usize>().map_err(|_| {
+                self.invalid_field(
+                    BEHAVIOR_TAB,
+                    &self.max_items,
+                    "The maximum item count must be a number",
+                )
+            })?),
         };
         let runtime = self.selected_runtime.get();
         let is_script = runtime != ActionRuntime::Command;
         // Report the empty field the user can see, rather than the manifest
         // vocabulary the model would use for a hand-written file.
         if !is_script && self.program.text().trim().is_empty() {
-            return Err("Enter the program to run".to_owned());
+            return Err(self.invalid_field(SCRIPT_TAB, &self.program, "Enter the program to run"));
         }
         if is_script && self.entrypoint.text().trim().is_empty() {
-            return Err("Enter a script file name".to_owned());
+            return Err(self.invalid_field(
+                SCRIPT_TAB,
+                &self.entrypoint,
+                "Enter a script file name",
+            ));
         }
         let definition = ActionDefinition {
             schema_version: ACTION_SCHEMA_VERSION,
@@ -923,13 +1038,15 @@ impl EditorForm {
                 runtime,
                 entrypoint: is_script.then(|| self.entrypoint.text().trim().to_owned()),
                 program: (!is_script).then(|| self.program.text().trim().to_owned()),
-                args: self
-                    .arguments
-                    .text()
-                    .lines()
-                    .map(|line| line.trim().to_owned())
-                    .filter(|line| !line.is_empty())
-                    .collect(),
+                args: if is_script {
+                    Vec::new()
+                } else {
+                    arguments
+                        .lines()
+                        .map(|line| line.trim().to_owned())
+                        .filter(|line| !line.is_empty())
+                        .collect()
+                },
                 mode: self.selected_mode.get(),
                 on_error: self.selected_policy.get(),
                 working_directory: self.selected_directory.get(),
@@ -937,7 +1054,25 @@ impl EditorForm {
             },
         };
         // Validate here so the dialog reports a precise problem before writing.
-        definition.validate().map_err(|error| error.to_string())?;
+        definition.validate().map_err(|error| {
+            let (tab, field): (_, &gtk::Widget) = match &error {
+                ActionError::InvalidId(_) => (GENERAL_TAB, self.id.upcast_ref()),
+                ActionError::InvalidName => (GENERAL_TAB, self.name.upcast_ref()),
+                ActionError::InvalidDescription => (GENERAL_TAB, self.description.upcast_ref()),
+                ActionError::InvalidExtension(_) | ActionError::TooManyConditions(_) => {
+                    (BEHAVIOR_TAB, self.extensions.upcast_ref())
+                }
+                ActionError::InvalidItemRange => (BEHAVIOR_TAB, self.max_items.upcast_ref()),
+                ActionError::MissingEntrypoint | ActionError::InvalidEntrypoint(_) => {
+                    (SCRIPT_TAB, self.entrypoint.upcast_ref())
+                }
+                ActionError::MissingProgram | ActionError::InvalidProgram(_) => {
+                    (SCRIPT_TAB, self.program.upcast_ref())
+                }
+                _ => (SCRIPT_TAB, self.arguments.upcast_ref()),
+            };
+            self.invalid_field(tab, field, error.to_string())
+        })?;
         let script = match definition.run.script_entrypoint() {
             Some(entrypoint) => {
                 let buffer = self.script.buffer();
@@ -970,94 +1105,212 @@ fn default_entrypoint_for_any(name: &str) -> Option<ActionRuntime> {
     }
 }
 
+fn editor_page(tabs: &gtk::Notebook, title: &str) -> gtk::Box {
+    let page = gtk::Box::new(gtk::Orientation::Vertical, 22);
+    page.add_css_class("settings-action-page");
+    let scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .child(&page)
+        .build();
+    scroll.add_css_class("settings-content-scroll");
+    let label = gtk::Label::new(Some(title));
+    tabs.append_page(&scroll, Some(&label));
+    page
+}
+
+fn label_control(control: &impl IsA<gtk::Widget>, title: &str, description: &str) {
+    control.as_ref().update_property(&[
+        gtk::accessible::Property::Label(title),
+        gtk::accessible::Property::Description(description),
+    ]);
+}
+
 fn field(title: &str, description: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
-    let row = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 8);
     row.add_css_class("settings-action-field");
+    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     let label = gtk::Label::new(Some(title));
     label.set_xalign(0.0);
+    label.set_hexpand(true);
     label.add_css_class("settings-option-title");
-    row.append(&label);
-    if !description.is_empty() {
-        let hint = gtk::Label::new(Some(description));
-        hint.set_xalign(0.0);
-        hint.set_wrap(true);
-        hint.add_css_class("settings-option-description");
-        row.append(&hint);
-    }
+    heading.append(&label);
+    let hint = gtk::Label::new(Some(description));
+    hint.set_xalign(1.0);
+    hint.add_css_class("settings-option-description");
+    heading.append(&hint);
+    row.append(&heading);
+    row.append(control);
+    label_control(control, title, description);
+    row
+}
+
+fn option_row(title: &str, description: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
+    let (row, toggle) = super::settings_option(title, description, false);
+    row.remove(&toggle);
+    row.add_css_class("settings-action-option");
+    control.set_valign(gtk::Align::Center);
+    control.set_halign(gtk::Align::End);
+    label_control(control, title, description);
     row.append(control);
     row
 }
 
-/// A row of mutually exclusive buttons backed by a shared cell.
+/// Bind the shared control before callers connect dependent state updates.
 fn segmented<T: Copy + PartialEq + 'static>(
     selected: &Rc<std::cell::Cell<T>>,
     choices: &[(&str, T)],
-) -> gtk::Box {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    row.add_css_class("settings-action-segmented");
-    for (label, value) in choices {
-        let button = gtk::ToggleButton::with_label(label);
-        button.add_css_class("settings-action-choice");
-        button.set_active(selected.get() == *value);
+) -> (gtk::Box, Vec<gtk::ToggleButton>) {
+    let labels: Vec<_> = choices.iter().map(|(label, _)| *label).collect();
+    let active = choices
+        .iter()
+        .position(|(_, value)| *value == selected.get())
+        .unwrap_or(0);
+    let (control, buttons) = segmented_control(&labels, active);
+    control.set_homogeneous(false);
+    control.set_hexpand(false);
+    for (button, (_, value)) in buttons.iter().zip(choices) {
         let selected = selected.clone();
         let value = *value;
-        let clicked = button.clone();
-        button.connect_clicked(move |_| {
-            selected.set(value);
-            if let Some(parent) = clicked.parent().and_downcast::<gtk::Box>() {
-                let mut child = parent.first_child();
-                while let Some(widget) = child {
-                    if let Some(sibling) = widget.downcast_ref::<gtk::ToggleButton>() {
-                        sibling.set_active(sibling == &clicked);
+        button.connect_toggled(move |button| {
+            if button.is_active() {
+                selected.set(value);
+            }
+        });
+    }
+    (control, buttons)
+}
+
+fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let quick = [
+        "play",
+        "terminal",
+        "file-code",
+        "scissors",
+        "copy",
+        "file-archive",
+        "image",
+        "refresh",
+    ];
+    let more = gtk::MenuButton::new();
+    more.set_child(Some(&picker_icon(crate::assets::icons::PLUS)));
+    more.add_css_class("settings-action-more-icons");
+    more.set_tooltip_text(Some("More icons"));
+    label_control(&more, "More icons", "Choose another bundled Lucide icon");
+    let grid = gtk::Grid::builder()
+        .row_spacing(6)
+        .column_spacing(6)
+        .build();
+    let popover = gtk::Popover::builder()
+        .has_arrow(false)
+        .child(&grid)
+        .build();
+    popover.add_css_class("column-popover");
+    more.set_popover(Some(&popover));
+    let mut first: Option<gtk::ToggleButton> = None;
+    let current = selected.borrow().clone();
+    let current = current
+        .as_deref()
+        .filter(|slug| is_known_action_icon(slug))
+        .unwrap_or("play");
+    let mut remaining = 0;
+    for slug in quick.iter().copied().chain(
+        ACTION_ICON_CHOICES
+            .iter()
+            .map(|(slug, _)| *slug)
+            .filter(|slug| !quick.contains(slug)),
+    ) {
+        let button = gtk::ToggleButton::new();
+        button.add_css_class("settings-action-icon-choice");
+        button.set_child(Some(&picker_icon(action_icon(Some(slug)))));
+        button.set_tooltip_text(Some(slug));
+        label_control(&button, &format!("{slug} icon"), "");
+        if let Some(first) = first.as_ref() {
+            button.set_group(Some(first));
+        } else {
+            first = Some(button.clone());
+        }
+        button.set_active(current == slug);
+        let is_more = !quick.contains(&slug);
+        if is_more {
+            grid.attach(&button, remaining % 4, remaining / 4, 1, 1);
+            remaining += 1;
+        } else {
+            row.append(&button);
+        }
+        let selected = selected.clone();
+        let weak_more = more.downgrade();
+        let weak_popover = popover.downgrade();
+        button.connect_toggled(move |button| {
+            if button.is_active() {
+                selected.replace(Some(slug.to_owned()));
+                if let Some(more) = weak_more.upgrade() {
+                    more.set_child(Some(&picker_icon(if is_more {
+                        action_icon(Some(slug))
+                    } else {
+                        crate::assets::icons::PLUS
+                    })));
+                    more.set_tooltip_text(Some(if is_more { slug } else { "More icons" }));
+                    if is_more {
+                        more.add_css_class("selected");
+                    } else {
+                        more.remove_css_class("selected");
                     }
-                    child = widget.next_sibling();
+                }
+                if let Some(popover) = weak_popover.upgrade() {
+                    popover.popdown();
                 }
             }
         });
-        row.append(&button);
     }
+    if !quick.contains(&current) {
+        more.set_child(Some(&picker_icon(action_icon(Some(current)))));
+        more.add_css_class("selected");
+        more.set_tooltip_text(Some(current));
+    }
+    row.append(&more);
     row
 }
 
-fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::MenuButton {
-    let button = gtk::MenuButton::new();
-    let current = selected.borrow().clone();
-    button.set_child(Some(&icon_preview(current.as_deref())));
-    let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    menu.add_css_class("column-menu");
-    let popover = gtk::Popover::builder()
-        .position(gtk::PositionType::Bottom)
-        .has_arrow(false)
-        .build();
-    popover.set_child(Some(&menu));
-    for (slug, _) in ACTION_ICON_CHOICES {
-        let (row, _) = menu_option(slug, selected.borrow().as_deref() == Some(*slug));
-        row.add_css_class("settings-action-icon-choice");
-        let selected = selected.clone();
-        let slug = (*slug).to_owned();
-        let weak_popover = popover.downgrade();
-        let weak_button = button.downgrade();
-        row.connect_clicked(move |_| {
-            selected.replace(Some(slug.clone()));
-            if let Some(button) = weak_button.upgrade() {
-                button.set_child(Some(&icon_preview(Some(&slug))));
-            }
-            if let Some(popover) = weak_popover.upgrade() {
-                popover.popdown();
-            }
-        });
-        menu.append(&row);
-    }
-    button.set_popover(Some(&popover));
-    button
+fn picker_icon(name: &str) -> gtk::Image {
+    let icon = crate::assets::primary_icon(name, 18);
+    icon.set_halign(gtk::Align::Center);
+    icon.set_valign(gtk::Align::Center);
+    icon
 }
 
-fn icon_preview(slug: Option<&str>) -> gtk::Box {
-    let preview = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-    preview.append(&crate::assets::primary_icon(action_icon(slug), 16));
-    let label = gtk::Label::new(Some(slug.unwrap_or("default")));
-    preview.append(&label);
-    preview
+fn script_buffer(language: &str, contents: &str) -> sourceview5::Buffer {
+    let buffer = sourceview5::Buffer::new(None);
+    crate::ui::theme::register_source_buffer(&buffer);
+    buffer.set_language(
+        sourceview5::LanguageManager::default()
+            .language(language)
+            .as_ref(),
+    );
+    buffer.set_text(contents);
+    buffer
+}
+
+fn editor_scroll(view: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
+    let scroll = gtk::ScrolledWindow::builder()
+        .child(view)
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .build();
+    scroll.add_css_class("settings-action-script");
+    scroll
+}
+
+fn text_contents(view: &impl IsA<gtk::TextView>) -> String {
+    let buffer = view.buffer();
+    buffer
+        .text(&buffer.start_iter(), &buffer.end_iter(), false)
+        .to_string()
+}
+
+fn bash_template() -> &'static str {
+    "#!/usr/bin/env bash\nwhile IFS= read -r -d '' path; do\n    printf 'Processing %s\\n' \"$path\"\ndone < \"$STRATA_ACTION_PATHS\"\n"
 }
 
 /// A blank definition for a new action, before the editor fills it in.

@@ -5773,60 +5773,215 @@ popover.settings-search-popover.background {
   padding: 14px 18px;
 }
 
-.settings-action-editor {
-  min-width: 460px;
+.settings-action-dialog {
+  min-width: 760px;
+  box-shadow: 0 12px 28px alpha(@theme_bg, 0.4);
 }
 
-.settings-action-field {
-  min-width: 0;
+.settings-action-dialog .action-dialog-header {
+  border-bottom: none;
+  padding: 18px 22px 8px;
 }
 
-.settings-action-segmented {
-  min-width: 0;
+.settings-action-dialog .action-dialog-body {
+  padding: 0;
 }
 
-.settings-action-choice {
-  background: alpha(@theme_bg, 0.55);
-  border: 1px solid alpha(@theme_border, 0.3);
+.settings-action-dialog .action-dialog-actions {
+  background: alpha(@theme_highlight, 0.12);
+  padding: 14px 22px;
+}
+
+.settings-action-dialog .action-dialog-cancel {
+  border-color: transparent;
+}
+
+.settings-action-dialog .action-dialog-confirm {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.settings-action-dialog .action-dialog-confirm:hover {
+  background: mix(@theme_accent, @theme_text, 0.12);
+}
+
+.settings-action-dialog .action-dialog-confirm:active {
+  background: mix(@theme_accent, @theme_bg, 0.15);
+}
+
+.settings-action-tabs,
+.settings-action-tabs > stack,
+.settings-action-tabs > header {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.settings-action-tabs > header {
+  padding: 0 22px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+.settings-action-tabs > header > tabs > tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: @theme_dim_text;
+  margin: 0 20px 0 0;
+  min-height: 36px;
+  padding: 0;
+  outline-offset: -4px;
+}
+
+.settings-action-tabs > header > tabs > tab label {
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.settings-action-tabs > header > tabs > tab:hover {
+  color: @theme_text;
+  background: alpha(@theme_highlight, 0.25);
+}
+
+.settings-action-tabs > header > tabs > tab:checked {
+  color: @theme_text;
+  border-bottom-color: @theme_accent;
+}
+
+.settings-action-tabs > header > tabs > tab:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+}
+
+.settings-action-page {
+  padding: 22px;
+}
+
+.settings-action-dialog .settings-option-title {
+  font-weight: 400;
+}
+
+.settings-action-dialog .settings-option-description {
+  font-size: 0.88em;
+}
+
+.settings-action-dialog .settings-action-option {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid alpha(@theme_border, 0.3);
+  border-radius: 0;
+  min-height: 36px;
+  padding: 8px 0;
+}
+
+.settings-action-dialog .settings-action-option:first-child {
+  padding-top: 0;
+}
+
+.settings-action-dialog .settings-action-option:last-child {
+  border-bottom: none;
+}
+
+.settings-action-dialog .settings-action-enabled {
+  border-top: 1px solid alpha(@theme_border, 0.3);
+}
+
+.settings-action-dialog .settings-action-option:disabled {
+  opacity: 0.4;
+}
+
+.settings-action-dialog .segmented-control {
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.settings-action-dialog .segmented-control-option {
+  background: transparent;
+  border: none;
   border-radius: 4px;
+  min-height: 26px;
+  padding: 2px 10px;
+  color: @theme_dim_text;
+}
+
+.settings-action-dialog .segmented-control-option:hover {
+  background: alpha(@theme_highlight, 0.65);
+  color: @theme_text;
+}
+
+.settings-action-dialog .segmented-control-option:checked {
+  background: alpha(@theme_accent, 0.22);
+  color: @theme_text;
+}
+
+.settings-action-dialog .segmented-control-option:active {
+  background: alpha(@theme_accent, 0.3);
+}
+
+.settings-action-icon-choice,
+.settings-action-more-icons > button {
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
   box-shadow: none;
   color: @theme_text;
-  min-height: 26px;
-  min-width: 0;
-  padding: 0 10px;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
 }
 
-.settings-action-choice:hover {
+.settings-action-icon-choice:hover,
+.settings-action-more-icons > button:hover {
   background: @theme_highlight;
+  border-color: alpha(@theme_accent, 0.6);
 }
 
-.settings-action-choice:checked {
-  background: alpha(@theme_accent, 0.2);
-  border-color: @theme_accent;
-  color: @theme_text;
+.settings-action-icon-choice:checked,
+.settings-action-more-icons.selected > button {
+  background: alpha(@theme_accent, 0.22);
+  border-color: alpha(@theme_accent, 0.7);
 }
 
-.settings-action-choice:focus-visible {
+.settings-action-icon-choice:active,
+.settings-action-more-icons > button:active {
+  background: alpha(@theme_accent, 0.3);
+}
+
+.settings-action-icon-choice:focus-visible,
+.settings-action-more-icons > button:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-.settings-action-icon-choice {
-  min-height: 26px;
-}
-
 .settings-action-script {
-  background: alpha(@theme_bg, 0.7);
-  border: 1px solid alpha(@theme_border, 0.3);
-  border-radius: 4px;
+  background: alpha(@theme_bg, 0.3);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
 }
 
-.settings-action-script textview {
-  background: transparent;
-  color: @theme_text;
+.settings-action-script:focus-within {
+  border-color: @theme_accent;
 }
 
+.settings-action-script textview,
 .settings-action-script textview text {
   background: transparent;
+  color: @theme_text;
+  caret-color: @theme_accent;
+}
+
+.settings-action-script textview border {
+  background: transparent;
+  color: @theme_dim_text;
+  border-right: 1px solid alpha(@theme_border, 0.3);
+}
+
+.settings-action-script textview text selection {
+  background: alpha(@theme_accent, 0.3);
   color: @theme_text;
 }

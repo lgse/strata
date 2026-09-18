@@ -21,6 +21,22 @@ optionally one script beside it. Settings → Actions creates, edits, duplicates
 imports, and exports these files, and hand-editing them is supported: opening the
 editor shows whatever is on disk.
 
+## Creating an action
+
+Choose **Settings → Actions → New action…**. The editor has three tabs:
+
+- **General**: name, directory id, description, bundled icon, and enabled state.
+  Leave the id blank to derive it from the name.
+- **Script**: choose Python, Bash, or Command. Scripts have a line-numbered editor;
+  commands take an installed program and one argument per line. Switching runtimes
+  keeps each script draft until you close the dialog.
+- **Behavior**: execution mode, per-item failure policy, working folder, menu
+  placement, file/folder filters, selection limit, and confirmation.
+
+**Create action** saves all three tabs together. Invalid fields bring you back to
+that tab without discarding your edits. **Cancel** or **Escape** discards the draft.
+Existing actions use the same editor with **Save changes**; their id stays fixed.
+
 ## Manifest
 
 ```toml

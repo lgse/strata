@@ -45,7 +45,9 @@ fn the_editor_requires_a_name_and_reports_invalid_fields() {
         "ui::settings::actions::tests::the_editor_requires_a_name_and_reports_invalid_fields",
         || {
             let form = form_for(python_draft(), None);
+            form.tabs.set_current_page(Some(SCRIPT_TAB));
             assert_eq!(form.read().err(), Some("Enter a name".to_owned()));
+            assert_eq!(form.tabs.current_page(), Some(GENERAL_TAB));
 
             form.name.set_text("Action");
             form.max_items.set_text("lots");
@@ -53,6 +55,7 @@ fn the_editor_requires_a_name_and_reports_invalid_fields() {
                 form.read().err(),
                 Some("The maximum item count must be a number".to_owned())
             );
+            assert_eq!(form.tabs.current_page(), Some(BEHAVIOR_TAB));
 
             // The script file name is validated by the model, not the form.
             form.max_items.set_text("");
@@ -63,7 +66,16 @@ fn the_editor_requires_a_name_and_reports_invalid_fields() {
                     .is_some_and(|message| message.contains("plain file name")),
                 "path traversal in the script field is refused"
             );
+            assert_eq!(form.tabs.current_page(), Some(SCRIPT_TAB));
             form.entrypoint.set_text("main.py");
+            form.files.set_active(false);
+            form.folders.set_active(false);
+            assert_eq!(
+                form.read().err().as_deref(),
+                Some("Choose Files, Folders, or both")
+            );
+            assert_eq!(form.tabs.current_page(), Some(BEHAVIOR_TAB));
+            form.files.set_active(true);
             assert!(form.read().is_ok());
         },
     );
@@ -82,7 +94,7 @@ fn a_command_action_without_a_program_is_refused() {
             assert!(message.contains("Enter the program"), "{message}");
 
             form.program.set_text("make");
-            form.arguments.set_text("-C\n{paths}");
+            form.arguments.buffer().set_text("-C\n{paths}");
             let (definition, script) = form.read().expect("a command action saves");
             assert_eq!(definition.run.program.as_deref(), Some("make"));
             assert_eq!(definition.run.args, vec!["-C", "{paths}"]);
@@ -100,7 +112,7 @@ fn per_item_and_whole_selection_tokens_are_validated() {
             let form = form_for(whole, None);
             form.name.set_text("Checksums");
             form.program.set_text("sha256sum");
-            form.arguments.set_text("{path}");
+            form.arguments.buffer().set_text("{path}");
             assert!(
                 form.read()
                     .err()
@@ -112,14 +124,14 @@ fn per_item_and_whole_selection_tokens_are_validated() {
             let form = form_for(per_item, None);
             form.name.set_text("Convert");
             form.program.set_text("convert");
-            form.arguments.set_text("{paths}");
+            form.arguments.buffer().set_text("{paths}");
             assert!(
                 form.read()
                     .err()
                     .is_some_and(|message| message.contains("whole-selection")),
                 "{{paths}} is refused for a per-item action"
             );
-            form.arguments.set_text("{path}\n{parent}");
+            form.arguments.buffer().set_text("{path}\n{parent}");
             assert!(form.read().is_ok());
         },
     );
@@ -169,9 +181,9 @@ fn extension_fields_accept_dots_caps_and_spaces() {
 }
 
 #[test]
-fn unknown_icons_are_dropped_rather_than_rendered_as_missing() {
+fn icon_choices_save_bundled_icons_and_fall_back_for_unknown_ones() {
     crate::test_support::gtk_test(
-        "ui::settings::actions::tests::unknown_icons_are_dropped_rather_than_rendered_as_missing",
+        "ui::settings::actions::tests::icon_choices_save_bundled_icons_and_fall_back_for_unknown_ones",
         || {
             let mut definition = python_draft();
             definition.icon = Some("not-bundled".to_owned());
@@ -188,6 +200,136 @@ fn unknown_icons_are_dropped_rather_than_rendered_as_missing() {
             assert_eq!(
                 read.icon, None,
                 "an icon that is not bundled falls back to the default"
+            );
+            choose(&form, "printer");
+            assert_eq!(
+                form.read().expect("popover icon saves").0.icon.as_deref(),
+                Some("printer")
+            );
+            choose(&form, "copy");
+            assert_eq!(
+                form.read().expect("inline icon saves").0.icon.as_deref(),
+                Some("copy")
+            );
+        },
+    );
+}
+
+fn choice(form: &EditorForm, label: &str) -> gtk::ToggleButton {
+    fn find(widget: &gtk::Widget, label: &str) -> Option<gtk::ToggleButton> {
+        if let Some(button) = widget.downcast_ref::<gtk::ToggleButton>()
+            && (button.label().as_deref() == Some(label)
+                || button.tooltip_text().as_deref() == Some(label))
+        {
+            return Some(button.clone());
+        }
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if let Some(button) = find(&widget, label) {
+                return Some(button);
+            }
+        }
+        None
+    }
+    find(form.root.upcast_ref(), label).expect("an editor choice")
+}
+
+fn choose(form: &EditorForm, label: &str) {
+    choice(form, label).set_active(true);
+}
+
+#[test]
+fn runtime_changes_preserve_drafts_and_save_only_the_active_runtime() {
+    crate::test_support::gtk_test(
+        "ui::settings::actions::tests::runtime_changes_preserve_drafts_and_save_only_the_active_runtime",
+        || {
+            let form = form_for(python_draft(), None);
+            form.name.set_text("Process files");
+            form.script.buffer().set_text("print('python draft')\n");
+            choose(&form, "Bash");
+            let (definition, script) = form.read().expect("Bash starts with a usable template");
+            let script = script.expect("Bash script");
+            assert_eq!(script.file_name, "run.sh");
+            assert!(definition.interpreter_for_source(&script.contents).is_ok());
+            assert!(script.contents.contains("STRATA_ACTION_PATHS"));
+            form.script.buffer().set_text("printf 'bash draft\\n'\n");
+            choose(&form, "Command");
+            form.program.set_text("printf");
+            form.arguments.buffer().set_text("%s\\n\n{paths}");
+            let (command, script) = form.read().expect("command accepts separate arguments");
+            assert_eq!(command.run.args, ["%s\\n", "{paths}"]);
+            assert!(script.is_none());
+            choose(&form, "Python");
+            let (python, script) = form.read().expect("hidden command arguments are not saved");
+            assert!(python.run.args.is_empty());
+            assert_eq!(
+                script.expect("Python script").contents,
+                "print('python draft')\n"
+            );
+            choose(&form, "Bash");
+            assert_eq!(
+                form.read()
+                    .expect("Bash draft saves")
+                    .1
+                    .expect("Bash script")
+                    .contents,
+                "printf 'bash draft\\n'\n"
+            );
+            choose(&form, "Command");
+            assert_eq!(form.read().expect("command draft saves").0.run, command.run);
+        },
+    );
+}
+
+#[test]
+fn tab_switches_retain_edits_and_execution_choices_control_failure_policy() {
+    crate::test_support::gtk_test(
+        "ui::settings::actions::tests::tab_switches_retain_edits_and_execution_choices_control_failure_policy",
+        || {
+            let form = form_for(python_draft(), None);
+            form.name.set_text("Batch rename");
+            form.tabs.set_current_page(Some(SCRIPT_TAB));
+            form.script.buffer().set_text("print('retained')\n");
+            form.tabs.set_current_page(Some(BEHAVIOR_TAB));
+            assert!(!choice(&form, "Stop").is_sensitive());
+            choose(&form, "Per item");
+            assert!(choice(&form, "Stop").is_sensitive());
+            choose(&form, "Stop");
+            choose(&form, "Home");
+            choose(&form, "Menu item");
+            form.confirm.set_active(true);
+            form.tabs.set_current_page(Some(GENERAL_TAB));
+            form.description.set_text("Rename selected files");
+            let (definition, script) = form.read().expect("all tabs save together");
+            assert_eq!(definition.name, "Batch rename");
+            assert_eq!(
+                definition.description.as_deref(),
+                Some("Rename selected files")
+            );
+            assert_eq!(
+                script.expect("script remains after tab switches").contents,
+                "print('retained')\n"
+            );
+            assert_eq!(definition.run.mode, ExecutionMode::PerItem);
+            assert_eq!(definition.run.on_error, ErrorPolicy::Stop);
+            assert_eq!(definition.run.working_directory, WorkingDirectory::Home);
+            assert_eq!(definition.menu, MenuPlacement::Top);
+            assert!(definition.run.confirm);
+            choose(&form, "Whole selection");
+            assert!(!choice(&form, "Stop").is_sensitive());
+            assert_eq!(
+                form.read().expect("whole selection saves").0.run.mode,
+                ExecutionMode::WholeSelection
+            );
+            choose(&form, "Per item");
+            assert_eq!(
+                form.read()
+                    .expect("per-item policy is retained")
+                    .0
+                    .run
+                    .on_error,
+                ErrorPolicy::Stop
             );
         },
     );
