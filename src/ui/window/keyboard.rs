@@ -61,40 +61,47 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
 
     // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut. Capture phase so
     // scrolled windows cannot consume it first; the PDF preview's own zoom is
-    // left alone by passing through scrolls inside its list.
-    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    // left alone by passing through scrolls inside its scroll container.
+    // DISCRETE lets GTK accumulate smooth deltas into logical wheel steps.
+    let wheel = gtk::EventControllerScroll::new(
+        gtk::EventControllerScrollFlags::VERTICAL | gtk::EventControllerScrollFlags::DISCRETE,
+    );
     wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let window_for_wheel = window.clone();
+    let window_for_wheel = window.downgrade();
     wheel.connect_scroll(move |controller, _, dy| {
-        let modifiers = controller.current_event_state();
-        if !modifiers.contains(Modifiers::CONTROL_MASK)
-            || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-            || dy == 0.0
-        {
+        let Some(window) = window_for_wheel.upgrade() else {
             return Propagation::Proceed;
-        }
-        if controller
+        };
+        let target = controller
             .current_event()
             .and_then(|event| event.position())
-            .and_then(|(x, y)| window_for_wheel.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(inside_pdf_list)
-        {
-            return Propagation::Proceed;
-        }
-        preferences.set_text_size(
-            preferences
-                .text_size()
-                .stepped(if dy < 0.0 { 1 } else { -1 }),
-        );
-        Propagation::Stop
+            .and_then(|(x, y)| window.pick(x, y, gtk::PickFlags::DEFAULT));
+        handle_text_zoom_scroll(&preferences, controller.current_event_state(), target, dy)
     });
     window.add_controller(wheel);
 }
 
-fn inside_pdf_list(widget: gtk::Widget) -> bool {
+pub(super) fn handle_text_zoom_scroll(
+    preferences: &crate::ui::theme::ThemeManager,
+    modifiers: Modifiers,
+    target: Option<gtk::Widget>,
+    dy: f64,
+) -> Propagation {
+    if !modifiers.contains(Modifiers::CONTROL_MASK)
+        || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        || dy == 0.0
+        || target.is_some_and(inside_pdf_scroll)
+    {
+        return Propagation::Proceed;
+    }
+    preferences.set_text_size(preferences.text_size().stepped(-dy as i32));
+    Propagation::Stop
+}
+
+fn inside_pdf_scroll(widget: gtk::Widget) -> bool {
     let mut current = Some(widget);
     while let Some(widget) = current {
-        if widget.has_css_class("preview-pdf-list") {
+        if widget.has_css_class("preview-pdf-scroll") {
             return true;
         }
         current = widget.parent();

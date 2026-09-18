@@ -1240,6 +1240,8 @@ impl PreviewState {
             .vexpand(true)
             .build();
 
+        scroll.add_css_class("preview-pdf-scroll");
+
         let zoom_scroll =
             gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
         zoom_scroll.set_propagation_phase(gtk::PropagationPhase::Capture);

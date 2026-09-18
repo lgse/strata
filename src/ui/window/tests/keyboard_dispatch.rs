@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod media_keys;
+mod scroll_zoom;
 
 use gtk::gdk::{Key, ModifierType};
 
