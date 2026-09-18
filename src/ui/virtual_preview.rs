@@ -159,9 +159,9 @@ pub(super) fn source_document(
     (container, state)
 }
 
-pub(super) fn use_virtual_source(content: &str) -> bool {
-    content.len() > super::preview::SOURCE_HIGHLIGHT_BYTE_LIMIT
-        || content.lines().count() > super::preview::SOURCE_HIGHLIGHT_LINE_LIMIT
+pub(super) fn use_virtual_plain_source(content: &str) -> bool {
+    content.len() > 128 * 1024
+        || content.lines().count() > 512
         || content
             .lines()
             .any(|line| line.len() > PATHOLOGICAL_TEXT_UNIT_BYTES)

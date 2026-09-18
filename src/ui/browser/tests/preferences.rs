@@ -199,6 +199,10 @@ impl BrowserView {
     pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
         assert_eq!(self.state.peek_enabled.get(), manager.folder_peeking());
         assert_eq!(
+            crate::sandbox::browser::worker_limit(),
+            manager.thumbnail_workers()
+        );
+        assert_eq!(
             self.single_click_previews_enabled(),
             manager.single_click_previews()
         );

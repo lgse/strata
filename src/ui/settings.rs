@@ -1941,9 +1941,28 @@ fn restart_application(button: &gtk::Button) {
     restart(application.as_ref());
 }
 
-fn restart(application: Option<&gtk::Application>) {
+fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Command> {
     use std::{os::unix::process::CommandExt, process::Stdio};
 
+    let mut command = crate::trusted_command::command("sh").ok()?;
+    let sleep = crate::trusted_command::resolve("sleep").ok()?;
+    command
+        .args([
+            "-c",
+            "while kill -0 \"$1\" 2>/dev/null; do \"$3\" 0.1; done; \"$3\" 0.5; exec \"$2\"",
+            "strata-restart",
+        ])
+        .arg(parent_pid.to_string())
+        .arg(current_exe)
+        .arg(sleep)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0);
+    Some(command)
+}
+
+fn restart(application: Option<&gtk::Application>) {
     let Ok(mut current_exe) = std::env::current_exe() else {
         return;
     };
@@ -1965,22 +1984,10 @@ fn restart(application: Option<&gtk::Application>) {
     // affected systems. Detach the waiter from inherited terminal streams and
     // put it in its own process group so applying an update cannot disturb the
     // terminal that launched Strata.
-    let parent_pid = std::process::id().to_string();
-    if std::process::Command::new("sh")
-        .args([
-            "-c",
-            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; sleep 0.5; exec \"$2\"",
-            "strata-restart",
-        ])
-        .arg(parent_pid)
-        .arg(current_exe)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .is_err()
-    {
+    let Some(mut waiter) = restart_waiter(&current_exe, std::process::id()) else {
+        return;
+    };
+    if waiter.spawn().is_err() {
         return;
     }
     match application {

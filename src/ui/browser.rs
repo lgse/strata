@@ -1608,6 +1608,29 @@ impl BrowserView {
         true
     }
 
+    pub fn jump_parked_selection(&self, direction: i32) -> bool {
+        if !self.item_view_has_focus()
+            || !self
+                .state
+                .overlay
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focused| focused.is::<gtk::Stack>())
+        {
+            return false;
+        }
+        let order = self
+            .state
+            .browser
+            .active_depth()
+            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+            .filter(|order| !order.is_empty());
+        self.state
+            .browser
+            .page_along(direction, usize::MAX, order.as_deref());
+        true
+    }
+
     pub fn dismiss_empty_focused_filter(&self) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let empty = self.state.mode_views.borrow().empty_filter_has_focus()

@@ -27,6 +27,7 @@ fn install_fill(fixture: &Fixture, full_sort: bool) -> RequestId {
             depth: 0,
             directory_request: fixture.request(),
             tokens: vec![(1, fixture.entry("beta").location)],
+            include_icon_details: false,
         },
     );
     if full_sort {
@@ -86,11 +87,11 @@ fn shifted_viewport_tokens_are_rejected_but_sort_fills_follow_locations() {
 }
 
 #[test]
-fn metadata_observers_can_navigate_during_both_fill_routes() {
+fn metadata_observers_can_navigate_during_all_fill_routes() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
-    for full_sort in [false, true] {
+    for full_sort in [Some(false), Some(true), None] {
         let fixture = loaded();
-        let request_id = install_fill(&fixture, full_sort);
+        let request_id = full_sort.map(|sort| install_fill(&fixture, sort));
         let weak = Rc::downgrade(&fixture.browser);
         fixture.browser.observe(move |event| {
             if matches!(event, BrowserEvent::MetadataFilled { .. }) {
@@ -99,12 +100,18 @@ fn metadata_observers_can_navigate_during_both_fill_routes() {
                     .navigate(Location::local("/replacement"));
             }
         });
-        fixture
-            .browser
-            .handle_directory_event(DirectoryEvent::MetadataFilled {
-                request_id,
-                updates: vec![update(&fixture, "beta")],
-            });
+        if let Some(request_id) = request_id {
+            fixture
+                .browser
+                .handle_directory_event(DirectoryEvent::MetadataFilled {
+                    request_id,
+                    updates: vec![update(&fixture, "beta")],
+                });
+        } else {
+            fixture
+                .browser
+                .apply_thumbnail_metadata(0, 1, update(&fixture, "beta"));
+        }
         assert_eq!(
             fixture.browser.active_location(),
             Some(Location::local("/replacement"))

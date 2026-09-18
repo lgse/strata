@@ -60,6 +60,7 @@ fn non_default_preferences() -> Preferences {
         preview_text_wrap: true,
         preview_autoplay: true,
         auto_refresh_interval: 600,
+        thumbnail_workers: 6,
         cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
         open_folder_after_drop: true,
         release_channel: "nightly".into(),
@@ -463,6 +464,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.preview_text_wrap());
             assert!(manager.preview_autoplay());
             assert_eq!(manager.auto_refresh_interval(), 600);
+            assert_eq!(manager.thumbnail_workers(), 6);
             assert_eq!(
                 manager.cross_volume_drop_strategy(),
                 CrossVolumeDropStrategy::Move
@@ -587,6 +589,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_text_wrap(false),
                 |m| m.set_preview_autoplay(false),
                 |m| m.set_auto_refresh_interval(60),
+                |m| m.set_thumbnail_workers(3),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_default_directory(None),
                 |m| m.set_open_folder_after_drop(false),

@@ -65,7 +65,7 @@ fn search_results_load_thumbnails_in_every_view() {
                     path: path.clone(),
                     modified: None,
                     file_size: None,
-                    thumbnail_size: 17,
+                    thumbnail_size: 256,
                 };
                 let job_id = PENDING_THUMBNAILS.with(|pending| pending.borrow()[&key].id);
                 let targets = take_pending_targets(&key, job_id).expect("search thumbnail job");

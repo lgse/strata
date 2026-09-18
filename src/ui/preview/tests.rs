@@ -2,6 +2,7 @@
 
 pub(super) mod media_size;
 mod preferences;
+mod source;
 
 use std::rc::Rc;
 
