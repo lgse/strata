@@ -27,6 +27,7 @@ struct Palette {
     layer: gtk::Box,
     field: gtk::Entry,
     list: gtk::ListBox,
+    scroller: gtk::ScrolledWindow,
     empty: gtk::Label,
     browser: BrowserView,
     preferences: Rc<PreferenceManager>,
@@ -98,6 +99,7 @@ pub(super) fn install(
         layer,
         field,
         list,
+        scroller,
         empty,
         browser: content.browser.clone(),
         preferences: preferences.clone(),
@@ -174,6 +176,8 @@ impl Palette {
         }
         self.field.set_text("");
         self.present(&window);
+        let scroll = self.scroller.vadjustment();
+        scroll.set_value(scroll.lower());
     }
 
     fn present(&self, window: &gtk::ApplicationWindow) {

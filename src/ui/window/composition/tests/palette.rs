@@ -182,6 +182,50 @@ fn palette_file_commands_keep_selection_and_disabled_commands_do_not_run() {
 }
 
 #[test]
+fn palette_reopening_resets_scroll_after_escape_and_execution() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_reopening_resets_scroll_after_escape_and_execution",
+        || {
+            let fixture = Fixture::new();
+            for dismiss in [Key::Escape, Key::Return] {
+                let layer = search(&fixture, "");
+                let list = descendant::<gtk::ListBox>(&layer).expect("command list");
+                let scroller = list
+                    .ancestor(gtk::ScrolledWindow::static_type())
+                    .and_downcast::<gtk::ScrolledWindow>()
+                    .expect("command scroller");
+                let adjustment = scroller.vadjustment();
+                wait_for(|| adjustment.upper() > adjustment.page_size());
+                let command = std::iter::successors(list.row_at_index(0), |row| {
+                    list.row_at_index(row.index() + 1)
+                })
+                .find(|row| {
+                    descendant::<gtk::Label>(row.upcast_ref())
+                        .is_some_and(|label| label.text() == "Switch to Icons")
+                })
+                .expect("view command");
+                list.select_row(Some(&command));
+                adjustment.set_value(adjustment.upper());
+                assert!(adjustment.value() > adjustment.lower(), "list is scrolled");
+                assert!(press(&fixture.window, dismiss, ModifierType::empty()));
+                assert!(!layer.is_visible());
+                if dismiss == Key::Return {
+                    assert_eq!(fixture.content.browser.view_mode(), BrowserMode::Icons);
+                }
+                search(&fixture, "");
+                assert_eq!(
+                    adjustment.value(),
+                    adjustment.lower(),
+                    "reopening after {dismiss:?} starts at the top"
+                );
+                assert!(press(&fixture.window, Key::Escape, ModifierType::empty()));
+            }
+            fixture.close();
+        },
+    );
+}
+
+#[test]
 fn palette_defers_keyboard_to_a_newer_error_dialog() {
     gtk_test(
         "ui::window::composition::tests::palette::palette_defers_keyboard_to_a_newer_error_dialog",
