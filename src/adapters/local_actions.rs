@@ -426,6 +426,14 @@ fn resolve_availability(
 }
 
 /// Finds an executable on `PATH`, or verifies an absolute path.
+///
+/// Custom actions use the user's own `PATH` on purpose, unlike the sandbox
+/// helpers resolved through [`crate::trusted_command`]: an action is an ordinary
+/// user program that is expected to find tools in `~/.local/bin`, a version
+/// manager shim directory, or a distribution prefix. What keeps that safe is not
+/// a fixed search path but the invocation boundary: the resolved program is only
+/// ever `argv[0]` of a direct spawn, with no shell and with arguments limited to
+/// absolute paths.
 fn resolve_executable(program: &str) -> Option<PathBuf> {
     if program.contains('/') {
         if !Path::new(program).is_absolute() {
