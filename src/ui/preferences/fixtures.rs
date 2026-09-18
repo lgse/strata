@@ -54,6 +54,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         preview_muted: true,
         preview_volume: 0.35,
         preview_text_wrap: true,
+        preview_autoplay: true,
         auto_refresh_interval: 600,
         thumbnail_workers: 6,
         cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),

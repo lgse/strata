@@ -36,6 +36,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing quick preview selecting supported files",
     },
     Target {
+        id: "preview-autoplay",
+        page: "general",
+        title: "Autoplay media previews",
+        aliases: "browsing video audio gif playback paused sound",
+    },
+    Target {
         id: "arrow-scope",
         page: "general",
         title: "Keep arrows in file list",

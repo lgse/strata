@@ -1004,3 +1004,51 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     window.destroy();
     browser.clear_observer();
 }
+
+#[test]
+fn background_click_keeps_the_scrolled_column_in_place() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::background_click_keeps_the_scrolled_column_in_place",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            for index in 0..80 {
+                std::fs::write(fixture.path().join(format!("{index:03}.txt")), "x")
+                    .expect("fixture file");
+            }
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(640)
+                .default_height(360)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 80)
+            });
+            browser.select(0, 0);
+            browser.focus_active();
+            let adjustment = view.state.columns.borrow()[0].listing_scroll.vadjustment();
+            wait_until(|| adjustment.upper() - adjustment.page_size() > 100.0);
+            settle();
+            adjustment.set_value(adjustment.upper() - adjustment.page_size());
+            let scrolled = adjustment.value();
+            assert!(scrolled > 0.0, "selected row must be scrolled out of view");
+            press_column_background(&view, 0);
+            settle();
+            assert!(
+                (adjustment.value() - scrolled).abs() < 1.0,
+                "empty-space click moved the column from {scrolled} to {}",
+                adjustment.value()
+            );
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
+}

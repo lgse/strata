@@ -144,6 +144,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             write: PreferenceManager::set_single_click_previews,
         },
         PreferenceSwitch {
+            title: "Autoplay media previews",
+            description: "Start playing video, audio, and GIF previews as soon as they open.",
+            read: PreferenceManager::preview_autoplay,
+            write: PreferenceManager::set_preview_autoplay,
+        },
+        PreferenceSwitch {
             title: "Render documents by default",
             description: "Open Markdown and HTML previews in the rendered view instead of source.",
             read: PreferenceManager::render_documents_by_default,

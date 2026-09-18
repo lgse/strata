@@ -382,6 +382,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.preview_muted());
             assert_eq!(manager.preview_volume(), 0.35);
             assert!(manager.preview_text_wrap());
+            assert!(manager.preview_autoplay());
             assert_eq!(manager.auto_refresh_interval(), 600);
             assert_eq!(manager.thumbnail_workers(), 6);
             assert_eq!(
@@ -509,6 +510,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_muted(false),
                 |m| m.set_preview_volume(0.8),
                 |m| m.set_preview_text_wrap(false),
+                |m| m.set_preview_autoplay(false),
                 |m| m.set_auto_refresh_interval(60),
                 |m| m.set_thumbnail_workers(3),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),

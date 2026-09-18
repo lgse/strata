@@ -1106,18 +1106,11 @@ impl PreviewState {
                 let section = media_layout::section(&overlay, &media);
                 self.content.append(&section);
 
+                let preferences = super::preferences::PreferenceManager::shared();
                 if is_gif {
                     media.set_loop(true);
-                    self.sizing.play_or_defer(&media);
-                    self.append_media_controls(
-                        &media,
-                        &super::preferences::PreferenceManager::shared(),
-                        &section,
-                        &center_play,
-                        true,
-                    );
+                    self.append_media_controls(&media, &preferences, &section, &center_play, true);
                 } else {
-                    let preferences = super::preferences::PreferenceManager::shared();
                     let muted = preferences.preview_muted();
                     let volume = if muted {
                         0.0
@@ -1127,7 +1120,11 @@ impl PreviewState {
                     media.set_volume(volume);
                     media.set_muted(muted);
                     self.append_media_controls(&media, &preferences, &section, &center_play, false);
+                }
+                if preferences.preview_autoplay() {
                     self.sizing.play_or_defer(&media);
+                } else {
+                    center_play.set_visible(true);
                 }
 
                 if let Some(error) = media.error() {

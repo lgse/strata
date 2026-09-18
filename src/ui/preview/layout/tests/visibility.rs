@@ -394,6 +394,7 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
             let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
+            preferences.set_preview_autoplay(true);
             let fixture = Fixture::new(false);
             fixture.preview.show(entry("clip.mp4"), None);
             let request = fixture.requests.borrow()[0].clone();

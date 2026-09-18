@@ -334,6 +334,11 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -2px;
 }
 
+.column-peek-target.file-drop-zone:drop(active) {
+  background: alpha(@theme_accent, 0.18);
+  box-shadow: inset 0 0 0 2px @theme_accent;
+}
+
 .location-entry,
 .location-entry:focus,
 .location-entry:focus-visible,

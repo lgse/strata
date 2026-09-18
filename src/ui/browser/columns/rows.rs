@@ -177,6 +177,7 @@ pub(super) fn column_rows(
         row.add_controller(motion);
 
         item.set_child(Some(&row));
+        let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
         let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
@@ -229,19 +230,21 @@ pub(super) fn column_rows(
                 } else {
                     vec![entry]
                 };
-                let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
                 if let Some((texture, hot_x, hot_y)) =
                     drag_icon_with_count(drag_icon.upcast_ref(), entries.len())
                 {
                     source.set_icon(Some(&texture), hot_x, hot_y);
                 } else {
+                    let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
                     source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
                 }
                 file_drag_content(&entries)
             });
             let dragged_row = row.downgrade();
             let weak_state_for_begin = weak_state.clone();
+            let pending_activation_for_drag = pending_activation.clone();
             drag.connect_drag_begin(move |_, _| {
+                pending_activation_for_drag.borrow_mut().take();
                 if let Some(row) = dragged_row.upgrade() {
                     row.add_css_class("dragging");
                 }
@@ -257,6 +260,7 @@ pub(super) fn column_rows(
                 }
                 if let Some(state) = weak_state_for_end.upgrade() {
                     state.cancel_peek();
+                    state.stop_drag_autoscroll();
                 }
             });
             row.add_controller(drag.clone());
@@ -332,6 +336,7 @@ pub(super) fn column_rows(
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
                 };
+                state.stop_drag_autoscroll();
                 let Some(destination) = drop_state.destination() else {
                     return false;
                 };
@@ -359,7 +364,6 @@ pub(super) fn column_rows(
         let search_active_for_click = search_active_for_factory.clone();
         let search_results_for_click = search_results_for_factory.clone();
         // Open on release so a press-and-move can start a drag first.
-        let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
         let pending_activation_for_press = pending_activation.clone();
         let pending_activation_for_motion = pending_activation.clone();
         let pending_activation_for_release = pending_activation.clone();
