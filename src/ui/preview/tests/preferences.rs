@@ -1,7 +1,45 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::*;
-use crate::{test_support::gtk_test, ui::theme::ThemeManager};
+use crate::{
+    services::{MediaPreviewSize, SandboxedMedia},
+    test_support::gtk_test,
+    ui::theme::ThemeManager,
+};
+
+fn media_entry(name: &str) -> crate::model::FileEntry {
+    crate::model::FileEntry {
+        location: crate::model::Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        thumbnail_path: None,
+        display_name: name.into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Known(100),
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    }
+}
+
+fn synthetic_video(path: &str) -> SandboxedMedia {
+    SandboxedMedia {
+        path: path.into(),
+        size: MediaPreviewSize::new(320, 180),
+        backend: crate::sandbox::MediaPreviewBackend::Software,
+        input_owner: None,
+    }
+}
+
+fn render_video(drawer: &PreviewDrawer, request_id: u64, name: &str, path: &str) {
+    drawer.state.render(crate::services::Preview {
+        request_id: crate::services::PreviewRequestId(request_id),
+        entry: media_entry(name),
+        content_type: "video/mp4".into(),
+        content: crate::services::PreviewContent::SandboxedMedia {
+            media: synthetic_video(path),
+        },
+    });
+}
 
 fn render_text(drawer: &PreviewDrawer) {
     drawer.state.render(crate::services::Preview {
@@ -163,6 +201,53 @@ fn saved_and_live_audio_preferences_reach_every_open_player() {
                 assert_eq!(media.volume(), 0.7);
                 assert_eq!(slider.value(), 0.7);
             }
+        },
+    );
+}
+
+#[test]
+fn autoplay_preference_gates_new_media_previews_and_defaults_off() {
+    gtk_test(
+        "ui::preview::tests::preferences::autoplay_preference_gates_new_media_previews_and_defaults_off",
+        || {
+            let manager = ThemeManager::shared();
+            assert!(!manager.preview_autoplay(), "autoplay is off by default");
+            let drawer = PreviewDrawer::new(Rc::new(super::NoopPreviewProvider), true);
+
+            render_video(&drawer, 1, "clip.mp4", "/synthetic-video.mp4");
+            let media = drawer.state.media.borrow().clone().expect("media stream");
+            let decoded = media
+                .downcast_ref::<crate::ui::media::DecodedMedia>()
+                .expect("raw texture player");
+            crate::ui::media::tests::use_test_decoder(decoded, false, 2_000_000);
+            crate::ui::media::tests::wait(|| media.is_prepared());
+            assert!(!media.is_playing(), "opening a preview must not autoplay");
+            let overlay = drawer
+                .state
+                .content
+                .first_child()
+                .expect("media section")
+                .first_child()
+                .expect("media overlay");
+            let center_play = overlay
+                .first_child()
+                .and_then(|picture| picture.next_sibling())
+                .and_downcast::<gtk::Button>()
+                .expect("center play button");
+            assert!(
+                center_play.is_visible(),
+                "the play affordance must be visible while paused"
+            );
+
+            manager.set_preview_autoplay(true);
+            drawer.state.clear_content();
+            render_video(&drawer, 2, "clip2.mp4", "/synthetic-video-2.mp4");
+            let media = drawer.state.media.borrow().clone().expect("second stream");
+            let decoded = media
+                .downcast_ref::<crate::ui::media::DecodedMedia>()
+                .expect("raw texture player");
+            crate::ui::media::tests::use_test_decoder(decoded, false, 2_000_000);
+            crate::ui::media::tests::wait(|| media.is_playing() && media.timestamp() > 0);
         },
     );
 }

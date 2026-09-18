@@ -50,6 +50,7 @@ fn media_modifiers_leave_plain_arrows_and_space_to_the_browser() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::media_keys::media_modifiers_leave_plain_arrows_and_space_to_the_browser",
         || {
+            ThemeManager::shared().set_preview_autoplay(true);
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
                 let fixture = KeyboardFixture::with_provider(Rc::new(MediaPreview));
                 fixture.view.set_view_mode(mode);

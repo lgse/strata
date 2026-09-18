@@ -60,6 +60,7 @@ control that might be midway through synchronization.
 | Keybinding hints | Footers and settings controls bind immediately and live. |
 | Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
 | Preview text wrap | Every text preview and header toggle binds to the saved wrap choice, including newly loaded files. Off by default. |
+| Preview autoplay | Read when a video, audio, or GIF preview is first shown. Off by default: playback waits for an explicit play action, and the center play affordance is shown instead. Does not affect resuming playback that was already active before a preview pane was temporarily hidden by a resize. |
 | Preview mute/volume | Every player's controls and media stream bind to the saved audio state. Slider changes publish/persist together, without a delayed stale save overwriting another window or being discarded when closing a preview. |
 | Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. |
 | Sidebar order | Existing sidebars bind to the shared order. |

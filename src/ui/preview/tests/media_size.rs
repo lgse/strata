@@ -147,6 +147,7 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
     crate::test_support::gtk_test(
         "ui::preview::tests::media_size::decoded_frames_play_in_the_browser_and_chooser_preview_widgets",
         || {
+            ThemeManager::shared().set_preview_autoplay(true);
             for browser in [true, false] {
                 let source = SandboxedMedia {
                     path: "/synthetic-video.mp4".into(),

@@ -956,18 +956,11 @@ impl PreviewState {
                 let section = media_layout::section(&overlay, &media);
                 self.content.append(&section);
 
+                let preferences = super::theme::ThemeManager::shared();
                 if is_gif {
                     media.set_loop(true);
-                    self.sizing.play_or_defer(&media);
-                    self.append_media_controls(
-                        &media,
-                        &super::theme::ThemeManager::shared(),
-                        &section,
-                        &center_play,
-                        true,
-                    );
+                    self.append_media_controls(&media, &preferences, &section, &center_play, true);
                 } else {
-                    let preferences = super::theme::ThemeManager::shared();
                     let muted = preferences.preview_muted();
                     let volume = if muted {
                         0.0
@@ -977,7 +970,15 @@ impl PreviewState {
                     media.set_volume(volume);
                     media.set_muted(muted);
                     self.append_media_controls(&media, &preferences, &section, &center_play, false);
+                }
+                // Autoplay is off by default: opening a preview should not start
+                // playback/sound on its own. `play_or_defer` also queues playback to
+                // resume once a resized-hidden preview becomes visible again, so it
+                // must still run when autoplay is on even while suspended.
+                if preferences.preview_autoplay() {
                     self.sizing.play_or_defer(&media);
+                } else {
+                    center_play.set_visible(true);
                 }
 
                 if let Some(error) = media.error() {

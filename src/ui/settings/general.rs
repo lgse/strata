@@ -90,6 +90,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             write: ThemeManager::set_single_click_previews,
         },
         PreferenceSwitch {
+            title: "Autoplay media previews",
+            description: "Start playing video, audio, and GIF previews as soon as they open.",
+            read: ThemeManager::preview_autoplay,
+            write: ThemeManager::set_preview_autoplay,
+        },
+        PreferenceSwitch {
             title: "Keep arrows in file list",
             description: "Stop arrow keys from leaving the file list. Use Ctrl + Shift + B to focus the sidebar, or use the mouse.",
             read: ThemeManager::arrow_navigation_scoped,
