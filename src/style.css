@@ -5767,6 +5767,12 @@ popover.settings-search-popover.background {
   color: @theme_danger;
 }
 
+/* A lone message inside a settings group pads itself: rows supply their own
+   padding, so an empty state would otherwise touch the group border. */
+.settings-actions-empty {
+  padding: 14px 18px;
+}
+
 .settings-action-editor {
   min-width: 460px;
 }

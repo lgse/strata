@@ -119,6 +119,9 @@ impl PageState {
             empty.set_xalign(0.0);
             empty.set_wrap(true);
             empty.add_css_class("settings-option-description");
+            // Rows inside a settings group supply their own padding; a lone
+            // message needs the same inset so it cannot touch the group border.
+            empty.add_css_class("settings-actions-empty");
             self.list.append(&empty);
         }
         for action in catalog.actions() {
@@ -649,10 +652,17 @@ impl EditorForm {
             ],
         );
 
+        // A GtkSwitch fills whatever allocation it is given, which turns the
+        // editor's stacked fields into full-width ovals. Keep it at its natural
+        // size under its label instead.
         let confirm = gtk::Switch::builder()
             .active(definition.run.confirm)
+            .halign(gtk::Align::Start)
             .build();
-        let enabled = gtk::Switch::builder().active(definition.enabled).build();
+        let enabled = gtk::Switch::builder()
+            .active(definition.enabled)
+            .halign(gtk::Align::Start)
+            .build();
         let files = gtk::CheckButton::with_label("Files");
         let folders = gtk::CheckButton::with_label("Folders");
         if definition.when.kinds.is_empty() {
