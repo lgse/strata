@@ -432,9 +432,7 @@ fn sandbox_command(
 ) -> Command {
     let mut command = runtime_command(operation);
     let sandbox_input = sandbox_input_path(input);
-    if operation != ParseOperation::ThumbnailVideo {
-        command.arg("--ro-bind").arg(executable).arg("/app/strata");
-    }
+    command.arg("--ro-bind").arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
     if !operation.is_media() {
         command.arg("--bind").arg(output).arg("/output");
@@ -465,15 +463,6 @@ fn sandbox_command(
                 }
             ))
             .arg("--");
-    }
-    if operation == ParseOperation::ThumbnailVideo {
-        command
-            .args(["/usr/bin/ffmpegthumbnailer", "-i", &sandbox_input, "-o"])
-            .arg(format!("/output/{}", operation.output_name()))
-            .arg("-s")
-            .arg(value.to_string())
-            .args(["-q", "8"]);
-        return command;
     }
     command.args([
         "/app/strata",
