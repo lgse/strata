@@ -39,8 +39,8 @@ use super::{
     blur::BlurBin,
     browser::{dismiss_modal_layer, modal_layer},
     controls::modal_layout,
+    preferences::PreferenceManager,
     terminal,
-    theme::ThemeManager,
 };
 
 type AvailableUpdate = (ReleaseMetadata, String, UpdateMethod);
@@ -87,7 +87,7 @@ thread_local! {
 ///
 /// A `thread_local` `Rc` (rather than a `Mutex`) is the whole story here
 /// because every window is built on the single GTK main thread, from
-/// `connect_activate`; this mirrors [`ThemeManager::shared`]. It is
+/// `connect_activate`; this mirrors [`PreferenceManager::shared`]. It is
 /// deliberately never released: it is one `bool`, and the guard's
 /// correctness should not depend on some window or in-flight install
 /// happening to still hold a strong reference.
@@ -163,7 +163,7 @@ fn force_due_update_check(last: Option<Instant>) -> bool {
     last.is_none()
 }
 
-pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>) {
+pub(super) fn maybe_run_due_update_check(manager: &Rc<PreferenceManager>) {
     if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
         return;
     }
@@ -205,7 +205,7 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>) {
 }
 
 fn complete_due_update_check(
-    manager: &Weak<ThemeManager>,
+    manager: &Weak<PreferenceManager>,
     channel: Channel,
     result: UpdateCheck,
     method: UpdateMethod,
@@ -442,7 +442,7 @@ impl ResponsiveBin {
         imp.responsive_activation_rows
             .replace(responsive.activation_rows);
         child.set_parent(&bin);
-        ThemeManager::shared().bind_interface_scale(&bin, |widget, scale| {
+        PreferenceManager::shared().bind_interface_scale(&bin, |widget, scale| {
             let bin = widget
                 .downcast_ref::<ResponsiveBin>()
                 .expect("settings bin");
@@ -609,7 +609,7 @@ fn uses_compact_navigation(dialog_width: i32) -> bool {
 pub fn build_layer(
     settings_button: &gtk::Button,
     root: &BlurBin,
-    themes: Rc<ThemeManager>,
+    preferences: Rc<PreferenceManager>,
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
 ) -> gtk::Box {
@@ -662,9 +662,9 @@ pub fn build_layer(
         .vexpand(true)
         .build();
     let (general, responsive_setting_rows, responsive_activation_rows) =
-        general_page(themes.clone());
+        general_page(preferences.clone());
     stack.add_named(&general, Some("general"));
-    stack.add_named(&keybindings_page(themes.clone()), Some("keybindings"));
+    stack.add_named(&keybindings_page(preferences.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
     // Heavy pages build on first selection, never during startup: the
     // Updates page spawns package-manager detection plus release-note
@@ -724,7 +724,7 @@ pub fn build_layer(
         let title = title.clone();
         let page_title = label.to_owned();
         let built = built.clone();
-        let themes = themes.clone();
+        let preferences = preferences.clone();
         let update_notice = update_notice.clone();
         let install_guard = install_guard.clone();
         let updates_container = updates_container.clone();
@@ -741,7 +741,8 @@ pub fn build_layer(
             if built.borrow_mut().insert(name) {
                 match name {
                     "theme" => {
-                        let page = theme_page(themes.clone());
+                        let page =
+                            theme_page(preferences.clone(), super::theme::ThemeManager::shared());
                         search::apply(&page.widget, &search_state);
                         stack.add_named(&page.widget, Some("theme"));
                         for (flow, columns) in page.flows {
@@ -756,15 +757,15 @@ pub fn build_layer(
                     "updates" => {
                         let container = updates_container.clone();
                         let panel = responsive_panel.clone();
-                        let themes = themes.clone();
+                        let preferences = preferences.clone();
                         let update_notice = update_notice.clone();
                         let install_guard = install_guard.clone();
                         let _ = stack;
                         let search_state = search_state.clone();
                         resolve_update_method_async(move |method| {
-                            maybe_run_due_update_check(&themes);
+                            maybe_run_due_update_check(&preferences);
                             let (updates, actions) =
-                                updates_page(themes, update_notice, install_guard, method);
+                                updates_page(preferences, update_notice, install_guard, method);
                             while let Some(child) = container.first_child() {
                                 container.remove(&child);
                             }
@@ -876,7 +877,7 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
 }
 
 fn updates_page(
-    manager: Rc<ThemeManager>,
+    manager: Rc<PreferenceManager>,
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
@@ -925,7 +926,7 @@ fn updates_page(
 
 fn append_channel_option(
     preferences: &gtk::Box,
-    manager: Rc<ThemeManager>,
+    manager: Rc<PreferenceManager>,
     managed: Option<&ManagedInstall>,
     update_method: UpdateMethod,
 ) -> gtk::Box {
@@ -982,7 +983,7 @@ fn append_current_release_notes(preferences: &gtk::Box) {
 }
 
 fn bind_updates_auto_check(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     channel_row: &gtk::Box,
     preferences: &gtk::Box,
     run_check: Rc<dyn Fn(bool)>,
@@ -990,13 +991,13 @@ fn bind_updates_auto_check(
 ) {
     manager.bind_preference(
         channel_row,
-        ThemeManager::checks_for_updates,
+        PreferenceManager::checks_for_updates,
         |widget, enabled| widget.set_sensitive(enabled),
     );
     let initial = Cell::new(true);
     manager.bind_preference(
         preferences,
-        ThemeManager::checks_for_updates,
+        PreferenceManager::checks_for_updates,
         move |_, enabled| {
             if initial.replace(false) {
                 return;
@@ -1011,7 +1012,7 @@ fn bind_updates_auto_check(
 }
 
 fn wire_channel_change_check(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     page: &impl IsA<gtk::Widget>,
     run_check: Rc<dyn Fn(bool)>,
     install_underway: Rc<dyn Fn() -> bool>,
@@ -1027,7 +1028,7 @@ fn wire_channel_change_check(
     );
 }
 
-fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) -> gtk::Box {
+fn automatic_updates_option(manager: &Rc<PreferenceManager>, method: UpdateMethod) -> gtk::Box {
     let (row, toggle) = settings_option(
         "Check for updates automatically",
         match method {
@@ -1045,15 +1046,15 @@ fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) ->
     bind_switch(
         manager,
         &toggle,
-        ThemeManager::checks_for_updates,
-        ThemeManager::set_checks_for_updates,
+        PreferenceManager::checks_for_updates,
+        PreferenceManager::set_checks_for_updates,
     );
     row
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
 
-fn channel_option(manager: Rc<ThemeManager>, managed: Option<&ManagedInstall>) -> gtk::Box {
+fn channel_option(manager: Rc<PreferenceManager>, managed: Option<&ManagedInstall>) -> gtk::Box {
     let control = bindings::choice_menu(
         &manager,
         RELEASE_CHANNEL_TITLE,
@@ -1062,8 +1063,8 @@ fn channel_option(manager: Rc<ThemeManager>, managed: Option<&ManagedInstall>) -
             ("Preview", Channel::Preview),
             ("Nightly", Channel::Nightly),
         ],
-        ThemeManager::release_channel,
-        ThemeManager::set_release_channel,
+        PreferenceManager::release_channel,
+        PreferenceManager::set_release_channel,
     );
     control.set_sensitive(managed.is_none());
     let description = managed
@@ -1078,12 +1079,16 @@ fn channel_option(manager: Rc<ThemeManager>, managed: Option<&ManagedInstall>) -
             .last_child()
             .and_downcast::<gtk::Label>()
             .expect("channel description");
-        manager.bind_preference(&label, ThemeManager::release_channel, |widget, channel| {
-            widget
-                .downcast_ref::<gtk::Label>()
-                .expect("channel description binding")
-                .set_text(channel_description(channel));
-        });
+        manager.bind_preference(
+            &label,
+            PreferenceManager::release_channel,
+            |widget, channel| {
+                widget
+                    .downcast_ref::<gtk::Label>()
+                    .expect("channel description binding")
+                    .set_text(channel_description(channel));
+            },
+        );
     }
     row
 }
@@ -1425,7 +1430,7 @@ struct PendingInstall {
 /// and only within the one row that started it. This covers the other half:
 /// an offer that already landed and is sitting in a window's "Install
 /// update" button or an open update dialog. The channel preference is
-/// process-wide ([`ThemeManager::shared`]), so switching back to Stable in
+/// process-wide ([`PreferenceManager::shared`]), so switching back to Stable in
 /// one window leaves every other window holding a cached RC offer it would
 /// otherwise happily install. Re-testing at the moment of the click is what
 /// makes the preference authoritative regardless of how many views cached
@@ -1446,7 +1451,7 @@ fn offer_still_eligible(channel: Channel, kind: BuildKind) -> bool {
 }
 
 fn update_check_row(
-    manager: Rc<ThemeManager>,
+    manager: Rc<PreferenceManager>,
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
@@ -2165,7 +2170,7 @@ pub(super) fn show_update_dialog(
             action.set_label("Close");
         }
     });
-    ThemeManager::shared().on_release_channel_changed(&layer, {
+    PreferenceManager::shared().on_release_channel_changed(&layer, {
         let withdraw = withdraw.clone();
         let withdrawn = withdrawn.clone();
         let started = started.clone();
@@ -2174,7 +2179,7 @@ pub(super) fn show_update_dialog(
             if started.get() || installed.get() || withdrawn.get() {
                 return;
             }
-            if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
+            if !offer_still_eligible(PreferenceManager::shared().release_channel(), offered_kind) {
                 withdraw();
             }
         })
@@ -2230,7 +2235,7 @@ pub(super) fn show_update_dialog(
         // a channel switch made anywhere in the process -- including in
         // another window. `withdrawn` rather than `started` so Cancel and
         // Escape keep dismissing normally.
-        if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
+        if !offer_still_eligible(PreferenceManager::shared().release_channel(), offered_kind) {
             withdraw();
             return;
         }

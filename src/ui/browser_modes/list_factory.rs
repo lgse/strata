@@ -139,6 +139,7 @@ impl ListFactory {
             .and_then(|state| state.pending_rename_name(&binding.entry));
         row.bind_labels(item, &binding.entry, pending_name.as_deref());
         if self.scrolling.get() {
+            binding.request_thumbnail_and_metadata(&row);
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
             let is_cut = self.cuts.borrow().contains(&binding.entry.location);
@@ -235,8 +236,13 @@ struct ListBinding {
 }
 
 impl ListBinding {
-    /// Settling must not reset labels or an active rename editor.
+    /// Detail updates must not reset labels or an active rename editor.
     fn refresh_details(&self, row: &ListRow) {
+        self.request_thumbnail_and_metadata(row);
+        crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
+    }
+
+    fn request_thumbnail_and_metadata(&self, row: &ListRow) {
         thumbnail::set_thumbnail_or_icon(
             &row.icon,
             &self.entry,
@@ -247,14 +253,16 @@ impl ListBinding {
         if let Some(position) =
             metadata_fill_position(Some(self.position), &self.entry, true, false)
         {
-            self.browser.request_metadata_fill(
+            thumbnail::request_metadata(
+                &row.icon,
+                &row.widget,
+                &self.browser,
                 self.depth,
                 position,
                 self.entry.location.clone(),
                 false,
             );
         }
-        crate::util::set_modified_date(&row.modified, Some(&self.entry), "—");
     }
 }
 
@@ -274,6 +282,9 @@ pub(super) fn refresh_list_section(
         else {
             return;
         };
+        if !thumbnail::near_viewport(&row.widget) {
+            return;
+        }
         let Some(item) = bound.item.upgrade() else {
             return;
         };
@@ -287,13 +298,7 @@ pub(super) fn refresh_list_section(
         let is_hidden = entry.is_hidden;
         set_mode_cut_style(&row.widget, is_cut);
         row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
-        ListBinding {
-            browser: browser.clone(),
-            depth,
-            position,
-            entry,
-        }
-        .refresh_details(&row);
+        crate::util::set_modified_date(&row.modified, Some(&entry), "—");
         row.icon.set_hidden(is_hidden);
         row.icon.set_base_opacity(1.0);
     });

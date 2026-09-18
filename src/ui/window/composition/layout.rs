@@ -11,8 +11,8 @@ use crate::{
     adapters::LocalPreviewProvider,
     assets::{self, icons},
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
-        theme::ThemeManager,
+        browser::BrowserView, preferences::PreferenceManager, preview::PreviewDrawer,
+        shortcut_footer::ShortcutFooter,
     },
 };
 
@@ -34,7 +34,7 @@ impl Header {
         window: &gtk::ApplicationWindow,
         browser: &BrowserView,
         preview: &PreviewDrawer,
-        preferences: &Rc<ThemeManager>,
+        preferences: &Rc<PreferenceManager>,
     ) -> Self {
         let widget = gtk::HeaderBar::new();
         widget.set_show_title_buttons(false);
@@ -85,7 +85,7 @@ fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
     button
 }
 
-pub(super) fn preview(browser: &BrowserView, preferences: &Rc<ThemeManager>) -> PreviewDrawer {
+pub(super) fn preview(browser: &BrowserView, preferences: &Rc<PreferenceManager>) -> PreviewDrawer {
     let preferences = preferences.clone();
     let preview = PreviewDrawer::new(
         Rc::new(LocalPreviewProvider::new(Rc::new(move || {
@@ -203,7 +203,7 @@ impl FooterBinding {
         window: &gtk::ApplicationWindow,
         root: &gtk::Box,
         browser: &BrowserView,
-        preferences: &ThemeManager,
+        preferences: &PreferenceManager,
     ) -> Self {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);

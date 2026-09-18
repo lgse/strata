@@ -85,10 +85,12 @@ controls, source-position mapping, and weak browser ownership. A typed row view 
 widget parts without changing their layout. An owned binding snapshot resolves the
 source entry before updating GTK or requesting metadata.
 
-Fast-scroll binds update labels/accessibility while deferring cut styling, thumbnails,
-and metadata work. Ordinary binds and scroll settling share detail refresh; settling
-never resets the name label or an active rename editor. Missing bindings retain the
-existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
+Fast-scroll binds update labels/accessibility and admit viewport-prioritized thumbnails
+and metadata without waiting for scrolling to stop. Cut styling, tooltips and date
+bindings refresh once per GTK frame, outside layout, for visible/overscan items.
+These presentation refreshes never resubmit file work or reset a name label or active
+rename editor. Identical active thumbnail/metadata requests are reused. Missing
+bindings retain the existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
 remain in the composition module rather than changing alongside this lifecycle boundary.
 
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,

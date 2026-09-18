@@ -157,6 +157,7 @@ pub(super) struct ViewState {
     context_menu_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
+    suppress_focus_scroll: Cell<bool>,
     source_generation: Rc<Cell<u64>>,
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
@@ -206,6 +207,8 @@ pub(super) struct ViewState {
     unlock_slots: RefCell<Vec<UnlockProgressSlot>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
     trash_button: RefCell<Option<gtk::Button>>,
+    drag_autoscroll: RefCell<Option<Rc<columns::drag_scroll::DragAutoscroll>>>,
+    suppress_scroll_after_drop: Cell<bool>,
     browser: Rc<Browser>,
 }
 
@@ -273,6 +276,9 @@ impl BrowserView {
         scroller.add_css_class("fixed-scrollbar");
         scroller.add_css_class("mode-scroll");
         scroller.add_css_class("columns-scroll");
+        if let Some(viewport) = scroller.child().and_downcast::<gtk::Viewport>() {
+            viewport.set_scroll_to_focus(false);
+        }
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
@@ -449,7 +455,7 @@ impl BrowserView {
         location_control.append(&location_stack);
         location_control.append(&global_activity_spinner);
 
-        let preferences = super::theme::ThemeManager::shared();
+        let preferences = super::preferences::PreferenceManager::shared();
         let browser = Browser::with_preferences(source, preferences.sort_preferences());
         browser.set_chooser_mode(!interactive);
         let preferences_for_sorting = preferences.clone();
@@ -479,6 +485,7 @@ impl BrowserView {
             context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
+            suppress_focus_scroll: Cell::new(false),
             source_generation,
             peek: RefCell::new(None),
             pending_peek: RefCell::new(None),
@@ -521,6 +528,8 @@ impl BrowserView {
             unlock_slots: RefCell::new(Vec::new()),
             auto_refresh: RefCell::new(None),
             trash_button: RefCell::new(None),
+            drag_autoscroll: RefCell::new(None),
+            suppress_scroll_after_drop: Cell::new(false),
             browser,
         });
 
@@ -529,6 +538,7 @@ impl BrowserView {
         register_cut_view(&state);
         state.install_input_ownership();
         state.install_column_peek_targets();
+        state.install_drag_autoscroll();
 
         let weak_state = Rc::downgrade(&state);
         super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
@@ -1608,6 +1618,29 @@ impl BrowserView {
         true
     }
 
+    pub fn jump_parked_selection(&self, direction: i32) -> bool {
+        if !self.item_view_has_focus()
+            || !self
+                .state
+                .overlay
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focused| focused.is::<gtk::Stack>())
+        {
+            return false;
+        }
+        let order = self
+            .state
+            .browser
+            .active_depth()
+            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+            .filter(|order| !order.is_empty());
+        self.state
+            .browser
+            .page_along(direction, usize::MAX, order.as_deref());
+        true
+    }
+
     pub fn dismiss_empty_focused_filter(&self) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let empty = self.state.mode_views.borrow().empty_filter_has_focus()
@@ -1716,6 +1749,12 @@ impl BrowserView {
 }
 
 impl ViewState {
+    pub(in crate::ui::browser) fn stop_drag_autoscroll(&self) {
+        if let Some(tracker) = self.drag_autoscroll.borrow().as_ref() {
+            tracker.stop();
+        }
+    }
+
     pub(in crate::ui) fn cancel_peek(&self) {
         cancel_source(&self.pending_peek);
         self.browser.close_peek();

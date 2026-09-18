@@ -4,9 +4,44 @@ mod animation;
 mod search;
 mod spinner;
 
+use super::drag_scroll::{listing_band_direction, scroll_speed};
 use super::*;
 use crate::model::Location;
 use crate::ui::browser_modes::{ClickActivation, ClickCount};
+use std::time::Duration;
+
+#[test]
+fn drag_scroll_stays_inside_the_listing_band() {
+    assert_eq!(listing_band_direction(10.0, 40.0, 400.0), 0.0);
+    assert_eq!(listing_band_direction(450.0, 40.0, 400.0), 0.0);
+    assert_eq!(listing_band_direction(240.0, 40.0, 400.0), 0.0);
+    assert!(listing_band_direction(80.0, 40.0, 400.0) < 0.0);
+    assert!(listing_band_direction(41.0, 40.0, 400.0) < listing_band_direction(80.0, 40.0, 400.0));
+    assert!(listing_band_direction(430.0, 40.0, 400.0) > 0.0);
+}
+
+#[test]
+fn drag_scroll_speed_is_smooth_monotonic_and_continuous() {
+    let max = 500.0;
+    assert_eq!(scroll_speed(0.0, Duration::ZERO, max), 0.0);
+    assert_eq!(scroll_speed(0.0, Duration::from_millis(500), max), 0.0);
+
+    let crawl = scroll_speed(0.05, Duration::ZERO, max);
+    let moderate = scroll_speed(0.4, Duration::ZERO, max);
+    let full = scroll_speed(1.0, Duration::ZERO, max);
+    assert!(crawl > 0.0 && crawl < 5.0);
+    assert!(crawl < moderate && moderate < full);
+
+    let dwell_start = scroll_speed(0.8, Duration::ZERO, max);
+    let dwell_mid = scroll_speed(0.8, Duration::from_millis(150), max);
+    let dwell_full = scroll_speed(0.8, Duration::from_millis(400), max);
+    assert!(dwell_start < dwell_mid && dwell_mid < dwell_full);
+    assert!((dwell_full - (max * 0.8 * 0.8)).abs() < 1e-3);
+
+    let neg = scroll_speed(-0.5, Duration::from_millis(200), max);
+    let pos = scroll_speed(0.5, Duration::from_millis(200), max);
+    assert_eq!(neg, -pos);
+}
 
 #[test]
 fn pointer_preview_handler_ignores_double_click_activation() {

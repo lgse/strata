@@ -4,7 +4,7 @@ mod visibility;
 
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
 use super::*;
-use crate::{model::Location, ui::theme::ThemeManager};
+use crate::{model::Location, ui::preferences::PreferenceManager};
 
 #[test]
 fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice() {
@@ -228,7 +228,7 @@ fn browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
             for chooser in [false, true] {
@@ -296,7 +296,7 @@ fn manual_width_overrides_auto_sizing_until_the_window_session_ends() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::manual_width_overrides_auto_sizing_until_the_window_session_ends",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_reduce_motion(true);
             preferences.set_browser_mode(BrowserMode::Columns);
             let fixture = Fixture::new(false);

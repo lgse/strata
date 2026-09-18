@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::ui::theme::ThemeManager;
+use crate::ui::preferences::PreferenceManager;
 use std::time::{Duration, Instant};
 
 fn wait_until(condition: impl Fn() -> bool) {
@@ -67,8 +67,8 @@ fn saved_filter_scope_updates_two_windows_and_rebuilt_views_without_settings() {
     crate::test_support::gtk_test(
         "ui::browser::tests::filter_scope::saved_filter_scope_updates_two_windows_and_rebuilt_views_without_settings",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             assert!(!manager.filter_include_subfolders());
             let fixture = tempfile::tempdir().expect("fixture");
             std::fs::create_dir(fixture.path().join("needle-folder")).expect("folder");

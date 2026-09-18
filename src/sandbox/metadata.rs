@@ -5,7 +5,7 @@ use serde_json::Value;
 pub(crate) const MAX_METADATA_BYTES: u64 = 64 * 1024;
 
 /// Only technical properties are exposed; arbitrary embedded tags are not UI text.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct MediaMetadata {
     pub(crate) dimensions: Option<(u32, u32)>,
     pub(crate) duration: Option<f64>,

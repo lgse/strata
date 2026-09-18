@@ -23,7 +23,9 @@ use super::{
     update_check_due, update_check_message, update_dialog_status, update_status_markup,
     uses_compact_navigation,
 };
-use crate::{sandbox::MediaPreviewBackend, test_support::gtk_test, ui::theme::ThemeManager};
+use crate::{
+    sandbox::MediaPreviewBackend, test_support::gtk_test, ui::preferences::PreferenceManager,
+};
 
 #[test]
 fn a_checks_result_is_stale_once_a_newer_check_has_started() {
@@ -387,9 +389,9 @@ fn stale_due_result_is_not_published_or_replayed() {
     gtk_test(
         "ui::settings::tests::stale_due_result_is_not_published_or_replayed",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             super::clear_cached_update_notice();
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             manager.set_checks_for_updates(true);
             let channel = manager.release_channel();
             let published = Rc::new(std::cell::Cell::new(0));
@@ -425,9 +427,9 @@ fn due_failed_or_up_to_date_does_not_clear_existing_notice() {
     gtk_test(
         "ui::settings::tests::due_failed_or_up_to_date_does_not_clear_existing_notice",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             super::clear_cached_update_notice();
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             manager.set_checks_for_updates(true);
             let channel = manager.release_channel();
             let notices = Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -473,9 +475,9 @@ fn superseded_due_check_does_not_override_newer_check() {
     gtk_test(
         "ui::settings::tests::superseded_due_check_does_not_override_newer_check",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             super::clear_cached_update_notice();
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             manager.set_checks_for_updates(true);
             let channel = manager.release_channel();
             let notices = Rc::new(std::cell::RefCell::new(Vec::new()));

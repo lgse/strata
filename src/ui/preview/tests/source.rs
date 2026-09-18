@@ -32,11 +32,11 @@ fn javascript_highlighting_survives_large_many_line_and_long_line_sources() {
     gtk_test(
         "ui::preview::tests::source::javascript_highlighting_survives_large_many_line_and_long_line_sources",
         || {
-            let manager = ThemeManager::shared();
-            manager.set_follow_omarchy(false);
-            manager.select_theme("catppuccin");
+            let themes = ThemeManager::shared();
+            themes.set_follow_omarchy(false);
+            themes.select_theme("catppuccin");
             let string_color = gdk::RGBA::parse(
-                manager
+                themes
                     .starter_tokens()
                     .syntax_string
                     .expect("theme string color"),

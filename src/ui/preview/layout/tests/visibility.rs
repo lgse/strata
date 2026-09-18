@@ -10,7 +10,7 @@ fn replacing_preview_targets_does_not_reopen_the_drawer() {
             gtk::Settings::default()
                 .expect("GTK settings")
                 .set_gtk_enable_animations(true);
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(false);
             let fixture = Fixture::new(false);
@@ -69,7 +69,7 @@ fn closing_and_reopening_preview_keeps_horizontal_scrolling_available() {
             gtk::Settings::default()
                 .expect("GTK settings")
                 .set_gtk_enable_animations(true);
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             for (chooser, reduced_motion) in
                 [(false, true), (true, true), (false, false), (true, false)]
@@ -124,7 +124,7 @@ fn closing_the_preview_releases_preserved_column_scroll_space() {
             gtk::Settings::default()
                 .expect("GTK settings")
                 .set_gtk_enable_animations(true);
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             for reduced_motion in [true, false] {
                 preferences.set_reduce_motion(reduced_motion);
@@ -162,7 +162,7 @@ fn reopening_a_fitting_preview_never_flashes_a_horizontal_scrollbar() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::reopening_a_fitting_preview_never_flashes_a_horizontal_scrollbar",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(false);
             for chooser in [false, true] {
@@ -209,7 +209,7 @@ fn horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
             for chooser in [false, true] {
@@ -272,7 +272,7 @@ fn focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_o
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
             for chooser in [false, true] {
@@ -353,7 +353,7 @@ fn a_focused_parent_takes_priority_over_a_wider_unfocused_leaf() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::a_focused_parent_takes_priority_over_a_wider_unfocused_leaf",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
             let fixture = Fixture::new(false);
@@ -391,9 +391,10 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_state",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
+            preferences.set_preview_autoplay(true);
             let fixture = Fixture::new(false);
             fixture.preview.show(entry("clip.mp4"), None);
             let request = fixture.requests.borrow()[0].clone();
@@ -470,7 +471,7 @@ fn icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled()
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_reduce_motion(true);
             for chooser in [false, true] {
                 preferences.set_browser_mode(BrowserMode::Icons);
@@ -558,7 +559,7 @@ fn deleting_an_appearance_preview_clears_visible_and_suspended_targets_without_d
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::deleting_an_appearance_preview_clears_visible_and_suspended_targets_without_disabling_mode",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_reduce_motion(true);
             for (mode, suspended) in [(BrowserMode::Icons, false), (BrowserMode::Columns, true)] {
                 preferences.set_browser_mode(mode);
@@ -614,7 +615,7 @@ fn temporarily_hiding_a_document_keeps_its_view_and_scroll_position() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::temporarily_hiding_a_document_keeps_its_view_and_scroll_position",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
             let fixture = Fixture::new(false);

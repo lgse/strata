@@ -10,7 +10,7 @@ fn custom_text_size_keeps_grid_captions_and_editors_inside_cards() {
         "ui::icons_cell::tests::custom_text_size_keeps_grid_captions_and_editors_inside_cards",
         || {
             crate::ui::prepare_portal_ui();
-            let themes = crate::ui::theme::ThemeManager::shared();
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
             let card = new_card(64);
             let (icon, label) = parts(&card).expect("card parts");
             label.set_text(Some("A long filename that wraps onto two lines.txt"));
@@ -19,7 +19,7 @@ fn custom_text_size_keeps_grid_captions_and_editors_inside_cards() {
             let window = gtk::Window::builder().child(&card).build();
             window.present();
             for pixels in [13, 24, 32, 48, 8, 13] {
-                themes.set_text_size(crate::ui::theme::TextSize::new(pixels));
+                preferences.set_text_size(crate::ui::preferences::TextSize::new(pixels));
                 for editing in [false, true] {
                     label.set_visible(!editing);
                     field.set_visible(editing);

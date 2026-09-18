@@ -357,11 +357,11 @@ impl PreviewDrawer {
                 state.print();
             }
         });
-        let preferences = super::theme::ThemeManager::shared();
+        let preferences = super::preferences::PreferenceManager::shared();
         let weak = Rc::downgrade(&state);
         preferences.bind_preference(
             &wrap,
-            super::theme::ThemeManager::preview_text_wrap,
+            super::preferences::PreferenceManager::preview_text_wrap,
             move |_, wrapped| {
                 if let Some(state) = weak.upgrade() {
                     state.apply_text_wrap(wrapped);
@@ -491,7 +491,7 @@ impl PreviewDrawer {
             Some(m) => m.clone(),
             None => return false,
         };
-        let preferences = super::theme::ThemeManager::shared();
+        let preferences = super::preferences::PreferenceManager::shared();
         let slider = self.state.media_volume_slider.borrow().clone();
         let icon = self.state.media_volume_icon.borrow().clone();
         let fallback = gtk::Image::new();
@@ -929,7 +929,8 @@ impl PreviewState {
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
-        let render_document = super::theme::ThemeManager::shared().render_documents_by_default();
+        let render_document =
+            super::preferences::PreferenceManager::shared().render_documents_by_default();
         self.document_view.set(if render_document {
             DocumentView::Rendered
         } else {
@@ -1030,8 +1031,9 @@ impl PreviewState {
                     .replace(Some(self.source_preview.view.clone()));
                 self.text_scroll
                     .replace(self.source_preview.scroll.borrow().clone());
-                self.wrap
-                    .set_active(super::theme::ThemeManager::shared().preview_text_wrap());
+                self.wrap.set_active(
+                    super::preferences::PreferenceManager::shared().preview_text_wrap(),
+                );
                 if truncated && !virtualized {
                     let notice = gtk::Label::new(Some("Preview limited to the first 1 MB"));
                     notice.add_css_class("preview-note");
@@ -1047,8 +1049,9 @@ impl PreviewState {
             } => {
                 self.print.set_visible(true);
                 self.wrap.set_visible(true);
-                self.wrap
-                    .set_active(super::theme::ThemeManager::shared().preview_text_wrap());
+                self.wrap.set_active(
+                    super::preferences::PreferenceManager::shared().preview_text_wrap(),
+                );
                 self.render_document_preview(
                     PendingSourcePreview {
                         entry: preview.entry,
@@ -1103,18 +1106,11 @@ impl PreviewState {
                 let section = media_layout::section(&overlay, &media);
                 self.content.append(&section);
 
+                let preferences = super::preferences::PreferenceManager::shared();
                 if is_gif {
                     media.set_loop(true);
-                    self.sizing.play_or_defer(&media);
-                    self.append_media_controls(
-                        &media,
-                        &super::theme::ThemeManager::shared(),
-                        &section,
-                        &center_play,
-                        true,
-                    );
+                    self.append_media_controls(&media, &preferences, &section, &center_play, true);
                 } else {
-                    let preferences = super::theme::ThemeManager::shared();
                     let muted = preferences.preview_muted();
                     let volume = if muted {
                         0.0
@@ -1124,7 +1120,11 @@ impl PreviewState {
                     media.set_volume(volume);
                     media.set_muted(muted);
                     self.append_media_controls(&media, &preferences, &section, &center_play, false);
+                }
+                if preferences.preview_autoplay() {
                     self.sizing.play_or_defer(&media);
+                } else {
+                    center_play.set_visible(true);
                 }
 
                 if let Some(error) = media.error() {
@@ -1215,7 +1215,8 @@ impl PreviewState {
                     view
                 }),
                 DocumentView::Rendered => preview.rendered.take().map(|(document, warnings)| {
-                    let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
+                    let wrapped =
+                        super::preferences::PreferenceManager::shared().preview_text_wrap();
                     let (view, state) = super::virtual_preview::rendered_document(
                         document,
                         warnings,
@@ -1482,6 +1483,8 @@ impl PreviewState {
             .vexpand(true)
             .build();
 
+        scroll.add_css_class("preview-pdf-scroll");
+
         let zoom_scroll =
             gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
         zoom_scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -1586,7 +1589,7 @@ impl PreviewState {
     fn append_media_controls(
         self: &Rc<Self>,
         media: &gtk::MediaStream,
-        preferences: &Rc<super::theme::ThemeManager>,
+        preferences: &Rc<super::preferences::PreferenceManager>,
         section: &gtk::Box,
         center_play: &gtk::Button,
         is_gif: bool,
@@ -2149,7 +2152,7 @@ impl SourcePreviewView {
         let languages = sourceview5::LanguageManager::default();
         let language = languages.guess_language(entry.location.native_path(), Some(content_type));
         if language.is_none() && super::virtual_preview::use_virtual_plain_source(content) {
-            let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
+            let wrapped = super::preferences::PreferenceManager::shared().preview_text_wrap();
             let (container, state) =
                 super::virtual_preview::source_document(content, truncated, wrapped);
             self.virtual_state.replace(Some(state));
@@ -2161,7 +2164,7 @@ impl SourcePreviewView {
         buffer.set_highlight_syntax(false);
         buffer.set_language(language.as_ref());
         self.view.set_buffer(Some(&buffer));
-        let wrapped = super::theme::ThemeManager::shared().preview_text_wrap();
+        let wrapped = super::preferences::PreferenceManager::shared().preview_text_wrap();
         self.view.set_wrap_mode(text_wrap_mode(wrapped));
         fill_source_buffer(
             &buffer,
@@ -2475,7 +2478,7 @@ fn format_file_size(bytes: u64) -> String {
 fn set_preview_mute(
     media: &impl IsA<gtk::MediaStream>,
     icon: &gtk::Image,
-    preferences: &Rc<super::theme::ThemeManager>,
+    preferences: &Rc<super::preferences::PreferenceManager>,
     muted: bool,
 ) {
     media.set_muted(muted);
@@ -2492,7 +2495,7 @@ fn set_preview_mute(
 
 fn set_preview_volume(
     media: &impl IsA<gtk::MediaStream>,
-    preferences: &Rc<super::theme::ThemeManager>,
+    preferences: &Rc<super::preferences::PreferenceManager>,
     slider: &Option<gtk::Scale>,
     icon: &gtk::Image,
     volume: f64,

@@ -219,6 +219,10 @@ impl ModeViews {
             }
             BrowserEvent::ColumnReloaded { depth } => self.update_panes(*depth, Pane::reload_rows),
             BrowserEvent::LoadFinished { depth, truncated } => {
+                let restore_cursor = self
+                    .panes_at(*depth)
+                    .iter()
+                    .any(|pane| pane.stack.is_focus());
                 let positions = self.browser.selected_positions(*depth);
                 self.update_panes(*depth, |pane| {
                     pane.finish_loading(*truncated, defer_empty, &positions)
@@ -229,6 +233,9 @@ impl ModeViews {
                     self.list_navigation
                         .borrow_mut()
                         .restore(pane, &self.browser);
+                }
+                if restore_cursor {
+                    self.focus_visible_pane(*depth);
                 }
             }
             BrowserEvent::LoadFailed { depth, message } => {

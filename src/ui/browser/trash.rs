@@ -855,14 +855,19 @@ impl ViewState {
         let escaped_browser = self.browser.clone();
         let focused_cancel = cancel.clone();
         let focused_confirm = confirm.clone();
+        let enter_buttons = [cancel, confirm.clone(), close];
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 escaped_browser.focus_active();
                 glib::Propagation::Stop
             } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
-                focused_confirm.emit_clicked();
-                glib::Propagation::Stop
+                if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
+                    button.emit_clicked();
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
             } else if !modifiers
                 .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
             {
@@ -871,6 +876,9 @@ impl ViewState {
                     Some(DeleteConfirmationFocus::Confirm) => focused_confirm.grab_focus(),
                     None => return glib::Propagation::Proceed,
                 };
+                if let Some(window) = focused_cancel.root().and_downcast::<gtk::Window>() {
+                    window.set_focus_visible(true);
+                }
                 glib::Propagation::Stop
             } else {
                 glib::Propagation::Proceed
@@ -881,7 +889,7 @@ impl ViewState {
         glib::idle_add_local_once(move || {
             initial_focus.grab_focus();
             if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
+                window.set_focus_visible(false);
             }
         });
     }

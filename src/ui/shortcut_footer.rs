@@ -228,7 +228,7 @@ impl ShortcutFooter {
         watch_status_widget(&widget, &self.status_widgets, &self.root);
     }
 
-    pub fn bind_preferences(&self, manager: &super::theme::ThemeManager) {
+    pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
         let show_hints = self.show_hints.clone();
         let pending = self.pending_popup.clone();
         let weak_popover = self.popover.downgrade();

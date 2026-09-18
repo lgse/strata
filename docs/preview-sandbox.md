@@ -11,9 +11,10 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
   images to dimension- and size-bounded PNG images.
-- `ffmpegthumbnailer` produces bounded media thumbnails. One helper serves at most
-  64 queued unique requests; duplicate requests share work, obsolete targets
-  cancel it, and failures are cached for 30 seconds.
+- `ffmpegthumbnailer` (or the software FFmpeg fallback) produces bounded media thumbnails. Browser thumbnails and
+  media details share the bounded, reusable sandbox supervisors described below.
+  Duplicate requests share work, obsolete targets detach, and thumbnail failures
+  are cached for 30 seconds.
 - Media previews use the incremental decoded-frame transport described below.
 - Plain text stays in-process, invokes no native format parser, and is capped at
   1 MiB.
@@ -29,6 +30,106 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
   helpers with a three-second deadline. QuickJS has no host APIs or module loader,
   and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
+
+## Browser worker pool
+
+Columns, List, and Icons share one lazy process-wide pool, retained across
+navigation, view changes, and windows. **Settings → General → Performance →
+Thumbnail workers** sets its maximum live (default: available parallelism capped
+at four; range 1–16). The saved `thumbnail_workers` preference takes precedence
+over `STRATA_THUMBNAIL_WORKERS`, which seeds the default when no count is saved
+(invalid values use the CPU-based default). Lowering the limit lets active jobs
+finish and retires excess idle supervisors. This includes browser media-metadata
+probes, not preview playback or Properties inspection.
+
+Idle supervisors stop after **60 seconds without a job**, and the pool can shrink
+to zero while Strata stays open. `STRATA_THUMBNAIL_IDLE_SECONDS` overrides this at
+startup (positive integer seconds, capped at 86,400; zero/invalid values use 60).
+Each completed lease resets that worker's idle clock; busy decoders are never
+interrupted by idle expiry. The existing lifetime launcher waits for the next
+expiry, without a polling timer or another maintenance thread. New misses start
+workers lazily again, within the same process-wide limit. This releases sandbox
+process memory, not application-side thumbnail caches or the small launcher/cache
+executor threads, so displayed and cached thumbnails remain available.
+
+The main process opens regular sources read-only and sends descriptors over a
+private Unix socket. A persistent bubblewrap **supervisor** handles only this
+small control protocol, never original media. Each job forks a disposable decoder
+from that codec-free process image, avoiding a helper exec per file. The setup
+child creates fresh user/mount/PID/IPC namespaces and private `/tmp` and `/dev/shm`. The decoder receives no control socket or browsing-directory mount. A per-job,
+write-only pipe sends results straight to the application: the supervisor never
+buffers image/metadata bytes that a later fork could inherit. Exiting the job's
+PID namespace terminates all descendants. Per-job CPU, address-space,
+file-size and core limits do not accumulate over the supervisor's lifetime;
+parent-enforced absolute deadlines retire stuck supervisors. A process-lifetime
+launcher thread owns bubblewrap's parent-death relationship, independent of
+short-lived metadata threads. Ordinary unbinds
+remove subscribers without killing healthy supervisors.
+
+Read-only descriptors alone are not a read-only filesystem boundary: a codec
+could reopen `/proc/self/fd` for writing or change source attributes. Jobs require
+fully enforced Landlock filesystem-write protection, including truncation (ABI 3), permitting writes
+only to private scratch mounts and `/dev/null`. An inherited seccomp filter also
+blocks attribute mutation, filesystem ioctls, and io_uring, which Landlock does
+not fully mediate. It permits the Linux 6.6 syscall-number range except these
+operations; unknown syscalls, alternate ABIs, and newer mutation interfaces fail
+closed. All setup completes before parsing a file. On systems without Landlock
+ABI 3, the pool retains the original one-shot read-only-bind bubblewrap path,
+with the same concurrency budget; it never silently decodes without protection.
+No GPU, network, desktop display, or session bus is available to these workers.
+Fork/namespace setup is confined to a checked single-threaded helper boundary;
+see [the unsafe-code policy](unsafe-code.md#browser-sandbox-fork-boundary).
+
+Source versions include device/inode, size, and nanosecond mtime/ctime. Shared
+in-flight gates and a bounded result cache reuse image dimensions returned by
+thumbnail decoding. Fresh thumbnail results also deliver these details directly
+to still-bound browser entries, without waiting for the metadata queue. Recycled
+and unbound targets cannot receive these updates. Image metadata-only jobs prefer the image header over
+`ffprobe`; video/audio metadata still uses a bounded `ffprobe` operation. Video
+thumbnailing and probing retain their existing separate tools, but no longer
+start independent bubblewrap instances on the persistent path. Metadata and
+thumbnail failures are independent. Worker results are checked against the source
+version, and row request IDs reject obsolete UI completions.
+
+Cache reads and rendering have separate bounded queues and dedicated thread
+executors; decoder waits never occupy GIO's listing threads. Thumbnail admission
+does not wait for a GIO metadata fill. Lookup resolves local size/mtime off the
+GTK thread, then rechecks the RAM cache before decoding a disk hit.
+All views reuse the canonical 256-pixel RAM rendition irrespective of icon size;
+the Freedesktop `large` disk cache remains unchanged. PNG texture decoding runs
+off the GTK thread. Persistence remains bounded and asynchronous.
+
+Scheduling ranks visible targets before a small overscan region across enclosing
+scrollers (including horizontally hidden Columns panes). Offscreen requests stay
+deferred, and scroll/map changes reprioritize work outside GTK layout callbacks.
+RAM hits remain available while scrolling. Metadata requests batch on the next
+main-loop idle, without a fixed 100 ms delay. List/Icons presentation work and
+camera admission batches coalesce on GTK's frame clock instead of 80/16 ms timers;
+repeated scrolling does not re-arm the pending frame. Work that inspects widgets
+runs from idle after the frame, outside GTK binding/layout callbacks. Identical
+in-flight file requests are reused, and presentation refreshes do not resubmit
+them. This removes fixed scheduling waits, not the time needed for I/O or decoding.
+With more than one render slot, slow
+RAW/PDF/video work leaves capacity for ordinary images. Browser metadata admission
+uses the same viewport policy; cheap filesystem metadata is published before
+media inspection or directory counting. Each completed detail is published
+without waiting for other probes. Viewport fills keep one active batch per folder,
+with at most 16 entries; new requests do not cancel it. Scroll updates reorder the
+remaining backlog with visible entries first, then overscan, then offscreen work.
+
+At most one metadata probe occupies the shared worker pool at a time. While both
+classes are waiting, a probe gets a turn after four thumbnail admissions, rather
+than waiting indefinitely for the thumbnail queue to empty. No worker is reserved
+when metadata is absent, and the existing slow-work limit still leaves room for
+ordinary images when the pool has multiple slots. This is admission fairness,
+not a wall-clock guarantee: long probes, source I/O, and the existing fill budget
+can still delay details; a one-worker configuration must serialize decoding and
+probing.
+
+`RUST_LOG=strata::sandbox::browser=debug` records supervisor starts and operation
+latencies and idle retirements without source paths. It is useful for verifying
+reuse: repeated cold files within the idle timeout should produce jobs, not a new
+`browser sandbox started` line per file.
 
 ## Bundled interface icons
 
@@ -92,7 +193,8 @@ Missing or failed previews leave the ordinary file icon; Strata does not fall
 back to downloading full photos for thumbnails.
 
 Retrieval is asynchronous, limited to 1 MiB and 15 seconds. These jobs share the
-existing four-worker, 64-waiting-job thumbnail queue and row-binding cancellation.
+configurable browser render admission budget and bounded thumbnail queues, with
+row-binding cancellation.
 The compressed preview is written to a random mode-0600 temporary file, decoded
 by the existing image-thumbnail sandbox, and removed after the decoder exits.
 Only the normalized PNG reaches GTK. Generated camera thumbnails use the bounded

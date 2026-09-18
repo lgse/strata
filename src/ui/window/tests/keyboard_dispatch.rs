@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod media_keys;
+mod scroll_zoom;
 
 use gtk::gdk::{Key, ModifierType};
 
@@ -25,8 +26,8 @@ impl KeyboardFixture {
     }
 
     fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
-        ThemeManager::seed_saved_preferences_for_test();
-        let preferences = ThemeManager::shared();
+        PreferenceManager::seed_saved_preferences_for_test();
+        let preferences = PreferenceManager::shared();
         // Keyboard focus-return scenarios need a place to focus; the saved fixture hides all places.
         preferences.set_sidebar_show_home(true);
         let directory = tempfile::tempdir().expect("fixture");
@@ -69,10 +70,14 @@ impl KeyboardFixture {
                 shortcuts: ShortcutFooter::new(BrowserMode::Columns),
             },
         );
-        let keys = window
-            .observe_controllers()
-            .item(0)
-            .and_downcast::<gtk::EventControllerKey>()
+        let controllers = window.observe_controllers();
+        let keys = (0..controllers.n_items())
+            .filter_map(|index| {
+                controllers
+                    .item(index)
+                    .and_downcast::<gtk::EventControllerKey>()
+            })
+            .next()
             .expect("key controller");
         window.present();
         view.browser().navigate(Location::local(directory.path()));
@@ -515,7 +520,7 @@ fn arrow_scope_preference_keeps_up_in_the_file_list() {
         "ui::window::tests::keyboard_dispatch::arrow_scope_preference_keeps_up_in_the_file_list",
         || {
             let fixtures = [KeyboardFixture::new(), KeyboardFixture::new()];
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             assert!(preferences.arrow_navigation_scoped());
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
                 for scoped in [true, false, true] {

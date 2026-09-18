@@ -529,7 +529,7 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
 }
 
 #[test]
-fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
+fn video_thumbnails_execute_the_helper_inside_the_bounded_sandbox() {
     let command = sandbox_command(
         Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
@@ -552,12 +552,10 @@ fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
     assert!(joined.contains("--as=2147483648"));
     assert!(joined.contains("--cpu=10"));
     assert!(joined.contains("--fsize=33554432"));
-    assert!(
-        joined
-            .contains("/usr/bin/ffmpegthumbnailer -i /input.mkv -o /output/result.png -s 128 -q 8")
-    );
-    assert!(!joined.contains("/app/strata"));
-    assert!(!joined.contains("--preview-helper"));
+    assert!(joined.contains("--ro-bind /tmp/strata /app/strata"));
+    assert!(joined.contains(
+        "/app/strata --preview-helper thumbnail-video /input.mkv /output/result.png 128 software"
+    ));
     assert!(!joined.contains("--share-net"));
 }
 

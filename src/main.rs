@@ -36,6 +36,7 @@ const GIO_FALLBACK_BACKENDS: [(&str, &str); 2] =
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LaunchMode {
     PreviewHelper,
+    BrowserWorker,
     GvfsProbe,
     Portal,
     InstallPortal,
@@ -53,6 +54,7 @@ enum LaunchMode {
 fn launch_mode(arguments: &[OsString]) -> LaunchMode {
     match arguments.get(1).and_then(|argument| argument.to_str()) {
         Some("--preview-helper") => LaunchMode::PreviewHelper,
+        Some("--browser-worker") => LaunchMode::BrowserWorker,
         Some(GVFS_PROBE_ARGUMENT) => LaunchMode::GvfsProbe,
         Some("--portal") => LaunchMode::Portal,
         Some("--install-portal") => LaunchMode::InstallPortal,
@@ -115,6 +117,15 @@ fn run_udiskie_hook(arguments: &[OsString]) -> gtk::glib::ExitCode {
 fn main() -> gtk::glib::ExitCode {
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
+        LaunchMode::BrowserWorker => {
+            return match sandbox::browser::run() {
+                Ok(()) => gtk::glib::ExitCode::SUCCESS,
+                Err(error) => {
+                    eprintln!("Browser helper failed: {error}");
+                    gtk::glib::ExitCode::FAILURE
+                }
+            };
+        }
         LaunchMode::PreviewHelper => {
             if let Err(error) = run_preview_helper(&arguments[2..]) {
                 eprintln!("Preview helper failed: {error}");
