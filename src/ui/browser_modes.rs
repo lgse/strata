@@ -2520,7 +2520,7 @@ fn column_resize_handle(
                 .borrow()
                 .iter()
                 .filter_map(glib::WeakRef::upgrade)
-                .map(|widget| super::browser::max_child_natural_width(&widget))
+                .map(|widget| list_cell_content_width(&widget))
                 .max()
                 .unwrap_or(initial_width);
             set_list_column_width(
@@ -2564,6 +2564,38 @@ fn column_resize_handle(
 
 fn list_column_width(index: usize, width: i32) -> i32 {
     width.max(LIST_COLUMN_MIN_WIDTHS[index])
+}
+
+/// Registered cells carry the column's fixed width and their labels cap natural
+/// width at one character, so autofit must measure with both constraints lifted.
+fn list_cell_content_width(cell: &gtk::Widget) -> i32 {
+    let cell_request = cell.width_request();
+    if cell_request >= 0 {
+        cell.set_width_request(-1);
+    }
+    let mut labels = Vec::new();
+    let mut stack = vec![cell.clone()];
+    while let Some(widget) = stack.pop() {
+        if let Some(label) = widget.downcast_ref::<gtk::Label>()
+            && label.max_width_chars() >= 0
+        {
+            labels.push((label.clone(), label.max_width_chars()));
+            label.set_max_width_chars(-1);
+        }
+        let mut child = widget.first_child();
+        while let Some(c) = child {
+            stack.push(c.clone());
+            child = c.next_sibling();
+        }
+    }
+    let (_, natural, _, _) = cell.measure(gtk::Orientation::Horizontal, -1);
+    if cell_request >= 0 {
+        cell.set_width_request(cell_request);
+    }
+    for (label, chars) in labels {
+        label.set_max_width_chars(chars);
+    }
+    natural
 }
 
 fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
