@@ -130,6 +130,13 @@ impl Dispatcher {
         }
         if self.view.item_view_has_focus() && matches!(event.key, Key::Home | Key::End) {
             self.view.commit_selection();
+            if !event.shift()
+                && self
+                    .view
+                    .jump_parked_selection(if event.key == Key::Home { -1 } else { 1 })
+            {
+                return Some(Propagation::Stop);
+            }
         }
         if let Some(direction) = page_direction(event.key)
             && self.view.page_selection(direction)

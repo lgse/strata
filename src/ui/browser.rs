@@ -32,7 +32,7 @@ pub(super) mod camera_scroll;
 mod clipboard;
 mod collection;
 mod columns;
-mod context_menu;
+pub(super) mod context_menu;
 mod customization;
 mod desktop;
 mod destination;
@@ -187,7 +187,7 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
-    pending_transfer_selection: RefCell<Option<(Location, Vec<Location>)>>,
+    pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
     /// dialog opens once the entry it describes is actually loaded.
     pending_select_properties: Cell<bool>,
@@ -510,7 +510,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
-            pending_transfer_selection: RefCell::new(None),
+            pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
@@ -735,6 +735,30 @@ impl BrowserView {
     pub fn select_after_load(&self, names: Vec<String>, properties: bool) {
         self.state.pending_select.borrow_mut().extend(names);
         self.state.pending_select_properties.set(properties);
+    }
+
+    pub(super) fn reveal_location(&self, location: Location) {
+        let Some(parent) = location.parent() else {
+            return;
+        };
+        self.state.pending_archive_destination.take();
+        self.state.pending_navigate.take();
+        self.state.pending_select.take();
+        self.state.pending_select_properties.set(false);
+        self.state
+            .pending_location_selection
+            .replace(Some((parent.clone(), vec![location])));
+        if self.state.browser.active_location().as_ref() == Some(&parent) {
+            if let Some(depth) = self.state.browser.active_depth() {
+                if let Some(column) = self.state.columns.borrow().get(depth) {
+                    column.filter_entry.set_text("");
+                }
+                self.state.mode_views.borrow().clear_filter(depth);
+            }
+            self.state.browser.reload_active();
+        } else {
+            self.state.browser.navigate_location(parent, false);
+        }
     }
 
     pub fn browser(&self) -> Rc<Browser> {
@@ -1585,6 +1609,29 @@ impl BrowserView {
             .browser
             .page_along(direction, usize::MAX, order.as_deref());
         super::scrolling::reveal_jump(&view, &scroll, direction);
+        true
+    }
+
+    pub fn jump_parked_selection(&self, direction: i32) -> bool {
+        if !self.item_view_has_focus()
+            || !self
+                .state
+                .overlay
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focused| focused.is::<gtk::Stack>())
+        {
+            return false;
+        }
+        let order = self
+            .state
+            .browser
+            .active_depth()
+            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+            .filter(|order| !order.is_empty());
+        self.state
+            .browser
+            .page_along(direction, usize::MAX, order.as_deref());
         true
     }
 

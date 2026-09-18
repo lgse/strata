@@ -34,7 +34,13 @@ pub(super) fn install(
         dismissed_root.set_blurred(false);
         dismissed_button.remove_css_class("active");
     });
-    let dialog = SearchDialog::new(activate, dismiss);
+    let browser = content.browser.clone();
+    let preview = content.preview.clone();
+    let reveal = Rc::new(move |item: SearchItem| {
+        preview.clear_target();
+        browser.reveal_location(Location::local(item.path));
+    });
+    let dialog = SearchDialog::new(activate, reveal, dismiss);
     content.overlay.add_overlay(&dialog.widget());
     let toggle = toggle_handler(dialog.clone(), content, preferences);
     let clicked_search = toggle.clone();

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+#[cfg(test)]
+mod tests;
+
 use std::{cell::RefCell, rc::Rc};
 
 use gtk::{gdk, prelude::*};
@@ -17,7 +20,9 @@ pub(super) fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::Fl
     name.set_placeholder_text(Some("Theme name"));
     panel.append(&name);
 
-    let values = Rc::new(RefCell::new(manager.starter_tokens()));
+    let mut tokens = manager.starter_tokens();
+    tokens.initialize_syntax_colors();
+    let values = Rc::new(RefCell::new(tokens));
     let fields = theme_color_fields(&manager, &values);
     panel.append(&fields);
 
@@ -157,10 +162,15 @@ enum ColorField {
     Highlight,
     Border,
     DimText,
+    SyntaxKeyword,
+    SyntaxString,
+    SyntaxConstant,
+    SyntaxType,
+    SyntaxPreprocessor,
 }
 
 impl ColorField {
-    const ALL: [(&'static str, Self); 9] = [
+    const ALL: [(&'static str, Self); 14] = [
         ("Background", Self::Background),
         ("Surface", Self::Surface),
         ("Text", Self::Text),
@@ -169,7 +179,12 @@ impl ColorField {
         ("Muted", Self::Muted),
         ("Highlight", Self::Highlight),
         ("Border", Self::Border),
-        ("Dim text", Self::DimText),
+        ("Dim text / comments", Self::DimText),
+        ("Syntax keywords", Self::SyntaxKeyword),
+        ("Syntax strings", Self::SyntaxString),
+        ("Syntax constants", Self::SyntaxConstant),
+        ("Syntax types", Self::SyntaxType),
+        ("Syntax preprocessor", Self::SyntaxPreprocessor),
     ];
 
     fn slot(self, tokens: &mut ThemeTokens) -> &mut String {
@@ -183,6 +198,26 @@ impl ColorField {
             Self::Highlight => &mut tokens.highlight,
             Self::Border => &mut tokens.border,
             Self::DimText => &mut tokens.dim_text,
+            Self::SyntaxKeyword => tokens
+                .syntax_keyword
+                .as_mut()
+                .expect("initialized syntax color"),
+            Self::SyntaxString => tokens
+                .syntax_string
+                .as_mut()
+                .expect("initialized syntax color"),
+            Self::SyntaxConstant => tokens
+                .syntax_constant
+                .as_mut()
+                .expect("initialized syntax color"),
+            Self::SyntaxType => tokens
+                .syntax_type
+                .as_mut()
+                .expect("initialized syntax color"),
+            Self::SyntaxPreprocessor => tokens
+                .syntax_preprocessor
+                .as_mut()
+                .expect("initialized syntax color"),
         }
     }
 }

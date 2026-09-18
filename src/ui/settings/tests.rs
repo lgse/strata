@@ -4,7 +4,7 @@ mod preferences;
 mod reference;
 mod typography;
 
-use std::rc::Rc;
+use std::{path::Path, rc::Rc};
 
 use crate::services::{
     BuildKind, Channel, InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck, UpdateMethod,
@@ -17,7 +17,8 @@ use super::{
     general::{video_preview_backend_label, video_preview_control_state},
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
     managed_install_summary, offer_still_eligible, omarchy_update_command,
-    resolve_update_method_async, responsive_dialog_size, shows_available_release_notes,
+    resolve_update_method_async, responsive_dialog_size, restart_waiter,
+    shows_available_release_notes,
     theme::{theme_background_is_light, theme_name_matches},
     update_check_due, update_check_message, update_dialog_status, update_status_markup,
     uses_compact_navigation,
@@ -535,4 +536,61 @@ fn update_method_resolves_and_caches() {
         *capture.borrow_mut() = Some(method);
     });
     assert_eq!(second.borrow().expect("the cache should answer"), resolved);
+}
+
+#[test]
+fn restart_waiter_uses_absolute_sh() {
+    let command = restart_waiter(Path::new("/tmp/strata"), 1).expect("trusted restart helpers");
+    let program = Path::new(command.get_program());
+    assert!(program.is_absolute());
+    assert_eq!(
+        program.file_name().and_then(|name| name.to_str()),
+        Some("sh")
+    );
+    assert!(
+        crate::trusted_command::SEARCH_ROOTS
+            .iter()
+            .any(|root| program.starts_with(root)),
+        "restart waiter program {}",
+        program.display()
+    );
+}
+
+#[test]
+fn restart_waiter_ignores_path_shadowing_and_preserves_application_path() {
+    use std::{fs, os::unix::fs::PermissionsExt};
+
+    let dir = tempfile::tempdir().expect("restart fixtures");
+    let sh = crate::trusted_command::resolve("sh").expect("trusted shell");
+    let hijacked = dir.path().join("hijacked");
+    let restarted = dir.path().join("restarted");
+    let application = dir.path().join("application");
+    for (path, script) in [
+        (
+            dir.path().join("sleep"),
+            "printf hijacked > \"$HIJACK_MARKER\"",
+        ),
+        (
+            application.clone(),
+            "printf '%s' \"$PATH\" > \"$RESTART_MARKER\"",
+        ),
+    ] {
+        fs::write(&path, format!("#!{}\n{script}\n", sh.display())).expect("write fixture");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("executable fixture");
+    }
+
+    let status = restart_waiter(&application, u32::MAX)
+        .expect("trusted restart helpers")
+        .env("PATH", dir.path())
+        .env("HIJACK_MARKER", &hijacked)
+        .env("RESTART_MARKER", &restarted)
+        .status()
+        .expect("run restart waiter");
+
+    assert!(status.success());
+    assert!(!hijacked.exists());
+    assert_eq!(
+        fs::read(&restarted).expect("application restarted"),
+        dir.path().as_os_str().as_encoded_bytes()
+    );
 }

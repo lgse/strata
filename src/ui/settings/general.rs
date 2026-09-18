@@ -50,6 +50,7 @@ pub(super) fn general_page(
 
     let performance = super::settings_group(&preferences, "PERFORMANCE");
     append_auto_refresh_option(&performance, &manager);
+    append_thumbnail_workers_option(&performance, &manager);
     append_video_preview_option(&performance, &manager);
 
     let desktop = super::settings_group(&preferences, "DESKTOP INTEGRATION");
@@ -68,6 +69,55 @@ pub(super) fn general_page(
         vec![portal_row, udiskie_row],
         responsive_activation_rows,
     )
+}
+
+fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let (control, [decrease, reset, increase]) = crate::ui::controls::stepper([
+        "Decrease thumbnail workers",
+        "Reset thumbnail workers",
+        "Increase thumbnail workers",
+    ]);
+    for (button, increase) in [(decrease, false), (increase, true)] {
+        manager.bind_preference(
+            &button,
+            ThemeManager::thumbnail_workers,
+            move |widget, workers| {
+                widget.set_sensitive(if increase {
+                    workers < crate::sandbox::browser::MAX_WORKERS
+                } else {
+                    workers > 1
+                });
+            },
+        );
+        let manager = manager.clone();
+        button.connect_clicked(move |_| {
+            let workers = manager.thumbnail_workers();
+            manager.set_thumbnail_workers(if increase {
+                workers.saturating_add(1)
+            } else {
+                workers.saturating_sub(1)
+            });
+        });
+    }
+    manager.bind_preference(
+        &reset,
+        ThemeManager::thumbnail_workers,
+        |widget, workers| {
+            widget
+                .downcast_ref::<gtk::Button>()
+                .expect("worker count")
+                .set_label(&workers.to_string());
+        },
+    );
+    let manager = manager.clone();
+    reset.connect_clicked(move |_| {
+        manager.set_thumbnail_workers(crate::sandbox::browser::default_worker_limit())
+    });
+    content.append(&super::control_row(
+        "Thumbnail workers",
+        "Parallel thumbnail decoders across all windows. More workers use more CPU and memory. Click the number to reset to the recommended default.",
+        &control,
+    ));
 }
 
 #[derive(Clone, Copy)]

@@ -58,6 +58,7 @@ control that might be midway through synchronization.
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
 | Theme, Omarchy following, text size | Shared CSS is applied by the manager; controls and theme-card selections bind to preferences. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
+| Thumbnail workers | Browser construction binds the shared decoder limit before Settings opens. Changes apply across windows and rebuilt views; lowering the limit lets active work finish and retires excess idle supervisors. |
 | Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
 | Preview text wrap | Every text preview and header toggle binds to the saved wrap choice, including newly loaded files. Off by default. |
 | Render documents by default | A newly loaded Markdown or HTML preview reads the current choice for its initial Rendered or Source view. Switching the view of an open document does not change the saved default. |
@@ -76,6 +77,20 @@ plus `$XDG_DATA_HOME/strata/udiskie-install/state.toml`.
 Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.
+
+## Thumbnail workers
+
+Under **Settings → General → Performance**, use the **Thumbnail workers** −/+
+control to choose **1–16** concurrent decoders across all windows. The initial
+default uses the available CPU count, capped at four (two if CPU detection fails).
+Click the number to reset. Higher values can improve throughput but consume more
+CPU and memory; they do not change image resolution or preview playback.
+
+The count is saved as `thumbnail_workers` and applies immediately. Busy jobs finish
+normally when the count is lowered. Idle excess supervisors retire asynchronously;
+lightweight executor threads remain available for reuse. `STRATA_THUMBNAIL_WORKERS`
+seeds the default only when no saved count exists; an explicit saved choice wins.
+The reset value also honors that environment variable.
 
 ## Camera Photos ordering
 

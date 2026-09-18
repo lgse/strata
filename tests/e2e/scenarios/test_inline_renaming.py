@@ -251,6 +251,7 @@ def test_rename_and_undo_restores_the_original_item(strata, kind):
     strata.wait(renamed_path.exists, "the renamed item")
     # The filesystem changes before the UI callback publishes rename undo.
     strata.wait_for_selection(["undo-target"])
+    strata.wait(lambda: strata.focused_name() == "undo-target", "the committed rename cursor")
 
     strata.keyboard.press("ctrl+z")
     strata.wait(

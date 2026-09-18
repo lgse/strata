@@ -779,34 +779,16 @@ pub(super) fn build_appearance_menu(
     let sample = gtk::Label::new(Some("Aa"));
     sample.add_css_class("appearance-text-sample");
     text_controls.append(&sample);
-    let stepper = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    stepper.add_css_class("appearance-text-stepper");
-    stepper.set_hexpand(true);
-    stepper.set_halign(gtk::Align::End);
+    let (stepper, [decrease, reset_size, increase]) = super::controls::stepper([
+        "Decrease text size (Ctrl+−)",
+        "Reset text size (Ctrl+0)",
+        "Increase text size (Ctrl++)",
+    ]);
     text_controls.append(&stepper);
-    for (icon, tooltip, delta) in [
-        (
-            crate::assets::icons::MINUS,
-            "Decrease text size (Ctrl+−)",
-            -1,
-        ),
-        (crate::assets::icons::PLUS, "Increase text size (Ctrl++)", 1),
-    ] {
-        let image = crate::assets::primary_icon(icon, 16);
-        image.set_halign(gtk::Align::Center);
-        image.set_valign(gtk::Align::Center);
-        let button = gtk::Button::builder().child(&image).build();
-        button.add_css_class("appearance-text-step");
-        button.set_tooltip_text(Some(tooltip));
-        super::accessibility::set_label(&button, tooltip);
+    for (button, delta) in [(decrease, -1), (increase, 1)] {
         let manager = preferences.clone();
         button.connect_clicked(move |_| manager.set_text_size(manager.text_size().stepped(delta)));
-        stepper.append(&button);
     }
-    let reset_size = gtk::Button::new();
-    reset_size.add_css_class("appearance-text-value");
-    reset_size.set_hexpand(true);
-    reset_size.set_tooltip_text(Some("Reset text size (Ctrl+0)"));
     preferences.bind_preference(&reset_size, ThemeManager::text_size, |widget, size| {
         widget
             .downcast_ref::<gtk::Button>()
@@ -815,7 +797,6 @@ pub(super) fn build_appearance_menu(
     });
     let manager = preferences.clone();
     reset_size.connect_clicked(move |_| manager.set_text_size(super::theme::TextSize::default()));
-    stepper.insert_child_after(&reset_size, stepper.first_child().as_ref());
     content.append(&text_controls);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
