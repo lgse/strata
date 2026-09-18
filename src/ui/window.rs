@@ -475,6 +475,7 @@ fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
 }
 
 const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
+    ("win.command-palette", &["<Control><Shift>p"]),
     ("win.search", &["<Control>k"]),
     ("win.jump-folder", &["<Control><Shift>k"]),
     ("win.open-terminal", &["<Primary>t"]),

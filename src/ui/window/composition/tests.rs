@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod palette;
 mod preview_session;
 
 use gtk::{

@@ -89,6 +89,22 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Folders and unsupported files do not open a preview.
 
+## Command palette
+
+Press **Ctrl+Shift+P** or use the header's **Command palette** button to find
+commands by name or alias (for example, `mkdir` or `preferences`). Use **Up/Down**
+to choose a command, wrapping between the first and last results, **Enter** to run
+it, and **Escape** to close the palette and restore focus. Unavailable commands
+explain what is needed before they can run.
+The palette preserves the originating pane and selection, and closes before
+opening another dialog or starting an inline rename. Finish an active inline
+edit before opening it.
+
+With an empty query, the last five invoked commands appear under **Recents**,
+followed by the remaining commands grouped by purpose. Recents are shared across
+windows for the current application session. Typing ranks commands by relevance,
+independently of recency.
+
 ## Shortcut footer
 
 Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open.

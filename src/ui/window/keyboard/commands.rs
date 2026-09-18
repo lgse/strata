@@ -25,6 +25,15 @@ use crate::{
 impl Dispatcher {
     pub(super) fn window_commands(&self, event: &KeyEvent) -> KeyResult {
         if event.control()
+            && event.shift()
+            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::p | Key::P)
+        {
+            let _ =
+                gtk::prelude::WidgetExt::activate_action(&self.window, "win.command-palette", None);
+            return Some(Propagation::Stop);
+        }
+        if event.control()
             && (!event.text_has_focus() || self.view.filter_has_focus())
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && let Some(mode) = browser_mode_for_digit(event.key)

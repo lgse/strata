@@ -1630,6 +1630,17 @@ impl Browser {
         self.install_operation_load(request_id, load);
     }
 
+    pub(crate) fn can_undo(&self) -> bool {
+        self.current_operation.get().is_none()
+            && PENDING_UNDO.with(|pending| {
+                pending
+                    .borrow()
+                    .history
+                    .last()
+                    .is_some_and(|latest| !latest.claimed)
+            })
+    }
+
     /// The pending move undo, if the latest reversible operation was a move.
     pub fn pending_undo_move(&self) -> Option<(u64, Vec<MoveRecord>)> {
         if self.current_operation.get().is_some() {
