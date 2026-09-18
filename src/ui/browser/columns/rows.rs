@@ -841,9 +841,15 @@ pub(super) fn column_rows(
                 && let Some(position) = source_position
                 && metadata_needs_fill(entry)
             {
-                state
-                    .browser
-                    .request_metadata_fill(depth, position, entry.location.clone(), false);
+                crate::ui::thumbnail::request_metadata(
+                    &icon,
+                    &row,
+                    &state.browser,
+                    depth,
+                    position,
+                    entry.location.clone(),
+                    false,
+                );
             }
         } else {
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);

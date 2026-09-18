@@ -14,6 +14,28 @@ use super::super::{Browser, BrowserEvent, SortFill};
 mod tests;
 
 impl Browser {
+    pub(crate) fn apply_thumbnail_metadata(
+        &self,
+        depth: usize,
+        position: usize,
+        update: MetadataUpdate,
+    ) {
+        let mut state = self.state.borrow_mut();
+        let Some(request) = state.request_id_for_depth(depth) else {
+            return;
+        };
+        let Some((depth, positions, _)) =
+            state.apply_positioned_metadata(request, vec![(position, update)])
+        else {
+            return;
+        };
+        let updates = filled_entries(&state, depth, &positions);
+        drop(state);
+        if !updates.is_empty() {
+            self.emit(BrowserEvent::MetadataFilled { depth, updates });
+        }
+    }
+
     pub(super) fn receive_metadata(&self, request_id: RequestId, updates: Vec<MetadataUpdate>) {
         let awaiting = self
             .sort_awaiting_fill

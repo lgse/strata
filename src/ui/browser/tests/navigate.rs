@@ -20,6 +20,63 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
+#[test]
+fn reveal_location_selects_files_and_directories_by_native_path_in_every_mode() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::navigate::reveal_location_selects_files_and_directories_by_native_path_in_every_mode",
+        || {
+            use std::os::unix::ffi::OsStringExt;
+
+            let fixture = tempfile::tempdir().expect("reveal fixture");
+            let parent = fixture.path().join("containing folder");
+            std::fs::create_dir(&parent).expect("containing folder");
+            let file = parent.join("file with spaces #%.txt");
+            let directory = parent.join("directory result");
+            let native = parent.join(std::ffi::OsString::from_vec(b"native-\xff.txt".to_vec()));
+            std::fs::write(&file, "file").expect("file result");
+            std::fs::create_dir(&directory).expect("directory result");
+            std::fs::write(&native, "native").expect("native filename");
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    PeekBehavior::default(),
+                );
+                view.set_view_mode(mode);
+                let browser = view.browser();
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(650)
+                    .build();
+                window.present();
+                for path in [&file, &directory, &native] {
+                    browser.navigate(Location::local(fixture.path()));
+                    for already_open in [false, true] {
+                        if already_open {
+                            assert!(view.show_filter_with_query("no-match"));
+                            settle();
+                        }
+                        let location = Location::local(path);
+                        view.reveal_location(location.clone());
+                        wait_until(|| {
+                            browser.active_location() == Some(Location::local(&parent))
+                                && browser.selected_entries().len() == 1
+                                && browser.selected_entries()[0].location == location
+                                && browser
+                                    .focused_entry()
+                                    .is_some_and(|e| e.location == location)
+                                && view.item_view_has_focus()
+                        });
+                        assert_eq!(browser.active_location(), Some(Location::local(&parent)));
+                    }
+                }
+                browser.clear_observer();
+                window.destroy();
+            }
+        },
+    );
+}
+
 fn present_single_pane(
     mode: BrowserMode,
 ) -> (
