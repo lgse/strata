@@ -157,8 +157,6 @@ pub(super) struct ViewState {
     context_menu_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
-    /// An empty-space click only focuses the column; it must not drag the listing
-    /// back to the focused row the user just scrolled away from.
     suppress_focus_scroll: Cell<bool>,
     source_generation: Rc<Cell<u64>>,
     peek: RefCell<Option<PeekView>>,
