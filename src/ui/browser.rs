@@ -285,11 +285,11 @@ impl BrowserView {
             .hexpand(true)
             .width_chars(48)
             .placeholder_text("Enter an absolute path")
-            .tooltip_text("Location (Ctrl+L)")
+            .tooltip_text(super::accessibility::LOCATION_LABEL)
             .build();
         location_entry.add_css_class("location-entry");
         let confirm_location = gtk::Button::builder()
-            .tooltip_text("Navigate (Enter)")
+            .tooltip_text(super::accessibility::LOCATION_CONFIRM_LABEL)
             .build();
         confirm_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::CHECK,
@@ -297,13 +297,18 @@ impl BrowserView {
         )));
         confirm_location.add_css_class("location-action");
         let cancel_location = gtk::Button::builder()
-            .tooltip_text("Cancel (Escape)")
+            .tooltip_text(super::accessibility::LOCATION_CANCEL_LABEL)
             .build();
         cancel_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::X,
             16,
         )));
         cancel_location.add_css_class("location-action");
+        super::accessibility::describe_location_controls(
+            &location_entry,
+            &confirm_location,
+            &cancel_location,
+        );
         let entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         entry_row.append(&location_entry);
         entry_row.append(&confirm_location);

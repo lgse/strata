@@ -12,6 +12,22 @@ pub(super) fn set_label(widget: &impl IsA<gtk::Accessible>, label: &str) {
     widget.update_property(&[gtk::accessible::Property::Label(label)]);
 }
 
+/// Spoken names for the location bar. GtkEntry does not use its tooltip as a
+/// name, and the confirm/cancel buttons are icon-only.
+pub(super) const LOCATION_LABEL: &str = "Location (Ctrl+L)";
+pub(super) const LOCATION_CONFIRM_LABEL: &str = "Navigate (Enter)";
+pub(super) const LOCATION_CANCEL_LABEL: &str = "Cancel (Escape)";
+
+pub(super) fn describe_location_controls(
+    entry: &impl IsA<gtk::Accessible>,
+    confirm: &impl IsA<gtk::Accessible>,
+    cancel: &impl IsA<gtk::Accessible>,
+) {
+    set_label(entry, LOCATION_LABEL);
+    set_label(confirm, LOCATION_CONFIRM_LABEL);
+    set_label(cancel, LOCATION_CANCEL_LABEL);
+}
+
 /// The name belongs on the list item rather than on the row content: the item
 /// is the widget carrying the `list item` / `table cell` accessible role and
 /// the selected and focused states.

@@ -50,6 +50,21 @@ def test_toolbar_controls_are_named(strata):
         assert strata.window.find(name=name) is not None, f"{name!r} is unnamed"
 
 
+def test_location_controls_are_named(strata):
+    """`ui::accessibility::describe_location_controls` names the address bar."""
+
+    strata.keyboard.press("ctrl+l")
+    field = strata.wait(
+        lambda: strata.window.find(role="text", name="Location (Ctrl+L)"),
+        "the named location entry",
+    )
+    assert "editable" in field.states
+    for name in ("Navigate (Enter)", "Cancel (Escape)"):
+        assert strata.window.find(role="button", name=name) is not None, (
+            f"{name!r} is unnamed"
+        )
+
+
 def test_focus_order_reaches_the_files_from_the_header(strata):
     """Tab from the window's first control eventually reaches the listing."""
 
