@@ -158,6 +158,133 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
     );
 }
 
+fn selection_entry(path: &std::path::Path, is_directory: bool, size: u64) -> FileEntry {
+    FileEntry {
+        location: Location::local(path),
+        thumbnail_path: None,
+        native_name: path.file_name().unwrap_or_default().to_owned(),
+        display_name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        kind: if is_directory {
+            crate::model::EntryKind::Directory
+        } else {
+            crate::model::EntryKind::File
+        },
+        size: crate::model::MetadataValue::Known(size),
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    }
+}
+
+#[test]
+fn selection_properties_aggregates_nested_counts_and_sizes_across_the_selection() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::selection_properties_aggregates_nested_counts_and_sizes_across_the_selection",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("selected_file.txt"), b"aaaaa").expect("file");
+            std::fs::create_dir_all(root.path().join("selected_folder/nested_dir"))
+                .expect("folder");
+            std::fs::write(root.path().join("selected_folder/inner.txt"), b"bbb").expect("inner");
+            std::fs::write(
+                root.path().join("selected_folder/nested_dir/deep.txt"),
+                b"cc",
+            )
+            .expect("deep");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            let entries = vec![
+                selection_entry(&root.path().join("selected_file.txt"), false, 5),
+                selection_entry(&root.path().join("selected_folder"), true, 0),
+            ];
+            view.state.show_selection_properties(entries);
+
+            let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
+            let contains =
+                row_label(overlay.upcast_ref(), "CONTAINS").expect("Properties CONTAINS row");
+            let spinner = size
+                .next_sibling()
+                .and_downcast::<gtk::Spinner>()
+                .expect("size spinner");
+            assert!(spinner.is_spinning());
+
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while spinner.is_spinning() {
+                assert!(Instant::now() < deadline, "SIZE stayed at {}", size.text());
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(size.text(), "10 B");
+            assert_eq!(contains.text(), "3 files, 1 folder");
+
+            let layer = overlay
+                .last_child()
+                .and_downcast::<gtk::Box>()
+                .expect("modal layer");
+            dismiss_modal_layer(&layer, &overlay, None);
+            while layer.parent().is_some() {
+                assert!(Instant::now() < deadline, "Properties did not close");
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
+fn a_single_item_selection_falls_back_to_the_full_properties_dialog() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::a_single_item_selection_falls_back_to_the_full_properties_dialog",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("lone.txt"), b"hi").expect("file");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.state.show_selection_properties(vec![selection_entry(
+                &root.path().join("lone.txt"),
+                false,
+                2,
+            )]);
+
+            let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
+            assert_eq!(size.text(), "2 B");
+            assert!(
+                row_label(overlay.upcast_ref(), "OPENS WITH").is_some(),
+                "a single-item selection must open the full single-item dialog, not the compact one"
+            );
+
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
 #[test]
 fn folder_properties_rejects_the_recent_collection() {
     crate::test_support::gtk_test(
