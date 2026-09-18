@@ -541,6 +541,7 @@ impl BrowserView {
         state.install_drag_autoscroll();
 
         let weak_state = Rc::downgrade(&state);
+        columns::install_horizontal_scroll(&state);
         super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
             let state = weak_state.upgrade()?;
             let laid_out = state.columns_widget.compute_bounds(surface)?;

@@ -32,6 +32,41 @@ pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
 pub(super) const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 
+pub(super) fn install_horizontal_scroll(state: &Rc<ViewState>) {
+    let controller = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+    // Nested listing scrollers consume horizontal events even with horizontal scrolling disabled.
+    controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak_state = Rc::downgrade(state);
+    controller.connect_scroll(move |controller, dx, dy| {
+        let Some(state) = weak_state.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        let shifted = controller
+            .current_event_state()
+            .contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let (dx, dy) = if shifted { (dy, dx) } else { (dx, dy) };
+        if dx.abs() <= dy.abs() {
+            return glib::Propagation::Proceed;
+        }
+        let adjustment = state.scroller.hadjustment();
+        let max = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+        if max <= adjustment.lower() {
+            return glib::Propagation::Proceed;
+        }
+        let scale = match controller.unit() {
+            gtk::gdk::ScrollUnit::Wheel => adjustment.page_size().powf(2.0 / 3.0),
+            gtk::gdk::ScrollUnit::Surface => 2.5,
+            _ => 1.0,
+        };
+        state
+            .horizontal_scroll_generation
+            .set(state.horizontal_scroll_generation.get().saturating_add(1));
+        adjustment.set_value((adjustment.value() + dx * scale).clamp(adjustment.lower(), max));
+        glib::Propagation::Stop
+    });
+    state.scroller.add_controller(controller);
+}
+
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
