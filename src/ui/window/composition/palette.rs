@@ -53,6 +53,7 @@ pub(super) fn install(
     layer.add_css_class("search-backdrop");
     layer.add_css_class("command-palette-backdrop");
     layer.add_css_class("app-modal-layer");
+    layer.set_focusable(true);
     layer.set_visible(false);
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 0);
     panel.add_css_class("search-dialog");
@@ -108,6 +109,14 @@ pub(super) fn install(
         states: RefCell::new(Vec::new()),
     });
     let weak = Rc::downgrade(&palette);
+    palette.layer.connect_has_focus_notify(move |layer| {
+        if layer.has_focus()
+            && let Some(palette) = weak.upgrade()
+        {
+            palette.field.grab_focus_without_selecting();
+        }
+    });
+    let weak = Rc::downgrade(&palette);
     palette.field.connect_changed(move |_| {
         if let Some(palette) = weak.upgrade() {
             palette.render();
@@ -154,8 +163,13 @@ impl Palette {
         {
             return;
         }
+        self.field.set_text("");
+        self.present(&window);
+    }
+
+    fn present(&self, window: &gtk::ApplicationWindow) {
         self.focus_before
-            .replace(gtk::prelude::RootExt::focus(&window).map(|w| w.downgrade()));
+            .replace(gtk::prelude::RootExt::focus(window).map(|w| w.downgrade()));
         self.browser.prepare_palette();
         self.states.replace(
             COMMANDS
@@ -163,11 +177,10 @@ impl Palette {
                 .map(|spec| self.state(spec.command, spec.label))
                 .collect(),
         );
-        self.field.set_text("");
         self.render();
         self.blurred_root.set_blurred(true);
         self.layer.set_visible(true);
-        self.field.grab_focus();
+        self.field.grab_focus_without_selecting();
     }
 
     fn hide(&self) {
@@ -345,12 +358,24 @@ impl Palette {
         let Some(index) = self.rows.borrow().get(row as usize).copied() else {
             return;
         };
-        if self.states.borrow()[index].reason.is_some() {
-            return;
-        }
         let command = COMMANDS[index].command;
         self.hide();
         if self.state(command, COMMANDS[index].label).reason.is_some() {
+            if let Some(window) = self.window.upgrade() {
+                self.present(&window);
+                let position = self
+                    .rows
+                    .borrow()
+                    .iter()
+                    .position(|candidate| *candidate == index);
+                if let Some(row) =
+                    position.and_then(|position| self.list.row_at_index(position as i32))
+                {
+                    self.list.select_row(Some(&row));
+                    row.grab_focus();
+                    self.field.grab_focus_without_selecting();
+                }
+            }
             return;
         }
         match command {

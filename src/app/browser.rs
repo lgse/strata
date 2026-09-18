@@ -2157,7 +2157,14 @@ impl Browser {
     }
 
     pub(crate) fn can_undo(&self) -> bool {
-        self.pending_replay_entry(false).is_some()
+        self.current_operation.get().is_none()
+            && PENDING_UNDO.with(|pending| {
+                pending
+                    .borrow()
+                    .history
+                    .last()
+                    .is_some_and(|latest| !latest.claimed)
+            })
     }
 
     pub fn pending_undo_move(&self) -> Option<(u64, Vec<MoveRecord>)> {

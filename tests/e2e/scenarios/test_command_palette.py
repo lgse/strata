@@ -115,7 +115,8 @@ def test_palette_creates_pins_duplicates_and_undoes(strata):
     strata.keyboard.type_text("palette-folder")
     strata.keyboard.press("Return")
     strata.wait(lambda: strata.fixture.path("palette-folder").is_dir(), "new folder")
-    strata.select_entry_with_keyboard("palette-folder")
+    strata.wait_for_focused_entry("palette-folder")
+    strata.wait_for_selection(["palette-folder"], directory=strata.fixture.root.name)
     run_command(strata, "pin folder")
     strata.wait(
         lambda: strata.window.find(role="button", name="palette-folder"),

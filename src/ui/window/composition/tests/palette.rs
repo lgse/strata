@@ -167,8 +167,75 @@ fn palette_file_commands_keep_selection_and_disabled_commands_do_not_run() {
                 let layer = search(&fixture, "duplicate");
                 press(&layer, Key::Return, ModifierType::empty());
                 assert!(layer.is_visible(), "unavailable command keeps palette open");
+                assert_eq!(
+                    descendant::<gtk::Entry>(&layer)
+                        .expect("palette search field")
+                        .text(),
+                    "duplicate",
+                    "unavailable command preserves the query"
+                );
                 press(&layer, Key::Escape, ModifierType::empty());
             }
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn palette_undo_becomes_available_after_background_copy_completes() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_undo_becomes_available_after_background_copy_completes",
+        || {
+            let fixture = Fixture::new();
+            let directory = tempfile::tempdir().expect("fixture directory");
+            let source = directory.path().join("original.txt");
+            let destination = directory.path().join("copies");
+            std::fs::write(&source, b"original").expect("source fixture");
+            std::fs::create_dir(&destination).expect("destination fixture");
+            let browser = fixture.content.browser.browser();
+            browser.navigate(Location::local(directory.path()));
+            wait_for(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            assert!(!browser.can_undo());
+            let layer = search(&fixture, "undo");
+
+            browser.transfer(
+                Location::local(&destination),
+                vec![crate::services::PasteItem {
+                    source: Location::local(&source),
+                    conflict: crate::services::TransferConflict::FailIfExists,
+                }],
+                false,
+                true,
+            );
+            wait_for(|| browser.can_undo());
+            let copied = destination.join("original.txt");
+            assert_eq!(std::fs::read(&copied).expect("completed copy"), b"original");
+            let field = descendant::<gtk::Entry>(&layer).expect("palette search field");
+            assert_eq!(field.text(), "undo");
+            let list = descendant::<gtk::ListBox>(&layer).expect("command list");
+            assert!(
+                list.selected_row().is_some(),
+                "Undo stays selected after copying"
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&fixture.window)
+                    .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer)),
+                "background completion keeps focus in the palette"
+            );
+            assert!(press(&layer, Key::Return, ModifierType::empty()));
+            assert!(
+                !layer.is_visible(),
+                "newly available Undo executes without reopening"
+            );
+            wait_for(|| !copied.exists() && !browser.can_undo());
+            assert_eq!(
+                std::fs::read(&source).expect("original survives Undo"),
+                b"original"
+            );
             fixture.close();
         },
     );
