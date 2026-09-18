@@ -456,6 +456,23 @@ fn decoder_cannot_reopen_or_mutate_a_read_only_source_descriptor() {
             file.set_permissions(std::fs::Permissions::from_mode(0o777))
                 .is_err()
         );
+        // Exercise fchmodat2 directly: libc's chmod wrappers may use older syscalls.
+        // SAFETY: stdin is an open descriptor and the empty path is NUL-terminated.
+        #[expect(unsafe_code, reason = "No safe wrapper exposes fchmodat2 directly")]
+        let result = unsafe {
+            libc::syscall(
+                worker::SYS_FCHMODAT2,
+                libc::STDIN_FILENO,
+                c"".as_ptr(),
+                0o777 as libc::mode_t,
+                libc::AT_EMPTY_PATH,
+            )
+        };
+        assert_eq!(result, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ENOSYS)
+        );
         assert!(
             file.set_modified(std::time::SystemTime::UNIX_EPOCH)
                 .is_err()

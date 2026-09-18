@@ -12,6 +12,7 @@ fn queue_until_terminal(browser: &Rc<Browser>, restoring: bool) -> impl FnOnce()
             OperationEvent::Restored {
                 request_id,
                 locations: Vec::new(),
+                restored: Vec::new(),
             }
         } else {
             OperationEvent::Deleted {

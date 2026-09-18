@@ -1277,7 +1277,7 @@ impl BrowserView {
     pub fn copy_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.selected_entries()
+            self.state.browser.transfer_entries()
         });
         if entries.is_empty() {
             return false;
@@ -1288,7 +1288,7 @@ impl BrowserView {
 
     pub fn duplicate_selection(&self) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.selected_entries();
+        let entries = self.state.browser.transfer_entries();
         let Some((destination, sources)) = duplicate_transfer(&entries) else {
             return false;
         };
@@ -1299,7 +1299,7 @@ impl BrowserView {
     pub fn cut_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.selected_entries()
+            self.state.browser.transfer_entries()
         });
         if entries.is_empty() {
             return false;
@@ -1436,6 +1436,9 @@ impl BrowserView {
         }
         if let Some((generation, locations)) = self.state.browser.pending_undo_copy() {
             return self.state.undo_copy(generation, locations);
+        }
+        if let Some((generation, created, overwritten)) = self.state.browser.pending_undo_merge() {
+            return self.state.undo_merge(generation, created, overwritten);
         }
         self.state.browser.undo_last_trash()
     }

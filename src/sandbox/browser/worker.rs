@@ -114,6 +114,10 @@ pub(super) fn protect_input(writable: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
+// Linux assigns 452 to fchmodat2 on both supported targets (x86_64 and
+// aarch64). libc 0.2.189 does not expose SYS_fchmodat2 on aarch64.
+pub(super) const SYS_FCHMODAT2: libc::c_long = 452;
+
 pub(super) fn restrict_mutations() -> Result<(), String> {
     use seccompiler::{
         BpfProgram, SeccompAction, SeccompCmpArgLen, SeccompCmpOp, SeccompCondition, SeccompFilter,
@@ -124,7 +128,7 @@ pub(super) fn restrict_mutations() -> Result<(), String> {
     let calls = [
         libc::SYS_fchmod,
         libc::SYS_fchmodat,
-        libc::SYS_fchmodat2,
+        SYS_FCHMODAT2,
         libc::SYS_fchown,
         libc::SYS_fchownat,
         libc::SYS_utimensat,

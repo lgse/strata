@@ -9,8 +9,8 @@ use super::super::{
     local_directory_children, open_local_child_directory, open_local_parent_directory,
 };
 use super::{ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled, copy_with_big_buf};
-use crate::services::TransferConflict;
-use gtk::gio;
+use crate::services::{TransferConflict, TrashedOriginal};
+use gtk::{gio, prelude::*};
 use std::{
     ffi::{OsStr, OsString},
     io::{self, Read, Seek, SeekFrom, Write},
@@ -29,9 +29,10 @@ use std::{
 ///
 /// Creates a `.strata-compression-` tempfile in `destination` with mode `0o600`,
 /// runs `write_archive` on a worker thread, applies the published permissions,
-/// and persists the file according to `conflict`, returning the published filename.
+/// and persists the file according to `conflict`, returning the published filename
+/// and the identity of any original preserved in Trash for undo.
 /// [`FailIfExists`] refuses to replace an existing archive; [`KeepBoth`] tries numbered names atomically
-/// without encoding again; [`ReplaceExisting`] overwrites it and copies
+/// without encoding again; [`ReplaceExisting`] trashes the original and copies
 /// the current destination file's mode when that path is already a regular
 /// file. Otherwise the published mode is `0o666` masked by the process umask.
 ///
@@ -60,7 +61,7 @@ pub(super) async fn write_staged_archive<F>(
     conflict: TransferConflict,
     cancelled: &AtomicBool,
     write_archive: F,
-) -> Result<String, ArchiveError>
+) -> Result<(String, Option<TrashedOriginal>), ArchiveError>
 where
     F: FnOnce(std::fs::File) -> Result<(), ArchiveError> + Send + 'static,
 {
@@ -96,12 +97,35 @@ where
         .set_permissions(published_permissions)
         .map_err(archive_failed)?;
     if conflict != TransferConflict::KeepBoth {
-        return match conflict {
-            TransferConflict::ReplaceExisting => staged.persist(archive_path),
-            _ => staged.persist_noclobber(archive_path),
-        }
-        .map(|_| requested_name.to_owned())
-        .map_err(archive_failed);
+        let original = if conflict == TransferConflict::ReplaceExisting {
+            match std::fs::symlink_metadata(archive_path) {
+                Ok(metadata) if metadata.is_dir() => {
+                    return Err(archive_failed("An archive cannot replace a folder"));
+                }
+                Ok(metadata) => {
+                    gio::File::for_path(archive_path)
+                        .trash(None::<&gio::Cancellable>)
+                        .map_err(archive_failed)?;
+                    Some(TrashedOriginal::from_metadata(&metadata))
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                Err(error) => return Err(archive_failed(error)),
+            }
+        } else {
+            None
+        };
+        return staged
+            .persist_noclobber(archive_path)
+            .map(|_| (requested_name.to_owned(), original))
+            .map_err(|error| {
+                if original.is_some() {
+                    archive_failed(format!(
+                        "Could not publish the archive; the original is in Trash: {error}"
+                    ))
+                } else {
+                    archive_failed(error)
+                }
+            });
     }
 
     let (stem, extension) = requested_name
@@ -113,7 +137,7 @@ where
     for suffix in 1_u64.. {
         let candidate = archive_path.with_file_name(&candidate_name);
         match staged.persist_noclobber(&candidate) {
-            Ok(_) => return Ok(candidate_name),
+            Ok(_) => return Ok((candidate_name, None)),
             Err(error) if error.error.kind() == io::ErrorKind::AlreadyExists => {
                 staged = error.file;
                 candidate_name = format!("{stem} ({suffix}).{extension}");

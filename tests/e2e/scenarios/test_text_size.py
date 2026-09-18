@@ -115,7 +115,8 @@ def _reveal_page_control(strata, name, role="button"):
         above = viewport.y - bounds.y
         # Large text makes General several viewports tall. Traverse distant
         # sections faster, then use single notches so we cannot skip the control.
-        clicks = 3 if max(below, above) > viewport.height else 1
+        distance = max(below, above)
+        clicks = min(12, max(1, int(distance / viewport.height) * 3))
         strata.pointer.scroll(at, clicks=clicks, down=below > 0)
         return False
 

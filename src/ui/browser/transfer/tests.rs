@@ -212,19 +212,52 @@ fn transfer_collisions_detect_existing_destination_items() -> Result<(), Box<dyn
     let source = source_dir.join("photo.jpg");
     std::fs::write(&source, b"new")?;
 
-    assert!(!transfer_has_collision(
-        &Location::local(&source),
-        &Location::local(&destination)
-    ));
-    assert!(!transfer_has_collision(
-        &Location::local(&source),
-        &Location::local(&source_dir)
-    ));
+    assert!(
+        transfer_collision(&Location::local(&source), &Location::local(&destination)).is_none()
+    );
+    assert!(transfer_collision(&Location::local(&source), &Location::local(&source_dir)).is_none());
     std::fs::write(destination.join("photo.jpg"), b"old")?;
-    assert!(transfer_has_collision(
-        &Location::local(&source),
-        &Location::local(&destination)
-    ));
+    let collision = transfer_collision(&Location::local(&source), &Location::local(&destination))
+        .expect("a file collision");
+    assert!(!collision.mergeable, "a file collision cannot merge");
+
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn transfer_collisions_mark_folder_pairs_as_mergeable() -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!("strata-mergeable-test-{}", std::process::id()));
+    let _ignored = std::fs::remove_dir_all(&root);
+    let source_dir = root.join("source");
+    let destination = root.join("destination");
+    std::fs::create_dir_all(source_dir.join("folder"))?;
+    std::fs::create_dir_all(&destination)?;
+    std::fs::write(source_dir.join("file.txt"), b"new")?;
+
+    let folder = transfer_collision(
+        &Location::local(source_dir.join("folder")),
+        &Location::local(&destination),
+    );
+    assert!(
+        folder.is_none(),
+        "no collision until the destination exists"
+    );
+
+    std::fs::create_dir_all(destination.join("folder"))?;
+    std::fs::write(destination.join("file.txt"), b"old")?;
+    let folder = transfer_collision(
+        &Location::local(source_dir.join("folder")),
+        &Location::local(&destination),
+    )
+    .expect("a folder collision");
+    assert!(folder.mergeable, "two folders can merge");
+    let file = transfer_collision(
+        &Location::local(source_dir.join("file.txt")),
+        &Location::local(&destination),
+    )
+    .expect("a file collision");
+    assert!(!file.mergeable);
 
     std::fs::remove_dir_all(root)?;
     Ok(())
@@ -416,6 +449,145 @@ fn conflict_dialog_offers_skip_for_a_multi_item_paste() {
             assert!(
                 has_visible_button(&overlay, "Apply to All"),
                 "apply to all must appear while further conflicts remain"
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn merging_a_folder_combines_contents_through_the_conflict_dialog() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::merging_a_folder_combines_contents_through_the_conflict_dialog",
+        || {
+            let fixture = tempfile::tempdir().expect("conflict fixture");
+            let source_dir = fixture.path().join("source");
+            let destination = fixture.path().join("destination");
+            let source_folder = source_dir.join("folder");
+            std::fs::create_dir_all(&source_folder).expect("source folder");
+            std::fs::create_dir_all(destination.join("folder")).expect("destination folder");
+            std::fs::write(source_folder.join("incoming.txt"), b"new").expect("source file");
+            std::fs::write(source_folder.join("shared.txt"), b"incoming wins")
+                .expect("source file");
+            std::fs::write(destination.join("folder/stays.txt"), b"keep me")
+                .expect("destination file");
+            std::fs::write(destination.join("folder/shared.txt"), b"old")
+                .expect("destination file");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let browser_widget = view.widget();
+            let root = crate::ui::blur::BlurBin::new(&browser_widget);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.state.start_transfer(
+                Location::local(&destination),
+                vec![Location::local(&source_folder)],
+                false,
+            );
+
+            assert!(
+                wait_for_modal_layer(&overlay),
+                "conflict dialog modal did not appear"
+            );
+            assert!(
+                has_visible_button(&overlay, "Merge"),
+                "a folder collision must offer Merge"
+            );
+
+            click_button(&overlay, "Merge");
+            let merged = destination.join("folder");
+            // The overwritten original is staged in Trash before the copy, so
+            // shared.txt is briefly absent: wait for both files' final state.
+            wait_until(
+                || {
+                    std::fs::read(merged.join("incoming.txt"))
+                        .is_ok_and(|contents| contents == b"new")
+                        && std::fs::read(merged.join("shared.txt"))
+                            .is_ok_and(|contents| contents == b"incoming wins")
+                },
+                "the merge to finish",
+            );
+            assert_eq!(
+                std::fs::read(merged.join("shared.txt")).expect("shared file"),
+                b"incoming wins",
+                "the incoming item overwrites a same-named destination item"
+            );
+            assert_eq!(
+                std::fs::read(merged.join("stays.txt")).expect("destination-only file"),
+                b"keep me",
+                "destination-only contents survive the merge"
+            );
+            assert!(source_folder.is_dir(), "a copy merge keeps the source");
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn merge_is_only_offered_for_copying_a_folder_onto_a_folder() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::merge_is_only_offered_for_copying_a_folder_onto_a_folder",
+        || {
+            let fixture = tempfile::tempdir().expect("conflict fixture");
+            let source_dir = fixture.path().join("source");
+            let destination = fixture.path().join("destination");
+            std::fs::create_dir_all(&source_dir).expect("source dir");
+            std::fs::create_dir_all(&destination).expect("destination dir");
+            std::fs::write(source_dir.join("file.txt"), b"new").expect("source file");
+            std::fs::write(destination.join("file.txt"), b"old").expect("destination file");
+            std::fs::create_dir_all(source_dir.join("folder")).expect("source folder");
+            std::fs::create_dir_all(destination.join("folder")).expect("destination folder");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let browser_widget = view.widget();
+            let root = crate::ui::blur::BlurBin::new(&browser_widget);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.state.start_transfer(
+                Location::local(&destination),
+                vec![Location::local(source_dir.join("file.txt"))],
+                false,
+            );
+            assert!(
+                wait_for_modal_layer(&overlay),
+                "conflict dialog modal did not appear"
+            );
+            assert!(
+                !has_visible_button(&overlay, "Merge"),
+                "a file collision cannot merge"
+            );
+            click_button(&overlay, "Cancel");
+            wait_until(
+                || find_widget_with_class(&overlay, "app-modal-layer").is_none(),
+                "the conflict dialog to dismiss",
+            );
+
+            view.state.start_transfer(
+                Location::local(&destination),
+                vec![Location::local(source_dir.join("folder"))],
+                true,
+            );
+            assert!(
+                wait_for_modal_layer(&overlay),
+                "move conflict dialog modal did not appear"
+            );
+            assert!(
+                !has_visible_button(&overlay, "Merge"),
+                "a moved folder collision cannot merge"
             );
             window.destroy();
         },

@@ -9,6 +9,27 @@ use gtk::glib;
 use gtk::graphene;
 use gtk::prelude::*;
 
+thread_local! {
+    static UPDATING_SELECTION: Cell<bool> = const { Cell::new(false) };
+}
+
+pub(super) fn is_updating_selection() -> bool {
+    UPDATING_SELECTION.get()
+}
+
+fn with_selection_update(update: impl FnOnce()) {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            UPDATING_SELECTION.set(self.0);
+        }
+    }
+    // GTK selection signals and their browser observers run synchronously on
+    // this thread. Keep their origin through nested grouped-selection updates.
+    let _restore = Restore(UPDATING_SELECTION.replace(true));
+    update();
+}
+
 /// Distance from a viewport edge at which a marquee drag starts scrolling.
 const AUTO_SCROLL_MARGIN: f64 = 28.0;
 /// Largest scroll step, in pixels, applied per auto-scroll frame.
@@ -696,9 +717,11 @@ impl MarqueeState {
         drop(all_bounds);
         drop(targets);
         drop(initials);
-        for (selection, selected, mask) in changes {
-            selection.set_selection(&selected, &mask);
-        }
+        with_selection_update(|| {
+            for (selection, selected, mask) in changes {
+                selection.set_selection(&selected, &mask);
+            }
+        });
     }
 
     fn stop_auto_scroll(&self) {

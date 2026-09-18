@@ -1,6 +1,42 @@
 // SPDX-License-Identifier: MIT
 
+use super::super::{StagedSibling, publish_staged_replacement};
 use super::*;
+
+#[test]
+fn replacement_publication_preserves_concurrent_arrivals() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for directory in [false, true] {
+        let root = tempfile::tempdir()?;
+        let target = root.path().join("target");
+        let staged = StagedSibling::create(root.path(), directory)?;
+        let staged_path = staged.path().to_owned();
+        if directory {
+            fs::write(staged_path.join("incoming"), b"replacement")?;
+            fs::create_dir(&target)?;
+        } else {
+            fs::write(&staged_path, b"replacement")?;
+            fs::write(&target, b"new arrival")?;
+        }
+        let result = glib::MainContext::default()
+            .block_on(publish_staged_replacement(staged, target.clone()));
+
+        assert!(
+            result.is_err(),
+            "publication must not replace a concurrent arrival"
+        );
+        if directory {
+            assert!(target.is_dir());
+            assert_eq!(fs::read_dir(&target)?.count(), 0);
+        } else {
+            assert_eq!(fs::read(&target)?, b"new arrival");
+        }
+        assert!(!staged_path.exists());
+    }
+    Ok(())
+}
 
 #[test]
 fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<(), Box<dyn Error>> {
@@ -38,6 +74,7 @@ fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<()
                 ))
             })
         }),
+        &|| {},
     ));
 
     assert!(result.is_err());
@@ -90,6 +127,7 @@ fn cancelling_staging_preserves_the_destination_and_cleans_the_partial_copy()
                 ))
             })
         }),
+        &|| {},
     ));
     let context = glib::MainContext::default();
     while !staging.get() {
@@ -194,6 +232,7 @@ fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn
                 fs::write(new_source, b"new arrival").map_err(io_error)
             })
         }),
+        &|| {},
     ));
 
     let error = result.expect_err("a substituted source must fail identity validation");
@@ -268,6 +307,7 @@ fn replacement_stops_before_exchanging_a_substituted_target() -> Result<(), Box<
                 fs::write(new_target, b"new arrival").map_err(io_error)
             })
         }),
+        &|| {},
     ));
 
     let error = result.expect_err("a substituted target must fail identity validation");
