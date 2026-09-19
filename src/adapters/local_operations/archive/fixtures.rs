@@ -58,7 +58,7 @@ pub(super) fn compression_stage_mode(destination: &Path) -> Result<u32, Box<dyn 
     Ok(fs::metadata(destination.join(name))?.permissions().mode() & 0o777)
 }
 
-pub(super) fn write_compression_fixture(
+pub(crate) fn write_compression_fixture(
     path: &Path,
     entries: &[PathBuf],
     format: ArchiveFormat,
@@ -181,6 +181,41 @@ pub(super) fn write_7z_entries(
         )?;
     }
     writer.finish()?;
+    Ok(())
+}
+
+pub(super) fn write_7z_stored(
+    path: &Path,
+    entries: &[(&str, &[u8])],
+) -> Result<(), Box<dyn Error>> {
+    let mut writer = sevenz_rust2::ArchiveWriter::create(path)?;
+    writer.set_content_methods(vec![sevenz_rust2::EncoderConfiguration::new(
+        sevenz_rust2::EncoderMethod::COPY,
+    )]);
+    for (name, contents) in entries {
+        writer.push_archive_entry(
+            sevenz_rust2::ArchiveEntry::new_file(name),
+            Some(Cursor::new(*contents)),
+        )?;
+    }
+    writer.finish()?;
+    Ok(())
+}
+
+pub(super) fn patch_zip_entry_count(path: &Path, count: u16) -> Result<(), Box<dyn Error>> {
+    const END_OF_CENTRAL_DIRECTORY_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x05, 0x06];
+    const DISK_ENTRY_COUNT_OFFSET: usize = 8;
+    const TOTAL_ENTRY_COUNT_OFFSET: usize = 10;
+    let mut bytes = fs::read(path)?;
+    let record = bytes
+        .windows(END_OF_CENTRAL_DIRECTORY_SIGNATURE.len())
+        .rposition(|window| window == END_OF_CENTRAL_DIRECTORY_SIGNATURE)
+        .ok_or("zip fixture has no end-of-central-directory record")?;
+    bytes[record + DISK_ENTRY_COUNT_OFFSET..record + DISK_ENTRY_COUNT_OFFSET + 2]
+        .copy_from_slice(&count.to_le_bytes());
+    bytes[record + TOTAL_ENTRY_COUNT_OFFSET..record + TOTAL_ENTRY_COUNT_OFFSET + 2]
+        .copy_from_slice(&count.to_le_bytes());
+    fs::write(path, bytes)?;
     Ok(())
 }
 

@@ -6,6 +6,17 @@ mod tests;
 mod archive;
 mod create_entry;
 
+#[cfg(test)]
+pub(crate) use archive::ArchiveListing;
+pub(crate) use archive::{
+    ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
+    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, archive_payload_valid,
+    decode_archive_listing, encode_archive_result, list_archive_entries_direct,
+};
+
+#[cfg(test)]
+pub(crate) use archive::write_compression_fixture;
+
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},

@@ -4,7 +4,7 @@ pub(super) mod media_size;
 mod preferences;
 mod source;
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gtk::{glib, prelude::*};
 
@@ -346,5 +346,61 @@ fn keyboard_opened_preview_closes_when_the_displayed_entry_is_spliced_out() {
             },
         );
         assert!(!preview.is_open());
+    });
+}
+
+#[test]
+fn archive_password_prompt_submits_the_password_and_clears_it_when_closed() {
+    const TEST: &str = "ui::preview::tests::archive_password_prompt_submits_the_password_and_clears_it_when_closed";
+    crate::test_support::gtk_test(TEST, || {
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        let drawer = PreviewDrawer::new(
+            Rc::new(media_size::RecordingProvider(requests.clone())),
+            false,
+        );
+        drawer.show(media_size::entry("secret.zip"), None);
+        assert_eq!(requests.borrow().len(), 1);
+        let request_id = requests.borrow()[0].id;
+        assert_eq!(requests.borrow()[0].archive_password, None);
+        let entry = requests.borrow()[0].entry.clone();
+
+        drawer.state.handle_event(
+            request_id,
+            PreviewEvent::NeedsPassword { request_id, entry },
+        );
+        let password = drawer
+            .state
+            .password_entry
+            .borrow()
+            .clone()
+            .expect("password prompt shown");
+
+        password.set_text("s3cret");
+        password.emit_activate();
+        assert_eq!(requests.borrow().len(), 2);
+        assert_eq!(
+            requests.borrow()[1]
+                .archive_password
+                .as_ref()
+                .map(|secret| secret.expose()),
+            Some("s3cret")
+        );
+
+        drawer.close();
+        assert!(
+            drawer.state.password_entry.borrow().is_none(),
+            "password cleared from state on close"
+        );
+        drawer.state.handle_event(
+            requests.borrow()[1].id,
+            PreviewEvent::NeedsPassword {
+                request_id: requests.borrow()[1].id,
+                entry: requests.borrow()[1].entry.clone(),
+            },
+        );
+        assert!(
+            drawer.state.password_entry.borrow().is_none(),
+            "closed preview rejects stale password prompts"
+        );
     });
 }
