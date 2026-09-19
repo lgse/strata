@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod compact;
 mod visibility;
 
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
@@ -14,7 +15,6 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
         start_minimum: 500,
         separator: 2,
         columns: true,
-        icons: false,
     };
     assert_eq!(geometry.position(None), geometry.occupied);
     let overflow = Geometry {
@@ -36,14 +36,14 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
     assert_eq!(narrow.position(Some(900)), narrow.start_minimum);
     assert!(
         !Geometry {
-            available: 800,
+            available: 0,
             ..geometry
         }
         .can_show_preview()
     );
     assert!(
         Geometry {
-            available: 802,
+            available: 1,
             ..geometry
         }
         .can_show_preview()
