@@ -1126,7 +1126,7 @@ pub(in crate::ui) fn snapped_root_font_px(root_font_px: u32, scale_factor: f64) 
 }
 
 pub(in crate::ui) fn config_directory() -> PathBuf {
-    glib::user_config_dir().join("strata")
+    crate::storage::config_directory()
 }
 
 fn settings_path() -> PathBuf {

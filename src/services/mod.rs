@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 
+pub(crate) mod actions;
 pub(crate) mod camera_preview;
 mod document;
 pub(crate) mod document_media;
 mod file_source;
 mod install_source;
+pub(crate) mod jobs;
+mod listeners;
 mod mime_type;
 mod native_fs;
 mod navigation_history;
@@ -17,6 +20,10 @@ mod transfer_action;
 mod update_check;
 mod update_install;
 
+pub use actions::{
+    ActionAvailability, ActionHandle, ActionLoadFailure, ActionProgram, ActionRegistry,
+    ActionScript, ActionWriteRequest, MatchedAction,
+};
 pub(crate) use document::{
     DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
     DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
@@ -30,6 +37,12 @@ pub use file_source::{
 };
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
+pub use jobs::{
+    ActionEventSink, ActionRunEvent, ActionRunRequest, ActionRunner, CancelHandle,
+    InvocationSource, JobId, JobRequest, JobService, JobSnapshot, JobStatus, ScriptProgress,
+    expand_command_arguments,
+};
+pub(crate) use listeners::ListenerGuard;
 pub use mime_type::{
     BROKEN_LINK_TYPE_NAME, EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type,
     entry_type_description, mime_description_for_name,

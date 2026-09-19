@@ -327,6 +327,23 @@ Internally, search, preview, and theme implementations should be registries so b
 
 When third-party extensions are justified, prefer a versioned message protocol with explicit capabilities and permissions. This permits extensions written in multiple languages and allows isolation from the main process.
 
+### Custom actions
+
+User-authored context-menu actions follow that direction without an ABI:
+`model::action` parses and validates the portable `action.toml` contract,
+`services::actions` owns the cached catalog and matching, `adapters::local_actions`
+reads, validates, writes, imports, and exports action directories, and
+`adapters::local_jobs` starts one invocation as a child process. `services::jobs`
+owns the queue, per-item iteration, progress, cancellation bookkeeping, bounded
+logs, and history, with the presentation in `ui/jobs.rs` observing it.
+
+Definitions are data, not code, until an action is invoked: opening a menu only
+matches declarative rules. Invocations receive their inputs through files and the
+environment rather than through a shell or an interpolated command line, and the
+registry, job service, and runner keep filesystem, process, and widget
+responsibilities apart. Actions are trusted local programs; this boundary is
+organizational, not a security sandbox. See [Custom actions](custom-actions.md).
+
 ## Suggested source organization
 
 ```text

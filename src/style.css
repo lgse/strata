@@ -5508,7 +5508,8 @@ two-column presentation. */
   background: shade(@theme_bg, 0.85);
 }
 
-.settings-dialog entry.settings-search {
+.settings-dialog entry.settings-search,
+.settings-action-library entry.settings-search {
   padding-left: calc(1em + 24px);
   padding-right: calc(1em + 22px);
 }
@@ -5589,4 +5590,528 @@ popover.settings-search-popover.background {
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
+}
+
+.context-menu-actions {
+  min-width: 0;
+}
+
+.jobs-indicator {
+  margin: 0;
+}
+
+.jobs-indicator > button,
+.jobs-indicator > button:hover,
+.jobs-indicator > button:active,
+.jobs-indicator > button:checked {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.jobs-indicator-label {
+  color: @theme_accent;
+  font-weight: bold;
+}
+
+.jobs-indicator:hover .jobs-indicator-label {
+  color: @theme_text;
+}
+
+.jobs-popover .jobs-list {
+  min-width: 0;
+}
+
+.job-row {
+  background: alpha(@theme_bg, 0.55);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+}
+
+.job-row.job-active {
+  border-color: alpha(@theme_accent, 0.45);
+}
+
+.job-row.job-succeeded {
+  border-color: alpha(@theme_accent, 0.28);
+}
+
+.job-row.job-failed {
+  border-color: alpha(@theme_danger, 0.55);
+}
+
+.job-row.job-cancelled {
+  border-color: alpha(@theme_dim_text, 0.4);
+}
+
+.job-icon {
+  opacity: 0.85;
+}
+
+.job-name {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.job-status {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.job-row.job-failed .job-status {
+  color: @theme_danger;
+}
+
+.job-row.job-succeeded .job-status {
+  color: @theme_accent;
+}
+
+.job-meta {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.job-progress {
+  min-height: 4px;
+}
+
+.job-progress progress {
+  background: @theme_accent;
+}
+
+.job-detail {
+  margin-top: 4px;
+}
+
+.job-log {
+  background: alpha(@theme_bg, 0.7);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 4px;
+  color: @theme_text;
+  font-family: monospace;
+  font-size: 0.85em;
+  padding: 6px;
+}
+
+.job-action {
+  background: transparent;
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0;
+}
+
+.job-action:hover {
+  background: @theme_highlight;
+  border-color: @theme_accent;
+}
+
+.job-action:active {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.job-action:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-actions-page .settings-action-row {
+  min-height: 64px;
+}
+
+.settings-action-button,
+.settings-action-library-button > button {
+  background: alpha(@theme_highlight, 0.35);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 26px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.settings-action-button.settings-action-icon-button {
+  min-width: 26px;
+  padding: 0;
+}
+
+.settings-action-button:hover,
+.settings-action-library-button > button:hover {
+  background: @theme_highlight;
+  border-color: @theme_accent;
+}
+
+.settings-action-button:active,
+.settings-action-library-button > button:active,
+.settings-action-library-button > button:checked {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.settings-action-button:focus-visible,
+.settings-action-library-button > button:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-action-button.danger {
+  color: @theme_danger;
+  border-color: alpha(@theme_danger, 0.4);
+}
+
+.settings-action-button.danger:hover {
+  background: alpha(@theme_danger, 0.14);
+  border-color: @theme_danger;
+}
+
+.settings-action-problem {
+  color: @theme_danger;
+}
+
+.settings-actions-empty {
+  padding: 14px 18px;
+}
+
+popover.settings-action-library {
+  background: @theme_surface;
+}
+
+popover.settings-action-library > contents {
+  min-width: 440px;
+  background: @theme_surface;
+  color: @theme_text;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  padding: 0;
+  box-shadow: none;
+}
+
+.action-library-search {
+  padding: 6px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+.action-library-search entry {
+  background: transparent;
+  border-color: transparent;
+}
+
+.action-library-filters {
+  padding: 10px 12px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+.action-library-category {
+  background: transparent;
+  color: @theme_dim_text;
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 14px;
+  box-shadow: none;
+  min-height: 22px;
+  padding: 0 9px;
+}
+
+.action-library-category:hover {
+  background: @theme_highlight;
+  color: @theme_text;
+}
+
+.action-library-category:checked,
+.action-library-category:active {
+  background: alpha(@theme_accent, 0.2);
+  color: @theme_text;
+  border-color: @theme_accent;
+}
+
+.action-library-list {
+  padding: 6px;
+}
+
+.action-library-template {
+  padding: 10px 8px;
+}
+
+.action-library-template:active {
+  transform: none;
+}
+
+.action-library-title {
+  color: @theme_text;
+}
+
+.settings-action-library .action-library-language {
+  color: @theme_dim_text;
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  font-size: 0.75em;
+  padding: 0 5px;
+}
+
+.action-library-requirements {
+  font-size: 0.8em;
+}
+
+.action-library-footer {
+  padding: 10px 12px;
+  border-top: 1px solid alpha(@theme_border, 0.35);
+}
+
+.settings-action-dialog {
+  min-width: 760px;
+  box-shadow: 0 12px 28px alpha(@theme_bg, 0.4);
+}
+
+.settings-action-dialog .action-dialog-header {
+  border-bottom: none;
+  padding: 18px 22px 8px;
+}
+
+.settings-action-dialog .action-dialog-body {
+  padding: 0;
+}
+
+.settings-action-dialog .action-dialog-actions {
+  background: alpha(@theme_highlight, 0.12);
+  padding: 14px 22px;
+}
+
+.settings-action-dialog .action-dialog-cancel {
+  border-color: transparent;
+}
+
+.settings-action-dialog .action-dialog-confirm {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.settings-action-dialog .action-dialog-confirm:hover {
+  background: mix(@theme_accent, @theme_text, 0.12);
+}
+
+.settings-action-dialog .action-dialog-confirm:active {
+  background: mix(@theme_accent, @theme_bg, 0.15);
+}
+
+.settings-action-tabs,
+.settings-action-tabs > stack,
+.settings-action-tabs > header {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.settings-action-tabs > header {
+  padding: 0 22px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+/* GTK's negative tab-strip margins otherwise put the indicator below the divider. */
+.settings-action-tabs > header > tabs {
+  margin: 0;
+}
+
+.settings-action-tabs > header > tabs > tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: @theme_dim_text;
+  margin: 0 20px 0 0;
+  min-height: 36px;
+  padding: 0;
+  outline-offset: -4px;
+}
+
+.settings-action-tabs > header > tabs > tab label {
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.settings-action-tabs > header > tabs > tab:hover {
+  color: @theme_text;
+  background: alpha(@theme_highlight, 0.25);
+}
+
+.settings-action-tabs > header > tabs > tab:checked {
+  color: @theme_text;
+  border-bottom-color: @theme_accent;
+}
+
+.settings-action-tabs > header > tabs > tab:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+}
+
+.settings-action-page {
+  padding: 22px;
+}
+
+.settings-action-dialog .settings-option-title {
+  font-weight: 400;
+}
+
+.settings-action-dialog .settings-option-description {
+  font-size: 0.88em;
+}
+
+.settings-action-dialog .action-runtime-status {
+  color: @theme_dim_text;
+}
+
+.settings-action-dialog .action-runtime-status.available > label {
+  color: @theme_accent;
+}
+
+.settings-action-dialog .action-runtime-status.unavailable > label {
+  color: @theme_danger;
+}
+
+.settings-action-dialog .settings-action-option {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid alpha(@theme_border, 0.3);
+  border-radius: 0;
+  min-height: 36px;
+  padding: 8px 0;
+}
+
+.settings-action-dialog .settings-action-option:first-child {
+  padding-top: 0;
+}
+
+.settings-action-dialog .settings-action-option:last-child {
+  border-bottom: none;
+}
+
+.settings-action-dialog .settings-action-enabled {
+  border-top: 1px solid alpha(@theme_border, 0.3);
+}
+
+.settings-action-dialog .settings-action-option:disabled {
+  opacity: 0.4;
+}
+
+.settings-action-dialog .segmented-control {
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.settings-action-dialog .segmented-control-option {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  min-height: 26px;
+  padding: 2px 10px;
+  color: @theme_dim_text;
+}
+
+.settings-action-dialog .segmented-control-option.not-first:checked {
+  border-left: none;
+}
+
+.settings-action-dialog .segmented-control-option:hover {
+  background: alpha(@theme_highlight, 0.65);
+  color: @theme_text;
+}
+
+.settings-action-dialog .segmented-control-option:checked {
+  background: alpha(@theme_accent, 0.22);
+  color: @theme_text;
+}
+
+.settings-action-dialog .segmented-control-option:active {
+  background: alpha(@theme_accent, 0.3);
+}
+
+.settings-action-icon-choice,
+.settings-action-more-icons > button {
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
+.settings-action-icon-choice:hover,
+.settings-action-more-icons > button:hover {
+  background: @theme_highlight;
+  border-color: alpha(@theme_accent, 0.6);
+}
+
+.settings-action-icon-choice:checked,
+.settings-action-more-icons.selected > button {
+  background: alpha(@theme_accent, 0.22);
+  border-color: alpha(@theme_accent, 0.7);
+}
+
+.settings-action-icon-choice:active,
+.settings-action-more-icons > button:active {
+  background: alpha(@theme_accent, 0.3);
+}
+
+.settings-action-icon-choice:focus-visible,
+.settings-action-more-icons > button:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-action-script {
+  background: alpha(@theme_bg, 0.3);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+}
+
+.settings-action-script:focus-within {
+  border-color: @theme_accent;
+}
+
+.settings-action-script textview,
+.settings-action-script textview text {
+  background: transparent;
+  color: @theme_text;
+  caret-color: @theme_accent;
+}
+
+.settings-action-script textview border {
+  background: transparent;
+  color: @theme_dim_text;
+  border-right: 1px solid alpha(@theme_border, 0.3);
+}
+
+.settings-action-script textview text selection {
+  background: alpha(@theme_accent, 0.3);
+  color: @theme_text;
+}
+
+.settings-action-script scrollbar,
+.settings-action-script scrollbar trough {
+  background: transparent;
+}
+
+.settings-action-script scrollbar slider {
+  min-width: 6px;
+  min-height: 6px;
+  background: alpha(@theme_dim_text, 0.5);
+  border: none;
+  border-radius: 6px;
+}
+
+.settings-action-script scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.settings-action-script scrollbar slider:active {
+  background: @theme_accent;
 }

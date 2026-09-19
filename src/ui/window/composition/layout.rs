@@ -208,6 +208,9 @@ impl FooterBinding {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
         shortcuts.observe_browser(&browser.browser());
+        let jobs = crate::ui::jobs::JobsIndicator::new();
+        jobs.bind_window(window);
+        shortcuts.set_activity(jobs.widget());
         let clipboard = window.clipboard();
         let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
         root.append(shortcuts.widget());
