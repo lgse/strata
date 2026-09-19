@@ -157,9 +157,8 @@ impl ViewState {
                         preview.set_text("Names are unchanged.");
                         preview.set_tooltip_text(None);
                     } else {
-                        let text = format!("{old} → {new}");
-                        preview.set_text(&text);
-                        preview.set_tooltip_text(Some(&text));
+                        preview.set_text(&format!("Example: {new}"));
+                        preview.set_tooltip_text(Some(&format!("{old} → {new}")));
                     }
                 }
                 Err(RenameDialogError::BadStart) => {
