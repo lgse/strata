@@ -423,10 +423,14 @@ impl ChooserState {
     }
 
     fn selected_folder(&self) -> Option<PathBuf> {
-        let entries = self
-            .view
-            .selected_search_results()
-            .unwrap_or_else(|| self.view.browser().selected_entries());
+        let browser = self.view.browser();
+        let entries = self.view.selected_search_results().unwrap_or_else(|| {
+            if browser.selection_is_load_cursor() {
+                Vec::new()
+            } else {
+                browser.selected_entries()
+            }
+        });
         if entries.len() == 1 && entries[0].is_directory() {
             entries[0].location.native_path().map(Path::to_path_buf)
         } else {
