@@ -296,7 +296,12 @@ impl PageState {
         layout.body.append(&form.root);
         layout.actions.prepend(&form.error);
         let content = layout.content;
-        let layer = modal_layer(&content, &host.overlay, host.blurred_root.clone(), None);
+        let layer = modal_layer(
+            &content,
+            &host.overlay,
+            host.blurred_root.clone(),
+            Some(Rc::new(|| true)),
+        );
         let overlay = host.overlay.clone();
         let blurred_root = host.blurred_root.clone();
         let dismiss = {
@@ -702,6 +707,11 @@ impl EditorForm {
             ],
         );
 
+        let behavior_controls = gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal);
+        for control in [&mode_control, &on_error, &working_directory, &placement] {
+            behavior_controls.add_widget(control);
+        }
+
         let (confirm_row, confirm) = super::settings_option(
             "Confirm",
             "Ask before running this action",
@@ -768,6 +778,10 @@ impl EditorForm {
         general.append(&enabled_row);
 
         let launch = gtk::Box::new(gtk::Orientation::Horizontal, 18);
+        let launch_controls = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
+        launch_controls.add_widget(&runtime);
+        launch_controls.add_widget(&entrypoint);
+        launch_controls.add_widget(&program);
         let runtime_field = field("Runtime", "How it starts", &runtime);
         runtime_field.set_hexpand(false);
         launch.append(&runtime_field);
@@ -1295,6 +1309,7 @@ fn script_buffer(language: &str, contents: &str) -> sourceview5::Buffer {
 fn editor_scroll(view: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
     let scroll = gtk::ScrolledWindow::builder()
         .child(view)
+        .overflow(gtk::Overflow::Hidden)
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .build();

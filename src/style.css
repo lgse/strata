@@ -5822,6 +5822,11 @@ popover.settings-search-popover.background {
   border-bottom: 1px solid alpha(@theme_border, 0.35);
 }
 
+/* GTK's negative tab-strip margins otherwise put the indicator below the divider. */
+.settings-action-tabs > header > tabs {
+  margin: 0;
+}
+
 .settings-action-tabs > header > tabs > tab {
   background: transparent;
   border: none;
@@ -5907,6 +5912,10 @@ popover.settings-search-popover.background {
   min-height: 26px;
   padding: 2px 10px;
   color: @theme_dim_text;
+}
+
+.settings-action-dialog .segmented-control-option.not-first:checked {
+  border-left: none;
 }
 
 .settings-action-dialog .segmented-control-option:hover {

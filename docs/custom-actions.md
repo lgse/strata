@@ -34,7 +34,8 @@ Choose **Settings → Actions → New action…**. The editor has three tabs:
   placement, file/folder filters, selection limit, and confirmation.
 
 **Create action** saves all three tabs together. Invalid fields bring you back to
-that tab without discarding your edits. **Cancel** or **Escape** discards the draft.
+that tab without discarding your edits. Clicking outside the dialog leaves it open;
+**Cancel**, the close button, or **Escape** discards the draft.
 Existing actions use the same editor with **Save changes**; their id stays fixed.
 
 ## Manifest

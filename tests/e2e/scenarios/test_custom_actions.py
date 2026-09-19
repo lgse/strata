@@ -41,8 +41,13 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
             strata.keyboard.type_text(line)
         strata.wait(lambda: node.text == value, f"{name} text")
 
+    def click_backdrop():
+        bounds = strata.window.screen_bounds()
+        strata.pointer.click(strata.window, at=(bounds.x + 5, bounds.y + 5))
+
     fill("Name", "Batch rename")
     fill("Description", "Process selected files")
+    click_backdrop()
     strata.pointer.click(control("scissors icon", "toggle button"))
     tab("Script")
     strata.pointer.click(control("Command", "toggle button"))
@@ -93,6 +98,7 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
     assert not control("Id", "text").has_state("editable")
     tab("Script")
     assert control("Arguments", "text").text == "%s\\n\n{path}"
+    click_backdrop()
     fill("Program", "false")
     strata.keyboard.press("Escape")
     strata.wait(
