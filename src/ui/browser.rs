@@ -938,6 +938,13 @@ impl BrowserView {
             .set_group_by_type(enabled);
     }
 
+    pub fn set_icons_thumbnail_size(&self, size: i32) {
+        self.state
+            .mode_views
+            .borrow_mut()
+            .set_icons_thumbnail_size(size);
+    }
+
     pub fn activate_focused(&self) {
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.activate_focused_in_place();

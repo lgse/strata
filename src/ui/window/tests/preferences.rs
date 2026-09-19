@@ -27,6 +27,7 @@ fn live_preferences_reach_existing_and_future_browsers_but_preserve_chooser_poli
                 } else {
                     BrowserDensity::Airy
                 });
+                manager.set_icons_thumbnail_size(if enabled { 128 } else { 64 });
                 for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
                     manager.set_browser_mode(mode);
                     manager.set_click_activation(
