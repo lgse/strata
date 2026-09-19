@@ -200,6 +200,31 @@ def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode
     strata.wait(lambda: strata.preview_shows("alpha"), "the still-enabled preview to resume")
 
 
+@pytest.mark.preferences(browser_mode="list")
+def test_marquee_does_not_reopen_enabled_preview(strata):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("alpha"), "the enabled preview")
+    strata.keyboard.press("Up")
+    strata.wait_for_selection(["folder"])
+    strata.wait(lambda: strata.preview() is None, "the folder to hide preview")
+    strata.settle(strata.entry("third.txt"))
+
+    last = strata.entry("third.txt").screen_bounds()
+    first = strata.entry("data.csv").screen_bounds()
+    start = (last.x + last.width // 2, last.y + last.height + 60)
+    end = (first.x + 50, first.center[1])
+    strata.pointer.drag_points(start, end, release=False)
+    try:
+        strata.wait_for_selection(["data.csv", "notes.txt", "page.md", "third.txt"])
+        assert strata.preview() is None, "held marquee must not open preview"
+    finally:
+        strata.pointer.connection.button(1, False)
+    assert strata.preview() is None
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "keyboard preview to resume")
+
+
 def test_preview_hides_on_shift_range_folder_focus(strata):
     strata.switch_view("List")
     strata.select_entry_with_keyboard("notes.txt")
