@@ -649,7 +649,7 @@ impl ViewState {
         heading.set_yalign(0.5);
         heading.set_valign(gtk::Align::Center);
         heading.set_hexpand(true);
-        heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         heading.set_max_width_chars(1);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);

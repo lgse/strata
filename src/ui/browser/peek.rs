@@ -67,7 +67,7 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
         let label = gtk::Label::builder()
             .halign(gtk::Align::Start)
             .hexpand(true)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
             .build();
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
