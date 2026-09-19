@@ -108,10 +108,11 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
 }
 
 #[test]
-fn plain_filters_require_a_contiguous_basename_match() {
+fn plain_filters_rank_literal_names_above_typos_and_reject_scattered_or_path_matches() {
     let fixture = tempfile::tempdir().expect("fixture");
     for name in [
         "strata-trash.svg",
+        "strata-trahs.svg",
         "strata-sliders-horizontal.svg",
         "strata-refresh.svg",
         "strata-search.svg",
@@ -123,14 +124,25 @@ fn plain_filters_require_a_contiguous_basename_match() {
     }
     for recursive in [false, true] {
         let (search, events) = index_filter(fixture.path().into(), false, recursive);
-        search.query("trash");
-        let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
-        let actual: HashSet<_> = items.iter().map(|item| item.name.as_str()).collect();
-        let mut expected = HashSet::from(["strata-trash.svg", "trash-folder"]);
-        if recursive {
-            expected.insert("STRATA-TRASH-FULL.svg");
+        for query in ["trash", "trahs"] {
+            search.query(query);
+            let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+            let actual: HashSet<_> = items.iter().map(|item| item.name.as_str()).collect();
+            let mut expected =
+                HashSet::from(["strata-trash.svg", "strata-trahs.svg", "trash-folder"]);
+            if recursive {
+                expected.insert("STRATA-TRASH-FULL.svg");
+            }
+            assert_eq!(actual, expected, "recursive={recursive}, query={query}");
+            let typo_position = items
+                .iter()
+                .position(|item| item.name == "strata-trahs.svg");
+            assert_eq!(
+                typo_position,
+                Some(if query == "trash" { items.len() - 1 } else { 0 }),
+                "literal matches rank first: recursive={recursive}, query={query}",
+            );
         }
-        assert_eq!(actual, expected, "recursive={recursive}");
     }
 }
 
