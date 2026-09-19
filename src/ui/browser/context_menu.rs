@@ -662,6 +662,13 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
     let duplicate_multiple = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
+    let rename_multiple = item_context_option(crate::assets::icons::PENCIL, "Rename items…", "");
+    let rename_multiple_label = rename_multiple
+        .child()
+        .and_downcast::<gtk::Box>()
+        .and_then(|row| row.first_child())
+        .and_then(|icon| icon.next_sibling())
+        .and_downcast::<gtk::Label>();
     let copy_paths = item_context_option(crate::assets::icons::COPY, "Copy paths", "Y");
     let copy_names_button = item_context_option(crate::assets::icons::COPY, "Copy names", "");
     let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
@@ -688,6 +695,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
     multiple.append(&duplicate_multiple);
+    multiple.append(&rename_multiple);
     multiple.append(&copy_paths);
     multiple.append(&copy_names_button);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -1051,6 +1059,29 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             state.show_compress_dialog(entries);
         });
     }
+    connect_selection_action(
+        &rename_multiple,
+        &popover,
+        state,
+        &target,
+        |state, entries| {
+            // Numbering follows selection order (anchor first), so a
+            // bottom-to-top range numbers from the bottom.
+            let ordered = state.browser.selected_entries_in_selection_order();
+            let in_selection = |entry: &FileEntry| {
+                entries
+                    .iter()
+                    .any(|selected| selected.location == entry.location)
+            };
+            let planned: Vec<FileEntry> = ordered.into_iter().filter(in_selection).collect();
+            let planned = if planned.len() == entries.len() && !planned.is_empty() {
+                planned
+            } else {
+                entries
+            };
+            state.show_batch_rename_dialog(planned);
+        },
+    );
     connect_context_extract(&extract, &popover, state, &target, false);
     connect_context_extract(&extract_to, &popover, state, &target, true);
     let weak = Rc::downgrade(state);
@@ -1180,6 +1211,10 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         }
         let rename_visible = !is_trash_location(&entry.location);
         rename.set_visible(rename_visible);
+        rename_multiple.set_visible(rename_visible);
+        if let Some(label) = &rename_multiple_label {
+            label.set_text(&format!("Rename {} items…", entries.len()));
+        }
         let can_compress = entries
             .iter()
             .all(|entry| entry.location.native_path().is_some());

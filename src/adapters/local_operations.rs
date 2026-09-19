@@ -38,9 +38,9 @@ use crate::{
     services::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
         DeleteRequest, ExtractRequest, LoadHandle, OperationEvent, OperationProvider,
-        OperationRequestId, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
-        TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveRequest,
-        UndoRenameRequest, validate_basename,
+        OperationRequestId, PasteRequest, RenameBatchRecord, RenameBatchRequest, RenameRequest,
+        RestoreRequest, RestoreSource, TransferConflict, TrashedOriginal, UndoCopyRequest,
+        UndoMergeRequest, UndoMoveRequest, UndoRenameRequest, validate_basename,
     },
 };
 
@@ -3402,6 +3402,102 @@ fn cancelled_event(
     }
 }
 
+/// A batch rename item after target resolution and collision checks.
+struct PlannedBatchRename {
+    source: Location,
+    new_name: String,
+    original_name: String,
+    target: Location,
+    /// Temporary name the source was moved to so a batch-mate can take it.
+    staged: Option<Location>,
+    applied: bool,
+    failed: bool,
+}
+
+async fn set_display_name(
+    file: &gio::File,
+    name: &str,
+    cancellable: &gio::Cancellable,
+) -> Result<(), glib::Error> {
+    let name = name.to_owned();
+    await_cancellable(file, cancellable, move |file, cancellable, result| {
+        file.set_display_name_async(
+            &name,
+            glib::Priority::DEFAULT,
+            Some(cancellable),
+            move |output| result.resolve(output),
+        );
+    })
+    .await
+    .map(|_| ())
+}
+
+/// Moves a staged source back to its original name after the batch was
+/// interrupted. Uses its own cancellable: the operation's token is already
+/// cancelled on this path. Returns false when the item stays at the
+/// temporary name.
+async fn restore_staged(planned: &mut PlannedBatchRename) -> bool {
+    let Some(staged) = planned.staged.take() else {
+        return true;
+    };
+    let file = gio_file_for_location(&staged);
+    if set_display_name(&file, &planned.original_name, &gio::Cancellable::new())
+        .await
+        .is_ok()
+    {
+        return true;
+    }
+    planned.staged = Some(staged);
+    false
+}
+
+async fn emit_batch_cancelled(
+    request_id: OperationRequestId,
+    pending: &mut [PlannedBatchRename],
+    renamed: &[RenameBatchRecord],
+    failed: &mut Vec<Location>,
+    affected_locations: HashSet<Location>,
+    emit: &Rc<dyn Fn(OperationEvent)>,
+) {
+    let mut not_attempted = Vec::new();
+    for planned in pending.iter_mut() {
+        if planned.applied || planned.failed {
+            continue;
+        }
+        if restore_staged(planned).await {
+            not_attempted.push(planned.source.clone());
+        } else {
+            planned.failed = true;
+            failed.push(planned.source.clone());
+        }
+    }
+    emit(cancelled_event(
+        request_id,
+        renamed
+            .iter()
+            .map(|record: &RenameBatchRecord| record.current.clone())
+            .collect(),
+        std::mem::take(failed),
+        not_attempted,
+        affected_locations,
+    ));
+}
+
+/// Best-effort basename for error messages and rename records.
+fn location_basename(location: &Location) -> String {
+    if let Some(name) = location
+        .native_path()
+        .and_then(|path| path.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+    {
+        return name;
+    }
+    gio_file_for_location(location)
+        .basename()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "item".to_owned())
+}
+
 #[derive(Default)]
 pub struct LocalOperationProvider;
 
@@ -3468,6 +3564,205 @@ impl OperationProvider for LocalOperationProvider {
                     message: error.to_string(),
                 }),
             }
+        });
+        cancellation_handle(cancellable)
+    }
+
+    fn rename_batch(
+        &self,
+        request: RenameBatchRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        let cancellable = gio::Cancellable::new();
+        let operation_cancellable = cancellable.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let mut renamed = Vec::new();
+            let mut errors = Vec::new();
+            let mut failed = Vec::new();
+            let mut affected_locations = HashSet::new();
+
+            // Resolve every target before touching the filesystem so
+            // collisions inside the batch are decided up front.
+            let mut pending: Vec<PlannedBatchRename> = Vec::new();
+            let mut target_counts: HashMap<Location, usize> = HashMap::new();
+            for item in &request.items {
+                if let Some(parent) = item.location.parent() {
+                    affected_locations.insert(parent);
+                }
+                let original_name = location_basename(&item.location);
+                if let Err(message) = validate_basename(&item.new_name) {
+                    errors.push(format!("{original_name}: {message}"));
+                    failed.push(item.location.clone());
+                    continue;
+                }
+                let Some(target) = item
+                    .location
+                    .parent()
+                    .and_then(|parent| parent.child(std::ffi::OsStr::new(&item.new_name)))
+                else {
+                    errors.push(format!(
+                        "{original_name}: could not resolve the new location"
+                    ));
+                    failed.push(item.location.clone());
+                    continue;
+                };
+                if target == item.location {
+                    continue;
+                }
+                *target_counts.entry(target.clone()).or_default() += 1;
+                pending.push(PlannedBatchRename {
+                    source: item.location.clone(),
+                    new_name: item.new_name.clone(),
+                    original_name,
+                    target,
+                    staged: None,
+                    applied: false,
+                    failed: false,
+                });
+            }
+            // Two items claiming one target must not rename a winner and drop
+            // the loser silently.
+            pending.retain(|planned| {
+                if target_counts.get(&planned.target).copied().unwrap_or(0) > 1 {
+                    errors.push(format!(
+                        "{}: \"{}\" is planned for more than one item",
+                        planned.original_name, planned.new_name
+                    ));
+                    failed.push(planned.source.clone());
+                    return false;
+                }
+                true
+            });
+
+            // A target still occupied by another item's source would fail on
+            // the not-yet-renamed entry; stage those sources aside first so
+            // the planned permutation can apply.
+            let targets: HashSet<Location> = pending
+                .iter()
+                .map(|planned| planned.target.clone())
+                .collect();
+            let mut reserved: HashSet<Location> = targets.iter().cloned().collect();
+            reserved.extend(pending.iter().map(|planned| planned.source.clone()));
+            for index in 0..pending.len() {
+                if operation_cancellable.is_cancelled() {
+                    emit_batch_cancelled(
+                        request.id,
+                        &mut pending,
+                        &renamed,
+                        &mut failed,
+                        affected_locations,
+                        &emit,
+                    )
+                    .await;
+                    return;
+                }
+                if !targets.contains(&pending[index].source) {
+                    continue;
+                }
+                let Some(parent) = pending[index].source.parent() else {
+                    continue;
+                };
+                let mut attempt = 0_u32;
+                let staged = loop {
+                    let name = format!(".strata-batch-{}-{attempt}", request.id.0);
+                    if let Some(candidate) = parent.child(std::ffi::OsStr::new(&name))
+                        && !reserved.contains(&candidate)
+                        && !gio_file_for_location(&candidate)
+                            .query_exists(None::<&gio::Cancellable>)
+                    {
+                        break candidate;
+                    }
+                    attempt += 1;
+                };
+                reserved.insert(staged.clone());
+                let file = gio_file_for_location(&pending[index].source);
+                let staged_name = location_basename(&staged);
+                match set_display_name(&file, &staged_name, &operation_cancellable).await {
+                    Ok(()) => pending[index].staged = Some(staged),
+                    Err(error) if was_cancelled(&error) => {
+                        emit_batch_cancelled(
+                            request.id,
+                            &mut pending,
+                            &renamed,
+                            &mut failed,
+                            affected_locations,
+                            &emit,
+                        )
+                        .await;
+                        return;
+                    }
+                    // Source stays put; the blocked item reports its own error.
+                    Err(_) => {}
+                }
+            }
+
+            for index in 0..pending.len() {
+                if operation_cancellable.is_cancelled() {
+                    emit_batch_cancelled(
+                        request.id,
+                        &mut pending,
+                        &renamed,
+                        &mut failed,
+                        affected_locations,
+                        &emit,
+                    )
+                    .await;
+                    return;
+                }
+                let (source, new_name) = {
+                    let planned = &pending[index];
+                    (
+                        planned
+                            .staged
+                            .clone()
+                            .unwrap_or_else(|| planned.source.clone()),
+                        planned.new_name.clone(),
+                    )
+                };
+                let file = gio_file_for_location(&source);
+                match set_display_name(&file, &new_name, &operation_cancellable).await {
+                    Ok(()) => {
+                        let planned = &mut pending[index];
+                        planned.applied = true;
+                        renamed.push(RenameBatchRecord {
+                            original: planned.source.clone(),
+                            current: planned.target.clone(),
+                            original_name: planned.original_name.clone(),
+                        });
+                    }
+                    Err(error) if was_cancelled(&error) => {
+                        emit_batch_cancelled(
+                            request.id,
+                            &mut pending,
+                            &renamed,
+                            &mut failed,
+                            affected_locations,
+                            &emit,
+                        )
+                        .await;
+                        return;
+                    }
+                    Err(error) => {
+                        let planned = &mut pending[index];
+                        let stranded = planned.staged.as_ref().map(location_basename);
+                        let restored = restore_staged(planned).await;
+                        errors.push(match stranded.filter(|_| !restored) {
+                            Some(staged_name) => format!(
+                                "{}: {error} (item left as \"{staged_name}\")",
+                                planned.original_name
+                            ),
+                            None => format!("{}: {error}", planned.original_name),
+                        });
+                        planned.failed = true;
+                        failed.push(planned.source.clone());
+                    }
+                }
+            }
+            emit(OperationEvent::RenamedBatch {
+                request_id: request.id,
+                renamed,
+                errors,
+            });
         });
         cancellation_handle(cancellable)
     }

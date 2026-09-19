@@ -3,8 +3,8 @@
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::{
-    DropCommit, MoveRecord, PasteItem, TransferConflict, UndoMoveItem, VolumeRelation,
-    transferable_drop_sources,
+    DropCommit, MoveRecord, PasteItem, RenameBatchRecord, TransferConflict, UndoMoveItem,
+    VolumeRelation, transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
@@ -431,6 +431,26 @@ impl ViewState {
             return false;
         }
         self.browser.undo_copy(generation, existing)
+    }
+
+    /// Replays rename records back to their original names. Records whose
+    /// current name is already gone are dropped; collisions with names taken
+    /// since the rename fail safely in the provider and surface in its
+    /// summary instead of overwriting.
+    pub(super) fn undo_rename(
+        self: &Rc<Self>,
+        generation: u64,
+        records: Vec<RenameBatchRecord>,
+    ) -> bool {
+        let existing = records
+            .into_iter()
+            .filter(|record| location_exists(&record.current))
+            .collect::<Vec<_>>();
+        if existing.is_empty() {
+            self.browser.discard_pending_undo(generation);
+            return false;
+        }
+        self.browser.undo_rename_batch(generation, existing)
     }
 
     pub(super) fn undo_merge(

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+pub(crate) mod batch_rename;
 pub(crate) mod camera_preview;
 mod document;
 pub(crate) mod document_media;
@@ -17,6 +18,7 @@ mod transfer_action;
 mod update_check;
 mod update_install;
 
+pub use batch_rename::{BatchRenameMode, FormatStyle, plan_batch_rename};
 pub(crate) use document::{
     DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
     DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
@@ -39,9 +41,10 @@ pub(crate) use navigation_history::NavigationHistory;
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
-    OperationRequestId, PasteItem, PasteRequest, RenameRecord, RenameRequest, RestoreRequest,
-    RestoreSource, RestoreTrashItem, TransferConflict, TrashedOriginal, UndoCopyRequest,
-    UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
+    OperationRequestId, PasteItem, PasteRequest, RenameBatchItem, RenameBatchRecord,
+    RenameBatchRequest, RenameRecord, RenameRequest, RestoreRequest, RestoreSource,
+    RestoreTrashItem, TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest,
+    UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
 };
 pub use preview::{
     MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,

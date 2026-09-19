@@ -15,10 +15,11 @@ use crate::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRecord,
-        RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
-        TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveItem,
-        UndoMoveRequest, UndoRenameRequest, validate_basename, validate_uri_credentials,
+        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameBatchItem,
+        RenameBatchRecord, RenameBatchRequest, RenameRecord, RenameRequest, RequestId,
+        RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict, TrashedOriginal,
+        UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
+        validate_basename, validate_uri_credentials,
     },
 };
 
@@ -267,6 +268,7 @@ pub enum UndoEntry {
         originals: HashMap<Location, TrashedOriginal>,
     },
     Rename(RenameRecord),
+    RenameBatch(Vec<RenameBatchRecord>),
 }
 
 impl UndoEntry {
@@ -279,6 +281,7 @@ impl UndoEntry {
                 ..
             } => created.is_empty() && overwritten.is_empty(),
             Self::Move(records) => records.is_empty(),
+            Self::RenameBatch(records) => records.is_empty(),
             Self::Rename(_) => false,
         }
     }
@@ -383,6 +386,9 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
             }
             UndoEntry::Move(records) => {
                 records.retain(|record| &record.current != location);
+            }
+            UndoEntry::RenameBatch(records) => {
+                records.retain(|record| &record.original != location);
             }
             UndoEntry::Rename(_) => {}
         }
@@ -572,6 +578,7 @@ pub struct Browser {
     current_operation: Cell<Option<OperationRequestId>>,
     last_started_operation: Cell<Option<OperationRequestId>>,
     rename_operation: Cell<Option<OperationRequestId>>,
+    rename_batch_operation: Cell<bool>,
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
@@ -627,6 +634,7 @@ impl Browser {
             current_operation: Cell::new(None),
             last_started_operation: Cell::new(None),
             rename_operation: Cell::new(None),
+            rename_batch_operation: Cell::new(false),
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
@@ -1368,6 +1376,10 @@ impl Browser {
         self.state.borrow().selected_entries()
     }
 
+    pub fn selected_entries_in_selection_order(&self) -> Vec<FileEntry> {
+        self.state.borrow().selected_entries_in_selection_order()
+    }
+
     pub fn selection_is_load_cursor(&self) -> bool {
         self.state.borrow().selection_is_load_cursor()
     }
@@ -1469,6 +1481,120 @@ impl Browser {
             });
             return None;
         }
+        self.start_rename(entry, new_name)
+    }
+
+    /// Renames several entries with one provider call, publishing a single
+    /// consolidated update and recording one undo entry.
+    ///
+    /// Items whose planned name is unchanged or repeated verbatim are skipped;
+    /// invalid or duplicated planned names surface as provider failures in the
+    /// summary. Returns the request id, or `None` when every item was skipped.
+    pub fn rename_many(
+        self: &Rc<Self>,
+        items: Vec<(FileEntry, String)>,
+    ) -> Option<OperationRequestId> {
+        let mut seen = HashSet::new();
+        let mut batch = Vec::new();
+        for (entry, new_name) in items {
+            if new_name == entry.display_name
+                || !seen.insert((entry.location.clone(), new_name.clone()))
+            {
+                continue;
+            }
+            batch.push(RenameBatchItem {
+                location: entry.location.clone(),
+                new_name,
+            });
+        }
+        if batch.is_empty() {
+            return None;
+        }
+        self.start_rename_batch(batch, None)
+    }
+
+    /// Replays rename records back to their original names as one batch.
+    /// `generation` pins the undo the caller inspected, so an operation
+    /// started while conflicts were being confirmed wins instead.
+    pub fn undo_rename_batch(
+        self: &Rc<Self>,
+        generation: u64,
+        records: Vec<RenameBatchRecord>,
+    ) -> bool {
+        if records.is_empty() || self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::RenameBatch(_) = entry else {
+            finish_undo(generation, false);
+            return false;
+        };
+        let items: Vec<RenameBatchItem> = records
+            .iter()
+            .map(|record| RenameBatchItem {
+                location: record.current.clone(),
+                new_name: record.original_name.clone(),
+            })
+            .collect();
+        self.start_rename_batch(items, Some((generation, records)))
+            .is_some()
+    }
+
+    pub fn pending_undo_rename_batch(&self) -> Option<(u64, Vec<RenameBatchRecord>)> {
+        if self.current_operation.get().is_some() {
+            return None;
+        }
+        match peek_pending_undo()? {
+            (generation, UndoEntry::RenameBatch(records)) => Some((generation, records)),
+            _ => None,
+        }
+    }
+
+    fn start_rename_batch(
+        self: &Rc<Self>,
+        items: Vec<RenameBatchItem>,
+        undo: Option<(u64, Vec<RenameBatchRecord>)>,
+    ) -> Option<OperationRequestId> {
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            if let Some((generation, _)) = undo {
+                finish_undo(generation, false);
+            } else {
+                self.emit(BrowserEvent::RenameFailed {
+                    request_id: None,
+                    message: "File operations are unavailable".to_owned(),
+                });
+            }
+            return None;
+        };
+        let request_id = self.begin_operation();
+        self.rename_operation.set(Some(request_id));
+        self.rename_batch_operation.set(true);
+        if let Some((generation, records)) = undo {
+            self.undo_claim
+                .replace(Some((generation, UndoEntry::RenameBatch(records))));
+        }
+        let refresh_locations: HashSet<Location> = items
+            .iter()
+            .filter_map(|item| item.location.parent())
+            .collect();
+        let load = provider.rename_batch(
+            RenameBatchRequest {
+                id: request_id,
+                items,
+            },
+            self.operation_callback(request_id, true, refresh_locations),
+        );
+        self.install_operation_load(request_id, load);
+        Some(request_id)
+    }
+
+    fn start_rename(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        new_name: String,
+    ) -> Option<OperationRequestId> {
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::RenameFailed {
                 request_id: None,
@@ -1702,7 +1828,8 @@ impl Browser {
                 UndoEntry::Trash(_)
                 | UndoEntry::Copy(_)
                 | UndoEntry::Merge { .. }
-                | UndoEntry::Rename(_),
+                | UndoEntry::Rename(_)
+                | UndoEntry::RenameBatch(_),
             ) => None,
         }
     }
@@ -1718,7 +1845,8 @@ impl Browser {
                 UndoEntry::Trash(_)
                 | UndoEntry::Move(_)
                 | UndoEntry::Merge { .. }
-                | UndoEntry::Rename(_),
+                | UndoEntry::Rename(_)
+                | UndoEntry::RenameBatch(_),
             ) => None,
         }
     }
@@ -1738,7 +1866,8 @@ impl Browser {
                 UndoEntry::Trash(_)
                 | UndoEntry::Move(_)
                 | UndoEntry::Copy(_)
-                | UndoEntry::Rename(_),
+                | UndoEntry::Rename(_)
+                | UndoEntry::RenameBatch(_),
             ) => None,
         }
     }
@@ -1759,7 +1888,8 @@ impl Browser {
                 UndoEntry::Trash(_)
                 | UndoEntry::Move(_)
                 | UndoEntry::Copy(_)
-                | UndoEntry::Merge { .. },
+                | UndoEntry::Merge { .. }
+                | UndoEntry::RenameBatch(_),
             ) => None,
         }
     }

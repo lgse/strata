@@ -988,6 +988,29 @@ impl NavigationState {
             .collect()
     }
 
+    /// Selected entries with the selection anchor first, then view order.
+    ///
+    /// Batch operations that number items (like Finder's rename) follow the
+    /// anchor, so a bottom-to-top range numbers from the bottom: the anchor
+    /// is where the selection started.
+    pub fn selected_entries_in_selection_order(&self) -> Vec<FileEntry> {
+        let mut entries = self.selected_entries();
+        let Some(depth) = self.active_column else {
+            return entries;
+        };
+        let anchor = self
+            .columns
+            .get(depth)
+            .and_then(|column| column.selection_anchor.clone());
+        if let Some(anchor) = anchor
+            && let Some(position) = entries.iter().position(|entry| entry.location == anchor)
+        {
+            let first = entries.remove(position);
+            entries.insert(0, first);
+        }
+        entries
+    }
+
     pub fn selection_is_load_cursor(&self) -> bool {
         self.active_column
             .and_then(|depth| self.columns.get(depth))

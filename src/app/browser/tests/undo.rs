@@ -835,6 +835,32 @@ fn cancelled_rename_undo_releases_its_claim_and_remains_retryable() {
 }
 
 #[test]
+fn rename_many_records_one_undo_for_the_whole_batch() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("alpha")));
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("bravo")));
+
+    assert!(
+        browser
+            .rename_many(vec![
+                (batch_entry("alpha"), "alpha 1".to_owned()),
+                (batch_entry("bravo"), "bravo 1".to_owned()),
+            ])
+            .is_some()
+    );
+    let Some((generation, records)) = browser.pending_undo_rename_batch() else {
+        panic!("completed batch should record undo");
+    };
+    assert_eq!(records.len(), 2);
+
+    assert!(browser.undo_rename_batch(generation, records));
+    assert!(browser.pending_undo_rename_batch().is_none());
+}
+
+#[test]
 fn a_merged_copy_records_created_and_overwritten_paths_for_undo() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));

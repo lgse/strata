@@ -746,3 +746,89 @@ fn completed_deletions_remove_entries_without_reloading_the_column() {
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
     );
 }
+
+#[test]
+fn rename_many_publishes_one_batch_and_reports_failures() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("alpha")));
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("bravo")));
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("charlie")));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let request_id = browser.rename_many(vec![
+        (batch_entry("alpha"), "alpha 1".to_owned()),
+        (batch_entry("bravo"), "bravo 1".to_owned()),
+        (batch_entry("charlie"), "charlie".to_owned()),
+        (batch_entry("alpha"), "alpha 1".to_owned()),
+        (batch_entry("bravo"), String::new()),
+    ]);
+
+    assert!(request_id.is_some());
+    let completed = events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, BrowserEvent::RenameCompleted { .. }))
+        .count();
+    assert_eq!(completed, 1, "one provider call completes once");
+    let splices = events
+        .borrow()
+        .iter()
+        .filter(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+        .count();
+    assert_eq!(splices, 1, "both renames publish in a single update");
+    assert!(
+        events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::OperationFailed { message } if message.contains("bravo")
+        )),
+        "invalid planned names must surface in the summary, not be skipped"
+    );
+}
+
+#[test]
+fn rename_many_with_nothing_to_do_returns_none() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+
+    assert!(
+        browser
+            .rename_many(vec![(batch_entry("alpha"), "alpha".to_owned())])
+            .is_none()
+    );
+}
+
+#[test]
+fn batch_rename_summary_counts_successes_and_failures() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    let emit = browser.operation_callback(request_id, true, HashSet::new());
+
+    emit(OperationEvent::RenamedBatch {
+        request_id,
+        renamed: vec![RenameBatchRecord {
+            original: Location::local("/fixture/alpha"),
+            current: Location::local("/fixture/alpha 1"),
+            original_name: "alpha".to_owned(),
+        }],
+        errors: vec!["bravo: File exists".to_owned()],
+    });
+
+    assert!(
+        events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::OperationFailed { message }
+                if message.contains("Renamed 1 of 2 items")
+                    && message.contains("bravo: File exists")
+        )),
+        "batch failures should collapse into one summary"
+    );
+}

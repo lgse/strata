@@ -35,7 +35,10 @@ impl Browser {
         if self.location_at(depth).as_ref() != Some(watched) {
             return;
         }
-        if self.deletion_operation.get() || self.restoration_operation.get() {
+        if self.deletion_operation.get()
+            || self.restoration_operation.get()
+            || self.rename_batch_operation.get()
+        {
             self.deferred_file_operation_changes
                 .borrow_mut()
                 .entry(depth)

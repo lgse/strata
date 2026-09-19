@@ -8,8 +8,8 @@ use crate::{
         CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange,
         DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, OperationEvent, OperationProvider, OperationRequestId,
-        PasteRequest, RenameRequest, RestoreRequest, UndoCopyRequest, UndoMergeRequest,
-        UndoMoveRequest, UndoRenameRequest,
+        PasteRequest, RenameBatchRequest, RenameRequest, RestoreRequest, UndoCopyRequest,
+        UndoMergeRequest, UndoMoveRequest, UndoRenameRequest,
     },
     test_support::gtk_test,
     ui::{
@@ -334,6 +334,7 @@ impl OperationProvider for DelayedRenameProvider {
         LoadHandle::new(|| {})
     }
 
+    unsupported_operation!(rename_batch, RenameBatchRequest);
     unsupported_operation!(create_directory, CreateDirectoryRequest);
     unsupported_operation!(create_file, CreateFileRequest);
     unsupported_operation!(paste, PasteRequest);
