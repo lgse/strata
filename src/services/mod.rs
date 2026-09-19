@@ -63,8 +63,8 @@ pub(crate) use transfer_action::{
 // reachable from UI code.
 pub(crate) use release_channel::{BuildKind, Channel, Version};
 pub(crate) use search::{
-    SearchCoverage, SearchEvent, SearchHandle, SearchItem, filter_name_matches, fold_for_search,
-    index_filter, index_tree, index_trees,
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, filter_name_matches,
+    filter_query_allows_typos, fold_for_search, index_filter, index_tree, index_trees,
 };
 pub(crate) use update_check::{
     ReleaseMetadata, ReleaseNotes, UpdateCheck, check_for_updates, fetch_release_notes,

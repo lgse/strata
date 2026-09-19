@@ -2,7 +2,7 @@
 
 use crate::app::Browser;
 use crate::model::Location;
-use crate::services::fold_for_search;
+use crate::services::{filter_query_allows_typos, fold_for_search};
 use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::prelude::*;
@@ -324,8 +324,12 @@ pub(crate) fn bind_filter_query(
 }
 
 pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterChange {
-    // Adding/removing a star can broaden or re-anchor the match, not just narrow it.
-    if previous.contains('*') || settled.contains('*') {
+    // Wildcard and typo edits can add and remove matches in the same update.
+    if previous.contains('*')
+        || settled.contains('*')
+        || filter_query_allows_typos(previous)
+        || filter_query_allows_typos(settled)
+    {
         gtk::FilterChange::Different
     } else if settled.starts_with(previous) && settled.len() > previous.len() {
         gtk::FilterChange::MoreStrict

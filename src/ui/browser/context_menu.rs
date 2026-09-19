@@ -587,7 +587,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
     let print = item_context_option(crate::assets::icons::PRINTER, "Print", "");
-    let restore = item_context_option(crate::assets::icons::FOLDER, "Restore", "");
+    let restore = item_context_option(crate::assets::icons::UNDO_2, "Restore", "");
     restore.set_visible(in_trash);
     let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
     let copy = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
@@ -658,7 +658,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let open_multiple = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "Enter");
     let open_with_multiple =
         item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
-    let restore_multiple = item_context_option(crate::assets::icons::FOLDER, "Restore items", "");
+    let restore_multiple = item_context_option(crate::assets::icons::UNDO_2, "Restore items", "");
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
     let duplicate_multiple = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
@@ -993,22 +993,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     });
     for button in [&restore, &restore_multiple] {
         connect_selection_action(button, &popover, state, &target, |state, entries| {
-            if let Some(trash_button) = state.trash_button.borrow().as_ref() {
-                let weak = Rc::downgrade(state);
-                let entries_for_restore = std::rc::Rc::new(entries.clone());
-                super::fly_to_trash::fly_from_trash(
-                    state.overlay.upcast_ref(),
-                    &entries,
-                    trash_button,
-                    move || {
-                        if let Some(state) = weak.upgrade() {
-                            state.request_restore((*entries_for_restore).clone());
-                        }
-                    },
-                );
-            } else {
-                state.request_restore(entries);
-            }
+            state.request_restore(entries);
         });
     }
     for (button, moving) in [
