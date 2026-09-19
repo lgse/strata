@@ -395,8 +395,21 @@ fn unique_fat_sibling_name_numbers_a_collision_instead_of_overwriting() {
     assert_eq!(first, OsString::from("a_b.txt"));
     assert_eq!(second, OsString::from("a_b (1).txt"));
     assert_eq!(third, OsString::from("a_b (2).txt"));
-    assert_ne!(first, second);
-    assert_ne!(second, third);
+    assert_eq!(
+        unique_fat_sibling_name(OsString::from("A_B.txt"), &mut used),
+        OsString::from("A_B (3).txt")
+    );
+    let maximum = OsString::from("a (18446744073709551615).txt");
+    assert_eq!(unique_fat_sibling_name(maximum.clone(), &mut used), maximum);
+    let almost_maximum = OsString::from("a (18446744073709551614).txt");
+    assert_eq!(
+        unique_fat_sibling_name(almost_maximum.clone(), &mut used),
+        almost_maximum
+    );
+    assert_eq!(
+        unique_fat_sibling_name(almost_maximum, &mut used),
+        OsString::from("a (1).txt")
+    );
 }
 
 #[test]
@@ -470,6 +483,7 @@ fn fat_family_copy_disambiguates_sibling_names_that_collide_after_sanitizing()
     fs::create_dir_all(&source)?;
     fs::write(source.join("a?.txt"), b"first")?;
     fs::write(source.join("a:.txt"), b"second")?;
+    fs::write(source.join("A*.txt"), b"third")?;
 
     let result = glib::MainContext::default().block_on(copy_recursively_fat_family(
         gio::File::for_path(&source),
@@ -481,11 +495,15 @@ fn fat_family_copy_disambiguates_sibling_names_that_collide_after_sanitizing()
 
     assert!(result.is_ok(), "{result:?}");
     let mut contents = [
-        fs::read(target.join("a_.txt"))?,
+        fs::read(target.join("A_.txt"))?,
         fs::read(target.join("a_ (1).txt"))?,
+        fs::read(target.join("a_ (2).txt"))?,
     ];
     contents.sort();
-    assert_eq!(contents, [b"first".to_vec(), b"second".to_vec()]);
+    assert_eq!(
+        contents,
+        [b"first".to_vec(), b"second".to_vec(), b"third".to_vec()]
+    );
     Ok(())
 }
 

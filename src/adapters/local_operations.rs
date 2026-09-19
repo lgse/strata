@@ -315,8 +315,6 @@ fn duplicate_target(
     Err(io_error("Could not find an unused duplicate name"))
 }
 
-/// Characters FAT/exFAT/vFAT reject in a name; GNOME Files substitutes `_`
-/// for these when copying onto such a destination instead of failing.
 const FAT_INVALID_BYTES: &[u8] = b"\"*/:<>?\\|";
 
 fn fat_sanitized_name(name: &OsStr) -> OsString {
@@ -331,8 +329,7 @@ fn fat_sanitized_name(name: &OsStr) -> OsString {
             }
         })
         .collect();
-    // The drivers silently strip trailing dots and spaces; do the same so the
-    // sanitized name matches what would actually land on disk.
+    // FAT drivers strip trailing dots and spaces.
     while matches!(bytes.last(), Some(b'.' | b' ')) {
         bytes.pop();
     }
@@ -342,11 +339,15 @@ fn fat_sanitized_name(name: &OsStr) -> OsString {
     OsString::from_vec(bytes)
 }
 
-/// Disambiguates a FAT-sanitized name against siblings already placed in this
-/// same copy, so two names that only differed by a rejected character never
-/// collapse into one entry silently overwriting the other.
+fn fat_name_key(name: &OsStr) -> OsString {
+    match name.to_str() {
+        Some(name) => OsString::from(name.to_uppercase()),
+        None => OsString::from_vec(name.as_bytes().to_ascii_uppercase()),
+    }
+}
+
 fn unique_fat_sibling_name(candidate: OsString, used: &mut HashSet<OsString>) -> OsString {
-    if used.insert(candidate.clone()) {
+    if used.insert(fat_name_key(&candidate)) {
         return candidate;
     }
     let extension = Path::new(&candidate)
@@ -361,14 +362,13 @@ fn unique_fat_sibling_name(candidate: OsString, used: &mut HashSet<OsString>) ->
     let mut index = copy_num.map_or(1, |number| number + 1);
     loop {
         let attempt = duplicate_candidate_name(base_stem, extension.as_deref(), index);
-        if used.insert(attempt.clone()) {
+        if used.insert(fat_name_key(&attempt)) {
             return attempt;
         }
-        index += 1;
+        index = index.checked_add(1).unwrap_or(1);
     }
 }
 
-/// Renames `name` for a FAT-family destination, or returns it unchanged.
 fn fat_family_child_name(name: &OsStr, fat_family: bool, used: &mut HashSet<OsString>) -> OsString {
     if fat_family {
         unique_fat_sibling_name(fat_sanitized_name(name), used)
@@ -377,13 +377,49 @@ fn fat_family_child_name(name: &OsStr, fat_family: bool, used: &mut HashSet<OsSt
     }
 }
 
-/// Checked once per transfer rather than per file, against the same parsed
-/// `/proc/self/mountinfo` table already used for cross-device detection
-/// elsewhere. Non-native destinations (no local path) are never FAT-family.
+#[derive(Clone, Copy)]
+struct CopyOptions {
+    overwrite_existing: bool,
+    fat_family: bool,
+}
+
 fn target_is_fat_family(target: &gio::File, mounts: &MountTable) -> bool {
     target
         .path()
         .is_some_and(|path| matches!(mounts.fs_type_for(&path), Some("msdos" | "vfat" | "exfat")))
+}
+
+async fn copy_children(
+    enumerator: &gio::FileEnumerator,
+    cancellable: &gio::Cancellable,
+    fat_family: bool,
+) -> Result<Vec<gio::FileInfo>, glib::Error> {
+    let mut children = Vec::new();
+    loop {
+        let batch = await_cancellable(
+            enumerator,
+            cancellable,
+            |enumerator, cancellable, result| {
+                enumerator.next_files_async(
+                    64,
+                    glib::Priority::DEFAULT,
+                    Some(cancellable),
+                    move |output| result.resolve(output),
+                );
+            },
+        )
+        .await?;
+        let finished = batch.is_empty();
+        children.extend(batch);
+        if !fat_family || finished {
+            break;
+        }
+    }
+    if fat_family {
+        // Planning and copying must allocate collision suffixes in the same order.
+        children.sort_by_key(|child| child.name());
+    }
+    Ok(children)
 }
 
 fn was_cancelled(error: &glib::Error) -> bool {
@@ -660,15 +696,6 @@ async fn copy_new_remote_file_with(
 /// hand-ed to GIO's own copy (preserving its metadata handling and any
 /// reflink optimisation) through a `/proc/self/fd` reference pinned to the
 /// exact file just verified, rather than the original, re-resolvable path.
-/// Bundles the two flags that stay constant across a whole recursive copy,
-/// so `copy_recursively_local` doesn't exceed the arity lint on top of its
-/// two source-identifying parameters (`parent`, `name`).
-#[derive(Clone, Copy)]
-struct CopyOptions {
-    overwrite_existing: bool,
-    fat_family: bool,
-}
-
 fn copy_recursively_local(
     parent: OwnedFd,
     name: OsString,
@@ -736,7 +763,13 @@ fn copy_recursively_local(
                 drop(file);
                 result
             }
-            LocalCopySource::Directory { handle, children } => {
+            LocalCopySource::Directory {
+                handle,
+                mut children,
+            } => {
+                if options.fat_family {
+                    children.sort();
+                }
                 if !options.overwrite_existing || !target.query_exists(Some(&cancellable)) {
                     await_cancellable(&target, &cancellable, |target, cancellable, result| {
                         target.make_directory_async(
@@ -872,19 +905,7 @@ fn copy_recursively_with_progress(
                 .await?;
             let mut used_names = HashSet::new();
             loop {
-                let children = await_cancellable(
-                    &enumerator,
-                    &cancellable,
-                    |enumerator, cancellable, result| {
-                        enumerator.next_files_async(
-                            64,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            move |output| result.resolve(output),
-                        );
-                    },
-                )
-                .await?;
+                let children = copy_children(&enumerator, &cancellable, fat_family).await?;
                 if children.is_empty() {
                     break;
                 }
@@ -902,6 +923,9 @@ fn copy_recursively_with_progress(
                         fat_family,
                     )
                     .await?;
+                }
+                if fat_family {
+                    break;
                 }
             }
             Ok(())
@@ -953,25 +977,6 @@ fn copy_recursively(
         created_root,
         None,
         false,
-    )
-}
-
-#[cfg(test)]
-fn copy_recursively_fat_family(
-    source: gio::File,
-    target: gio::File,
-    overwrite_existing: bool,
-    cancellable: gio::Cancellable,
-    created_root: Option<Rc<CreatedCopyRoot>>,
-) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
-    copy_recursively_with_progress(
-        source,
-        target,
-        overwrite_existing,
-        cancellable,
-        created_root,
-        None,
-        true,
     )
 }
 
@@ -1712,6 +1717,7 @@ fn trash_stage_overwrite(
 
 /// The injectable steps of a merge, bundled to keep the call sites small.
 struct MergeHooks<'a> {
+    fat_family: bool,
     copy_into_target: StageCopy,
     stage_overwrite: StageOverwrite,
     on_merged: &'a dyn Fn(MergePlan),
@@ -1722,6 +1728,7 @@ fn classify_merge<'a>(
     target: &'a gio::File,
     plan: &'a mut MergePlan,
     cancellable: &'a gio::Cancellable,
+    fat_family: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>> + 'a>> {
     Box::pin(async move {
         let enumerator = await_cancellable(source, cancellable, |source, cancellable, result| {
@@ -1734,20 +1741,9 @@ fn classify_merge<'a>(
             );
         })
         .await?;
+        let mut used_names = HashSet::new();
         loop {
-            let children = await_cancellable(
-                &enumerator,
-                cancellable,
-                |enumerator, cancellable, result| {
-                    enumerator.next_files_async(
-                        64,
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        move |output| result.resolve(output),
-                    );
-                },
-            )
-            .await?;
+            let children = copy_children(&enumerator, cancellable, fat_family).await?;
             if children.is_empty() {
                 return Ok(());
             }
@@ -1755,8 +1751,11 @@ fn classify_merge<'a>(
                 if cancellable.is_cancelled() {
                     return Err(cancelled_local_operation());
                 }
-                let child_source = source.child(child.name());
-                let child_target = target.child(child.name());
+                let child_name = child.name();
+                let target_name =
+                    fat_family_child_name(child_name.as_os_str(), fat_family, &mut used_names);
+                let child_source = source.child(&child_name);
+                let child_target = target.child(&target_name);
                 let target_type = match await_cancellable(
                     &child_target,
                     cancellable,
@@ -1784,7 +1783,8 @@ fn classify_merge<'a>(
                         }
                     }
                     Some(gio::FileType::Directory) if source_is_directory => {
-                        classify_merge(&child_source, &child_target, plan, cancellable).await?;
+                        classify_merge(&child_source, &child_target, plan, cancellable, fat_family)
+                            .await?;
                     }
                     Some(gio::FileType::Directory) => {
                         return Err(glib::Error::new(
@@ -1804,6 +1804,9 @@ fn classify_merge<'a>(
                         }
                     }
                 }
+            }
+            if fat_family {
+                return Ok(());
             }
         }
     })
@@ -1845,7 +1848,7 @@ async fn merge_local_with(
         }
     }
     let mut plan = MergePlan::default();
-    classify_merge(&source, &target, &mut plan, &cancellable).await?;
+    classify_merge(&source, &target, &mut plan, &cancellable, hooks.fat_family).await?;
     // Stage every overwritten original in Trash before the copy so undo can
     // restore it; on failure, report what was staged so it stays recoverable.
     let mut staged = Vec::new();
@@ -1893,6 +1896,7 @@ async fn merge_local_with_progress(
         cancellable,
         affected_locations,
         MergeHooks {
+            fat_family,
             copy_into_target: Rc::new(move |source, target, _directory, cancellable| {
                 copy_recursively_with_progress(
                     source,
@@ -3631,6 +3635,7 @@ impl OperationProvider for LocalOperationProvider {
         let _task = glib::MainContext::default().spawn_local(async move {
             let destination = gio_file_for_location(&request.destination);
             let fat_family = target_is_fat_family(&destination, &MountTable::current());
+            let mut used_names = HashSet::new();
             let mut affected_locations = HashSet::from([request.destination.clone()]);
             for parent in request.items.iter().filter_map(|item| item.source.parent()) {
                 affected_locations.insert(parent);
@@ -3692,11 +3697,11 @@ impl OperationProvider for LocalOperationProvider {
                     });
                     return;
                 };
-                let name = if fat_family {
-                    PathBuf::from(fat_sanitized_name(name.as_os_str()))
-                } else {
-                    name
-                };
+                let name = PathBuf::from(fat_family_child_name(
+                    name.as_os_str(),
+                    fat_family,
+                    &mut used_names,
+                ));
                 let default_target = destination.child(&name);
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 let needs_unique_target =

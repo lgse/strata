@@ -39,18 +39,36 @@ mod restore_safety;
 mod trash_capabilities;
 mod undo;
 
+fn copy_recursively_fat_family(
+    source: gio::File,
+    target: gio::File,
+    overwrite_existing: bool,
+    cancellable: gio::Cancellable,
+    created_root: Option<Rc<super::CreatedCopyRoot>>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    copy_recursively_with_progress(
+        source,
+        target,
+        overwrite_existing,
+        cancellable,
+        created_root,
+        None,
+        true,
+    )
+}
+
 use super::{
     LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider, MergeHooks, MergePlan, MountTable,
     RestoreEntry, StageCopy, StageOverwrite, StagedOriginalLookup, TransferProgressTracker,
     await_cancellable, bounded_local_delete_worker_count, copy_failure_after_cleanup,
-    copy_new_recursively, copy_new_remote_file_with, copy_recursively, copy_recursively_fat_family,
-    deletion_error_message, deletion_error_summary, duplicate_candidate_name, fat_sanitized_name,
-    home_trash_entries_at, io_error, is_trash_unsupported_failure, local_file_identity,
-    merge_local, merge_local_with, move_local, move_local_with, open_local_parent_directory,
-    operation_error_summary, parallel_delete_local, parse_copy_suffix, permanently_delete_local,
-    permanently_delete_local_path_if_unchanged, replace_local, replace_local_with, run_merge_undo,
-    target_is_fat_family, transfer_is_noop, trash_stage_overwrite, unique_fat_sibling_name,
-    validated_child, was_cancelled,
+    copy_new_recursively, copy_new_remote_file_with, copy_recursively,
+    copy_recursively_with_progress, deletion_error_message, deletion_error_summary,
+    duplicate_candidate_name, fat_sanitized_name, home_trash_entries_at, io_error,
+    is_trash_unsupported_failure, local_file_identity, merge_local, merge_local_with, move_local,
+    move_local_with, open_local_parent_directory, operation_error_summary, parallel_delete_local,
+    parse_copy_suffix, permanently_delete_local, permanently_delete_local_path_if_unchanged,
+    replace_local, replace_local_with, run_merge_undo, target_is_fat_family, transfer_is_noop,
+    trash_stage_overwrite, unique_fat_sibling_name, validated_child, was_cancelled,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
