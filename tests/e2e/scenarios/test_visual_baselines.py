@@ -85,9 +85,17 @@ def test_columns_overflow_baseline(strata, baseline, tmp_path):
     sidebar = strata.sidebar_button("Home").parent
     assert sidebar is not None
     sidebar_bounds = sidebar.screen_bounds()
-    pane_bounds = strata.pane("release").screen_bounds()
+    pane = strata.pane("release")
+    scrollbar = next(
+        candidate
+        for node in pane.ancestors()
+        if node.role == "scroll pane"
+        for candidate in node.find_all(role="scroll bar")
+        if (bounds := candidate.screen_bounds()).width > bounds.height
+    )
+    bar_bounds = scrollbar.screen_bounds()
     leading_edge = sidebar_bounds.x + sidebar_bounds.width
-    scrollbar_y = pane_bounds.y + pane_bounds.height + 7
+    scrollbar_y = bar_bounds.y + bar_bounds.height // 2
     with Image.open(capture) as image:
         pixels = image.convert("RGB")
         assert pixels.getpixel((leading_edge, scrollbar_y)) == pixels.getpixel(

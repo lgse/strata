@@ -2179,11 +2179,9 @@ impl SourcePreviewView {
             .child(&self.view)
             .hscrollbar_policy(text_hscroll_policy(wrapped))
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .hexpand(true)
             .vexpand(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         self.scroll.replace(Some(scroll.clone()));
         (scroll.upcast(), false)
     }
