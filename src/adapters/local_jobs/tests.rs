@@ -26,6 +26,8 @@ use crate::services::{
 use super::*;
 use crate::adapters::local_actions::LocalActionStore;
 
+mod examples;
+
 const EVENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct Fixture {

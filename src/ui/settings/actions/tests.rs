@@ -336,6 +336,79 @@ fn tab_switches_retain_edits_and_execution_choices_control_failure_policy() {
 }
 
 #[test]
+fn examples_apply_valid_scripts_and_matching_rules_without_saving() {
+    crate::test_support::gtk_test(
+        "ui::settings::actions::tests::examples_apply_valid_scripts_and_matching_rules_without_saving",
+        || {
+            let form = form_for(python_draft(), None);
+            for example in ACTION_EXAMPLES {
+                form.apply_example(example);
+                let (definition, script) = form.read().expect("example produces a valid draft");
+                let script = script.expect("Python source");
+                assert_eq!(definition.name, example.name);
+                assert_eq!(definition.description.as_deref(), Some(example.description));
+                assert_eq!(definition.run.runtime, ActionRuntime::Python);
+                assert_eq!(definition.run.mode, example.mode);
+                assert_eq!(definition.when.extensions, example.extensions);
+                assert_eq!(
+                    definition.when.kinds.contains(&InputKind::Folder),
+                    example.folders
+                );
+                assert!(definition.interpreter_for_source(&script.contents).is_ok());
+                assert_eq!(script.contents, example.script());
+            }
+        },
+    );
+}
+
+#[test]
+fn example_replacement_preserves_custom_identity_and_other_runtime_drafts() {
+    crate::test_support::gtk_test(
+        "ui::settings::actions::tests::example_replacement_preserves_custom_identity_and_other_runtime_drafts",
+        || {
+            let form = form_for(python_draft(), None);
+            assert!(!form.replaces_python_draft());
+            form.name.set_text("My custom action");
+            form.id.set_text("my-action");
+            form.description.set_text("My description");
+            form.enabled.set_active(false);
+            form.entrypoint.set_text("custom.py");
+            form.script.buffer().set_text("print('keep this draft')\n");
+            assert!(form.replaces_python_draft());
+            form.apply_example(&ACTION_EXAMPLES[1]);
+            let (definition, script) = form.read().expect("custom identity stays valid");
+            assert_eq!(definition.name, "My custom action");
+            assert_eq!(definition.id, "my-action");
+            assert_eq!(definition.description.as_deref(), Some("My description"));
+            assert!(!definition.enabled);
+            assert_eq!(script.expect("script").file_name, "custom.py");
+            assert!(form.python_buffer.can_undo());
+            form.python_buffer.undo();
+            assert_eq!(text_contents(&form.script), "print('keep this draft')\n");
+            choose(&form, "Bash");
+            form.script.buffer().set_text("printf 'bash draft'\n");
+            form.apply_example(&ACTION_EXAMPLES[5]);
+            choose(&form, "Bash");
+            assert_eq!(text_contents(&form.script), "printf 'bash draft'\n");
+            choose(&form, "Command");
+            form.program.set_text("printf");
+            form.arguments.buffer().set_text("{path}");
+            form.apply_example(&ACTION_EXAMPLES[1]);
+            choose(&form, "Command");
+            assert_eq!(
+                form.read()
+                    .expect("command draft remains")
+                    .0
+                    .run
+                    .program
+                    .as_deref(),
+                Some("printf")
+            );
+        },
+    );
+}
+
+#[test]
 fn summary_lines_describe_runtime_scope_and_problems() {
     let mut definition = python_draft();
     definition.when.kinds = vec![InputKind::File];

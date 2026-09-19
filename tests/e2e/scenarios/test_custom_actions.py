@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: MIT
 """The action editor keeps drafts across tabs and writes the portable manifest."""
 
+import hashlib
 import tomllib
 
 
-def test_action_editor_tabs_validate_save_and_reopen(strata):
+def _open_new_action(strata):
     assert strata.window.find(role="button", name="Settings").activate()
     actions = strata.wait(
         lambda: strata.window.find(role="button", name="Actions"), "Actions settings"
@@ -14,6 +15,13 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
         lambda: strata.window.find(role="button", name="New action…"), "New action"
     )
     assert create.activate()
+    return strata.wait(
+        lambda: strata.window.find(role="dialog", name="New action"), "New action"
+    )
+
+
+def test_action_editor_tabs_validate_save_and_reopen(strata):
+    _open_new_action(strata)
 
     def editor(title="New action"):
         return strata.wait(
@@ -115,3 +123,75 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
     strata.open_context_menu("todo.txt")
     assert "Batch rename" in strata.menu_items()
     strata.dismiss_menu()
+
+
+def test_script_library_previews_preserves_cancelled_edits_and_runs_a_recipe(strata):
+    editor = _open_new_action(strata)
+    strata.keyboard.type_text("Checksum job")
+    strata.pointer.click(editor.find(role="page tab", name="Script"))
+    script = strata.wait(lambda: editor.find(role="text", name="Script"), "script editor")
+    strata.pointer.click(script)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("print('my draft')")
+    strata.wait(lambda: script.text == "print('my draft')", "custom draft")
+
+    def library():
+        assert editor.find(role="button", name="Examples…").activate()
+        return strata.wait(
+            lambda: strata.window.find(role="dialog", name="Script examples"), "script library"
+        )
+
+    picker = library()
+    assert picker.find(role="button", name="Replace script") is not None
+    strata.pointer.click(picker.find(role="button", name="Cancel"))
+    strata.wait(
+        lambda: strata.window.find(role="dialog", name="Script examples") is None,
+        "cancelled library to close",
+    )
+    assert script.text == "print('my draft')"
+    picker = library()
+    strata.pointer.click(picker.find(role="combo box"))
+    strata.keyboard.press("End")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: picker.find(role="label", name="SHA-256 checksums"), "checksum example"
+    )
+    preview = picker.find(role="text", name="Example code").text
+    strata.pointer.click(picker.find(role="button", name="Replace script"))
+    strata.wait(
+        lambda: strata.window.find(role="dialog", name="Script examples") is None,
+        "chosen library to close",
+    )
+    assert script.text == preview
+    strata.pointer.click(editor.find(role="page tab", name="Behavior"))
+    menu_item = strata.wait(
+        lambda: editor.find(role="toggle button", name="Menu item"), "placement control"
+    )
+    strata.pointer.click(menu_item)
+    strata.pointer.click(editor.find(role="button", name="Create action"))
+    action_dir = strata.environment.config_home / "strata/actions/checksum-job"
+    strata.wait(lambda: (action_dir / "action.toml").exists(), "saved example")
+    assert (action_dir / "main.py").read_text() == preview
+    manifest = tomllib.loads((action_dir / "action.toml").read_text())
+    assert manifest["name"] == "Checksum job"
+    assert manifest["run"]["mode"] == "per-item"
+    assert manifest["when"]["kinds"] == ["file"]
+    strata.wait(
+        lambda: strata.window.find(role="dialog", name="New action") is None,
+        "editor to close",
+    )
+    assert strata.window.find(role="button", name="Close settings").activate()
+    strata.wait(
+        lambda: strata.window.find(role="button", name="Close settings") is None,
+        "settings to close",
+    )
+    original = strata.fixture.path("todo.txt").read_bytes()
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Checksum job")
+    checksum = strata.fixture.path("todo.txt.sha256")
+    strata.wait(checksum.exists, "the recipe to create a checksum")
+    strata.wait(
+        lambda: checksum.read_text().startswith(hashlib.sha256(original).hexdigest()),
+        "the complete checksum",
+    )
+    assert strata.fixture.path("todo.txt").read_bytes() == original

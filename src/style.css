@@ -5773,6 +5773,47 @@ popover.settings-search-popover.background {
   padding: 14px 18px;
 }
 
+.settings-action-examples {
+  min-width: 720px;
+}
+
+.settings-action-examples dropdown popover.background {
+  background: @theme_surface;
+}
+
+.settings-action-examples dropdown popover.background > contents {
+  background: @theme_surface;
+  color: @theme_text;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.settings-action-examples dropdown listview {
+  background: @theme_surface;
+  color: @theme_text;
+}
+
+.settings-action-examples dropdown row {
+  background: transparent;
+  color: @theme_text;
+  border-radius: 4px;
+}
+
+.settings-action-examples dropdown row:hover,
+.settings-action-examples dropdown row:selected {
+  background: alpha(@theme_accent, 0.15);
+}
+
+.settings-action-examples dropdown row:active {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.settings-action-examples dropdown row:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
 .settings-action-dialog {
   min-width: 760px;
   box-shadow: 0 12px 28px alpha(@theme_bg, 0.4);
@@ -5993,4 +6034,25 @@ popover.settings-search-popover.background {
 .settings-action-script textview text selection {
   background: alpha(@theme_accent, 0.3);
   color: @theme_text;
+}
+
+.settings-action-script scrollbar,
+.settings-action-script scrollbar trough {
+  background: transparent;
+}
+
+.settings-action-script scrollbar slider {
+  min-width: 6px;
+  min-height: 6px;
+  background: alpha(@theme_dim_text, 0.5);
+  border: none;
+  border-radius: 6px;
+}
+
+.settings-action-script scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.settings-action-script scrollbar slider:active {
+  background: @theme_accent;
 }

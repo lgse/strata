@@ -38,6 +38,40 @@ that tab without discarding your edits. Clicking outside the dialog leaves it op
 **Cancel**, the close button, or **Escape** discards the draft.
 Existing actions use the same editor with **Save changes**; their id stays fixed.
 
+### Script examples
+
+Choose **Examples…** on the Script tab to browse bundled Python recipes. The
+picker shows requirements and a read-only preview before you apply anything:
+
+| Example | Extra requirements | Result |
+| --- | --- | --- |
+| Log selected paths | None | Log paths and report progress without changing files |
+| Convert images to WebP | ImageMagick (`magick` or `convert`) | First frame, quality 85, in `strata-webp-*/converted.webp` |
+| Resize images to 1024px | ImageMagick (`magick` or `convert`) | First frame, aspect-preserving PNG, never enlarged, in `strata-resize-*/resized.png` |
+| Convert videos to MP4 | FFmpeg with `libx264` and AAC | H.264/AAC copy in `strata-mp4-*/converted.mp4` |
+| Extract MP3 audio | FFmpeg with `libmp3lame` | First audio stream in `strata-mp3-*/audio.mp3`; fails if there is no audio |
+| SHA-256 checksums | None | Adjacent `<original-name>.sha256`, compatible with `sha256sum --check` from the original folder |
+
+All examples need Python 3, but no pip packages. Strata does not install tools.
+Media outputs go into fresh, private folders **beside each original**; originals
+are never overwritten. Existing checksum files and symlinks are refused, not
+replaced. A failed or cancelled conversion may leave a partial output folder.
+Review scripts and use trusted input files: media tools and actions are not
+sandboxed.
+
+Applying a recipe selects Python and sets suitable file filters and run mode
+(per item for conversion/checksum recipes). It keeps a name or description you
+entered, the id, and other settings. If you have edited the Python draft, the
+picker explicitly says **Replace script**; the code replacement can be undone
+in the editor. Bash and command drafts are retained. Cancel changes nothing,
+and neither previewing nor applying an example saves or executes it. Save the
+action, then launch it from its file/folder context menu.
+
+The documented starter and every recipe include the same maintained
+[`context()` reference](../data/actions/context-api.txt) as a module docstring.
+Examples are starting points: edit the output format, quality, resize limit,
+FFmpeg flags, or filters before saving.
+
 ## Manifest
 
 ```toml
@@ -175,10 +209,22 @@ for index, path in enumerate(ctx.paths, start=1):
 ```
 
 `ctx.paths` are `str` values decoded with `surrogateescape`, so use
-`ctx.paths_bytes()` when a tool needs the original bytes. `ctx.parent`,
-`ctx.mode`, `ctx.source`, `ctx.position`, `ctx.total`, and `ctx.single` describe the
-invocation; `ctx.log(...)` writes to captured output; `require_tool("ffmpeg")`
-raises a clear error when a dependency is missing.
+`ctx.paths_bytes()` when a tool needs the original bytes. `ctx.single` returns
+the sole path for a one-item invocation, or `None`. `ctx.count` counts inputs in
+this invocation, not the entire per-item job.
+
+Other properties are `parent` (invoking folder, not necessarily the working
+directory), `directory` (action directory), `run_directory` (private scratch,
+removed after the invocation), `action_id`, `version`, `metadata` (raw JSON),
+`mode`, `source`, and the optional 1-based per-item `position` and `total`.
+`ctx.log(message)` writes to captured stdout. `ctx.progress(processed,
+total=None, message=None)` reports invocation-local work; `ctx.output(path)`
+reports an absolute output path, but does not create a file. Output reporting is
+best-effort: names containing non-UTF-8 bytes cannot be represented by the JSON
+progress channel and produce a warning rather than failing the action.
+
+Import `find_tool(name)` to look up an executable (returns its path or `None`), or
+`require_tool(name)` to raise `ContextError` when a dependency is missing.
 
 Any other language can follow the same contract: read the paths file, write the
 progress file, and exit with a status.

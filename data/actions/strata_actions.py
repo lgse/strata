@@ -170,8 +170,8 @@ class Context:
         try:
             with open(self._progress_path, "a", encoding="utf-8") as handle:
                 handle.write(json.dumps(event, ensure_ascii=False) + "\n")
-        except OSError as error:
-            # Never fail the action because progress could not be reported.
+        except (OSError, UnicodeError) as error:
+            # Reporting is best-effort; native non-UTF8 paths cannot fit JSON text.
             print(f"strata: unable to report progress: {error}", file=sys.stderr)
 
 

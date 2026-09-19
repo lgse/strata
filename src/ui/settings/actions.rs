@@ -30,6 +30,9 @@ use crate::ui::{
 };
 
 use super::{append_heading, page_content, scrollable_page, search};
+use crate::model::action::examples::{ACTION_EXAMPLES, ActionExample};
+
+mod examples;
 
 #[cfg(test)]
 mod tests;
@@ -292,7 +295,16 @@ impl PageState {
             icon.set_halign(gtk::Align::Center);
             icon.set_valign(gtk::Align::Center);
         }
-        let form = EditorForm::new(mode, &action, script);
+        let form = Rc::new(EditorForm::new(mode, &action, script));
+        let weak_form = Rc::downgrade(&form);
+        for button in &form.examples {
+            let weak_form = weak_form.clone();
+            button.connect_clicked(move |button| {
+                if let Some(form) = weak_form.upgrade() {
+                    examples::show(button, form);
+                }
+            });
+        }
         layout.body.append(&form.root);
         layout.actions.prepend(&form.error);
         let content = layout.content;
@@ -558,6 +570,11 @@ struct EditorForm {
     description: gtk::Entry,
     entrypoint: gtk::Entry,
     script: sourceview5::View,
+    examples: Vec<gtk::Button>,
+    python_buffer: sourceview5::Buffer,
+    python_choice: gtk::ToggleButton,
+    mode_choices: Vec<gtk::ToggleButton>,
+    last_example: Rc<std::cell::Cell<Option<&'static ActionExample>>>,
     program: gtk::Entry,
     arguments: gtk::TextView,
     confirm: gtk::Switch,
@@ -763,6 +780,19 @@ impl EditorForm {
             "One per line · {path}, {paths}, or {parent}",
             &arguments_scroll,
         );
+        let examples = [&script_field, &arguments_field]
+            .map(|field| {
+                let button = gtk::Button::with_label("Examples…");
+                button.add_css_class("settings-action-button");
+                button.set_tooltip_text(Some(
+                    "Choose a documented Python script from the bundled library",
+                ));
+                if let Some(heading) = field.first_child().and_downcast::<gtk::Box>() {
+                    heading.append(&button);
+                }
+                button
+            })
+            .to_vec();
 
         let identity = gtk::Box::new(gtk::Orientation::Horizontal, 18);
         let name_field = field("Name", "Shown in the context menu", &name);
@@ -811,7 +841,7 @@ impl EditorForm {
         for button in &policy_buttons {
             button.set_sensitive(selected_mode.get() == ExecutionMode::PerItem);
         }
-        for button in mode_buttons {
+        for button in &mode_buttons {
             let row = failure_row.downgrade();
             let mode = selected_mode.clone();
             let policy_buttons = policy_buttons.clone();
@@ -855,6 +885,7 @@ impl EditorForm {
 
         let sync_runtime: Rc<dyn Fn()> = Rc::new({
             let selected = selected_runtime.clone();
+            let python = python.clone();
             let entrypoint = entrypoint.clone();
             let view = script_view.clone();
             move || {
@@ -879,7 +910,7 @@ impl EditorForm {
             }
         });
         sync_runtime();
-        for button in runtime_buttons {
+        for button in &runtime_buttons {
             let sync_runtime = sync_runtime.clone();
             button.connect_toggled(move |button| {
                 if button.is_active() {
@@ -898,6 +929,11 @@ impl EditorForm {
             description,
             entrypoint,
             script: script_view,
+            examples,
+            python_buffer: python,
+            python_choice: runtime_buttons[0].clone(),
+            mode_choices: mode_buttons,
+            last_example: Rc::new(std::cell::Cell::new(None)),
             program,
             arguments,
             confirm,
@@ -913,6 +949,50 @@ impl EditorForm {
             selected_directory,
             selected_placement,
         }
+    }
+
+    fn replaces_python_draft(&self) -> bool {
+        let contents = self.python_buffer.text(
+            &self.python_buffer.start_iter(),
+            &self.python_buffer.end_iter(),
+            false,
+        );
+        !contents.trim().is_empty() && contents.as_str() != python_template()
+    }
+
+    fn apply_example(&self, example: &'static ActionExample) {
+        let previous = self.last_example.get();
+        if self.name.text().is_empty()
+            || previous.is_some_and(|previous| self.name.text() == previous.name)
+        {
+            self.name.set_text(example.name);
+        }
+        if self.description.text().is_empty()
+            || previous.is_some_and(|previous| self.description.text() == previous.description)
+        {
+            self.description.set_text(example.description);
+        }
+        let was_python = self.selected_runtime.get() == ActionRuntime::Python;
+        self.python_choice.set_active(true);
+        if !was_python {
+            self.entrypoint.set_text("main.py");
+        }
+        self.python_buffer.begin_user_action();
+        self.python_buffer.delete(
+            &mut self.python_buffer.start_iter(),
+            &mut self.python_buffer.end_iter(),
+        );
+        self.python_buffer
+            .insert(&mut self.python_buffer.start_iter(), &example.script());
+        self.python_buffer.end_user_action();
+        self.mode_choices[usize::from(example.mode == ExecutionMode::PerItem)].set_active(true);
+        self.files.set_active(true);
+        self.folders.set_active(example.folders);
+        self.extensions.set_text(&example.extensions.join(", "));
+        self.last_example.set(Some(example));
+        self.error.set_visible(false);
+        self.tabs.set_current_page(Some(SCRIPT_TAB));
+        self.script.grab_focus();
     }
 
     fn focus_first(&self) {
@@ -1359,8 +1439,7 @@ fn draft_definition(runtime: ActionRuntime, mode: ExecutionMode) -> ActionDefini
 }
 
 fn python_template() -> String {
-    "#!/usr/bin/env python3\nfrom strata_actions import context\n\nctx = context()\nfor path in ctx.paths:\n    ctx.log(f\"Processing {path}\")\n"
-        .to_owned()
+    ACTION_EXAMPLES[0].script()
 }
 
 fn summary(action: &ActionHandle) -> String {

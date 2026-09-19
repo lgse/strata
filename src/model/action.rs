@@ -20,6 +20,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+pub(crate) mod examples;
+
 /// Version of the `action.toml` schema this build understands.
 pub const ACTION_SCHEMA_VERSION: u32 = 1;
 
