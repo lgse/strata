@@ -404,7 +404,8 @@ headerbar menubutton.header-action > button:focus-visible {
   background: linear-gradient(to left, @theme_surface, transparent);
 }
 
-.breadcrumb-scroller scrollbar {
+.breadcrumb-scroller scrollbar.horizontal,
+.breadcrumb-scroller scrollbar.vertical {
   opacity: 0;
   min-height: 0;
   min-width: 0;
@@ -421,6 +422,17 @@ headerbar menubutton.header-action > button:focus-visible {
 .breadcrumb-scrollbar {
   margin: 1px 0 0 0;
   opacity: 0;
+}
+
+scrollbar.breadcrumb-scrollbar.horizontal,
+scrollbar.breadcrumb-scrollbar.horizontal > range > trough {
+  min-height: 4px;
+  margin: 0;
+}
+
+scrollbar.breadcrumb-scrollbar.horizontal > range > trough > slider {
+  min-height: 4px;
+  margin: 0;
 }
 
 .breadcrumb-container:hover .breadcrumb-scrollbar,
@@ -1753,8 +1765,10 @@ switch:checked slider {
   border-right: 1px solid alpha(@theme_border, 0.6);
 }
 
-/* Every scrollbar is the path-bar indicator: a thin accent thumb on a faint
-   trough, overlaid on content and faded by GTK until hover or scrolling. */
+/* Every scrollbar shares the path-bar indicator style: a thin rounded
+   accent thumb, overlaid on content and faded by GTK until hover or
+   scrolling. The scrollbar stays 14px wide so the bar is easy to grab;
+   the thumb reaches the trough ends along the scroll axis. */
 scrollbar,
 scrollbar:hover,
 scrollbar.hovering,
@@ -1766,52 +1780,65 @@ scrollbar.dragging {
   transition: opacity 180ms ease-out;
 }
 
-scrollbar.vertical,
-scrollbar.vertical > range > trough,
-scrollbar.vertical > range > trough > slider {
-  min-width: 4px;
+scrollbar.vertical {
+  min-width: 14px;
 }
 
-scrollbar.horizontal,
-scrollbar.horizontal > range > trough,
-scrollbar.horizontal > range > trough > slider {
-  min-height: 4px;
+scrollbar.horizontal {
+  min-height: 14px;
 }
 
 scrollbar > range > trough {
-  background: alpha(@theme_border, 0.25);
+  background: transparent;
   border: none;
-  border-radius: 2px;
 }
 
-scrollbar:hover > range > trough,
-scrollbar.hovering > range > trough,
-scrollbar.dragging > range > trough {
-  background: alpha(@theme_border, 0.45);
+scrollbar.vertical > range > trough {
+  margin: 0 4px;
+}
+
+scrollbar.horizontal > range > trough {
+  margin: 4px 0;
 }
 
 scrollbar > range > trough > slider {
   background: @theme_accent;
   border: none;
-  border-radius: 2px;
-  margin: 0;
+  border-radius: 3px;
 }
 
 scrollbar.vertical > range > trough > slider {
+  min-width: 6px;
   min-height: 32px;
 }
 
 scrollbar.horizontal > range > trough > slider {
+  min-height: 6px;
   min-width: 32px;
 }
 
-/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
+/* The reserved strip stays opaque to conceal the sidebar paned handle and
+   separator edge beneath mode scrollers; the thumb keeps its margins so it
+   stays clear of the preview resize handle. */
+.columns-scroll scrollbar.horizontal,
 .mode-scroll scrollbar.horizontal > range > trough,
 .mode-scroll scrollbar.horizontal:hover > range > trough,
 .mode-scroll scrollbar.horizontal.hovering > range > trough,
 .mode-scroll scrollbar.horizontal.dragging > range > trough {
   background: @theme_bg;
   border: none;
+}
+
+.mode-scroll scrollbar.horizontal > range > trough {
+  margin: 0;
+}
+
+.columns-scroll scrollbar.horizontal {
+  border-top: 1px solid alpha(@theme_border, 0.6);
+}
+
+.mode-scroll scrollbar.horizontal > range > trough > slider {
+  margin: 4px;
 }
 
 .autoscroll-anchor {

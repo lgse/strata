@@ -269,6 +269,7 @@ impl BrowserView {
             .child(&columns_widget)
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vscrollbar_policy(gtk::PolicyType::Never)
+            .overlay_scrolling(false)
             .hexpand(true)
             .vexpand(true)
             .build();

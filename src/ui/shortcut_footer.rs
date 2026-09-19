@@ -125,6 +125,7 @@ impl ShortcutFooter {
             .child(&reference)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .overlay_scrolling(false)
             .propagate_natural_height(true)
             .max_content_height(440)
             .width_request(420)

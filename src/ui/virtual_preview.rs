@@ -314,6 +314,7 @@ fn virtual_preview(
         .child(&list)
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .overlay_scrolling(false)
         .hexpand(true)
         .vexpand(true)
         .build();
