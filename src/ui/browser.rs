@@ -184,6 +184,7 @@ pub(super) struct ViewState {
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
+    search_selection_handler: RefCell<Option<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
     pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
@@ -513,6 +514,7 @@ impl BrowserView {
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
+            search_selection_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
             pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
@@ -1599,6 +1601,10 @@ impl BrowserView {
             })
     }
 
+    pub(super) fn set_search_selection_handler(&self, handler: Rc<dyn Fn()>) {
+        self.state.search_selection_handler.replace(Some(handler));
+    }
+
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
         if self.view_mode() != BrowserMode::Columns {
             return self.state.mode_views.borrow().selected_search_results();
@@ -1836,6 +1842,12 @@ impl ViewState {
 
     pub(in crate::ui) fn remove_pending_restore(&self, name: &str) {
         self.pending_restore_names.borrow_mut().remove(name);
+    }
+
+    pub(super) fn notify_search_selection_changed(&self) {
+        if let Some(handler) = self.search_selection_handler.borrow().as_ref() {
+            handler();
+        }
     }
 
     pub(in crate::ui::browser) fn stop_drag_autoscroll(&self) {

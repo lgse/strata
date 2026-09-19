@@ -80,12 +80,8 @@ impl RecentAvailability {
     }
 }
 
-fn should_show_recent_place(
-    show_recent: bool,
-    local_only: bool,
-    availability: RecentAvailability,
-) -> bool {
-    show_recent && !local_only && availability.is_available()
+fn should_show_recent_place(show_recent: bool, availability: RecentAvailability) -> bool {
+    show_recent && availability.is_available()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1184,13 +1180,12 @@ impl SidebarState {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
             }
-            if should_show_recent_place(
-                self.preference_manager.sidebar_show_recent(),
-                self.local_only,
-                self.recent_availability.get(),
-            ) {
-                self.append_recent_place();
-            }
+        }
+        if should_show_recent_place(
+            self.preference_manager.sidebar_show_recent(),
+            self.recent_availability.get(),
+        ) {
+            self.append_recent_place();
         }
         if self.has_visible_standard_places() && self.widget.first_child().is_some() {
             self.append_separator();

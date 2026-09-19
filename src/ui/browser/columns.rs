@@ -761,7 +761,13 @@ impl ViewState {
         let filter_for_column = filter.clone();
         let search_active_for_selection = recursive_search_active.clone();
         selection.connect_selection_changed(move |selection, position, count| {
-            if syncing_selection_changed.get() || search_active_for_selection.get() {
+            if syncing_selection_changed.get() {
+                return;
+            }
+            if search_active_for_selection.get() {
+                if let Some(state) = weak_selection_state.upgrade() {
+                    state.notify_search_selection_changed();
+                }
                 return;
             }
             let mut filtered_positions = bitset_positions(&selection.selection());
