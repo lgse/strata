@@ -57,6 +57,7 @@ impl ActionMenuSection {
             .has_arrow(false)
             .autohide(false)
             .position(gtk::PositionType::Right)
+            .valign(gtk::Align::Start)
             .child(&submenu_scroll)
             .build();
         submenu_popover.add_css_class("folder-context-popover");

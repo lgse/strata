@@ -248,6 +248,12 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
         lambda: strata.window.find(role="dialog", name="New action") is None,
         "editor to close",
     )
+    for copies in range(1, 5):
+        assert strata.window.find(role="button", name="Duplicate").activate()
+        strata.wait(
+            lambda: len(list(action_dir.parent.glob("*/action.toml"))) == copies + 1,
+            "additional submenu action",
+        )
     assert strata.window.find(role="button", name="Close settings").activate()
     strata.wait(
         lambda: strata.window.find(role="button", name="Close settings") is None,
@@ -258,7 +264,14 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     actions = strata.menu_item("Actions")
     strata.pointer.move_to(*actions.screen_bounds().center)
     item = strata.menu_item("Checksum job")
-    strata.pointer.move_to(*item.screen_bounds().center)
+    start_x, start_y = actions.screen_bounds().center
+    end_x, end_y = item.screen_bounds().center
+    for step in range(1, 17):
+        strata.pointer.move_to(
+            round(start_x + (end_x - start_x) * step / 16),
+            round(start_y + (end_y - start_y) * step / 16),
+        )
+        assert item.is_rendered(), f"submenu closed during pointer transit at step {step}"
     strata.wait(lambda: item.is_rendered(), "submenu stays open while entering it")
     strata.pointer.move_to(*strata.menu_item("Cut").screen_bounds().center)
     strata.wait(
