@@ -2183,7 +2183,6 @@ impl SourcePreviewView {
             .hexpand(true)
             .vexpand(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         self.scroll.replace(Some(scroll.clone()));
         (scroll.upcast(), false)
     }

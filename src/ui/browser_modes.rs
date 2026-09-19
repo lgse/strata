@@ -326,7 +326,6 @@ impl ModeViews {
             .hexpand(true)
             .vexpand(true)
             .build();
-        icons_scroll.add_css_class("fixed-scrollbar");
         icons_scroll.add_css_class("mode-scroll");
 
         let list_root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1886,7 +1885,6 @@ fn build_icons_pane(
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vexpand(true)
         .build();
-    scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
     super::scrolling::popover::dismiss_on_outside_scroll(&controls.thumbnail_popover);
     let browser_for_settle = Rc::downgrade(&context.browser);
@@ -2793,7 +2791,6 @@ fn build_list_pane(
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
-    scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
     scroll.add_css_class("list-listing-scroll");
     let browser_for_settle = Rc::downgrade(&browser);
@@ -2828,7 +2825,6 @@ fn build_list_pane(
         .hexpand(true)
         .vexpand(true)
         .build();
-    table_scroll.add_css_class("fixed-scrollbar");
     table_scroll.add_css_class("mode-scroll");
     if let Some(viewport) = table_scroll.child().and_downcast::<gtk::Viewport>() {
         // The outer viewport must not horizontally reveal oversized metadata rows; the inner

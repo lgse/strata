@@ -318,7 +318,6 @@ fn virtual_preview(
         .hexpand(true)
         .vexpand(true)
         .build();
-    scroll.add_css_class("fixed-scrollbar");
     if !source {
         let weak_state = Rc::downgrade(&state);
         let measured_width = Cell::new(0);

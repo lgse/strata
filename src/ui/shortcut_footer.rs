@@ -131,7 +131,6 @@ impl ShortcutFooter {
             .width_request(420)
             .focusable(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         content.append(&scroll);
         popover.set_child(Some(&content));
         let weak_scroll = scroll.downgrade();

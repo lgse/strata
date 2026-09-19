@@ -334,11 +334,6 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -2px;
 }
 
-.column-peek-target.file-drop-zone:drop(active) {
-  background: alpha(@theme_accent, 0.18);
-  box-shadow: inset 0 0 0 2px @theme_accent;
-}
-
 .location-entry,
 .location-entry:focus,
 .location-entry:focus-visible,
@@ -404,7 +399,8 @@ headerbar menubutton.header-action > button:focus-visible {
   background: linear-gradient(to left, @theme_surface, transparent);
 }
 
-.breadcrumb-scroller scrollbar {
+.breadcrumb-scroller scrollbar.horizontal,
+.breadcrumb-scroller scrollbar.vertical {
   opacity: 0;
   min-height: 0;
   min-width: 0;
@@ -419,13 +415,19 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .breadcrumb-scrollbar {
-  min-height: 4px;
-  padding: 0;
   margin: 1px 0 0 0;
-  background: transparent;
-  border: none;
   opacity: 0;
-  transition: opacity 180ms ease-out;
+}
+
+scrollbar.breadcrumb-scrollbar.horizontal,
+scrollbar.breadcrumb-scrollbar.horizontal > range > trough {
+  min-height: 4px;
+  margin: 0;
+}
+
+scrollbar.breadcrumb-scrollbar.horizontal > range > trough > slider {
+  min-height: 4px;
+  margin: 0;
 }
 
 .breadcrumb-container:hover .breadcrumb-scrollbar,
@@ -436,34 +438,6 @@ headerbar menubutton.header-action > button:focus-visible {
 .breadcrumb-scrollbar:focus,
 .breadcrumb-scrollbar:active {
   opacity: 1;
-}
-
-.breadcrumb-scrollbar > range > trough {
-  min-height: 4px;
-  padding: 0;
-  margin: 0;
-  background: alpha(@theme_border, 0.25);
-  border: none;
-  border-radius: 2px;
-}
-
-.breadcrumb-scrollbar:hover > range > trough {
-  background: alpha(@theme_border, 0.45);
-}
-
-.breadcrumb-scrollbar > range > trough > slider {
-  min-height: 4px;
-  min-width: 32px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 2px;
-  background: @theme_accent;
-}
-
-.breadcrumb-scrollbar > range > trough > slider:hover,
-.breadcrumb-scrollbar > range > trough > slider:active {
-  background: @theme_accent;
 }
 
 .breadcrumb {
@@ -740,26 +714,6 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .delete-confirmation-list viewport {
   background: transparent;
-}
-
-.delete-confirmation-list scrollbar {
-  padding: 0;
-}
-
-.delete-confirmation-list scrollbar.vertical {
-  min-width: 6px;
-}
-
-.delete-confirmation-list scrollbar.vertical > range > trough {
-  background: transparent;
-  border: none;
-  padding: 0;
-  margin: 0;
-}
-
-.delete-confirmation-list scrollbar.vertical > range > trough > slider {
-  margin: 0;
-  min-width: 6px;
 }
 
 .delete-confirmation-files {
@@ -1806,17 +1760,62 @@ switch:checked slider {
   border-right: 1px solid alpha(@theme_border, 0.6);
 }
 
-.fixed-scrollbar scrollbar,
-.fixed-scrollbar scrollbar:hover,
-.fixed-scrollbar scrollbar.hovering,
-.fixed-scrollbar scrollbar.dragging {
+/* Every scrollbar shares the path-bar indicator style: a thin rounded
+   accent thumb, overlaid on content and faded by GTK until hover or
+   scrolling. The scrollbar stays 14px wide so the bar is easy to grab;
+   the thumb reaches the trough ends along the scroll axis. */
+scrollbar,
+scrollbar:hover,
+scrollbar.hovering,
+scrollbar.dragging {
   background: transparent;
   border: none;
   padding: 0;
-  transition: none;
+  margin: 0;
+  transition: opacity 180ms ease-out;
 }
 
-/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
+scrollbar.vertical {
+  min-width: 14px;
+}
+
+scrollbar.horizontal {
+  min-height: 14px;
+}
+
+scrollbar > range > trough {
+  background: transparent;
+  border: none;
+}
+
+scrollbar.vertical > range > trough {
+  margin: 0 4px;
+}
+
+scrollbar.horizontal > range > trough {
+  margin: 4px 0;
+}
+
+scrollbar > range > trough > slider {
+  background: @theme_accent;
+  border: none;
+  border-radius: 3px;
+}
+
+scrollbar.vertical > range > trough > slider {
+  min-width: 6px;
+  min-height: 32px;
+}
+
+scrollbar.horizontal > range > trough > slider {
+  min-height: 6px;
+  min-width: 32px;
+}
+
+/* The reserved strip stays opaque to conceal the sidebar paned handle and
+   separator edge beneath mode scrollers; the thumb keeps its margins so it
+   stays clear of the preview resize handle. */
+.columns-scroll scrollbar.horizontal,
 .mode-scroll scrollbar.horizontal > range > trough,
 .mode-scroll scrollbar.horizontal:hover > range > trough,
 .mode-scroll scrollbar.horizontal.hovering > range > trough,
@@ -1825,59 +1824,15 @@ switch:checked slider {
   border: none;
 }
 
-/* The trough is widened to a practical grab target while slider margins keep the
-   visible bar as narrow as before. */
-.fixed-scrollbar scrollbar.vertical {
-  min-width: 14px;
-}
-
-.fixed-scrollbar scrollbar.horizontal {
-  min-height: 14px;
-  border-top: 1px solid alpha(@theme_border, 0.6);
-}
-
-scrollbar slider:active {
-  background: @theme_accent;
-}
-
-.fixed-scrollbar scrollbar > range > trough > slider {
-  border-width: 1px;
-}
-
-.fixed-scrollbar scrollbar.vertical > range > trough > slider {
-  margin: 0 4px;
-  min-width: 6px;
-}
-
-.fixed-scrollbar scrollbar.horizontal > range > trough > slider {
-  margin: 4px 0;
-  min-height: 6px;
-}
-
-.sidebar-scroll scrollbar.vertical {
-  min-width: 5px;
-}
-
-.sidebar-scroll scrollbar.vertical > range > trough > slider {
-  min-width: 3px;
-  margin: 0 1px;
-  border: none;
-  background: alpha(@theme_text, 0.35);
-}
-
-.sidebar-scroll scrollbar.vertical:hover > range > trough > slider {
-  background: alpha(@theme_accent, 0.65);
-}
-
-.sidebar-scroll scrollbar.vertical > range > trough > slider:active {
-  background: @theme_accent;
+.mode-scroll scrollbar.horizontal > range > trough {
+  margin: 0;
 }
 
 .columns-scroll scrollbar.horizontal {
-  background: @theme_bg;
+  border-top: 1px solid alpha(@theme_border, 0.6);
 }
 
-.columns-scroll scrollbar.horizontal > range > trough > slider {
+.mode-scroll scrollbar.horizontal > range > trough > slider {
   margin: 4px;
 }
 
@@ -3170,31 +3125,6 @@ menubutton.column-header-action > button:active {
   padding: 0;
 }
 
-.media-details-scroll scrollbar,
-.media-details-scroll scrollbar range,
-.media-details-scroll scrollbar trough {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
-.media-details-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 2px solid transparent;
-  border-radius: 6px;
-  min-width: 6px;
-  min-height: 32px;
-}
-
-.media-details-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.media-details-scroll scrollbar slider:active,
-.media-details-scroll scrollbar slider:focus {
-  background: @theme_accent;
-}
-
 .properties-row-label,
 .properties-section-title,
 .properties-permission-identity,
@@ -3396,26 +3326,6 @@ textview > popover.menu undershoot {
   background: transparent;
   border: none;
   box-shadow: none;
-}
-
-.context-menu-scroll scrollbar,
-.context-menu-scroll scrollbar:hover,
-.context-menu-scroll scrollbar.hovering,
-.context-menu-scroll scrollbar.dragging {
-  background: transparent;
-  border: none;
-  padding: 0;
-  transition: none;
-}
-
-.context-menu-scroll scrollbar.vertical {
-  min-width: 14px;
-}
-
-.context-menu-scroll scrollbar.vertical > range > trough > slider {
-  border-width: 1px;
-  margin: 0 2px 0 4px;
-  min-width: 6px;
 }
 
 .folder-context-menu,
@@ -3968,6 +3878,12 @@ textview > popover.menu button.model:focus-visible {
   box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
 }
 
+.column-peek-target.file-drop-zone:drop(active),
+.columns > .drop-destination .column-drop-veil {
+  background: alpha(@theme_accent, 0.18);
+  box-shadow: inset 0 0 0 2px @theme_accent;
+}
+
 .file-list row:hover:not(:selected),
 .file-list row:hover .file-row.active-path,
 .file-list-mode row:hover:not(:selected) {
@@ -4244,32 +4160,6 @@ entry.theme-search {
   background: @theme_bg;
 }
 
-.theme-catalog-scroll scrollbar,
-.theme-catalog-scroll scrollbar:hover,
-.theme-catalog-scroll scrollbar range,
-.theme-catalog-scroll scrollbar trough {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  outline: none;
-}
-
-.theme-catalog-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 3px solid transparent;
-  border-radius: 6px;
-  min-width: 8px;
-  min-height: 32px;
-}
-
-.theme-catalog-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.theme-catalog-scroll scrollbar slider:active {
-  background: @theme_accent;
-}
-
 .theme-icons > flowboxchild,
 .theme-color-fields > flowboxchild {
   background: transparent;
@@ -4420,26 +4310,6 @@ entry.theme-search {
 .settings-content-scroll,
 .settings-content-scroll viewport {
   background: transparent;
-}
-
-.settings-content-scroll scrollbar {
-  background: transparent;
-}
-
-.settings-content-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 3px solid transparent;
-  border-radius: 6px;
-  min-width: 8px;
-  min-height: 32px;
-}
-
-.settings-content-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.settings-content-scroll scrollbar slider:active {
-  background: @theme_accent;
 }
 
 .keybinding-row {
@@ -5359,11 +5229,6 @@ two-column presentation. */
   border-top: 1px solid alpha(@theme_border, 0.55);
 }
 
-.settings-content-scroll scrollbar slider {
-  min-width: 6px;
-  border-width: 2px;
-}
-
 .settings-dialog.compact .settings-preferences {
   padding: 18px 20px;
 }
@@ -5418,14 +5283,6 @@ two-column presentation. */
 
 .settings-dialog .settings-nav-active image {
   -gtk-icon-filter: none;
-}
-
-.settings-content-scroll scrollbar,
-.settings-content-scroll scrollbar range,
-.settings-content-scroll scrollbar trough {
-  background: transparent;
-  border: none;
-  box-shadow: none;
 }
 
 .settings-dialog .theme-page > .menu-heading:not(:first-child) {

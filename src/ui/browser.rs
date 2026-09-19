@@ -273,7 +273,6 @@ impl BrowserView {
             .hexpand(true)
             .vexpand(true)
             .build();
-        scroller.add_css_class("fixed-scrollbar");
         scroller.add_css_class("mode-scroll");
         scroller.add_css_class("columns-scroll");
         if let Some(viewport) = scroller.child().and_downcast::<gtk::Viewport>() {

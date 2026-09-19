@@ -81,7 +81,6 @@ impl SidebarShell {
             .vexpand(true)
             .build();
         scroller.add_css_class("sidebar-scroll");
-        scroller.add_css_class("fixed-scrollbar");
         let (update_area, update_notice, update_label) = update_notice();
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 0);
         widget.add_css_class("sidebar-shell");

@@ -719,14 +719,14 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
 
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
-fn horizontal_scrollbar_stays_below_destination_hints() {
+fn horizontal_scrollbar_keeps_destination_hints_pickable() {
     const CHILD: &str = "STRATA_DESTINATION_SCROLLBAR_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let sandbox = tempfile::tempdir().expect("isolated preferences");
         let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
             .args([
                 "--exact",
-                "ui::browser::tests::focus::horizontal_scrollbar_stays_below_destination_hints",
+                "ui::browser::tests::focus::horizontal_scrollbar_keeps_destination_hints_pickable",
                 "--nocapture",
                 "--ignored",
             ])
@@ -765,7 +765,6 @@ fn horizontal_scrollbar_stays_below_destination_hints() {
     wait_until(|| {
         browser.column_snapshot(0).is_some_and(|s| !s.loading) && adjustment.page_size() > 0.0
     });
-    assert!(!scroller.is_overlay_scrolling());
     assert!(
         !scrollbar.is_mapped(),
         "no scrollbar is needed for a single fitting pane"
@@ -794,19 +793,29 @@ fn horizontal_scrollbar_stays_below_destination_hints() {
     scrollbar.add_css_class("dragging");
     let extent = adjustment.upper() - adjustment.page_size();
     assert!(extent > 0.0);
+    let bar = scrollbar.upcast_ref::<gtk::Widget>();
     for value in [adjustment.lower(), extent / 2.0, extent] {
         adjustment.set_value(value);
-        let bar = scrollbar
-            .compute_bounds(scroller)
-            .expect("scrollbar bounds");
+        let width = f64::from(scroller.width());
         for column in view.state.columns.borrow().iter() {
             let hint = column
                 .destination_hint
                 .compute_bounds(scroller)
                 .expect("hint bounds");
+            let x = f64::from(hint.x() + hint.width() / 2.0);
+            if !(0.0..=width).contains(&x) {
+                continue;
+            }
+            let picked = scroller
+                .pick(
+                    x,
+                    f64::from(hint.y() + hint.height() / 2.0),
+                    gtk::PickFlags::DEFAULT,
+                )
+                .expect("a destination hint is pickable");
             assert!(
-                hint.y() + hint.height() <= bar.y() + 0.5,
-                "the scrollbar must not overlap a destination label"
+                picked != *bar && !picked.is_ancestor(bar),
+                "the scrollbar must not intercept a destination label"
             );
         }
     }

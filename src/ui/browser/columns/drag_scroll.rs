@@ -25,6 +25,9 @@ pub(in crate::ui::browser) struct DragAutoscroll {
     burst_y: Cell<Option<(Instant, i8)>>,
     frame_time: Cell<i64>,
     tick: RefCell<Option<gtk::TickCallbackId>>,
+    // GTK does not re-evaluate drop targets when content scrolls under a parked
+    // pointer, so the autoscroll tracks the hovered column itself.
+    hovered: RefCell<Option<gtk::Box>>,
 }
 
 impl ViewState {
@@ -39,6 +42,7 @@ impl ViewState {
             burst_y: Cell::new(None),
             frame_time: Cell::new(0),
             tick: RefCell::new(None),
+            hovered: RefCell::new(None),
         });
         self.drag_autoscroll.replace(Some(tracker.clone()));
         let tracker_for_enter = tracker.clone();
@@ -57,10 +61,15 @@ impl ViewState {
 impl DragAutoscroll {
     fn track(self: &Rc<Self>, x: f64, y: f64) {
         self.pointer.set((x, y));
-        if self.file_drag_over() && self.should_scroll() {
+        if !self.file_drag_over() {
+            self.stop();
+            return;
+        }
+        self.update_drop_hover();
+        if self.should_scroll() {
             self.start_ticks();
         } else {
-            self.stop();
+            self.stop_ticks();
         }
     }
 
@@ -113,23 +122,22 @@ impl DragAutoscroll {
         let horizontal = scroller.hadjustment();
         let direction_x = edge_direction(x, f64::from(scroller.width()));
         let direction_x = direction_x * f64::from(advanceable(&horizontal, direction_x));
-        let vertical = {
-            let columns = state.columns.borrow();
-            columns.iter().find_map(|column| {
-                let shell = column.shell.compute_bounds(scroller)?;
-                if x < f64::from(shell.x()) || x >= f64::from(shell.x() + shell.width()) {
-                    return None;
-                }
-                let listing = column.listing_scroll.compute_bounds(scroller)?;
-                let direction =
-                    listing_band_direction(y, f64::from(listing.y()), f64::from(listing.height()));
-                let adjustment = column.listing_scroll.vadjustment();
-                advanceable(&adjustment, direction).then_some((adjustment, direction))
-            })
-        };
+        self.update_drop_hover();
+        let vertical = state.columns.borrow().iter().find_map(|column| {
+            let shell = column.shell.compute_bounds(scroller)?;
+            if x < f64::from(shell.x()) || x >= f64::from(shell.x() + shell.width()) {
+                return None;
+            }
+            let listing = column.listing_scroll.compute_bounds(scroller)?;
+            let direction =
+                listing_band_direction(y, f64::from(listing.y()), f64::from(listing.height()));
+            let adjustment = column.listing_scroll.vadjustment();
+            advanceable(&adjustment, direction).then_some((adjustment, direction))
+        });
         if direction_x == 0.0 && vertical.is_none() {
             self.burst_x.set(None);
             self.burst_y.set(None);
+            self.set_drop_hover(None);
             return false;
         }
 
@@ -194,18 +202,51 @@ impl DragAutoscroll {
             if tracker.file_drag_over() && tracker.apply_scroll(dt) {
                 return glib::ControlFlow::Continue;
             }
-            tracker.tick.borrow_mut().take();
+            tracker.stop();
             glib::ControlFlow::Break
         });
         self.tick.replace(Some(id));
     }
 
-    pub(in crate::ui::browser) fn stop(&self) {
+    fn update_drop_hover(&self) {
+        let Some(state) = self.state.upgrade() else {
+            return;
+        };
+        let (x, _) = self.pointer.get();
+        let scroller = &state.scroller;
+        let shell = state.columns.borrow().iter().find_map(|column| {
+            let shell = column.shell.compute_bounds(scroller)?;
+            (x >= f64::from(shell.x()) && x < f64::from(shell.x() + shell.width()))
+                .then(|| column.shell.clone())
+        });
+        self.set_drop_hover(shell);
+    }
+
+    fn set_drop_hover(&self, shell: Option<gtk::Box>) {
+        let mut hovered = self.hovered.borrow_mut();
+        if *hovered == shell {
+            return;
+        }
+        if let Some(previous) = hovered.take() {
+            previous.remove_css_class("drop-destination");
+        }
+        if let Some(next) = &shell {
+            next.add_css_class("drop-destination");
+        }
+        *hovered = shell;
+    }
+
+    fn stop_ticks(&self) {
         if let Some(tick) = self.tick.borrow_mut().take() {
             tick.remove();
         }
         self.burst_x.set(None);
         self.burst_y.set(None);
+    }
+
+    pub(in crate::ui::browser) fn stop(&self) {
+        self.stop_ticks();
+        self.set_drop_hover(None);
     }
 }
 
