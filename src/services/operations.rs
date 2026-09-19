@@ -223,6 +223,9 @@ pub struct ExtractRequest {
     pub id: OperationRequestId,
     pub entry: FileEntry,
     pub destination: Location,
+    /// The caller already created `destination` for this extraction, so an
+    /// empty leftover is removed on failure or cancellation.
+    pub created_destination: bool,
     pub password: Option<String>,
 }
 

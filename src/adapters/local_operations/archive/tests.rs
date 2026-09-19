@@ -356,6 +356,7 @@ fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_o
             id: OperationRequestId(11),
             entry: test_file_entry(&archive_path),
             destination: Location::local(&destination),
+            created_destination: false,
             password: None,
         },
         Rc::new(move |event| {
@@ -482,6 +483,7 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
                 } else {
                     &destination
                 }),
+                created_destination: false,
                 password: None,
             },
             Rc::new(move |event| emitted.borrow_mut().push(event)),
@@ -537,6 +539,7 @@ fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), B
         id: OperationRequestId(908),
         entry: test_file_entry(&archive),
         destination: Location::local(&destination),
+        created_destination: false,
         password: None,
     });
     assert!(
@@ -566,6 +569,7 @@ fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dy
         id: OperationRequestId(909),
         entry: test_file_entry(&archive),
         destination: Location::local(&destination),
+        created_destination: false,
         password: None,
     });
     assert!(
@@ -578,5 +582,35 @@ fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dy
         destination.join("kept.txt").exists(),
         "user content was lost"
     );
+    Ok(())
+}
+
+#[test]
+fn unsafe_extraction_removes_a_caller_created_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("unsafe.zip");
+    write_zip_stored(&archive, &[("../outside", b"contents")])?;
+    let destination = root.path().join("unsafe");
+    fs::create_dir(&destination)?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(910),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: true,
+        password: None,
+    });
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Failed { message, .. }) if message.contains("unsafe")),
+        "{:?}",
+        events
+    );
+    assert!(
+        !destination.exists(),
+        "caller-created destination was not cleaned up"
+    );
+    assert!(!root.path().join("outside").exists());
     Ok(())
 }
