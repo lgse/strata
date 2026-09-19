@@ -194,7 +194,11 @@ fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
     view.has_focus() || focused == *view || view.is_ancestor(&focused) || focused.is_ancestor(view)
 }
 
-fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListScrollFlags) {
+pub(super) fn apply_collection_scroll(
+    view: &gtk::Widget,
+    position: u32,
+    flags: gtk::ListScrollFlags,
+) {
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         if position < list.model().map_or(0, |model| model.n_items()) {
             list.scroll_to(position, flags, None);

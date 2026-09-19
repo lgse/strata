@@ -264,6 +264,7 @@ enum RenameRevealTarget {
     Stop,
     Ready {
         source_position: usize,
+        collection: gtk::Widget,
         position: u32,
         row: Option<gtk::Widget>,
         footer: Option<gtk::Widget>,
@@ -284,7 +285,23 @@ fn prepare_rename_reveal(
 }
 
 impl ViewState {
-    fn rename_reveal_is_valid(&self, list: &gtk::ListView, context: &RenameRevealContext) -> bool {
+    fn rename_collection_view(&self, depth: usize, mode: BrowserMode) -> Option<gtk::Widget> {
+        match mode {
+            BrowserMode::Columns => self
+                .columns
+                .borrow()
+                .get(depth)
+                .map(|column| column.list.clone().upcast()),
+            BrowserMode::List => self
+                .mode_views
+                .borrow()
+                .list_rename_view(depth)
+                .map(|view| view.upcast()),
+            BrowserMode::Icons => self.mode_views.borrow().icons_rename_view(depth),
+        }
+    }
+
+    fn rename_reveal_is_valid(&self, list: &gtk::Widget, context: &RenameRevealContext) -> bool {
         if std::time::Instant::now() >= context.deadline
             || self.rename_generation.get() != context.generation
             || self.rename_reveal_generation.get() != context.reveal_generation
@@ -296,21 +313,10 @@ impl ViewState {
         selected.len() == 1
             && (selected[0].location == context.old || selected[0].location == context.target)
             && self.mode_views.borrow().mode() == context.mode
-            && match context.mode {
-                BrowserMode::Columns => self
-                    .columns
-                    .borrow()
-                    .get(context.depth)
-                    .is_some_and(|current| current.list == *list),
-                BrowserMode::List => {
-                    self.mode_views
-                        .borrow()
-                        .list_rename_view(context.depth)
-                        .as_ref()
-                        == Some(list)
-                }
-                BrowserMode::Icons => false,
-            }
+            && self
+                .rename_collection_view(context.depth, context.mode)
+                .as_ref()
+                == Some(list)
     }
 
     fn resolve_rename_reveal_target(&self, context: &RenameRevealContext) -> RenameRevealTarget {
@@ -334,7 +340,7 @@ impl ViewState {
             return RenameRevealTarget::Wait;
         };
         let loading = snapshot.loading;
-        let (position, row, footer) = if context.mode == BrowserMode::Columns {
+        let (collection, position, row, footer) = if context.mode == BrowserMode::Columns {
             let column = self.columns.borrow()[context.depth].clone();
             let Some(position) = column.map.view_position(source_position) else {
                 return RenameRevealTarget::Stop;
@@ -347,10 +353,20 @@ impl ViewState {
                     .map(|row| row.upcast::<gtk::Widget>())
             });
             (
+                column.list.clone().upcast(),
                 position,
                 row,
                 Some(column.destination_hint.clone().upcast::<gtk::Widget>()),
             )
+        } else if context.mode == BrowserMode::Icons {
+            let Some((collection, position, row)) = self
+                .mode_views
+                .borrow()
+                .icons_rename_row(context.depth, source_position)
+            else {
+                return RenameRevealTarget::Wait;
+            };
+            (collection, position, row, None)
         } else {
             let Some((position, row)) = self
                 .mode_views
@@ -359,10 +375,14 @@ impl ViewState {
             else {
                 return RenameRevealTarget::Stop;
             };
-            (position, row, None)
+            let Some(collection) = self.rename_collection_view(context.depth, context.mode) else {
+                return RenameRevealTarget::Stop;
+            };
+            (collection, position, row, None)
         };
         RenameRevealTarget::Ready {
             source_position,
+            collection,
             position,
             row,
             footer,
@@ -408,15 +428,7 @@ impl ViewState {
             reveal_generation: self.rename_reveal_generation.get(),
             source_position: self.browser.rename_item().map(|(_, position, _)| position),
             scroll_value: self.browser.active_depth().and_then(|depth| {
-                let view = match self.mode_views.borrow().mode() {
-                    BrowserMode::Columns => self
-                        .columns
-                        .borrow()
-                        .get(depth)
-                        .map(|column| column.list.clone()),
-                    BrowserMode::List => self.mode_views.borrow().list_rename_view(depth),
-                    BrowserMode::Icons => None,
-                }?;
+                let view = self.rename_collection_view(depth, self.mode_views.borrow().mode())?;
                 view.ancestor(gtk::ScrolledWindow::static_type())
                     .and_downcast::<gtk::ScrolledWindow>()
                     .map(|scroll| scroll.vadjustment().value())
@@ -642,15 +654,7 @@ impl ViewState {
             return;
         };
         let mode = self.mode_views.borrow().mode();
-        let view = match mode {
-            BrowserMode::Columns => self
-                .columns
-                .borrow()
-                .get(depth)
-                .map(|column| column.list.clone()),
-            BrowserMode::List => self.mode_views.borrow().list_rename_view(depth),
-            BrowserMode::Icons => None,
-        };
+        let view = self.rename_collection_view(depth, mode);
         let Some(view) = view else { return };
         let Some(scroll) = view
             .ancestor(gtk::ScrolledWindow::static_type())
@@ -687,17 +691,25 @@ impl ViewState {
             if !state.rename_reveal_is_valid(list, &context) {
                 return gtk::glib::ControlFlow::Break;
             }
-            let (resolved_source_position, position, row, footer, loading) =
+            let (resolved_source_position, collection, position, row, footer, loading) =
                 match state.resolve_rename_reveal_target(&context) {
                     RenameRevealTarget::Stop => return gtk::glib::ControlFlow::Break,
                     RenameRevealTarget::Wait => return gtk::glib::ControlFlow::Continue,
                     RenameRevealTarget::Ready {
                         source_position: resolved_source_position,
+                        collection,
                         position,
                         row,
                         footer,
                         loading: is_loading,
-                    } => (resolved_source_position, position, row, footer, is_loading),
+                    } => (
+                        resolved_source_position,
+                        collection,
+                        position,
+                        row,
+                        footer,
+                        is_loading,
+                    ),
                 };
             if prepare_rename_reveal(
                 source_position,
@@ -709,13 +721,21 @@ impl ViewState {
                 return gtk::glib::ControlFlow::Continue;
             }
             let Some(row) = row else {
-                list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
+                super::collection::apply_collection_scroll(
+                    &collection,
+                    position,
+                    gtk::ListScrollFlags::NONE,
+                );
                 return gtk::glib::ControlFlow::Continue;
             };
             // A newly rebound item can have CSS bounds but no allocation. Focusing it
             // then gives GTK a zero-origin scroll anchor and sends the column to the top.
             if row.height() <= 0 || row.width() <= 0 {
-                list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
+                super::collection::apply_collection_scroll(
+                    &collection,
+                    position,
+                    gtk::ListScrollFlags::NONE,
+                );
                 return gtk::glib::ControlFlow::Continue;
             }
             // Model splices may replace GTK's scroll anchor even when the rename
@@ -728,6 +748,8 @@ impl ViewState {
             if let Some(focus) = list.root().and_then(|root| root.focus())
                 && (focus == *list
                     || focus.is_ancestor(list)
+                    || focus == collection
+                    || focus.is_ancestor(&collection)
                     || list.is_ancestor(&focus)
                     || focus.root().is_none())
                 && let Some(cursor) = row.parent()
