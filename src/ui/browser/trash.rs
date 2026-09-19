@@ -654,14 +654,6 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
-            let run_restore = {
-                let browser = browser.clone();
-                let items = items.clone();
-                move || {
-                    browser.restore(items);
-                    browser.focus_active();
-                }
-            };
             if let Some(state) = confirmed_state.upgrade()
                 && let Some(trash_button) = state.trash_button.borrow().as_ref()
             {
@@ -669,15 +661,13 @@ impl ViewState {
                     .iter()
                     .map(|item| item.entry.clone())
                     .collect::<Vec<_>>();
-                super::fly_to_trash::fly_from_trash(
-                    state.overlay.upcast_ref(),
-                    &entries,
-                    trash_button,
-                    run_restore,
-                );
-            } else {
-                run_restore();
+                let source = state
+                    .delete_animation_source()
+                    .unwrap_or_else(|| state.overlay.clone().upcast());
+                super::fly_to_trash::fly_from_trash(&source, &entries, trash_button, || {});
             }
+            browser.restore(items.clone());
+            browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -722,24 +712,14 @@ impl ViewState {
             self.show_delete_confirmation(entries);
         } else {
             self.pending_delete_entries.replace(entries.clone());
-            let weak = Rc::downgrade(self);
-            let entries_for_anim = Rc::new(entries.clone());
-            let run_delete = move || {
-                if let Some(state) = weak.upgrade() {
-                    state.browser.delete((*entries_for_anim).clone(), false);
-                    state.browser.focus_active();
-                }
-            };
             if let Some(trash_button) = self.trash_button.borrow().as_ref() {
-                super::fly_to_trash::fly_to_trash(
-                    self.overlay.upcast_ref(),
-                    &entries,
-                    trash_button,
-                    run_delete,
-                );
-            } else {
-                run_delete();
+                let source = self
+                    .delete_animation_source()
+                    .unwrap_or_else(|| self.overlay.clone().upcast());
+                super::fly_to_trash::fly_to_trash(&source, &entries, trash_button, || {});
             }
+            self.browser.delete(entries, false);
+            self.browser.focus_active();
         }
     }
 

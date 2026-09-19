@@ -37,7 +37,6 @@ use super::{
     resolve_place_order, select_sidebar_row, serialize_pinned_places, should_show_recent_place,
     should_show_standard_place, sidebar_accepts_file_drop, sidebar_button, sidebar_device_row,
     sidebar_eject_button, sidebar_focus_direction, sidebar_lock_button, sidebar_update_label,
-    single_pane_arrow_action, standard_place, trash_contents_from_probe, trash_icon,
-    trash_item_count, trash_menu_visibility, type_to_search_query, vim_focus_direction,
-    volume_release_action,
+    single_pane_arrow_action, standard_place, trash_contents_from_probe, trash_item_count,
+    trash_menu_visibility, type_to_search_query, vim_focus_direction, volume_release_action,
 };

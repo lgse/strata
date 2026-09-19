@@ -785,6 +785,16 @@ pub(super) fn column_rows(
         } else {
             label.set_opacity(1.0);
         }
+        let item_value = value.string();
+        let display_name = model_display_name(&item_value);
+        let is_restoring = state
+            .as_ref()
+            .is_some_and(|s| s.is_pending_restore(display_name));
+        if is_restoring {
+            row.set_opacity(0.0);
+        } else {
+            row.set_opacity(1.0);
+        }
         let origin = entry
             .as_ref()
             .filter(|_| searching)

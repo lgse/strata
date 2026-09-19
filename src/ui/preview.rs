@@ -420,6 +420,7 @@ impl PreviewDrawer {
             BrowserEvent::PreviewRequested { entry } => {
                 self.show(entry.clone(), browser.active_depth());
             }
+            BrowserEvent::SelectionSynced { .. } if super::marquee::is_updating_selection() => {}
             BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::entry_animation::{
-    EntryAnimationTarget, animate, bounds_in_overlay, collect_entry_targets,
+    EntryAnimationTarget, animate, bounds_in_overlay, collect_entry_targets, find_row_by_name,
     icon_center_in_overlay, sampled_indices,
 };
 use crate::model::FileEntry;
@@ -11,12 +11,13 @@ use gtk::glib;
 use gtk::prelude::*;
 use std::time::Duration;
 
-const TRAVEL: Duration = Duration::from_millis(420);
-const RELEASE_TRAVEL: Duration = Duration::from_millis(350);
+const TRAVEL: Duration = Duration::from_millis(360);
+const RESTORE_TRAVEL: Duration = Duration::from_millis(240);
+const RELEASE_TRAVEL: Duration = Duration::from_millis(220);
 const BOUNCE: Duration = Duration::from_millis(280);
-const WISP: Duration = Duration::from_millis(420);
-const STAGGER_MS: u64 = 18;
-const MAX_STAGGER_MS: u64 = 54;
+const WISP: Duration = Duration::from_millis(260);
+const STAGGER_MS: u64 = 12;
+const MAX_STAGGER_MS: u64 = 36;
 const MAX_FLYERS: usize = 7;
 const FLYER_SIZE: f64 = 26.0;
 
@@ -29,6 +30,8 @@ struct Flyer {
     arc_height: f64,
     bank_class: &'static str,
     delay: Duration,
+    target_name: Option<String>,
+    index: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,7 +72,7 @@ pub(in crate::ui) fn fly_to_trash(
     trash_button.add_css_class("trash-receiving");
     let lid = open_trash_lid(trash_button);
     let button = trash_button.clone();
-    animate_flyers(&overlay, flyers, Flight::Inbound, move || {
+    animate_flyers(&overlay, source, flyers, Flight::Inbound, move || {
         button.remove_css_class("trash-receiving");
         close_trash_lid(lid);
         impact_trash(&button);
@@ -95,9 +98,15 @@ pub(in crate::ui) fn fly_from_trash(
         on_done();
         return;
     };
-    let targets = collect_entry_targets(source, entries);
     let mode = restore_flight(entries);
-    let flyers = create_flyers(&overlay, &targets, trash_center, mode);
+    let flyers = match mode {
+        Flight::Release => {
+            let targets = collect_entry_targets(source, entries);
+            create_flyers(&overlay, &targets, trash_center, Flight::Release)
+        }
+        Flight::Outbound => create_outbound_flyers(&overlay, source, entries, trash_center),
+        Flight::Inbound => unreachable!(),
+    };
     if flyers.is_empty() {
         on_done();
         return;
@@ -109,7 +118,7 @@ pub(in crate::ui) fn fly_from_trash(
         release_trash(trash_button);
     }
     let lid = open_trash_lid(trash_button);
-    animate_flyers(&overlay, flyers, mode, move || {
+    animate_flyers(&overlay, source, flyers, mode, move || {
         close_trash_lid(lid);
         on_done();
     });
@@ -206,7 +215,74 @@ fn create_flyers(
                 arc_height,
                 bank_class,
                 delay,
+                target_name: None,
+                index,
             })
+        })
+        .collect()
+}
+
+fn create_outbound_flyers(
+    overlay: &gtk::Overlay,
+    source: &gtk::Widget,
+    entries: &[FileEntry],
+    trash_center: (f64, f64),
+) -> Vec<Flyer> {
+    let indices = sampled_indices(entries.len(), MAX_FLYERS);
+    let trash_position = centered_position(trash_center);
+    let default_end = bounds_in_overlay(source, overlay)
+        .map(|bounds| {
+            (
+                (f64::from(bounds.x()) + 140.0).max(trash_position.0 + 100.0),
+                f64::from(bounds.y()) + 80.0,
+            )
+        })
+        .unwrap_or((trash_position.0 + 200.0, trash_position.1 - 60.0));
+
+    indices
+        .into_iter()
+        .enumerate()
+        .map(|(index, entry_index)| {
+            let entry = &entries[entry_index];
+            let existing_row = find_row_by_name(source, &entry.display_name);
+            if let Some(row) = &existing_row {
+                row.set_opacity(0.0);
+            }
+            let existing_pos = existing_row
+                .as_ref()
+                .and_then(|row| icon_center_in_overlay(row, overlay))
+                .map(centered_position);
+            let end =
+                existing_pos.unwrap_or((default_end.0, default_end.1 + (index as f64 * 32.0)));
+            let arc = arc_height(trash_position, end, index);
+
+            let widget = gtk::Overlay::new();
+            widget.add_css_class("fly-to-trash");
+            widget.add_css_class("fly-to-trash-contracted");
+            widget.set_halign(gtk::Align::Start);
+            widget.set_valign(gtk::Align::Start);
+            widget.set_can_target(false);
+            widget.set_margin_start(trash_position.0.round() as i32);
+            widget.set_margin_top(trash_position.1.round() as i32);
+
+            let icon = crate::assets::primary_icon(entry_icon(entry), 18);
+            icon.add_css_class("fly-to-trash-icon");
+            icon.set_opacity(0.0);
+            widget.set_child(Some(&icon));
+            overlay.add_overlay(&widget);
+
+            let delay = Duration::from_millis((index as u64 * STAGGER_MS).min(MAX_STAGGER_MS));
+            Flyer {
+                widget,
+                icon,
+                start: trash_position,
+                end,
+                arc_height: arc,
+                bank_class: "fly-launch-straight",
+                delay,
+                target_name: Some(entry.display_name.clone()),
+                index,
+            }
         })
         .collect()
 }
@@ -279,14 +355,15 @@ fn arc_height(start: (f64, f64), end: (f64, f64), index: usize) -> f64 {
 
 fn animate_flyers(
     overlay: &gtk::Overlay,
+    source: &gtk::Widget,
     flyers: Vec<Flyer>,
     mode: Flight,
     on_done: impl FnOnce() + 'static,
 ) {
-    let travel = if mode == Flight::Release {
-        RELEASE_TRAVEL
-    } else {
-        TRAVEL
+    let travel = match mode {
+        Flight::Release => RELEASE_TRAVEL,
+        Flight::Outbound => RESTORE_TRAVEL,
+        Flight::Inbound => TRAVEL,
     };
     let total = travel
         + flyers
@@ -295,12 +372,28 @@ fn animate_flyers(
             .max()
             .unwrap_or_default();
     let overlay_for_cleanup = overlay.clone();
+    let source_for_frame = source.clone();
+    let source_for_cleanup = source.clone();
+    let overlay_for_frame = overlay.clone();
+    let flyers = std::rc::Rc::new(std::cell::RefCell::new(flyers));
     let flyers_for_cleanup = flyers.clone();
     animate(
         overlay,
         total,
         move |elapsed| {
-            for flyer in &flyers {
+            let mut flyers = flyers.borrow_mut();
+            for flyer in flyers.iter_mut() {
+                if mode == Flight::Outbound
+                    && let Some(target_name) = &flyer.target_name
+                    && let Some(row) = find_row_by_name(&source_for_frame, target_name)
+                {
+                    row.set_opacity(0.0);
+                    if let Some(center) = icon_center_in_overlay(&row, &overlay_for_frame) {
+                        let row_pos = centered_position(center);
+                        flyer.end = row_pos;
+                        flyer.arc_height = arc_height(flyer.start, row_pos, flyer.index);
+                    }
+                }
                 let progress = elapsed.checked_sub(flyer.delay).map_or(0.0, |elapsed| {
                     (elapsed.as_secs_f64() / travel.as_secs_f64()).clamp(0.0, 1.0)
                 });
@@ -351,7 +444,12 @@ fn animate_flyers(
             }
         },
         move || {
-            for flyer in &flyers_for_cleanup {
+            for flyer in flyers_for_cleanup.borrow().iter() {
+                if let Some(target_name) = &flyer.target_name
+                    && let Some(row) = find_row_by_name(&source_for_cleanup, target_name)
+                {
+                    row.set_opacity(1.0);
+                }
                 overlay_for_cleanup.remove_overlay(&flyer.widget);
             }
             on_done();

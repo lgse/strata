@@ -211,6 +211,7 @@ fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refresh
         &trash,
         &HashSet::from([original.clone()]),
         &gio::Cancellable::new(),
+        &HashMap::new(),
     );
 
     let entry = entries.get(&original).expect("fallback entry");
@@ -225,7 +226,15 @@ fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refresh
     );
     let cancellable = gio::Cancellable::new();
     cancellable.cancel();
-    assert!(home_trash_entries_at(&trash, &HashSet::from([original]), &cancellable).is_empty());
+    assert!(
+        home_trash_entries_at(
+            &trash,
+            &HashSet::from([original]),
+            &cancellable,
+            &HashMap::new()
+        )
+        .is_empty()
+    );
     assert!(fs::symlink_metadata(trash.join("files/report.txt")).is_ok());
     assert!(trash.join("info/report.txt.trashinfo").exists());
     fs::remove_dir_all(fixture)?;

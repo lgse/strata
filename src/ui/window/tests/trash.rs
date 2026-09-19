@@ -48,34 +48,6 @@ fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_tra
 }
 
 #[test]
-fn the_trash_row_icon_fill_follows_the_probed_item_count() {
-    assert_eq!(
-        trash_icon(TrashContents::NonEmpty(1)),
-        crate::assets::icons::TRASH_LOW
-    );
-    assert_eq!(
-        trash_icon(TrashContents::NonEmpty(4)),
-        crate::assets::icons::TRASH_LOW
-    );
-    assert_eq!(
-        trash_icon(TrashContents::NonEmpty(9)),
-        crate::assets::icons::TRASH_HALF
-    );
-    assert_eq!(
-        trash_icon(TrashContents::NonEmpty(40)),
-        crate::assets::icons::TRASH_FULL
-    );
-    assert_eq!(
-        trash_icon(TrashContents::Empty),
-        crate::assets::icons::TRASH
-    );
-    assert_eq!(
-        trash_icon(TrashContents::Unknown),
-        crate::assets::icons::TRASH
-    );
-}
-
-#[test]
 fn trash_probe_results_map_to_menu_state() {
     assert_eq!(trash_contents_from_probe(Ok(3)), TrashContents::NonEmpty(3));
     assert_eq!(trash_contents_from_probe(Ok(0)), TrashContents::Empty);

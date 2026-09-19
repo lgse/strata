@@ -197,6 +197,7 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
+    pending_restore_names: RefCell<HashSet<String>>,
     /// Visible permanent-delete rows captured before the operation mutates the model.
     pending_delete_dissolve: RefCell<Option<(usize, dissolve_delete::PreparedDissolve)>>,
     deferred_delete_empty_depth: Cell<Option<usize>>,
@@ -519,6 +520,7 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
+            pending_restore_names: RefCell::new(HashSet::new()),
             pending_delete_dissolve: RefCell::new(None),
             deferred_delete_empty_depth: Cell::new(None),
             pending_navigate: RefCell::new(None),
@@ -542,6 +544,7 @@ impl BrowserView {
         state.install_drag_autoscroll();
 
         let weak_state = Rc::downgrade(&state);
+        columns::install_horizontal_scroll(&state);
         super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
             let state = weak_state.upgrade()?;
             let laid_out = state.columns_widget.compute_bounds(surface)?;
@@ -1278,7 +1281,7 @@ impl BrowserView {
     pub fn copy_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.selected_entries()
+            self.state.browser.transfer_entries()
         });
         if entries.is_empty() {
             return false;
@@ -1289,7 +1292,7 @@ impl BrowserView {
 
     pub fn duplicate_selection(&self) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.selected_entries();
+        let entries = self.state.browser.transfer_entries();
         let Some((destination, sources)) = duplicate_transfer(&entries) else {
             return false;
         };
@@ -1300,7 +1303,7 @@ impl BrowserView {
     pub fn cut_selection(&self) -> bool {
         let entries = self.selected_search_results().unwrap_or_else(|| {
             self.state.sync_mode_selection();
-            self.state.browser.selected_entries()
+            self.state.browser.transfer_entries()
         });
         if entries.is_empty() {
             return false;
@@ -1438,41 +1441,81 @@ impl BrowserView {
         if let Some((generation, locations)) = self.state.browser.pending_undo_copy() {
             return self.state.undo_copy(generation, locations);
         }
+        if let Some((generation, created, overwritten)) = self.state.browser.pending_undo_merge() {
+            return self.state.undo_merge(generation, created, overwritten);
+        }
         let Some(locations) = self.state.browser.pending_undo_trash() else {
             return self.state.browser.undo_last_trash();
         };
-        // Flyers need the items' rows on screen: in Trash they are already visible,
-        // elsewhere they only appear once the restore lands and the view reloads.
-        let names: Rc<HashSet<String>> = Rc::new(
-            locations
+        let is_trash = self
+            .state
+            .browser
+            .active_location()
+            .as_ref()
+            .is_some_and(paths::is_trash_location);
+        let entries: Vec<FileEntry> = if is_trash {
+            let names: HashSet<String> = locations
                 .iter()
                 .filter_map(|location| location.file_name())
                 .map(|name| name.to_string_lossy().into_owned())
-                .collect(),
-        );
-        let entries = self.state.browser.entries_named(&names);
-        let Some(trash_button) = self.state.trash_button.borrow().clone() else {
-            return self.state.browser.undo_last_trash();
+                .collect();
+            self.state.browser.entries_named(&names)
+        } else {
+            locations
+                .iter()
+                .map(|location| {
+                    let display_name = location
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    FileEntry {
+                        location: location.clone(),
+                        native_name: location.file_name().unwrap_or_default().to_os_string(),
+                        thumbnail_path: None,
+                        display_name,
+                        kind: crate::model::EntryKind::File,
+                        size: crate::model::MetadataValue::Unknown,
+                        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+                        recent_unix_seconds: crate::model::MetadataValue::Unknown,
+                        is_hidden: false,
+                        mode: crate::model::MetadataValue::Unknown,
+                        image_dimensions: crate::model::MetadataValue::Unknown,
+                        child_count: crate::model::MetadataValue::Unknown,
+                        duration_seconds: crate::model::MetadataValue::Unknown,
+                    }
+                })
+                .collect()
         };
-        if entries.is_empty() {
-            let undone = self.state.browser.undo_last_trash();
-            if undone {
-                fly_undo_from_trash_when_visible(Rc::downgrade(&self.state), names, 20);
+        let trash_button = self.state.trash_button.borrow().clone();
+        let undone = self.state.browser.undo_last_trash();
+        if undone
+            && let Some(trash_button) = trash_button
+            && !entries.is_empty()
+        {
+            for entry in &entries {
+                self.state.add_pending_restore(entry.display_name.clone());
             }
-            return undone;
-        }
-        let weak = Rc::downgrade(&self.state);
-        fly_to_trash::fly_from_trash(
-            self.state.overlay.upcast_ref(),
-            &entries,
-            &trash_button,
-            move || {
-                if let Some(state) = weak.upgrade() {
-                    state.browser.undo_last_trash();
+            let source = self
+                .state
+                .delete_animation_source()
+                .unwrap_or_else(|| self.state.overlay.clone().upcast());
+            let weak_state = Rc::downgrade(&self.state);
+            let names_for_done: Vec<String> =
+                entries.iter().map(|e| e.display_name.clone()).collect();
+            let source_for_done = source.clone();
+            fly_to_trash::fly_from_trash(&source, &entries, &trash_button, move || {
+                if let Some(state) = weak_state.upgrade() {
+                    for name in &names_for_done {
+                        state.remove_pending_restore(name);
+                        if let Some(row) = entry_animation::find_row_by_name(&source_for_done, name)
+                        {
+                            row.set_opacity(1.0);
+                        }
+                    }
                 }
-            },
-        );
-        true
+            });
+        }
+        undone
     }
 
     pub fn show_filter(&self) -> bool {
@@ -1784,6 +1827,18 @@ impl BrowserView {
 }
 
 impl ViewState {
+    pub(in crate::ui) fn is_pending_restore(&self, name: &str) -> bool {
+        self.pending_restore_names.borrow().contains(name)
+    }
+
+    pub(in crate::ui) fn add_pending_restore(&self, name: String) {
+        self.pending_restore_names.borrow_mut().insert(name);
+    }
+
+    pub(in crate::ui) fn remove_pending_restore(&self, name: &str) {
+        self.pending_restore_names.borrow_mut().remove(name);
+    }
+
     pub(in crate::ui::browser) fn stop_drag_autoscroll(&self) {
         if let Some(tracker) = self.drag_autoscroll.borrow().as_ref() {
             tracker.stop();
@@ -2081,33 +2136,6 @@ fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
         gtk::gdk::Key::l => Some(gtk::DirectionType::Right),
         _ => None,
     }
-}
-
-/// Retries while the restored rows materialize in the reloaded view, then flies the
-/// entries out of the trash button onto them. Gives up when nothing shows up.
-fn fly_undo_from_trash_when_visible(
-    state: Weak<ViewState>,
-    names: Rc<HashSet<String>>,
-    retries: u32,
-) {
-    glib::timeout_add_local_once(Duration::from_millis(70), move || {
-        let Some(state) = state.upgrade() else {
-            return;
-        };
-        let entries = state.browser.entries_named(&names);
-        let landed = !entries.is_empty()
-            && !entry_animation::collect_entry_targets(state.overlay.upcast_ref(), &entries)
-                .is_empty();
-        if landed {
-            if let Some(button) = state.trash_button.borrow().clone() {
-                fly_to_trash::fly_from_trash(state.overlay.upcast_ref(), &entries, &button, || {});
-            }
-            return;
-        }
-        if retries > 1 {
-            fly_undo_from_trash_when_visible(Rc::downgrade(&state), names, retries - 1);
-        }
-    });
 }
 
 mod chooser_context;

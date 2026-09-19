@@ -55,10 +55,3 @@ fn release_end_rises_above_the_row_and_fans_out() {
     let near_top = release_end((300.0, 60.0), 0, 1);
     assert!(near_top.1 <= 60.0 - 90.0);
 }
-
-#[test]
-fn launch_curve_explosive_burst() {
-    assert_eq!(launch_curve(0.0), 0.0);
-    assert_eq!(launch_curve(1.0), 1.0);
-    assert_eq!(launch_curve(0.5), 0.875);
-}

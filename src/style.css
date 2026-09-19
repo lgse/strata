@@ -3937,7 +3937,7 @@ textview > popover.menu button.model:focus-visible {
   min-height: 22px;
   border-radius: 50%;
   border: 2px solid @theme_accent;
-  animation: trash-insurrection-blast 300ms cubic-bezier(0.1, 1, 0.2, 1) forwards;
+  animation: trash-insurrection-blast 220ms cubic-bezier(0.1, 1, 0.2, 1) forwards;
 }
 
 @keyframes trash-insurrection-plume {
@@ -3956,7 +3956,7 @@ textview > popover.menu button.model:focus-visible {
   min-height: 38px;
   border-radius: 2px;
   background: linear-gradient(to top, @theme_accent, transparent);
-  animation: trash-insurrection-plume 320ms cubic-bezier(0.15, 1, 0.25, 1) forwards;
+  animation: trash-insurrection-plume 240ms cubic-bezier(0.15, 1, 0.25, 1) forwards;
 }
 
 @keyframes trash-insurrection-spark-left {
@@ -3986,7 +3986,7 @@ textview > popover.menu button.model:focus-visible {
   min-height: 3px;
   border-radius: 50%;
   background: @theme_accent;
-  animation: trash-insurrection-spark-left 300ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+  animation: trash-insurrection-spark-left 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
 }
 
 .trash-resurrect-spark-alt {
@@ -3994,7 +3994,7 @@ textview > popover.menu button.model:focus-visible {
   min-height: 3px;
   border-radius: 50%;
   background: @theme_accent;
-  animation: trash-insurrection-spark-right 300ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+  animation: trash-insurrection-spark-right 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
 }
 
 @keyframes trash-rebel-shudder {
@@ -4007,7 +4007,7 @@ textview > popover.menu button.model:focus-visible {
 }
 
 .trash-rebel-shudder {
-  animation: trash-rebel-shudder 340ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  animation: trash-rebel-shudder 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 @keyframes trash-receiving {

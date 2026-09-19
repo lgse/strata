@@ -148,6 +148,16 @@ impl ListFactory {
         }
         row.icon.set_hidden(binding.entry.is_hidden);
         row.icon.set_base_opacity(1.0);
+        let is_restoring = self
+            .state
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .is_some_and(|state| state.is_pending_restore(&binding.entry.display_name));
+        if is_restoring {
+            row.widget.set_opacity(0.0);
+        } else {
+            row.widget.set_opacity(1.0);
+        }
     }
 }
 
