@@ -959,7 +959,7 @@ enum TrashContents {
     /// Not probed yet, or the probe failed.
     Unknown,
     Empty,
-    NonEmpty,
+    NonEmpty(u32),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -971,7 +971,7 @@ struct TrashMenuVisibility {
 /// Destructive actions stay hidden until Trash is confirmed to hold something, and the
 /// separator goes with them so Properties is not left above an empty gap.
 fn trash_menu_visibility(contents: TrashContents) -> TrashMenuVisibility {
-    let visible = matches!(contents, TrashContents::NonEmpty);
+    let visible = matches!(contents, TrashContents::NonEmpty(_));
     TrashMenuVisibility {
         separator: visible,
         empty: visible,
@@ -984,10 +984,19 @@ fn sync_trash_menu_rows(rows: &TrashMenuRows, contents: TrashContents) {
     rows.empty.set_visible(visibility.empty);
 }
 
-fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents {
+fn trash_icon(contents: TrashContents) -> &'static str {
+    match contents {
+        TrashContents::NonEmpty(1..=4) => crate::assets::icons::TRASH_LOW,
+        TrashContents::NonEmpty(5..=14) => crate::assets::icons::TRASH_HALF,
+        TrashContents::NonEmpty(_) => crate::assets::icons::TRASH_FULL,
+        _ => crate::assets::icons::TRASH,
+    }
+}
+
+fn trash_contents_from_probe(probe: Result<u32, glib::Error>) -> TrashContents {
     match probe {
-        Ok(true) => TrashContents::NonEmpty,
-        Ok(false) => TrashContents::Empty,
+        Ok(0) => TrashContents::Empty,
+        Ok(count) => TrashContents::NonEmpty(count),
         Err(_) => TrashContents::Unknown,
     }
 }
@@ -1416,6 +1425,20 @@ impl SidebarState {
         if let Some(rows) = self.trash_menu_rows.borrow().as_ref() {
             sync_trash_menu_rows(rows, self.trash_contents.get());
         }
+        let image = self
+            .place_rows
+            .borrow()
+            .iter()
+            .find(|(location, _)| crate::ui::browser::paths::is_trash_root(location))
+            .and_then(|(_, row)| row.child())
+            .and_then(|content| content.first_child())
+            .and_then(|widget| widget.downcast::<gtk::Image>().ok());
+        if let Some(image) = image {
+            crate::ui::browser::fly_to_trash::set_trash_icon(
+                &image,
+                trash_icon(self.trash_contents.get()),
+            );
+        }
     }
 
     fn set_trash_contents(&self, contents: TrashContents) {
@@ -1439,7 +1462,7 @@ impl SidebarState {
         self.trash_probe_running.set(true);
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let probe = trash_has_entries(&gio::File::for_uri("trash:///")).await;
+            let probe = trash_item_count(&gio::File::for_uri("trash:///")).await;
             if let Err(error) = &probe {
                 tracing::warn!(
                     error_domain = ?error.domain(),
@@ -2984,7 +3007,8 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
     }
 }
 
-async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
+async fn trash_item_count(root: &gio::File) -> Result<u32, glib::Error> {
+    const CAP: u32 = 32;
     let enumerator = root
         .enumerate_children_future(
             gio::FILE_ATTRIBUTE_STANDARD_NAME,
@@ -2992,10 +3016,17 @@ async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
             glib::Priority::DEFAULT,
         )
         .await?;
-    let children = enumerator
-        .next_files_future(1, glib::Priority::DEFAULT)
-        .await?;
-    Ok(!children.is_empty())
+    let mut count = 0u32;
+    while count < CAP {
+        let children = enumerator
+            .next_files_future((CAP - count) as i32, glib::Priority::DEFAULT)
+            .await?;
+        if children.is_empty() {
+            break;
+        }
+        count += children.len() as u32;
+    }
+    Ok(count)
 }
 
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {

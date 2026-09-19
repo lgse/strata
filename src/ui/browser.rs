@@ -24,6 +24,7 @@ use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, Mod
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
@@ -40,7 +41,7 @@ mod dissolve_delete;
 mod entry;
 mod entry_animation;
 mod events;
-mod fly_to_trash;
+pub(super) mod fly_to_trash;
 mod inline_edit;
 mod location;
 mod pane_header;
@@ -183,7 +184,7 @@ pub(super) struct ViewState {
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
-    search_selection_handler: RefCell<Option<Rc<dyn Fn()>>>,
+    search_selection_handlers: RefCell<Vec<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
     pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
@@ -512,7 +513,7 @@ impl BrowserView {
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
-            search_selection_handler: RefCell::new(None),
+            search_selection_handlers: RefCell::new(Vec::new()),
             pending_select: RefCell::new(Vec::new()),
             pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
@@ -1442,7 +1443,61 @@ impl BrowserView {
         if let Some((generation, created, overwritten)) = self.state.browser.pending_undo_merge() {
             return self.state.undo_merge(generation, created, overwritten);
         }
-        self.state.browser.undo_last_trash()
+        let Some(locations) = self.state.browser.pending_undo_trash() else {
+            return self.state.browser.undo_last_trash();
+        };
+        let is_trash = self
+            .state
+            .browser
+            .active_location()
+            .as_ref()
+            .is_some_and(paths::is_trash_location);
+        let entries: Vec<FileEntry> = if is_trash {
+            let names: HashSet<String> = locations
+                .iter()
+                .filter_map(|location| location.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .collect();
+            self.state.browser.entries_named(&names)
+        } else {
+            locations
+                .iter()
+                .map(|location| {
+                    let display_name = location
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    FileEntry {
+                        location: location.clone(),
+                        native_name: location.file_name().unwrap_or_default().to_os_string(),
+                        thumbnail_path: None,
+                        display_name,
+                        kind: crate::model::EntryKind::File,
+                        size: crate::model::MetadataValue::Unknown,
+                        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+                        recent_unix_seconds: crate::model::MetadataValue::Unknown,
+                        is_hidden: false,
+                        mode: crate::model::MetadataValue::Unknown,
+                        image_dimensions: crate::model::MetadataValue::Unknown,
+                        child_count: crate::model::MetadataValue::Unknown,
+                        duration_seconds: crate::model::MetadataValue::Unknown,
+                    }
+                })
+                .collect()
+        };
+        let trash_button = self.state.trash_button.borrow().clone();
+        let undone = self.state.browser.undo_last_trash();
+        if undone
+            && let Some(trash_button) = trash_button
+            && !entries.is_empty()
+        {
+            let source = self
+                .state
+                .delete_animation_source()
+                .unwrap_or_else(|| self.state.overlay.clone().upcast());
+            fly_to_trash::fly_from_trash(&source, &entries, &trash_button, || {});
+        }
+        undone
     }
 
     pub fn show_filter(&self) -> bool {
@@ -1527,8 +1582,11 @@ impl BrowserView {
             })
     }
 
-    pub(super) fn set_search_selection_handler(&self, handler: Rc<dyn Fn()>) {
-        self.state.search_selection_handler.replace(Some(handler));
+    pub(super) fn connect_search_selection_changed(&self, handler: Rc<dyn Fn()>) {
+        self.state
+            .search_selection_handlers
+            .borrow_mut()
+            .push(handler);
     }
 
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
@@ -1759,7 +1817,8 @@ impl BrowserView {
 
 impl ViewState {
     pub(super) fn notify_search_selection_changed(&self) {
-        if let Some(handler) = self.search_selection_handler.borrow().as_ref() {
+        let handlers = self.search_selection_handlers.borrow().clone();
+        for handler in handlers {
             handler();
         }
     }
