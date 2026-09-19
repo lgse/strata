@@ -15,6 +15,8 @@ use super::document::{DOCUMENT_INPUT_LIMIT, DocumentKind, ParsedDocument, parse_
 pub(crate) const DOCX_BYTE_LIMIT: u64 = 20 * 1024 * 1024;
 const HTML_LIMIT: usize = DOCUMENT_INPUT_LIMIT - 4096;
 
+mod namespaces;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct RichTextData {
     pub html: String,
@@ -60,7 +62,8 @@ pub(crate) fn read_document(path: &Path) -> Result<RichTextData, String> {
         return Err("Document is too large to preview safely".into());
     }
     let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-    let docx = docx_rs::read_docx(&bytes).map_err(|e| e.to_string())?;
+    let normalized = namespaces::normalize_package(&bytes)?;
+    let docx = docx_rs::read_docx(&normalized).map_err(|e| e.to_string())?;
     Ok(to_html(&docx))
 }
 

@@ -35,6 +35,7 @@ landlock = "0.4.7"
 libc = "0.2"
 mermaid-svg = "0.7.0"
 rquickjs = "0.13.0"
+quick-xml = "0.41.0"
 pangocairo = "0.22.0"
 poppler = { package = "poppler-rs", version = "0.26.0" }
 pulldown-cmark = { version = "0.13", default-features = false }

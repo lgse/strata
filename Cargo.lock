@@ -2653,6 +2653,7 @@ dependencies = [
  "pangocairo",
  "poppler-rs",
  "pulldown-cmark",
+ "quick-xml",
  "resvg",
  "rquickjs",
  "rustix",
