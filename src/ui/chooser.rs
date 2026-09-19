@@ -58,12 +58,14 @@ thread_local! {
 }
 
 struct ChooserFileSource {
+    source: Rc<dyn FileSource>,
     filter: Rc<RefCell<Option<gtk::FileFilter>>>,
 }
 
 impl ChooserFileSource {
     fn new() -> Rc<Self> {
         Rc::new(Self {
+            source: Rc::new(LocalFileSource),
             filter: Rc::new(RefCell::new(None)),
         })
     }
@@ -75,12 +77,12 @@ impl ChooserFileSource {
 
 impl FileSource for ChooserFileSource {
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
-        if location.native_path().is_none() {
+        if location.native_path().is_none() && !location.is_recent_root() {
             return Err(LocationValidationError::UnsupportedScheme(
                 "The system file chooser supports local files and folders only.".into(),
             ));
         }
-        LocalFileSource.validate_location(location)
+        self.source.validate_location(location)
     }
 
     fn validate_location_async(
@@ -88,15 +90,16 @@ impl FileSource for ChooserFileSource {
         location: Location,
         emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
     ) -> LoadHandle {
-        if location.native_path().is_none() {
+        if location.native_path().is_none() && !location.is_recent_root() {
             emit(self.validate_location(&location));
             return LoadHandle::new(|| {});
         }
-        LocalFileSource.validate_location_async(location, emit)
+        self.source.validate_location_async(location, emit)
     }
 
     fn supports_metadata_fill(&self, location: &Location) -> bool {
-        location.native_path().is_some() && LocalFileSource.supports_metadata_fill(location)
+        (location.native_path().is_some() || location.is_recent_root())
+            && self.source.supports_metadata_fill(location)
     }
 
     fn fill_metadata(
@@ -104,12 +107,12 @@ impl FileSource for ChooserFileSource {
         request: MetadataRequest,
         emit: Rc<dyn Fn(DirectoryEvent)>,
     ) -> LoadHandle {
-        LocalFileSource.fill_metadata(request, emit)
+        self.source.fill_metadata(request, emit)
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
         let filter = self.filter.clone();
-        LocalFileSource.enumerate(
+        self.source.enumerate(
             request,
             Rc::new(move |event| {
                 let event = match event {
@@ -117,9 +120,13 @@ impl FileSource for ChooserFileSource {
                         request_id,
                         mut entries,
                     } => {
-                        if let Some(filter) = filter.borrow().as_ref() {
-                            entries.retain(|entry| file_filter_matches(filter, entry));
-                        }
+                        entries.retain(|entry| {
+                            entry.location.native_path().is_some()
+                                && filter
+                                    .borrow()
+                                    .as_ref()
+                                    .is_none_or(|filter| file_filter_matches(filter, entry))
+                        });
                         DirectoryEvent::Batch {
                             request_id,
                             entries,
@@ -139,7 +146,7 @@ impl FileSource for ChooserFileSource {
         notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
         let filter = self.filter.clone();
-        LocalFileSource.watch(
+        self.source.watch(
             location,
             include_hidden,
             Rc::new(move |change| {
@@ -380,6 +387,7 @@ struct ChooserState {
     window: gtk::Window,
     view: BrowserView,
     filename: Option<gtk::Entry>,
+    filename_selection: RefCell<Option<Location>>,
     filter_dropdown: Option<ChooserDropdown>,
     filters: Vec<PortalFilter>,
     choices: Vec<ChoiceControl>,
@@ -438,9 +446,49 @@ impl ChooserState {
         }
     }
 
+    fn update_selected_filename(&self) {
+        let Some(filename) = self.filename.as_ref() else {
+            return;
+        };
+        let browser = self.view.browser();
+        let entries = self.view.selected_search_results().unwrap_or_else(|| {
+            if browser.selection_is_load_cursor() {
+                Vec::new()
+            } else {
+                browser.selected_entries()
+            }
+        });
+        let selected = match entries.as_slice() {
+            [entry] if !entry.is_directory() => Some(entry.location.clone()),
+            _ => None,
+        };
+        if self.filename_selection.replace(selected.clone()) == selected {
+            return;
+        }
+        if let [entry] = entries.as_slice()
+            && !entry.is_directory()
+            && let Some(name) = entry.location.native_path().and_then(Path::file_name)
+            && safe_filename(name)
+        {
+            filename.set_text(&name.to_string_lossy());
+            filename.remove_css_class("error");
+            filename.set_tooltip_text(None);
+        }
+    }
+
     fn active_folder(&self) -> Result<PathBuf, &'static str> {
         if let Some(folder) = self.selected_folder() {
             return Ok(folder);
+        }
+        let browser = self.view.browser();
+        if browser
+            .active_location()
+            .is_some_and(|location| location.is_recent_root())
+            && !browser.selection_is_load_cursor()
+            && let [entry] = browser.selected_entries().as_slice()
+            && let Some(parent) = entry.location.native_path().and_then(Path::parent)
+        {
+            return Ok(parent.to_path_buf());
         }
         self.view
             .browser()
@@ -792,6 +840,15 @@ fn build_chooser(
     cancelled: Arc<AtomicBool>,
     completion: impl FnOnce(ashpd::backend::Result<SelectedFiles>) + 'static,
 ) -> Option<Rc<ChooserState>> {
+    build_chooser_with_source(request, cancelled, completion, ChooserFileSource::new())
+}
+
+fn build_chooser_with_source(
+    request: ChooserRequest,
+    cancelled: Arc<AtomicBool>,
+    completion: impl FnOnce(ashpd::backend::Result<SelectedFiles>) + 'static,
+    source: Rc<ChooserFileSource>,
+) -> Option<Rc<ChooserState>> {
     if cancelled.load(Ordering::SeqCst) {
         completion(Err(PortalError::Cancelled(
             "file chooser request was cancelled".into(),
@@ -799,7 +856,6 @@ fn build_chooser(
         return None;
     }
 
-    let source = ChooserFileSource::new();
     let (filters, selected_filter) =
         portal_filters(&request.filters, request.current_filter.as_ref());
     source.set_filter(
@@ -1039,6 +1095,7 @@ fn build_chooser(
         window: window.clone(),
         view: view.clone(),
         filename: filename.clone(),
+        filename_selection: RefCell::new(None),
         filter_dropdown,
         filters,
         choices,
@@ -1070,12 +1127,26 @@ fn build_chooser(
         });
     }
 
+    let weak = Rc::downgrade(&state);
+    view.set_search_selection_handler(Rc::new(move || {
+        let weak = weak.clone();
+        glib::idle_add_local_once(move || {
+            if let Some(state) = weak.upgrade() {
+                state.update_selected_filename();
+            }
+        });
+    }));
+
     let state_for_observer = state.clone();
     let preview_for_browser = preview.clone();
     let weak_browser = Rc::downgrade(&browser);
     browser.observe(move |event| {
-        if let BrowserEvent::OpenRequested { location } = event {
-            state_for_observer.activate_file(location);
+        match event {
+            BrowserEvent::OpenRequested { location } => state_for_observer.activate_file(location),
+            BrowserEvent::FocusChanged { .. }
+            | BrowserEvent::SelectionSetChanged { .. }
+            | BrowserEvent::SelectionSynced { .. } => state_for_observer.update_selected_filename(),
+            _ => {}
         }
         if let Some(browser) = weak_browser.upgrade() {
             preview_for_browser.handle_browser_event(&browser, event);

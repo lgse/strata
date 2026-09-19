@@ -241,12 +241,11 @@ fn recent_available() -> RecentAvailability {
 }
 
 #[test]
-fn recent_sidebar_requires_preference_platform_backend_and_nonlocal_context() {
-    assert!(should_show_recent_place(true, false, recent_available()));
-    assert!(!should_show_recent_place(false, false, recent_available()));
+fn recent_sidebar_requires_preference_platform_and_backend() {
+    assert!(should_show_recent_place(true, recent_available()));
+    assert!(!should_show_recent_place(false, recent_available()));
     assert!(!should_show_recent_place(
         true,
-        false,
         RecentAvailability {
             platform_tracking_enabled: false,
             ..recent_available()
@@ -254,11 +253,9 @@ fn recent_sidebar_requires_preference_platform_backend_and_nonlocal_context() {
     ));
     assert!(!should_show_recent_place(
         true,
-        false,
         RecentAvailability {
             runtime_backend_supported: false,
             ..recent_available()
         },
     ));
-    assert!(!should_show_recent_place(true, true, recent_available()));
 }
