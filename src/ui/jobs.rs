@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use gtk::{glib, prelude::*};
+use gtk::{gio, glib, prelude::*};
 
 use crate::services::{JobId, JobService, JobSnapshot, JobStatus, ListenerGuard};
 
@@ -58,6 +58,11 @@ pub(crate) fn shared() -> Rc<JobService> {
     })
 }
 
+/// Opens the dashboard in the window that launched the action, not every window.
+pub(crate) fn present_for(anchor: &impl IsA<gtk::Widget>, id: JobId) {
+    let _ = anchor.activate_action("jobs.show", Some(&id.0.to_variant()));
+}
+
 /// Starts applying runner events on the GTK main loop.
 ///
 /// A GLib source is bound to the thread that creates it, so this runs from window
@@ -78,6 +83,7 @@ struct DashboardState {
     service: Rc<JobService>,
     expanded: Rc<RefCell<HashSet<JobId>>>,
     dirty: Rc<RefCell<bool>>,
+    featured: Rc<Cell<Option<JobId>>>,
 }
 
 /// A footer indicator plus its dashboard.
@@ -85,6 +91,7 @@ pub(crate) struct JobsIndicator {
     root: gtk::MenuButton,
     label: gtk::Label,
     clear: gtk::Button,
+    scroll: gtk::ScrolledWindow,
     state: DashboardState,
     /// Keeps the refresh callback alive without creating a reference cycle.
     refresh_holder: RefreshHolder,
@@ -102,6 +109,7 @@ impl JobsIndicator {
             service,
             expanded: Rc::new(RefCell::new(HashSet::new())),
             dirty: Rc::new(RefCell::new(true)),
+            featured: Rc::new(Cell::new(None)),
         };
 
         let root = gtk::MenuButton::new();
@@ -165,6 +173,7 @@ impl JobsIndicator {
             service: state.service.clone(),
             expanded: state.expanded.clone(),
             dirty: state.dirty.clone(),
+            featured: state.featured.clone(),
         };
         let refresh: RefreshCallback = Rc::new(move || {
             let Some(holder) = weak_holder.upgrade() else {
@@ -201,6 +210,7 @@ impl JobsIndicator {
             service: state.service.clone(),
             expanded: state.expanded.clone(),
             dirty: state.dirty.clone(),
+            featured: state.featured.clone(),
         };
         popover.connect_show(move |_| {
             show_state.dirty.replace(true);
@@ -232,6 +242,7 @@ impl JobsIndicator {
             root,
             label,
             clear,
+            scroll,
             state,
             refresh_holder,
         };
@@ -242,6 +253,44 @@ impl JobsIndicator {
 
     pub(crate) fn widget(&self) -> &gtk::MenuButton {
         &self.root
+    }
+
+    pub(crate) fn bind_window(&self, window: &impl IsA<gtk::Widget>) {
+        let action = gio::SimpleAction::new("show", Some(&u64::static_variant_type()));
+        let root = self.root.downgrade();
+        let scroll = self.scroll.downgrade();
+        let featured = self.state.featured.clone();
+        let dirty = self.state.dirty.clone();
+        let holder = Rc::downgrade(&self.refresh_holder);
+        action.connect_activate(move |_, parameter| {
+            let Some(id) = parameter.and_then(|value| value.get::<u64>()) else {
+                return;
+            };
+            featured.set(Some(JobId(id)));
+            dirty.replace(true);
+            let root = root.clone();
+            let scroll = scroll.clone();
+            let holder = holder.clone();
+            // Let the launching menu release its grab and the footer become visible.
+            glib::idle_add_local_once(move || {
+                let (Some(root), Some(scroll), Some(holder)) =
+                    (root.upgrade(), scroll.upgrade(), holder.upgrade())
+                else {
+                    return;
+                };
+                if !root.is_mapped() {
+                    return;
+                }
+                if let Some(refresh) = holder.borrow().clone() {
+                    refresh();
+                }
+                scroll.vadjustment().set_value(scroll.vadjustment().lower());
+                root.popup();
+            });
+        });
+        let group = gio::SimpleActionGroup::new();
+        group.add_action(&action);
+        window.insert_action_group("jobs", Some(&group));
     }
 
     /// Keeps the subscription alive exactly as long as the widget.
@@ -309,7 +358,7 @@ fn render_rows(
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
-    let snapshots = state.service.snapshot();
+    let snapshots = dashboard_snapshots(state);
     clear.set_visible(state.service.finished_count() > 0);
     if snapshots.is_empty() {
         let empty = gtk::Label::new(Some("No background jobs."));
@@ -330,6 +379,19 @@ fn render_rows(
         more.set_xalign(0.0);
         list.append(&more);
     }
+}
+
+fn dashboard_snapshots(state: &DashboardState) -> Vec<JobSnapshot> {
+    let mut snapshots = state.service.snapshot();
+    if let Some(id) = state.featured.get() {
+        if let Some(index) = snapshots.iter().position(|snapshot| snapshot.id == id) {
+            let featured = snapshots.remove(index);
+            snapshots.insert(0, featured);
+        } else {
+            state.featured.set(None);
+        }
+    }
+    snapshots
 }
 
 fn job_row(snapshot: &JobSnapshot, state: &DashboardState, refresh: &RefreshCallback) -> gtk::Box {

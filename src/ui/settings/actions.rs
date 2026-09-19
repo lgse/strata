@@ -13,6 +13,7 @@ use std::rc::Rc;
 use gtk::{gio, glib, prelude::*};
 use sourceview5::prelude::*;
 
+use crate::assets::{self, icons};
 use crate::model::{
     ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionError, ActionRuntime,
     ErrorPolicy, ExecutionMode, InputKind, MenuPlacement, RunSpec, WorkingDirectory, suggest_id,
@@ -33,6 +34,7 @@ use super::{append_heading, page_content, scrollable_page, search};
 use crate::model::action::examples::{ACTION_EXAMPLES, ActionExample};
 
 mod examples;
+mod readiness;
 
 #[cfg(test)]
 mod tests;
@@ -153,9 +155,12 @@ impl PageState {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         row.add_css_class("settings-option");
         row.add_css_class("settings-action-row");
+        let heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
         let icon = crate::assets::primary_icon(action_icon(action.definition.icon.as_deref()), 20);
-        icon.set_valign(gtk::Align::Center);
-        row.append(&icon);
+        icon.set_valign(gtk::Align::Start);
+        heading.append(&icon);
 
         let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
         copy.set_hexpand(true);
@@ -171,10 +176,11 @@ impl PageState {
         detail.add_css_class("settings-option-description");
         copy.append(&title);
         copy.append(&detail);
-        row.append(&copy);
+        heading.append(&copy);
 
         let toggle = gtk::Switch::builder()
             .active(action.definition.enabled)
+            .halign(gtk::Align::End)
             .valign(gtk::Align::Center)
             .tooltip_text("Enable this action in the context menu")
             .build();
@@ -188,18 +194,32 @@ impl PageState {
             }
             glib::Propagation::Proceed
         });
-        row.append(&toggle);
+        heading.append(&toggle);
+        row.append(&heading);
 
-        let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let buttons = super::wrap::WrapRow::new(6);
+        buttons.set_end_align(true);
         buttons.set_valign(gtk::Align::Center);
-        for (label, handler) in [
-            ("Edit", ActionRowAction::Edit),
-            ("Duplicate", ActionRowAction::Duplicate),
-            ("Export…", ActionRowAction::Export),
-            ("Delete", ActionRowAction::Delete),
+        for (label, icon, handler) in [
+            ("Edit", icons::PENCIL, ActionRowAction::Edit),
+            ("Duplicate", icons::COPY, ActionRowAction::Duplicate),
+            ("Export…", icons::DOWNLOADS, ActionRowAction::Export),
+            ("Delete", icons::TRASH, ActionRowAction::Delete),
         ] {
-            let button = gtk::Button::with_label(label);
+            let image = if handler == ActionRowAction::Delete {
+                assets::danger_icon(icon, assets::CHROME_ICON_PX)
+            } else {
+                assets::primary_icon(icon, assets::CHROME_ICON_PX)
+            };
+            image.set_halign(gtk::Align::Center);
+            image.set_valign(gtk::Align::Center);
+            let button = gtk::Button::builder()
+                .child(&image)
+                .tooltip_text(label)
+                .build();
+            crate::ui::accessibility::set_label(&button, label);
             button.add_css_class("settings-action-button");
+            button.add_css_class("settings-action-icon-button");
             if handler == ActionRowAction::Delete {
                 button.add_css_class("danger");
             }
@@ -567,7 +587,8 @@ struct EditorForm {
     script: sourceview5::View,
     examples: Vec<gtk::MenuButton>,
     python_buffer: sourceview5::Buffer,
-    python_choice: gtk::ToggleButton,
+    bash_buffer: sourceview5::Buffer,
+    runtime_choices: Vec<gtk::ToggleButton>,
     mode_choices: Vec<gtk::ToggleButton>,
     last_example: Rc<std::cell::Cell<Option<&'static ActionExample>>>,
     program: gtk::Entry,
@@ -666,7 +687,7 @@ impl EditorForm {
             .wrap_mode(gtk::WrapMode::None)
             .build();
         let script_scroll = editor_scroll(&script_view);
-        script_scroll.set_min_content_height(280);
+        script_scroll.set_min_content_height(240);
         script_scroll.set_vexpand(true);
 
         let program = form_entry();
@@ -768,13 +789,21 @@ impl EditorForm {
         kind_row.append(&files);
         kind_row.append(&folders);
         let entrypoint_field = field("Script file", "Saved beside action.toml", &entrypoint);
-        let script_field = field("Script", "Runs with your permissions", &script_scroll);
+        let script_field = field("Script", "", &script_scroll);
         let program_field = field("Program", "Installed executable", &program);
         let arguments_field = field(
             "Arguments",
             "One per line · {path}, {paths}, or {parent}",
             &arguments_scroll,
         );
+        if let Some(heading) = script_field.first_child().and_downcast::<gtk::Box>() {
+            heading.append(&readiness::indicator(
+                selected_runtime.clone(),
+                &runtime_buttons,
+                &python,
+                &bash,
+            ));
+        }
         let examples = [&script_field, &arguments_field]
             .map(|field| {
                 let button = examples::button();
@@ -815,7 +844,7 @@ impl EditorForm {
         arguments_field.set_vexpand(true);
         script_page.append(&script_field);
         script_page.append(&arguments_field);
-        label_control(&script_view, "Script", "Runs with your permissions");
+        label_control(&script_view, "Script", "");
         label_control(
             &arguments,
             "Arguments",
@@ -877,6 +906,7 @@ impl EditorForm {
         let sync_runtime: Rc<dyn Fn()> = Rc::new({
             let selected = selected_runtime.clone();
             let python = python.clone();
+            let bash = bash.clone();
             let entrypoint = entrypoint.clone();
             let view = script_view.clone();
             move || {
@@ -922,7 +952,8 @@ impl EditorForm {
             script: script_view,
             examples,
             python_buffer: python,
-            python_choice: runtime_buttons[0].clone(),
+            bash_buffer: bash,
+            runtime_choices: runtime_buttons,
             mode_choices: mode_buttons,
             last_example: Rc::new(std::cell::Cell::new(None)),
             program,
@@ -942,13 +973,21 @@ impl EditorForm {
         }
     }
 
-    fn replaces_python_draft(&self) -> bool {
-        let contents = self.python_buffer.text(
-            &self.python_buffer.start_iter(),
-            &self.python_buffer.end_iter(),
-            false,
-        );
-        !contents.trim().is_empty() && contents.as_str() != python_template()
+    fn recipe_buffer(&self, runtime: ActionRuntime) -> &sourceview5::Buffer {
+        match runtime {
+            ActionRuntime::Bash => &self.bash_buffer,
+            _ => &self.python_buffer,
+        }
+    }
+
+    fn replaces_draft(&self, runtime: ActionRuntime) -> bool {
+        let buffer = self.recipe_buffer(runtime);
+        let contents = buffer.text(&buffer.start_iter(), &buffer.end_iter(), false);
+        let starter = match runtime {
+            ActionRuntime::Bash => bash_template().to_owned(),
+            _ => python_template(),
+        };
+        !contents.trim().is_empty() && contents.as_str() != starter
     }
 
     fn apply_example(&self, example: &'static ActionExample) {
@@ -963,19 +1002,17 @@ impl EditorForm {
         {
             self.description.set_text(example.description);
         }
-        let was_python = self.selected_runtime.get() == ActionRuntime::Python;
-        self.python_choice.set_active(true);
-        if !was_python {
-            self.entrypoint.set_text("main.py");
+        let runtime = example.runtime();
+        let changed_runtime = self.selected_runtime.get() != runtime;
+        self.runtime_choices[usize::from(runtime == ActionRuntime::Bash)].set_active(true);
+        if changed_runtime {
+            self.entrypoint.set_text(default_entrypoint(runtime));
         }
-        self.python_buffer.begin_user_action();
-        self.python_buffer.delete(
-            &mut self.python_buffer.start_iter(),
-            &mut self.python_buffer.end_iter(),
-        );
-        self.python_buffer
-            .insert(&mut self.python_buffer.start_iter(), &example.script());
-        self.python_buffer.end_user_action();
+        let buffer = self.recipe_buffer(runtime);
+        buffer.begin_user_action();
+        buffer.delete(&mut buffer.start_iter(), &mut buffer.end_iter());
+        buffer.insert(&mut buffer.start_iter(), &example.script());
+        buffer.end_user_action();
         self.mode_choices[usize::from(example.mode == ExecutionMode::PerItem)].set_active(true);
         self.files.set_active(true);
         self.folders.set_active(example.folders);
@@ -987,14 +1024,8 @@ impl EditorForm {
     }
 
     fn focus_first(&self) {
-        match self.mode {
-            EditorMode::Create => {
-                self.name.grab_focus();
-            }
-            EditorMode::Edit => {
-                self.description.grab_focus();
-            }
-        }
+        self.name.grab_focus_without_selecting();
+        self.name.set_position(-1);
     }
 
     fn show_error(&self, message: &str) {
@@ -1220,10 +1251,12 @@ fn field(title: &str, description: &str, control: &impl IsA<gtk::Widget>) -> gtk
     label.set_hexpand(true);
     label.add_css_class("settings-option-title");
     heading.append(&label);
-    let hint = gtk::Label::new(Some(description));
-    hint.set_xalign(1.0);
-    hint.add_css_class("settings-option-description");
-    heading.append(&hint);
+    if !description.is_empty() {
+        let hint = gtk::Label::new(Some(description));
+        hint.set_xalign(1.0);
+        hint.add_css_class("settings-option-description");
+        heading.append(&hint);
+    }
     row.append(&heading);
     row.append(control);
     label_control(control, title, description);

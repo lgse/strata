@@ -29,7 +29,13 @@ Choose **Settings → Actions → New action…**. The editor has three tabs:
   Leave the id blank to derive it from the name.
 - **Script**: choose Python, Bash, or Command. Scripts have a line-numbered editor;
   commands take an installed program and one argument per line. Switching runtimes
-  keeps each script draft until you close the dialog.
+  keeps each script draft until you close the dialog. For Python and Bash, a runtime
+  indicator checks the declared shebang (or default interpreter) against the same executable lookup
+  used when loading actions. Availability is checked automatically when the
+  dialog opens; reopen it after installing a runtime.
+  Bash/Command do not require Python. This does not execute anything or validate
+  script syntax, dependencies, or behavior; missing runtimes do not prevent saving
+  a draft.
 - **Behavior**: execution mode, per-item failure policy, working folder, menu
   placement, file/folder filters, selection limit, and confirmation.
 
@@ -40,10 +46,10 @@ Existing actions use the same editor with **Save changes**; their id stays fixed
 
 ### Script examples
 
-Open **Library** on the Script tab to browse bundled Python recipes in a
+Open **Library** on the Script tab to browse bundled Python and Bash recipes in a
 dropdown attached to the editor. Search names, descriptions, or requirements,
 and narrow the list with **All**, **Files**, or **Media**. Each template shows its
-language, purpose, and required tools:
+language, purpose, run mode/input scope, and required tools:
 
 | Example | Extra requirements | Result |
 | --- | --- | --- |
@@ -53,28 +59,86 @@ language, purpose, and required tools:
 | Convert videos to MP4 | FFmpeg with `libx264` and AAC | H.264/AAC copy in `strata-mp4-*/converted.mp4` |
 | Extract MP3 audio | FFmpeg with `libmp3lame` | First audio stream in `strata-mp3-*/audio.mp3`; fails if there is no audio |
 | SHA-256 checksums | None | Adjacent `<original-name>.sha256`, compatible with `sha256sum --check` from the original folder |
+| Batch rename | Python 3 + Linux `renameat2` support | Rename regular files in place with a numbered pattern; never overwrite another name |
+| Strip EXIF metadata | Bash + ExifTool + coreutils | Remove writable metadata in place after copying the original into a fresh adjacent `strata-original-*` folder |
+| Lowercase file names | Python 3 + Linux `renameat2` support | Lowercase names and replace spaces with dashes, using the same collision-safe engine as Batch rename |
+| Count lines | Bash + `wc` (coreutils) | Log each file's newline count and the total, without changing files |
 
-All examples need Python 3, but no pip packages. Strata does not install tools.
-Media outputs go into fresh, private folders **beside each original**; originals
-are never overwritten. Existing checksum files and symlinks are refused, not
+Python recipes need Python 3 but no pip packages; Bash recipes do not need
+Python. Strata does not install tools.
+Conversion outputs go into fresh, private folders **beside each original**;
+conversions never overwrite originals. EXIF stripping instead edits the working
+photo after making a private backup, as described below. Existing checksum files
+and symlinks are refused, not
 replaced. A failed or cancelled conversion may leave a partial output folder.
 Review scripts and use trusted input files: media tools and actions are not
 sandboxed.
 
-Applying a recipe selects Python and sets suitable file filters and run mode
-(per item for conversion/checksum recipes). It keeps a name or description you
+Applying a recipe selects its runtime and sets suitable file filters and run mode.
+Conversions, checksums, and EXIF stripping select **Per item**; the starter,
+rename/lowercase, and line-count recipes select **Whole selection**, even if the
+previous draft used the opposite mode. It keeps a name or description you
 entered, the id, and other settings. Choose a template to load it into the
-editor for review. If you have edited the Python draft, the dropdown first
+editor for review. If you have edited the target runtime's draft, the dropdown first
 asks you to **Replace script** or **Keep draft**, without opening another dialog.
-Code replacement can be undone in the editor; Bash and command drafts are retained.
+Code replacement can be undone in the editor; drafts for the other runtimes are retained.
 Escape or clicking outside closes only the dropdown, leaving the editor open.
 Searching, browsing, or applying a template never saves or executes it. Review
 and save the action, then launch it from its file/folder context menu.
 
-The documented starter and every recipe include the same maintained
+The documented Python starter and every Python recipe include the same maintained
 [`context()` reference](../data/actions/context-api.txt) as a module docstring.
 Examples are starting points: edit the output format, quality, resize limit,
-FFmpeg flags, or filters before saving.
+FFmpeg flags, or filters before saving. Shared rename-recipe code is embedded
+into the inserted script, so saved recipes do not depend on files in Strata's
+source checkout.
+
+**EXIF stripping:** only regular, non-symlink photos are accepted. Each original
+is copied completely into a new private folder before ExifTool replaces the
+working photo; repeated runs keep separate backups. Failed or cancelled copies
+may leave partial backup folders, and cancellation does not restore earlier
+changes. Removing writable metadata can remove orientation/color profiles and
+is not a guarantee that every format is anonymized. Review results before
+removing backups.
+
+**Count lines:** `wc -l` counts newline characters; an unterminated final line is
+not counted. Whole-selection mode gives a total across the supplied selection.
+
+### Batch rename
+
+The **Batch rename** recipe defaults to `PATTERN = "{index:03d}_{filename}"`,
+producing names such as `001_photo.jpg`. Edit the pattern, or replace
+`new_name(context)` with your own Python logic returning a single filename.
+Its per-file context provides:
+
+- `filename`: original name including its extension.
+- `stem` and `suffix`: name without its last extension, and that extension with
+  its leading dot (empty if absent).
+- `index`: **1-based** position in Strata's supplied selection order, not click
+  order; `total`: number of files in the job.
+- `path`: original absolute `pathlib.Path`.
+- `batch`: the full Strata `context()` object documented below, including logging
+  and progress methods. These per-file fields belong to this recipe, not the
+  general helper.
+
+Patterns accept `filename`, `stem`, `suffix`, `index`, and `total`. For example,
+`"photo_{index:04d}{suffix}"` produces `photo_0001.jpg`. The default whole-selection
+mode checks the entire plan before renaming anything. Changing to per-item mode
+keeps the job-wide index but can only preflight one file at a time.
+
+Names cannot contain directory separators or be empty, `.` or `..`. Duplicate
+inputs/destinations, existing destinations (including symlinks), folders, and
+symlink inputs are refused. Unchanged names are skipped; swaps into other selected
+names are not supported. Every move uses Linux's atomic no-replace operation,
+including if another process creates the destination after preflight. Missing
+support fails rather than falling back to an overwriting rename. Some filesystems
+may refuse case-only changes. **Lowercase file names** uses the same engine and
+safety rules, with an editable `new_name(context)` transformation instead of a
+numbering pattern.
+
+File contents are unchanged, but original **names** change. This is not an atomic
+batch or an undo feature: cancellation, concurrent filesystem changes, or an I/O
+error can leave earlier files renamed. Review the script and try it on copies first.
 
 ## Manifest
 
@@ -235,11 +299,17 @@ progress file, and exit with a status.
 
 ## Jobs and cancellation
 
-Each invocation runs in the background. The footer shows how many jobs are running
-and queued, and opens a dashboard with progress, elapsed time, output, and the
-finished history. Minimizing, pressing Escape, or clicking away only hides the
-dashboard; cancellation is its own button and signals the whole process group,
-escalating to SIGKILL if the process ignores SIGTERM.
+Each invocation runs in the background. Queuing an action automatically opens
+Jobs in the **launching window**, with that new job first and its queued/running
+state, progress, elapsed time, and output. Confirmation actions open Jobs only
+after you choose **Run**. This presentation does not change queue execution order
+or open dashboards in other windows. The footer shows running/queued counts and
+reopens finished history when clicked.
+
+Minimizing, pressing Escape, or clicking away only hides the dashboard. Progress
+and completion updates do not reopen it; launching another action does.
+Cancellation is its own button and signals the whole process group, escalating
+to SIGKILL if the process ignores SIGTERM.
 
 Finished jobs stay in the dashboard for the current session, including successes,
 failures, and cancellations. **Details** expands captured output and **Hide**

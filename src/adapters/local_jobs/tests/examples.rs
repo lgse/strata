@@ -1,17 +1,38 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::model::action::examples::ACTION_EXAMPLES;
+use crate::model::action::examples::{ACTION_EXAMPLES, ActionExample};
 use std::process::Command;
 
-fn example_action(fixture: &Fixture, index: usize) -> Rc<ActionHandle> {
-    let example = &ACTION_EXAMPLES[index];
+mod rename;
+mod shell;
+
+fn example(name: &str) -> &'static ActionExample {
+    ACTION_EXAMPLES
+        .iter()
+        .find(|example| example.name == name)
+        .expect("bundled recipe")
+}
+
+fn example_action(fixture: &Fixture, name: &str) -> Rc<ActionHandle> {
+    let example = example(name);
     let action = fixture.action(
         "example",
-        &script(ActionRuntime::Python, "main.py", &example.script()),
+        &script(
+            example.runtime(),
+            if example.runtime() == ActionRuntime::Bash {
+                "run.sh"
+            } else {
+                "main.py"
+            },
+            &example.script(),
+        ),
         example.mode,
     );
-    assert!(action.is_available(), "bundled recipes require Python 3");
+    assert!(
+        action.is_available(),
+        "bundled recipes require their declared runtime"
+    );
     action
 }
 
@@ -23,7 +44,7 @@ fn documented_starter_reports_inputs_without_modifying_them() {
     let outcome = run(
         &fixture.runner,
         request(
-            example_action(&fixture, 0),
+            example_action(&fixture, "Log selected paths"),
             std::slice::from_ref(&input),
             fixture.path(),
         ),
@@ -49,7 +70,7 @@ fn checksum_example_handles_native_names_and_refuses_existing_files_and_links() 
         b"-name\\with\nnewline\r\xff.txt".to_vec(),
     ));
     fs::write(&input, b"original").expect("input");
-    let action = example_action(&fixture, 5);
+    let action = example_action(&fixture, "SHA-256 checksums");
     let invoke = || request(action.clone(), std::slice::from_ref(&input), fixture.path());
     let outcome = run(&fixture.runner, invoke());
     let (code, _, log) = outcome.ended();
@@ -88,11 +109,11 @@ fn image_examples_make_distinct_copies_without_interpreting_input_names() {
     let input = fixture.path().join("-image [0]; $(touch injected).ppm");
     let pixels = b"P6\n2 2\n255\n\xff\0\0\xff\0\0\xff\0\0\xff\0\0";
     fs::write(&input, pixels).expect("image");
-    for (index, magic) in [
-        (1, b"RIFF".as_slice()),
-        (2, b"\x89PNG\r\n\x1a\n".as_slice()),
+    for (name, magic) in [
+        ("Convert images to WebP", b"RIFF".as_slice()),
+        ("Resize images to 1024px", b"\x89PNG\r\n\x1a\n".as_slice()),
     ] {
-        let action = example_action(&fixture, index);
+        let action = example_action(&fixture, name);
         let mut previous = None;
         for _ in 0..2 {
             let outcome = run(
@@ -100,7 +121,7 @@ fn image_examples_make_distinct_copies_without_interpreting_input_names() {
                 request(action.clone(), std::slice::from_ref(&input), fixture.path()),
             );
             let (code, _, log) = outcome.ended();
-            assert_eq!(code, Some(0), "{}: {log}", ACTION_EXAMPLES[index].name);
+            assert_eq!(code, Some(0), "{name}: {log}");
             let outputs = outcome.created();
             assert_eq!(outputs.len(), 1, "{log}");
             let output = &outputs[0];
@@ -152,17 +173,20 @@ fn ffmpeg_examples_create_playable_outputs_and_preserve_originals() {
         String::from_utf8_lossy(&generated.stderr)
     );
     let original = fs::read(&input).expect("original video");
-    for (index, codec) in [(3, "h264"), (4, "mp3")] {
+    for (name, codec) in [
+        ("Convert videos to MP4", "h264"),
+        ("Extract MP3 audio", "mp3"),
+    ] {
         let outcome = run(
             &fixture.runner,
             request(
-                example_action(&fixture, index),
+                example_action(&fixture, name),
                 std::slice::from_ref(&input),
                 fixture.path(),
             ),
         );
         let (code, _, log) = outcome.ended();
-        assert_eq!(code, Some(0), "{}: {log}", ACTION_EXAMPLES[index].name);
+        assert_eq!(code, Some(0), "{name}: {log}");
         let outputs = outcome.created();
         assert_eq!(outputs.len(), 1, "{log}");
         let probe = Command::new("ffprobe")
@@ -196,7 +220,13 @@ fn converter_examples_report_missing_tools_without_creating_outputs() {
     let fixture = Fixture::new();
     let input = fixture.path().join("input.bin");
     fs::write(&input, b"original").expect("input");
-    for example in &ACTION_EXAMPLES[1..5] {
+    for name in [
+        "Convert images to WebP",
+        "Resize images to 1024px",
+        "Convert videos to MP4",
+        "Extract MP3 audio",
+    ] {
+        let example = example(name);
         let source = format!(
             "#!/usr/bin/env python3\nimport strata_actions\nstrata_actions.find_tool = lambda name: None\n{}",
             example.script()

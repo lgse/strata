@@ -415,6 +415,108 @@ fn finished_jobs_and_details_survive_the_indicator_builder() {
 }
 
 #[test]
+fn new_jobs_open_in_the_launching_window_without_reopening_on_progress() {
+    crate::test_support::gtk_test(
+        "ui::jobs::tests::new_jobs_open_in_the_launching_window_without_reopening_on_progress",
+        || {
+            struct ControlledRunner(Rc<RefCell<Vec<ActionEventSink>>>);
+            impl ActionRunner for ControlledRunner {
+                fn run(&self, _: &ActionRunRequest, sink: ActionEventSink) -> CancelHandle {
+                    self.0.borrow_mut().push(sink);
+                    Rc::new(|| {})
+                }
+            }
+            let sinks = Rc::new(RefCell::new(Vec::new()));
+            let service = JobService::new(Rc::new(ControlledRunner(sinks.clone())));
+            let indicator = JobsIndicator::with_service(service.clone());
+            let other = JobsIndicator::with_service(service.clone());
+            let anchor = gtk::Button::with_label("Launch action");
+            let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            body.append(&anchor);
+            body.append(indicator.widget());
+            let window = gtk::Window::builder().child(&body).build();
+            let other_window = gtk::Window::builder().child(other.widget()).build();
+            indicator.bind_window(&window);
+            other.bind_window(&other_window);
+            window.present();
+            other_window.present();
+            let enqueue = |id: &str| {
+                service
+                    .enqueue(JobRequest {
+                        action: handle(id, id, None, ExecutionMode::WholeSelection),
+                        inputs: vec![PathBuf::from("/example/input")],
+                        parent: PathBuf::from("/example"),
+                        source: InvocationSource::Selection,
+                    })
+                    .expect("queue")
+            };
+            let older = enqueue("older");
+            service.pump();
+            let newest = enqueue("newest");
+            present_for(&anchor, newest);
+            let main = glib::MainContext::default();
+            while main.pending() {
+                main.iteration(false);
+            }
+            let popover = indicator.widget().popover().expect("dashboard");
+            assert!(popover.is_visible(), "launch opens its dashboard");
+            assert!(
+                !other
+                    .widget()
+                    .popover()
+                    .expect("other dashboard")
+                    .is_visible()
+            );
+            assert_eq!(dashboard_snapshots(&indicator.state)[0].id, newest);
+            assert_eq!(
+                service.snapshot()[0].id,
+                older,
+                "presentation does not reorder execution"
+            );
+            service.pump();
+            let events = sinks.borrow().last().expect("new invocation").clone();
+            events(ActionRunEvent::Progress(ScriptProgress {
+                completed: 1,
+                total: Some(4),
+                message: Some("Renaming files".to_owned()),
+            }));
+            service.pump();
+            assert!(
+                descendants(&popover)
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::ProgressBar>().ok())
+                    .any(|bar| bar.fraction() == 0.25)
+            );
+            popover.popdown();
+            events(ActionRunEvent::Progress(ScriptProgress {
+                completed: 2,
+                total: Some(4),
+                message: None,
+            }));
+            service.pump();
+            assert!(!popover.is_visible(), "updates respect Minimize");
+            events(ActionRunEvent::Exited {
+                code: Some(0),
+                signal: None,
+                log: "done".to_owned(),
+            });
+            service.pump();
+            assert!(!popover.is_visible(), "completion respects Minimize");
+            assert_eq!(dashboard_snapshots(&indicator.state)[0].id, newest);
+            let next = enqueue("next");
+            present_for(&anchor, next);
+            while main.pending() {
+                main.iteration(false);
+            }
+            assert!(popover.is_visible(), "a new launch opens it again");
+            assert_eq!(dashboard_snapshots(&indicator.state)[0].id, next);
+            window.close();
+            other_window.close();
+        },
+    );
+}
+
+#[test]
 fn the_service_is_shared_across_windows() {
     let first = shared();
     let second = shared();

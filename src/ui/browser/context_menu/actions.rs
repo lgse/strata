@@ -37,6 +37,7 @@ pub(super) struct ActionMenuSection {
     top_items: gtk::Box,
     submenu_button: gtk::Button,
     submenu_popover: gtk::Popover,
+    submenu_scroll: gtk::ScrolledWindow,
     submenu_items: gtk::Box,
     parent_popover: gtk::Popover,
     style: ActionMenuStyle,
@@ -128,6 +129,7 @@ impl ActionMenuSection {
             top_items,
             submenu_button,
             submenu_popover,
+            submenu_scroll,
             submenu_items,
             parent_popover: parent_popover.clone(),
             style,
@@ -243,6 +245,13 @@ impl ActionMenuSection {
                 submenu_count += 1;
             }
         }
+        // A lone row does not need the scrollbar's larger minimum height.
+        self.submenu_scroll
+            .set_vscrollbar_policy(if submenu_count == 1 {
+                gtk::PolicyType::Never
+            } else {
+                gtk::PolicyType::Automatic
+            });
         self.separator.set_visible(true);
         self.top_items.set_visible(top_count > 0);
         self.submenu_button.set_visible(submenu_count > 0);

@@ -49,12 +49,8 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
     body.append(&scroll);
     let empty = note("No templates match your search.");
     list.append(&empty);
-    let footer = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    footer.add_css_class("action-library-footer");
-    footer.append(&note(
-        "Templates set Python, run mode and file filters. Nothing runs or saves.",
-    ));
     let confirmation = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    confirmation.add_css_class("action-library-footer");
     confirmation.set_visible(false);
     let question = note("");
     confirmation.append(&question);
@@ -67,8 +63,7 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
         actions.append(button);
     }
     confirmation.append(&actions);
-    footer.append(&confirmation);
-    body.append(&footer);
+    body.append(&confirmation);
     let pending = Rc::new(Cell::new(None::<&'static ActionExample>));
     let select = Rc::new({
         let form = form.clone();
@@ -79,10 +74,11 @@ pub(super) fn install(button: &gtk::MenuButton, form: Weak<EditorForm>) {
             let (Some(form), Some(popover)) = (form.upgrade(), popover.upgrade()) else {
                 return;
             };
-            if form.replaces_python_draft() {
+            if form.replaces_draft(example.runtime()) {
                 pending.set(Some(example));
                 question.set_text(&format!(
-                    "Replace your Python draft with {}? Code can be undone in the editor.",
+                    "Replace your {} draft with {}? Code can be undone in the editor.",
+                    example.runtime().label(),
                     example.name
                 ));
                 confirmation.set_visible(true);
@@ -225,8 +221,13 @@ fn matches(example: &ActionExample, query: &str, category: &str) -> bool {
         return false;
     }
     let text = format!(
-        "{} {} {} {}",
-        example.name, example.description, example.requirements, example.category
+        "{} {} {} {} {} {}",
+        example.name,
+        example.description,
+        example.requirements,
+        example.category,
+        example.inputs,
+        example.runtime().label()
     )
     .to_lowercase();
     query.split_whitespace().all(|word| text.contains(word))
@@ -239,12 +240,14 @@ fn template_row(example: &ActionExample) -> gtk::Button {
     title.set_xalign(0.0);
     title.set_hexpand(true);
     title.add_css_class("action-library-title");
-    let language = gtk::Label::new(Some("PYTHON"));
+    let language = gtk::Label::new(Some(example.runtime().label()));
     language.add_css_class("action-library-language");
+    language.set_valign(gtk::Align::Center);
     heading.append(&title);
     heading.append(&language);
     content.append(&heading);
     content.append(&note(example.description));
+    content.append(&note(example.inputs));
     let requirements = note(&format!("Requires: {}", example.requirements));
     requirements.add_css_class("action-library-requirements");
     content.append(&requirements);

@@ -6,6 +6,8 @@
 use super::*;
 use crate::model::ActionRuntime;
 
+mod readiness;
+
 fn form_for(definition: ActionDefinition, script: Option<ActionScript>) -> EditorForm {
     let action = ActionHandle {
         directory: std::path::PathBuf::from("/tmp/actions/test"),
@@ -342,13 +344,36 @@ fn examples_apply_valid_scripts_and_matching_rules_without_saving() {
         || {
             let form = form_for(python_draft(), None);
             for example in ACTION_EXAMPLES {
+                choose(
+                    &form,
+                    if example.mode == ExecutionMode::PerItem {
+                        "Whole selection"
+                    } else {
+                        "Per item"
+                    },
+                );
                 form.apply_example(example);
                 let (definition, script) = form.read().expect("example produces a valid draft");
-                let script = script.expect("Python source");
+                let script = script.expect("recipe source");
                 assert_eq!(definition.name, example.name);
                 assert_eq!(definition.description.as_deref(), Some(example.description));
-                assert_eq!(definition.run.runtime, ActionRuntime::Python);
+                assert_eq!(definition.run.runtime, example.runtime());
                 assert_eq!(definition.run.mode, example.mode);
+                assert!(
+                    choice(
+                        &form,
+                        if example.mode == ExecutionMode::PerItem {
+                            "Per item"
+                        } else {
+                            "Whole selection"
+                        }
+                    )
+                    .is_active()
+                );
+                assert_eq!(
+                    choice(&form, "Stop").is_sensitive(),
+                    example.mode == ExecutionMode::PerItem
+                );
                 assert_eq!(definition.when.extensions, example.extensions);
                 assert_eq!(
                     definition.when.kinds.contains(&InputKind::Folder),
@@ -367,15 +392,21 @@ fn example_replacement_preserves_custom_identity_and_other_runtime_drafts() {
         "ui::settings::actions::tests::example_replacement_preserves_custom_identity_and_other_runtime_drafts",
         || {
             let form = form_for(python_draft(), None);
-            assert!(!form.replaces_python_draft());
+            let example = |name: &str| {
+                ACTION_EXAMPLES
+                    .iter()
+                    .find(|example| example.name == name)
+                    .expect("bundled recipe")
+            };
+            assert!(!form.replaces_draft(ActionRuntime::Python));
             form.name.set_text("My custom action");
             form.id.set_text("my-action");
             form.description.set_text("My description");
             form.enabled.set_active(false);
             form.entrypoint.set_text("custom.py");
             form.script.buffer().set_text("print('keep this draft')\n");
-            assert!(form.replaces_python_draft());
-            form.apply_example(&ACTION_EXAMPLES[1]);
+            assert!(form.replaces_draft(ActionRuntime::Python));
+            form.apply_example(example("Convert images to WebP"));
             let (definition, script) = form.read().expect("custom identity stays valid");
             assert_eq!(definition.name, "My custom action");
             assert_eq!(definition.id, "my-action");
@@ -387,13 +418,26 @@ fn example_replacement_preserves_custom_identity_and_other_runtime_drafts() {
             assert_eq!(text_contents(&form.script), "print('keep this draft')\n");
             choose(&form, "Bash");
             form.script.buffer().set_text("printf 'bash draft'\n");
-            form.apply_example(&ACTION_EXAMPLES[5]);
+            assert!(form.replaces_draft(ActionRuntime::Bash));
+            form.apply_example(example("Count lines"));
+            assert_eq!(
+                form.read()
+                    .expect("Bash recipe saves")
+                    .1
+                    .expect("source")
+                    .file_name,
+                "custom.py"
+            );
+            assert!(form.bash_buffer.can_undo());
+            form.bash_buffer.undo();
+            assert_eq!(text_contents(&form.script), "printf 'bash draft'\n");
+            form.apply_example(example("SHA-256 checksums"));
             choose(&form, "Bash");
             assert_eq!(text_contents(&form.script), "printf 'bash draft'\n");
             choose(&form, "Command");
             form.program.set_text("printf");
             form.arguments.buffer().set_text("{path}");
-            form.apply_example(&ACTION_EXAMPLES[1]);
+            form.apply_example(example("Convert images to WebP"));
             choose(&form, "Command");
             assert_eq!(
                 form.read()

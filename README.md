@@ -34,6 +34,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
   - [Make Strata the Omarchy file manager](#make-strata-the-omarchy-file-manager)
   - [Unlock encrypted volumes on Omarchy](#unlock-encrypted-volumes-on-omarchy)
   - [Network shares](#network-shares)
+- [Custom actions and script authoring](#custom-actions-and-script-authoring)
 - [Theming](#theming)
   - [Follow Omarchy Quattro](#follow-omarchy-quattro)
   - [Bundled themes](#bundled-themes)
@@ -474,6 +475,151 @@ should be isolated and reversible.
 ### Network shares
 
 Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Install your distribution's SMB GVfs backend (`gvfs-smb` on Arch) to enable SMB browsing.
+
+## Custom actions and script authoring
+
+Use **Settings → Actions → New action…** to create an action, or ask a coding
+agent to create the files below. **Script → Library** supplies editable Python
+and Bash recipes, sets their runtime, file filters, and **Whole selection / Per
+item** mode, and never saves or executes them merely by selecting them.
+
+For Python and Bash, the Script tab reports whether the interpreter can be found.
+Python uses the script's shebang, or `python3` when there is none. Availability is checked
+automatically when the dialog opens; reopen it after installing a runtime.
+Bash and Command do not need Python. This checks
+executable availability, **not** script syntax, safety, or dependencies such as
+ImageMagick, FFmpeg, or ExifTool.
+
+### Files and manifest
+
+Actions are ordinary, user-owned folders under
+`${XDG_CONFIG_HOME:-$HOME/.config}/strata/actions/`:
+
+```text
+strata/actions/log-selection/
+├── action.toml
+└── main.py
+```
+
+The folder name and manifest `id` must match. Use a new lowercase kebab-case id;
+do not overwrite an existing action. Create directories with mode `0700` and
+manifest/script files with mode `0600`. Entry points are regular files with plain
+filenames, not symlinks or paths. Scripts need no executable bit: Strata invokes
+the interpreter. Command actions have only a manifest. Import/export transfers
+the manifest and declared entrypoint, not arbitrary helper files.
+
+Example `action.toml`:
+
+```toml
+schema_version = 1
+id = "log-selection"
+name = "Log selected paths"
+description = "Print the selection without modifying files"
+icon = "terminal"
+enabled = false
+menu = "submenu"
+
+[when]
+kinds = ["file"]
+min_items = 1
+
+[run]
+runtime = "python"
+entrypoint = "main.py"
+mode = "whole-selection"
+on_error = "continue"
+working_directory = "parent"
+confirm = true
+```
+
+Keep generated actions disabled until the user reviews them. After hand-writing
+files, restart Strata to reload them, then review/enable the action in Settings.
+All selected entries must match the filters. Scripts are trusted local programs
+with the user's permissions—**not sandboxed**.
+
+### Python context
+
+Put this in `main.py`; the helper is supplied by Strata at invocation time, with
+no pip installation or copied helper module:
+
+```python
+#!/usr/bin/env python3
+from pathlib import Path
+from strata_actions import context
+
+ctx = context()
+for index, path in enumerate(ctx.paths, start=1):
+    ctx.log(f"{index}: {Path(path).name}")
+    ctx.progress(index, ctx.count, "Logging selected files")
+```
+
+- `ctx.paths`: absolute paths for this invocation; `ctx.paths_bytes()` preserves
+  native filename bytes. `ctx.count` is their count, **not** the total per-item job
+  size; `ctx.single` is the sole path or `None`.
+- `ctx.position` / `ctx.total`: 1-based job position and job size in **Per item**
+  mode, otherwise `None`. Whole-selection scripts enumerate `ctx.paths` themselves.
+- `ctx.parent`: invoking folder. `ctx.directory`: stored action folder.
+  `ctx.run_directory`: private temporary scratch, removed after the invocation.
+- `ctx.log()`, `ctx.progress(processed, total=None, message=None)`, and
+  `ctx.output(absolute_path)` report to Jobs. `output()` only reports a location;
+  the script must create it. `ctx.require_tool(name)` explains missing dependencies.
+
+See the complete maintained [`context()` reference](data/actions/context-api.txt)
+for identity, metadata, mode/source, and tool lookup. The **Batch rename** and
+**Lowercase file names** recipes additionally pass a per-file naming context to
+`new_name(context)`; its `filename` and 1-based `index` are recipe-specific, and
+`context.batch` exposes the general Strata context.
+
+### Bash and commands
+
+For a Bash script, replace the manifest's `[run]` section with
+`runtime = "bash"`, `entrypoint = "run.sh"`, and `mode = "whole-selection"`.
+Example `run.sh`:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+while IFS= read -r -d '' path; do
+    printf 'Selected: %q\n' "$path"
+done < "$STRATA_ACTION_PATHS"
+```
+
+`STRATA_ACTION_PATHS` is the **name of a file containing NUL-delimited paths**,
+not a whitespace-separated list. Always quote paths; never use `for path in
+$(cat ...)` or `eval`. `STRATA_ACTION_COUNT` is invocation-local;
+`STRATA_ACTION_POSITION` is the 1-based per-item position. The invoking folder is
+stored byte-exactly in the file named by `STRATA_ACTION_PARENT`. See the
+[environment and progress protocol](docs/custom-actions.md#how-an-invocation-runs)
+for context JSON, scratch paths, and progress reporting without Python.
+
+For an installed executable, replace `[run]` with this—no script file:
+
+```toml
+[run]
+runtime = "command"
+program = "sha256sum"
+args = ["--", "{paths}"]
+mode = "whole-selection"
+```
+
+Programs receive direct argv, not shell source: pipes, redirection, `$VARIABLE`,
+and globbing are not expanded. `{paths}` supplies separate arguments in whole
+selection mode; `{path}` is for per-item mode; `{parent}` is the invoking folder.
+Tokens must occupy an entire argument. Use Bash if shell syntax is needed.
+
+**Choose the mode deliberately:** whole selection runs once with all paths;
+per item runs once for each path, with Continue/Stop controlling subsequent
+failures. Rename/lowercase/count-lines recipes use whole selection; conversions,
+checksums, and EXIF stripping use per item. Library selections apply these modes
+automatically, including when replacing a recipe from the other mode.
+
+**Agent handoff checklist:** choose a fresh id, write the matching manifest and
+entrypoint, declare required tools, preserve originals/refuse overwrites, and
+keep the action disabled for review. Test on disposable copies through Strata's
+context menu, then inspect Jobs output. Exit `0` means success; nonzero means
+failure. Cancelling stops remaining work but does not undo filesystem changes.
+The [full custom-actions guide](docs/custom-actions.md) documents validation,
+matching rules, storage, examples, and limitations.
 
 ## Theming
 

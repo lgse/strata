@@ -4,6 +4,8 @@
 import hashlib
 import tomllib
 
+from harness.tree import Atspi
+
 
 def _open_new_action(strata):
     assert strata.window.find(role="button", name="Settings").activate()
@@ -102,6 +104,13 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
 
     assert strata.window.find(role="button", name="Edit").activate()
     dialog = editor("Edit action")
+    name = control("Name", "text")
+    strata.wait(lambda: name.has_state("focused"), "Name focused on opening the editor")
+    text = Atspi.Accessible.get_text_iface(name.accessible)
+    assert Atspi.Text.get_n_selections(text) == 0
+    assert Atspi.Text.get_caret_offset(text) == len(saved["name"])
+    strata.keyboard.type_text(" edited")
+    strata.wait(lambda: name.text == saved["name"] + " edited", "typing appends to the action name")
     assert control("Id", "text").text == "batch-rename"
     assert not control("Id", "text").has_state("editable")
     tab("Script")
@@ -172,6 +181,42 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     strata.wait(lambda: strata.window.find(name="Script library") is None, "library to close")
     assert strata.window.find(role="dialog", name="New action") is not None
     assert script.text == "print('my draft')"
+
+    strata.pointer.click(editor.find(role="page tab", name="Behavior"))
+    strata.pointer.click(editor.find(role="toggle button", name="Per item"))
+    strata.pointer.click(editor.find(role="page tab", name="Script"))
+    picker = library()
+    strata.pointer.click(picker.find(role="toggle button", name="Files"))
+    search = picker.find(role="text", name="Search templates")
+    strata.pointer.click(search)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("count lines")
+    strata.pointer.click(strata.wait(lambda: picker.find(role="button", name="Count lines"), "Bash recipe"))
+    strata.wait(lambda: editor.find(role="label", name="Bash available"), "Bash runtime selected")
+    strata.pointer.click(editor.find(role="page tab", name="Behavior"))
+    assert not editor.find(role="toggle button", name="Stop").has_state("sensitive")
+    strata.pointer.click(editor.find(role="page tab", name="Script"))
+    strata.pointer.click(script)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("printf 'bash draft'")
+    strata.wait(lambda: script.text == "printf 'bash draft'", "Bash draft")
+    picker = library()
+    strata.pointer.click(picker.find(role="toggle button", name="Media"))
+    search = picker.find(role="text", name="Search templates")
+    strata.pointer.click(search)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("exif")
+    strata.pointer.click(strata.wait(lambda: picker.find(role="button", name="Strip EXIF metadata"), "EXIF recipe"))
+    strata.pointer.click(strata.wait(lambda: picker.find(role="button", name="Keep draft"), "protect Bash draft"))
+    assert script.text == "printf 'bash draft'"
+    strata.pointer.click(picker.find(role="button", name="Strip EXIF metadata"))
+    strata.pointer.click(strata.wait(lambda: picker.find(role="button", name="Replace script"), "replace Bash draft"))
+    strata.wait(lambda: strata.window.find(name="Script library") is None, "EXIF recipe selected")
+    strata.pointer.click(editor.find(role="page tab", name="Behavior"))
+    assert editor.find(role="toggle button", name="Stop").has_state("sensitive")
+    strata.pointer.click(editor.find(role="page tab", name="Script"))
+    strata.pointer.click(editor.find(role="toggle button", name="Python"))
+    strata.wait(lambda: script.text == "print('my draft')", "preserved Python draft")
     picker = library()
     strata.pointer.click(picker.find(role="toggle button", name="Files"))
     search = picker.find(role="text", name="Search templates")
@@ -223,9 +268,8 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
         "the complete checksum",
     )
     assert strata.fixture.path("todo.txt").read_bytes() == original
-    finished = strata.wait(lambda: strata.window.find(name="1 job finished"), "finished job indicator")
-    strata.pointer.click(finished)
-    strata.wait(lambda: strata.window.find(role="label", name="Completed"), "completed row")
+    strata.wait(lambda: strata.window.find(name="1 job finished"), "finished job indicator")
+    strata.wait(lambda: strata.window.find(role="label", name="Completed"), "automatically opened completed row")
     strata.pointer.click(strata.window.find(role="button", name="Details"))
     strata.wait(lambda: strata.window.find(role="label", name_matches="Created .*todo.txt.sha256"), "finished job output")
     strata.pointer.click(strata.window.find(role="button", name="Hide"))
@@ -233,8 +277,7 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     strata.pointer.click(strata.window.find(role="button", name="Minimize"))
     strata.open_context_menu("todo.txt")
     strata.choose_menu_item("Checksum job")
-    finished = strata.wait(lambda: strata.window.find(name="2 jobs finished · failures"), "failed rerun in history")
-    strata.pointer.click(finished)
+    strata.wait(lambda: strata.window.find(name="2 jobs finished · failures"), "failed rerun in history")
     strata.wait(lambda: strata.window.find(role="label", name="Failed"), "failed job row")
     assert strata.window.find(role="label", name="Completed") is not None
     strata.pointer.click(strata.window.find(role="button", name="Details"))
@@ -243,3 +286,46 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     strata.wait(lambda: strata.window.find(name="1 job finished"), "remaining completed history")
     strata.pointer.click(strata.window.find(role="button", name="Clear finished"))
     strata.wait(lambda: strata.window.find(name="1 job finished") is None, "cleared history")
+
+def test_batch_rename_template_confirms_before_renaming_and_opens_jobs(strata):
+    editor = _open_new_action(strata)
+    strata.pointer.click(editor.find(role="page tab", name="Script"))
+    strata.pointer.click(editor.find(name="Library"))
+    picker = strata.wait(lambda: strata.window.find(name="Script library"), "library")
+    strata.pointer.click(picker.find(role="text", name="Search templates"))
+    strata.keyboard.type_text("rename")
+    strata.pointer.click(strata.wait(lambda: picker.find(role="button", name="Batch rename"), "rename template"))
+    strata.wait(lambda: strata.window.find(name="Script library") is None, "applied template")
+    strata.pointer.click(editor.find(role="page tab", name="Behavior"))
+    strata.pointer.click(editor.find(role="toggle button", name="Menu item"))
+    confirm = next(node for node in editor.find_all(name="Confirm") if node.role in {"check box", "toggle button", "switch"})
+    strata.pointer.click(confirm)
+    strata.pointer.click(editor.find(role="button", name="Create action"))
+    strata.wait(lambda: strata.window.find(role="dialog", name="New action") is None, "saved template")
+    assert strata.window.find(role="button", name="Close settings").activate()
+    strata.wait(lambda: strata.window.find(role="button", name="Close settings") is None, "settings closed")
+    originals = {name: strata.fixture.path(name).read_bytes() for name in ("readme.md", "todo.txt")}
+    strata.select_entry("readme.md")
+    strata.click_entry_with("todo.txt", ["ctrl"])
+    strata.wait(lambda: set(strata.selected_names()) == set(originals), "both files selected")
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Batch rename")
+    confirmation = strata.wait(lambda: strata.window.find(role="dialog", name="Run this action?"), "confirmation")
+    assert strata.window.find(role="button", name="Minimize") is None
+    strata.pointer.click(confirmation.find(role="button", name="Cancel"))
+    strata.wait(lambda: strata.window.find(role="dialog", name="Run this action?") is None, "cancelled confirmation")
+    for name, contents in originals.items():
+        assert strata.fixture.path(name).read_bytes() == contents
+    assert strata.window.find(name="1 job finished") is None
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Batch rename")
+    confirmation = strata.wait(lambda: strata.window.find(role="dialog", name="Run this action?"), "confirmation")
+    strata.pointer.click(confirmation.find(role="button", name="Run"))
+    strata.wait(lambda: strata.window.find(role="label", name="Completed"), "automatically opened rename result")
+    assert strata.window.find(role="dialog", name="Run this action?") is None
+    strata.pointer.click(strata.window.find(role="button", name="Details"))
+    strata.wait(lambda: strata.window.find(role="label", name_matches="001_readme.md"), "rename output")
+    for index, (name, contents) in enumerate(originals.items(), start=1):
+        renamed = f"{index:03d}_{name}"
+        assert strata.fixture.path(renamed).read_bytes() == contents
+        assert not strata.fixture.path(name).exists()

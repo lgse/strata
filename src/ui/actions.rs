@@ -23,7 +23,10 @@ use crate::{
     services::{ActionHandle, ActionRegistry, InvocationSource, JobRequest},
     ui::{
         controls::{ModalTone, message_dialog_description, message_dialog_layout},
-        modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog},
+        modal::{
+            ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
+            show_error_dialog,
+        },
     },
 };
 
@@ -171,13 +174,14 @@ fn enqueue(
     parent: PathBuf,
     source: InvocationSource,
 ) {
-    if let Err(error) = jobs.enqueue(JobRequest {
+    match jobs.enqueue(JobRequest {
         action,
         inputs: paths,
         parent,
         source,
     }) {
-        show_error_dialog(anchor, "Unable to run action", &error.to_string());
+        Ok(id) => super::jobs::present_for(anchor, id),
+        Err(error) => show_error_dialog(anchor, "Unable to run action", &error.to_string()),
     }
 }
 
@@ -249,15 +253,14 @@ fn confirm_and_run(
     let run_root = blurred_root;
     let error_anchor = anchor.as_ref().clone();
     run.connect_clicked(move |_| {
-        dismiss_modal_layer(&run_layer, &run_overlay, run_root.as_ref());
-        enqueue(
-            &error_anchor,
-            &jobs,
-            action.clone(),
-            paths.clone(),
-            parent.clone(),
-            source,
-        );
+        let anchor = error_anchor.clone();
+        let jobs = jobs.clone();
+        let action = action.clone();
+        let paths = paths.clone();
+        let parent = parent.clone();
+        dismiss_modal_layer_then(&run_layer, &run_overlay, run_root.as_ref(), move || {
+            enqueue(&anchor, &jobs, action, paths, parent, source);
+        });
     });
 }
 

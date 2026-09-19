@@ -5741,6 +5741,11 @@ popover.settings-search-popover.background {
   padding: 0 8px;
 }
 
+.settings-action-button.settings-action-icon-button {
+  min-width: 26px;
+  padding: 0;
+}
+
 .settings-action-button:hover,
 .settings-action-library-button > button:hover {
   background: @theme_highlight;
@@ -5846,7 +5851,7 @@ popover.settings-action-library > contents {
   color: @theme_text;
 }
 
-.action-library-language {
+.settings-action-library .action-library-language {
   color: @theme_dim_text;
   border: 1px solid alpha(@theme_border, 0.4);
   border-radius: 4px;
@@ -5961,6 +5966,18 @@ popover.settings-action-library > contents {
 
 .settings-action-dialog .settings-option-description {
   font-size: 0.88em;
+}
+
+.settings-action-dialog .action-runtime-status {
+  color: @theme_dim_text;
+}
+
+.settings-action-dialog .action-runtime-status.available > label {
+  color: @theme_accent;
+}
+
+.settings-action-dialog .action-runtime-status.unavailable > label {
+  color: @theme_danger;
 }
 
 .settings-action-dialog .settings-action-option {

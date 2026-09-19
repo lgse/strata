@@ -211,6 +211,7 @@ impl FooterBinding {
         // Background jobs get a permanent home in the footer, independent of the
         // keybinding-hints preference.
         let jobs = crate::ui::jobs::JobsIndicator::new();
+        jobs.bind_window(window);
         shortcuts.set_activity(jobs.widget());
         let clipboard = window.clipboard();
         let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));

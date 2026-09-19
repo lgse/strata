@@ -434,7 +434,7 @@ fn resolve_availability(
 /// a fixed search path but the invocation boundary: the resolved program is only
 /// ever `argv[0]` of a direct spawn, with no shell and with arguments limited to
 /// absolute paths.
-fn resolve_executable(program: &str) -> Option<PathBuf> {
+pub(crate) fn resolve_executable(program: &str) -> Option<PathBuf> {
     if program.contains('/') {
         if !Path::new(program).is_absolute() {
             return None;
