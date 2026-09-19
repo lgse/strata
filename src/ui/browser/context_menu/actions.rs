@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Custom actions inside the browser context menus.
-//!
-//! The section is rebuilt every time a menu opens, so the buttons it shows and
-//! the paths they will run on come from one snapshot of the current selection.
-//! That is what keeps a parent column from acting on whatever the deepest open
-//! folder happens to be, and it means a stale menu cannot run an action on files
-//! the user no longer sees.
-
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -23,14 +15,12 @@ use crate::{
 use super::super::ViewState;
 use super::{context_menu_option, item_context_option, keyboard};
 
-/// Which menu the section is embedded in, so rows match that menu's styling.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ActionMenuStyle {
     Item,
     Folder,
 }
 
-/// The "custom actions" block of a context menu.
 pub(super) struct ActionMenuSection {
     container: gtk::Box,
     separator: gtk::Separator,
@@ -63,7 +53,6 @@ impl ActionMenuSection {
             .max_content_height(420)
             .build();
         submenu_scroll.add_css_class("context-menu-scroll");
-        // Anchored to the right of its row, the way a submenu is expected to open.
         let submenu_popover = gtk::Popover::builder()
             .has_arrow(false)
             .autohide(true)
@@ -83,8 +72,6 @@ impl ActionMenuSection {
             let Some(popover) = weak_popover.upgrade() else {
                 return;
             };
-            // The popover is detached whenever the parent menu closes, so it is
-            // re-attached here instead of being left parented to a hidden button.
             if popover.parent().is_none() {
                 popover.set_parent(button);
             }
@@ -95,8 +82,7 @@ impl ActionMenuSection {
         container.append(&submenu_button);
         submenu_popover.set_parent(&submenu_button);
 
-        // The submenu detaches once it is closed, so the button it is anchored to
-        // is never finalized with a child and the next open re-parents it.
+        // Wait for closed: unparenting during popdown can leave the surface mapped.
         let weak_submenu = submenu_popover.downgrade();
         submenu_popover.connect_closed(move |_| {
             if let Some(popover) = weak_submenu.upgrade()
@@ -105,7 +91,6 @@ impl ActionMenuSection {
                 popover.unparent();
             }
         });
-        // Closing the parent menu must take the submenu with it.
         let weak_submenu = submenu_popover.downgrade();
         parent_popover.connect_closed(move |_| {
             if let Some(popover) = weak_submenu.upgrade()
@@ -140,7 +125,6 @@ impl ActionMenuSection {
         &self.container
     }
 
-    /// Rebuilds for the current selection.
     pub(super) fn rebuild_for_selection(
         &self,
         state: &Rc<ViewState>,
@@ -163,10 +147,6 @@ impl ActionMenuSection {
         );
     }
 
-    /// Rebuilds for a folder the menu was opened on.
-    ///
-    /// The folder itself is the input, and `background` tells the script it was
-    /// invoked from the folder rather than from a selection inside it.
     pub(super) fn rebuild_for_folder(&self, state: &Rc<ViewState>, location: &Location) {
         let Some(input) = folder_input(location) else {
             self.clear();
@@ -279,8 +259,6 @@ impl ActionMenuSection {
                 button.set_tooltip_text(Some(description));
             }
         } else {
-            // An action that cannot run stays visible but explains why, instead
-            // of disappearing and looking like a bug.
             button.set_sensitive(false);
             button.set_tooltip_text(action.action.unavailable_reason());
         }

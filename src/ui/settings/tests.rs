@@ -581,11 +581,7 @@ fn restart_waiter_ignores_path_shadowing_and_preserves_application_path() {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("executable fixture");
     }
 
-    // The waiter loops until its target process is gone. A PID that is out of
-    // range is not a portable way to say "already gone": bash, which some
-    // distributions install as /bin/sh, wraps it and lets `kill -0` report every
-    // process as alive, so the loop never exits. A reaped PID is gone by
-    // definition and keeps the test meaningful on every shell.
+    // Bash can wrap an out-of-range PID into kill's process-group semantics.
     let gone_pid = {
         let mut child = crate::trusted_command::command("true")
             .expect("trusted true")

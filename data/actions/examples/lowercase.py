@@ -2,7 +2,7 @@
 
 
 def new_name(context):
-    """Return a single name. Edit this function to customize the transformation.
+    """Return a filename, not a path.
 
     filename is the original name including its extension; index is 1-based.
     stem, suffix, total, path (pathlib.Path), and batch (Strata context) are

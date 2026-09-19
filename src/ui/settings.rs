@@ -702,7 +702,6 @@ pub fn build_layer(
     let built: Rc<RefCell<std::collections::HashSet<&'static str>>> = Rc::new(RefCell::new(
         ["general", "keybindings", "about"].into_iter().collect(),
     ));
-    // `actions` joins `theme` and `updates` as a lazily built page.
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),

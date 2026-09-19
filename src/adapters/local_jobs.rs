@@ -1,27 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-//! Runs one custom-action invocation as a child process.
-//!
-//! Boundaries that matter:
-//!
-//! - **No shell.** Programs and interpreters receive argv entries directly, and
-//!   argument tokens expand to absolute paths only, so a selected file can never
-//!   be read as a command or an option.
-//! - **Inherited environment, private files.** Trusted scripts keep the user's
-//!   environment (PATH, HOME, and desktop integration), because they are ordinary
-//!   user programs, but everything Strata hands them lives in a mode-0700
-//!   directory created for that single invocation.
-//! - **Paths are bytes.** Selected paths travel in NUL-delimited files and
-//!   environment variables, never through lossy UTF-8 interpolation.
-//! - **Bounded output.** Captured output is truncated, coalesced, and delivered
-//!   on the service's timer instead of flooding the GTK main loop.
-//! - **Cancellation kills the group.** A cancelled job signals its whole process
-//!   group, then escalates, so wrappers and pipelines stop with it.
-
 use std::{
     ffi::OsString,
     fs,
-    io::{self, BufRead, BufReader, Read},
+    io::{self, Read},
     os::unix::{fs::DirBuilderExt, fs::MetadataExt, process::CommandExt},
     path::{Path, PathBuf},
     process::{Child, ChildStderr, ChildStdout, Command, Stdio},
@@ -45,29 +27,18 @@ use crate::services::{
 #[cfg(test)]
 mod tests;
 
-/// Progress-file polling interval inside the worker thread.
 const PROGRESS_POLL: Duration = Duration::from_millis(100);
-/// How often the live log tail is republished while a job runs.
 const LOG_TAIL_INTERVAL: Duration = Duration::from_millis(500);
-/// Longest line accepted from the progress file.
 const MAX_PROGRESS_LINE_BYTES: usize = 4096;
-/// Progress events accepted from one invocation, so a runaway script cannot
-/// monopolize the main loop.
 const MAX_PROGRESS_EVENTS: usize = 20_000;
 const MAX_PROGRESS_UNITS: usize = 1_000_000;
 const MAX_PROGRESS_MESSAGE_CHARS: usize = 512;
-/// Refuse a progress file larger than this even if it contains valid lines.
 const MAX_PROGRESS_FILE_BYTES: u64 = 4 * 1024 * 1024;
-/// Upper bound on the serialized selection handed to one invocation.
 const MAX_PATHS_BYTES: usize = 4 * 1024 * 1024;
-/// Grace period between polite and forceful cancellation.
 const TERMINATION_GRACE: Duration = Duration::from_secs(2);
-/// How long to keep waiting after SIGKILL before giving up on the child.
 const REAP_DEADLINE: Duration = Duration::from_secs(5);
-/// Output retained while a job is running.
 const LIVE_LOG_BYTES: usize = 8 * 1024;
 
-/// Environment variables understood by the script contract.
 const ENV_CONTEXT: &str = "STRATA_ACTION_CONTEXT";
 const ENV_PATHS: &str = "STRATA_ACTION_PATHS";
 const ENV_PARENT: &str = "STRATA_ACTION_PARENT";
@@ -81,12 +52,10 @@ const ENV_COUNT: &str = "STRATA_ACTION_COUNT";
 const ENV_POSITION: &str = "STRATA_ACTION_POSITION";
 const ENV_ACTION_ID: &str = "STRATA_ACTION_ID";
 
-/// The Python helper module, embedded so an installed build needs no data files.
 const PYTHON_HELPER: &str = include_str!("../../data/actions/strata_actions.py");
 const PYTHON_HELPER_FILE: &str = "strata_actions.py";
 
 pub(crate) struct LocalActionRunner {
-    /// Base directory for per-invocation scratch, normally `$XDG_RUNTIME_DIR`.
     runtime_root: PathBuf,
 }
 
@@ -144,12 +113,13 @@ impl ActionRunner for LocalActionRunner {
         let spawned = thread::Builder::new()
             .name("strata-action".to_owned())
             .spawn(move || {
-                if let Err(error) =
-                    spawn_and_watch(&action, &program, &context, worker_sink, worker_cancel)
-                {
-                    tracing::warn!(%error, action = %action.id(), "action invocation failed");
-                }
+                let result =
+                    spawn_and_watch(&action, &program, &context, &worker_sink, &worker_cancel);
                 let _ignored = fs::remove_dir_all(&context.run_directory);
+                worker_sink(match result {
+                    Ok(event) => event,
+                    Err(error) => ActionRunEvent::Failed(error.to_string()),
+                });
             });
         if let Err(error) = spawned {
             let _ignored = fs::remove_dir_all(&run_directory);
@@ -165,7 +135,6 @@ fn failed_immediately(sink: ActionEventSink, reason: String) -> CancelHandle {
     Rc::new(|| {})
 }
 
-/// Signals the worker to stop and remembers whether it did.
 #[derive(Default)]
 struct Cancellation {
     cancelled: std::sync::atomic::AtomicBool,
@@ -202,7 +171,6 @@ impl Cancellation {
     }
 }
 
-/// Everything a single invocation needs to describe itself to the script.
 struct RunContext {
     inputs: Vec<PathBuf>,
     parent: PathBuf,
@@ -221,7 +189,6 @@ impl RunContext {
     }
 }
 
-/// Files created for one invocation and handed to the child by path.
 struct InvocationFiles {
     context: PathBuf,
     paths: PathBuf,
@@ -233,50 +200,37 @@ fn spawn_and_watch(
     action: &ActionHandle,
     program: &ActionProgram,
     context: &RunContext,
-    sink: ActionEventSink,
-    cancellation: Arc<Cancellation>,
-) -> io::Result<()> {
+    sink: &ActionEventSink,
+    cancellation: &Cancellation,
+) -> io::Result<ActionRunEvent> {
     let files = write_invocation_files(action, program, context)?;
     let mut command = build_command(action, context, &files)?;
     let working_directory =
         context.working_directory(&action.directory, action.definition.run.working_directory);
-    if working_directory.is_dir() {
-        command.current_dir(&working_directory);
-    }
-
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            sink(ActionRunEvent::Failed(describe_spawn_failure(
-                program, &error,
-            )));
-            return Ok(());
-        }
-    };
+    command.current_dir(&working_directory);
+    let mut child = command
+        .spawn()
+        .map_err(|error| io::Error::other(describe_spawn_failure(program, &error)))?;
     cancellation.remember_pid(child.id() as i32);
-
-    let live = Arc::new(Mutex::new(LiveOutput::default()));
-    let readers = start_output_readers(child.stdout.take(), child.stderr.take(), live.clone());
-
-    let exit = watch_process(&mut child, &files.progress, &sink, &cancellation, &live)?;
-    cancellation.forget_pid();
-
-    for reader in readers {
-        let _joined = reader.join();
+    let mut output = CapturedOutput {
+        stdout: child.stdout.take(),
+        stderr: child.stderr.take(),
+        live: LiveOutput::default(),
+    };
+    let result = output
+        .make_nonblocking()
+        .and_then(|()| watch_process(&mut child, &files.progress, sink, cancellation, &mut output));
+    if result.is_err() || cancellation.is_cancelled() {
+        stop_process_group(&mut child, cancellation);
     }
-    let log = live
-        .lock()
-        .map(|mut live| live.snapshot())
-        .unwrap_or_default();
-    // Scratch is gone before the job reports completion, so a finished job
-    // implies its private files are no longer on disk.
-    let _removed = fs::remove_dir_all(&context.run_directory);
-    sink(ActionRunEvent::Exited {
+    cancellation.forget_pid();
+    let exit = result?;
+    output.drain()?;
+    Ok(ActionRunEvent::Exited {
         code: exit.code,
         signal: exit.signal,
-        log,
-    });
-    Ok(())
+        log: output.live.snapshot(),
+    })
 }
 
 struct Exit {
@@ -284,13 +238,12 @@ struct Exit {
     signal: Option<i32>,
 }
 
-/// Waits for the child, polling progress and honouring cancellation.
 fn watch_process(
     child: &mut Child,
     progress_path: &Path,
     sink: &ActionEventSink,
     cancellation: &Cancellation,
-    live: &Arc<Mutex<LiveOutput>>,
+    output: &mut CapturedOutput,
 ) -> io::Result<Exit> {
     let mut progress = ProgressReader::open(progress_path);
     let mut events = 0usize;
@@ -299,6 +252,7 @@ fn watch_process(
     let mut kill_deadline: Option<Instant> = None;
 
     loop {
+        output.drain()?;
         events += progress.drain(sink, MAX_PROGRESS_EVENTS.saturating_sub(events));
 
         if cancellation.is_cancelled() && termination_deadline.is_none() {
@@ -311,7 +265,6 @@ fn watch_process(
             && Instant::now() >= deadline
             && kill_deadline.is_none()
         {
-            // The group ignored SIGTERM: escalate, then stop waiting for it.
             kill_deadline = Some(Instant::now() + REAP_DEADLINE);
             if let Some(group) = cancellation.process_group() {
                 let _ignored = kill_process_group(group, Signal::KILL);
@@ -321,8 +274,7 @@ fn watch_process(
         if let Some(deadline) = kill_deadline
             && Instant::now() >= deadline
         {
-            // Give up on a child that cannot be reaped; the worker thread ends
-            // rather than blocking the job forever.
+            // Uninterruptible I/O must not keep the worker alive indefinitely.
             if let Some(pid) = Pid::from_raw(child.id() as i32) {
                 let _ignored = kill_process(pid, Signal::KILL);
             }
@@ -340,11 +292,9 @@ fn watch_process(
             None => {
                 if last_tail.elapsed() >= LOG_TAIL_INTERVAL {
                     last_tail = Instant::now();
-                    if let Ok(live) = live.lock() {
-                        let tail = live.tail();
-                        if !tail.is_empty() {
-                            sink(ActionRunEvent::LogTail(tail));
-                        }
+                    let tail = output.live.tail();
+                    if !tail.is_empty() {
+                        sink(ActionRunEvent::LogTail(tail));
                     }
                 }
                 thread::sleep(PROGRESS_POLL);
@@ -382,7 +332,6 @@ fn build_command(
                 command.env("PYTHONPATH", helper_python_path(&context.run_directory));
                 command.env("PYTHONUNBUFFERED", "1");
             }
-            // The script path is absolute, so it can never be read as an option.
             command.arg(script);
             command
         }
@@ -422,7 +371,7 @@ fn build_command(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    // A new process group lets cancellation stop wrappers and pipelines too.
+    // Cancellation must also reach wrappers and pipelines.
     command.process_group(0);
     Ok(command)
 }
@@ -434,7 +383,6 @@ fn mode_value(action: &ActionHandle) -> &'static str {
     }
 }
 
-/// Writes the private invocation files with owner-only permissions.
 fn write_invocation_files(
     action: &ActionHandle,
     program: &ActionProgram,
@@ -483,8 +431,6 @@ fn write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
     crate::storage::atomic_write(path, contents)
 }
 
-/// `PYTHONPATH` for a Python script: the private helper directory first, then
-/// whatever the user already had so their own packages still resolve.
 fn helper_python_path(run_directory: &Path) -> OsString {
     let mut value = run_directory.as_os_str().to_owned();
     if let Some(existing) = std::env::var_os("PYTHONPATH")
@@ -508,8 +454,7 @@ fn path_bytes(path: &Path) -> io::Result<Vec<u8>> {
     Ok(bytes.to_vec())
 }
 
-/// JSON context for scripts. Paths are deliberately absent: they travel as bytes
-/// in the paths file so non-UTF-8 names survive.
+// Native paths travel separately as bytes; JSON contains only display text.
 fn invocation_context_json(action: &ActionHandle, context: &RunContext) -> String {
     let position = context
         .position
@@ -558,12 +503,7 @@ fn json_string(value: &str) -> String {
     escaped
 }
 
-/// Creates one mode-0700 scratch directory per invocation.
-///
-/// The base directory can fall back to `/tmp`, which is shared with every user on
-/// the machine, so an existing base must be a real directory owned by this user.
-/// A pre-planted link or directory would otherwise let another account choose
-/// where action scratch is written.
+// The temporary-directory fallback may be shared with other users.
 fn create_run_directory(runtime_root: &Path) -> io::Result<PathBuf> {
     let base = runtime_root.join("actions");
     match fs::symlink_metadata(&base) {
@@ -621,78 +561,95 @@ fn describe_spawn_failure(program: &ActionProgram, error: &io::Error) -> String 
     format!("Unable to start “{label}”: {error}")
 }
 
-/// Captured output, bounded and line-friendly for the dashboard.
 #[derive(Default)]
 struct LiveOutput {
-    text: String,
+    text: Vec<u8>,
     truncated: bool,
 }
 
 impl LiveOutput {
-    fn push(&mut self, chunk: &str) {
-        self.text.push_str(chunk);
+    fn push(&mut self, chunk: &[u8]) {
+        self.text.extend_from_slice(chunk);
         if self.text.len() > LIVE_LOG_BYTES {
             self.truncated = true;
-            let mut cut = self.text.len() - LIVE_LOG_BYTES;
-            while cut < self.text.len() && !self.text.is_char_boundary(cut) {
-                cut += 1;
-            }
+            let cut = self.text.len() - LIVE_LOG_BYTES;
             self.text.drain(..cut);
-            if let Some(newline) = self.text.find('\n') {
+            if let Some(newline) = self.text.iter().position(|byte| *byte == b'\n') {
                 self.text.drain(..=newline);
             }
         }
     }
 
     fn tail(&self) -> String {
-        self.text.clone()
+        String::from_utf8_lossy(&self.text).into_owned()
     }
 
-    fn snapshot(&mut self) -> String {
-        if self.truncated && !self.text.starts_with('…') {
-            format!("…\n{}", self.text)
+    fn snapshot(&self) -> String {
+        if self.truncated {
+            format!("…\n{}", self.tail())
         } else {
-            self.text.clone()
+            self.tail()
         }
     }
 }
 
-fn start_output_readers(
+struct CapturedOutput {
     stdout: Option<ChildStdout>,
     stderr: Option<ChildStderr>,
-    live: Arc<Mutex<LiveOutput>>,
-) -> Vec<thread::JoinHandle<()>> {
-    let mut handles = Vec::new();
-    if let Some(stdout) = stdout {
-        handles.extend(spawn_output_reader(stdout, live.clone()));
-    }
-    if let Some(stderr) = stderr {
-        handles.extend(spawn_output_reader(stderr, live));
-    }
-    handles
+    live: LiveOutput,
 }
 
-fn spawn_output_reader(
-    stream: impl Read + Send + 'static,
-    live: Arc<Mutex<LiveOutput>>,
-) -> Option<thread::JoinHandle<()>> {
-    thread::Builder::new()
-        .name("strata-action-log".to_owned())
-        .spawn(move || {
-            let reader = BufReader::new(stream);
-            for line in reader.split(b'\n') {
-                let Ok(line) = line else { break };
-                let text = String::from_utf8_lossy(&line);
-                if let Ok(mut live) = live.lock() {
-                    live.push(&text);
-                    live.push("\n");
+impl CapturedOutput {
+    fn make_nonblocking(&self) -> io::Result<()> {
+        use std::os::fd::AsFd;
+        for fd in [
+            self.stdout.as_ref().map(AsFd::as_fd),
+            self.stderr.as_ref().map(AsFd::as_fd),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let flags = rustix::fs::fcntl_getfl(fd)?;
+            rustix::fs::fcntl_setfl(fd, flags | rustix::fs::OFlags::NONBLOCK)?;
+        }
+        Ok(())
+    }
+
+    fn drain(&mut self) -> io::Result<()> {
+        for stream in [
+            self.stdout.as_mut().map(|stream| stream as &mut dyn Read),
+            self.stderr.as_mut().map(|stream| stream as &mut dyn Read),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            let mut bytes = [0; 4096];
+            // A noisy stream must yield to cancellation and process-status polling.
+            for _ in 0..16 {
+                match stream.read(&mut bytes) {
+                    Ok(0) => break,
+                    Ok(count) => self.live.push(&bytes[..count]),
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => break,
+                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(error) => return Err(error),
                 }
             }
-        })
-        .ok()
+        }
+        Ok(())
+    }
 }
 
-/// Reads `progress.jsonl` incrementally, validating every line.
+fn stop_process_group(child: &mut Child, cancellation: &Cancellation) {
+    if let Some(group) = cancellation.process_group() {
+        let _ignored = kill_process_group(group, Signal::KILL);
+    }
+    let _ignored = child.kill();
+    let deadline = Instant::now() + REAP_DEADLINE;
+    while matches!(child.try_wait(), Ok(None)) && Instant::now() < deadline {
+        thread::sleep(PROGRESS_POLL);
+    }
+}
+
 struct ProgressReader {
     file: Option<fs::File>,
     pending: String,
@@ -708,7 +665,6 @@ impl ProgressReader {
         }
     }
 
-    /// Applies up to `budget` new events.
     fn drain(&mut self, sink: &ActionEventSink, budget: usize) -> usize {
         if budget == 0 || self.offset >= MAX_PROGRESS_FILE_BYTES {
             return 0;
@@ -735,7 +691,6 @@ impl ProgressReader {
         let mut applied = 0;
         while applied < budget {
             let Some(newline) = self.pending.find('\n') else {
-                // Drop an over-long partial line instead of buffering it forever.
                 if self.pending.len() > MAX_PROGRESS_LINE_BYTES {
                     self.pending.clear();
                 }
@@ -751,8 +706,6 @@ impl ProgressReader {
     }
 }
 
-/// Validates one progress line. Unknown or malformed lines are ignored: a
-/// script's own output must never be able to confuse the job state.
 fn parse_progress_line(line: &str) -> Option<ActionRunEvent> {
     if line.is_empty() || line.len() > MAX_PROGRESS_LINE_BYTES {
         return None;
@@ -778,8 +731,6 @@ fn parse_progress_line(line: &str) -> Option<ActionRunEvent> {
                 return None;
             }
             let path = PathBuf::from(path);
-            // Only absolute native paths are reported: they cannot be confused
-            // with the invocation directory or a URL.
             path.is_absolute().then_some(ActionRunEvent::Created(path))
         }
         _ => None,

@@ -10,7 +10,6 @@ use std::{
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
-/// Strata's configuration directory, shared by settings, themes, and actions.
 pub(crate) fn config_directory() -> PathBuf {
     gtk::glib::user_config_dir().join("strata")
 }

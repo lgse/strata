@@ -208,8 +208,6 @@ impl FooterBinding {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
         shortcuts.observe_browser(&browser.browser());
-        // Background jobs get a permanent home in the footer, independent of the
-        // keybinding-hints preference.
         let jobs = crate::ui::jobs::JobsIndicator::new();
         jobs.bind_window(window);
         shortcuts.set_activity(jobs.widget());

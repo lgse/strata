@@ -12,7 +12,6 @@ for index, path in enumerate(ctx.paths, start=1):
     source = Path(path)
     if not source.is_file():
         raise ValueError(f"Not a file: {source}")
-    # A private, unique output folder cannot overwrite an existing file or link.
     folder = Path(tempfile.mkdtemp(prefix="strata-webp-", dir=source.parent))
     output = folder / "converted.webp"
     # Stream the image so ImageMagick cannot interpret its name as image syntax.

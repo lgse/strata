@@ -64,7 +64,6 @@ fn command_definition() -> ActionDefinition {
     ActionDefinition::parse(COMMAND_ACTION).expect("command action parses")
 }
 
-/// Builds a manifest whose `[run]` section is supplied verbatim.
 fn run_manifest(run: &str) -> String {
     format!(
         "schema_version = 1\nid = \"a1\"\nname = \"Action\"\n\n[when]\nkinds = [\"file\"]\n\n[run]\n{run}\n"
@@ -190,8 +189,6 @@ fn rejects_invalid_identity_and_text() {
             Err(ActionError::InvalidName)
         );
     }
-    // A control character has to be written as an escape, and is still rejected;
-    // a raw newline is not valid TOML at all.
     assert_eq!(
         ActionDefinition::parse(
             "schema_version = 1\nid = \"a1\"\nname = \"nested\\nline\"\n[when]\n[run]\nruntime = \"bash\"\nentrypoint = \"run.sh\"\n"
@@ -244,7 +241,6 @@ fn rejects_invalid_entrypoints_and_programs() {
             "program {program:?} must be rejected"
         );
     }
-    // A NUL byte can be escaped in TOML, so the validator is what rejects it.
     assert!(matches!(
         ActionDefinition::parse(
             "schema_version = 1\nid = \"a1\"\nname = \"Action\"\n[when]\n[run]\nruntime = \"command\"\nprogram = \"nul\\u0000name\"\n"

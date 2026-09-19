@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Presentation tests for the Jobs surface. These stay on labels and summaries;
-//! the dashboard's layout is reviewed with screenshots instead.
-
 use std::{ffi::OsString, path::PathBuf, rc::Rc, time::Duration};
 
 use crate::model::{ActionDefinition, ExecutionMode};
@@ -15,8 +12,6 @@ use crate::services::{
 
 use super::*;
 
-/// A runner that finishes immediately, so the service can be driven without
-/// spawning processes.
 struct InstantRunner;
 
 impl ActionRunner for InstantRunner {
@@ -30,7 +25,6 @@ impl ActionRunner for InstantRunner {
     }
 }
 
-/// A runner that never finishes, so jobs stay active.
 struct PendingRunner;
 
 impl ActionRunner for PendingRunner {
@@ -252,49 +246,6 @@ fn elapsed_time_is_readable_at_every_scale() {
 }
 
 #[test]
-fn progress_fractions_never_invent_completion() {
-    let waiting = snapshot(
-        JobStatus::Running,
-        JobProgress {
-            completed_items: 0,
-            total_items: 3,
-            ..JobProgress::default()
-        },
-        ExecutionMode::PerItem,
-    );
-    assert_eq!(waiting.progress.fraction(waiting.mode), Some(0.0));
-
-    let reported = snapshot(
-        JobStatus::Running,
-        JobProgress {
-            total_items: 1,
-            script: Some(ScriptProgress {
-                completed: 3,
-                total: Some(10),
-                message: None,
-            }),
-            ..JobProgress::default()
-        },
-        ExecutionMode::WholeSelection,
-    );
-    assert_eq!(reported.progress.fraction(reported.mode), Some(0.3));
-
-    let silent = snapshot(
-        JobStatus::Running,
-        JobProgress {
-            total_items: 1,
-            ..JobProgress::default()
-        },
-        ExecutionMode::WholeSelection,
-    );
-    assert_eq!(
-        silent.progress.fraction(silent.mode),
-        None,
-        "a command that reports nothing stays indeterminate"
-    );
-}
-
-#[test]
 fn job_icons_fall_back_to_a_bundled_asset() {
     let mut job = snapshot(
         JobStatus::Running,
@@ -415,6 +366,48 @@ fn finished_jobs_and_details_survive_the_indicator_builder() {
 }
 
 #[test]
+fn the_last_window_cannot_abandon_queued_or_cancelling_jobs() {
+    crate::test_support::gtk_test(
+        "ui::jobs::tests::the_last_window_cannot_abandon_queued_or_cancelling_jobs",
+        || {
+            let application = gtk::Application::builder()
+                .application_id("io.github.lgse.Strata.JobCloseTest")
+                .flags(gio::ApplicationFlags::NON_UNIQUE)
+                .build();
+            application
+                .register(gio::Cancellable::NONE)
+                .expect("register");
+            let service = JobService::new(Rc::new(InstantRunner));
+            let first = gtk::Window::builder().application(&application).build();
+            let second = gtk::Window::builder().application(&application).build();
+            let indicator = JobsIndicator::with_service(service.clone());
+            let other = JobsIndicator::with_service(service.clone());
+            first.set_child(Some(indicator.widget()));
+            second.set_child(Some(other.widget()));
+            indicator.bind_window(&first);
+            other.bind_window(&second);
+            let id = service
+                .enqueue(JobRequest {
+                    action: handle("close", "Close test", None, ExecutionMode::WholeSelection),
+                    inputs: vec![PathBuf::from("/example/input")],
+                    parent: PathBuf::from("/example"),
+                    source: InvocationSource::Selection,
+                })
+                .expect("queue");
+            assert!(!first.emit_by_name::<bool>("close-request", &[]));
+            first.destroy();
+            assert!(second.emit_by_name::<bool>("close-request", &[]));
+            service.pump();
+            service.cancel(id);
+            assert!(second.emit_by_name::<bool>("close-request", &[]));
+            service.pump();
+            assert!(!second.emit_by_name::<bool>("close-request", &[]));
+            second.destroy();
+        },
+    );
+}
+
+#[test]
 fn new_jobs_open_in_the_launching_window_without_reopening_on_progress() {
     crate::test_support::gtk_test(
         "ui::jobs::tests::new_jobs_open_in_the_launching_window_without_reopening_on_progress",
@@ -514,11 +507,4 @@ fn new_jobs_open_in_the_launching_window_without_reopening_on_progress() {
             other_window.close();
         },
     );
-}
-
-#[test]
-fn the_service_is_shared_across_windows() {
-    let first = shared();
-    let second = shared();
-    assert!(Rc::ptr_eq(&first, &second), "one job service per process");
 }

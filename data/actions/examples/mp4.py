@@ -14,7 +14,7 @@ for index, path in enumerate(ctx.paths, start=1):
         raise ValueError(f"Not a file: {source}")
     folder = Path(tempfile.mkdtemp(prefix="strata-mp4-", dir=source.parent))
     output = folder / "converted.mp4"
-    # Direct argv, local inputs, no overwrite; pad odd dimensions for H.264.
+    # H.264 with yuv420p requires even dimensions.
     subprocess.run(
         [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
          "-protocol_whitelist", "file,pipe", "-i", str(source),

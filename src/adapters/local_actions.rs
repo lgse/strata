@@ -1,22 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Local custom-action storage under `$XDG_CONFIG_HOME/strata/actions`.
-//!
-//! Layout, one directory per action:
-//!
-//! ```text
-//! actions/
-//!   resize-images/
-//!     action.toml
-//!     main.py
-//! ```
-//!
-//! Everything here treats the actions directory as data that may be edited by
-//! hand or imported from elsewhere, so it re-validates instead of trusting:
-//! manifests, entrypoints, and imported directories are read as regular files,
-//! symlinks are refused rather than followed, entrypoint names are confined to
-//! one component, and PATH lookups decide availability before anything can run.
-
 use std::{
     ffi::OsStr,
     fs::{self, DirBuilder},
@@ -40,7 +23,6 @@ const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 const MAX_SCRIPT_BYTES: u64 = 1024 * 1024;
 const MAX_SHEBANG_PREFIX_BYTES: u64 = 4096;
 
-/// Directory holding every custom action.
 pub(crate) fn actions_directory() -> PathBuf {
     crate::storage::config_directory().join("actions")
 }
@@ -99,7 +81,6 @@ impl LocalActionStore {
         })
     }
 
-    /// A unique, unused id derived from `preferred`.
     fn unique_id(&self, preferred: &str) -> Result<String, ActionStoreError> {
         for suffix in 0..1000 {
             let candidate = if suffix == 0 {
@@ -119,7 +100,6 @@ impl LocalActionStore {
         )))
     }
 
-    /// Reads and validates one action directory without importing it.
     fn prepare_import(
         &self,
         source: &Path,
@@ -146,7 +126,6 @@ impl LocalActionStore {
                     }
                     Err(error) => return Err(error),
                 };
-                // An imported script must agree with the manifest it arrives with.
                 definition.interpreter_for_source(&contents)?;
                 Some(ActionScript {
                     file_name: entrypoint.to_owned(),
@@ -175,10 +154,7 @@ impl ActionStore for LocalActionStore {
             .filter_map(Result::ok)
             .filter_map(|entry| {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                // Hidden entries are editor swap files and our own temporaries,
-                // and a stray regular file is not an action at all, so neither is
-                // reported as a broken one. Links are reported: they are attempts
-                // to point an action somewhere Strata will not follow.
+                // Ignore editor temporaries and notes, but report linked directories.
                 if name.starts_with('.') || entry.file_type().is_ok_and(|kind| kind.is_file()) {
                     return None;
                 }
@@ -208,6 +184,27 @@ impl ActionStore for LocalActionStore {
         ActionCatalog::new(actions, failures)
     }
 
+    fn create(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
+        request.definition.validate()?;
+        let directory = self.action_directory(&request.definition.id)?;
+        ensure_private_directory(&self.root)?;
+        DirBuilder::new()
+            .mode(0o700)
+            .create(&directory)
+            .map_err(|error| {
+                if error.kind() == io::ErrorKind::AlreadyExists {
+                    ActionStoreError::AlreadyExists(request.definition.id.clone())
+                } else {
+                    io_error(error)
+                }
+            })?;
+        let result = self.write(request);
+        if result.is_err() {
+            let _removed = fs::remove_dir_all(&directory);
+        }
+        result
+    }
+
     fn write(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
         let definition = &request.definition;
         definition.validate()?;
@@ -217,8 +214,6 @@ impl ActionStore for LocalActionStore {
 
         match (request.script.as_ref(), definition.run.script_entrypoint()) {
             (Some(script), Some(entrypoint)) => {
-                // The entrypoint name is already validated by `definition.validate()`;
-                // requiring equality keeps the write confined to the action directory.
                 if script.file_name != entrypoint {
                     return Err(ActionStoreError::Invalid(ActionError::InvalidEntrypoint(
                         script.file_name.clone(),
@@ -238,8 +233,6 @@ impl ActionStore for LocalActionStore {
                 .map_err(io_error)?;
             }
             (None, Some(entrypoint)) => {
-                // Metadata-only edits must not leave the manifest pointing at a
-                // script that is not there.
                 let script = directory.join(entrypoint);
                 let metadata = fs::symlink_metadata(&script).map_err(|error| {
                     if error.kind() == io::ErrorKind::NotFound {
@@ -272,8 +265,6 @@ impl ActionStore for LocalActionStore {
             }
             Err(error) => return Err(io_error(error)),
         };
-        // Never follow a link out of the actions directory, and never delete
-        // anything that is not an action directory.
         if !metadata.file_type().is_dir() {
             return Err(ActionStoreError::NotARegularFile(id.to_owned()));
         }
@@ -304,7 +295,6 @@ impl ActionStore for LocalActionStore {
 
     fn import(&self, source: &Path) -> Result<String, ActionStoreError> {
         let (mut definition, script) = self.prepare_import(source)?;
-        // Imported actions stay disabled until someone reviews and enables them.
         definition.enabled = false;
         let id = self.unique_id(&definition.id)?;
         definition.id = id.clone();
@@ -313,7 +303,7 @@ impl ActionStore for LocalActionStore {
         if directory.exists() {
             return Err(ActionStoreError::AlreadyExists(id));
         }
-        self.write(&ActionWriteRequest { definition, script })?;
+        self.create(&ActionWriteRequest { definition, script })?;
         Ok(id)
     }
 
@@ -324,10 +314,16 @@ impl ActionStore for LocalActionStore {
             .ok_or_else(|| ActionStoreError::NotFound(id.to_owned()))?;
         ensure_plain_directory(destination)?;
         let target = destination.join(id);
-        if target.exists() {
-            return Err(ActionStoreError::AlreadyExists(id.to_owned()));
-        }
-        ensure_private_directory(&target)?;
+        DirBuilder::new()
+            .mode(0o700)
+            .create(&target)
+            .map_err(|error| {
+                if error.kind() == io::ErrorKind::AlreadyExists {
+                    ActionStoreError::AlreadyExists(id.to_owned())
+                } else {
+                    io_error(error)
+                }
+            })?;
 
         if let Some(entrypoint) = handle.definition.run.script_entrypoint() {
             let contents = read_regular_text(&handle.directory.join(entrypoint), MAX_SCRIPT_BYTES)
@@ -347,7 +343,6 @@ impl ActionStore for LocalActionStore {
     }
 }
 
-/// Resolves how the action will be started, or why it cannot be.
 fn resolve_availability(
     directory: &Path,
     definition: &ActionDefinition,
@@ -425,15 +420,7 @@ fn resolve_availability(
     }
 }
 
-/// Finds an executable on `PATH`, or verifies an absolute path.
-///
-/// Custom actions use the user's own `PATH` on purpose, unlike the sandbox
-/// helpers resolved through [`crate::trusted_command`]: an action is an ordinary
-/// user program that is expected to find tools in `~/.local/bin`, a version
-/// manager shim directory, or a distribution prefix. What keeps that safe is not
-/// a fixed search path but the invocation boundary: the resolved program is only
-/// ever `argv[0]` of a direct spawn, with no shell and with arguments limited to
-/// absolute paths.
+/// Unlike sandbox helpers, trusted actions need the user's PATH, including shims.
 pub(crate) fn resolve_executable(program: &str) -> Option<PathBuf> {
     if program.contains('/') {
         if !Path::new(program).is_absolute() {
@@ -507,7 +494,6 @@ fn ensure_private_directory(path: &Path) -> Result<(), ActionStoreError> {
     DirBuilder::new().mode(0o700).create(path).map_err(io_error)
 }
 
-/// Refuses a path that exists but is a symlink or is not a directory.
 fn ensure_plain_directory(path: &Path) -> Result<(), ActionStoreError> {
     let metadata = fs::symlink_metadata(path).map_err(io_error)?;
     if !metadata.file_type().is_dir() {

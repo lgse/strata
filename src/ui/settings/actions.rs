@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Settings → Actions: the manager for custom actions.
-//!
-//! The page edits the same `action.toml` files users can edit by hand, so
-//! everything goes through [`ActionRegistry`]: no separate GUI-only format, no
-//! writes outside the action directory, and every change reloads the catalog the
-//! context menus read.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -40,7 +33,8 @@ mod readiness;
 mod tests;
 
 const MAX_EXTENSION_FIELD_CHARS: usize = 256;
-const MAX_ARGUMENTS_FIELD_CHARS: usize = 2048;
+const MAX_ARGUMENTS_FIELD_CHARS: usize =
+    crate::model::action::MAX_ARGUMENTS * (crate::model::action::MAX_ARGUMENT_CHARS + 1);
 const GENERAL_TAB: u32 = 0;
 const SCRIPT_TAB: u32 = 1;
 const BEHAVIOR_TAB: u32 = 2;
@@ -92,8 +86,6 @@ pub(super) fn actions_page() -> gtk::Widget {
     import.connect_clicked(move |button| PageState::import(&import_state, button));
 
     PageState::render(&state);
-    // Another window, or a hand edit that was reloaded, refreshes this page.
-    // The subscription ends with the page widget.
     let observer = Rc::new(RefCell::new(Some(registry.observe({
         let state = state.clone();
         Rc::new(move || PageState::render(&state))
@@ -127,8 +119,6 @@ impl PageState {
             empty.set_xalign(0.0);
             empty.set_wrap(true);
             empty.add_css_class("settings-option-description");
-            // Rows inside a settings group supply their own padding; a lone
-            // message needs the same inset so it cannot touch the group border.
             empty.add_css_class("settings-actions-empty");
             self.list.append(&empty);
         }
@@ -371,7 +361,14 @@ impl PageState {
                     return;
                 }
             };
-            match state.save(&definition, script) {
+            let result = match mode {
+                EditorMode::Create => state
+                    .registry
+                    .create(&ActionWriteRequest { definition, script })
+                    .map_err(|error| error.to_string()),
+                EditorMode::Edit => state.save(&definition, script),
+            };
+            match result {
                 Ok(()) => {
                     if let Some(layer) = weak_layer.upgrade() {
                         dismiss_modal_layer(&layer, &overlay_for_save, root_for_save.as_ref());
@@ -393,10 +390,19 @@ impl PageState {
             }
         };
         let mut definition = action.definition.clone();
-        definition.id = unique_copy_id(&self.registry, &definition.id);
+        definition.id = match unique_copy_id(&self.registry, &definition.id) {
+            Ok(id) => id,
+            Err(message) => {
+                show_error_dialog(button, "Unable to duplicate the action", &message);
+                return;
+            }
+        };
         definition.name = copy_name(&definition.name);
-        if let Err(message) = self.save(&definition, script) {
-            show_error_dialog(button, "Unable to duplicate the action", &message);
+        if let Err(error) = self
+            .registry
+            .create(&ActionWriteRequest { definition, script })
+        {
+            show_error_dialog(button, "Unable to duplicate the action", &error.to_string());
         }
     }
 
@@ -516,7 +522,6 @@ impl PageState {
     }
 }
 
-/// Which button of an action row was clicked.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ActionRowAction {
     Edit,
@@ -538,7 +543,6 @@ fn problem_row(failure: &ActionLoadFailure) -> gtk::Box {
     row
 }
 
-/// A plain informational dialog, used for import/export results.
 fn show_notice(anchor: &impl IsA<gtk::Widget>, title: &str, detail: &str) {
     let Some(host) = ModalHost::blurred_for(anchor) else {
         return;
@@ -572,11 +576,11 @@ enum EditorMode {
     Edit,
 }
 
-/// The editor form. Fields mirror the manifest; validation runs before a write,
-/// so an invalid definition never reaches the store.
 #[derive(Clone)]
 struct EditorForm {
     mode: EditorMode,
+    original_conditions: ActionConditions,
+    original_arguments: Vec<String>,
     root: gtk::Box,
     error: gtk::Label,
     tabs: gtk::Notebook,
@@ -643,8 +647,7 @@ impl EditorForm {
                 }
             });
         }
-        // Renaming an id would create a second action rather than renaming this
-        // one, so an existing action keeps its identity.
+        // Changing the id would create another directory, not rename the action.
         id.set_editable(mode == EditorMode::Create);
         id.set_sensitive(mode == EditorMode::Create);
         let description = form_entry();
@@ -942,6 +945,8 @@ impl EditorForm {
 
         Self {
             mode,
+            original_conditions: definition.when.clone(),
+            original_arguments: definition.run.args.clone(),
             root,
             error,
             tabs,
@@ -1044,8 +1049,6 @@ impl EditorForm {
         message.into()
     }
 
-    /// Builds the definition and script the store will write, or explains why it
-    /// cannot.
     fn read(&self) -> Result<(ActionDefinition, Option<ActionScript>), String> {
         let name = self.name.text().trim().to_owned();
         if name.is_empty() {
@@ -1105,8 +1108,6 @@ impl EditorForm {
         };
         let runtime = self.selected_runtime.get();
         let is_script = runtime != ActionRuntime::Command;
-        // Report the empty field the user can see, rather than the manifest
-        // vocabulary the model would use for a hand-written file.
         if !is_script && self.program.text().trim().is_empty() {
             return Err(self.invalid_field(SCRIPT_TAB, &self.program, "Enter the program to run"));
         }
@@ -1146,8 +1147,8 @@ impl EditorForm {
                     })
                     .filter(|extension| !extension.is_empty())
                     .collect(),
-                mime_types: Vec::new(),
-                min_items: 1,
+                mime_types: self.original_conditions.mime_types.clone(),
+                min_items: self.original_conditions.min_items,
                 max_items,
             },
             run: RunSpec {
@@ -1156,12 +1157,12 @@ impl EditorForm {
                 program: (!is_script).then(|| self.program.text().trim().to_owned()),
                 args: if is_script {
                     Vec::new()
+                } else if arguments == self.original_arguments.join("\n") {
+                    self.original_arguments.clone()
+                } else if arguments.is_empty() {
+                    Vec::new()
                 } else {
-                    arguments
-                        .lines()
-                        .map(|line| line.trim().to_owned())
-                        .filter(|line| !line.is_empty())
-                        .collect()
+                    arguments.split('\n').map(str::to_owned).collect()
                 },
                 mode: self.selected_mode.get(),
                 on_error: self.selected_policy.get(),
@@ -1169,7 +1170,6 @@ impl EditorForm {
                 confirm: self.confirm.is_active(),
             },
         };
-        // Validate here so the dialog reports a precise problem before writing.
         definition.validate().map_err(|error| {
             let (tab, field): (_, &gtk::Widget) = match &error {
                 ActionError::InvalidId(_) => (GENERAL_TAB, self.id.upcast_ref()),
@@ -1432,7 +1432,6 @@ fn bash_template() -> &'static str {
     "#!/usr/bin/env bash\nwhile IFS= read -r -d '' path; do\n    printf 'Processing %s\\n' \"$path\"\ndone < \"$STRATA_ACTION_PATHS\"\n"
 }
 
-/// A blank definition for a new action, before the editor fills it in.
 fn draft_definition(runtime: ActionRuntime, mode: ExecutionMode) -> ActionDefinition {
     ActionDefinition {
         schema_version: ACTION_SCHEMA_VERSION,
@@ -1497,20 +1496,28 @@ fn copy_name(name: &str) -> String {
         .collect()
 }
 
-fn unique_copy_id(registry: &ActionRegistry, id: &str) -> String {
+fn unique_copy_id(registry: &ActionRegistry, id: &str) -> Result<String, String> {
+    let catalog = registry.reload();
     for suffix in 0..1000 {
-        let candidate = if suffix == 0 {
-            format!("{id}-copy")
+        let suffix = if suffix == 0 {
+            "-copy".to_owned()
         } else {
-            format!("{id}-copy-{suffix}")
+            format!("-copy-{suffix}")
         };
-        let candidate: String = candidate
+        let stem: String = id
             .chars()
-            .take(crate::model::MAX_ACTION_ID_CHARS)
+            .take(crate::model::MAX_ACTION_ID_CHARS - suffix.len())
             .collect();
-        if registry.catalog().get(&candidate).is_none() {
-            return candidate;
+        let candidate = format!("{stem}{suffix}");
+        if candidate != id
+            && catalog.get(&candidate).is_none()
+            && !catalog
+                .failures()
+                .iter()
+                .any(|failure| failure.directory == candidate)
+        {
+            return Ok(candidate);
         }
     }
-    id.to_owned()
+    Err(format!("No free action name is available for “{id}”"))
 }

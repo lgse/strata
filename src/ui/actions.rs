@@ -1,13 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Shared custom-action state for the UI layer.
-//!
-//! One registry serves the whole process, like [`crate::ui::theme::ThemeManager`],
-//! so a menu, Settings, and every window see the same definitions and edits apply
-//! without a restart. This module also owns the two translation steps the UI needs
-//! and nothing else does: turning selected entries into matchable inputs, and
-//! turning a matched action into a queued job.
-
 use std::{
     cell::RefCell,
     path::PathBuf,
@@ -34,11 +26,6 @@ thread_local! {
     static SHARED_REGISTRY: RefCell<Weak<ActionRegistry>> = const { RefCell::new(Weak::new()) };
 }
 
-/// The one action registry for this process.
-///
-/// Definitions live in `$XDG_CONFIG_HOME/strata/actions`, which is user-owned and
-/// hand-editable, so the registry reloads after every edit and treats load
-/// problems as reportable state rather than fatal errors.
 pub(crate) fn shared() -> Rc<ActionRegistry> {
     SHARED_REGISTRY.with(|shared| {
         if let Some(registry) = shared.borrow().upgrade() {
@@ -50,10 +37,7 @@ pub(crate) fn shared() -> Rc<ActionRegistry> {
     })
 }
 
-/// Bundled Lucide icons an action may choose, as `(manifest slug, asset name)`.
-///
-/// Only bundled icons are listed, so a theme change re-colors them through
-/// `assets::primary_icon` instead of leaving a fallback-colored image behind.
+/// Manifest slugs paired with bundled Lucide assets.
 pub(crate) const ACTION_ICON_CHOICES: &[(&str, &str)] = &[
     ("play", icons::PLAY),
     ("terminal", icons::TERMINAL),
@@ -83,7 +67,6 @@ pub(crate) const ACTION_ICON_CHOICES: &[(&str, &str)] = &[
 
 pub(crate) const DEFAULT_ACTION_ICON: &str = icons::PLAY;
 
-/// Resolves a manifest icon slug to a bundled asset, falling back to a default.
 pub(crate) fn action_icon(icon: Option<&str>) -> &'static str {
     icon.and_then(|slug| {
         ACTION_ICON_CHOICES
@@ -100,10 +83,6 @@ pub(crate) fn is_known_action_icon(slug: &str) -> bool {
         .any(|(candidate, _)| *candidate == slug)
 }
 
-/// Matchable inputs for a selection, or `None` when no action can apply.
-///
-/// Custom actions are local-only in this release, so a selection containing a
-/// remote location offers nothing rather than silently acting on a subset.
 pub(crate) fn inputs_for_entries(entries: &[FileEntry]) -> Option<Vec<ActionInput>> {
     if entries.is_empty() {
         return None;
@@ -125,7 +104,6 @@ fn entry_input(entry: &FileEntry) -> Option<ActionInput> {
     })
 }
 
-/// Matchable input for the folder a background context menu was opened on.
 pub(crate) fn folder_input(location: &Location) -> Option<ActionInput> {
     location.native_path()?;
     Some(ActionInput::folder(location.file_name()?))
@@ -135,14 +113,12 @@ fn content_type_for(kind: InputKind, name: &std::ffi::OsStr) -> Option<String> {
     if kind == InputKind::Folder {
         return Some(FOLDER_CONTENT_TYPE.to_owned());
     }
-    // The guess inspects the file name only; matching rules that need real
-    // content stay out of scope, so opening a menu never reads file data.
+    // Menu matching must not read file contents.
     let guessed_name = name.to_string_lossy();
     let (guessed, _) = gio::content_type_guess(Some(guessed_name.as_ref()), None::<&[u8]>);
     (!guessed.is_empty()).then(|| guessed.to_string())
 }
 
-/// Paths for an invocation, or `None` when any input is not a native path.
 pub(crate) fn native_paths(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
     entries
         .iter()
@@ -150,7 +126,6 @@ pub(crate) fn native_paths(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
         .collect()
 }
 
-/// Queues an action for `paths`, confirming first when the action asks for it.
 pub(crate) fn run_action(
     anchor: &impl IsA<gtk::Widget>,
     action: Rc<ActionHandle>,
@@ -185,10 +160,6 @@ fn enqueue(
     }
 }
 
-/// Asks before running an action that declared `confirm = true`.
-///
-/// This is the author's request for a speed bump, not a security boundary: the
-/// script still runs with the user's permissions once confirmed.
 fn confirm_and_run(
     anchor: &impl IsA<gtk::Widget>,
     action: Rc<ActionHandle>,
@@ -201,13 +172,10 @@ fn confirm_and_run(
         blurred_root,
     }) = ModalHost::blurred_for(anchor)
     else {
-        enqueue(
+        show_error_dialog(
             anchor,
-            &super::jobs::shared(),
-            action,
-            paths,
-            parent,
-            source,
+            "Unable to confirm action",
+            "Open the action from a browser window.",
         );
         return;
     };

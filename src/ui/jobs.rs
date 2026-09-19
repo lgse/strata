@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The Jobs surface: a collapsed indicator in the shortcut footer plus a
-//! minimizable dashboard anchored to it.
-//!
-//! Two rules shape this file:
-//!
-//! 1. **Dismissing the dashboard never cancels work.** Escape, clicking away, and
-//!    Minimize only hide the popover; cancellation is its own control.
-//! 2. **Jobs outlive the UI.** The service is process-wide and keeps running when
-//!    the footer hides its hint bar, when the browser navigates, and when the
-//!    popover is dismissed.
-
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
@@ -28,24 +17,15 @@ type RefreshCallback = Rc<dyn Fn()>;
 type RefreshHolder = Rc<RefCell<Option<RefreshCallback>>>;
 type ObserverHolder = Rc<RefCell<Option<ListenerGuard<RefreshCallback>>>>;
 
-/// How often runner events are applied and the dashboard is refreshed.
 const PUMP_INTERVAL: Duration = Duration::from_millis(120);
-/// Rows rendered in one dashboard build. History is already bounded; this keeps
-/// the widget tree small even if a future cap is raised.
 const MAX_ROWS: usize = 12;
 
 thread_local! {
-    /// One service for the process, deliberately never released: jobs are
-    /// application state and must outlive every window that can display them.
+    // Jobs must survive navigation and individual window closure.
     static SHARED_JOBS: RefCell<Option<Rc<JobService>>> = const { RefCell::new(None) };
     static PUMP_INSTALLED: Cell<bool> = const { Cell::new(false) };
 }
 
-/// The one job service for this process.
-///
-/// Creating the service is thread-agnostic; driving it is not. [`install_pump`]
-/// attaches the main-loop source and is only called from window composition, so
-/// the GTK thread owns the timer that dispatches into the UI.
 pub(crate) fn shared() -> Rc<JobService> {
     SHARED_JOBS.with(|shared| {
         let mut shared = shared.borrow_mut();
@@ -58,15 +38,11 @@ pub(crate) fn shared() -> Rc<JobService> {
     })
 }
 
-/// Opens the dashboard in the window that launched the action, not every window.
 pub(crate) fn present_for(anchor: &impl IsA<gtk::Widget>, id: JobId) {
     let _ = anchor.activate_action("jobs.show", Some(&id.0.to_variant()));
 }
 
-/// Starts applying runner events on the GTK main loop.
-///
-/// A GLib source is bound to the thread that creates it, so this runs from window
-/// composition rather than from whatever code first needed the service.
+// Install from window composition: GLib binds the source to its creating thread.
 fn install_pump(service: &Rc<JobService>) {
     if PUMP_INSTALLED.replace(true) {
         return;
@@ -78,7 +54,6 @@ fn install_pump(service: &Rc<JobService>) {
     });
 }
 
-/// Shared, widget-free state for one dashboard instance.
 struct DashboardState {
     service: Rc<JobService>,
     expanded: Rc<RefCell<HashSet<JobId>>>,
@@ -86,14 +61,12 @@ struct DashboardState {
     featured: Rc<Cell<Option<JobId>>>,
 }
 
-/// A footer indicator plus its dashboard.
 pub(crate) struct JobsIndicator {
     root: gtk::MenuButton,
     label: gtk::Label,
     clear: gtk::Button,
     scroll: gtk::ScrolledWindow,
     state: DashboardState,
-    /// Keeps the refresh callback alive without creating a reference cycle.
     refresh_holder: RefreshHolder,
 }
 
@@ -163,8 +136,7 @@ impl JobsIndicator {
         popover.set_child(Some(&body));
         root.set_popover(Some(&popover));
 
-        // The refresh callback holds only weak widget references, so the rows it
-        // builds can capture it without creating a cycle through the widget tree.
+        // Rows retain this callback; widget references must stay weak to avoid cycles.
         let refresh_holder: RefreshHolder = Rc::new(RefCell::new(None));
         let weak_holder = Rc::downgrade(&refresh_holder);
         let weak_list = list.downgrade();
@@ -198,13 +170,11 @@ impl JobsIndicator {
         let clear_service = state.service.clone();
         let clear_refresh = refresh.clone();
         clear.connect_clicked(move |_| {
-            // Clearing history must not disturb running work.
             if clear_service.clear_finished() {
                 clear_refresh();
             }
         });
 
-        // Rebuild only when someone can see the result.
         let show_refresh = refresh.clone();
         let show_state = DashboardState {
             service: state.service.clone(),
@@ -221,9 +191,6 @@ impl JobsIndicator {
             hide_dirty.replace(true);
         });
 
-        // Escape and outside clicks dismiss the dashboard; they never cancel a
-        // job, so the "Escape cancels" behaviour of the progress dialogs stays
-        // out of this surface.
         let escape = gtk::EventControllerKey::new();
         let weak_popover = popover.downgrade();
         escape.connect_key_pressed(move |_, key, _, _| {
@@ -291,9 +258,24 @@ impl JobsIndicator {
         let group = gio::SimpleActionGroup::new();
         group.add_action(&action);
         window.insert_action_group("jobs", Some(&group));
+        if let Some(window) = window.as_ref().downcast_ref::<gtk::Window>() {
+            let service = self.state.service.clone();
+            window.connect_close_request(move |window| {
+                let last_window = window.application()
+                    .is_some_and(|application| application.windows().len() == 1);
+                if last_window && service.running_count() + service.queued_count() > 0 {
+                    crate::ui::modal::show_error_dialog(
+                        window,
+                        "Background jobs are still active",
+                        "Wait for Jobs to finish, or cancel them in the Jobs dashboard before closing the last window. Cancellation does not undo file changes.",
+                    );
+                    return glib::Propagation::Stop;
+                }
+                glib::Propagation::Proceed
+            });
+        }
     }
 
-    /// Keeps the subscription alive exactly as long as the widget.
     fn subscribe(&self) {
         let weak_label = self.label.downgrade();
         let weak_root = self.root.downgrade();
@@ -314,7 +296,6 @@ impl JobsIndicator {
             if let Some(clear) = weak_clear.upgrade() {
                 clear.set_visible(service.finished_count() > 0);
             }
-            // Refresh rows only when they can be seen.
             if let Some(root) = weak_root.upgrade()
                 && root.popover().is_some_and(|popover| popover.is_visible())
                 && let Some(holder) = weak_refresh.upgrade()
@@ -344,8 +325,6 @@ impl JobsIndicator {
     }
 }
 
-/// Builds the visible rows. Called from the popover's show handler and from any
-/// row control that changes state.
 fn render_rows(
     list: &gtk::Box,
     clear: &gtk::Button,
@@ -548,7 +527,6 @@ fn job_controls(
     buttons
 }
 
-/// Collapsed summary. Never mixes active work with finished history.
 pub(crate) fn indicator_label(service: &JobService) -> String {
     let running = service.running_count();
     let queued = service.queued_count();
@@ -615,7 +593,6 @@ fn meta_label(snapshot: &JobSnapshot) -> String {
     parts.join(" · ")
 }
 
-/// Home-relative folder label, so long paths stay readable in the row.
 fn compact_home(path: &std::path::Path) -> String {
     let home = glib::home_dir();
     match path.strip_prefix(&home) {
@@ -644,7 +621,6 @@ fn plural(count: usize, singular: &'static str, plural: &'static str) -> &'stati
     if count == 1 { singular } else { plural }
 }
 
-/// Icon name for a job row, kept beside the indicator so both agree.
 pub(crate) fn job_icon(snapshot: &JobSnapshot) -> &'static str {
     action_icon(snapshot.icon.as_deref())
 }

@@ -4,7 +4,7 @@ Custom actions add your own scripts to the file and folder context menus.
 
 They are ordinary programs running with your permissions. There is no sandbox and
 no install step beyond enabling an action. Strata validates the definition and the
-files around it, prepares a private working directory, and reports progress and
+files around it, prepares private invocation files, and reports progress and
 results; it does not restrict what a script may do.
 
 ## Where actions live
@@ -43,6 +43,10 @@ Choose **Settings → Actions → New action…**. The editor has three tabs:
 that tab without discarding your edits. Clicking outside the dialog leaves it open;
 **Cancel**, the close button, or **Escape** discards the draft.
 Existing actions use the same editor with **Save changes**; their id stays fixed.
+Creating or duplicating an action never replaces an existing action directory.
+Manifest-only MIME filters and minimum selection counts survive editor saves.
+Command arguments preserve literal whitespace and empty lines; unchanged arguments
+containing embedded newlines are also retained.
 
 ### Script examples
 
@@ -184,7 +188,7 @@ confirm = false
 | `[run].mode` | `whole-selection` (default) invokes once with every path; `per-item` invokes once per path. |
 | `[run].on_error` | `continue` (default) or `stop`, used by `per-item` runs. |
 | `[run].working_directory` | `parent` (default), `home`, or `action`. |
-| `[run].confirm` | Ask before each invocation. |
+| `[run].confirm` | Ask once before queuing the entire job. |
 
 Validation is strict: unknown keys, unsupported versions, invalid ids, entrypoints
 that are not a plain file name, and argument tokens that do not match the execution
@@ -209,7 +213,7 @@ read as a command or as an option such as `-rf`.
 | Environment variable | Contents |
 | --- | --- |
 | `STRATA_ACTION_VERSION` | Protocol version, currently `1`. |
-| `STRATA_ACTION_ID`, `STRATA_ACTION_NAME` | Definition identity. |
+| `STRATA_ACTION_ID` | Definition identity; the display name is in context JSON. |
 | `STRATA_ACTION_MODE` | `per-item` or `whole-selection`. |
 | `STRATA_ACTION_SOURCE` | `selection` or `background`. |
 | `STRATA_ACTION_COUNT`, `STRATA_ACTION_POSITION` | Input count, and 1-based position for per-item runs. |
@@ -309,7 +313,13 @@ reopens finished history when clicked.
 Minimizing, pressing Escape, or clicking away only hides the dashboard. Progress
 and completion updates do not reopen it; launching another action does.
 Cancellation is its own button and signals the whole process group, escalating
-to SIGKILL if the process ignores SIGTERM.
+to SIGKILL if the process ignores SIGTERM. Closing the last application window
+is blocked while jobs are queued, running, or cancelling; finish or cancel them
+in Jobs first. Other windows may close without interrupting work.
+
+An invocation ends when its direct process exits. Output capture and scratch
+files are then closed without waiting for background descendants. Scripts should
+wait for subprocesses that need the invocation's context or captured output.
 
 Finished jobs stay in the dashboard for the current session, including successes,
 failures, and cancellations. **Details** expands captured output and **Hide**

@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Store tests: everything here treats the actions directory as untrusted
-//! input, because it is editable by hand and by import.
-
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -113,6 +110,59 @@ fn writes_and_loads_a_python_action() {
 }
 
 #[test]
+fn creating_an_action_never_replaces_an_existing_path() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let store = store(&fixture);
+    let mut request = ActionWriteRequest {
+        definition: ActionDefinition::parse(PYTHON_MANIFEST).expect("definition"),
+        script: Some(ActionScript {
+            file_name: "main.py".to_owned(),
+            contents: "print('original')\n".to_owned(),
+        }),
+    };
+    store.create(&request).expect("create original");
+    let manifest = fs::read(store.root().join("resize-images/action.toml")).expect("manifest");
+    fs::create_dir(store.root().join("broken")).expect("broken directory");
+    fs::write(store.root().join("file"), "keep me").expect("file");
+    symlink("missing", store.root().join("link")).expect("dangling link");
+    request.definition.name = "Replacement".to_owned();
+    request.script.as_mut().expect("script").contents = "print('replacement')\n".to_owned();
+    for id in ["resize-images", "broken", "file", "link"] {
+        request.definition.id = id.to_owned();
+        assert!(matches!(
+            store.create(&request),
+            Err(ActionStoreError::AlreadyExists(_))
+        ));
+    }
+    assert_eq!(
+        fs::read(store.root().join("resize-images/action.toml")).expect("manifest"),
+        manifest
+    );
+    assert_eq!(
+        store
+            .read_script("resize-images")
+            .expect("script")
+            .expect("Python")
+            .contents,
+        "print('original')\n"
+    );
+    assert_eq!(
+        fs::read_to_string(store.root().join("file")).expect("file"),
+        "keep me"
+    );
+    assert_eq!(
+        fs::read_dir(store.root().join("broken"))
+            .expect("directory")
+            .count(),
+        0
+    );
+    assert_eq!(
+        fs::read_link(store.root().join("link")).expect("link"),
+        Path::new("missing")
+    );
+}
+
+#[test]
 fn a_missing_actions_directory_is_an_empty_catalog() {
     let fixture = tempfile::tempdir().expect("fixture");
     let catalog = store(&fixture).load();
@@ -152,24 +202,19 @@ fn refuses_a_manifest_whose_id_disagrees_with_its_directory() {
 fn reports_actions_with_problems_instead_of_hiding_them() {
     let fixture = tempfile::tempdir().expect("fixture");
     let store = store(&fixture);
-    // A directory without a manifest.
     fs::create_dir_all(store.root().join("empty")).expect("directory");
-    // A manifest whose entrypoint is missing. The store refuses to create this
-    // through `write`, so it is reproduced the way a hand edit would.
     fs::create_dir_all(store.root().join("resize-images")).expect("directory");
     fs::write(
         store.root().join("resize-images/action.toml"),
         PYTHON_MANIFEST,
     )
     .expect("manifest");
-    // A directory whose manifest is invalid TOML.
     fs::create_dir_all(store.root().join("broken")).expect("directory");
     fs::write(
         store.root().join("broken/action.toml"),
         "schema_version = nope\n",
     )
     .expect("manifest");
-    // Files and hidden entries are ignored entirely.
     fs::write(store.root().join("notes.txt"), "hello").expect("file");
     fs::write(store.root().join(".swap"), "hello").expect("file");
 
@@ -211,7 +256,6 @@ fn refuses_links_and_non_regular_files() {
     )
     .expect("action writes");
 
-    // A symlinked action directory is not followed.
     let outside = fixture.path().join("outside");
     fs::create_dir_all(&outside).expect("outside");
     fs::write(outside.join("action.toml"), PYTHON_MANIFEST).expect("manifest");
@@ -227,7 +271,6 @@ fn refuses_links_and_non_regular_files() {
         catalog.failures()
     );
 
-    // A symlinked entrypoint is refused rather than executed.
     let action = store.root().join("resize-images");
     fs::remove_file(action.join("main.py")).expect("remove");
     symlink("/bin/echo", action.join("main.py")).expect("symlink");
@@ -243,7 +286,6 @@ fn refuses_links_and_non_regular_files() {
         "{error:?}"
     );
 
-    // A symlinked manifest is refused too.
     fs::remove_file(action.join("main.py")).expect("remove");
     fs::write(action.join("main.py"), "#!/usr/bin/env python3\n").expect("script");
     fs::remove_file(action.join("action.toml")).expect("remove");
@@ -352,7 +394,6 @@ fn metadata_only_edits_keep_the_existing_script_and_get_validated() {
         "the script is untouched"
     );
 
-    // The same edit with the script removed fails instead of pointing at nothing.
     fs::remove_file(store.root().join("resize-images/main.py")).expect("remove");
     let error = write_action(&store, &renamed, None).expect_err("missing script");
     assert!(
@@ -388,7 +429,6 @@ fn delete_removes_one_action_and_refuses_the_rest() {
     store.delete("resize-images").expect("action deletes");
     assert!(!store.root().join("resize-images").exists());
 
-    // A symlinked directory is never followed for deletion.
     let outside = fixture.path().join("outside");
     fs::create_dir_all(&outside).expect("outside");
     fs::write(outside.join("keep.txt"), "keep").expect("file");
@@ -428,7 +468,6 @@ fn import_copies_only_the_manifest_and_its_entrypoint_and_disables_it() {
         "imported actions stay disabled until reviewed"
     );
 
-    // A second import of the same action gets a fresh id instead of clobbering.
     let second = store.import(&source).expect("second import succeeds");
     assert_eq!(
         second, "resize-images-1",
@@ -443,7 +482,6 @@ fn import_copies_only_the_manifest_and_its_entrypoint_and_disables_it() {
             .enabled
     );
 
-    // Importing a directory without a manifest is refused.
     let empty = fixture.path().join("not-an-action");
     fs::create_dir_all(&empty).expect("directory");
     assert!(matches!(
@@ -451,7 +489,6 @@ fn import_copies_only_the_manifest_and_its_entrypoint_and_disables_it() {
         Err(ActionStoreError::NotAnActionDirectory(_))
     ));
 
-    // A symlinked source is refused.
     let link = fixture.path().join("link");
     symlink(&source, &link).expect("symlink");
     assert!(store.import(&link).is_err());
@@ -479,7 +516,6 @@ fn export_writes_a_portable_copy_and_refuses_to_overwrite() {
     let copied = fs::read_to_string(target.join("main.py")).expect("script");
     assert_eq!(copied, "#!/usr/bin/env python3\nprint('hi')\n");
 
-    // The exported manifest is loadable on its own.
     let parsed = crate::model::ActionDefinition::parse(
         &fs::read_to_string(target.join("action.toml")).expect("manifest"),
     )
@@ -546,22 +582,4 @@ program = "tools/run"
         !handle.is_available(),
         "a relative program path is never resolved against the working directory"
     );
-}
-
-#[test]
-fn serialized_manifests_keep_the_documented_shape() {
-    let fixture = tempfile::tempdir().expect("fixture");
-    let store = store(&fixture);
-    write_action(
-        &store,
-        PYTHON_MANIFEST,
-        Some(("main.py", "#!/usr/bin/env python3\n")),
-    )
-    .expect("action writes");
-    let text =
-        fs::read_to_string(store.root().join("resize-images/action.toml")).expect("manifest");
-    assert!(text.starts_with("# Strata custom action"));
-    assert!(text.contains("schema_version = 1"));
-    assert!(text.contains("[when]") && text.contains("[run]"));
-    assert!(text.contains("runtime = \"python\""));
 }

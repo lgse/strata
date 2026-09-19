@@ -64,8 +64,6 @@ pub(super) struct ShortcutFooter {
     popover: gtk::Popover,
     reference: gtk::Box,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
-    /// Everything that can keep the footer visible on its own, including the
-    /// Jobs indicator added later with [`ShortcutFooter::set_activity`].
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
 }
 
@@ -218,9 +216,6 @@ impl ShortcutFooter {
         &self.root
     }
 
-    /// Adds content that keeps the footer visible on its own, such as the Jobs
-    /// indicator. Keybinding hints and ongoing work are independent, so turning
-    /// hints off must never hide a running job.
     pub fn set_activity(&self, widget: &impl IsA<gtk::Widget>) {
         let widget = widget.as_ref().clone();
         self.root.insert_child_after(&widget, Some(&self.count));
@@ -460,8 +455,6 @@ fn selection_details(entries: &[crate::model::FileEntry]) -> String {
     text
 }
 
-/// The footer shows itself whenever any status widget is visible on its own,
-/// which is what lets the Jobs indicator outlive a disabled hints preference.
 fn watch_status_widget(
     widget: &gtk::Widget,
     status_widgets: &Rc<RefCell<Vec<gtk::Widget>>>,

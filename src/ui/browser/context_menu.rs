@@ -442,9 +442,6 @@ pub(in crate::ui) fn install_folder_context_menu(
         }
     });
 
-    // Custom actions for the folder this menu was opened on. The section is
-    // rebuilt on every open so it always describes the current catalog and the
-    // folder that is actually under the pointer.
     let action_section =
         actions::ActionMenuSection::new(actions::ActionMenuStyle::Folder, &popover);
     content.append(action_section.widget());
@@ -1159,8 +1156,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         focus_context_entry(&state, depth, position, &entry);
         target.replace(Some((position, entry.clone())));
         let entries = context_entries(&state, &target);
-        // The section captures this selection's paths, so an action can only run
-        // on the items the menu was opened for.
         action_section.rebuild_for_selection(
             &state,
             &entries,

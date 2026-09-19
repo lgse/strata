@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Bundled, editable recipes. Applying a recipe never executes it.
-
 use super::{ActionRuntime, ExecutionMode};
 
 const CONTEXT_API: &str = include_str!("../../../data/actions/context-api.txt");

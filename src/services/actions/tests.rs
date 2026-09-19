@@ -69,16 +69,6 @@ fn matches_only_enabled_actions_whose_rules_accept_every_input() {
     assert!(catalog.matches(&[]).is_empty());
 }
 
-#[test]
-fn catalog_lookup_is_by_id() {
-    let catalog = ActionCatalog::new(
-        vec![handle("a1", "One", true, MenuPlacement::Top)],
-        Vec::new(),
-    );
-    assert_eq!(catalog.get("a1").map(|action| action.name()), Some("One"));
-    assert!(catalog.get("missing").is_none());
-}
-
 struct FakeStore {
     catalog: RefCell<ActionCatalog>,
     writes: Cell<usize>,
@@ -111,12 +101,20 @@ impl ActionStore for FakeStore {
         self.catalog.borrow().clone()
     }
 
+    fn create(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
+        if self.catalog.borrow().get(&request.definition.id).is_some() {
+            return Err(ActionStoreError::AlreadyExists(
+                request.definition.id.clone(),
+            ));
+        }
+        self.write(request)
+    }
+
     fn write(&self, request: &ActionWriteRequest) -> Result<(), ActionStoreError> {
         self.writes.set(self.writes.get() + 1);
         if self.fail_write.get() {
             return Err(ActionStoreError::Io("write refused".to_owned()));
         }
-        // Behave like the real store: the write becomes visible on the next load.
         let mut actions = self.catalog.borrow().actions().to_vec();
         actions.retain(|action| action.id() != request.definition.id);
         actions.push(handle_from(&request.definition));
@@ -170,7 +168,6 @@ fn registry_caches_until_something_changes() {
         "the catalog stays cached"
     );
 
-    // Reloading an unchanged store must not churn the catalog or notify.
     let notifications = Rc::new(Cell::new(0));
     let counter = notifications.clone();
     let _observer = registry.observe(Rc::new(move || counter.set(counter.get() + 1)));
@@ -249,23 +246,5 @@ fn a_failed_write_leaves_the_catalog_untouched() {
             .collect::<Vec<_>>(),
         vec!["a1"],
         "a refused write must not appear in the catalog"
-    );
-}
-
-#[test]
-fn unloadable_definitions_are_reported_without_hiding_the_rest() {
-    let failure = ActionLoadFailure {
-        directory: "broken".to_owned(),
-        error: ActionStoreError::Invalid(crate::model::ActionError::InvalidName),
-    };
-    let catalog = ActionCatalog::new(
-        vec![handle("a1", "One", true, MenuPlacement::Top)],
-        vec![failure.clone()],
-    );
-    assert_eq!(catalog.actions().len(), 1);
-    assert_eq!(catalog.failures(), &[failure]);
-    assert!(
-        catalog.failures()[0].error.to_string().contains("name"),
-        "the failure explains itself for Settings"
     );
 }

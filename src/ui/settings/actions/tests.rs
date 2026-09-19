@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Editor tests. These cover the form's validation and the small pure helpers;
-//! the editor's appearance is reviewed with screenshots instead.
-
 use super::*;
 use crate::model::ActionRuntime;
 
@@ -59,7 +56,6 @@ fn the_editor_requires_a_name_and_reports_invalid_fields() {
             );
             assert_eq!(form.tabs.current_page(), Some(BEHAVIOR_TAB));
 
-            // The script file name is validated by the model, not the form.
             form.max_items.set_text("");
             form.entrypoint.set_text("../escape.py");
             assert!(
@@ -101,6 +97,19 @@ fn a_command_action_without_a_program_is_refused() {
             assert_eq!(definition.run.program.as_deref(), Some("make"));
             assert_eq!(definition.run.args, vec!["-C", "{paths}"]);
             assert!(script.is_none(), "command actions carry no script");
+            form.arguments.buffer().set_text(" padded \n\n{paths}");
+            assert_eq!(
+                form.read().expect("literal arguments").0.run.args,
+                [" padded ", "", "{paths}"]
+            );
+            let mut definition = definition;
+            definition.run.args = vec![" padded ".to_owned(), "".to_owned(), "one\ntwo".to_owned()];
+            let form = form_for(definition.clone(), None);
+            form.name.set_text("Renamed command");
+            assert_eq!(
+                form.read().expect("unchanged argv").0.run.args,
+                definition.run.args
+            );
         },
     );
 }
@@ -148,6 +157,8 @@ fn selection_rules_and_placement_round_trip_through_the_form() {
             definition.when.kinds = vec![InputKind::File];
             definition.when.extensions = vec!["png".to_owned(), "jpg".to_owned()];
             definition.when.max_items = Some(12);
+            definition.when.min_items = 2;
+            definition.when.mime_types = vec!["image/*".to_owned()];
             definition.menu = MenuPlacement::Top;
             definition.description = Some("Creates smaller copies".to_owned());
             definition.run.mode = ExecutionMode::PerItem;
@@ -159,6 +170,13 @@ fn selection_rules_and_placement_round_trip_through_the_form() {
             assert_eq!(read.when.kinds, vec![InputKind::File]);
             assert_eq!(read.when.extensions, vec!["png", "jpg"]);
             assert_eq!(read.when.max_items, Some(12));
+            let png = crate::model::ActionInput::file("a.png", Some("image/png"));
+            assert!(!read.when.matches(std::slice::from_ref(&png)));
+            assert!(read.when.matches(&[png.clone(), png.clone()]));
+            assert!(!read.when.matches(&[
+                png,
+                crate::model::ActionInput::file("b.png", Some("text/plain")),
+            ]));
             assert_eq!(read.menu, MenuPlacement::Top);
             assert_eq!(read.run.mode, ExecutionMode::PerItem);
             assert_eq!(read.run.on_error, ErrorPolicy::Stop);
@@ -475,14 +493,49 @@ fn summary_lines_describe_runtime_scope_and_problems() {
 
 #[test]
 fn duplicate_ids_avoid_collisions_and_stay_within_the_limit() {
-    let store = crate::adapters::LocalActionStore::at(std::path::PathBuf::from("/tmp/unused"));
-    let registry = std::rc::Rc::new(ActionRegistry::new(store));
-    assert_eq!(unique_copy_id(&registry, "resize"), "resize-copy");
-    assert_eq!(
-        unique_copy_id(&registry, &"x".repeat(crate::model::MAX_ACTION_ID_CHARS)),
+    let directory = tempfile::tempdir().expect("fixture");
+    let store = crate::adapters::LocalActionStore::at(directory.path().join("actions"));
+    let registry = ActionRegistry::new(store);
+    for id in [
+        "resize".to_owned(),
         "x".repeat(crate::model::MAX_ACTION_ID_CHARS),
-        "an over-long id is truncated rather than rejected"
-    );
+    ] {
+        let mut definition = python_draft();
+        definition.id = id.clone();
+        definition.name = "Original".to_owned();
+        let source = ActionWriteRequest {
+            definition,
+            script: Some(ActionScript {
+                file_name: "main.py".to_owned(),
+                contents: "print('original')\n".to_owned(),
+            }),
+        };
+        registry.create(&source).expect("source");
+        let original = directory
+            .path()
+            .join("actions")
+            .join(&id)
+            .join("action.toml");
+        let manifest = std::fs::read(&original).expect("original manifest");
+        for _ in 0..2 {
+            let mut copy = source.clone();
+            copy.definition.id = unique_copy_id(&registry, &id).expect("unused id");
+            assert_ne!(copy.definition.id, id);
+            assert!(crate::model::valid_action_id(&copy.definition.id));
+            copy.definition.name = "Copy".to_owned();
+            registry
+                .create(&copy)
+                .expect("copy saves without collision");
+        }
+        assert_eq!(
+            std::fs::read(&original).expect("original retained"),
+            manifest
+        );
+        assert_eq!(
+            registry.read_script(&id).expect("source script"),
+            source.script
+        );
+    }
     assert_eq!(copy_name("Resize"), "Resize copy");
     assert!(copy_name(&"n".repeat(200)).chars().count() <= crate::model::MAX_ACTION_NAME_CHARS);
 }

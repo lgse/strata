@@ -7,7 +7,7 @@ command -v wc >/dev/null 2>&1 || {
 }
 
 # STRATA_ACTION_PATHS contains NUL-delimited absolute paths, not shell words.
-# Whole-selection mode produces one total. wc -l counts newline characters.
+# wc -l counts newline characters, not an unterminated final line.
 total=0
 files=0
 while IFS= read -r -d '' path; do

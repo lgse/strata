@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MIT
 
-# Edit this pattern, or replace new_name() with your own naming logic.
 PATTERN = "{index:03d}_{filename}"
 
 

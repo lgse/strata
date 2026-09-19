@@ -564,7 +564,8 @@ for index, path in enumerate(ctx.paths, start=1):
   `ctx.run_directory`: private temporary scratch, removed after the invocation.
 - `ctx.log()`, `ctx.progress(processed, total=None, message=None)`, and
   `ctx.output(absolute_path)` report to Jobs. `output()` only reports a location;
-  the script must create it. `ctx.require_tool(name)` explains missing dependencies.
+  the script must create it. Import `require_tool(name)` from `strata_actions` to
+  explain missing dependencies.
 
 See the complete maintained [`context()` reference](data/actions/context-api.txt)
 for identity, metadata, mode/source, and tool lookup. The **Batch rename** and

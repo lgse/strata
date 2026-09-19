@@ -5592,10 +5592,6 @@ popover.settings-search-popover.background {
   box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
 }
 
-/* Custom actions: context-menu section, Settings manager, and the Jobs surface.
-   Every state uses semantic theme tokens so bundled, custom, and Omarchy themes
-   all recolor these consistently. */
-
 .context-menu-actions {
   min-width: 0;
 }
@@ -5778,8 +5774,6 @@ popover.settings-search-popover.background {
   color: @theme_danger;
 }
 
-/* A lone message inside a settings group pads itself: rows supply their own
-   padding, so an empty state would otherwise touch the group border. */
 .settings-actions-empty {
   padding: 14px 18px;
 }

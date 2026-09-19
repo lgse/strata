@@ -9,8 +9,7 @@ import stat
 
 from strata_actions import context
 
-# Linux's atomic no-replace operation also protects against a destination that
-# appears after preflight. Never fall back to os.rename(), which can overwrite.
+# Never fall back to os.rename(): destinations can appear after preflight.
 try:
     renameat2 = ctypes.CDLL(None, use_errno=True).renameat2
 except AttributeError as error:
@@ -61,8 +60,7 @@ with ExitStack() as handles:
                 raise FileExistsError(f"Destination already exists: {source.with_name(name)!s}")
         plan.append((directory, source, name))
 
-    # Whole-selection mode validates the entire plan before changing any names.
-    # Each rename is atomic, but cancellation or an I/O error can leave a partial batch.
+    # Individual renames are atomic; the batch is not.
     ctx.progress(0, len(plan), "Renaming files")
     for completed, (directory, source, name) in enumerate(plan, start=1):
         if name == source.name:

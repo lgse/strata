@@ -1,19 +1,5 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Helper for Strata custom actions.
-
-Copying this import into a script is optional: the documented contract is the
-environment variables and files below, and any language can implement it.
-
-    from strata_actions import context
-
-    ctx = context()
-    for index, path in enumerate(ctx.paths, start=1):
-        process(path)
-        ctx.progress(index, len(ctx.paths), "Processing files")
-
-Standard library only. No pip install is required.
-"""
 
 from __future__ import annotations
 
@@ -39,13 +25,12 @@ _ENV = {
     "action_id": "STRATA_ACTION_ID",
 }
 
-# Keep in step with the runner: messages are bounded, and events are validated.
 MAX_MESSAGE_CHARS = 512
 MAX_UNITS = 1_000_000
 
 
 class ContextError(RuntimeError):
-    """Raised when a script is not running under Strata (or not as expected)."""
+    pass
 
 
 def _env(name: str) -> Optional[str]:
@@ -54,7 +39,6 @@ def _env(name: str) -> Optional[str]:
 
 
 def _read_paths(path: Optional[str]) -> list:
-    """Reads NUL-delimited paths, preserving bytes that are not valid UTF-8."""
     if not path:
         return []
     with open(path, "rb") as handle:
@@ -71,8 +55,6 @@ def _read_single_path(path: Optional[str]) -> Optional[str]:
 
 
 class Context:
-    """Invocation details and progress reporting for one action invocation."""
-
     def __init__(self) -> None:
         version = _env("version")
         if version is None:
@@ -112,7 +94,7 @@ class Context:
 
     @property
     def total(self) -> Optional[int]:
-        """Total invocations in this job, when Strata knows it."""
+        """Job-wide count in per-item mode, unlike invocation-local count."""
         position = self.metadata.get("position")
         if isinstance(position, str) and "," in position:
             _, _, total = position.partition(",")
@@ -122,13 +104,11 @@ class Context:
 
     @property
     def single(self) -> Optional[str]:
-        """The one selected path, for per-item invocations."""
         if len(self.paths) == 1:
             return self.paths[0]
         return None
 
     def paths_bytes(self) -> Iterable[bytes]:
-        """Selected paths as raw bytes, for tools that need exact names."""
         return [os.fsencode(path) for path in self.paths]
 
     def progress(
@@ -137,12 +117,7 @@ class Context:
         total: Optional[int] = None,
         message: Optional[str] = None,
     ) -> None:
-        """Reports measurable progress for the current invocation.
-
-        Whole-selection actions usually report units of their own work; Strata
-        shows them as the job's progress. Unmodified commands that never call
-        this stay "Running" with an indeterminate indicator.
-        """
+        """Counts describe this invocation, not the entire per-item job."""
         event = {"event": "progress", "processed": _units(processed)}
         if total is not None:
             event["total"] = _units(total)
@@ -151,17 +126,12 @@ class Context:
         self._emit(event)
 
     def output(self, path: str) -> None:
-        """Reports a location this invocation created.
-
-        Only absolute paths are meaningful to Strata; relative paths are ignored
-        rather than resolved against an assumption about the working directory.
-        """
+        """Reporting only; this does not create a file."""
         if not path or not os.path.isabs(path):
             return
         self._emit({"event": "output", "path": path})
 
     def log(self, message: str) -> None:
-        """Writes a line to this job's captured output."""
         print(message, flush=True)
 
     def _emit(self, event: dict) -> None:
@@ -192,19 +162,16 @@ def _message(message: str) -> str:
 
 
 def context() -> Context:
-    """Returns the invocation context for the running action."""
     return Context()
 
 
 def find_tool(name: str) -> Optional[str]:
-    """Returns the absolute path of `name` on PATH, or None."""
     from shutil import which
 
     return which(name)
 
 
 def require_tool(name: str) -> str:
-    """Returns the absolute path of `name`, or exits with a clear message."""
     found = find_tool(name)
     if found is None:
         raise ContextError(

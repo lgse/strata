@@ -1,17 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Custom action definitions: the portable, user-authored `action.toml` contract.
-//!
-//! This module is deliberately pure. It parses, validates, and matches action
-//! definitions, but never touches the filesystem, the process table, PATH, or
-//! widgets. Filesystem discovery, interpreter resolution, and process execution
-//! live in `adapters::local_actions` and `adapters::local_jobs`.
-//!
-//! A value of [`ActionDefinition`] can only be produced through [`ActionDefinition::parse`],
-//! so an existing definition is always schema-valid. Filesystem-dependent checks
-//! (does the entrypoint exist? is the interpreter installed?) are applied by the
-//! store once it re-reads the script's shebang.
-
 use std::{
     ffi::OsStr,
     fmt,
@@ -22,7 +10,6 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) mod examples;
 
-/// Version of the `action.toml` schema this build understands.
 pub const ACTION_SCHEMA_VERSION: u32 = 1;
 
 pub const MAX_ACTION_ID_CHARS: usize = 64;
@@ -36,15 +23,11 @@ pub const MAX_MIME_TYPES: usize = 64;
 pub const MAX_ARGUMENTS: usize = 32;
 pub const MAX_ARGUMENT_CHARS: usize = 512;
 pub const MAX_ITEMS_PER_ACTION: usize = 10_000;
-/// Longest script prefix inspected for a shebang line.
 pub const MAX_SHEBANG_BYTES: usize = 256;
 
-/// Marker appended to a generated manifest so hand-edits keep their bearings.
 pub const MANIFEST_HEADER: &str = "\
-# Strata custom action. See docs/custom-actions.md.
-# Edited by Settings → Actions, but hand-editing is supported.";
+# See docs/custom-actions.md.";
 
-/// A validated custom action definition.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionDefinition {
@@ -65,7 +48,6 @@ pub struct ActionDefinition {
     pub run: RunSpec,
 }
 
-/// Whether the action appears inline or inside the actions submenu.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MenuPlacement {
@@ -74,14 +56,12 @@ pub enum MenuPlacement {
     Top,
 }
 
-/// Which interpreter or program runs the action.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ActionRuntime {
     #[default]
     Python,
     Bash,
-    /// An existing executable plus explicit argument tokens.
     Command,
 }
 
@@ -104,18 +84,14 @@ impl ActionRuntime {
     }
 }
 
-/// Whether the action runs once per input or once for the whole selection.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ExecutionMode {
-    /// One invocation carrying every selected path.
     #[default]
     WholeSelection,
-    /// One invocation per selected path, with per-item progress and failure policy.
     PerItem,
 }
 
-/// What to do after a failed invocation in [`ExecutionMode::PerItem`].
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorPolicy {
@@ -124,7 +100,6 @@ pub enum ErrorPolicy {
     Stop,
 }
 
-/// Directory an invocation starts in.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkingDirectory {
@@ -132,11 +107,9 @@ pub enum WorkingDirectory {
     #[default]
     Parent,
     Home,
-    /// The action's own directory.
     Action,
 }
 
-/// The kind of file-system entry an action can act on.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InputKind {
@@ -144,7 +117,6 @@ pub enum InputKind {
     Folder,
 }
 
-/// Declarative applicability rules. Evaluating these never runs user code.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionConditions {
@@ -175,7 +147,6 @@ impl Default for ActionConditions {
     }
 }
 
-/// How an invocation is started.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunSpec {
@@ -195,16 +166,10 @@ pub struct RunSpec {
     pub on_error: ErrorPolicy,
     #[serde(default)]
     pub working_directory: WorkingDirectory,
-    /// Ask before each invocation.
     #[serde(default)]
     pub confirm: bool,
 }
 
-/// One expanded argument for an [`ActionRuntime::Command`] invocation.
-///
-/// Paths reach the program as separate, absolute argv entries. Nothing is ever
-/// interpolated into shell source, and no token expands a bare file name, so a
-/// selected file cannot inject an option such as `-rf`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ArgumentToken {
     Literal(String),
@@ -224,7 +189,6 @@ impl ArgumentToken {
     ];
 }
 
-/// An interpreter declared by a script shebang.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Interpreter {
     pub program: String,
@@ -238,7 +202,6 @@ pub enum InterpreterFamily {
     Other,
 }
 
-/// Why a definition could not be loaded.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActionError {
     Toml(String),
@@ -378,17 +341,14 @@ impl fmt::Display for ActionError {
 
 impl std::error::Error for ActionError {}
 
-/// One selected entry offered to action matching.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ActionInput {
     pub kind: InputKind,
-    /// Native name, kept byte-exact so unusual names still match correctly.
     pub name: std::ffi::OsString,
     /// Content type guessed by the caller; `None` when unknown.
     pub content_type: Option<String>,
 }
 
-/// Content type every folder reports to matching rules.
 pub const FOLDER_CONTENT_TYPE: &str = "inode/directory";
 
 impl ActionInput {
@@ -409,7 +369,6 @@ impl ActionInput {
         }
     }
 
-    /// Lowercase extension without the dot, taken byte-exactly from the native name.
     #[cfg(test)]
     pub fn extension(&self) -> Option<String> {
         let extension = extension_bytes(&self.name)?;
@@ -445,7 +404,6 @@ fn ascii_eq_ignore_case(left: &[u8], right: &[u8]) -> bool {
 }
 
 impl ActionDefinition {
-    /// Parses and validates a manifest. The returned value is always schema-valid.
     pub fn parse(source: &str) -> Result<Self, ActionError> {
         let definition: Self = toml::from_str(source)
             .map_err(|error| ActionError::Toml(error.message().to_owned()))?;
@@ -453,7 +411,6 @@ impl ActionDefinition {
         Ok(definition)
     }
 
-    /// Serializes a manifest for `action.toml`, including the generated-file header.
     pub fn to_manifest(&self) -> Result<String, ActionError> {
         let body = self.validate().and_then(|()| {
             toml::to_string_pretty(self).map_err(|error| ActionError::Serialize(error.to_string()))
@@ -486,9 +443,7 @@ impl ActionDefinition {
         Ok(())
     }
 
-    /// Resolves the interpreter a script declares, if the manifest is consistent with it.
-    ///
-    /// `Ok(None)` means the script has no shebang and the runtime default applies.
+    /// `Ok(None)` selects the runtime default when no shebang is present.
     pub fn interpreter_for_source(&self, source: &str) -> Result<Option<Interpreter>, ActionError> {
         self.run.interpreter_for_source(source)
     }
@@ -502,10 +457,6 @@ fn validate_id(id: &str) -> Result<(), ActionError> {
     }
 }
 
-/// Whether `id` is a safe single directory component for an action.
-///
-/// The store relies on this to keep writes and deletions confined to one child
-/// of the actions directory.
 pub fn valid_action_id(id: &str) -> bool {
     let mut characters = id.chars();
     id.chars().count() <= MAX_ACTION_ID_CHARS
@@ -536,8 +487,6 @@ fn valid_icon(icon: &str) -> bool {
 }
 
 impl ActionConditions {
-    /// Whether every input satisfies the conditions, so a mixed selection never
-    /// silently drops entries an author did not intend to skip.
     pub fn matches(&self, inputs: &[ActionInput]) -> bool {
         if inputs.is_empty() || inputs.len() < self.min_items {
             return false;
@@ -654,7 +603,6 @@ impl RunSpec {
             .flatten()
     }
 
-    /// Argument tokens for [`ActionRuntime::Command`]; empty for scripts.
     pub fn argument_tokens(&self) -> Result<Vec<ArgumentToken>, ActionError> {
         if self.runtime != ActionRuntime::Command {
             return Ok(Vec::new());
@@ -662,9 +610,6 @@ impl RunSpec {
         parse_argument_tokens(&self.args, self.mode)
     }
 
-    /// Resolves the interpreter a script declares, if the manifest is consistent with it.
-    ///
-    /// Command actions never inspect the entrypoint, because their program is not a script.
     pub fn interpreter_for_source(&self, source: &str) -> Result<Option<Interpreter>, ActionError> {
         if self.runtime == ActionRuntime::Command {
             return Ok(None);
@@ -771,7 +716,6 @@ fn parse_argument_tokens(
             }
             tokens.push(token.clone());
         } else if argument.is_empty() {
-            // An empty literal argument is legitimate, if unusual.
             tokens.push(ArgumentToken::Literal(String::new()));
         } else {
             tokens.push(ArgumentToken::Literal(argument.clone()));
@@ -780,10 +724,7 @@ fn parse_argument_tokens(
     Ok(tokens)
 }
 
-/// Expands argument tokens for one invocation.
-///
-/// Paths must be absolute so a selected file can never be read as a program
-/// option; a relative input is rejected rather than quietly passed through.
+/// Absolute path arguments cannot be mistaken for command-line options.
 pub fn expand_arguments(
     tokens: &[ArgumentToken],
     inputs: &[PathBuf],
@@ -843,14 +784,10 @@ fn push_absolute(
     Ok(())
 }
 
-/// Whether `source` opens with a `#!` line.
 pub fn has_shebang(source: &str) -> bool {
     first_line(source).is_some_and(|line| line.starts_with("#!"))
 }
 
-/// Parses the shebang of `source`, resolving `/usr/bin/env` indirection.
-///
-/// Returns `None` when there is no shebang or the line does not name a program.
 pub fn interpreter_from_source(source: &str) -> Option<Interpreter> {
     let line = first_line(source)?;
     let rest = line.strip_prefix("#!")?.trim();
@@ -861,8 +798,6 @@ pub fn interpreter_from_source(source: &str) -> Option<Interpreter> {
     }
     let mut arguments: Vec<String> = words.map(str::to_owned).collect();
     if file_name(program) == "env" {
-        // `env` may carry flags (`-S`, `-u NAME`, `--`) and `NAME=value`
-        // assignments before the real interpreter.
         let index = arguments
             .iter()
             .position(|word| !word.starts_with('-') && !word.contains('='))?;
@@ -893,7 +828,6 @@ fn file_name(program: &str) -> &str {
     program.rsplit('/').next().unwrap_or(program)
 }
 
-/// Classifies an interpreter program name into a family.
 pub fn interpreter_family(program: &str) -> InterpreterFamily {
     let name = file_name(program);
     let lowered = name.to_ascii_lowercase();
@@ -910,7 +844,6 @@ pub fn interpreter_family(program: &str) -> InterpreterFamily {
     }
 }
 
-/// Slug for a new action id derived from a display name.
 pub fn suggest_id(name: &str) -> String {
     let mut slug = String::new();
     for character in name.chars() {

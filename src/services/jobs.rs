@@ -1,16 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Background job service for custom actions.
-//!
-//! The service owns the queue, per-item iteration, progress aggregation,
-//! cancellation bookkeeping, bounded logs, and session history. It never touches
-//! processes or widgets: an [`ActionRunner`] adapter starts one invocation and
-//! reports events back through a channel that [`JobService::pump`] drains.
-//!
-//! Jobs are application state, not view state. They keep running when the menu
-//! that started them closes, when the browser navigates, and when the Jobs
-//! dashboard is minimized or dismissed.
-
 use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
@@ -28,17 +17,11 @@ use super::listeners::{ListenerGuard, Listeners};
 #[cfg(test)]
 mod tests;
 
-/// Concurrent invocations across every action. Per-item iteration inside one job
-/// stays sequential, so a single action cannot saturate the machine.
 pub const MAX_CONCURRENT_JOBS: usize = 2;
-/// Finished jobs kept for review, oldest evicted first.
 pub const MAX_HISTORY: usize = 20;
-/// Locations recorded per job.
 const MAX_CREATED_LOCATIONS: usize = 20;
-/// Output retained per job.
 pub const MAX_LOG_BYTES: usize = 64 * 1024;
 pub const MAX_MESSAGE_CHARS: usize = 512;
-/// A cancelled invocation that never reports back is finalized after this long.
 const CANCEL_DEADLINE: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -64,7 +47,6 @@ impl JobStatus {
     }
 }
 
-/// Where the action was invoked from, so a script can tell the two apart.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InvocationSource {
     Selection,
@@ -93,7 +75,6 @@ pub struct JobRequest {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum JobEnqueueError {
     EmptySelection,
-    /// Paths must be absolute for safe argument expansion.
     NotAbsolute(PathBuf),
     Unavailable(String),
 }
@@ -112,7 +93,6 @@ impl std::fmt::Display for JobEnqueueError {
     }
 }
 
-/// One invocation handed to the runner.
 #[derive(Clone, Debug)]
 pub struct ActionRunRequest {
     pub action: Rc<ActionHandle>,
@@ -123,7 +103,6 @@ pub struct ActionRunRequest {
     pub position: Option<(usize, usize)>,
 }
 
-/// Progress reported by the running script itself.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ScriptProgress {
     pub completed: usize,
@@ -131,41 +110,28 @@ pub struct ScriptProgress {
     pub message: Option<String>,
 }
 
-/// Events a runner reports for one invocation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ActionRunEvent {
-    /// Progress inside the current invocation.
     Progress(ScriptProgress),
     /// Coalesced live tail of captured output.
     LogTail(String),
-    /// A location the script says it created.
     Created(PathBuf),
-    /// The invocation ended. `code` is the exit status when the process ran to
-    /// completion; `signal` is set when it was killed.
     Exited {
         code: Option<i32>,
         signal: Option<i32>,
         log: String,
     },
-    /// The invocation could not be started at all.
     Failed(String),
 }
 
-/// Sends runner events to the service.
-///
-/// `Arc` rather than `Rc` because runners report from worker threads, and the
-/// runner keeps a copy so it can still report a failure to start.
 pub type ActionEventSink = std::sync::Arc<dyn Fn(ActionRunEvent) + Send + Sync + 'static>;
 
-/// Cancels one invocation. Safe to call from the UI thread.
 pub type CancelHandle = Rc<dyn Fn()>;
 
-/// Starts one invocation. Implemented by `adapters::local_jobs`.
 pub trait ActionRunner {
     fn run(&self, request: &ActionRunRequest, sink: ActionEventSink) -> CancelHandle;
 }
 
-/// Bounded log buffer that keeps the newest output.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct BoundedLog {
     text: String,
@@ -202,15 +168,12 @@ impl BoundedLog {
             cut += 1;
         }
         self.text.drain(..cut);
-        // Keep the retained text on a line boundary so the first line is not a
-        // fragment of a rotated prefix.
         if let Some(newline) = self.text.find('\n') {
             self.text.drain(..=newline);
         }
     }
 }
 
-/// Aggregated progress for one job.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct JobProgress {
     /// Finished invocations. Per-item jobs count inputs; whole-selection jobs use 0 or 1.
@@ -219,13 +182,11 @@ pub struct JobProgress {
     pub failed_items: usize,
     /// Planned invocations, always known for both modes.
     pub total_items: usize,
-    /// Progress reported by the current script invocation.
     pub script: Option<ScriptProgress>,
     pub message: Option<String>,
 }
 
 impl JobProgress {
-    /// Overall fraction, or `None` when progress is honestly unknown.
     pub fn fraction(&self, mode: ExecutionMode) -> Option<f64> {
         match mode {
             ExecutionMode::WholeSelection => {
@@ -252,7 +213,6 @@ impl JobProgress {
         }
     }
 
-    /// Short running description for the dashboard, if measurable.
     pub fn active_label(&self) -> Option<String> {
         if let Some(message) = self.message.clone() {
             return Some(message);
@@ -266,14 +226,12 @@ impl JobProgress {
     }
 }
 
-/// Immutable view of one job for the Jobs dashboard.
 #[derive(Clone, Debug)]
 pub struct JobSnapshot {
     pub id: JobId,
     pub action_name: String,
     pub icon: Option<String>,
     pub mode: ExecutionMode,
-    /// Folder the action was invoked from, shown so a job can be placed.
     pub parent: PathBuf,
     pub status: JobStatus,
     pub progress: JobProgress,
@@ -320,6 +278,8 @@ impl Job {
                 .unwrap_or_else(Instant::now)
                 .saturating_duration_since(started)
         });
+        let mut log = self.log.clone();
+        log.push(&self.live_log);
         JobSnapshot {
             id: self.id,
             action_name: self.definition.name.clone(),
@@ -328,12 +288,8 @@ impl Job {
             parent: self.parent.clone(),
             status: self.status,
             progress: self.progress.clone(),
-            log: if self.live_log.is_empty() {
-                self.log.text().to_owned()
-            } else {
-                self.live_log.clone()
-            },
-            log_truncated: self.log.truncated(),
+            log: log.text().to_owned(),
+            log_truncated: log.truncated(),
             created: self.created.clone(),
             message: self.message.clone(),
             elapsed,
@@ -347,7 +303,6 @@ struct JobMessage {
     event: ActionRunEvent,
 }
 
-/// Owns the queue and lifetime of action invocations.
 pub struct JobService {
     runner: Rc<dyn ActionRunner>,
     jobs: RefCell<Vec<Job>>,
@@ -370,7 +325,7 @@ impl JobService {
         })
     }
 
-    /// Queues one action. Nothing starts until [`Self::pump`] runs.
+    /// Execution starts at the next pump, not during enqueue.
     pub fn enqueue(&self, request: JobRequest) -> Result<JobId, JobEnqueueError> {
         if request.inputs.is_empty() {
             return Err(JobEnqueueError::EmptySelection);
@@ -416,10 +371,6 @@ impl JobService {
         Ok(id)
     }
 
-    /// Applies runner events and starts whatever the queue allows.
-    ///
-    /// The UI drives this from a short timer, so a worker thread never needs to
-    /// touch the GTK thread directly.
     pub fn pump(&self) {
         let applied = self.drain();
         let advanced = self.advance();
@@ -437,7 +388,6 @@ impl JobService {
                 continue;
             };
             if job.run != message.run || !job.in_flight {
-                // A superseded invocation, for example after cancellation.
                 continue;
             }
             match message.event {
@@ -458,15 +408,17 @@ impl JobService {
                     }
                 }
                 ActionRunEvent::Exited { code, signal, log } => {
-                    job.log = BoundedLog::from_text(&log);
+                    job.log.push(&log);
                     job.live_log.clear();
                     finish_invocation(job, code, signal);
                 }
                 ActionRunEvent::Failed(message) => {
-                    job.log = BoundedLog::default();
+                    job.log.push(&format!("{message}\n"));
                     job.live_log.clear();
-                    job.message = Some(sanitize_message(message));
                     finish_invocation(job, None, None);
+                    if !job.cancel_requested {
+                        job.message = Some(sanitize_message(message));
+                    }
                 }
             }
             changed = true;
@@ -474,7 +426,6 @@ impl JobService {
         changed
     }
 
-    /// Promotes queued jobs and continues per-item iteration.
     fn advance(&self) -> bool {
         let mut jobs = self.jobs.borrow_mut();
         let mut changed = false;
@@ -500,8 +451,6 @@ impl JobService {
             let chunk = match next_invocation(mode, &jobs[index].inputs, jobs[index].cursor) {
                 Some(chunk) => chunk,
                 None => {
-                    // Nothing left to run: close the job instead of leaving it
-                    // permanently "running".
                     jobs[index].status = if jobs[index].progress.failed_items > 0 {
                         JobStatus::Failed
                     } else {
@@ -545,7 +494,6 @@ impl JobService {
         self.runner.run(request, sink)
     }
 
-    /// Finalizes a cancelling job whose runner never reported back.
     fn finalize_stalled_cancels(&self) -> bool {
         let now = Instant::now();
         let mut changed = false;
@@ -564,7 +512,6 @@ impl JobService {
         changed
     }
 
-    /// Cancels a running job, or removes a queued one. Finished jobs are kept.
     pub fn cancel(&self, id: JobId) -> bool {
         let mut jobs = self.jobs.borrow_mut();
         let Some(job) = jobs.iter_mut().find(|job| job.id == id) else {
@@ -595,7 +542,6 @@ impl JobService {
         true
     }
 
-    /// Forgets one finished job.
     pub fn dismiss(&self, id: JobId) -> bool {
         let mut jobs = self.jobs.borrow_mut();
         let before = jobs.len();
@@ -608,7 +554,6 @@ impl JobService {
         removed
     }
 
-    /// Forgets every finished job, keeping active work.
     pub fn clear_finished(&self) -> bool {
         let mut jobs = self.jobs.borrow_mut();
         let before = jobs.len();
@@ -621,7 +566,6 @@ impl JobService {
         removed
     }
 
-    /// Active jobs are never evicted, so a long batch is not lost behind history.
     fn enforce_history_limit(&self) {
         let mut jobs = self.jobs.borrow_mut();
         let mut finished = jobs.iter().filter(|job| job.status.is_finished()).count();
@@ -669,7 +613,6 @@ impl JobService {
             .count()
     }
 
-    /// Whether any finished job failed, for the collapsed indicator.
     pub fn has_failures(&self) -> bool {
         self.jobs.borrow().iter().any(|job| {
             job.status == JobStatus::Failed
@@ -677,7 +620,6 @@ impl JobService {
         })
     }
 
-    /// Active jobs first, then newest finished jobs.
     pub fn snapshot(&self) -> Vec<JobSnapshot> {
         let jobs = self.jobs.borrow();
         let mut active: Vec<_> = jobs
@@ -723,7 +665,6 @@ struct InvocationChunk {
     position: Option<(usize, usize)>,
 }
 
-/// Selects the next invocation's inputs, or `None` when the job is complete.
 fn next_invocation(
     mode: ExecutionMode,
     inputs: &[PathBuf],
@@ -743,7 +684,6 @@ fn next_invocation(
     }
 }
 
-/// Records the end of one invocation and decides whether the job continues.
 fn finish_invocation(job: &mut Job, code: Option<i32>, signal: Option<i32>) {
     job.cancel = None;
     job.in_flight = false;
@@ -780,8 +720,6 @@ fn finish_invocation(job: &mut Job, code: Option<i32>, signal: Option<i32>) {
     };
 }
 
-/// Whether a cancellation has been outstanding long enough to give up on the
-/// runner ever reporting back.
 fn cancel_deadline_reached(
     cancelling_since: Option<Instant>,
     now: Instant,
@@ -816,10 +754,6 @@ fn sanitize_message(message: String) -> String {
     trimmed
 }
 
-/// Expands a command invocation's argument tokens.
-///
-/// Shared with the runner adapter so both sides agree on one implementation,
-/// including the rule that only absolute paths are ever passed.
 pub fn expand_command_arguments(
     program: &ActionProgram,
     inputs: &[PathBuf],

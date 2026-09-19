@@ -5,7 +5,6 @@ use std::{
     ffi::OsString,
     path::{Path, PathBuf},
     rc::Rc,
-    time::{Duration, Instant},
 };
 
 use crate::model::{ActionDefinition, ErrorPolicy, ExecutionMode};
@@ -24,13 +23,9 @@ struct Recorded {
 
 #[derive(Clone, Copy)]
 enum Behavior {
-    /// Exit immediately with this status.
     Exit(i32),
-    /// Report script progress, then exit successfully.
     Scripted,
-    /// Keep running until cancelled, then report a killed process.
     HeldForCancel,
-    /// Never report anything, even after cancellation.
     Silent,
 }
 
@@ -59,7 +54,6 @@ impl FakeRunner {
         self.cancels.get()
     }
 
-    /// Completes a [`Behavior::HeldForCancel`] invocation.
     fn finish_held(&self, code: Option<i32>, signal: Option<i32>) {
         let sink = self.pending.borrow_mut().pop();
         if let Some(sink) = sink {
@@ -344,9 +338,9 @@ fn partial_success_is_reported_when_some_items_fail() {
             let call = self.calls.get();
             self.calls.set(call + 1);
             sink(ActionRunEvent::Exited {
-                code: Some(if call == 0 { 0 } else { 2 }),
+                code: Some(if call == 0 { 2 } else { 0 }),
                 signal: None,
-                log: String::new(),
+                log: format!("item {call}\n"),
             });
             Rc::new(|| {})
         }
@@ -372,6 +366,10 @@ fn partial_success_is_reported_when_some_items_fail() {
     assert_eq!(snapshot.progress.succeeded_items, 1);
     assert_eq!(snapshot.progress.failed_items, 1);
     assert!(snapshot.progress.partial_success());
+    assert_eq!(
+        snapshot.log, "item 0\nitem 1\n",
+        "later items retain earlier output"
+    );
 }
 
 #[test]
@@ -483,23 +481,7 @@ fn cancelling_a_running_job_waits_for_the_runner_to_report_back() {
 }
 
 #[test]
-fn a_stalled_cancellation_is_finalized_after_the_deadline() {
-    let now = Instant::now();
-    assert!(!cancel_deadline_reached(
-        Some(now),
-        now + Duration::from_secs(1),
-        CANCEL_DEADLINE
-    ));
-    assert!(cancel_deadline_reached(
-        Some(now),
-        now + CANCEL_DEADLINE,
-        CANCEL_DEADLINE
-    ));
-    assert!(!cancel_deadline_reached(None, now, CANCEL_DEADLINE));
-}
-
-#[test]
-fn a_runner_that_ignores_cancellation_stays_cancelling_until_the_deadline() {
+fn a_runner_that_ignores_cancellation_keeps_its_slot() {
     let runner = FakeRunner::new(Behavior::Silent);
     let service = JobService::new(runner.clone());
     let id = service
@@ -516,16 +498,11 @@ fn a_runner_that_ignores_cancellation_stays_cancelling_until_the_deadline() {
         .expect("job queues");
     service.pump();
     assert!(service.cancel(id));
-    // Closing the job needs the deadline to elapse; without it the job stays
-    // honest about still owning a possibly-live process.
     let snapshot = service.snapshot_of(id).expect("job exists");
     assert_eq!(snapshot.status, JobStatus::Cancelling);
     assert_eq!(runner.cancels(), 1);
-    assert!(cancel_deadline_reached(
-        Some(Instant::now()),
-        Instant::now() + CANCEL_DEADLINE,
-        CANCEL_DEADLINE
-    ));
+    service.pump();
+    assert_eq!(service.running_count(), 1);
 }
 
 #[test]

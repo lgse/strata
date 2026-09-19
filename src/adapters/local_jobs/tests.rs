@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Runner tests.
-//!
-//! Each test builds its action through the real store, so interpreter
-//! resolution, validation, and the invocation contract are exercised end to end.
-//! Processes are real but short-lived; the cancellation test signals a sleeping
-//! script immediately instead of waiting for it.
-
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -27,6 +20,7 @@ use super::*;
 use crate::adapters::local_actions::LocalActionStore;
 
 mod examples;
+mod lifecycle;
 
 const EVENT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -55,7 +49,6 @@ impl Fixture {
         &self.root
     }
 
-    /// Creates an action through the store and loads it back.
     fn action(&self, id: &str, spec: &RunSpec<'_>, mode: ExecutionMode) -> Rc<ActionHandle> {
         let run = match spec {
             RunSpec::Script {
@@ -142,7 +135,6 @@ impl Outcome {
     }
 }
 
-/// One test action's run configuration.
 #[derive(Clone)]
 enum RunSpec<'a> {
     Script {
@@ -185,7 +177,6 @@ fn command(program: &str, args: Vec<ArgumentToken>) -> RunSpec<'_> {
     RunSpec::Command { program, args }
 }
 
-/// Manifest text for one argument token, for building test manifests.
 fn token_manifest_value(token: &ArgumentToken) -> String {
     match token {
         ArgumentToken::Literal(value) => value.clone(),
@@ -213,7 +204,6 @@ fn channel_sink() -> (ActionEventSink, mpsc::Receiver<ActionRunEvent>) {
     (sink, receiver)
 }
 
-/// Runs one invocation and collects events until it ends.
 fn run(runner: &Rc<LocalActionRunner>, request: ActionRunRequest) -> Outcome {
     let (sink, receiver) = channel_sink();
     let _cancel = runner.run(&request, sink);
@@ -387,7 +377,6 @@ fn commands_receive_expanded_arguments_without_a_shell() {
         eprintln!("skipping: python3 is not installed");
         return;
     }
-    // A name that would be command substitution in a shell.
     let awkward = fixture.path().join("$(touch pwned); rm -rf");
     let outcome = run(
         &fixture.runner,
@@ -513,7 +502,6 @@ fn a_noisy_progress_file_is_bounded() {
             "{{\"event\":\"progress\",\"processed\":{index}}}\n"
         ));
     }
-    // Garbage after valid JSON, and a line far beyond the accepted length.
     lines.push_str("{\"event\":\"progress\",\"processed\":1}\u{fffd}\n");
     lines.push_str(&format!("{}\n", "x".repeat(MAX_PROGRESS_LINE_BYTES * 2)));
     fs::write(&progress, lines).expect("progress file");
@@ -540,7 +528,6 @@ fn a_noisy_progress_file_is_bounded() {
 #[test]
 fn a_planted_scratch_base_is_refused() {
     let fixture = tempfile::tempdir().expect("fixture");
-    // A symlink standing in for the base would redirect action scratch.
     let elsewhere = fixture.path().join("elsewhere");
     fs::create_dir_all(&elsewhere).expect("directory");
     std::os::unix::fs::symlink(&elsewhere, fixture.path().join("actions")).expect("symlink");
@@ -553,7 +540,6 @@ fn a_planted_scratch_base_is_refused() {
         "nothing is written through the link"
     );
 
-    // A plain file in the way is refused too.
     let file_fixture = tempfile::tempdir().expect("fixture");
     fs::write(file_fixture.path().join("actions"), b"not a directory").expect("file");
     assert!(create_run_directory(file_fixture.path()).is_err());

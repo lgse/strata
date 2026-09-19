@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! End-to-end coverage for custom actions in the item and folder menus.
-//!
-//! One `gtk_test` runs the whole scenario because the action registry is shared
-//! per process: definitions are written to the isolated config directory before
-//! any menu is built, then the real browser view opens real context menus.
-
 use std::fs;
 use std::rc::Rc;
 
@@ -73,7 +67,6 @@ fn button_text(button: &gtk::Button) -> Option<String> {
         .map(|label| label.text().to_string())
 }
 
-/// Labels of enabled, visible buttons inside `widget`.
 fn action_buttons(widget: &gtk::Widget) -> Vec<String> {
     descendants(widget)
         .into_iter()
@@ -121,7 +114,6 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             write_action(&actions, "always", ALWAYS);
             write_action(&actions, "png-only", PNG_ONLY);
             write_action(&actions, "missing-tool", MISSING_TOOL);
-            // A stray file and a broken definition must not hide the good ones.
             fs::write(actions.join("notes.txt"), "not an action").expect("stray file");
             write_action(&actions, "broken", "schema_version = nope\n");
 
@@ -129,7 +121,6 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             let (view, window) = open_view(Location::local(fixture.path()));
             wait_until(|| label(&view.widget(), "notes.txt").is_some());
 
-            // A file with no extension still matches an unconditional action.
             let menu = open_menu(&view, Some("notes.txt"));
             let labels = action_buttons(menu.upcast_ref());
             assert!(
@@ -147,9 +138,27 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 "an action that cannot run stays visible but disabled"
             );
 
-            // Running the action queues a job in the shared service.
             let jobs = crate::ui::jobs::shared();
             let before = jobs.snapshot().len();
+            let mut confirmed = crate::ui::actions::shared()
+                .catalog()
+                .get("always")
+                .expect("action")
+                .as_ref()
+                .clone();
+            confirmed.definition.run.confirm = true;
+            crate::ui::actions::run_action(
+                &gtk::Button::new(),
+                Rc::new(confirmed),
+                vec![fixture.path().join("notes.txt")],
+                fixture.path().to_owned(),
+                crate::services::InvocationSource::Selection,
+            );
+            assert_eq!(
+                jobs.snapshot().len(),
+                before,
+                "no execution without a confirmation host"
+            );
             button(menu.upcast_ref(), "Always available")
                 .expect("action button")
                 .emit_clicked();
@@ -165,7 +174,6 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             menu.popdown();
             wait_until(|| menu.parent().is_none());
 
-            // The submenu lists actions that opted into it.
             let menu = open_menu(&view, Some("picture.png"));
             assert!(
                 action_buttons(menu.upcast_ref())
@@ -196,7 +204,6 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             wait_until(|| menu.parent().is_none());
             wait_until(|| !submenu.is_visible());
 
-            // Folder backgrounds offer applicable actions too.
             let menu = open_menu(&view, Some("folder"));
             assert!(
                 action_buttons(menu.upcast_ref())
@@ -208,7 +215,6 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             wait_until(|| menu.parent().is_none());
             drop(window);
 
-            // Trash has no native paths, so custom actions stay out of it.
             let (trash, trash_window) = open_view(Location::uri("trash:///"));
             wait_until(|| label(&trash.widget(), "notes.txt").is_some());
             let menu = open_menu(&trash, Some("notes.txt"));
@@ -225,7 +231,6 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
     );
 }
 
-/// The shared menu fixture: two files with different extensions and a folder.
 struct MenuSource;
 
 impl FileSource for MenuSource {

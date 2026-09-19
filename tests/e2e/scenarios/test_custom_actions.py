@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""The action editor keeps drafts across tabs and writes the portable manifest."""
 
 import hashlib
 import tomllib

@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Small, shared listener registry used by long-lived services.
-//!
-//! Both the action registry and the job service need "notify these consumers when
-//! state changes, and stop when the consumer goes away". Keeping one tested
-//! implementation means a window that closes cannot keep a stale callback (or a
-//! service) alive through a forgotten unsubscribe.
-
 use std::{
     cell::{Cell, RefCell},
     rc::{Rc, Weak},
@@ -20,7 +13,6 @@ struct ListenerEntry<T> {
     callback: T,
 }
 
-/// Owners of consumer callbacks. Wrap in `Rc` to hand out [`ListenerGuard`]s.
 pub(crate) struct Listeners<T> {
     entries: RefCell<Vec<ListenerEntry<T>>>,
     next_id: Cell<u64>,
@@ -40,7 +32,6 @@ impl<T> Listeners<T> {
         Self::default()
     }
 
-    /// Registers `callback`. The subscription ends when the guard drops.
     pub(crate) fn add(self: &Rc<Self>, callback: T) -> ListenerGuard<T> {
         let id = self.next_id.get().wrapping_add(1);
         self.next_id.set(id);
@@ -58,8 +49,7 @@ impl<T> Listeners<T> {
         self.entries.borrow().is_empty()
     }
 
-    /// Delivers to every current listener, without holding the borrow across
-    /// callbacks so a listener may unsubscribe itself.
+    // Callbacks may unsubscribe themselves; release the borrow before dispatch.
     pub(crate) fn notify(&self, run: impl Fn(&T))
     where
         T: Clone,
@@ -76,7 +66,6 @@ impl<T> Listeners<T> {
     }
 }
 
-/// Keeps one [`Listeners`] subscription alive until it is dropped.
 pub(crate) struct ListenerGuard<T> {
     id: u64,
     listeners: Weak<Listeners<T>>,
