@@ -237,8 +237,6 @@ struct Pane {
     section: PaneSection,
     sections: Rc<RefCell<Vec<PaneSection>>>,
     icons: Option<Rc<IconsContext>>,
-    /// The Icons pane's own thumbnail-size slider, so a preference-driven change
-    /// (from this window or another) can move it without a full pane rebuild.
     thumbnail_scale: Option<gtk::Scale>,
     targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
@@ -1080,9 +1078,6 @@ impl ModeViews {
         }
     }
 
-    /// Moves the live Icons pane's slider (if one is showing) to a size saved
-    /// elsewhere; its own `value-changed` handler applies the resize. With no
-    /// Icons pane currently built, just remembers the size for the next one.
     pub fn set_icons_thumbnail_size(&mut self, size: i32) {
         if self.icons_thumbnail_size.get() == size {
             return;

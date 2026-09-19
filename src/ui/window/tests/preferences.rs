@@ -30,6 +30,7 @@ fn live_preferences_reach_existing_and_future_browsers_but_preserve_chooser_poli
                 manager.set_icons_thumbnail_size(if enabled { 128 } else { 64 });
                 for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
                     manager.set_browser_mode(mode);
+                    manager.set_icons_thumbnail_size(if enabled { 203 } else { 95 });
                     manager.set_click_activation(
                         mode,
                         ClickActivation {
@@ -146,6 +147,7 @@ folders_first = false
 sort_key = "size"
 sort_direction = "descending"
 auto_refresh_interval = 600
+icons_thumbnail_size = 203
 "#;
             std::fs::write(&path, saved).expect("persist non-default startup preferences");
             let manager = PreferenceManager::shared();
