@@ -8,8 +8,8 @@ use crate::{
         CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange,
         DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, OperationEvent, OperationProvider, OperationRequestId,
-        PasteRequest, RenameRequest, RestoreRequest, UndoCopyRequest, UndoMoveRequest,
-        UndoRenameRequest,
+        PasteRequest, RenameRequest, RestoreRequest, UndoCopyRequest, UndoMergeRequest,
+        UndoMoveRequest, UndoRenameRequest,
     },
     test_support::gtk_test,
     ui::{
@@ -340,6 +340,7 @@ impl OperationProvider for DelayedRenameProvider {
     unsupported_operation!(undo_move, UndoMoveRequest);
     unsupported_operation!(undo_rename, UndoRenameRequest);
     unsupported_operation!(undo_copy, UndoCopyRequest);
+    unsupported_operation!(undo_merge, UndoMergeRequest);
     unsupported_operation!(delete, DeleteRequest);
     unsupported_operation!(restore, RestoreRequest);
     unsupported_operation!(compress, CompressRequest);
@@ -915,6 +916,19 @@ fn invalid_renames_retain_the_original_file_in_every_view_mode() {
                 });
                 let widget = view.widget();
                 let bounds_before = (mode == BrowserMode::Icons).then(|| {
+                    // Compare rename states, not the earlier metadata-placeholder state.
+                    wait_until(|| {
+                        (0..6).all(|position| {
+                            browser.entry_at(0, position).is_some_and(|entry| {
+                                entry.size == crate::model::MetadataValue::Known(4)
+                            })
+                        })
+                    });
+                    let rendered = Rc::new(std::cell::Cell::new(false));
+                    let done = rendered.clone();
+                    let _frame =
+                        crate::ui::frame::FrameTask::new(Some(&widget), move || done.set(true));
+                    wait_until(|| rendered.get());
                     wait_until(|| {
                         let bounds = icon_card_bounds(&widget);
                         bounds.len() == 6

@@ -12,22 +12,15 @@ thread_local! {
 }
 
 pub(super) fn retry_after_cancel() {
-    let camera_work = PENDING_THUMBNAILS.with(|pending| {
-        pending
+    if !ACTIVE_REQUESTS.with(|requests| {
+        requests
             .borrow()
             .values()
-            .any(|job| job.kind == ThumbnailKind::Camera)
-    }) || ACTIVE_REQUESTS.with(|active| {
-        active.borrow().values().any(|request| {
-            request
-                .deferred
-                .as_ref()
-                .is_some_and(|job| job.kind == ThumbnailKind::Camera)
-        })
-    });
-    if !camera_work {
-        retry_deferred_thumbnails();
-    } else if !RETRY_PENDING.with(|pending| pending.replace(true)) {
+            .any(|active| active.deferred.is_some() && active.image.upgrade().is_some())
+    }) {
+        return;
+    }
+    if !RETRY_PENDING.with(|pending| pending.replace(true)) {
         // Unbind can cancel during GTK layout; viewport ranking belongs in idle.
         glib::idle_add_local_once(|| {
             RETRY_PENDING.with(|pending| pending.set(false));
@@ -36,66 +29,8 @@ pub(super) fn retry_after_cancel() {
     }
 }
 
-type Priority = (u8, i32, i32, u64);
-
-pub(super) fn priority(kind: ThumbnailKind, target: &PendingTarget) -> Priority {
-    let fallback = (0, 0, 0, target.request);
-    if kind != ThumbnailKind::Camera {
-        return fallback;
-    }
-    let Some(image) = target.image.upgrade() else {
-        return (2, 0, 0, target.request);
-    };
-    let Some(viewport) = viewport_of(&image) else {
-        return fallback;
-    };
-    let Some(bounds) = image.compute_bounds(&viewport) else {
-        return (2, 0, 0, target.request);
-    };
-    let visible = image.is_mapped()
-        && bounds.width() > 0.0
-        && bounds.height() > 0.0
-        && bounds.x() < viewport.width() as f32
-        && bounds.x() + bounds.width() > 0.0
-        && bounds.y() < viewport.height() as f32
-        && bounds.y() + bounds.height() > 0.0;
-    (
-        u8::from(!visible),
-        bounds.y() as i32,
-        bounds.x() as i32,
-        target.request,
-    )
-}
-
-pub(super) fn prioritize_queue(queue: &mut VecDeque<ThumbnailKey>) {
-    PENDING_THUMBNAILS.with(|pending| {
-        let pending = pending.borrow();
-        let mut cameras = queue
-            .iter()
-            .enumerate()
-            .filter_map(|(index, key)| {
-                let job = pending
-                    .get(key)
-                    .filter(|job| job.kind == ThumbnailKind::Camera)?;
-                let priority = job
-                    .targets
-                    .iter()
-                    .filter(|target| request_is_live(target))
-                    .map(|target| priority(job.kind, target))
-                    .min();
-                Some((index, key.clone(), priority))
-            })
-            .collect::<Vec<_>>();
-        let slots = cameras
-            .iter()
-            .map(|(index, _, _)| *index)
-            .collect::<Vec<_>>();
-        cameras.sort_by_key(|(_, _, priority)| *priority);
-        for (slot, (_, key, _)) in slots.into_iter().zip(cameras) {
-            queue[slot] = key;
-        }
-    });
-}
+#[cfg(test)]
+use super::viewport::prioritize_queue;
 
 pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<Vec<u8>, String> {
     if cancellation.is_cancelled() {
@@ -143,7 +78,7 @@ pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<V
     let cancellation = cancellation.clone();
     // Camera preview icons are compressed, untrusted inputs too. Only the
     // sandbox's normalized PNG is handed to GTK, never the original icon bytes.
-    gio::spawn_blocking(move || {
+    background::render(move || {
         if cancellation.is_cancelled() {
             return Err("Camera thumbnail cancelled".into());
         }
@@ -152,7 +87,8 @@ pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<V
             .tempfile()
             .map_err(|error| error.to_string())?;
         input.write_all(&bytes).map_err(|error| error.to_string())?;
-        render_thumbnail(input.path(), ThumbnailKind::Image, 256, &cancellation)
+        render_thumbnail(input.path(), ThumbnailKind::Image, &cancellation)
+            .map(|thumbnail| thumbnail.png)
     })
     .await
     .map_err(|_| "Camera thumbnail worker failed".to_owned())?

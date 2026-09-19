@@ -9,7 +9,7 @@ use std::{
 use super::*;
 use crate::adapters::{LocalFileSource, LocalOperationProvider};
 use crate::ui::browser::PeekBehavior;
-use crate::ui::theme::ThemeManager;
+use crate::ui::preferences::PreferenceManager;
 
 fn view() -> BrowserView {
     let view = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
@@ -170,7 +170,7 @@ fn classify_reveals_a_regular_file_in_its_parent() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::classify_reveals_a_regular_file_in_its_parent",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let root = tempfile::tempdir().expect("fixture");
             let file_path = root.path().join("open me.txt");
             std::fs::write(&file_path, b"hello").expect("fixture file");
@@ -192,7 +192,7 @@ fn classify_opens_a_directory_argument() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::classify_opens_a_directory_argument",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let root = tempfile::tempdir().expect("fixture");
             let file = gio::File::for_path(root.path());
             let location = location_for_file(&file).expect("native location");
@@ -212,7 +212,7 @@ fn fast_failure_keeps_retry_after_the_connecting_delay() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::fast_failure_keeps_retry_after_the_connecting_delay",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let root = tempfile::tempdir().expect("fixture");
             let missing = root.path().join("missing");
             let file = gio::File::for_path(&missing);
@@ -240,7 +240,7 @@ fn retry_opens_a_directory_restored_after_the_initial_failure() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::retry_opens_a_directory_restored_after_the_initial_failure",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let root = tempfile::tempdir().expect("fixture");
             let restored = root.path().join("restored directory");
             let file = gio::File::for_path(&restored);
@@ -271,7 +271,7 @@ fn retry_reveals_a_file_restored_after_the_initial_failure() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::retry_reveals_a_file_restored_after_the_initial_failure",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let root = tempfile::tempdir().expect("fixture");
             let restored = root.path().join("restored file.txt");
             let file = gio::File::for_path(&restored);
@@ -302,7 +302,7 @@ fn connecting_cancel_invalidates_the_request_and_clears_status() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::connecting_cancel_invalidates_the_request_and_clears_status",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             let generation = browser.browser().bump_navigation_generation();
             show_connecting(browser.downgrade(), generation, request());
@@ -322,7 +322,7 @@ fn errors_do_not_expose_uri_credentials() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::errors_do_not_expose_uri_credentials",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             show_error(
                 &browser,
@@ -349,7 +349,7 @@ fn window_close_aborts_pending_request_and_releases_the_view() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::window_close_aborts_pending_request_and_releases_the_view",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             let weak = browser.downgrade();
             let window = browser
@@ -388,7 +388,7 @@ fn navigation_aborts_pending_request_and_mount_prompt() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::navigation_aborts_pending_request_and_mount_prompt",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             let window = browser
                 .overlay()
@@ -424,7 +424,7 @@ fn navigation_dismisses_connecting_status() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::navigation_dismisses_connecting_status",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             let generation = browser.browser().bump_navigation_generation();
             show_connecting(browser.downgrade(), generation, request());
@@ -443,7 +443,7 @@ fn new_navigation_wins_over_a_pending_open_argument_classify() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::new_navigation_wins_over_a_pending_open_argument_classify",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let root = tempfile::tempdir().expect("fixture");
             let file_path = root.path().join("open me.txt");
             std::fs::write(&file_path, b"hello").expect("fixture file");

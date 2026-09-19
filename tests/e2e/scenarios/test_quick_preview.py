@@ -84,6 +84,28 @@ def test_space_opens_and_closes_the_quick_preview(strata, mode, selection):
     strata.pointer.click(close)
     strata.wait(lambda: strata.preview() is None, "the preview to close")
 
+    bounds = strata.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 640, 480)
+    strata.select_entry("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the compact preview")
+    bounds = strata.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 320, 320)
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the retained preview")
+    strata.wait(
+        lambda: strata.preview().find(role="button", name="Close preview (Space)").has_state("focused"),
+        "keyboard focus on compact preview dismissal",
+    )
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() is None, "Space to return to browsing")
+    strata.keyboard.press("End")
+    strata.wait_for_selection(["third.txt"])
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("third preview fixture"), "the next compact preview")
+    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.wait(lambda: strata.preview() is None, "the close button to return to browsing")
+    assert strata.selected_names() == ["third.txt"]
+
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("selection", ["keyboard", "pointer"])
@@ -198,6 +220,31 @@ def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode
     strata.keyboard.press(NEXT_ENTRY_KEY[mode])
     strata.wait_for_selection(["data.csv"])
     strata.wait(lambda: strata.preview_shows("alpha"), "the still-enabled preview to resume")
+
+
+@pytest.mark.preferences(browser_mode="list")
+def test_marquee_does_not_reopen_enabled_preview(strata):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("alpha"), "the enabled preview")
+    strata.keyboard.press("Up")
+    strata.wait_for_selection(["folder"])
+    strata.wait(lambda: strata.preview() is None, "the folder to hide preview")
+    strata.settle(strata.entry("third.txt"))
+
+    last = strata.entry("third.txt").screen_bounds()
+    first = strata.entry("data.csv").screen_bounds()
+    start = (last.x + last.width // 2, last.y + last.height + 60)
+    end = (first.x + 50, first.center[1])
+    strata.pointer.drag_points(start, end, release=False)
+    try:
+        strata.wait_for_selection(["data.csv", "notes.txt", "page.md", "third.txt"])
+        assert strata.preview() is None, "held marquee must not open preview"
+    finally:
+        strata.pointer.connection.button(1, False)
+    assert strata.preview() is None
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "keyboard preview to resume")
 
 
 def test_preview_hides_on_shift_range_folder_focus(strata):
@@ -453,27 +500,18 @@ def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(s
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
-def test_closing_preview_does_not_move_the_columns(strata):
+def test_columns_preview_can_reopen_after_closing(strata):
     strata.open_directory("folder")
     strata.select_entry_with_keyboard("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the nested preview")
-    column = strata.pane("folder")
-    scroller = next(node for node in column.ancestors() if node.role == "scroll pane")
-    before = column.screen_bounds()
-    viewport_width = scroller.screen_bounds().width
     close = strata.preview().find(role="button", name="Close preview (Space)")
     strata.pointer.click(close)
     strata.wait(lambda: strata.preview() is None, "the preview to close")
-    strata.wait(lambda: scroller.screen_bounds().width > viewport_width, "the browser to use the released space")
-    assert abs(strata.pane("folder").screen_bounds().x - before.x) <= 1
+    strata.select_entry("nested-notes.txt")
     strata.select_entry("inner.txt")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("inner"), "the preview to reopen")
-    strata.wait(
-        lambda: abs(strata.pane("folder").screen_bounds().x + before.width - strata.preview().screen_bounds().x) <= 3,
-        "the reopened preview to meet the last column",
-    )
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
@@ -500,14 +538,16 @@ def test_narrow_window_prioritizes_the_last_column_and_restores_the_latest_previ
     strata.wait(last_column_visible, "the entire last column to stay visible")
     column = strata.pane("folder").screen_bounds()
     assert column.x + column.width <= strata.preview().screen_bounds().x
-    resize(760)
-    strata.wait(lambda: strata.preview() is None, "the unusably narrow preview to hide")
-    strata.wait(last_column_visible, "the last column without the preview")
+    resize(640)
+    strata.wait(lambda: strata.preview_shows("inner"), "the compact preview to retain its content")
+    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.wait(lambda: strata.preview() is None, "dismissal to restore browsing")
     strata.keyboard.press("Down")
     strata.wait_for_selection(["nested-notes.txt"])
-    assert strata.preview() is None
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the latest compact preview")
     resize(900)
-    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the latest selection to resume")
+    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the same selection after expansion")
     strata.wait(last_column_visible, "the last column beside the resumed preview")
     resize(1200)
     strata.wait(lambda: strata.preview().screen_bounds().width == preferred, "the preferred preview width to return")

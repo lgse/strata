@@ -29,7 +29,11 @@ impl Dispatcher {
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && let Some(mode) = browser_mode_for_digit(event.key)
         {
-            apply_browser_mode(&self.view, &crate::ui::theme::ThemeManager::shared(), mode);
+            apply_browser_mode(
+                &self.view,
+                &crate::ui::preferences::PreferenceManager::shared(),
+                mode,
+            );
             return Some(Propagation::Stop);
         }
         if event.text_has_focus() {

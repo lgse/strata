@@ -11,13 +11,14 @@ use crate::{
     assets::icons,
     ui::{
         controls::segmented_control,
-        theme::{TextSize, Theme, ThemeManager, ThemeTokens},
+        preferences::{PreferenceManager, TextSize},
+        theme::{Theme, ThemeManager, ThemeTokens},
     },
 };
 
 use super::{
     append_heading,
-    bindings::{bind_number, bind_switch},
+    bindings::{bind_number, bind_switch, bind_theme_switch},
     page_content, scrollable_page,
 };
 
@@ -29,12 +30,15 @@ pub(super) struct ThemePage {
     pub(super) flows: Vec<(gtk::FlowBox, u32)>,
 }
 
-pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
+pub(super) fn theme_page(
+    preferences: Rc<PreferenceManager>,
+    themes: Rc<ThemeManager>,
+) -> ThemePage {
     let content = page_content();
     content.add_css_class("theme-page");
 
     let system = super::settings_group(&content, "THEME");
-    let follow = append_follow_omarchy_option(&system, &manager);
+    let follow = append_follow_omarchy_option(&system, &themes);
     let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     current.set_valign(gtk::Align::Center);
     current.set_halign(gtk::Align::Start);
@@ -47,7 +51,7 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
         .and_downcast::<gtk::Label>()
         .expect("current theme description");
     let weak_description = description.downgrade();
-    manager.bind_preference(
+    themes.bind_theme_preference(
         &current,
         |manager| (manager.follows_omarchy(), manager.appearance_tokens()),
         move |widget, (following, tokens)| {
@@ -81,52 +85,52 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
     let catalog = append_theme_catalog(&library);
     let custom = theme_grid();
     catalog.rows.append(&custom);
-    fill_theme_grids(&catalog.packaged, &custom, &manager);
+    fill_theme_grids(&catalog.packaged, &custom, &themes);
     bind_catalog_filter(
         [&catalog.packaged, &custom],
         catalog.search,
         catalog.clear,
         catalog.appearance_buttons,
     );
-    let editor_fields = append_custom_theme_editor(&catalog.container, &custom, &manager);
-    manager.bind_preference(
+    let editor_fields = append_custom_theme_editor(&catalog.container, &custom, &themes);
+    themes.bind_theme_preference(
         &library,
         ThemeManager::follows_omarchy,
         |widget, following| widget.set_sensitive(!following),
     );
-    append_text_size_option(&content, &manager);
+    append_text_size_option(&content, &preferences);
     let date_time = super::settings_group(&content, "DATE & TIME");
-    append_date_format_option(&date_time, &manager);
+    append_date_format_option(&date_time, &preferences);
     let effects = super::settings_group(&content, "EFFECTS");
     let (row, toggle) = super::settings_option(
         "Element glow",
         "Show accent glow around dialogs, menus, and other elements.",
-        manager.element_glow(),
+        preferences.element_glow(),
     );
     bind_switch(
-        &manager,
+        &preferences,
         &toggle,
-        ThemeManager::element_glow,
-        ThemeManager::set_element_glow,
+        PreferenceManager::element_glow,
+        PreferenceManager::set_element_glow,
     );
     effects.append(&row);
     let motion = super::settings_group(&content, "MOTION");
     let (row, toggle) = super::settings_option(
         "Reduce motion",
         "Disable nonessential interface animations.",
-        manager.reduce_motion(),
+        preferences.reduce_motion(),
     );
     bind_switch(
-        &manager,
+        &preferences,
         &toggle,
-        ThemeManager::reduce_motion,
-        ThemeManager::set_reduce_motion,
+        PreferenceManager::reduce_motion,
+        PreferenceManager::set_reduce_motion,
     );
     motion.append(&row);
 
     let scroller = scrollable_page(&content, None);
-    bind_switch(
-        &manager,
+    bind_theme_switch(
+        &themes,
         &follow,
         ThemeManager::follows_omarchy,
         ThemeManager::set_follow_omarchy,
@@ -197,17 +201,17 @@ fn append_theme_catalog(content: &gtk::Box) -> ThemeCatalog {
     }
 }
 
-fn fill_theme_grids(packaged: &gtk::FlowBox, custom: &gtk::FlowBox, manager: &Rc<ThemeManager>) {
-    for theme in manager.themes() {
+fn fill_theme_grids(packaged: &gtk::FlowBox, custom: &gtk::FlowBox, themes: &Rc<ThemeManager>) {
+    for theme in themes.themes() {
         let flow = if theme.custom { custom } else { packaged };
-        append_theme_card(flow, theme, manager);
+        append_theme_card(flow, theme, themes);
     }
 }
 
 fn append_custom_theme_editor(
     content: &gtk::Box,
     custom: &gtk::FlowBox,
-    manager: &Rc<ThemeManager>,
+    themes: &Rc<ThemeManager>,
 ) -> gtk::FlowBox {
     let add = add_theme_card_button();
     let footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -219,8 +223,8 @@ fn append_custom_theme_editor(
     footer.append(&location);
     footer.append(&add);
     content.append(&footer);
-    bind_new_custom_themes(custom, manager);
-    let (editor, editor_fields) = theme_editor(manager.clone());
+    bind_new_custom_themes(custom, themes);
+    let (editor, editor_fields) = theme_editor(themes.clone());
     editor.set_reveal_child(false);
     content.append(&editor);
     let shown_editor = editor.clone();
@@ -228,14 +232,14 @@ fn append_custom_theme_editor(
     editor_fields
 }
 
-fn append_follow_omarchy_option(content: &gtk::Box, manager: &ThemeManager) -> gtk::Switch {
+fn append_follow_omarchy_option(content: &gtk::Box, themes: &Rc<ThemeManager>) -> gtk::Switch {
     let (row, follow) = super::settings_option(
         "Follow Omarchy",
         "Use the active Omarchy Quattro theme and switch when the system theme changes.",
-        manager.follows_omarchy(),
+        themes.follows_omarchy(),
     );
     content.append(&row);
-    manager.bind_preference(
+    themes.bind_theme_preference(
         &row,
         ThemeManager::is_omarchy_available,
         super::search::set_available,
@@ -243,7 +247,7 @@ fn append_follow_omarchy_option(content: &gtk::Box, manager: &ThemeManager) -> g
     follow
 }
 
-fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_text_size_option(content: &gtk::Box, preferences: &Rc<PreferenceManager>) {
     let group = super::settings_group(content, "TEXT");
     let text_size_control =
         gtk::SpinButton::with_range(f64::from(TextSize::MIN), f64::from(TextSize::MAX), 1.0);
@@ -264,7 +268,7 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     text_size_control.add_css_class("text-size-control");
     crate::ui::accessibility::set_label(&text_size_control, "Text size in pixels");
     bind_number(
-        manager,
+        preferences,
         &text_size_control,
         |manager| f64::from(manager.text_size().root_font_px()),
         |manager, value| manager.set_text_size(TextSize::new(value as u32)),
@@ -313,7 +317,7 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     group.append(&text_size_row);
 }
 
-fn append_date_format_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
     const CHOICES: [(&str, crate::util::DateFormat); 3] = [
         ("Relative", crate::util::DateFormat::Relative),
         ("ISO 8601", crate::util::DateFormat::Iso8601),
@@ -335,7 +339,7 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     button.add_css_class("settings-choice");
     button.set_tooltip_text(Some("Modified date format"));
     crate::ui::accessibility::set_label(&button, "Modified date format");
-    manager.bind_preference(&button, ThemeManager::date_format, |widget, format| {
+    manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
         if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
             button.set_label(match format {
                 crate::util::DateFormat::Relative => "Relative",
@@ -365,7 +369,7 @@ fn append_date_format_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         option.set_has_frame(false);
         manager.bind_preference(
             &check,
-            ThemeManager::date_format,
+            PreferenceManager::date_format,
             move |widget, selected| widget.set_visible(selected == format),
         );
         let weak_button = button.downgrade();
@@ -486,20 +490,20 @@ fn add_theme_card_button() -> gtk::Button {
     add
 }
 
-fn bind_new_custom_themes(custom: &gtk::FlowBox, manager: &Rc<ThemeManager>) {
+fn bind_new_custom_themes(custom: &gtk::FlowBox, themes: &Rc<ThemeManager>) {
     let known_custom = RefCell::new(
-        manager
+        themes
             .themes()
             .into_iter()
             .filter(|theme| theme.custom)
             .map(|theme| theme.id)
             .collect::<std::collections::HashSet<_>>(),
     );
-    let weak_manager = Rc::downgrade(manager);
-    manager.bind_preference(
+    let weak_manager = Rc::downgrade(themes);
+    themes.bind_theme_preference(
         custom,
-        |manager| {
-            manager
+        |themes| {
+            themes
                 .themes()
                 .into_iter()
                 .filter(|theme| theme.custom)
@@ -556,7 +560,7 @@ pub(super) fn theme_background_is_light(background: &str) -> bool {
 fn append_theme_card(
     flow: &gtk::FlowBox,
     theme: Theme,
-    manager: &Rc<ThemeManager>,
+    themes: &Rc<ThemeManager>,
 ) -> gtk::FlowBoxChild {
     let card = gtk::Button::new();
     card.add_css_class("theme-card");
@@ -583,7 +587,7 @@ fn append_theme_card(
     metadata.append(&kind);
     content.append(&metadata);
     let check = crate::assets::primary_icon(icons::CHECK, 14);
-    let selected = !manager.follows_omarchy() && manager.selected_id() == theme.id;
+    let selected = !themes.follows_omarchy() && themes.selected_id() == theme.id;
     check.set_visible(selected);
     metadata.append(&check);
     if selected {
@@ -593,9 +597,9 @@ fn append_theme_card(
     let theme_id = theme.id;
     let selected_theme = theme_id.clone();
     let check = check.downgrade();
-    manager.bind_preference(
+    themes.bind_theme_preference(
         &card,
-        move |manager| !manager.follows_omarchy() && manager.selected_id() == selected_theme,
+        move |themes| !themes.follows_omarchy() && themes.selected_id() == selected_theme,
         move |card, selected| {
             if selected {
                 card.add_css_class("selected");
@@ -607,9 +611,9 @@ fn append_theme_card(
             }
         },
     );
-    let manager = manager.clone();
+    let themes = themes.clone();
     card.connect_clicked(move |_| {
-        manager.select_theme(&theme_id);
+        themes.select_theme(&theme_id);
     });
     flow.insert(&card, -1);
     card.parent()

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
 
+mod compact;
 mod visibility;
 
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
 use super::*;
-use crate::{model::Location, ui::theme::ThemeManager};
+use crate::{model::Location, ui::preferences::PreferenceManager};
 
 #[test]
 fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice() {
@@ -14,7 +15,6 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
         start_minimum: 500,
         separator: 2,
         columns: true,
-        icons: false,
     };
     assert_eq!(geometry.position(None), geometry.occupied);
     let overflow = Geometry {
@@ -36,14 +36,14 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
     assert_eq!(narrow.position(Some(900)), narrow.start_minimum);
     assert!(
         !Geometry {
-            available: 800,
+            available: 0,
             ..geometry
         }
         .can_show_preview()
     );
     assert!(
         Geometry {
-            available: 802,
+            available: 1,
             ..geometry
         }
         .can_show_preview()
@@ -80,7 +80,8 @@ impl Fixture {
     fn new(chooser: bool) -> Self {
         crate::ui::prepare_portal_ui();
         let root = tempfile::tempdir().expect("column fixture");
-        std::fs::create_dir_all(root.path().join("child/grandchild")).expect("nested folders");
+        std::fs::create_dir_all(root.path().join("child/grandchild/g3/g4/g5"))
+            .expect("nested folders");
         let browser = if chooser {
             BrowserView::new_chooser(Rc::new(crate::adapters::LocalFileSource), false)
         } else {
@@ -158,7 +159,11 @@ impl Fixture {
     }
 
     fn enter_children(&self) {
-        for depth in 0..2 {
+        self.enter_descendants(2);
+    }
+
+    fn enter_descendants(&self, levels: usize) {
+        for depth in 0..levels {
             self.browser.browser().select(depth, 0);
             self.browser.browser().enter_focused_directory();
             wait_until(|| {
@@ -223,7 +228,7 @@ fn browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(true);
             for chooser in [false, true] {
@@ -291,7 +296,7 @@ fn manual_width_overrides_auto_sizing_until_the_window_session_ends() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::manual_width_overrides_auto_sizing_until_the_window_session_ends",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_reduce_motion(true);
             preferences.set_browser_mode(BrowserMode::Columns);
             let fixture = Fixture::new(false);

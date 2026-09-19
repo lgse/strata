@@ -63,8 +63,8 @@ fn saved_and_live_drop_strategy_dispatches_in_two_views_and_after_a_rebuild() {
     crate::test_support::gtk_test(
         "ui::browser::tests::drops::saved_and_live_drop_strategy_dispatches_in_two_views_and_after_a_rebuild",
         || {
-            crate::ui::theme::ThemeManager::seed_saved_preferences_for_test();
-            let manager = crate::ui::theme::ThemeManager::shared();
+            crate::ui::preferences::PreferenceManager::seed_saved_preferences_for_test();
+            let manager = crate::ui::preferences::PreferenceManager::shared();
             let Some((home, stick)) = crate::test_support::distinct_device_dirs(
                 "saved_and_live_drop_strategy_dispatches_in_two_views_and_after_a_rebuild",
             ) else {

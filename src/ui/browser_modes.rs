@@ -35,7 +35,6 @@ use list_factory::{ListFactory, refresh_list_section};
 const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
 const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_ICONS_THUMBNAIL_SIZE: i32 = 64;
-const SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
 const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 
 #[derive(Clone)]
@@ -1895,7 +1894,7 @@ fn build_icons_pane(
     let sections_for_settle = context.sections.clone();
     let cuts_for_settle = context.cuts.clone();
     let depth_for_settle = context.depth;
-    install_scroll_settle(&scroll, context.scrolling.clone(), None, move || {
+    install_scroll_refresh(&scroll, context.scrolling.clone(), None, move || {
         let Some(browser) = browser_for_settle.upgrade() else {
             return;
         };
@@ -2092,11 +2091,19 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 scrolling_for_bind.get(),
                 state.as_deref(),
             );
-            if !scrolling_for_bind.get()
-                && let Some(position) = metadata_fill_position(source_position, &entry, false, true)
+            if let Some(position) = metadata_fill_position(source_position, &entry, false, true)
                 && let Some(browser) = browser.as_ref()
+                && let Some((icon, _)) = super::icons_cell::parts(&card)
             {
-                browser.request_metadata_fill(depth, position, entry.location.clone(), true);
+                super::thumbnail::request_metadata(
+                    &icon,
+                    &card,
+                    browser,
+                    depth,
+                    position,
+                    entry.location.clone(),
+                    true,
+                );
             }
         }
     });
@@ -2239,46 +2246,53 @@ fn refresh_marquee_targets(pane: &Pane) {
         .collect();
 }
 
-fn install_scroll_settle(
+fn install_scroll_refresh(
     scroll: &gtk::ScrolledWindow,
     scrolling: Rc<Cell<bool>>,
     css_class: Option<&'static str>,
-    on_settle: impl Fn() + 'static,
+    on_refresh: impl Fn() + 'static,
 ) {
-    let pending = Rc::new(RefCell::new(None::<glib::SourceId>));
-    let on_settle = Rc::new(on_settle);
+    let pending = Rc::new(RefCell::new(None::<super::frame::FrameTask>));
+    let on_refresh = Rc::new(on_refresh);
     for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
         let pending = pending.clone();
         let scrolling = scrolling.clone();
-        let scroll = scroll.clone();
-        let on_settle = on_settle.clone();
+        let scroll = scroll.downgrade();
+        let on_refresh = on_refresh.clone();
         adjustment.connect_value_changed(move |_| {
-            let started = !scrolling.replace(true);
-            if started && let Some(css_class) = css_class {
+            let Some(scroll) = scroll.upgrade() else {
+                return;
+            };
+            if pending.borrow().is_some() {
+                return;
+            }
+            scrolling.set(true);
+            if let Some(css_class) = css_class {
                 let scrolling = scrolling.clone();
-                let scroll = scroll.clone();
+                let scroll = scroll.downgrade();
                 glib::idle_add_local_once(move || {
-                    if scrolling.get() {
+                    if scrolling.get()
+                        && let Some(scroll) = scroll.upgrade()
+                    {
                         scroll.add_css_class(css_class);
                     }
                 });
             }
-            if let Some(source) = pending.borrow_mut().take() {
-                source.remove();
-            }
-            let pending_for_timeout = pending.clone();
+            let pending_for_frame = pending.clone();
             let scrolling = scrolling.clone();
-            let scroll = scroll.clone();
-            let on_settle = on_settle.clone();
-            pending.replace(Some(glib::timeout_add_local_once(
-                SCROLL_SETTLE_DELAY,
+            let weak_scroll = scroll.downgrade();
+            let on_refresh = on_refresh.clone();
+            pending.replace(Some(super::frame::FrameTask::new(
+                Some(scroll.upcast_ref()),
                 move || {
-                    pending_for_timeout.borrow_mut().take();
+                    pending_for_frame.borrow_mut().take();
                     scrolling.set(false);
-                    if let Some(css_class) = css_class {
-                        scroll.remove_css_class(css_class);
+                    if let Some(scroll) = weak_scroll.upgrade() {
+                        if let Some(css_class) = css_class {
+                            scroll.remove_css_class(css_class);
+                        }
+                        on_refresh();
                     }
-                    on_settle();
                 },
             )));
         });
@@ -2425,20 +2439,23 @@ fn list_headings(
         headings.append(&cell);
     }
     let scaled_columns = columns.clone();
-    super::theme::ThemeManager::shared().bind_interface_scale(&headings, move |_, scale| {
-        let ratio = scale / scaled_columns.scale.replace(scale);
-        for (index, width) in scaled_columns.widths.iter().enumerate() {
-            let scaled = (f64::from(width.get()) * ratio).round() as i32;
-            width.set(scaled);
-            scaled_columns.cells[index].borrow_mut().retain(|weak| {
-                let Some(cell) = weak.upgrade() else {
-                    return false;
-                };
-                cell.set_width_request(scaled);
-                true
-            });
-        }
-    });
+    super::preferences::PreferenceManager::shared().bind_interface_scale(
+        &headings,
+        move |_, scale| {
+            let ratio = scale / scaled_columns.scale.replace(scale);
+            for (index, width) in scaled_columns.widths.iter().enumerate() {
+                let scaled = (f64::from(width.get()) * ratio).round() as i32;
+                width.set(scaled);
+                scaled_columns.cells[index].borrow_mut().retain(|weak| {
+                    let Some(cell) = weak.upgrade() else {
+                        return false;
+                    };
+                    cell.set_width_request(scaled);
+                    true
+                });
+            }
+        },
+    );
     (headings, sorting)
 }
 
@@ -2503,7 +2520,7 @@ fn column_resize_handle(
                 .borrow()
                 .iter()
                 .filter_map(glib::WeakRef::upgrade)
-                .map(|widget| super::browser::max_child_natural_width(&widget))
+                .map(|widget| list_cell_content_width(&widget))
                 .max()
                 .unwrap_or(initial_width);
             set_list_column_width(
@@ -2547,6 +2564,38 @@ fn column_resize_handle(
 
 fn list_column_width(index: usize, width: i32) -> i32 {
     width.max(LIST_COLUMN_MIN_WIDTHS[index])
+}
+
+/// Registered cells carry the column's fixed width and their labels cap natural
+/// width at one character, so autofit must measure with both constraints lifted.
+fn list_cell_content_width(cell: &gtk::Widget) -> i32 {
+    let cell_request = cell.width_request();
+    if cell_request >= 0 {
+        cell.set_width_request(-1);
+    }
+    let mut labels = Vec::new();
+    let mut stack = vec![cell.clone()];
+    while let Some(widget) = stack.pop() {
+        if let Some(label) = widget.downcast_ref::<gtk::Label>()
+            && label.max_width_chars() >= 0
+        {
+            labels.push((label.clone(), label.max_width_chars()));
+            label.set_max_width_chars(-1);
+        }
+        let mut child = widget.first_child();
+        while let Some(c) = child {
+            stack.push(c.clone());
+            child = c.next_sibling();
+        }
+    }
+    let (_, natural, _, _) = cell.measure(gtk::Orientation::Horizontal, -1);
+    if cell_request >= 0 {
+        cell.set_width_request(cell_request);
+    }
+    for (label, chars) in labels {
+        label.set_max_width_chars(chars);
+    }
+    natural
 }
 
 fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
@@ -2783,7 +2832,7 @@ fn build_list_pane(
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);
     let cuts_for_settle = cut_locations.clone();
-    install_scroll_settle(&scroll, scrolling, Some("list-fast-scroll"), move || {
+    install_scroll_refresh(&scroll, scrolling, Some("list-fast-scroll"), move || {
         let Some(browser) = browser_for_settle.upgrade() else {
             return;
         };
@@ -3572,7 +3621,7 @@ fn metadata_fill_position(
     })
 }
 
-fn icon_details_need_fill(entry: &FileEntry) -> bool {
+pub(super) fn icon_details_need_fill(entry: &FileEntry) -> bool {
     let path = Path::new(&entry.native_name);
     (entry.is_directory() && entry.child_count == MetadataValue::Unknown)
         || (!entry.is_directory()
@@ -4079,7 +4128,7 @@ fn assemble_list_row() -> gtk::Box {
     name.add_css_class("alternate-rename-label");
     name.set_xalign(0.0);
     name.set_hexpand(true);
-    name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     // Keep the label's natural width from widening this fixed-width table cell.
     name.set_max_width_chars(1);
     let field = gtk::Entry::new();
@@ -4151,12 +4200,14 @@ fn apply_icons_entry(
     if label.text().as_deref() != Some(shown_name) {
         label.set_text(Some(shown_name));
     }
+    super::thumbnail::set_thumbnail_or_icon(
+        &icon,
+        entry,
+        super::browser::entry_icon(entry),
+        thumbnail_size,
+        thumbnail_size,
+    );
     if scrolling {
-        super::thumbnail::show_fallback_icon(
-            &icon,
-            super::browser::entry_icon(entry),
-            thumbnail_size,
-        );
         icon.set_hidden(entry.is_hidden);
         icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
@@ -4164,13 +4215,6 @@ fn apply_icons_entry(
             details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
         }
     } else {
-        super::thumbnail::set_thumbnail_or_icon(
-            &icon,
-            entry,
-            super::browser::entry_icon(entry),
-            thumbnail_size,
-            thumbnail_size,
-        );
         refresh_icons_card_chrome(item, card, &icon, &label, entry, cuts);
     }
     if let Some(item) = item.filter(|_| pending_name.is_some()) {
@@ -4224,16 +4268,8 @@ fn refresh_icons_section(
         let Some(entry) = browser.entry_at(depth, position) else {
             return;
         };
-        refresh_icons_card_chrome(Some(&item), &card, &icon, &label, &entry, cuts);
-        super::thumbnail::set_thumbnail_or_icon(
-            &icon,
-            &entry,
-            super::browser::entry_icon(&entry),
-            icon.slot_size(),
-            icon.slot_size(),
-        );
-        if let Some(position) = metadata_fill_position(Some(position), &entry, false, true) {
-            browser.request_metadata_fill(depth, position, entry.location.clone(), true);
+        if super::thumbnail::near_viewport(&card) {
+            refresh_icons_card_chrome(Some(&item), &card, &icon, &label, &entry, cuts);
         }
     });
 }

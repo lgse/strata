@@ -1,110 +1,29 @@
 // SPDX-License-Identifier: MIT
 
+use std::{cell::RefCell, path::Path, rc::Rc};
+
 use super::super::*;
 use crate::{
     model::{
         EntryKind, FileEntry, Location, MetadataValue, SortDirection, SortKey, ViewPreferences,
     },
     test_support::gtk_test,
-    ui::browser_modes::{BrowserDensity, BrowserMode, ClickCount},
+    ui::{
+        browser_modes::{BrowserDensity, BrowserMode, ClickCount},
+        preferences::fixtures::{
+            non_default_preferences, seed_omarchy_for_test, seed_saved_preferences_for_test,
+        },
+        theme::ThemeManager,
+    },
 };
-
-fn non_default_preferences() -> Preferences {
-    // Deliberately exhaustive: adding a stored preference requires extending this fixture.
-    Preferences {
-        mode: "theme".into(),
-        theme: "nord".into(),
-        folder_peeking: false,
-        single_click_previews: false,
-        render_documents_by_default: false,
-        hardware_accelerated_video_previews: Some(false),
-        video_preview_backend: "vulkan".into(),
-        search_open_files_directly: true,
-        type_to_search: false,
-        arrow_navigation_scoped: true,
-        filter_include_subfolders: false,
-        show_keybinding_hints: false,
-        reduce_motion: true,
-        element_glow: false,
-        browser_mode: "list".into(),
-        browser_density: "airy".into(),
-        group_by_type: true,
-        columns_file_clicks: 1,
-        columns_folder_clicks: 2,
-        icons_file_clicks: 1,
-        icons_folder_clicks: 1,
-        list_file_clicks: 1,
-        list_folder_clicks: 1,
-        sidebar_order: vec![
-            "videos".into(),
-            "pictures".into(),
-            "downloads".into(),
-            "documents".into(),
-            "desktop".into(),
-        ],
-        sidebar_show_home: false,
-        sidebar_show_trash: false,
-        sidebar_show_network: false,
-        sidebar_show_recent: false,
-        sidebar_show_desktop: false,
-        sidebar_show_documents: false,
-        sidebar_show_downloads: false,
-        sidebar_show_pictures: false,
-        sidebar_show_videos: false,
-        show_hidden: true,
-        text_size: TextSize::new(24),
-        folders_first: false,
-        sort_key: "size".into(),
-        sort_direction: "descending".into(),
-        check_for_updates: false,
-        preview_muted: true,
-        preview_volume: 0.35,
-        preview_text_wrap: true,
-        auto_refresh_interval: 600,
-        cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
-        open_folder_after_drop: true,
-        date_format: "iso".into(),
-        release_channel: "nightly".into(),
-        default_directory: Some("/fixture/default".into()),
-        folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
-        custom_icons: HashMap::from([(
-            "/fixture/folder".into(),
-            crate::assets::icons::HOME.into(),
-        )]),
-    }
-}
-
-impl ThemeManager {
-    pub(in crate::ui) fn seed_omarchy_for_test() {
-        let state = omarchy_state_dir();
-        fs::create_dir_all(state.join("theme")).expect("isolated Omarchy theme directory");
-        fs::write(state.join("theme.name"), "fixture").expect("isolated Omarchy name");
-        fs::write(
-            state.join("theme/colors.toml"),
-            "background = '#112233'\nforeground = '#ddeeff'\naccent = '#445566'\n",
-        )
-        .expect("isolated Omarchy colors");
-    }
-
-    pub(in crate::ui) fn seed_saved_preferences_for_test() {
-        let path = settings_path();
-        fs::create_dir_all(path.parent().expect("settings parent"))
-            .expect("isolated preferences directory");
-        fs::write(
-            path,
-            toml::to_string(&non_default_preferences()).expect("serialize complete fixture"),
-        )
-        .expect("persist complete fixture");
-    }
-}
 
 #[test]
 fn recent_sort_is_not_stored_as_an_ordinary_folder_default() {
     gtk_test(
-        "ui::theme::tests::preferences::recent_sort_is_not_stored_as_an_ordinary_folder_default",
+        "ui::preferences::tests::preferences::recent_sort_is_not_stored_as_an_ordinary_folder_default",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::load();
+            seed_saved_preferences_for_test();
+            let manager = PreferenceManager::load();
             let saved = manager.preferences.borrow().clone();
 
             manager.set_sort_preferences(ViewPreferences {
@@ -174,13 +93,13 @@ fn assert_recovered_preferences_survive_save(
     corrupt: impl FnOnce(&mut toml::Table),
     mut expected: Preferences,
 ) {
-    ThemeManager::seed_saved_preferences_for_test();
+    seed_saved_preferences_for_test();
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     corrupt(&mut saved);
     let malformed = toml::to_string(&saved).expect("syntactically valid TOML");
     fs::write(settings_path(), &malformed).expect("persist malformed preferences");
 
-    let manager = ThemeManager::shared();
+    let manager = PreferenceManager::shared();
     assert_eq!(*manager.preferences.borrow(), expected);
     assert_eq!(
         fs::read_to_string(settings_path()).expect("unchanged settings file"),
@@ -199,15 +118,15 @@ fn assert_recovered_preferences_survive_save(
 #[test]
 fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
     gtk_test(
-        "ui::theme::tests::preferences::unreadable_preferences_are_preserved_while_live_changes_still_apply",
+        "ui::preferences::tests::preferences::unreadable_preferences_are_preserved_while_live_changes_still_apply",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            seed_saved_preferences_for_test();
             let valid = fs::read(settings_path()).expect("saved fixture");
             for suffix in [b"\nthis is not valid toml [".as_slice(), b"\xff"] {
                 let mut broken = valid.clone();
                 broken.extend_from_slice(suffix);
                 fs::write(settings_path(), &broken).expect("broken settings");
-                let manager = ThemeManager::load();
+                let manager = PreferenceManager::load();
                 let anchors = [
                     gtk::Box::new(gtk::Orientation::Vertical, 0),
                     gtk::Box::new(gtk::Orientation::Vertical, 0),
@@ -217,7 +136,7 @@ fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
                     let observed = values.clone();
                     manager.bind_preference(
                         anchor,
-                        ThemeManager::folder_peeking,
+                        PreferenceManager::folder_peeking,
                         move |_, value| {
                             observed.borrow_mut().push(value);
                         },
@@ -241,7 +160,7 @@ fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
                 );
                 drop(manager);
             }
-            let manager = ThemeManager::load();
+            let manager = PreferenceManager::load();
             assert_eq!(*manager.preferences.borrow(), non_default_preferences());
             manager.set_folder_peeking(true);
             assert!(
@@ -256,10 +175,10 @@ fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
 #[test]
 fn missing_settings_allow_first_run_saves() {
     gtk_test(
-        "ui::theme::tests::preferences::missing_settings_allow_first_run_saves",
+        "ui::preferences::tests::preferences::missing_settings_allow_first_run_saves",
         || {
             assert!(!settings_path().exists());
-            let manager = ThemeManager::load();
+            let manager = PreferenceManager::load();
             manager.set_folder_peeking(false);
             assert!(!read_preferences().expect("first run save").folder_peeking);
         },
@@ -269,7 +188,7 @@ fn missing_settings_allow_first_run_saves() {
 #[test]
 fn malformed_preferences_survive_startup_and_an_unrelated_save() {
     gtk_test(
-        "ui::theme::tests::preferences::malformed_preferences_survive_startup_and_an_unrelated_save",
+        "ui::preferences::tests::preferences::malformed_preferences_survive_startup_and_an_unrelated_save",
         || {
             assert_recovered_preferences_survive_save(
                 |saved| {
@@ -287,7 +206,7 @@ fn malformed_preferences_survive_startup_and_an_unrelated_save() {
 #[test]
 fn missing_required_preferences_survive_startup_and_an_unrelated_save() {
     gtk_test(
-        "ui::theme::tests::preferences::missing_required_preferences_survive_startup_and_an_unrelated_save",
+        "ui::preferences::tests::preferences::missing_required_preferences_survive_startup_and_an_unrelated_save",
         || {
             assert_recovered_preferences_survive_save(
                 |saved| {
@@ -305,7 +224,7 @@ fn missing_required_preferences_survive_startup_and_an_unrelated_save() {
 #[test]
 fn multiple_invalid_preferences_do_not_block_later_valid_entries() {
     gtk_test(
-        "ui::theme::tests::preferences::multiple_invalid_preferences_do_not_block_later_valid_entries",
+        "ui::preferences::tests::preferences::multiple_invalid_preferences_do_not_block_later_valid_entries",
         || {
             assert_recovered_preferences_survive_save(
                 |saved| {
@@ -328,15 +247,16 @@ fn multiple_invalid_preferences_do_not_block_later_valid_entries() {
 #[test]
 fn fresh_preferences_select_tokyo_night_before_settings_opens() {
     gtk_test(
-        "ui::theme::tests::preferences::fresh_preferences_select_tokyo_night_before_settings_opens",
+        "ui::preferences::tests::preferences::fresh_preferences_select_tokyo_night_before_settings_opens",
         || {
             assert!(!settings_path().exists());
-            let manager = ThemeManager::shared();
-            assert_eq!(manager.selected_id(), "tokyo-night");
+            let themes = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
+            assert_eq!(themes.selected_id(), "tokyo-night");
             assert!(manager.filter_include_subfolders());
-            assert!(!manager.follows_omarchy());
+            assert!(!themes.follows_omarchy());
             assert_eq!(
-                manager.current_tokens().expect("selected theme").name,
+                themes.current_tokens().expect("selected theme").name,
                 "Tokyo Night"
             );
             assert!(!settings_path().exists());
@@ -347,15 +267,15 @@ fn fresh_preferences_select_tokyo_night_before_settings_opens() {
 #[test]
 fn fresh_preferences_still_follow_available_omarchy_theme() {
     gtk_test(
-        "ui::theme::tests::preferences::fresh_preferences_still_follow_available_omarchy_theme",
+        "ui::preferences::tests::preferences::fresh_preferences_still_follow_available_omarchy_theme",
         || {
-            ThemeManager::seed_omarchy_for_test();
-            let manager = ThemeManager::shared();
-            assert!(manager.follows_omarchy());
-            assert_eq!(manager.selected_id(), "tokyo-night");
-            manager.set_follow_omarchy(false);
+            seed_omarchy_for_test();
+            let themes = ThemeManager::shared();
+            assert!(themes.follows_omarchy());
+            assert_eq!(themes.selected_id(), "tokyo-night");
+            themes.set_follow_omarchy(false);
             assert_eq!(
-                manager.current_tokens().expect("selected theme").name,
+                themes.current_tokens().expect("selected theme").name,
                 "Tokyo Night"
             );
         },
@@ -365,13 +285,14 @@ fn fresh_preferences_still_follow_available_omarchy_theme() {
 #[test]
 fn every_saved_preference_loads_before_any_settings_page_exists() {
     gtk_test(
-        "ui::theme::tests::preferences::every_saved_preference_loads_before_any_settings_page_exists",
+        "ui::preferences::tests::preferences::every_saved_preference_loads_before_any_settings_page_exists",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            seed_saved_preferences_for_test();
+            let themes = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             assert_eq!(*manager.preferences.borrow(), non_default_preferences());
-            assert!(!manager.follows_omarchy());
-            assert_eq!(manager.selected_id(), "nord");
+            assert!(!themes.follows_omarchy());
+            assert_eq!(themes.selected_id(), "nord");
             assert!(!manager.folder_peeking());
             assert!(!manager.single_click_previews());
             assert!(!manager.hardware_accelerated_video_previews());
@@ -465,7 +386,9 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.preview_muted());
             assert_eq!(manager.preview_volume(), 0.35);
             assert!(manager.preview_text_wrap());
+            assert!(manager.preview_autoplay());
             assert_eq!(manager.auto_refresh_interval(), 600);
+            assert_eq!(manager.thumbnail_workers(), 6);
             assert_eq!(
                 manager.cross_volume_drop_strategy(),
                 CrossVolumeDropStrategy::Move
@@ -490,10 +413,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
 #[test]
 fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
     gtk_test(
-        "ui::theme::tests::preferences::saved_omarchy_mode_loads_and_changes_through_the_same_binding",
+        "ui::preferences::tests::preferences::saved_omarchy_mode_loads_and_changes_through_the_same_binding",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            ThemeManager::seed_omarchy_for_test();
+            seed_saved_preferences_for_test();
+            seed_omarchy_for_test();
             let mut preferences = non_default_preferences();
             preferences.mode = "omarchy".into();
             fs::write(
@@ -505,9 +428,11 @@ fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
             let anchor = gtk::Box::new(gtk::Orientation::Vertical, 0);
             let values = Rc::new(RefCell::new(Vec::new()));
             let observed = values.clone();
-            manager.bind_preference(&anchor, ThemeManager::follows_omarchy, move |_, value| {
-                observed.borrow_mut().push(value)
-            });
+            manager.bind_theme_preference(
+                &anchor,
+                ThemeManager::follows_omarchy,
+                move |_, value| observed.borrow_mut().push(value),
+            );
             assert_eq!(*values.borrow(), [true]);
             manager.set_follow_omarchy(false);
             manager.set_follow_omarchy(true);
@@ -523,11 +448,12 @@ fn saved_omarchy_mode_loads_and_changes_through_the_same_binding() {
 #[test]
 fn all_preference_setters_publish_and_persist_without_duplicate_notifications() {
     gtk_test(
-        "ui::theme::tests::preferences::all_preference_setters_publish_and_persist_without_duplicate_notifications",
+        "ui::preferences::tests::preferences::all_preference_setters_publish_and_persist_without_duplicate_notifications",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            ThemeManager::seed_omarchy_for_test();
-            let manager = ThemeManager::shared();
+            seed_saved_preferences_for_test();
+            seed_omarchy_for_test();
+            let manager = PreferenceManager::shared();
+            let themes = ThemeManager::shared();
             let anchor = gtk::Box::new(gtk::Orientation::Vertical, 0);
             let observations = Rc::new(RefCell::new(Vec::new()));
             let observed = observations.clone();
@@ -536,7 +462,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |manager| manager.preferences.borrow().clone(),
                 move |_, value| observed.borrow_mut().push(value),
             );
-            let setters: &[fn(&ThemeManager)] = &[
+            let preference_setters: &[fn(&PreferenceManager)] = &[
                 |m| m.set_folder_peeking(true),
                 |m| m.set_single_click_previews(true),
                 |m| m.set_render_documents_by_default(true),
@@ -589,13 +515,17 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_muted(false),
                 |m| m.set_preview_volume(0.8),
                 |m| m.set_preview_text_wrap(false),
+                |m| m.set_preview_autoplay(false),
                 |m| m.set_auto_refresh_interval(60),
+                |m| m.set_thumbnail_workers(3),
                 |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_date_format(crate::util::DateFormat::Long),
                 |m| m.set_default_directory(None),
                 |m| m.set_open_folder_after_drop(false),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
+            ];
+            let theme_setters: &[fn(&ThemeManager)] = &[
                 |m| m.set_follow_omarchy(true),
                 |m| m.select_theme("azure-glow"),
             ];
@@ -606,8 +536,8 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 .cloned()
                 .collect::<std::collections::BTreeSet<_>>();
             let mut changed_keys = std::collections::BTreeSet::new();
-            for (index, setter) in setters.iter().enumerate() {
-                setter(&manager);
+            let mut published = 1;
+            let mut assert_setter = |published: &mut usize| {
                 let expected = manager.preferences.borrow().clone();
                 let current =
                     toml::Table::try_from(&expected).expect("changed preference inventory");
@@ -619,16 +549,32 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 previous = current;
                 assert_eq!(
                     observations.borrow().len(),
-                    index + 2,
-                    "setter {index} publishes exactly once"
+                    *published,
+                    "setter publishes exactly once"
                 );
                 assert_eq!(observations.borrow().last(), Some(&expected));
                 assert_eq!(read_preferences().expect("saved preferences"), expected);
+            };
+            for setter in preference_setters {
+                setter(&manager);
+                published += 1;
+                assert_setter(&mut published);
                 setter(&manager);
                 assert_eq!(
                     observations.borrow().len(),
-                    index + 2,
-                    "setter {index} ignores redundant values"
+                    published,
+                    "preference setter ignores redundant values"
+                );
+            }
+            for setter in theme_setters {
+                setter(&themes);
+                published += 1;
+                assert_setter(&mut published);
+                setter(&themes);
+                assert_eq!(
+                    observations.borrow().len(),
+                    published,
+                    "theme setter ignores redundant values"
                 );
             }
             assert_eq!(
@@ -642,10 +588,10 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
 #[test]
 fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
     gtk_test(
-        "ui::theme::tests::preferences::saved_date_format_renders_before_settings_and_updates_bound_labels",
+        "ui::preferences::tests::preferences::saved_date_format_renders_before_settings_and_updates_bound_labels",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let seconds = glib::DateTime::now_local().expect("local time").to_unix() - 120;
             let entry = FileEntry {
                 location: Location::local("/fixture/recent.txt"),

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::{
     gdk::{Key, ModifierType as Modifiers},
@@ -50,6 +53,7 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
             previous: RefCell::new(None),
         },
     };
+    let preferences = dispatcher.type_to_search.preferences.clone();
     keys.connect_key_pressed(move |_, key, _, modifiers| {
         let Some(browser) = weak_browser.upgrade() else {
             return Propagation::Proceed;
@@ -57,6 +61,123 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         dispatcher.handle_key(&browser, key, modifiers)
     });
     window.add_controller(keys);
+
+    // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut. Capture phase so
+    // scrolled windows cannot consume it first; the PDF preview's own zoom is
+    // left alone by passing through scrolls inside its scroll container.
+    // DISCRETE is avoided: it swallows sub-step smooth deltas before they
+    // reach descendant scrolled windows, killing touchpad scrolling.
+    let wheel = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let window_for_wheel = window.downgrade();
+    let zoom = Rc::new(TextZoomScroll::default());
+    wheel.connect_scroll(move |controller, _, dy| {
+        let Some(window) = window_for_wheel.upgrade() else {
+            return Propagation::Proceed;
+        };
+        let target = controller
+            .current_event()
+            .and_then(|event| event.position())
+            .and_then(|(x, y)| window.pick(x, y, gtk::PickFlags::DEFAULT));
+        zoom.handle(
+            &preferences,
+            controller.current_event_state(),
+            controller.unit(),
+            target,
+            dy,
+        )
+    });
+    window.add_controller(wheel);
+}
+
+/// Accumulates fractional scroll deltas into whole text-size steps so smooth
+/// devices zoom in the same increments as wheel clicks. Resets when the input
+/// reverses direction, changes units, or is not claimed for zooming.
+#[derive(Default)]
+pub(super) struct TextZoomScroll {
+    pending: Cell<f64>,
+    direction: Cell<i8>,
+    unit: Cell<Option<gtk::gdk::ScrollUnit>>,
+}
+
+impl TextZoomScroll {
+    /// Surface-unit deltas arrive in pixels; 10 px make one wheel step, the
+    /// same mapping GTK's discrete conversion uses.
+    const SURFACE_PIXELS_PER_STEP: f64 = 10.0;
+
+    fn reset(&self) {
+        self.pending.set(0.0);
+        self.direction.set(0);
+    }
+
+    pub(super) fn accumulate(&self, unit: gtk::gdk::ScrollUnit, dy: f64) -> i32 {
+        let direction = dy.signum() as i8;
+        let unit_changed = self.unit.replace(Some(unit)) != Some(unit);
+        let direction_changed = direction != 0 && self.direction.replace(direction) != direction;
+        if unit_changed || direction_changed {
+            self.pending.set(0.0);
+        }
+        let delta = if unit == gtk::gdk::ScrollUnit::Surface {
+            dy / Self::SURFACE_PIXELS_PER_STEP
+        } else {
+            dy
+        };
+        let accumulated = self.pending.get() + delta;
+        let steps = accumulated.trunc() as i32;
+        self.pending.set(accumulated - f64::from(steps));
+        steps
+    }
+
+    fn handle(
+        &self,
+        preferences: &crate::ui::preferences::PreferenceManager,
+        modifiers: Modifiers,
+        unit: gtk::gdk::ScrollUnit,
+        target: Option<gtk::Widget>,
+        dy: f64,
+    ) -> Propagation {
+        if !modifiers.contains(Modifiers::CONTROL_MASK)
+            || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            || dy == 0.0
+            || target.as_ref().is_some_and(inside_pdf_scroll)
+        {
+            self.reset();
+            return Propagation::Proceed;
+        }
+        let steps = self.accumulate(unit, dy);
+        if steps == 0 {
+            return Propagation::Stop;
+        }
+        handle_text_zoom_scroll(preferences, modifiers, target, f64::from(steps))
+    }
+}
+
+pub(super) fn handle_text_zoom_scroll(
+    preferences: &crate::ui::preferences::PreferenceManager,
+    modifiers: Modifiers,
+    target: Option<gtk::Widget>,
+    dy: f64,
+) -> Propagation {
+    if !modifiers.contains(Modifiers::CONTROL_MASK)
+        || modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        || dy == 0.0
+        || target.as_ref().is_some_and(inside_pdf_scroll)
+    {
+        return Propagation::Proceed;
+    }
+    preferences.set_text_size(preferences.text_size().stepped(-dy as i32));
+    Propagation::Stop
+}
+
+fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
+    let mut current = Some(widget.clone());
+    while let Some(widget) = current {
+        if widget.has_css_class("preview-pdf-scroll") {
+            return true;
+        }
+        current = widget.parent();
+    }
+    false
 }
 
 struct Dispatcher {

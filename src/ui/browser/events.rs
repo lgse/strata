@@ -49,8 +49,11 @@ impl ViewState {
         }
         match event {
             BrowserEvent::SelectionSynced { .. } => return,
-            BrowserEvent::NavigationStarting => {}
+            BrowserEvent::NavigationStarting => {
+                self.suppress_scroll_after_drop.set(false);
+            }
             BrowserEvent::Reset => {
+                self.suppress_scroll_after_drop.set(false);
                 self.pending_new_entry.take();
                 self.pending_location_credentials.take();
                 self.pending_archive_destination.take();
@@ -184,9 +187,6 @@ impl ViewState {
                 }
             }
             BrowserEvent::MetadataFilled { depth, updates } => {
-                for (_, entry) in updates.iter() {
-                    crate::ui::thumbnail::note_metadata_entry(entry);
-                }
                 if self.mode_views.borrow().mode() == BrowserMode::Columns
                     && let Some(column) = self.columns.borrow().get(*depth).cloned()
                 {
@@ -401,20 +401,20 @@ impl ViewState {
                         });
                     }
                 } else {
-                    let transfer_target_loaded = self
-                        .pending_transfer_selection
+                    let selection_target_loaded = self
+                        .pending_location_selection
                         .borrow()
                         .as_ref()
                         .is_some_and(|(target, _)| {
                             self.browser.location_at(*depth).as_ref() == Some(target)
                         });
-                    if transfer_target_loaded
+                    if selection_target_loaded
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
                     {
                         self.browser.set_active_column(*depth);
                     }
-                    let locations = if transfer_target_loaded {
-                        self.pending_transfer_selection
+                    let locations = if selection_target_loaded {
+                        self.pending_location_selection
                             .take()
                             .map(|(_, locations)| locations)
                             .unwrap_or_default()
@@ -558,17 +558,24 @@ impl ViewState {
                             .filter_map(|position| column.map.view_position(position))
                             .collect();
                         set_column_selections(&column, &positions);
-                        if !editing {
+                        if !editing && !self.suppress_focus_scroll.get() {
                             scroll_column_to(&column, filtered_position);
                         }
                     }
                     if !editing
                         && self.mode_views.borrow().mode() == BrowserMode::Columns
+                        && self.browser.active_depth() == Some(*depth)
+                        && !self.suppress_scroll_after_drop.get()
                         && !column.list.grab_focus()
                     {
                         column.presentation.stack.grab_focus();
                     }
-                    if !editing && self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    if !editing
+                        && self.mode_views.borrow().mode() == BrowserMode::Columns
+                        && !self.suppress_scroll_after_drop.get()
+                        && self.input_ownership.borrow().last_navigation
+                            == crate::ui::input_ownership::NavigationInput::Keyboard
+                    {
                         self.reveal_column(column.shell);
                     }
                 }
@@ -689,6 +696,7 @@ impl ViewState {
             }
             BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
+                self.suppress_scroll_after_drop.set(false);
                 self.pending_new_entry.take();
                 self.clear_delete_animation();
                 self.dismiss_file_operation_progress();
@@ -742,6 +750,7 @@ impl ViewState {
                 not_attempted,
                 affected_locations,
             } => {
+                self.suppress_scroll_after_drop.set(false);
                 self.pending_archive_destination.take();
                 self.browser.refresh_after_cancellation(affected_locations);
                 let message = format!(
@@ -875,7 +884,7 @@ impl ViewState {
                 self.pending_navigate.take();
                 self.pending_select.take();
                 self.pending_select_properties.set(false);
-                self.pending_transfer_selection
+                self.pending_location_selection
                     .replace(Some((destination.clone(), locations.clone())));
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     let open_depth = (0..self.columns.borrow().len()).find(|depth| {
@@ -898,6 +907,7 @@ impl ViewState {
                 }
             }
             BrowserEvent::TransferCompleted => {
+                self.suppress_scroll_after_drop.set(false);
                 if let Some(dest) = self.pending_navigate.take() {
                     self.browser.navigate(dest);
                 }

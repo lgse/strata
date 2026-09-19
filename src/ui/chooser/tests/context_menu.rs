@@ -111,7 +111,7 @@ fn chooser_routes_menu_shortcuts_and_preserves_completion_on_escape() {
         || {
             crate::ui::prepare_portal_ui();
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 let root = tempfile::tempdir().expect("fixture");
                 std::fs::write(root.path().join("note.txt"), "notes").expect("file");
                 std::fs::write(root.path().join("peer.txt"), "peer").expect("file");
@@ -229,8 +229,8 @@ fn chooser_context_menus_and_rename_work_in_every_view() {
             let root = tempfile::tempdir().expect("fixture");
             std::fs::create_dir(root.path().join("Folder")).expect("folder");
             std::fs::write(root.path().join("note.txt"), "notes").expect("file");
-            ThemeManager::shared().set_browser_mode(mode);
-            ThemeManager::shared().set_group_by_type(grouped);
+            PreferenceManager::shared().set_browser_mode(mode);
+            PreferenceManager::shared().set_group_by_type(grouped);
             let request = ChooserRequest {
                 token: format!("context-{mode:?}-{grouped}"),
                 title: "Strata keyboard regression".into(),

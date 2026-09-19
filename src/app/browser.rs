@@ -17,8 +17,8 @@ use crate::{
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRecord,
         RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
-        TransferConflict, UndoCopyRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
-        validate_basename, validate_uri_credentials,
+        TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveItem,
+        UndoMoveRequest, UndoRenameRequest, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -259,6 +259,13 @@ pub enum UndoEntry {
     Trash(Vec<Location>),
     Move(Vec<MoveRecord>),
     Copy(Vec<Location>),
+    /// `created` paths get trashed; `overwritten` paths lose the incoming
+    /// copy and get their staged original restored from Trash.
+    Merge {
+        created: Vec<Location>,
+        overwritten: Vec<Location>,
+        originals: HashMap<Location, TrashedOriginal>,
+    },
     Rename(RenameRecord),
 }
 
@@ -266,10 +273,25 @@ impl UndoEntry {
     fn is_empty(&self) -> bool {
         match self {
             Self::Trash(locations) | Self::Copy(locations) => locations.is_empty(),
+            Self::Merge {
+                created,
+                overwritten,
+                ..
+            } => created.is_empty() && overwritten.is_empty(),
             Self::Move(records) => records.is_empty(),
             Self::Rename(_) => false,
         }
     }
+}
+
+/// Merge bookkeeping collected while a paste runs: which sources merged, and
+/// what each merge created or overwrote. Sources matter for move transfers,
+/// where a merged source must not join the move-undo records.
+#[derive(Default)]
+struct MergeUndoState {
+    sources: HashSet<Location>,
+    created: Vec<Location>,
+    overwritten: Vec<Location>,
 }
 
 struct PendingUndo {
@@ -350,6 +372,15 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
             UndoEntry::Trash(locations) | UndoEntry::Copy(locations) => {
                 locations.retain(|candidate| candidate != location);
             }
+            UndoEntry::Merge {
+                created,
+                overwritten,
+                originals,
+            } => {
+                created.retain(|candidate| candidate != location);
+                overwritten.retain(|candidate| candidate != location);
+                originals.remove(location);
+            }
             UndoEntry::Move(records) => {
                 records.retain(|record| &record.current != location);
             }
@@ -395,6 +426,23 @@ fn retain_pending_copy_items(generation: u64, locations: &[Location]) {
     });
 }
 
+fn retain_pending_merge_items(generation: u64, created: &[Location], overwritten: &[Location]) {
+    PENDING_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if let Some(pending) = pending.find_mut(generation)
+            && let UndoEntry::Merge {
+                created: kept_created,
+                overwritten: kept_overwritten,
+                originals,
+            } = &mut pending.entry
+        {
+            kept_created.retain(|location| created.contains(location));
+            kept_overwritten.retain(|location| overwritten.contains(location));
+            originals.retain(|location, _| overwritten.contains(location));
+        }
+    });
+}
+
 fn undo_move_parents(items: &[UndoMoveItem]) -> HashSet<Location> {
     items
         .iter()
@@ -429,14 +477,12 @@ fn pending_undo_entry() -> Option<UndoEntry> {
     })
 }
 
-/// Settles scrolling before asking for viewport metadata, so a fling never
-/// stats hundreds of rows it never shows.
-const METADATA_FILL_DEBOUNCE: Duration = Duration::from_millis(100);
 /// Bounds one metadata fill; partial results still apply, the rest retries on
 /// its next bind.
 const METADATA_FILL_TIME_BUDGET: Duration = Duration::from_secs(5);
 /// Defensive cap per depth: the UI only ever asks for its visible window.
 const MAX_PENDING_FILL_LOCATIONS: usize = 1024;
+const MAX_VIEWPORT_FILL_BATCH: usize = 16;
 
 /// Remote loads only (native loads stage instead): entries accumulate this far
 /// before an early flush bounds first-result latency.
@@ -468,6 +514,7 @@ struct ViewportFill {
     depth: usize,
     directory_request: RequestId,
     tokens: Vec<(usize, Location)>,
+    include_icon_details: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -503,7 +550,7 @@ pub struct Browser {
     loads: RefCell<Vec<LoadHandle>>,
     monitors: RefCell<Vec<Option<LoadHandle>>>,
     metadata_pending: RefCell<HashMap<usize, Vec<ViewportTarget>>>,
-    metadata_timer: RefCell<Option<gio::glib::SourceId>>,
+    metadata_idle: RefCell<Option<gio::glib::SourceId>>,
     staging: RefCell<HashMap<usize, StagingLoad>>,
     sorting: RefCell<HashMap<usize, SortingLoad>>,
     staged_publishes: RefCell<HashMap<usize, StagedPublish>>,
@@ -512,7 +559,7 @@ pub struct Browser {
     metadata_loads: RefCell<HashMap<usize, LoadHandle>>,
     fill_tokens: RefCell<HashMap<RequestId, ViewportFill>>,
     /// Full-column sort fills, kept apart from viewport fills so a viewport
-    /// settle timer can never overwrite or cancel an active full sort.
+    /// metadata dispatch can never overwrite or cancel an active full sort.
     sort_loads: RefCell<HashMap<usize, LoadHandle>>,
     sort_awaiting_fill: RefCell<Option<SortFill>>,
     last_batch_selection: RefCell<BatchSelectionState>,
@@ -537,6 +584,7 @@ pub struct Browser {
     /// source listing; a paste or explicit "move to" still shows where it landed.
     transfer_reveal: Cell<bool>,
     created_locations: RefCell<Vec<Location>>,
+    merged_undo: RefCell<MergeUndoState>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
@@ -559,7 +607,7 @@ impl Browser {
             loads: RefCell::new(Vec::new()),
             monitors: RefCell::new(Vec::new()),
             metadata_pending: RefCell::new(HashMap::new()),
-            metadata_timer: RefCell::new(None),
+            metadata_idle: RefCell::new(None),
             staging: RefCell::new(HashMap::new()),
             sorting: RefCell::new(HashMap::new()),
             staged_publishes: RefCell::new(HashMap::new()),
@@ -588,6 +636,7 @@ impl Browser {
             transfer_destination: RefCell::new(None),
             transfer_reveal: Cell::new(true),
             created_locations: RefCell::new(Vec::new()),
+            merged_undo: RefCell::new(MergeUndoState::default()),
             undo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
@@ -1328,6 +1377,16 @@ impl Browser {
     }
 
     pub fn deletion_entries(&self) -> Vec<FileEntry> {
+        self.selection_or_descended()
+    }
+
+    /// Entries a copy/cut acts on: the active selection, or the folder that
+    /// was descended into when the focused column selected nothing yet.
+    pub fn transfer_entries(&self) -> Vec<FileEntry> {
+        self.selection_or_descended()
+    }
+
+    fn selection_or_descended(&self) -> Vec<FileEntry> {
         let state = self.state.borrow();
         let selected = state.selected_entries();
         if !selected.is_empty() {
@@ -1638,7 +1697,13 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Copy(_) | UndoEntry::Rename(_)) => None,
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Copy(_)
+                | UndoEntry::Merge { .. }
+                | UndoEntry::Rename(_),
+            ) => None,
         }
     }
 
@@ -1648,7 +1713,33 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Copy(locations)) => Some((generation, locations)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Move(_) | UndoEntry::Rename(_)) => None,
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Move(_)
+                | UndoEntry::Merge { .. }
+                | UndoEntry::Rename(_),
+            ) => None,
+        }
+    }
+
+    pub fn pending_undo_merge(&self) -> Option<(u64, Vec<Location>, Vec<Location>)> {
+        match peek_pending_undo()? {
+            (
+                generation,
+                UndoEntry::Merge {
+                    created,
+                    overwritten,
+                    ..
+                },
+            ) => Some((generation, created, overwritten)),
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Move(_)
+                | UndoEntry::Copy(_)
+                | UndoEntry::Rename(_),
+            ) => None,
         }
     }
 
@@ -1663,7 +1754,13 @@ impl Browser {
                     original, current, ..
                 }),
             ) => Some((generation, current, original)),
-            (_, UndoEntry::Trash(_) | UndoEntry::Move(_) | UndoEntry::Copy(_)) => None,
+            (
+                _,
+                UndoEntry::Trash(_)
+                | UndoEntry::Move(_)
+                | UndoEntry::Copy(_)
+                | UndoEntry::Merge { .. },
+            ) => None,
         }
     }
 
@@ -1779,6 +1876,60 @@ impl Browser {
             UndoCopyRequest {
                 id: request_id,
                 locations,
+            },
+            self.operation_callback(request_id, false, refresh_locations),
+        );
+        self.install_operation_load(request_id, load);
+        true
+    }
+
+    /// Merge undo restores originals from Trash, so it runs through the
+    /// restoration pipeline like trash undo.
+    pub fn undo_merge(
+        self: &Rc<Self>,
+        generation: u64,
+        created: Vec<Location>,
+        overwritten: Vec<Location>,
+    ) -> bool {
+        if self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Merge { mut originals, .. } = entry else {
+            finish_undo(generation, false);
+            return false;
+        };
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_undo(generation, false);
+            return false;
+        };
+        retain_pending_merge_items(generation, &created, &overwritten);
+        originals.retain(|location, _| overwritten.contains(location));
+        let total = created.len() + overwritten.len();
+        let refresh_locations = created
+            .iter()
+            .chain(&overwritten)
+            .filter_map(|location| location.parent())
+            .collect();
+        let request_id = self.begin_operation();
+        self.restoration_operation.set(true);
+        self.undo_claim.replace(Some((
+            generation,
+            UndoEntry::Merge {
+                created: created.clone(),
+                overwritten: overwritten.clone(),
+                originals: originals.clone(),
+            },
+        )));
+        self.emit(BrowserEvent::RestorationStarted { total });
+        let load = provider.undo_merge(
+            UndoMergeRequest {
+                id: request_id,
+                created,
+                overwritten,
+                originals,
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
@@ -1948,6 +2099,7 @@ impl Browser {
         self.transfer_operation.set(None);
         self.transfer_destination.replace(None);
         self.created_locations.borrow_mut().clear();
+        *self.merged_undo.borrow_mut() = MergeUndoState::default();
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
         self.deferred_file_operation_changes.borrow_mut().clear();
@@ -2354,10 +2506,23 @@ impl Browser {
         if !self.source.supports_metadata_fill(&location) {
             return;
         }
+        let directory_request = self.state.borrow().request_id_for_depth(depth);
+        if self.fill_tokens.borrow().values().any(|fill| {
+            fill.depth == depth
+                && Some(fill.directory_request) == directory_request
+                && (!include_icon_details || fill.include_icon_details)
+                && fill
+                    .tokens
+                    .iter()
+                    .any(|(index, entry)| *index == position && *entry == location)
+        }) {
+            return;
+        }
         {
             let mut pending = self.metadata_pending.borrow_mut();
             let queued = pending.entry(depth).or_default();
             if let Some(target) = queued.iter_mut().find(|target| target.location == location) {
+                target.position = position;
                 target.include_icon_details |= include_icon_details;
             } else if queued.len() < MAX_PENDING_FILL_LOCATIONS {
                 queued.push(ViewportTarget {
@@ -2368,6 +2533,24 @@ impl Browser {
             }
         }
         self.schedule_metadata_fill();
+    }
+
+    pub(crate) fn prioritize_metadata_fills(&self, depth: usize, visible: &[Location]) {
+        let mut pending = self.metadata_pending.borrow_mut();
+        let Some(targets) = pending.get_mut(&depth) else {
+            return;
+        };
+        let priorities: HashMap<_, _> = visible
+            .iter()
+            .enumerate()
+            .map(|(i, path)| (path, i))
+            .collect();
+        targets.sort_by_key(|target| {
+            priorities
+                .get(&target.location)
+                .copied()
+                .unwrap_or(usize::MAX)
+        });
     }
 
     fn request_sort_fill(
@@ -2482,8 +2665,12 @@ impl Browser {
         }
         // Only a fill's own id releases its handle; terminals from superseded fills
         // cannot affect a sort or a newer request.
-        if let Some(fill) = self.fill_tokens.borrow_mut().remove(&request_id) {
+        let fill = self.fill_tokens.borrow_mut().remove(&request_id);
+        if let Some(fill) = fill {
             self.metadata_loads.borrow_mut().remove(&fill.depth);
+            if self.metadata_pending.borrow().contains_key(&fill.depth) {
+                self.schedule_metadata_fill();
+            }
         }
     }
 
@@ -2554,13 +2741,28 @@ impl Browser {
     }
 
     fn flush_metadata_fills(self: &Rc<Self>) {
-        self.metadata_timer.borrow_mut().take();
-        let pending: Vec<(usize, Vec<ViewportTarget>)> =
-            self.metadata_pending.borrow_mut().drain().collect();
-        for (depth, targets) in pending {
+        self.metadata_idle.borrow_mut().take();
+        // Newly bound rows must not cancel late details for cards that remain bound.
+        let active_depths: HashSet<usize> = self
+            .fill_tokens
+            .borrow()
+            .values()
+            .map(|fill| fill.depth)
+            .collect();
+        let pending: Vec<(usize, Vec<ViewportTarget>)> = self
+            .metadata_pending
+            .borrow_mut()
+            .extract_if(|depth, _| !active_depths.contains(depth))
+            .collect();
+        for (depth, mut targets) in pending {
             let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
                 continue;
             };
+            // Bound the non-preemptible batch so scrolling can reprioritize the backlog.
+            if targets.len() > MAX_VIEWPORT_FILL_BATCH {
+                let remainder = targets.split_off(MAX_VIEWPORT_FILL_BATCH);
+                self.metadata_pending.borrow_mut().insert(depth, remainder);
+            }
             let fill_request = self.new_request_id();
             let weak: Weak<Self> = Rc::downgrade(self);
             let emit = Rc::new(move |event| {
@@ -2574,16 +2776,13 @@ impl Browser {
                 .collect();
             let include_icon_details = targets.iter().any(|target| target.include_icon_details);
             // Stored before the provider runs: synchronous fills answer inside the call.
-            self.fill_tokens
-                .borrow_mut()
-                .retain(|_, fill| fill.depth != depth);
-            self.metadata_loads.borrow_mut().remove(&depth);
             self.fill_tokens.borrow_mut().insert(
                 fill_request,
                 ViewportFill {
                     depth,
                     directory_request,
                     tokens,
+                    include_icon_details,
                 },
             );
             let handle = self.source.fill_metadata(

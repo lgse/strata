@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::theme::ThemeManager;
 
 pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     title: &str,
     choices: &[(&'static str, T)],
-    read: fn(&ThemeManager) -> T,
-    write: fn(&ThemeManager, T),
+    read: fn(&PreferenceManager) -> T,
+    write: fn(&PreferenceManager, T),
 ) -> gtk::MenuButton {
     let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
     menu.add_css_class("column-menu");
@@ -57,10 +58,10 @@ pub(super) fn choice_menu<T: Copy + PartialEq + 'static>(
 }
 
 pub(super) fn bind_number(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     control: &gtk::SpinButton,
-    read: fn(&ThemeManager) -> f64,
-    write: fn(&ThemeManager, f64),
+    read: fn(&PreferenceManager) -> f64,
+    write: fn(&PreferenceManager, f64),
 ) {
     manager.bind_preference(control, read, |widget, value| {
         if let Some(control) = widget.downcast_ref::<gtk::SpinButton>() {
@@ -77,10 +78,10 @@ pub(super) fn bind_number(
 }
 
 pub(super) fn bind_switch(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     toggle: &gtk::Switch,
-    read: fn(&ThemeManager) -> bool,
-    write: fn(&ThemeManager, bool),
+    read: fn(&PreferenceManager) -> bool,
+    write: fn(&PreferenceManager, bool),
 ) {
     manager.bind_preference(toggle, read, |widget, value| {
         if let Some(toggle) = widget.downcast_ref::<gtk::Switch>() {
@@ -97,10 +98,10 @@ pub(super) fn bind_switch(
 }
 
 pub(super) fn bind_toggle(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     toggle: &gtk::ToggleButton,
-    read: fn(&ThemeManager) -> bool,
-    write: fn(&ThemeManager, bool),
+    read: fn(&PreferenceManager) -> bool,
+    write: fn(&PreferenceManager, bool),
 ) {
     manager.bind_preference(toggle, read, |widget, value| {
         if let Some(toggle) = widget.downcast_ref::<gtk::ToggleButton>() {
@@ -117,11 +118,11 @@ pub(super) fn bind_toggle(
 }
 
 pub(super) fn bind_choice<T: Copy + PartialEq + 'static>(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     button: &gtk::ToggleButton,
     value: T,
-    read: impl Fn(&ThemeManager) -> T + 'static,
-    write: impl Fn(&ThemeManager, T) + 'static,
+    read: impl Fn(&PreferenceManager) -> T + 'static,
+    write: impl Fn(&PreferenceManager, T) + 'static,
 ) {
     let read = Rc::new(read);
     let read_for_binding = read.clone();
@@ -137,6 +138,26 @@ pub(super) fn bind_choice<T: Copy + PartialEq + 'static>(
     let manager = manager.clone();
     button.connect_toggled(move |button| {
         if button.is_active() && read(&manager) != value {
+            write(&manager, value);
+        }
+    });
+}
+
+pub(super) fn bind_theme_switch(
+    manager: &Rc<ThemeManager>,
+    toggle: &gtk::Switch,
+    read: fn(&ThemeManager) -> bool,
+    write: fn(&ThemeManager, bool),
+) {
+    manager.bind_theme_preference(toggle, read, |widget, value| {
+        if let Some(toggle) = widget.downcast_ref::<gtk::Switch>() {
+            toggle.set_active(value);
+        }
+    });
+    let manager = manager.clone();
+    toggle.connect_active_notify(move |toggle| {
+        let value = toggle.is_active();
+        if read(&manager) != value {
             write(&manager, value);
         }
     });

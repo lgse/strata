@@ -3,7 +3,7 @@
 use super::super::*;
 use crate::ui::{
     blur::BlurBin,
-    theme::{TextSize, ThemeManager},
+    preferences::{PreferenceManager, TextSize},
 };
 use gtk::glib;
 
@@ -69,7 +69,7 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
     crate::test_support::gtk_test(
         "ui::settings::tests::typography::settings_pages_reflow_without_horizontal_scrolling_as_text_grows",
         || {
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             crate::ui::prepare_portal_ui();
             manager.set_text_size(TextSize::new(17));
             let button = gtk::Button::with_label("Settings");
@@ -197,7 +197,7 @@ fn custom_text_size_settings_remain_reachable_on_small_logical_displays() {
         "ui::settings::tests::typography::custom_text_size_settings_remain_reachable_on_small_logical_displays",
         || {
             crate::ui::prepare_portal_ui();
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             let button = gtk::Button::with_label("Settings");
             let root = BlurBin::new(&button);
             let overlay = gtk::Overlay::new();

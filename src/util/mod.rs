@@ -55,7 +55,7 @@ thread_local! {
     /// Labels already listening for format changes; unlike the timestamp
     /// bindings this set is not cleared when a row is rebound without a date.
     static DATE_FORMAT_BOUND: RefCell<Vec<glib::WeakRef<gtk::Label>>> = const { RefCell::new(Vec::new()) };
-    /// Pushed by `ThemeManager` on load and save; reading `shared()` here
+    /// Pushed by `PreferenceManager` on load and save; reading `shared()` here
     /// would lazily run theme initialization inside list row binds.
     static MODIFIED_DATE_FORMAT: Cell<DateFormat> = const { Cell::new(DateFormat::Relative) };
     static MODIFIED_DATE_TIMER_ACTIVE: Cell<bool> = const { Cell::new(false) };
@@ -121,9 +121,9 @@ pub fn set_modified_date(label: &gtk::Label, entry: Option<&FileEntry>, fallback
 /// Re-renders the label when the saved date format changes. Reads the latest
 /// timestamp back out of the binding table so recycled rows stay correct.
 fn bind_date_format(label: &gtk::Label) {
-    crate::ui::theme::ThemeManager::shared().bind_preference(
+    crate::ui::preferences::PreferenceManager::shared().bind_preference(
         label,
-        crate::ui::theme::ThemeManager::date_format,
+        crate::ui::preferences::PreferenceManager::date_format,
         |widget, _| {
             let Some(label) = widget.downcast_ref::<gtk::Label>() else {
                 return;
