@@ -2206,6 +2206,17 @@ paned > separator {
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
 }
 
+.preview-text border.left {
+  background: @theme_surface;
+  border-right: 1px solid mix(@theme_bg, @theme_border, 0.6);
+  box-shadow: none;
+}
+
+.preview-text border.left gutter {
+  border-right: none;
+  box-shadow: none;
+}
+
 .preview-text selection,
 .preview-text text selection {
   background: @theme_accent;
@@ -2391,6 +2402,84 @@ paned > separator {
   color: @theme_dim_text;
   font-size: 0.8em;
   padding: 6px 10px;
+}
+
+.preview-archive {
+  background: @theme_surface;
+}
+
+.preview-archive-crumbs-scroll {
+  border-bottom: 1px solid alpha(@theme_border, 0.24);
+}
+
+.preview-archive-crumbs {
+  padding: 6px 10px;
+}
+
+.preview-archive-crumb {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_accent;
+  font-size: 0.85em;
+  min-height: 20px;
+  padding: 0 7px;
+}
+
+.preview-archive-crumb:hover {
+  background: alpha(@theme_muted, 0.55);
+  border-color: alpha(@theme_border, 0.42);
+}
+
+.preview-archive-crumb:active {
+  background: alpha(@theme_muted, 0.82);
+}
+
+.preview-archive-crumb:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 1px;
+}
+
+.preview-archive-crumb-current {
+  color: @theme_dim_text;
+}
+
+.preview-archive-count {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+  padding: 6px 12px;
+}
+
+.preview-archive-list {
+  background: transparent;
+}
+
+.preview-archive-row {
+  background: transparent;
+  border: none;
+  padding: 3px 10px;
+}
+
+.preview-archive-row:hover {
+  background: alpha(@theme_muted, 0.35);
+}
+
+.preview-archive-row:selected {
+  background: alpha(@theme_accent, 0.28);
+}
+
+.preview-archive-name {
+  color: @theme_text;
+}
+
+.preview-archive-size {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.preview-archive-empty {
+  color: @theme_dim_text;
 }
 
 .preview-document-table > header,
@@ -2657,6 +2746,42 @@ paned > separator {
 
 .preview-feedback-detail {
   color: @theme_dim_text;
+}
+
+.preview-archive-password {
+  padding: 24px;
+}
+
+.preview-archive-password-row {
+  margin-top: 6px;
+}
+
+.preview-archive-password-error {
+  color: @theme_danger;
+  margin-top: 6px;
+}
+
+.preview-archive-password-row button.suggested-action {
+  background-color: @theme_accent;
+  background-image: none;
+  color: @theme_bg;
+}
+
+.preview-archive-password-row button.suggested-action:hover {
+  background-color: shade(@theme_accent, 1.07);
+  background-image: none;
+}
+
+.preview-archive-password-row button.suggested-action:active,
+.preview-archive-password-row button.suggested-action:checked {
+  background-color: shade(@theme_accent, 0.92);
+  background-image: none;
+}
+
+.preview-archive-password-row button.suggested-action:disabled {
+  background-color: alpha(@theme_accent, 0.5);
+  background-image: none;
+  color: alpha(@theme_bg, 0.7);
 }
 
 .preview-command {

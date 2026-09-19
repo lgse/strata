@@ -1014,8 +1014,12 @@ fn slow_click_rename_opens_editor_after_the_double_click_interval() {
                         PeekBehavior::default(),
                     );
                     view.set_view_mode(mode);
+                    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    let password = gtk::PasswordEntry::new();
+                    content.append(&view.widget());
+                    content.append(&password);
                     let window = gtk::Window::builder()
-                        .child(&view.widget())
+                        .child(&content)
                         .default_width(600)
                         .default_height(300)
                         .build();
@@ -1061,6 +1065,19 @@ fn slow_click_rename_opens_editor_after_the_double_click_interval() {
                         !view.rename_is_active(),
                         "selection changes cancel rename in {mode:?} at {interval}ms"
                     );
+                    view.state.schedule_click_rename(0, 0);
+                    assert!(password.grab_focus());
+                    let deadline = Instant::now() + Duration::from_millis(interval as u64 + 100);
+                    while Instant::now() < deadline {
+                        glib::MainContext::default().iteration(false);
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    assert!(
+                        !view.rename_is_active(),
+                        "password entry owns input in {mode:?}"
+                    );
+                    let focused = gtk::prelude::RootExt::focus(&window).expect("password focus");
+                    assert!(focused == password || focused.is_ancestor(&password));
                     browser.clear_observer();
                     window.destroy();
                 }

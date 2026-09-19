@@ -104,6 +104,7 @@ fn isolated_trash_supports_read_copy_move_restore_and_delete() {
             render_document: false,
             pdf_page: 0,
             media_size: crate::services::MediaPreviewSize::new(1280, 1280),
+            archive_password: None,
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );

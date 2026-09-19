@@ -145,8 +145,12 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "some notes",
         crate::model::EntryKind::Directory,
     )));
-    assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
+    assert!(crate::ui::preview::entry_supports_quick_preview(&entry(
         "archive.zip",
+        crate::model::EntryKind::File,
+    )));
+    assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
+        "archive.rar",
         crate::model::EntryKind::File,
     )));
     assert!(!crate::ui::preview::entry_supports_quick_preview(&entry(
@@ -155,10 +159,12 @@ fn quick_preview_is_offered_only_for_supported_files() {
     )));
 
     let supported = entry("photo.png", crate::model::EntryKind::File);
-    let unsupported = entry("archive.zip", crate::model::EntryKind::File);
+    let supported_archive = entry("archive.zip", crate::model::EntryKind::File);
+    let unsupported = entry("archive.rar", crate::model::EntryKind::File);
     let directory = entry("photos", crate::model::EntryKind::Directory);
     assert!(entry_responds_to_preview_click(&supported, true));
     assert!(!entry_responds_to_preview_click(&supported, false));
+    assert!(entry_responds_to_preview_click(&supported_archive, true));
     assert!(!entry_responds_to_preview_click(&unsupported, true));
     assert!(!entry_responds_to_preview_click(&directory, true));
 }

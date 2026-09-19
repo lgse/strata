@@ -13,7 +13,10 @@ use futures_channel::oneshot;
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::gio_file_for_location,
+    adapters::{
+        gio_file_for_location,
+        local_operations::{ArchiveListingStatus, decode_archive_listing},
+    },
     sandbox::{Cancellation, MediaPreviewBackend, ParseOperation, PdfRenderSize},
     services::{
         LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
@@ -269,6 +272,82 @@ impl LocalPreviewProvider {
                 content_type = queried_type;
             }
 
+            if let Some(format) = crate::services::archive_preview_format(&entry.native_name) {
+                let archive_path = match entry.location.native_path() {
+                    Some(path) => path.to_path_buf(),
+                    None => {
+                        emit(PreviewEvent::Failed {
+                            request_id,
+                            entry,
+                            message: "Copy this archive locally before previewing it".into(),
+                        });
+                        return;
+                    }
+                };
+                let cancellation = cancellation_for_task.clone();
+                let password = request.archive_password.clone();
+                let listed = gio::spawn_blocking(move || {
+                    let output = render(
+                        &archive_path,
+                        ParseOperation::ArchiveList { format, password },
+                        0,
+                        MediaPreviewBackend::Software,
+                        &cancellation,
+                    )?;
+                    decode_archive_listing(&output.data).map(|listing| {
+                        let tree = crate::services::archive_preview_tree(listing.entries);
+                        (listing.status, tree)
+                    })
+                })
+                .await;
+                if cancellation_for_task.is_cancelled() {
+                    return;
+                }
+                match listed {
+                    Ok(Ok((status, tree))) => match status {
+                        ArchiveListingStatus::Open => {
+                            emit(PreviewEvent::Ready(Preview {
+                                request_id,
+                                entry,
+                                content_type,
+                                content: PreviewContent::Archive { tree },
+                            }));
+                            return;
+                        }
+                        ArchiveListingStatus::NeedsPassword => {
+                            emit(PreviewEvent::NeedsPassword { request_id, entry });
+                            return;
+                        }
+                        ArchiveListingStatus::WrongPassword => {
+                            emit(PreviewEvent::Failed {
+                                request_id,
+                                entry,
+                                message: crate::services::INCORRECT_ARCHIVE_PASSWORD.to_owned(),
+                            });
+                            return;
+                        }
+                        ArchiveListingStatus::Unsupported => {
+                            emit(PreviewEvent::Failed {
+                                request_id,
+                                entry,
+                                message:
+                                    crate::adapters::ARCHIVE_UNSUPPORTED_MESSAGE.to_owned(),
+                            });
+                            return;
+                        }
+                    },
+                    Ok(Err(message)) => {
+                        emit(PreviewEvent::Failed {
+                            request_id,
+                            entry,
+                            message,
+                        });
+                        return;
+                    }
+                    Err(_) => return,
+                }
+            }
+
             let sandboxed = if crate::services::table::is_workbook(&content_type, &entry.native_name)
             {
                 Some(ParseOperation::PreviewWorkbook)
@@ -293,8 +372,9 @@ impl LocalPreviewProvider {
                 abort_safe_for_task.set(false);
                 let cancellation = cancellation_for_task.clone();
                 let result = gio::spawn_blocking(move || {
+                    let is_workbook = matches!(operation, ParseOperation::PreviewWorkbook);
                     let output = render(&path, operation, 0, media_preview_backend, &cancellation)?;
-                    let parsed = if operation == ParseOperation::PreviewWorkbook {
+                    let parsed = if is_workbook {
                         crate::services::table::TableData::from_json(&output.data)?.into_document()
                     } else {
                         crate::services::docx::RichTextData::from_json(&output.data)?.into_document(&cancellation)?
@@ -391,9 +471,10 @@ impl LocalPreviewProvider {
                 | PreviewContent::Rendered { .. }
                 | PreviewContent::Rasterized { .. }
                 | PreviewContent::SandboxedMedia { .. }
+                | PreviewContent::Archive { .. }
                 | PreviewContent::Unsupported => None,
             };
-            if let Some(operation) = operation {
+            if let Some(operation) = &operation {
                 let staged = if entry.location.native_path().is_none() {
                     if !matches!(operation, ParseOperation::PreviewImage) {
                         emit(PreviewEvent::Failed {
@@ -435,7 +516,7 @@ impl LocalPreviewProvider {
                     | crate::model::MetadataValue::Unavailable => None,
                 };
                 let pdf_page = match operation {
-                    ParseOperation::PreviewPdf(size) => Some((request.pdf_page, size)),
+                    ParseOperation::PreviewPdf(size) => Some((request.pdf_page, *size)),
                     _ => None,
                 };
                 let cache_key = modified.map(|modified| PreviewCacheKey {
@@ -476,11 +557,12 @@ impl LocalPreviewProvider {
                 let cancellation = cancellation_for_task.clone();
                 let spawn_path = path.clone();
                 let mut thumbnail_to_store = None;
+                let for_render = operation.clone();
                 let render = gio::spawn_blocking(move || {
                     let _staged = staged;
                     let output = render(
                         &spawn_path,
-                        operation,
+                        for_render,
                         value,
                         media_preview_backend,
                         &cancellation,

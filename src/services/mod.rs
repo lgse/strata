@@ -46,12 +46,14 @@ pub use operations::{
     UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
 };
 pub use preview::{
-    MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-    PreviewRequestId, SandboxedMedia,
+    ArchiveDirectory, ArchiveFileEntry, ArchiveNode, ArchivePreviewTree, MediaPreviewSize, Preview,
+    PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+    SandboxedMedia, SecretString, archive_preview_tree,
 };
 pub(crate) use preview::{
-    content_family, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
-    is_media_path, is_non_executable_extensionless_dotfile, normalize_preview_text,
+    INCORRECT_ARCHIVE_PASSWORD, archive_preview_format, content_family, has_plain_text_extension,
+    is_extensionless_dotfile, is_image_path, is_media_path,
+    is_non_executable_extensionless_dotfile, normalize_preview_text, split_archive_name,
     supports_remote_video,
 };
 pub(crate) use transfer_action::{

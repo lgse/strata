@@ -189,10 +189,18 @@ fn chooser_previews_the_same_supported_types_as_the_main_browser() {
             "{name} should be previewable"
         );
     }
-    assert!(preview_target(Some(entry("archive.zip", EntryKind::File))).is_none());
+    assert!(preview_target(Some(entry("archive.zip", EntryKind::File))).is_some());
     assert!(
         preview_target(Some(entry("folder.mp4", EntryKind::Directory))).is_none(),
         "folders should remain navigation targets"
+    );
+    assert!(
+        preview_target(Some(entry("data.tar.gz", EntryKind::File))).is_some(),
+        "archives should be previewable"
+    );
+    assert!(
+        preview_target(Some(entry("compressed.gz", EntryKind::File))).is_none(),
+        "plain gzip streams should not open the archive tree preview"
     );
 }
 
