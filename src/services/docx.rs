@@ -132,7 +132,6 @@ impl Body {
             for cell in &row.cells {
                 let TableRowChild::TableCell(cell) = cell;
                 html.push_str(open);
-                // Cells hold block content; the rendered table shows one value per cell.
                 let paragraphs = cell.children.iter().filter_map(|content| match content {
                     TableCellContent::Paragraph(paragraph) => {
                         Some(inline_markup(&paragraph.children))
@@ -160,7 +159,6 @@ impl Body {
 
     fn open_lists(&mut self, depth: usize, ordered: bool) {
         let tag = if ordered { "ol" } else { "ul" };
-        // A list whose numbering format changed has to restart, not continue.
         while self.lists.len() > depth
             || (depth > 0 && self.lists.len() == depth && self.lists[depth - 1] != tag)
         {

@@ -114,7 +114,6 @@ impl Writer {
     }
 }
 
-/// Converts RTF into the HTML subset the rendered-document parser accepts.
 pub(crate) fn to_html(source: &str, cancellation: &Cancellation) -> Result<String, String> {
     if !source.trim_start().starts_with("{\\rtf") {
         return Err("Rendered preview is unavailable because the file is not RTF".to_owned());
@@ -159,8 +158,7 @@ pub(crate) fn to_html(source: &str, cancellation: &Cancellation) -> Result<Strin
                     .position(|byte| matches!(byte, b'{' | b'}' | b'\\' | b'\r' | b'\n'))
                     .map_or(bytes.len(), |offset| index + offset);
                 if skipped == 0 {
-                    // Decoded from the bytes, never sliced off `source`: a control
-                    // word's stored length must not be able to panic the walk.
+                    // Control-word offsets must not panic on a UTF-8 boundary.
                     writer.text(&String::from_utf8_lossy(&bytes[index..end]), style(&groups));
                 }
                 index = end;
@@ -295,10 +293,8 @@ fn apply(
                 return skip_fallback(bytes, next, skip);
             }
         }
-        // Binary data is not text: skipping it keeps braces inside it from nesting.
-        // The stored length counts original file bytes, but the preview source is a
-        // lossy decode, so skip that many characters instead: an invalid byte has
-        // already become one replacement character, and no skip splits one.
+        // Lossy decoding erased byte lengths; character counts only approximate
+        // the original binary payload, but cannot split a UTF-8 sequence.
         "bin" => {
             let count = parameter.unwrap_or(0).max(0) as usize;
             let mut index = next;
@@ -341,7 +337,6 @@ fn skip_fallback(bytes: &[u8], mut index: usize, count: usize) -> usize {
     index.min(bytes.len())
 }
 
-/// Advances past one whole character, so an index never splits a UTF-8 sequence.
 fn next_character(bytes: &[u8], mut index: usize) -> usize {
     index += 1;
     while bytes.get(index).is_some_and(|byte| byte & 0xc0 == 0x80) {
