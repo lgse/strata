@@ -52,6 +52,30 @@ def _worker_pids(strata):
     return [int(pid) for pid in re.findall(r"browser sandbox started pid=(\d+)", log)]
 
 
+def test_icons_rename_reuses_loaded_thumbnail_and_details(strata, test_environment):
+    strata.switch_view("Icons")
+    strata.open_directory("photos-a")
+    strata.wait(lambda: _folder_cached(strata, test_environment, "photos-a"),
+                "all original thumbnails persisted")
+    for index in range(6):
+        strata.wait(lambda index=index: strata.window.find(role="label", name=f"{320 + index}×180"),
+                    "original source dimensions")
+    strata.pointer.click(strata.entry("photo-0.png"))
+    strata.keyboard.press("F2")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("photo-0-renamed.png")
+    strata.wait(lambda: field.text == "photo-0-renamed.png", "replacement name")
+    completed = strata.application.log().count("browser worker completed")
+    strata.keyboard.press("Return")
+    strata.wait_for_entry_gone("photo-0.png")
+    strata.wait_for_selection(["photo-0-renamed.png"])
+    strata.wait(lambda: strata.entry("photo-0-renamed.png").find(role="label", name="320×180"),
+                "renamed image retains its dimensions")
+    strata.settle(strata.entry("photo-0-renamed.png"))
+    assert strata.application.log().count("browser worker completed") == completed
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mode, test_environment):
     strata.switch_view(mode)

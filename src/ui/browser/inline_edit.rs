@@ -511,6 +511,11 @@ impl ViewState {
             {
                 return;
             }
+            for entry in splices.iter().flat_map(|splice| &splice.entries) {
+                if &entry.location == new_location {
+                    crate::ui::thumbnail::preserve_renamed_thumbnail(&pending.old_location, entry);
+                }
+            }
             pending.monitor_has_new_location = true;
             matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
         };
