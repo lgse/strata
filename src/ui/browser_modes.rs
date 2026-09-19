@@ -4340,12 +4340,7 @@ fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
     let Some(label) = super::icons_cell::details_label(card) else {
         return;
     };
-    if let Some(details) = entry_icons_item_info(entry) {
-        set_label_if_changed(&label, &details);
-        label.set_visible(true);
-    } else {
-        label.set_visible(false);
-    }
+    set_label_if_changed(&label, &entry_icons_item_info(entry).unwrap_or_default());
 }
 
 fn format_duration(seconds: u64) -> String {

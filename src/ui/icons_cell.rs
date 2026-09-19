@@ -44,8 +44,9 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
 
     let details = gtk::Label::new(None);
     details.add_css_class("icons-card-details");
-    details.set_halign(gtk::Align::Center);
-    details.set_visible(false);
+    details.set_halign(gtk::Align::Fill);
+    details.set_single_line_mode(true);
+    details.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
     // GtkOverlay requires its own layout-child type; this caption has a custom layout.
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);

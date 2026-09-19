@@ -701,7 +701,7 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
             let details = crate::ui::icons_cell::details_label(&card).expect("details label");
 
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
-            assert!(!details.is_visible());
+            assert!(details.text().is_empty());
 
             entry.image_dimensions = MetadataValue::Known((1920, 1080));
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
@@ -745,6 +745,13 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
             folder_entry.child_count = MetadataValue::Known(0);
             super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
             assert_eq!(details.text().as_str(), "No items");
+
+            folder_entry.child_count = MetadataValue::Unknown;
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, true, None);
+            assert!(
+                details.text().is_empty(),
+                "recycled cards clear old details"
+            );
         },
     );
 }
