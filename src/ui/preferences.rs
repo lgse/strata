@@ -122,6 +122,8 @@ pub(in crate::ui) struct Preferences {
     cross_volume_drop_strategy: String,
     #[serde(default)]
     open_folder_after_drop: bool,
+    #[serde(default = "default_date_format")]
+    date_format: String,
     #[serde(default = "default_release_channel")]
     release_channel: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -182,6 +184,7 @@ impl Default for Preferences {
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
+            date_format: default_date_format(),
             release_channel: default_release_channel(),
             default_directory: None,
             folder_colors: HashMap::new(),
@@ -260,6 +263,10 @@ fn default_full_volume() -> f64 {
     1.0
 }
 
+fn default_date_format() -> String {
+    crate::util::DateFormat::default().as_str().to_owned()
+}
+
 fn default_cross_volume_drop_strategy() -> String {
     CrossVolumeDropStrategy::Ask.as_str().to_owned()
 }
@@ -304,6 +311,7 @@ impl PreferenceManager {
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
         super::motion::set_reduce_motion(preferences.reduce_motion);
+        crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
         Rc::new(Self {
             changes: bindings::PreferenceChanges::new(preferences.clone()),
@@ -678,6 +686,19 @@ impl PreferenceManager {
 
     pub fn set_open_folder_after_drop(&self, enabled: bool) {
         self.preferences.borrow_mut().open_folder_after_drop = enabled;
+        self.save_preferences();
+    }
+
+    pub fn date_format(&self) -> crate::util::DateFormat {
+        crate::util::DateFormat::parse(&self.preferences.borrow().date_format)
+    }
+
+    pub fn set_date_format(&self, format: crate::util::DateFormat) {
+        if self.date_format() == format {
+            return;
+        }
+        self.preferences.borrow_mut().date_format = format.as_str().to_owned();
+        crate::util::set_date_format(format);
         self.save_preferences();
     }
 

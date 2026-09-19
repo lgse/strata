@@ -23,7 +23,7 @@ mod motion;
 mod open_with;
 mod pointer;
 mod portal_preferences;
-mod preferences;
+pub(crate) mod preferences;
 mod preview;
 mod scrolling;
 mod search;
