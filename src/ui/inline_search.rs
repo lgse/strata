@@ -77,6 +77,12 @@ impl InlineSearch {
         let Some(state) = self.state.as_ref() else {
             return;
         };
+        let weak_view = Rc::downgrade(view);
+        state.list.connect_selected_rows_changed(move |_| {
+            if let Some(view) = weak_view.upgrade() {
+                view.notify_search_selection_changed();
+            }
+        });
         let weak = Rc::downgrade(state);
         let resolve = Rc::new(move |picked: &gtk::Widget| {
             let state = weak.upgrade()?;
@@ -757,7 +763,7 @@ fn result_row(
     let name = gtk::Label::builder()
         .label(&item.name)
         .xalign(0.0)
-        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .ellipsize(gtk::pango::EllipsizeMode::Middle)
         .build();
     let path = relative_result_path(result_root, &item.path);
     let origin = gtk::Label::builder()

@@ -11,7 +11,7 @@ use std::{
 };
 
 #[track_caller]
-fn wait_until(condition: impl Fn() -> bool) {
+pub(super) fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
         assert!(Instant::now() < deadline, "chooser did not settle");
@@ -20,7 +20,7 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
-fn search_results_list(widget: &gtk::Widget) -> Option<gtk::ListBox> {
+pub(super) fn search_results_list(widget: &gtk::Widget) -> Option<gtk::ListBox> {
     if let Ok(list) = widget.clone().downcast::<gtk::ListBox>()
         && list.has_css_class("file-list")
         && list.row_at_index(0).is_some()
@@ -123,7 +123,7 @@ fn collect_filter_entries(widget: &gtk::Widget, entries: &mut Vec<gtk::Entry>) {
     }
 }
 
-fn visible_collection_selection(widget: &gtk::Widget) -> Option<gtk::SelectionModel> {
+pub(super) fn visible_collection_selection(widget: &gtk::Widget) -> Option<gtk::SelectionModel> {
     let selection = widget
         .clone()
         .downcast::<gtk::ListView>()
@@ -149,7 +149,7 @@ fn visible_collection_selection(widget: &gtk::Widget) -> Option<gtk::SelectionMo
     None
 }
 
-fn request(root: PathBuf) -> ChooserRequest {
+pub(super) fn request(root: PathBuf) -> ChooserRequest {
     ChooserRequest {
         token: "acceptance".into(),
         title: "Acceptance".into(),
@@ -931,6 +931,53 @@ fn recursive_folder_selection_navigates_without_accepting() {
 }
 
 #[test]
+fn save_file_ignores_load_cursor() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_ignores_load_cursor",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(root.path().join("child")).expect("child folder");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFile {
+                current_name: Some("output.txt".into()),
+            };
+            let state = build_chooser(
+                save_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 1)
+            });
+            assert!(browser.selection_is_load_cursor());
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            assert_eq!(
+                selected.uris()[0].to_string(),
+                gio::File::for_path(root.path().join("output.txt")).uri()
+            );
+            state.window.close();
+        },
+    );
+}
+
+#[test]
 fn save_file_accepts_selected_folder_without_navigating_into_it() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::save_file_accepts_selected_folder_without_navigating_into_it",
@@ -961,9 +1008,7 @@ fn save_file_accepts_selected_folder_without_navigating_into_it() {
                     .is_some_and(|column| !column.loading && column.count == 1)
             });
 
-            let selection = visible_collection_selection(&state.view.widget())
-                .expect("visible browser collection");
-            selection.select_item(0, true);
+            browser.select(0, 0);
             wait_until(|| {
                 browser
                     .selected_entries()
@@ -1018,9 +1063,7 @@ fn save_files_accepts_selected_folder_without_navigating_into_it() {
                     .is_some_and(|column| !column.loading && column.count == 1)
             });
 
-            let selection = visible_collection_selection(&state.view.widget())
-                .expect("visible browser collection");
-            selection.select_item(0, true);
+            browser.select(0, 0);
             wait_until(|| {
                 browser
                     .selected_entries()
@@ -1080,9 +1123,7 @@ fn save_file_in_icons_mode_accepts_selected_folder_without_navigating_into_it() 
                     .is_some_and(|column| !column.loading && column.count == 1)
             });
 
-            let selection = visible_collection_selection(&state.view.widget())
-                .expect("visible browser collection");
-            selection.select_item(0, true);
+            browser.select(0, 0);
             wait_until(|| {
                 browser
                     .selected_entries()
@@ -1196,16 +1237,15 @@ fn save_file_with_selected_file_saves_to_active_folder() {
                     .is_some_and(|column| !column.loading && column.count == 1)
             });
 
-            let selection = visible_collection_selection(&state.view.widget())
-                .expect("visible browser collection");
-            selection.select_item(0, true);
-            wait_until(|| {
-                browser
-                    .selected_entries()
-                    .first()
-                    .is_some_and(|entry| entry.location == Location::local(&existing_file))
-            });
-
+            let filename = state.filename.as_ref().expect("filename");
+            assert_eq!(filename.text(), "new_file.txt");
+            assert!(browser.selection_is_load_cursor());
+            assert_eq!(browser.selected_entries().len(), 1);
+            browser.commit_selection();
+            browser.set_selection(0, &[0], Some(0));
+            assert!(!browser.selection_is_load_cursor());
+            wait_until(|| filename.text() == "existing.txt");
+            filename.set_text("new_file.txt");
             state.accept_button.emit_clicked();
             wait_until(|| result.borrow().is_some());
             let selected = result

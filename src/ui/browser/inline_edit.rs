@@ -966,6 +966,12 @@ impl ViewState {
                 state.pending_click_rename.take();
                 if state.rename_operation_pending()
                     || state.active_rename.borrow().is_some()
+                    || state
+                        .scroller
+                        .root()
+                        .and_then(|root| root.focus())
+                        .as_ref()
+                        .is_some_and(crate::ui::focus_navigation::editable)
                     || state.browser.selected_entries().len() != 1
                     || !state.browser.focused_item().is_some_and(
                         |(current_depth, position, current)| {

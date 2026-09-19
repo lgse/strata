@@ -2206,6 +2206,17 @@ paned > separator {
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
 }
 
+.preview-text border.left {
+  background: @theme_surface;
+  border-right: 1px solid mix(@theme_bg, @theme_border, 0.6);
+  box-shadow: none;
+}
+
+.preview-text border.left gutter {
+  border-right: none;
+  box-shadow: none;
+}
+
 .preview-text selection,
 .preview-text text selection {
   background: @theme_accent;
@@ -2391,6 +2402,84 @@ paned > separator {
   color: @theme_dim_text;
   font-size: 0.8em;
   padding: 6px 10px;
+}
+
+.preview-archive {
+  background: @theme_surface;
+}
+
+.preview-archive-crumbs-scroll {
+  border-bottom: 1px solid alpha(@theme_border, 0.24);
+}
+
+.preview-archive-crumbs {
+  padding: 6px 10px;
+}
+
+.preview-archive-crumb {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_accent;
+  font-size: 0.85em;
+  min-height: 20px;
+  padding: 0 7px;
+}
+
+.preview-archive-crumb:hover {
+  background: alpha(@theme_muted, 0.55);
+  border-color: alpha(@theme_border, 0.42);
+}
+
+.preview-archive-crumb:active {
+  background: alpha(@theme_muted, 0.82);
+}
+
+.preview-archive-crumb:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 1px;
+}
+
+.preview-archive-crumb-current {
+  color: @theme_dim_text;
+}
+
+.preview-archive-count {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+  padding: 6px 12px;
+}
+
+.preview-archive-list {
+  background: transparent;
+}
+
+.preview-archive-row {
+  background: transparent;
+  border: none;
+  padding: 3px 10px;
+}
+
+.preview-archive-row:hover {
+  background: alpha(@theme_muted, 0.35);
+}
+
+.preview-archive-row:selected {
+  background: alpha(@theme_accent, 0.28);
+}
+
+.preview-archive-name {
+  color: @theme_text;
+}
+
+.preview-archive-size {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.preview-archive-empty {
+  color: @theme_dim_text;
 }
 
 .preview-document-table > header,
@@ -2657,6 +2746,42 @@ paned > separator {
 
 .preview-feedback-detail {
   color: @theme_dim_text;
+}
+
+.preview-archive-password {
+  padding: 24px;
+}
+
+.preview-archive-password-row {
+  margin-top: 6px;
+}
+
+.preview-archive-password-error {
+  color: @theme_danger;
+  margin-top: 6px;
+}
+
+.preview-archive-password-row button.suggested-action {
+  background-color: @theme_accent;
+  background-image: none;
+  color: @theme_bg;
+}
+
+.preview-archive-password-row button.suggested-action:hover {
+  background-color: shade(@theme_accent, 1.07);
+  background-image: none;
+}
+
+.preview-archive-password-row button.suggested-action:active,
+.preview-archive-password-row button.suggested-action:checked {
+  background-color: shade(@theme_accent, 0.92);
+  background-image: none;
+}
+
+.preview-archive-password-row button.suggested-action:disabled {
+  background-color: alpha(@theme_accent, 0.5);
+  background-image: none;
+  color: alpha(@theme_bg, 0.7);
 }
 
 .preview-command {
@@ -3884,11 +4009,10 @@ textview > popover.menu button.model:focus-visible {
 }
 
 .fly-to-trash {
-  background: alpha(@theme_surface, 0.92);
-  border: 1px solid alpha(@theme_accent, 0.38);
-  border-radius: 999px;
-  box-shadow: 0 4px 12px alpha(@theme_text, 0.18), 0 0 10px alpha(@theme_glow, 0.12);
-  padding: 3px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
   transform: scale(1);
   transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
@@ -3901,17 +4025,114 @@ textview > popover.menu button.model:focus-visible {
   padding: 1px;
 }
 
-.fly-to-trash-count {
+.fly-to-trash-release {
+  transform: scale(0.85);
+  transition: transform 160ms cubic-bezier(0.18, 0.9, 0.25, 1.35);
+}
+
+.fly-to-trash-release.fly-launch-left {
+  transform: rotate(-13deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-launch-right {
+  transform: rotate(13deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-launch-straight {
+  transform: rotate(3deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-insurrection-dispersal {
+  transform: scale(1.35);
+}
+
+@keyframes trash-insurrection-blast {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-shockwave {
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 50%;
+  border: 2px solid @theme_accent;
+  animation: trash-insurrection-blast 220ms cubic-bezier(0.1, 1, 0.2, 1) forwards;
+}
+
+@keyframes trash-insurrection-plume {
+  0% {
+    transform: translate(0, 0) scale(1.2, 0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, -38px) scale(0.6, 2.0);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-beam {
+  min-width: 3px;
+  min-height: 38px;
+  border-radius: 2px;
+  background: linear-gradient(to top, @theme_accent, transparent);
+  animation: trash-insurrection-plume 240ms cubic-bezier(0.15, 1, 0.25, 1) forwards;
+}
+
+@keyframes trash-insurrection-spark-left {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-20px, -28px) scale(0.2);
+    opacity: 0;
+  }
+}
+
+@keyframes trash-insurrection-spark-right {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(20px, -24px) scale(0.2);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-spark {
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 50%;
   background: @theme_accent;
-  border: 1px solid alpha(@theme_bg, 0.72);
-  border-radius: 999px;
-  color: @theme_bg;
-  font-size: 9px;
-  font-weight: 700;
-  min-height: 14px;
-  min-width: 14px;
-  padding: 0 3px;
-  transform: translate(7px, -7px);
+  animation: trash-insurrection-spark-left 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+}
+
+.trash-resurrect-spark-alt {
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 50%;
+  background: @theme_accent;
+  animation: trash-insurrection-spark-right 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+}
+
+@keyframes trash-rebel-shudder {
+  0% { transform: scale(1) rotate(0deg); }
+  18% { transform: scale(0.92) rotate(-8deg); }
+  38% { transform: scale(1.14) rotate(8deg); }
+  58% { transform: scale(0.95) rotate(-5deg); }
+  78% { transform: scale(1.05) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.trash-rebel-shudder {
+  animation: trash-rebel-shudder 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 @keyframes trash-receiving {

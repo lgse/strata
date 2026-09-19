@@ -110,6 +110,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                     render_document: false,
                     pdf_page: 0,
                     media_size: MediaPreviewSize::new(640, 800),
+                    archive_password: None,
                 };
                 let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
                 let context = glib::MainContext::default();
@@ -345,6 +346,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                 render_document: false,
                 pdf_page: 1,
                 media_size: MediaPreviewSize::new(640, 800),
+                archive_password: None,
             },
             Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
             move |_, _, _, _, cancellation| {
@@ -385,6 +387,73 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
             "cancelled load emitted an event"
         );
     }
+}
+
+#[test]
+fn cancelled_archive_listings_emit_no_stale_events() {
+    use crate::{
+        model::{EntryKind, FileEntry, Location, MetadataValue},
+        services::PreviewRequestId,
+    };
+
+    let _lock = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main context lock");
+    let context = glib::MainContext::default();
+    let _owner = context.acquire().expect("main context owner");
+    let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let events_for_emit = events.clone();
+    let (started, receive_started) = oneshot::channel();
+    let (finish, receive_finish) = std::sync::mpsc::channel();
+    let handle = provider.load_with_renderer(
+        PreviewRequest {
+            id: PreviewRequestId(1),
+            entry: FileEntry {
+                location: Location::local("cancelled.zip"),
+                thumbnail_path: None,
+                native_name: "cancelled.zip".into(),
+                display_name: "cancelled.zip".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+            },
+            text_byte_limit: 1024,
+            render_document: false,
+            pdf_page: 0,
+            media_size: MediaPreviewSize::new(640, 800),
+            archive_password: None,
+        },
+        Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+        move |_, _, _, _, cancellation| {
+            started.send(()).expect("notify renderer started");
+            receive_finish
+                .recv_timeout(Duration::from_secs(10))
+                .expect("release renderer");
+            assert!(cancellation.is_cancelled());
+            Ok(crate::sandbox::ParseOutput {
+                data: b"{\"status\":\"open\",\"entries\":[],\"message\":null}".to_vec(),
+                page: 0,
+                pages: 0,
+            })
+        },
+    );
+    context.block_on(async {
+        receive_started.await.expect("renderer started");
+        drop(handle);
+        finish.send(()).expect("finish cancelled renderer");
+        glib::timeout_future(Duration::from_millis(50)).await;
+    });
+    assert!(
+        events.borrow().is_empty(),
+        "cancelled load emitted an event"
+    );
 }
 
 #[test]
@@ -552,6 +621,7 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
+            archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
         let events_for_emit = events.clone();
@@ -576,4 +646,496 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
         };
         assert_eq!(preview.content, expected, "{name}");
     }
+}
+
+#[test]
+fn archives_list_member_trees_as_preview_content() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::archives_list_member_trees_as_preview_content",
+        || {
+            use crate::{
+                model::{EntryKind, FileEntry, Location, MetadataValue},
+                services::{ArchiveDirectory, ArchiveNode, ArchivePreviewTree, PreviewRequestId},
+            };
+
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let path = directory.path().join("sample.zip");
+            {
+                let mut writer =
+                    zip::ZipWriter::new(fs::File::create(&path).expect("create zip fixture"));
+                let _ = writer.start_file("a.txt", zip::write::SimpleFileOptions::default());
+                let _ = std::io::Write::write_all(&mut writer, b"hello");
+                let _ = writer.start_file("folder/b.txt", zip::write::SimpleFileOptions::default());
+                let _ = std::io::Write::write_all(&mut writer, b"abc");
+                writer.finish().expect("write zip fixture");
+            }
+
+            let request = PreviewRequest {
+                id: PreviewRequestId(1),
+                entry: FileEntry {
+                    location: Location::local(&path),
+                    thumbnail_path: None,
+                    native_name: "sample.zip".into(),
+                    display_name: "sample.zip".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    mode: MetadataValue::Unknown,
+                    recent_unix_seconds: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                },
+                text_byte_limit: 1024,
+                render_document: false,
+                pdf_page: 0,
+                media_size: MediaPreviewSize::new(640, 800),
+                archive_password: None,
+            };
+            let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+            let context = glib::MainContext::default();
+            let _owner = context.acquire().expect("main context owner");
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let events_for_emit = events.clone();
+            let _handle = provider.load_with_renderer(
+                request,
+                Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+                move |path, operation, _, _, _| {
+                    let crate::sandbox::ParseOperation::ArchiveList { format, password } =
+                        operation
+                    else {
+                        panic!("archive previews must request an archive listing");
+                    };
+                    let cancelled = std::sync::atomic::AtomicBool::new(false);
+                    let result = crate::adapters::local_operations::list_archive_entries_direct(
+                        path,
+                        format,
+                        password.as_ref().map(crate::services::SecretString::expose),
+                        &cancelled,
+                    );
+                    Ok(crate::sandbox::ParseOutput {
+                        data: crate::adapters::local_operations::encode_archive_result(&result),
+                        page: 0,
+                        pages: 0,
+                    })
+                },
+            );
+            context.block_on(async {
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                while events.borrow().is_empty() && std::time::Instant::now() < deadline {
+                    glib::timeout_future(Duration::from_millis(1)).await;
+                }
+            });
+
+            let events = events.borrow();
+            assert_eq!(events.len(), 1);
+            let PreviewEvent::Ready(preview) = &events[0] else {
+                panic!("archive preview failed");
+            };
+            let PreviewContent::Archive { tree } = &preview.content else {
+                panic!("expected an archive tree, got {:?}", preview.content);
+            };
+            assert_eq!(
+                tree,
+                &ArchivePreviewTree {
+                    root: ArchiveDirectory {
+                        name: String::new(),
+                        children: vec![
+                            ArchiveNode::Directory(ArchiveDirectory {
+                                name: "folder".to_owned(),
+                                children: vec![ArchiveNode::File {
+                                    name: "b.txt".to_owned(),
+                                    size: 3,
+                                }],
+                            }),
+                            ArchiveNode::File {
+                                name: "a.txt".to_owned(),
+                                size: 5,
+                            },
+                        ],
+                    },
+                    file_count: 2,
+                }
+            );
+        },
+    );
+}
+
+fn preview_archive(path: &std::path::Path, name: &str) -> Vec<PreviewEvent> {
+    preview_archive_with_password(path, name, None)
+}
+
+fn preview_archive_with_password(
+    path: &std::path::Path,
+    name: &str,
+    password: Option<&str>,
+) -> Vec<PreviewEvent> {
+    use crate::{
+        model::{EntryKind, FileEntry, Location, MetadataValue},
+        services::PreviewRequestId,
+    };
+
+    let request = PreviewRequest {
+        id: PreviewRequestId(1),
+        entry: FileEntry {
+            location: Location::local(path),
+            thumbnail_path: None,
+            native_name: name.into(),
+            display_name: name.into(),
+            kind: EntryKind::File,
+            size: MetadataValue::Unknown,
+            modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
+            recent_unix_seconds: MetadataValue::Unknown,
+            image_dimensions: MetadataValue::Unknown,
+            child_count: MetadataValue::Unknown,
+            duration_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+        },
+        text_byte_limit: 1024,
+        render_document: false,
+        pdf_page: 0,
+        media_size: MediaPreviewSize::new(640, 800),
+        archive_password: password
+            .map(|password| crate::services::SecretString::new(password.to_owned())),
+    };
+    let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+    let context = glib::MainContext::default();
+    let _owner = context.acquire().expect("main context owner");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let events_for_emit = events.clone();
+    let _handle = provider.load_with_renderer(
+        request,
+        Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+        move |path, operation, _, _, _| {
+            let crate::sandbox::ParseOperation::ArchiveList { format, password } = operation else {
+                panic!("archive previews must request an archive listing");
+            };
+            let cancelled = std::sync::atomic::AtomicBool::new(false);
+            let result = crate::adapters::local_operations::list_archive_entries_direct(
+                path,
+                format,
+                password.as_ref().map(crate::services::SecretString::expose),
+                &cancelled,
+            );
+            Ok(crate::sandbox::ParseOutput {
+                data: crate::adapters::local_operations::encode_archive_result(&result),
+                page: 0,
+                pages: 0,
+            })
+        },
+    );
+    context.block_on(async {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while events.borrow().is_empty() && std::time::Instant::now() < deadline {
+            glib::timeout_future(Duration::from_millis(1)).await;
+        }
+    });
+    events.borrow().clone()
+}
+
+#[test]
+fn tar_gz_archives_list_member_trees_as_preview_content() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::tar_gz_archives_list_member_trees_as_preview_content",
+        || {
+            use crate::services::{ArchiveDirectory, ArchiveNode, ArchivePreviewTree};
+
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let path = directory.path().join("docs.tar.gz");
+            {
+                let file = fs::File::create(&path).expect("create tar.gz fixture");
+                let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+                    file,
+                    flate2::Compression::default(),
+                ));
+                let mut header = tar::Header::new_gnu();
+                header.set_mode(0o644);
+                header.set_size(2);
+                header.set_entry_type(tar::EntryType::Regular);
+                builder
+                    .append_data(&mut header, "inner/readme.txt", &b"hi"[..])
+                    .expect("write tar.gz fixture");
+                let encoder = builder.into_inner().expect("finish tar.gz fixture");
+                encoder.finish().expect("finish gzip trailer");
+            }
+            let events = preview_archive(&path, "docs.tar.gz");
+            assert_eq!(events.len(), 1);
+            let PreviewEvent::Ready(preview) = &events[0] else {
+                panic!("archive preview failed");
+            };
+            let PreviewContent::Archive { tree } = &preview.content else {
+                panic!("expected an archive tree, got {:?}", preview.content);
+            };
+            assert_eq!(
+                tree,
+                &ArchivePreviewTree {
+                    root: ArchiveDirectory {
+                        name: String::new(),
+                        children: vec![ArchiveNode::Directory(ArchiveDirectory {
+                            name: "inner".to_owned(),
+                            children: vec![ArchiveNode::File {
+                                name: "readme.txt".to_owned(),
+                                size: 2,
+                            }],
+                        })],
+                    },
+                    file_count: 1,
+                }
+            );
+        },
+    );
+}
+
+#[test]
+fn corrupt_archives_report_a_failed_preview() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::corrupt_archives_report_a_failed_preview",
+        || {
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let path = directory.path().join("fake.zip");
+            fs::write(&path, b"not a zip archive").expect("write corrupt fixture");
+            let events = preview_archive(&path, "fake.zip");
+            assert_eq!(events.len(), 1);
+            let PreviewEvent::Failed { message, .. } = &events[0] else {
+                panic!("expected a failed archive preview, got {:?}", events[0]);
+            };
+            assert_eq!(message, "This file is not a valid archive or is damaged.");
+        },
+    );
+}
+
+fn encrypted_archive_fixture(
+    directory: &tempfile::TempDir,
+    name: &str,
+    format: crate::services::ArchiveFormat,
+) -> std::path::PathBuf {
+    let source = directory.path().join("folder");
+    fs::create_dir_all(&source).expect("create fixture source");
+    if !source.join("item.txt").exists() {
+        fs::write(source.join("item.txt"), b"contents").expect("write fixture source");
+    }
+    let path = directory.path().join(name);
+    crate::adapters::local_operations::write_compression_fixture(
+        &path,
+        &[source],
+        format,
+        Some("s3cret"),
+    )
+    .expect("write encrypted fixture");
+    path
+}
+
+#[test]
+fn encrypted_archive_preview_prompts_for_a_password() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::encrypted_archive_preview_prompts_for_a_password",
+        || {
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let zip = encrypted_archive_fixture(
+                &directory,
+                "secret.zip",
+                crate::services::ArchiveFormat::Zip,
+            );
+            let events = preview_archive(&zip, "secret.zip");
+            assert_eq!(events.len(), 1);
+            let PreviewEvent::NeedsPassword { entry, .. } = &events[0] else {
+                panic!("expected a password request, got {:?}", events[0]);
+            };
+            assert_eq!(entry.native_name, "secret.zip");
+
+            let seven_z = encrypted_archive_fixture(
+                &directory,
+                "secret.7z",
+                crate::services::ArchiveFormat::SevenZ,
+            );
+            let events = preview_archive(&seven_z, "secret.7z");
+            assert_eq!(events.len(), 1);
+            assert!(
+                matches!(&events[0], PreviewEvent::NeedsPassword { .. }),
+                "expected a password request, got {:?}",
+                events[0]
+            );
+        },
+    );
+}
+
+#[test]
+fn encrypted_zip_preview_unlocks_with_the_correct_password() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::encrypted_zip_preview_unlocks_with_the_correct_password",
+        || {
+            use crate::services::{ArchiveDirectory, ArchiveNode, ArchivePreviewTree};
+
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let zip = encrypted_archive_fixture(
+                &directory,
+                "secret.zip",
+                crate::services::ArchiveFormat::Zip,
+            );
+            let events = preview_archive_with_password(&zip, "secret.zip", Some("s3cret"));
+            assert_eq!(events.len(), 1);
+            let PreviewEvent::Ready(preview) = &events[0] else {
+                panic!("expected an unlocked archive, got {:?}", events[0]);
+            };
+            let PreviewContent::Archive { tree } = &preview.content else {
+                panic!("expected an archive tree, got {:?}", preview.content);
+            };
+            assert_eq!(tree.file_count, 1);
+            assert_eq!(
+                tree,
+                &ArchivePreviewTree {
+                    root: ArchiveDirectory {
+                        name: String::new(),
+                        children: vec![ArchiveNode::Directory(ArchiveDirectory {
+                            name: "folder".to_owned(),
+                            children: vec![ArchiveNode::File {
+                                name: "item.txt".to_owned(),
+                                size: 8,
+                            }],
+                        })],
+                    },
+                    file_count: 1,
+                }
+            );
+        },
+    );
+}
+
+#[test]
+fn encrypted_zip_preview_rejects_incorrect_and_empty_passwords() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::encrypted_zip_preview_rejects_incorrect_and_empty_passwords",
+        || {
+            use crate::services::INCORRECT_ARCHIVE_PASSWORD;
+
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let zip = encrypted_archive_fixture(
+                &directory,
+                "secret.zip",
+                crate::services::ArchiveFormat::Zip,
+            );
+            for password in ["wrong", ""] {
+                let events = preview_archive_with_password(&zip, "secret.zip", Some(password));
+                assert_eq!(events.len(), 1);
+                let PreviewEvent::Failed { message, .. } = &events[0] else {
+                    panic!(
+                        "expected an incorrect-password failure, got {:?}",
+                        events[0]
+                    );
+                };
+                assert_eq!(message, INCORRECT_ARCHIVE_PASSWORD);
+            }
+        },
+    );
+}
+
+#[test]
+fn corrupt_encrypted_zip_preview_reports_a_failed_preview() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::corrupt_encrypted_zip_preview_reports_a_failed_preview",
+        || {
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let zip = encrypted_archive_fixture(
+                &directory,
+                "secret.zip",
+                crate::services::ArchiveFormat::Zip,
+            );
+            let bytes = fs::read(&zip).expect("read fixture");
+            fs::write(
+                &zip,
+                &bytes[..bytes.len().saturating_sub(64).max(bytes.len() / 2)],
+            )
+            .expect("truncate central directory");
+            let events = preview_archive(&zip, "secret.zip");
+            assert_eq!(events.len(), 1);
+            let PreviewEvent::Failed { message, .. } = &events[0] else {
+                panic!("expected a failed archive preview, got {:?}", events[0]);
+            };
+            assert_eq!(message, "This file is not a valid archive or is damaged.");
+        },
+    );
+}
+
+#[test]
+fn unsupported_archive_preview_reports_unsupported_format() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::unsupported_archive_preview_reports_unsupported_format",
+        || {
+            use crate::{
+                model::{EntryKind, FileEntry, Location, MetadataValue},
+                services::PreviewRequestId,
+            };
+
+            let directory = tempfile::tempdir().expect("preview fixture directory");
+            let path = directory.path().join("sample.zip");
+            fs::write(&path, b"placeholder").expect("write placeholder");
+            let request = PreviewRequest {
+                id: PreviewRequestId(1),
+                entry: FileEntry {
+                    location: Location::local(&path),
+                    thumbnail_path: None,
+                    native_name: "sample.zip".into(),
+                    display_name: "sample.zip".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    mode: MetadataValue::Unknown,
+                    recent_unix_seconds: MetadataValue::Unknown,
+                    image_dimensions: MetadataValue::Unknown,
+                    child_count: MetadataValue::Unknown,
+                    duration_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                },
+                text_byte_limit: 1024,
+                render_document: false,
+                pdf_page: 0,
+                media_size: MediaPreviewSize::new(640, 800),
+                archive_password: None,
+            };
+            let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+            let context = glib::MainContext::default();
+            let _owner = context.acquire().expect("main context owner");
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let events_for_emit = events.clone();
+            let _handle = provider.load_with_renderer(
+                request,
+                Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+                move |_, operation, _, _, _| {
+                    let crate::sandbox::ParseOperation::ArchiveList { .. } = operation else {
+                        panic!("archive previews must request an archive listing");
+                    };
+                    let listing = crate::adapters::local_operations::ArchiveListing {
+                        status:
+                            crate::adapters::local_operations::ArchiveListingStatus::Unsupported,
+                        entries: Vec::new(),
+                    };
+                    Ok(crate::sandbox::ParseOutput {
+                        data: crate::adapters::local_operations::encode_archive_result(&Ok(
+                            listing,
+                        )),
+                        page: 0,
+                        pages: 0,
+                    })
+                },
+            );
+            context.block_on(async {
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                while events.borrow().is_empty() && std::time::Instant::now() < deadline {
+                    glib::timeout_future(Duration::from_millis(1)).await;
+                }
+            });
+
+            let events = events.borrow();
+            assert_eq!(events.len(), 1);
+            let PreviewEvent::Failed { message, .. } = &events[0] else {
+                panic!(
+                    "expected an unsupported-format failure, got {:?}",
+                    events[0]
+                );
+            };
+            assert_eq!(message, crate::adapters::ARCHIVE_UNSUPPORTED_MESSAGE);
+        },
+    );
 }

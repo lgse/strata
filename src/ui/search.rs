@@ -646,7 +646,7 @@ fn result_row(state: &Rc<SearchState>, item: &SearchItem) -> gtk::ListBoxRow {
     let name = gtk::Label::new(Some(&item.name));
     name.add_css_class("search-result-name");
     name.set_xalign(0.0);
-    name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     let full_path = item.path.to_string_lossy();
     row.set_tooltip_text(Some(&full_path));
     let path = gtk::Label::new(Some(&full_path));

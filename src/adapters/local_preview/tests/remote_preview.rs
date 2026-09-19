@@ -28,6 +28,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
         render_document: false,
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
+        archive_password: None,
     }
 }
 
@@ -198,6 +199,7 @@ fn uri_images_stage_private_inputs_and_remove_them_after_rendering() {
                             assert!(fail);
                             assert_eq!(message, "decoder failure");
                         }
+                        PreviewEvent::NeedsPassword { .. } => panic!("no password prompt expected"),
                     }
                     let path = staged_path
                         .lock()

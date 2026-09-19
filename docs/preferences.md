@@ -75,6 +75,7 @@ control that might be midway through synchronization.
 | Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. |
 | Sidebar order | Existing sidebars bind to the shared order. |
 | Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when GTK recent-file tracking or the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
+| Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. |
 | Folder colors/custom icons | Icon resolution reads the manager; existing customization refreshes notify rendered icons. |
 
 Location, selection, history, each column's sort, filter query, transient theme
@@ -161,6 +162,20 @@ Columns, or navigation in Icons and List. It is off by default and saved as
 `open_folder_after_drop = false`. Changes apply to subsequent drops across
 windows without restarting. Navigating away during a transfer is respected.
 Paste and **Move/Copy to…** continue to reveal their destination independently.
+
+## Modified date format
+
+In **Settings → General → Date & time**, **Modified date format** selects how file
+modified times appear; each choice lists a live example rendered from the
+current time. **Relative** (default) renders elapsed buckets: "just
+now"/"5m ago" under an hour, "3h ago" for the same day, "Yesterday, 23:59", then
+"Sep 1, 23:30"-style fallbacks. Sub-hour buckets follow elapsed time, so a file
+saved just before midnight still reads "2m ago" after the clock rolls over, and
+timestamps up to a minute in the future read "just now" as clock skew.
+**ISO 8601** always renders `2026-09-17 14:30`; **Long** renders
+"September 17, 2026, 14:30". Saved as `date_format = "relative"`. Open labels
+re-render immediately when the choice changes, and the 30-second refresh still
+applies for elapsed buckets.
 
 ## Filter scope
 
