@@ -499,6 +499,29 @@ fn run_source_index_map_checks() {
         "the range anchor follows its entry through a re-sort"
     );
 
+    let sorted_index = SourceIndexMap::watch(&sorted);
+    let visible_index = SourceIndexMap::watch(&visible);
+    let removed = source.item(0).expect("removed item");
+    source.remove(0);
+    assert_eq!(sorted_index.of_item(&removed), None);
+    assert_eq!(visible_index.of_item(&removed), None);
+    source.append("fh\t.hidden");
+    let hidden = source.item(source.n_items() - 1).expect("hidden item");
+    assert_eq!(visible_index.of_item(&hidden), None);
+    visible.set_filter(None::<&gtk::Filter>);
+    sorted.set_sorter(None::<&gtk::Sorter>);
+    for (model, index) in [
+        (sorted.upcast_ref::<gio::ListModel>(), &sorted_index),
+        (visible.upcast_ref::<gio::ListModel>(), &visible_index),
+    ] {
+        for position in 0..model.n_items() {
+            assert_eq!(
+                index.of_item(&model.item(position).expect("view item")),
+                Some(position as usize)
+            );
+        }
+    }
+
     let source = gtk::StringList::new(&["fv\talpha"]);
     let weak = source.downgrade();
     let map = SourceIndexMap::watch(&source);

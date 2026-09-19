@@ -837,10 +837,23 @@ fn reload_restores_a_multi_selection_after_snapshot() {
 
 #[test]
 fn reload_does_not_select_an_unselected_focus() {
-    for positions in [vec![], vec![0, 1]] {
+    for positions in [vec![], vec![0], vec![0, 1]] {
         let mut state = NavigationState::default();
         listing_without_a_load_cursor(&mut state);
         assert!(state.set_selection(0, &positions, Some(2)));
+        let expected = positions
+            .iter()
+            .map(|&position| state.columns[0].entries[position].location.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(
+            state
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>(),
+            expected
+        );
         state.reload_column(0, RequestId(2));
         state.install_snapshot(
             RequestId(2),
@@ -852,6 +865,14 @@ fn reload_does_not_select_an_unselected_focus() {
         );
         assert_eq!(state.selected_positions(0), positions);
         assert_eq!(state.active_focus(), Some((0, Some(2))));
+        assert_eq!(
+            state
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>(),
+            expected
+        );
     }
 }
 

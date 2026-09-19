@@ -973,6 +973,12 @@ impl NavigationState {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();
         };
+        if column.selected_locations.is_empty() {
+            return Vec::new();
+        }
+        if let Some(position) = column.single_selected_position() {
+            return vec![position];
+        }
         column
             .entries
             .iter()
@@ -1003,6 +1009,12 @@ impl NavigationState {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();
         };
+        if column.selected_locations.is_empty() {
+            return Vec::new();
+        }
+        if let Some(position) = column.single_selected_position() {
+            return vec![column.entries[position].clone()];
+        }
         column
             .entries
             .iter()
@@ -1279,6 +1291,15 @@ fn focus_only(column: &mut ColumnState, position: usize) {
 }
 
 impl ColumnState {
+    fn single_selected_position(&self) -> Option<usize> {
+        let position = self.selected?;
+        (self.selected_locations.len() == 1
+            && self
+                .selected_locations
+                .contains(&self.entries.get(position)?.location))
+        .then_some(position)
+    }
+
     fn restore_pending_selection(&mut self) {
         if self.pending_selection.is_empty() {
             return;

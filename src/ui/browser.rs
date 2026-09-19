@@ -1637,8 +1637,6 @@ impl BrowserView {
             })
     }
 
-    /// Moves the focus by about one viewport of the focused view, so `Page Up` and
-    /// `Page Down` act on the active pane or column only.
     pub fn page_selection(&self, direction: i32) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let Some((view, scroll)) = focused
@@ -1649,15 +1647,26 @@ impl BrowserView {
         };
         let page = super::scrolling::page(&view, &scroll);
         self.state.mode_views.borrow().suppress_focus_scroll();
-        let order = self
-            .state
-            .browser
-            .active_depth()
-            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
-            .filter(|order| !order.is_empty());
-        self.state
-            .browser
-            .page_along(direction, page.items, order.as_deref());
+        let target = self.state.browser.active_depth().and_then(|depth| {
+            self.state
+                .mode_views
+                .borrow()
+                .page_target(depth, direction, page.items)
+                .map(|position| (depth, position))
+        });
+        if let Some((depth, position)) = target {
+            self.state.browser.select(depth, position);
+        } else {
+            let order = self
+                .state
+                .browser
+                .active_depth()
+                .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+                .filter(|order| !order.is_empty());
+            self.state
+                .browser
+                .page_along(direction, page.items, order.as_deref());
+        }
         super::scrolling::reveal_selection(&view, &scroll, direction, &page);
         true
     }
