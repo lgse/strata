@@ -117,6 +117,115 @@ fn deferred_work_resumes_after_the_last_scroll_allocation() {
 }
 
 #[test]
+fn fast_scroll_admits_dimensions_for_every_visible_cached_thumbnail() {
+    crate::test_support::gtk_test(
+        "ui::thumbnail::viewport::scroll_tests::fast_scroll_admits_dimensions_for_every_visible_cached_thumbnail",
+        || {
+            let directory = tempfile::tempdir().expect("fixture");
+            let pixbuf =
+                gtk::gdk_pixbuf::Pixbuf::new(gtk::gdk_pixbuf::Colorspace::Rgb, false, 8, 32, 24)
+                    .expect("image");
+            pixbuf.fill(0x6699ccff);
+            let png = pixbuf.save_to_bufferv("png", &[]).expect("PNG");
+            let texture = gdk::Texture::for_pixbuf(&pixbuf);
+            clear_thumbnail_runtime();
+            for index in 0..5000 {
+                let path = directory.path().join(format!("photo-{index:04}.png"));
+                std::fs::write(&path, &png).expect("file");
+                if index >= 4900 {
+                    THUMBNAIL_CACHE.with(|cache| {
+                        cache.borrow_mut().insert(
+                            ThumbnailKey {
+                                path,
+                                modified: None,
+                                file_size: None,
+                                thumbnail_size: crate::ui::thumbnail_cache::CANONICAL_MAX_EDGE,
+                            },
+                            texture.clone(),
+                        )
+                    });
+                }
+            }
+            hold_thumbnail_workers();
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            view.set_view_mode(BrowserMode::Icons);
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1400)
+                .default_height(1100)
+                .build();
+            window.present();
+            browser.navigate(Location::local(directory.path()));
+            wait_until("directory did not load", || {
+                browser.column_snapshot(0).is_some_and(|s| !s.loading)
+                    && has_pending_thumbnail(&directory.path().join("photo-0000.png"))
+            });
+            let grid = find_grid(&view.widget()).expect("icons grid");
+            let scroll = viewport_of(&grid).expect("listing viewport");
+            let adjustment = scroll.vadjustment();
+            for step in 1..=100 {
+                adjustment.set_value(
+                    (adjustment.upper() - adjustment.page_size()) * f64::from(step) / 100.0,
+                );
+                let frame = Rc::new(Cell::new(false));
+                let done = frame.clone();
+                grid.add_tick_callback(move |_, _| {
+                    done.set(true);
+                    glib::ControlFlow::Break
+                });
+                wait_until("scroll frame did not arrive", || frame.get());
+            }
+            let displayed = || {
+                TRACKED_THUMBNAILS.with(|tracked| {
+                    tracked
+                        .borrow()
+                        .iter()
+                        .filter(|target| {
+                            target
+                                .image
+                                .upgrade()
+                                .is_some_and(|image| visibility(&image).0 == 0)
+                        })
+                        .map(|target| target.path.clone())
+                        .collect::<Vec<_>>()
+                })
+            };
+            wait_until("warm thumbnails did not reach the final viewport", || {
+                displayed().len() > 16
+            });
+            let visible = displayed();
+            wait_until(
+                "dimensions stopped before the end of the visible thumbnail set",
+                || {
+                    visible.iter().all(|path| {
+                        let index: usize = path
+                            .file_stem()
+                            .expect("fixture stem")
+                            .to_str()
+                            .expect("ASCII fixture name")
+                            .strip_prefix("photo-")
+                            .expect("fixture prefix")
+                            .parse()
+                            .expect("fixture index");
+                        browser.entry_at(0, index).is_some_and(|entry| {
+                            entry.image_dimensions == MetadataValue::Known((32, 24))
+                        })
+                    })
+                },
+            );
+            cancel_thumbnails_in(&view.widget());
+            browser.clear_observer();
+            window.destroy();
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
 fn large_icon_scroll_fills_the_final_viewport_without_another_input() {
     crate::test_support::gtk_test(
         "ui::thumbnail::viewport::scroll_tests::large_icon_scroll_fills_the_final_viewport_without_another_input",

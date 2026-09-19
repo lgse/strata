@@ -96,8 +96,11 @@ executors; decoder waits never occupy GIO's listing threads. Thumbnail admission
 does not wait for a GIO metadata fill. Lookup resolves local size/mtime off the
 GTK thread, then rechecks the RAM cache before decoding a disk hit.
 All views reuse the canonical 256-pixel RAM rendition irrespective of icon size;
-the Freedesktop `large` disk cache remains unchanged. PNG texture decoding runs
-off the GTK thread. Persistence remains bounded and asynchronous.
+the Freedesktop `large` disk cache remains unchanged. These thumbnail caches do not
+carry source dimensions or duration: cache hits still use the separately prioritized
+metadata path, whereas fresh image decodes publish their source dimensions directly.
+PNG texture decoding runs off the GTK thread. Persistence remains bounded and
+asynchronous.
 
 Scheduling ranks visible targets before a small overscan region across enclosing
 scrollers (including horizontally hidden Columns panes). Offscreen requests stay
@@ -116,6 +119,10 @@ media inspection or directory counting. Each completed detail is published
 without waiting for other probes. Viewport fills keep one active batch per folder,
 with at most 16 entries; new requests do not cancel it. Scroll updates reorder the
 remaining backlog with visible entries first, then overscan, then offscreen work.
+At the pending-queue limit, visible/overscan requests displace the backlog's tail
+instead of being dropped. Existing requests are promoted before admitting new ones;
+the active batch is never cancelled. Displaced offscreen entries request details
+again when they become visible.
 
 At most one metadata probe occupies the shared worker pool at a time. While both
 classes are waiting, a probe gets a turn after four thumbnail admissions, rather

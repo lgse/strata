@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, PngImagePlugin
 
 from harness.modes import ALL_MODES
 
@@ -109,6 +109,35 @@ def test_idle_workers_exit_without_new_requests_and_restart_on_demand(strata, te
     strata.wait(lambda: _folder_cached(strata, test_environment, "photos-b"), "thumbnails after idle retirement")
     replacements = _worker_pids(strata)[len(original):]
     assert replacements if persistent else not replacements
+
+
+@pytest.mark.preferences(browser_mode="icons")
+def test_cached_icons_fill_dimensions_across_multiple_batches_after_a_jump(strata, test_environment):
+    directory = strata.fixture.path("cached-photos")
+    directory.mkdir()
+    bucket = test_environment.cache_home / "thumbnails" / "large"
+    bucket.mkdir(parents=True, exist_ok=True)
+    for index in range(256):
+        path = directory / f"photo-{index:04}.png"
+        Image.new("RGB", (320 + index, 180), (40, 160, 80)).save(path)
+        tags = PngImagePlugin.PngInfo()
+        tags.add_text("Thumb::URI", path.as_uri())
+        tags.add_text("Thumb::MTime", str(int(path.stat().st_mtime)))
+        name = hashlib.md5(path.as_uri().encode()).hexdigest() + ".png"
+        Image.new("RGB", (64, 32), (40, 160, 80)).save(bucket / name, pnginfo=tags)
+    strata.open_directory("cached-photos")
+    strata.select_entry("photo-0000.png")
+    strata.keyboard.press("End")
+    names = strata.wait(
+        lambda: (names if len(names := strata.entry_names()) > 16
+                 and "photo-0255.png" in names else None),
+        "more than one batch of cached thumbnails in the final viewport",
+    )
+    for name in names:
+        index = int(Path(name).stem.removeprefix("photo-"))
+        caption = f"{320 + index}×180"
+        strata.wait(lambda: strata.window.find(role="label", name=caption),
+                    f"warm thumbnail source dimensions for {name}")
 
 
 @pytest.mark.preferences(browser_mode="list")

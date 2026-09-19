@@ -139,7 +139,7 @@ pub(super) fn schedule_refresh() {
                 .or_insert_with(|| (browser.clone(), Vec::new()));
             if priority.0 < 2 {
                 visible.push(location.clone());
-                browser.request_metadata_fill(depth, position, location, details);
+                browser.request_visible_metadata_fill(depth, position, location, details);
             }
         }
         for ((_, depth), (browser, visible)) in viewports {
