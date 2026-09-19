@@ -36,11 +36,8 @@ struct Flyer {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Flight {
-    /// Rows arc down into the trash icon.
     Inbound,
-    /// Icons emerge from the trash icon onto restored rows.
     Outbound,
-    /// Rows viewed inside Trash release their icons upward out of view.
     Release,
 }
 
@@ -135,8 +132,7 @@ fn restore_flight(entries: &[FileEntry]) -> Flight {
     }
 }
 
-/// Restore from the Trash view has no visible destination, so icons lift off
-/// their rows and fan out upward as they fade — items heading home.
+// The destination is outside the Trash view; fly out rather than toward disappearing rows.
 fn release_end(row_center: (f64, f64), index: usize, count: usize) -> (f64, f64) {
     let drift = (index as f64 - (count.saturating_sub(1)) as f64 / 2.0) * 44.0;
     let rise = (row_center.1 - 28.0).clamp(90.0, 240.0);
@@ -245,9 +241,6 @@ fn create_outbound_flyers(
         .map(|(index, entry_index)| {
             let entry = &entries[entry_index];
             let existing_row = find_row_by_name(source, &entry.display_name);
-            if let Some(row) = &existing_row {
-                row.set_opacity(0.0);
-            }
             let existing_pos = existing_row
                 .as_ref()
                 .and_then(|row| icon_center_in_overlay(row, overlay))
@@ -287,8 +280,6 @@ fn create_outbound_flyers(
         .collect()
 }
 
-/// An explosive breakout burst at the row: shockwave blast, rocket plume,
-/// radiant core, and side shrapnel sparks.
 fn resurrect_burst(overlay: &gtk::Overlay, center: (f64, f64), delay: Duration) {
     let overlay = overlay.clone();
     let spawn = move || {
@@ -373,7 +364,6 @@ fn animate_flyers(
             .unwrap_or_default();
     let overlay_for_cleanup = overlay.clone();
     let source_for_frame = source.clone();
-    let source_for_cleanup = source.clone();
     let overlay_for_frame = overlay.clone();
     let flyers = std::rc::Rc::new(std::cell::RefCell::new(flyers));
     let flyers_for_cleanup = flyers.clone();
@@ -386,13 +376,11 @@ fn animate_flyers(
                 if mode == Flight::Outbound
                     && let Some(target_name) = &flyer.target_name
                     && let Some(row) = find_row_by_name(&source_for_frame, target_name)
+                    && let Some(center) = icon_center_in_overlay(&row, &overlay_for_frame)
                 {
-                    row.set_opacity(0.0);
-                    if let Some(center) = icon_center_in_overlay(&row, &overlay_for_frame) {
-                        let row_pos = centered_position(center);
-                        flyer.end = row_pos;
-                        flyer.arc_height = arc_height(flyer.start, row_pos, flyer.index);
-                    }
+                    let row_pos = centered_position(center);
+                    flyer.end = row_pos;
+                    flyer.arc_height = arc_height(flyer.start, row_pos, flyer.index);
                 }
                 let progress = elapsed.checked_sub(flyer.delay).map_or(0.0, |elapsed| {
                     (elapsed.as_secs_f64() / travel.as_secs_f64()).clamp(0.0, 1.0)
@@ -445,11 +433,6 @@ fn animate_flyers(
         },
         move || {
             for flyer in flyers_for_cleanup.borrow().iter() {
-                if let Some(target_name) = &flyer.target_name
-                    && let Some(row) = find_row_by_name(&source_for_cleanup, target_name)
-                {
-                    row.set_opacity(1.0);
-                }
                 overlay_for_cleanup.remove_overlay(&flyer.widget);
             }
             on_done();
@@ -498,31 +481,48 @@ fn ease_out_cubic(progress: f64) -> f64 {
     1.0 - (1.0 - progress).powi(3)
 }
 
-/// Opens the sidebar trash lid and returns the icon plus its current name so
-/// the matching closed state can be restored after the flyers land.
-fn open_trash_lid(trash_button: &gtk::Button) -> Option<(gtk::Image, String)> {
-    // sidebar_button puts the icon image first in the row's content box.
+thread_local! {
+    static TRASH_FLIGHTS: std::cell::RefCell<std::collections::HashMap<gtk::Image, usize>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+pub(in crate::ui) fn set_trash_icon(image: &gtk::Image, name: &str) {
+    let closed = name.strip_suffix("-open").unwrap_or(name);
+    let open = TRASH_FLIGHTS.with(|flights| flights.borrow().contains_key(image));
+    if open {
+        crate::assets::set_primary_icon(image, &format!("{closed}-open"));
+    } else {
+        crate::assets::set_primary_icon(image, closed);
+    }
+}
+
+fn open_trash_lid(trash_button: &gtk::Button) -> Option<gtk::Image> {
     let image = trash_button
         .child()
         .and_then(|content| content.first_child())
         .and_then(|widget| widget.downcast::<gtk::Image>().ok())?;
     let name = crate::assets::primary_icon_name(&image)?;
-    let open = name
-        .strip_prefix("strata-trash")
-        .map(|suffix| {
-            format!(
-                "strata-trash{}-open",
-                suffix.strip_suffix("-open").unwrap_or(suffix)
-            )
-        })
-        .unwrap_or_else(|| crate::assets::icons::TRASH_OPEN.to_owned());
-    crate::assets::set_primary_icon(&image, &open);
-    Some((image, name))
+    TRASH_FLIGHTS.with(|flights| {
+        *flights.borrow_mut().entry(image.clone()).or_default() += 1;
+    });
+    set_trash_icon(&image, &name);
+    Some(image)
 }
 
-fn close_trash_lid(state: Option<(gtk::Image, String)>) {
-    if let Some((image, name)) = state {
-        crate::assets::set_primary_icon(&image, &name);
+fn close_trash_lid(state: Option<gtk::Image>) {
+    if let Some(image) = state {
+        TRASH_FLIGHTS.with(|flights| {
+            let mut flights = flights.borrow_mut();
+            if let Some(count) = flights.get_mut(&image) {
+                *count -= 1;
+                if *count == 0 {
+                    flights.remove(&image);
+                }
+            }
+        });
+        if let Some(name) = crate::assets::primary_icon_name(&image) {
+            set_trash_icon(&image, &name);
+        }
     }
 }
 

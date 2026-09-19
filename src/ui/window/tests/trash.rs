@@ -98,6 +98,17 @@ fn the_trash_probe_counts_entries_up_to_the_icon_cap() {
         .expect("a populated directory should enumerate");
     assert_eq!(count, 3);
 
+    for index in 3..40 {
+        std::fs::write(fixture.path().join(format!("note{index}.txt")), b"trashed")
+            .expect("fixture entry");
+    }
+    assert_eq!(
+        glib::MainContext::new()
+            .block_on(trash_item_count(&root))
+            .expect("a large directory should enumerate"),
+        32
+    );
+
     let missing = glib::MainContext::new().block_on(trash_item_count(&gtk::gio::File::for_path(
         fixture.path().join("absent"),
     )));

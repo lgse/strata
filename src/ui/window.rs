@@ -1425,7 +1425,6 @@ impl SidebarState {
         if let Some(rows) = self.trash_menu_rows.borrow().as_ref() {
             sync_trash_menu_rows(rows, self.trash_contents.get());
         }
-        // sidebar_button prepends the icon image to the row's content box.
         let image = self
             .place_rows
             .borrow()
@@ -1435,7 +1434,10 @@ impl SidebarState {
             .and_then(|content| content.first_child())
             .and_then(|widget| widget.downcast::<gtk::Image>().ok());
         if let Some(image) = image {
-            crate::assets::set_primary_icon(&image, trash_icon(self.trash_contents.get()));
+            crate::ui::browser::fly_to_trash::set_trash_icon(
+                &image,
+                trash_icon(self.trash_contents.get()),
+            );
         }
     }
 

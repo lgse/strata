@@ -41,7 +41,7 @@ mod dissolve_delete;
 mod entry;
 mod entry_animation;
 mod events;
-mod fly_to_trash;
+pub(super) mod fly_to_trash;
 mod inline_edit;
 mod location;
 mod pane_header;
@@ -197,7 +197,6 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
-    pending_restore_names: RefCell<HashSet<String>>,
     /// Visible permanent-delete rows captured before the operation mutates the model.
     pending_delete_dissolve: RefCell<Option<(usize, dissolve_delete::PreparedDissolve)>>,
     deferred_delete_empty_depth: Cell<Option<usize>>,
@@ -521,7 +520,6 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
-            pending_restore_names: RefCell::new(HashSet::new()),
             pending_delete_dissolve: RefCell::new(None),
             deferred_delete_empty_depth: Cell::new(None),
             pending_navigate: RefCell::new(None),
@@ -1493,28 +1491,11 @@ impl BrowserView {
             && let Some(trash_button) = trash_button
             && !entries.is_empty()
         {
-            for entry in &entries {
-                self.state.add_pending_restore(entry.display_name.clone());
-            }
             let source = self
                 .state
                 .delete_animation_source()
                 .unwrap_or_else(|| self.state.overlay.clone().upcast());
-            let weak_state = Rc::downgrade(&self.state);
-            let names_for_done: Vec<String> =
-                entries.iter().map(|e| e.display_name.clone()).collect();
-            let source_for_done = source.clone();
-            fly_to_trash::fly_from_trash(&source, &entries, &trash_button, move || {
-                if let Some(state) = weak_state.upgrade() {
-                    for name in &names_for_done {
-                        state.remove_pending_restore(name);
-                        if let Some(row) = entry_animation::find_row_by_name(&source_for_done, name)
-                        {
-                            row.set_opacity(1.0);
-                        }
-                    }
-                }
-            });
+            fly_to_trash::fly_from_trash(&source, &entries, &trash_button, || {});
         }
         undone
     }
@@ -1832,18 +1813,6 @@ impl BrowserView {
 }
 
 impl ViewState {
-    pub(in crate::ui) fn is_pending_restore(&self, name: &str) -> bool {
-        self.pending_restore_names.borrow().contains(name)
-    }
-
-    pub(in crate::ui) fn add_pending_restore(&self, name: String) {
-        self.pending_restore_names.borrow_mut().insert(name);
-    }
-
-    pub(in crate::ui) fn remove_pending_restore(&self, name: &str) {
-        self.pending_restore_names.borrow_mut().remove(name);
-    }
-
     pub(super) fn notify_search_selection_changed(&self) {
         if let Some(handler) = self.search_selection_handler.borrow().as_ref() {
             handler();

@@ -4221,12 +4221,6 @@ fn apply_icons_entry(
         label.set_tooltip_text(Some(shown_name));
         super::accessibility::describe_entry(item, shown_name, Some(entry));
     }
-    let is_restoring = state.is_some_and(|s| s.is_pending_restore(&entry.display_name));
-    if is_restoring {
-        card.set_opacity(0.0);
-    } else {
-        card.set_opacity(1.0);
-    }
 }
 
 fn refresh_icons_card_chrome(

@@ -1402,7 +1402,6 @@ impl Browser {
         state.entry_at(parent_depth, position).into_iter().collect()
     }
 
-    /// Entries loaded in any open column whose display name is in `names`.
     pub fn entries_named(&self, names: &HashSet<String>) -> Vec<FileEntry> {
         self.state
             .borrow()
@@ -1776,7 +1775,6 @@ impl Browser {
         }
     }
 
-    /// Original locations of the latest trash operation still awaiting undo.
     pub fn pending_undo_trash(&self) -> Option<Vec<Location>> {
         if self.current_operation.get().is_some() {
             return None;

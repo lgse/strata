@@ -82,7 +82,6 @@ pub mod icons {
     pub const TRASH_LOW: &str = "strata-trash-low";
     pub const TRASH_HALF: &str = "strata-trash-half";
     pub const TRASH_FULL: &str = "strata-trash-full";
-    pub const TRASH_OPEN: &str = "strata-trash-open";
     pub const TRIANGLE_ALERT: &str = "strata-triangle-alert";
     pub const UNDO_2: &str = "strata-undo-2";
     pub const UNPLUG: &str = "strata-unplug";

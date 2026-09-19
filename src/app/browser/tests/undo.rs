@@ -57,7 +57,6 @@ fn pending_trash_undo_reports_original_locations_until_claimed() {
     browser.delete(vec![entry], false);
 
     assert_eq!(browser.pending_undo_trash(), Some(vec![location]));
-    // Peeking does not claim the entry.
     assert!(browser.pending_undo_trash().is_some());
     assert!(browser.undo_last_trash());
     assert_eq!(browser.pending_undo_trash(), None);
