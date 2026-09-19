@@ -72,7 +72,7 @@ fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
     );
     layout.set_wrap(label.wrap_mode());
     layout.set_alignment(gtk::pango::Alignment::Center);
-    layout.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    layout.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     layout.set_height(-ICONS_CARD_LABEL_LINES);
     let (text_width, text_height) = layout.pixel_size();
     (text_width + horizontal, text_height + vertical)

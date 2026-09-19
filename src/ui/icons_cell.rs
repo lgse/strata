@@ -150,7 +150,7 @@ fn configure_label(label: &gtk::Inscription) {
     label.set_xalign(0.5);
     label.set_yalign(0.0);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
+    label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeMiddle);
 }
 
 #[cfg(test)]

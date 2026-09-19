@@ -649,7 +649,7 @@ impl ViewState {
         heading.set_yalign(0.5);
         heading.set_valign(gtk::Align::Center);
         heading.set_hexpand(true);
-        heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         heading.set_max_width_chars(1);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
@@ -761,7 +761,13 @@ impl ViewState {
         let filter_for_column = filter.clone();
         let search_active_for_selection = recursive_search_active.clone();
         selection.connect_selection_changed(move |selection, position, count| {
-            if syncing_selection_changed.get() || search_active_for_selection.get() {
+            if syncing_selection_changed.get() {
+                return;
+            }
+            if search_active_for_selection.get() {
+                if let Some(state) = weak_selection_state.upgrade() {
+                    state.notify_search_selection_changed();
+                }
                 return;
             }
             let mut filtered_positions = bitset_positions(&selection.selection());
