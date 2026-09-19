@@ -29,11 +29,10 @@ fn filtered_selection_follows_the_preview_in_browser_and_chooser_modes() {
         || {
             for chooser in [false, true] {
                 for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                    let fixture = Fixture::new(chooser);
-                    for name in ["matched-first.txt", "matched-second.txt"] {
-                        std::fs::write(fixture.root.path().join(name), name).expect("file");
-                    }
+                    let fixture =
+                        Fixture::with_files(chooser, &["matched-first.txt", "matched-second.txt"]);
                     fixture.browser.set_view_mode(mode);
+                    fixture.settle();
                     assert!(fixture.browser.show_filter_with_query("matched"));
                     wait_until(|| {
                         fixture
@@ -64,7 +63,10 @@ fn filtered_selection_follows_the_preview_in_browser_and_chooser_modes() {
                         .selected_search_result()
                         .expect("first result");
                     fixture.preview.show(first.clone(), Some(0));
-                    wait_until(|| !fixture.requests.borrow().is_empty());
+                    wait_until(|| {
+                        !fixture.preview.state.animating.get()
+                            && !fixture.requests.borrow().is_empty()
+                    });
                     select(1);
                     let second = fixture
                         .browser
