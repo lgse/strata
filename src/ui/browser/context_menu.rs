@@ -573,7 +573,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     header.add_css_class("item-context-header");
     let heading = gtk::Label::new(None);
     heading.add_css_class("item-context-title");
-    heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     heading.set_max_width_chars(ITEM_CONTEXT_SUMMARY_MAX_CHARS);
     heading.set_xalign(0.0);
     let summary = gtk::Label::new(None);

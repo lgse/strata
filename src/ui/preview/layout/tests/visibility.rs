@@ -14,8 +14,11 @@ fn replacing_preview_targets_does_not_reopen_the_drawer() {
             preferences.set_browser_mode(BrowserMode::Columns);
             preferences.set_reduce_motion(false);
             let fixture = Fixture::new(false);
+            fixture.resize(780);
             fixture.preview.show(entry("first.png"), None);
-            wait_until(|| !fixture.preview.state.animating.get());
+            wait_until(|| {
+                !fixture.preview.state.animating.get() && fixture.requests.borrow().len() == 1
+            });
             let generation = fixture.preview.state.animation_generation.get();
             for name in ["second.png", "first.png"] {
                 let before = fixture.requests.borrow().len();
@@ -268,9 +271,9 @@ fn assert_last_column_visible(fixture: &Fixture) {
 }
 
 #[test]
-fn focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once() {
+fn compact_previews_load_targets_and_preserve_the_manual_session_choice() {
     crate::test_support::gtk_test(
-        "ui::preview::layout::tests::visibility::focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once",
+        "ui::preview::layout::tests::visibility::compact_previews_load_targets_and_preserve_the_manual_session_choice",
         || {
             let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
@@ -278,13 +281,12 @@ fn focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_o
             for chooser in [false, true] {
                 let fixture = Fixture::new(chooser);
                 fixture.enter_children();
-                fixture.resize(760);
+                fixture.resize(700);
                 fixture.preview.show(entry("first.png"), None);
                 fixture.settle();
                 assert!(fixture.preview.is_enabled());
-                assert!(!fixture.preview.is_open());
-                assert!(!fixture.preview.widget().is_visible());
-                assert!(fixture.requests.borrow().is_empty());
+                assert!(fixture.preview.is_open());
+                assert_eq!(fixture.requests.borrow().len(), 1);
 
                 fixture.resize(1400);
                 wait_until(|| {
@@ -305,17 +307,11 @@ fn focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_o
                 assert_last_column_visible(&fixture);
 
                 fixture.resize(780);
-                wait_until(|| fixture.preview.state.sizing.is_suspended());
                 fixture.settle();
-                assert!(!fixture.preview.widget().is_visible());
-                assert_last_column_visible(&fixture);
                 fixture.preview.show(entry("latest.png"), None);
                 fixture.settle();
-                assert_eq!(
-                    fixture.requests.borrow().len(),
-                    1,
-                    "hidden selections must not load"
-                );
+                assert!(fixture.preview.is_open());
+                assert_eq!(fixture.requests.borrow().len(), 2);
                 fixture.resize(1400);
                 wait_until(|| {
                     fixture.preview.widget().is_visible() && fixture.preview.widget().width() == 700
@@ -335,7 +331,7 @@ fn focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_o
                 assert_last_column_visible(&fixture);
 
                 fixture.resize(780);
-                wait_until(|| fixture.preview.state.sizing.is_suspended());
+                fixture.settle();
                 fixture.preview.close();
                 fixture.resize(1400);
                 fixture.settle();
@@ -361,10 +357,10 @@ fn a_focused_parent_takes_priority_over_a_wider_unfocused_leaf() {
             fixture.last_column().set_width_request(600);
             fixture.resize(1000);
             fixture.preview.show(entry("first.png"), None);
-            wait_until(|| fixture.preview.state.sizing.is_suspended());
+            fixture.settle();
             fixture.browser.browser().set_active_column(0);
             fixture.browser.browser().focus_active();
-            wait_until(|| fixture.preview.is_open());
+            wait_until(|| !fixture.preview.state.sizing.is_compact());
             fixture.settle();
             let focused = fixture
                 .columns()
@@ -398,7 +394,7 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
             let fixture = Fixture::new(false);
             fixture.preview.show(entry("clip.mp4"), None);
             let request = fixture.requests.borrow()[0].clone();
-            fixture.resize(760);
+            fixture.window.set_visible(false);
             wait_until(|| fixture.preview.state.sizing.is_suspended());
             fixture.preview.state.handle_event(
                 request.id,
@@ -431,11 +427,15 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
                 !media.is_playing(),
                 "late results must not autoplay while hidden"
             );
-            fixture.resize(1800);
+            fixture.window.present();
             wait_until(|| media.is_playing() && media.timestamp() > 0);
             for playing in [true, false] {
                 media.set_playing(playing);
-                fixture.resize(760);
+                fixture.resize(640);
+                fixture.settle();
+                assert_eq!(media.is_playing(), playing);
+                assert!(fixture.preview.has_video());
+                fixture.window.set_visible(false);
                 wait_until(|| fixture.preview.state.sizing.is_suspended());
                 let paused_at = media.timestamp();
                 assert!(!media.is_playing());
@@ -444,7 +444,7 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
                     gtk::gdk::Key::space,
                     gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK,
                 ));
-                fixture.resize(1800);
+                fixture.window.present();
                 wait_until(|| !fixture.preview.state.sizing.is_suspended());
                 assert_eq!(media.is_playing(), playing);
                 assert!(media.timestamp() >= paused_at);
@@ -453,7 +453,7 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
                     Some(media.upcast_ref())
                 );
             }
-            fixture.resize(760);
+            fixture.window.set_visible(false);
             wait_until(|| fixture.preview.state.sizing.is_suspended());
             fixture.preview.show(entry("other.mp4"), None);
             assert_eq!(media.intrinsic_width(), 0);
@@ -529,13 +529,13 @@ fn icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled()
                 fixture.settle();
                 assert_eq!(fixture.browser.widget().width(), width);
                 fixture.resize(700);
-                wait_until(|| fixture.preview.state.sizing.is_suspended());
+                wait_until(|| !fixture.preview.is_open());
                 fixture.settle();
                 let constrained_width = fixture.browser.widget().width();
                 fixture.preview.clear_target();
                 assert!(!fixture.preview.widget().is_visible());
                 fixture.preview.show(entry("constrained.txt"), None);
-                assert!(!fixture.preview.widget().is_visible());
+                assert!(fixture.preview.is_open());
                 fixture.preview.clear_target();
                 fixture.settle();
                 assert!(!fixture.preview.widget().is_visible());
@@ -570,10 +570,12 @@ fn deleting_an_appearance_preview_clears_visible_and_suspended_targets_without_d
                 wait_until(|| browser.entry_at(0, 1).is_some());
                 browser.select(0, 1);
                 if suspended {
-                    fixture.resize(760);
+                    fixture.window.set_visible(false);
                 }
                 fixture.preview.action().activate(None);
-                fixture.settle();
+                if !suspended {
+                    fixture.settle();
+                }
                 assert!(fixture.preview.is_enabled());
                 assert_eq!(fixture.preview.state.sizing.is_suspended(), suspended);
                 assert_eq!(fixture.preview.state.current_depth.get(), Some(0));
@@ -592,11 +594,10 @@ fn deleting_an_appearance_preview_clears_visible_and_suspended_targets_without_d
                         }],
                     },
                 );
-                fixture.settle();
                 assert!(fixture.preview.is_enabled());
                 assert!(fixture.preview.state.current.borrow().is_none());
                 if suspended {
-                    fixture.resize(1800);
+                    fixture.window.present();
                     fixture.settle();
                     assert!(!fixture.preview.is_open());
                 } else {
@@ -644,9 +645,9 @@ fn temporarily_hiding_a_document_keeps_its_view_and_scroll_position() {
             wait_until(|| scroll.vadjustment().upper() > scroll.vadjustment().page_size() + 200.0);
             scroll.vadjustment().set_value(200.0);
             fixture.settle();
-            fixture.resize(760);
+            fixture.window.set_visible(false);
             wait_until(|| fixture.preview.state.sizing.is_suspended());
-            fixture.resize(1800);
+            fixture.window.present();
             wait_until(|| !fixture.preview.state.sizing.is_suspended());
             fixture.settle();
             assert_eq!(
