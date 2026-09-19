@@ -312,6 +312,108 @@ fn job_icons_fall_back_to_a_bundled_asset() {
     assert_eq!(job_icon(&job), crate::ui::actions::DEFAULT_ACTION_ICON);
 }
 
+fn descendants(widget: &impl IsA<gtk::Widget>) -> Vec<gtk::Widget> {
+    let mut widgets = vec![widget.as_ref().clone()];
+    let mut child = widget.as_ref().first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        widgets.extend(descendants(&widget));
+    }
+    widgets
+}
+
+fn dashboard_button(root: &impl IsA<gtk::Widget>, label: &str) -> gtk::Button {
+    descendants(root)
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .find(|button| button.label().as_deref() == Some(label))
+        .unwrap_or_else(|| panic!("missing dashboard action: {label}"))
+}
+
+#[test]
+fn finished_jobs_and_details_survive_the_indicator_builder() {
+    crate::test_support::gtk_test(
+        "ui::jobs::tests::finished_jobs_and_details_survive_the_indicator_builder",
+        || {
+            let service = JobService::new(Rc::new(InstantRunner));
+            let indicator = JobsIndicator::with_service(service.clone());
+            let widget = indicator.widget().clone();
+            let window = gtk::Window::builder().child(&widget).build();
+            // Window composition retains the widget, not the builder.
+            drop(indicator);
+            window.present();
+            for index in 0..2 {
+                service
+                    .enqueue(JobRequest {
+                        action: handle(
+                            &format!("action{index}"),
+                            "Finished action",
+                            None,
+                            ExecutionMode::WholeSelection,
+                        ),
+                        inputs: vec![PathBuf::from("/example/input")],
+                        parent: PathBuf::from("/example"),
+                        source: InvocationSource::Selection,
+                    })
+                    .expect("queue");
+            }
+            for _ in 0..4 {
+                service.pump();
+            }
+            assert_eq!(service.finished_count(), 2);
+            widget.popup();
+            let popover = widget.popover().expect("dashboard");
+            dashboard_button(&popover, "Details").emit_clicked();
+            let details = descendants(&popover)
+                .into_iter()
+                .filter_map(|widget| widget.downcast::<gtk::Revealer>().ok())
+                .any(|revealer| revealer.reveals_child());
+            assert!(details, "finished output can be expanded");
+            dashboard_button(&popover, "Hide").emit_clicked();
+            assert!(
+                descendants(&popover)
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::Revealer>().ok())
+                    .all(|revealer| !revealer.reveals_child())
+            );
+            dashboard_button(&popover, "Minimize").emit_clicked();
+            assert_eq!(service.finished_count(), 2, "minimizing retains history");
+            widget.popup();
+            dashboard_button(&popover, "Dismiss").emit_clicked();
+            assert_eq!(service.finished_count(), 1);
+            dashboard_button(&popover, "Details");
+            service
+                .enqueue(JobRequest {
+                    action: handle(
+                        "live-update",
+                        "Another action",
+                        None,
+                        ExecutionMode::WholeSelection,
+                    ),
+                    inputs: vec![PathBuf::from("/example/input")],
+                    parent: PathBuf::from("/example"),
+                    source: InvocationSource::Selection,
+                })
+                .expect("queue while dashboard is open");
+            dashboard_button(&popover, "Remove");
+            service.pump();
+            dashboard_button(&popover, "Cancel");
+            service.pump();
+            assert_eq!(service.finished_count(), 2);
+            assert!(
+                !descendants(&popover)
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+                    .any(|button| button.label().as_deref() == Some("Cancel"))
+            );
+            dashboard_button(&popover, "Clear finished").emit_clicked();
+            assert_eq!(service.finished_count(), 0);
+            assert!(!widget.is_visible());
+            window.close();
+        },
+    );
+}
+
 #[test]
 fn the_service_is_shared_across_windows() {
     let first = shared();

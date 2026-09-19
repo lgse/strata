@@ -40,8 +40,10 @@ Existing actions use the same editor with **Save changes**; their id stays fixed
 
 ### Script examples
 
-Choose **Examples…** on the Script tab to browse bundled Python recipes. The
-picker shows requirements and a read-only preview before you apply anything:
+Open **Library** on the Script tab to browse bundled Python recipes in a
+dropdown attached to the editor. Search names, descriptions, or requirements,
+and narrow the list with **All**, **Files**, or **Media**. Each template shows its
+language, purpose, and required tools:
 
 | Example | Extra requirements | Result |
 | --- | --- | --- |
@@ -61,11 +63,13 @@ sandboxed.
 
 Applying a recipe selects Python and sets suitable file filters and run mode
 (per item for conversion/checksum recipes). It keeps a name or description you
-entered, the id, and other settings. If you have edited the Python draft, the
-picker explicitly says **Replace script**; the code replacement can be undone
-in the editor. Bash and command drafts are retained. Cancel changes nothing,
-and neither previewing nor applying an example saves or executes it. Save the
-action, then launch it from its file/folder context menu.
+entered, the id, and other settings. Choose a template to load it into the
+editor for review. If you have edited the Python draft, the dropdown first
+asks you to **Replace script** or **Keep draft**, without opening another dialog.
+Code replacement can be undone in the editor; Bash and command drafts are retained.
+Escape or clicking outside closes only the dropdown, leaving the editor open.
+Searching, browsing, or applying a template never saves or executes it. Review
+and save the action, then launch it from its file/folder context menu.
 
 The documented starter and every recipe include the same maintained
 [`context()` reference](../data/actions/context-api.txt) as a module docstring.
@@ -236,6 +240,11 @@ and queued, and opens a dashboard with progress, elapsed time, output, and the
 finished history. Minimizing, pressing Escape, or clicking away only hides the
 dashboard; cancellation is its own button and signals the whole process group,
 escalating to SIGKILL if the process ignores SIGTERM.
+
+Finished jobs stay in the dashboard for the current session, including successes,
+failures, and cancellations. **Details** expands captured output and **Hide**
+collapses it. **Minimize** keeps history; **Dismiss** removes one finished job,
+and **Clear finished** removes finished history without disturbing active work.
 
 Cancelling stops the work that has not happened yet. It does not roll back changes
 already written to disk, and Strata does not retry a failed or cancelled action.

@@ -296,15 +296,6 @@ impl PageState {
             icon.set_valign(gtk::Align::Center);
         }
         let form = Rc::new(EditorForm::new(mode, &action, script));
-        let weak_form = Rc::downgrade(&form);
-        for button in &form.examples {
-            let weak_form = weak_form.clone();
-            button.connect_clicked(move |button| {
-                if let Some(form) = weak_form.upgrade() {
-                    examples::show(button, form);
-                }
-            });
-        }
         layout.body.append(&form.root);
         layout.actions.prepend(&form.error);
         let content = layout.content;
@@ -342,6 +333,10 @@ impl PageState {
         });
         layer.add_controller(escape);
         crate::ui::modal::submit_on_enter(&layout.body, &layout.confirm);
+        // The library's search entry must not inherit the modal's save binding.
+        for button in &form.examples {
+            examples::install(button, Rc::downgrade(&form));
+        }
 
         let state = self.clone();
         let form_for_save = form.clone();
@@ -570,7 +565,7 @@ struct EditorForm {
     description: gtk::Entry,
     entrypoint: gtk::Entry,
     script: sourceview5::View,
-    examples: Vec<gtk::Button>,
+    examples: Vec<gtk::MenuButton>,
     python_buffer: sourceview5::Buffer,
     python_choice: gtk::ToggleButton,
     mode_choices: Vec<gtk::ToggleButton>,
@@ -782,11 +777,7 @@ impl EditorForm {
         );
         let examples = [&script_field, &arguments_field]
             .map(|field| {
-                let button = gtk::Button::with_label("Examples…");
-                button.add_css_class("settings-action-button");
-                button.set_tooltip_text(Some(
-                    "Choose a documented Python script from the bundled library",
-                ));
+                let button = examples::button();
                 if let Some(heading) = field.first_child().and_downcast::<gtk::Box>() {
                     heading.append(&button);
                 }

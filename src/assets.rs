@@ -51,6 +51,7 @@ pub mod icons {
     pub const COLUMNS: &str = "strata-columns";
     pub const ICONS: &str = "strata-icons";
     pub const HOME: &str = "strata-house";
+    pub const LIBRARY: &str = "strata-library";
     pub const LIST: &str = "strata-list";
     pub const LIST_CHECKS: &str = "strata-list-checks";
     pub const LOCK: &str = "strata-lock";

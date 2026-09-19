@@ -8,6 +8,7 @@ const CONTEXT_API: &str = include_str!("../../../data/actions/context-api.txt");
 
 pub(crate) struct ActionExample {
     pub name: &'static str,
+    pub category: &'static str,
     pub description: &'static str,
     pub requirements: &'static str,
     pub inputs: &'static str,
@@ -29,6 +30,7 @@ impl ActionExample {
 pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
     ActionExample {
         name: "Log selected paths",
+        category: "Files",
         description: "A documented starter that logs paths and reports progress without changing files.",
         requirements: "Python 3 only; no extra packages",
         inputs: "Files and folders · Whole selection",
@@ -39,6 +41,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
     },
     ActionExample {
         name: "Convert images to WebP",
+        category: "Media",
         description: "Convert the first frame to WebP at quality 85 in a new folder beside each original.",
         requirements: "Python 3 + ImageMagick (magick or convert)",
         inputs: "Image files · Per item",
@@ -49,6 +52,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
     },
     ActionExample {
         name: "Resize images to 1024px",
+        category: "Media",
         description: "Fit the first frame within 1024 x 1024 without enlarging it; save a PNG in a new folder.",
         requirements: "Python 3 + ImageMagick (magick or convert)",
         inputs: "Image files · Per item",
@@ -59,6 +63,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
     },
     ActionExample {
         name: "Convert videos to MP4",
+        category: "Media",
         description: "Create H.264/AAC MP4 copies in new folders beside the originals. Originals are kept.",
         requirements: "Python 3 + FFmpeg with libx264 and AAC encoders",
         inputs: "Video files · Per item",
@@ -69,6 +74,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
     },
     ActionExample {
         name: "Extract MP3 audio",
+        category: "Media",
         description: "Save the first audio stream as MP3 in a new folder beside each original.",
         requirements: "Python 3 + FFmpeg with the libmp3lame encoder",
         inputs: "Audio and video files · Per item",
@@ -81,6 +87,7 @@ pub(crate) const ACTION_EXAMPLES: &[ActionExample] = &[
     },
     ActionExample {
         name: "SHA-256 checksums",
+        category: "Files",
         description: "Write a .sha256 checksum beside each selected file. Existing checksum files are never replaced.",
         requirements: "Python 3 only; no extra packages",
         inputs: "Files · Per item",

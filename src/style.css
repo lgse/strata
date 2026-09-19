@@ -5508,7 +5508,8 @@ two-column presentation. */
   background: shade(@theme_bg, 0.85);
 }
 
-.settings-dialog entry.settings-search {
+.settings-dialog entry.settings-search,
+.settings-action-library entry.settings-search {
   padding-left: calc(1em + 24px);
   padding-right: calc(1em + 22px);
 }
@@ -5728,7 +5729,8 @@ popover.settings-search-popover.background {
   min-height: 64px;
 }
 
-.settings-action-button {
+.settings-action-button,
+.settings-action-library-button > button {
   background: alpha(@theme_highlight, 0.35);
   border: 1px solid alpha(@theme_border, 0.4);
   border-radius: 4px;
@@ -5739,16 +5741,20 @@ popover.settings-search-popover.background {
   padding: 0 8px;
 }
 
-.settings-action-button:hover {
+.settings-action-button:hover,
+.settings-action-library-button > button:hover {
   background: @theme_highlight;
   border-color: @theme_accent;
 }
 
-.settings-action-button:active {
+.settings-action-button:active,
+.settings-action-library-button > button:active,
+.settings-action-library-button > button:checked {
   background: alpha(@theme_accent, 0.22);
 }
 
-.settings-action-button:focus-visible {
+.settings-action-button:focus-visible,
+.settings-action-library-button > button:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
@@ -5773,45 +5779,88 @@ popover.settings-search-popover.background {
   padding: 14px 18px;
 }
 
-.settings-action-examples {
-  min-width: 720px;
-}
-
-.settings-action-examples dropdown popover.background {
+popover.settings-action-library {
   background: @theme_surface;
 }
 
-.settings-action-examples dropdown popover.background > contents {
+popover.settings-action-library > contents {
+  min-width: 440px;
   background: @theme_surface;
   color: @theme_text;
   border: 1px solid alpha(@theme_border, 0.6);
-  border-radius: 6px;
+  border-radius: 9px;
+  padding: 0;
   box-shadow: none;
 }
 
-.settings-action-examples dropdown listview {
-  background: @theme_surface;
-  color: @theme_text;
+.action-library-search {
+  padding: 6px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
 }
 
-.settings-action-examples dropdown row {
+.action-library-search entry {
   background: transparent;
+  border-color: transparent;
+}
+
+.action-library-filters {
+  padding: 10px 12px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+.action-library-category {
+  background: transparent;
+  color: @theme_dim_text;
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 14px;
+  box-shadow: none;
+  min-height: 22px;
+  padding: 0 9px;
+}
+
+.action-library-category:hover {
+  background: @theme_highlight;
   color: @theme_text;
+}
+
+.action-library-category:checked,
+.action-library-category:active {
+  background: alpha(@theme_accent, 0.2);
+  color: @theme_text;
+  border-color: @theme_accent;
+}
+
+.action-library-list {
+  padding: 6px;
+}
+
+.action-library-template {
+  padding: 10px 8px;
+}
+
+.action-library-template:active {
+  transform: none;
+}
+
+.action-library-title {
+  color: @theme_text;
+}
+
+.action-library-language {
+  color: @theme_dim_text;
+  border: 1px solid alpha(@theme_border, 0.4);
   border-radius: 4px;
+  font-size: 0.75em;
+  padding: 0 5px;
 }
 
-.settings-action-examples dropdown row:hover,
-.settings-action-examples dropdown row:selected {
-  background: alpha(@theme_accent, 0.15);
+.action-library-requirements {
+  font-size: 0.8em;
 }
 
-.settings-action-examples dropdown row:active {
-  background: alpha(@theme_accent, 0.22);
-}
-
-.settings-action-examples dropdown row:focus-visible {
-  outline: 2px solid @theme_accent;
-  outline-offset: -2px;
+.action-library-footer {
+  padding: 10px 12px;
+  border-top: 1px solid alpha(@theme_border, 0.35);
 }
 
 .settings-action-dialog {

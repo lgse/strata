@@ -84,7 +84,6 @@ struct DashboardState {
 pub(crate) struct JobsIndicator {
     root: gtk::MenuButton,
     label: gtk::Label,
-    list: gtk::Box,
     clear: gtk::Button,
     state: DashboardState,
     /// Keeps the refresh callback alive without creating a reference cycle.
@@ -95,6 +94,10 @@ impl JobsIndicator {
     pub(crate) fn new() -> Self {
         let service = shared();
         install_pump(&service);
+        Self::with_service(service)
+    }
+
+    fn with_service(service: Rc<JobService>) -> Self {
         let state = DashboardState {
             service,
             expanded: Rc::new(RefCell::new(HashSet::new())),
@@ -228,7 +231,6 @@ impl JobsIndicator {
         let indicator = Self {
             root,
             label,
-            list,
             clear,
             state,
             refresh_holder,
@@ -247,7 +249,6 @@ impl JobsIndicator {
         let weak_label = self.label.downgrade();
         let weak_root = self.root.downgrade();
         let weak_clear = self.clear.downgrade();
-        let weak_list = self.list.downgrade();
         let service = self.state.service.clone();
         let dirty = self.state.dirty.clone();
         let weak_refresh = Rc::downgrade(&self.refresh_holder);
@@ -270,7 +271,6 @@ impl JobsIndicator {
                 && let Some(holder) = weak_refresh.upgrade()
                 && let Some(refresh) = holder.borrow().clone()
             {
-                let _ = weak_list;
                 refresh();
             }
         });
@@ -278,8 +278,11 @@ impl JobsIndicator {
         guard
             .borrow_mut()
             .replace(self.state.service.observe(callback));
+        // Window composition retains only the widget, not this builder.
+        let refresh_holder = self.refresh_holder.clone();
         self.root.connect_destroy(move |_| {
             guard.borrow_mut().take();
+            refresh_holder.borrow_mut().take();
         });
     }
 
@@ -456,12 +459,14 @@ fn job_controls(
             let id = snapshot.id;
             let expanded_state = state.expanded.clone();
             let details_refresh = refresh.clone();
+            let dirty = state.dirty.clone();
             details.connect_clicked(move |_| {
                 let mut expanded = expanded_state.borrow_mut();
                 if !expanded.remove(&id) {
                     expanded.insert(id);
                 }
                 drop(expanded);
+                dirty.replace(true);
                 details_refresh();
             });
             buttons.push(details);

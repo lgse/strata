@@ -125,7 +125,7 @@ def test_action_editor_tabs_validate_save_and_reopen(strata):
     strata.dismiss_menu()
 
 
-def test_script_library_previews_preserves_cancelled_edits_and_runs_a_recipe(strata):
+def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata):
     editor = _open_new_action(strata)
     strata.keyboard.type_text("Checksum job")
     strata.pointer.click(editor.find(role="page tab", name="Script"))
@@ -136,33 +136,61 @@ def test_script_library_previews_preserves_cancelled_edits_and_runs_a_recipe(str
     strata.wait(lambda: script.text == "print('my draft')", "custom draft")
 
     def library():
-        assert editor.find(role="button", name="Examples…").activate()
+        strata.pointer.click(editor.find(name="Library"))
         return strata.wait(
-            lambda: strata.window.find(role="dialog", name="Script examples"), "script library"
+            lambda: strata.window.find(name="Script library"), "library dropdown"
         )
 
     picker = library()
-    assert picker.find(role="button", name="Replace script") is not None
-    strata.pointer.click(picker.find(role="button", name="Cancel"))
+    strata.pointer.click(picker.find(role="toggle button", name="Media"))
     strata.wait(
-        lambda: strata.window.find(role="dialog", name="Script examples") is None,
-        "cancelled library to close",
+        lambda: picker.find(role="button", name="SHA-256 checksums", states=["visible"], rendered=False) is None,
+        "Files templates excluded from Media",
     )
+    search = picker.find(role="text", name="Search templates")
+    strata.pointer.click(search)
+    strata.keyboard.type_text("FFMPEG MP4")
+    strata.wait(lambda: picker.find(role="button", name="Convert videos to MP4"), "media search")
+    strata.wait(
+        lambda: picker.find(role="button", name="Extract MP3 audio", states=["visible"], rendered=False) is None,
+        "search excludes other media templates",
+    )
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: picker.find(role="button", name="Convert videos to MP4", states=["focused"]),
+        "keyboard focus moves from search to its result",
+    )
+    strata.keyboard.press("Return")
+    keep = strata.wait(lambda: picker.find(role="button", name="Keep draft"), "keyboard selection")
+    strata.pointer.click(keep)
+    assert script.text == "print('my draft')"
+    strata.pointer.click(search)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("unmatched template")
+    strata.wait(lambda: picker.find(role="label", name="No templates match your search."), "empty search")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.window.find(name="Script library") is None, "library to close")
+    assert strata.window.find(role="dialog", name="New action") is not None
     assert script.text == "print('my draft')"
     picker = library()
-    strata.pointer.click(picker.find(role="combo box"))
-    strata.keyboard.press("End")
+    strata.pointer.click(picker.find(role="toggle button", name="Files"))
+    search = picker.find(role="text", name="Search templates")
+    strata.pointer.click(search)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("sha-256")
     strata.keyboard.press("Return")
-    strata.wait(
-        lambda: picker.find(role="label", name="SHA-256 checksums"), "checksum example"
-    )
-    preview = picker.find(role="text", name="Example code").text
-    strata.pointer.click(picker.find(role="button", name="Replace script"))
-    strata.wait(
-        lambda: strata.window.find(role="dialog", name="Script examples") is None,
-        "chosen library to close",
-    )
-    assert script.text == preview
+    replace = strata.wait(lambda: picker.find(role="button", name="Replace script"), "inline replacement choice")
+    assert script.text == "print('my draft')"
+    action_dir = strata.environment.config_home / "strata/actions/checksum-job"
+    assert not action_dir.exists(), "search Enter must not save the action"
+    strata.pointer.click(picker.find(role="button", name="Keep draft"))
+    assert script.text == "print('my draft')"
+    strata.pointer.click(picker.find(role="button", name="SHA-256 checksums"))
+    replace = strata.wait(lambda: picker.find(role="button", name="Replace script"), "replacement choice")
+    strata.pointer.click(replace)
+    strata.wait(lambda: strata.window.find(name="Script library") is None, "chosen library to close")
+    applied = script.text
+    assert applied != "print('my draft')"
     strata.pointer.click(editor.find(role="page tab", name="Behavior"))
     menu_item = strata.wait(
         lambda: editor.find(role="toggle button", name="Menu item"), "placement control"
@@ -171,7 +199,7 @@ def test_script_library_previews_preserves_cancelled_edits_and_runs_a_recipe(str
     strata.pointer.click(editor.find(role="button", name="Create action"))
     action_dir = strata.environment.config_home / "strata/actions/checksum-job"
     strata.wait(lambda: (action_dir / "action.toml").exists(), "saved example")
-    assert (action_dir / "main.py").read_text() == preview
+    assert (action_dir / "main.py").read_text() == applied
     manifest = tomllib.loads((action_dir / "action.toml").read_text())
     assert manifest["name"] == "Checksum job"
     assert manifest["run"]["mode"] == "per-item"
@@ -195,3 +223,23 @@ def test_script_library_previews_preserves_cancelled_edits_and_runs_a_recipe(str
         "the complete checksum",
     )
     assert strata.fixture.path("todo.txt").read_bytes() == original
+    finished = strata.wait(lambda: strata.window.find(name="1 job finished"), "finished job indicator")
+    strata.pointer.click(finished)
+    strata.wait(lambda: strata.window.find(role="label", name="Completed"), "completed row")
+    strata.pointer.click(strata.window.find(role="button", name="Details"))
+    strata.wait(lambda: strata.window.find(role="label", name_matches="Created .*todo.txt.sha256"), "finished job output")
+    strata.pointer.click(strata.window.find(role="button", name="Hide"))
+    strata.wait(lambda: strata.window.find(role="label", name_matches="Created .*todo.txt.sha256") is None, "hidden output")
+    strata.pointer.click(strata.window.find(role="button", name="Minimize"))
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Checksum job")
+    finished = strata.wait(lambda: strata.window.find(name="2 jobs finished · failures"), "failed rerun in history")
+    strata.pointer.click(finished)
+    strata.wait(lambda: strata.window.find(role="label", name="Failed"), "failed job row")
+    assert strata.window.find(role="label", name="Completed") is not None
+    strata.pointer.click(strata.window.find(role="button", name="Details"))
+    strata.wait(lambda: strata.window.find(role="label", name_matches="FileExistsError"), "failure details")
+    strata.pointer.click(strata.window.find(role="button", name="Dismiss"))
+    strata.wait(lambda: strata.window.find(name="1 job finished"), "remaining completed history")
+    strata.pointer.click(strata.window.find(role="button", name="Clear finished"))
+    strata.wait(lambda: strata.window.find(name="1 job finished") is None, "cleared history")
