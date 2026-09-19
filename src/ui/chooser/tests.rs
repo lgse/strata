@@ -2,9 +2,11 @@
 
 mod acceptance;
 mod context_menu;
+mod filename;
 mod filtered_preview;
 mod keyboard;
 mod layout;
+mod recent;
 mod selection;
 mod sizing;
 

@@ -128,6 +128,7 @@ struct PreviewState {
     source_preview: SourcePreviewView,
     metadata: gtk::Box,
     open: gtk::Button,
+    close_button: gtk::Button,
     print: gtk::Button,
     wrap: gtk::ToggleButton,
     text_view: RefCell<Option<sourceview5::View>>,
@@ -285,6 +286,7 @@ impl PreviewDrawer {
             source_preview: SourcePreviewView::new(),
             metadata,
             open: open.clone(),
+            close_button: close.clone(),
             print: print.clone(),
             wrap: wrap.clone(),
             text_view: RefCell::new(None),
@@ -636,6 +638,7 @@ impl PreviewState {
             return;
         }
         if !was_open {
+            self.current.replace(Some(entry.clone()));
             self.show_panel();
             if let Some(split) = split.as_ref() {
                 self.animate_open(split);

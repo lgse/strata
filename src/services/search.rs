@@ -315,7 +315,7 @@ impl SharedIndex {
 mod directory;
 mod pattern;
 
-pub(crate) use pattern::filter_name_matches;
+pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
 
 type SearchScorer = fn(&SearchItem, &str) -> Option<i64>;
 
@@ -1005,11 +1005,13 @@ fn publish(
 }
 
 fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
-    if !query.contains('*') {
+    if !filter_name_matches(item.search_name(), query) {
+        return None;
+    }
+    if !query.contains('*') && item.search_name().contains(query) {
         return fuzzy_score_normalized(item, query);
     }
-    filter_name_matches(item.search_name(), query)
-        .then_some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
+    Some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
 }
 
 fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
