@@ -235,6 +235,7 @@ fn workbook_parser_uses_resource_limited_sandbox_and_validated_output() {
 #[test]
 fn word_document_parser_uses_resource_limited_sandbox_and_validated_output() {
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/app/strata"),
         Path::new("/fixtures/report.docx"),
         Path::new("/private-output"),
