@@ -84,6 +84,7 @@ impl Fixture {
             &gtk::ScrolledWindow::new(),
             browser.clone(),
             Rc::new(Cell::new(true)),
+            true,
         )));
         views.borrow_mut().set_group_by_type(grouped);
         views.borrow_mut().prepare_mode(BrowserMode::List);

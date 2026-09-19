@@ -212,6 +212,13 @@ fn keep_both_is_offered_only_when_copying_into_a_collision() {
                 });
                 assert_eq!(has_keep_both, !moving, "moving={moving}");
 
+                let replace = buttons
+                    .iter()
+                    .find(|button| button.label().as_deref() == Some("Replace"))
+                    .expect("replace button on the conflict dialog")
+                    .clone();
+                wait_until(|| replace.has_focus());
+
                 let skip_visible = buttons
                     .iter()
                     .any(|button| button.label().as_deref() == Some("Skip") && button.is_visible());

@@ -316,7 +316,10 @@ fn paste_into_rejects_the_recent_collection_at_the_action_boundary() {
             view.browser()
                 .observe(move |event| observed.borrow_mut().push(event.clone()));
 
-            view.state.paste_into(Location::uri("recent:///"));
+            view.state.paste_into(
+                Location::uri("recent:///"),
+                crate::ui::browser::transfer::ConflictPrimary::Replace,
+            );
 
             assert!(
                 !events
@@ -523,6 +526,157 @@ fn filtered_cut_feedback_follows_results_across_windows_and_rebuilds() {
                 view.browser().clear_observer();
                 window.close();
             }
+        },
+    );
+}
+
+#[test]
+fn copy_marks_and_cut_marks_exclude_each_other() {
+    let location = Location::local("/fixture/copied");
+
+    set_shared_copy(std::slice::from_ref(&location));
+    assert!(is_copy_match(std::slice::from_ref(&location)));
+    assert!(!is_cut_match(std::slice::from_ref(&location)));
+
+    set_shared_cut(std::slice::from_ref(&location));
+    assert!(is_cut_match(std::slice::from_ref(&location)));
+    assert!(!is_copy_match(std::slice::from_ref(&location)));
+
+    clear_shared_marks();
+    assert!(!is_cut_match(std::slice::from_ref(&location)));
+    assert!(!is_copy_match(std::slice::from_ref(&location)));
+}
+
+#[test]
+fn filtered_copy_feedback_follows_results_across_windows_and_rebuilds() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::filtered_copy_feedback_follows_results_across_windows_and_rebuilds",
+        || {
+            use crate::ui::browser::{BrowserView, PeekBehavior};
+            use crate::ui::browser_modes::BrowserMode;
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(fixture.path().join("nested")).expect("nested");
+            let copied = Location::local(fixture.path().join("nested/needle.txt"));
+            std::fs::write(copied.native_path().expect("path"), "copied").expect("file");
+            std::fs::write(fixture.path().join("needle-decoy.txt"), "plain").expect("decoy");
+            let views: Vec<_> = (0..2)
+                .map(|_| {
+                    let view = BrowserView::new(
+                        Rc::new(crate::adapters::LocalFileSource),
+                        PeekBehavior::default(),
+                    );
+                    let window = gtk::Window::builder()
+                        .child(&view.widget())
+                        .default_width(900)
+                        .default_height(500)
+                        .build();
+                    window.present();
+                    view.browser().navigate(Location::local(fixture.path()));
+                    wait_for_result(|| {
+                        view.browser()
+                            .column_snapshot(0)
+                            .is_some_and(|s| !s.loading)
+                    });
+                    (view, window)
+                })
+                .collect();
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                clear_shared_marks();
+                for (view, _) in &views {
+                    view.set_view_mode(mode);
+                    assert!(view.show_filter_with_query("needle"));
+                    wait_for_result(|| result_row(&view.widget(), "needle.txt").is_some());
+                }
+                set_shared_copy(std::slice::from_ref(&copied));
+                for (view, _) in &views {
+                    assert!(
+                        result_row(&view.widget(), "needle.txt")
+                            .expect("copied result")
+                            .has_css_class("copied")
+                    );
+                    assert!(
+                        !result_row(&view.widget(), "needle-decoy.txt")
+                            .expect("decoy")
+                            .has_css_class("copied")
+                    );
+                    assert!(view.show_filter_with_query(""));
+                    wait_for_result(|| result_row(&view.widget(), "needle.txt").is_none());
+                    assert!(view.show_filter_with_query("needle"));
+                    wait_for_result(|| result_row(&view.widget(), "needle.txt").is_some());
+                    assert!(
+                        result_row(&view.widget(), "needle.txt")
+                            .expect("retained copy")
+                            .has_css_class("copied")
+                    );
+                }
+                set_shared_cut(std::slice::from_ref(&copied));
+                for (view, _) in &views {
+                    let row = result_row(&view.widget(), "needle.txt").expect("cut result");
+                    assert!(row.has_css_class("cut"));
+                    assert!(!row.has_css_class("copied"), "cut wins over copy");
+                }
+                clear_shared_marks();
+                for (view, _) in &views {
+                    let row = result_row(&view.widget(), "needle.txt").expect("restored result");
+                    assert!(!row.has_css_class("copied"));
+                    assert!(!row.has_css_class("cut"));
+                }
+            }
+            for (view, window) in views {
+                view.browser().clear_observer();
+                window.close();
+            }
+        },
+    );
+}
+
+#[test]
+fn copy_selection_marks_rows_and_text_clipboard_clears_them() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::copy_selection_marks_rows_and_text_clipboard_clears_them",
+        || {
+            use crate::ui::browser::{BrowserView, PeekBehavior};
+            use crate::ui::browser_modes::BrowserMode;
+            clear_shared_marks();
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::write(fixture.path().join("alpha.txt"), "a").expect("file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_for_result(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|s| !s.loading)
+            });
+            view.set_view_mode(BrowserMode::Columns);
+            wait_for_result(|| result_row(&view.widget(), "alpha.txt").is_some());
+            view.browser().select(0, 0);
+            assert!(view.copy_selection());
+            wait_for_result(|| {
+                result_row(&view.widget(), "alpha.txt")
+                    .is_some_and(|row| row.has_css_class("copied"))
+            });
+            assert!(
+                !result_row(&view.widget(), "alpha.txt")
+                    .expect("copied")
+                    .has_css_class("cut")
+            );
+            view.copy_path();
+            wait_for_result(|| {
+                result_row(&view.widget(), "alpha.txt")
+                    .is_some_and(|row| !row.has_css_class("copied"))
+            });
+            view.browser().clear_observer();
+            window.close();
+            clear_shared_marks();
         },
     );
 }

@@ -245,7 +245,9 @@ pub(crate) fn restore_filter_controls(
         entry.set_text("");
         return;
     }
-    button.set_active(true);
+    // Hidden minimal-mode filters keep the funnel collapsed; activating the
+    // button would reveal it and steal listing focus.
+    button.set_active(filter.revealed);
     entry.set_text(&filter.query);
 }
 
@@ -329,6 +331,16 @@ pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterCha
         gtk::FilterChange::LessStrict
     } else {
         gtk::FilterChange::Different
+    }
+}
+
+/// Writes a hidden-funnel query. `rescope` re-emits `changed` when the text
+/// is unchanged so a recursive/listing scope switch still starts a new feed.
+pub(crate) fn set_filter_entry_query(entry: &gtk::Entry, query: &str, rescope: bool) {
+    if entry.text().as_str() != query {
+        entry.set_text(query);
+    } else if rescope {
+        entry.emit_by_name::<()>("changed", &[]);
     }
 }
 

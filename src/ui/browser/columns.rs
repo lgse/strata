@@ -136,6 +136,7 @@ pub(super) struct ColumnView {
     pub(super) search_handle: Rc<RefCell<Option<crate::services::SearchHandle>>>,
     pub(super) search_generation: Rc<Cell<u64>>,
     pub(super) search_model: gtk::StringList,
+    pub(super) force_recursive_search: Rc<Cell<bool>>,
 }
 
 impl ColumnView {
@@ -386,17 +387,24 @@ fn set_active_path_style(row: &gtk::Box, active: bool) {
     }
 }
 
-pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
+pub(super) fn set_clipboard_path_style(row: &gtk::Box, cut: bool, copied: bool) {
+    let copied = copied && !cut;
     if cut {
         row.add_css_class("cut");
     } else {
         row.remove_css_class("cut");
+    }
+    if copied {
+        row.add_css_class("copied");
+    } else {
+        row.remove_css_class("copied");
     }
     if let Some(icon) = row
         .first_child()
         .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
     {
         icon.set_cut(cut);
+        icon.set_copied(copied);
     }
 }
 
@@ -675,10 +683,15 @@ impl ViewState {
         if !self.interactive {
             header_actions.append(&pane_new_folder_button(Rc::downgrade(self), depth));
         }
-        header_actions.append(&pane_refresh_button(&self.browser, depth));
+        let refresh = pane_refresh_button(&self.browser, depth);
+        header_actions.append(&refresh);
+        super::pane_header::bind_minimal_chrome(&refresh, self.interactive);
         let sort_direction_button = column_sort_direction_toggle(&self.browser, depth);
         header_actions.append(&sort_direction_button);
-        header_actions.append(&column_sort_menu(&self.browser, depth));
+        super::pane_header::bind_minimal_chrome(&sort_direction_button, self.interactive);
+        let sort_menu = column_sort_menu(&self.browser, depth);
+        header_actions.append(&sort_menu);
+        super::pane_header::bind_minimal_chrome(&sort_menu, self.interactive);
 
         let (filter_entry, filter_revealer, filter_button) =
             crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
@@ -696,12 +709,15 @@ impl ViewState {
             }
         });
         header_actions.append(&filter_button);
+        super::pane_header::bind_minimal_chrome(&filter_button, self.interactive);
+        super::pane_header::bind_minimal_chrome(&filter_revealer, self.interactive);
         if depth > 0 {
             let close = gtk::Button::builder()
                 .tooltip_text("Close this pane")
                 .build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
             crate::ui::controls::pane_header_action(&close);
+            super::pane_header::bind_minimal_chrome(&close, self.interactive);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
                 if let Some(browser) = weak_browser.upgrade() {
@@ -761,7 +777,13 @@ impl ViewState {
         let filter_for_column = filter.clone();
         let search_active_for_selection = recursive_search_active.clone();
         selection.connect_selection_changed(move |selection, position, count| {
-            if syncing_selection_changed.get() || search_active_for_selection.get() {
+            if search_active_for_selection.get() {
+                if let Some(state) = weak_selection_state.upgrade() {
+                    state.notify_visible_listing();
+                }
+                return;
+            }
+            if syncing_selection_changed.get() {
                 return;
             }
             let mut filtered_positions = bitset_positions(&selection.selection());
@@ -811,6 +833,7 @@ impl ViewState {
             Rc::new(RefCell::new(None));
         let search_generation: Rc<Cell<u64>> = Rc::new(Cell::new(0));
         let search_model = gtk::StringList::new(&[]);
+        let force_recursive_search: Rc<Cell<bool>> = Rc::new(Cell::new(false));
 
         let weak_state_for_search = Rc::downgrade(self);
         let depth_for_search = depth;
@@ -825,7 +848,9 @@ impl ViewState {
         let syncing_for_search = syncing_selection.clone();
         let filter_query_for_search = filter_query.clone();
         let weak_filter_entry = filter_entry.downgrade();
+        let force_recursive_for_search = force_recursive_search.clone();
         bind_filter_query(&filter_entry, move |text, recursive, restart| {
+            let recursive = recursive || force_recursive_for_search.get();
             if restart {
                 search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
                 search_handle_for_changed.borrow_mut().take();
@@ -851,6 +876,9 @@ impl ViewState {
                     &filtered_model_for_search,
                     &model_for_search,
                 );
+                if let Some(state) = weak_state_for_search.upgrade() {
+                    state.notify_visible_listing();
+                }
                 return;
             }
             let Some(state) = weak_state_for_search.upgrade() else {
@@ -870,6 +898,7 @@ impl ViewState {
                     &filtered_model_for_search,
                     &model_for_search,
                 );
+                state.notify_visible_listing();
                 apply_filter_query(
                     &filtered_model_for_search,
                     &filter,
@@ -958,8 +987,10 @@ impl ViewState {
             &map,
             &selection,
             &modified_selection,
-            &recursive_search_active,
-            &search_results,
+            rows::ColumnSearchBind {
+                recursive_active: &recursive_search_active,
+                results: &search_results,
+            },
         );
 
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
@@ -1472,6 +1503,7 @@ impl ViewState {
             search_handle,
             search_generation,
             search_model,
+            force_recursive_search,
         });
 
         if let Some(column) = self.columns.borrow().last() {

@@ -935,6 +935,59 @@ impl NavigationState {
             .position(|entry| &entry.location == anchor)
     }
 
+    /// Toggles membership of the keyboard cursor in the filled selection without
+    /// moving the cursor. A cursor-only fill becomes empty while the cursor
+    /// remains, so a later yank or delete falls back to the cursor item.
+    pub fn toggle_focused_selection(&mut self) -> bool {
+        let Some(depth) = self
+            .active_column
+            .or_else(|| self.columns.len().checked_sub(1))
+        else {
+            return false;
+        };
+        let Some(column) = self.columns.get_mut(depth) else {
+            return false;
+        };
+        let Some(cursor) = column.selected else {
+            return false;
+        };
+        let Some(entry) = column.entries.get(cursor) else {
+            return false;
+        };
+        let location = entry.location.clone();
+        if column.selected_locations.contains(&location) {
+            column.selected_locations.remove(&location);
+        } else {
+            column.selected_locations.insert(location);
+        }
+        if column.selected_locations.len() == 1
+            && let Some(only) = column.selected_locations.iter().next().cloned()
+        {
+            column.selection_anchor = Some(only);
+        }
+        column.load_cursor = None;
+        self.active_column = Some(depth);
+        true
+    }
+
+    /// Replaces the filled selection with its complement among the visible
+    /// entries, honoring hidden files. The cursor does not move.
+    pub fn invert_selection(&mut self, depth: usize) {
+        let Some(column) = self.columns.get_mut(depth) else {
+            return;
+        };
+        let show_hidden = column.preferences.show_hidden;
+        let inverted: HashSet<Location> = column
+            .entries
+            .iter()
+            .filter(|entry| show_hidden || !entry.is_hidden)
+            .map(|entry| entry.location.clone())
+            .filter(|location| !column.selected_locations.contains(location))
+            .collect();
+        adopt_selected_locations(column, inverted, true);
+        self.active_column = Some(depth);
+    }
+
     pub fn set_selection_anchor(&mut self, depth: usize, position: usize) -> bool {
         let Some(column) = self.columns.get_mut(depth) else {
             return false;
@@ -1071,6 +1124,21 @@ impl NavigationState {
         Some((depth, position))
     }
 
+    /// Moves the keyboard cursor without rewriting the filled selection.
+    pub fn focus_keeping_fill(&mut self, position: usize) -> Option<(usize, usize)> {
+        let depth = self
+            .active_column
+            .or_else(|| self.columns.len().checked_sub(1))?;
+        let column = self.columns.get_mut(depth)?;
+        if position >= column.entries.len() {
+            return None;
+        }
+        column.selected = Some(position);
+        column.load_cursor = None;
+        self.active_column = Some(depth);
+        Some((depth, position))
+    }
+
     /// Moves the focus `page` visible entries at a time, clamped to the first and
     /// last visible entry, for page-sized keyboard navigation. `order` is the
     /// displayed source indices when the view is not in source order.
@@ -1080,13 +1148,35 @@ impl NavigationState {
         page: usize,
         order: Option<&[usize]>,
     ) -> Option<(usize, usize)> {
+        let depth = self
+            .active_column
+            .or_else(|| self.columns.len().checked_sub(1))?;
+        let position = self.next_visible_index(direction, page, order)?;
+        let column = self.columns.get_mut(depth)?;
+        focus_only(column, position);
+        self.active_column = Some(depth);
+        Some((depth, position))
+    }
+
+    /// The visible-order walk shared by [`NavigationState::page_along`] and
+    /// visual-mode motions: the source position `steps` entries away from the
+    /// cursor in `order` (or source order with hidden files skipped), clamped
+    /// to the first and last visible entry. Never moves focus or changes the
+    /// filled selection, so visual motions can extend or subtract instead of
+    /// replacing the fill the way [`NavigationState::page_along`] does.
+    pub fn next_visible_index(
+        &self,
+        direction: i32,
+        steps: usize,
+        order: Option<&[usize]>,
+    ) -> Option<usize> {
         if direction == 0 {
             return None;
         }
         let depth = self
             .active_column
             .or_else(|| self.columns.len().checked_sub(1))?;
-        let column = self.columns.get_mut(depth)?;
+        let column = self.columns.get(depth)?;
         let visible: Vec<usize> = match order {
             Some(order) if !order.is_empty() => order.to_vec(),
             _ => {
@@ -1101,7 +1191,7 @@ impl NavigationState {
             }
         };
         let last = visible.len().checked_sub(1)?;
-        let steps = page.max(1);
+        let steps = steps.max(1);
         let current = column.selected.and_then(|selected| {
             visible
                 .iter()
@@ -1114,10 +1204,140 @@ impl NavigationState {
             (Some(current), true) => current.saturating_sub(steps),
             (Some(current), false) => current.saturating_add(steps).min(last),
         };
-        let position = visible[target];
-        focus_only(column, position);
+        Some(visible[target])
+    }
+
+    /// Extends the filled selection from the range anchor to `position` without
+    /// stepping, so visual motions can jump (`gg`, `G`, pages) as well as walk.
+    /// `order` is the displayed source indices when the view is not in source
+    /// order; `None` walks source order skipping hidden files.
+    pub fn extend_selection_to(
+        &mut self,
+        depth: usize,
+        position: usize,
+        order: Option<&[usize]>,
+    ) -> Option<(usize, usize, Vec<usize>)> {
+        let column = self.columns.get_mut(depth)?;
+        if column.entries.is_empty() || position >= column.entries.len() {
+            return None;
+        }
+        let visible: Vec<usize> = match order {
+            Some(order) if !order.is_empty() => order.to_vec(),
+            _ => {
+                let show_hidden = column.preferences.show_hidden;
+                column
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+                    .map(|(position, _)| position)
+                    .collect()
+            }
+        };
+        if visible.is_empty() {
+            return None;
+        }
+        let current = column.selected.unwrap_or(position);
+        let starting_from_empty = column.selected_locations.is_empty();
+        let anchor = if starting_from_empty {
+            current
+        } else {
+            column
+                .selection_anchor
+                .as_ref()
+                .and_then(|location| {
+                    column
+                        .entries
+                        .iter()
+                        .position(|entry| &entry.location == location)
+                })
+                .unwrap_or(current)
+        };
+        let anchor_rank = visible
+            .iter()
+            .position(|index| *index == anchor)
+            .unwrap_or_else(|| {
+                visible
+                    .iter()
+                    .position(|index| *index >= anchor)
+                    .unwrap_or(visible.len() - 1)
+            });
+        let target_rank = visible
+            .iter()
+            .position(|index| *index == position)
+            .unwrap_or(anchor_rank);
+        column.selection_anchor = Some(column.entries[anchor].location.clone());
+        let start = anchor_rank.min(target_rank);
+        let end = anchor_rank.max(target_rank);
+        let selected_positions: Vec<usize> = visible[start..=end].to_vec();
+        let locations = selected_positions
+            .iter()
+            .map(|&index| column.entries[index].location.clone())
+            .collect();
+        adopt_selected_locations(column, locations, true);
+        column.selected = Some(position);
         self.active_column = Some(depth);
-        Some((depth, position))
+        Some((depth, position, selected_positions))
+    }
+
+    /// Removes the span from `from` to `to` in display order from the filled
+    /// selection without adding the new cursor, for visual-unset motions. A
+    /// jump subtracts the whole walked span. The cursor moves to `to` without
+    /// replacing the remaining fill.
+    pub fn subtract_visual_selection(
+        &mut self,
+        depth: usize,
+        from: usize,
+        to: usize,
+        order: Option<&[usize]>,
+    ) -> Option<Vec<usize>> {
+        let column = self.columns.get_mut(depth)?;
+        if column.entries.is_empty() || from >= column.entries.len() || to >= column.entries.len() {
+            return None;
+        }
+        let span: Vec<usize> = match order {
+            Some(order) if !order.is_empty() => {
+                let from_rank = order.iter().position(|index| *index == from);
+                let to_rank = order.iter().position(|index| *index == to);
+                match (from_rank, to_rank) {
+                    (Some(from_rank), Some(to_rank)) => {
+                        let start = from_rank.min(to_rank);
+                        let end = from_rank.max(to_rank);
+                        order[start..=end].to_vec()
+                    }
+                    _ => vec![from, to],
+                }
+            }
+            _ => {
+                let start = from.min(to);
+                let end = from.max(to);
+                (start..=end).collect()
+            }
+        };
+        let removed: HashSet<Location> = span
+            .iter()
+            .filter_map(|index| column.entries.get(*index))
+            .map(|entry| entry.location.clone())
+            .collect();
+        column
+            .selected_locations
+            .retain(|location| !removed.contains(location));
+        column.load_cursor = None;
+        column.selected = Some(to);
+        self.active_column = Some(depth);
+        Some(
+            column
+                .entries
+                .iter()
+                .enumerate()
+                .filter_map(|(position, entry)| {
+                    column
+                        .selected_locations
+                        .contains(&entry.location)
+                        .then_some(position)
+                })
+                .collect(),
+        )
     }
 
     pub fn focus_column(&mut self, depth: usize) -> bool {

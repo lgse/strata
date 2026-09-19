@@ -91,11 +91,26 @@ While the input is focused, Space types into the query if no result is selected.
 
 ## Shortcut footer
 
-Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open.
+Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open. **Settings → Keybindings** lists only the currently active map and live-updates when minimal mode changes.
+
+## Minimal mode
+
+**Settings → General → Browsing → Minimal mode** (off by default, toggle with
+**Ctrl+Shift+M**, leave with **q**) hides pane Close/filter/refresh/sort chrome
+and installs Yazi-style keys. **q** flashes
+`Left minimal mode — Ctrl+Shift+M returns` and does not close the window.
+Typed input uses the footer prompt, never the pane filter revealer or the
+global search dialog. See [Minimal mode](minimal-mode.md) for the keymap.
+
+The F1 / `~` popover and **Settings → Keybindings** list the currently active
+map and live-update when the mode changes. Context-menu shortcut hints follow
+that map (`x` cut, `y` yank, `p` paste, `d` / `D` trash / delete, `r` rename,
+`i` preview). Default-map hints that are unbound or remapped (`Y` for copy
+path, `Space` for preview, `Ctrl+R` for rename) are hidden.
 
 With no selection, the footer shows the directory's item count. Selections show a folder/file breakdown, such as **1 folder, 2 files selected (64 MB)**. Sizes sum available metadata for selected files only; folder contents are not scanned or included. Missing file sizes are marked incomplete or unavailable.
 
-After copying or cutting files, a highlighted **Files on clipboard** pill appears to the left of the item count. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. The clipboard status and paste shortcut remain available when the F1 Shortcuts button is hidden.
+After copying or cutting files, a highlighted **Files on clipboard** pill appears to the left of the item count. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. The clipboard status and paste shortcut remain available when the F1 Shortcuts button is hidden. Copied listing items show the Lucide copy icon in place of their thumbnail; cut items keep scissors, which wins if both would apply. Clearing the clipboard or unyank removes the copy overlay.
 
 The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
 

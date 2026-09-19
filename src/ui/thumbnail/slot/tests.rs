@@ -148,6 +148,57 @@ fn cut_replaces_thumbnail_and_hidden_controls_its_opacity() {
 }
 
 #[test]
+fn copy_replaces_thumbnail_and_cut_wins() {
+    gtk_test(
+        "ui::thumbnail::slot::tests::copy_replaces_thumbnail_and_cut_wins",
+        || {
+            crate::ui::prepare_portal_ui();
+            let slot = ThumbnailSlot::new(64);
+            slot.allocate(64, 64, -1, None);
+            slot.set_base_opacity(0.72);
+
+            let pixels = glib::Bytes::from_owned(vec![255_u8; 32 * 32 * 4]);
+            let thumbnail =
+                gdk::MemoryTexture::new(32, 32, gdk::MemoryFormat::R8g8b8a8, &pixels, 32 * 4);
+            slot.set_texture(thumbnail.upcast_ref());
+
+            slot.set_copied(true);
+            assert_eq!(slot.opacity(), 1.0);
+            let snapshot = gtk::Snapshot::new();
+            slot.imp().snapshot(&snapshot);
+            let rendered = rendered_texture(&snapshot.to_node().expect("copy node"))
+                .expect("rendered copy icon");
+            let copy = crate::assets::primary_icon_paintable(crate::assets::icons::COPY)
+                .expect("copy icon");
+            assert_eq!(rendered, copy);
+
+            slot.set_cut(true);
+            let snapshot = gtk::Snapshot::new();
+            slot.imp().snapshot(&snapshot);
+            let rendered = rendered_texture(&snapshot.to_node().expect("cut node"))
+                .expect("rendered scissors");
+            let scissors = crate::assets::primary_icon_paintable(crate::assets::icons::SCISSORS)
+                .expect("scissors icon");
+            assert_eq!(rendered, scissors);
+
+            slot.set_cut(false);
+            let snapshot = gtk::Snapshot::new();
+            slot.imp().snapshot(&snapshot);
+            let rendered = rendered_texture(&snapshot.to_node().expect("restored copy node"))
+                .expect("rendered copy icon");
+            assert_eq!(rendered, copy);
+
+            slot.set_copied(false);
+            let snapshot = gtk::Snapshot::new();
+            slot.imp().snapshot(&snapshot);
+            let rendered = rendered_texture(&snapshot.to_node().expect("thumbnail node"))
+                .expect("rendered thumbnail");
+            assert_eq!(rendered, thumbnail.upcast::<gdk::Texture>());
+        },
+    );
+}
+
+#[test]
 fn fallback_restores_base_opacity_after_thumbnail() {
     gtk_test(
         "ui::thumbnail::slot::tests::fallback_restores_base_opacity_after_thumbnail",

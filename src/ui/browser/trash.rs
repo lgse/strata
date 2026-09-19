@@ -64,6 +64,32 @@ fn restore_confirmation_title(count: usize) -> String {
     format!("Restore {}?", item_count_label(count))
 }
 
+fn delete_confirmation_title(count: usize, permanent: bool) -> String {
+    if permanent {
+        format!("Permanently delete {}?", item_count_label(count))
+    } else {
+        format!("Move {} to Trash?", item_count_label(count))
+    }
+}
+
+fn delete_confirmation_confirm_label(count: usize, permanent: bool) -> String {
+    if permanent {
+        format!("Permanently delete {}", item_count_label(count))
+    } else if count == 1 {
+        "Move to Trash".to_owned()
+    } else {
+        format!("Move {} to Trash", item_count_label(count))
+    }
+}
+
+fn delete_confirmation_explanation(permanent: bool) -> &'static str {
+    if permanent {
+        "These items will be permanently deleted. This action cannot be undone."
+    } else {
+        "These items will be moved to Trash. Ctrl+Z undoes."
+    }
+}
+
 fn restore_confirmation_confirm_label(count: usize) -> String {
     if count == 1 {
         "Restore".to_owned()
@@ -689,6 +715,24 @@ impl ViewState {
     }
 
     pub(super) fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+        self.begin_delete(entries, permanent, false, false);
+    }
+
+    pub(super) fn request_delete_preferring_cancel(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.begin_delete(entries, true, false, true);
+    }
+
+    pub(super) fn request_confirmed_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.begin_delete(entries, false, true, false);
+    }
+
+    fn begin_delete(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        permanent: bool,
+        confirm_trash: bool,
+        prefer_cancel: bool,
+    ) {
         if entries
             .iter()
             .any(|entry| !super::paths::can_remove_location(&entry.location))
@@ -696,31 +740,42 @@ impl ViewState {
             return;
         }
         if permanent {
-            self.show_delete_confirmation(entries);
+            self.show_delete_confirmation(entries, true, prefer_cancel);
+        } else if confirm_trash {
+            self.show_delete_confirmation(entries, false, false);
         } else {
-            self.pending_delete_entries.replace(entries.clone());
-            let weak = Rc::downgrade(self);
-            let entries_for_anim = Rc::new(entries.clone());
-            let run_delete = move || {
-                if let Some(state) = weak.upgrade() {
-                    state.browser.delete((*entries_for_anim).clone(), false);
-                    state.browser.focus_active();
-                }
-            };
-            if let Some(trash_button) = self.trash_button.borrow().as_ref() {
-                super::fly_to_trash::fly_to_trash(
-                    self.overlay.upcast_ref(),
-                    &entries,
-                    trash_button,
-                    run_delete,
-                );
-            } else {
-                run_delete();
-            }
+            self.perform_trash(entries);
         }
     }
 
-    pub(super) fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
+    fn perform_trash(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        self.pending_delete_entries.replace(entries.clone());
+        let weak = Rc::downgrade(self);
+        let entries_for_anim = Rc::new(entries.clone());
+        let run_delete = move || {
+            if let Some(state) = weak.upgrade() {
+                state.browser.delete((*entries_for_anim).clone(), false);
+                state.browser.focus_active();
+            }
+        };
+        if let Some(trash_button) = self.trash_button.borrow().as_ref() {
+            super::fly_to_trash::fly_to_trash(
+                self.overlay.upcast_ref(),
+                &entries,
+                trash_button,
+                run_delete,
+            );
+        } else {
+            run_delete();
+        }
+    }
+
+    pub(super) fn show_delete_confirmation(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        permanent: bool,
+        prefer_cancel: bool,
+    ) {
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -730,14 +785,16 @@ impl ViewState {
         };
 
         let count = entries.len();
-        let title = format!("Permanently delete {}?", item_count_label(count));
-        let confirm_label = format!("Permanently delete {}", item_count_label(count));
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
-            &title,
+            &delete_confirmation_title(count, permanent),
             &entry_kind_summary(&entries),
-            &confirm_label,
-            ModalTone::Danger,
+            &delete_confirmation_confirm_label(count, permanent),
+            if permanent {
+                ModalTone::Danger
+            } else {
+                ModalTone::Accent
+            },
         );
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
@@ -786,9 +843,7 @@ impl ViewState {
         file_scroller.add_css_class("delete-confirmation-list");
         file_scroller.add_css_class("fixed-scrollbar");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(
-            "These items will be permanently deleted. This action cannot be undone.",
-        );
+        let explanation = message_dialog_description(delete_confirmation_explanation(permanent));
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -821,29 +876,37 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
-        let entries_for_dissolve = entries.clone();
+        let entries_for_action = entries.clone();
         let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
             let browser = browser.clone();
-            let entries_for_dissolve = entries_for_dissolve.clone();
+            let entries_for_action = entries_for_action.clone();
             let weak_ui = weak_ui.clone();
             dismiss_modal_layer_then(
                 &confirmed_layer,
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
                 move || {
-                    if let Some(ui) = weak_ui.upgrade() {
-                        ui.clear_delete_animation();
-                        let dissolve = ui.delete_animation_source().and_then(|source| {
-                            super::dissolve_delete::prepare_dissolve(&source, &entries_for_dissolve)
-                        });
-                        if let (Some(depth), Some(dissolve)) = (ui.browser.active_depth(), dissolve)
-                        {
-                            ui.pending_delete_dissolve.replace(Some((depth, dissolve)));
+                    if permanent {
+                        if let Some(ui) = weak_ui.upgrade() {
+                            ui.clear_delete_animation();
+                            let dissolve = ui.delete_animation_source().and_then(|source| {
+                                super::dissolve_delete::prepare_dissolve(
+                                    &source,
+                                    &entries_for_action,
+                                )
+                            });
+                            if let (Some(depth), Some(dissolve)) =
+                                (ui.browser.active_depth(), dissolve)
+                            {
+                                ui.pending_delete_dissolve.replace(Some((depth, dissolve)));
+                            }
                         }
+                        browser.delete(entries_for_action, true);
+                        browser.focus_active();
+                    } else if let Some(ui) = weak_ui.upgrade() {
+                        ui.perform_trash(entries_for_action);
                     }
-                    browser.delete(entries_for_dissolve, true);
-                    browser.focus_active();
                 },
             );
         });
@@ -855,7 +918,7 @@ impl ViewState {
         let escaped_browser = self.browser.clone();
         let focused_cancel = cancel.clone();
         let focused_confirm = confirm.clone();
-        let enter_buttons = [cancel, confirm.clone(), close];
+        let enter_buttons = [cancel.clone(), confirm.clone(), close];
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
@@ -885,7 +948,11 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = confirm.clone();
+        let initial_focus = if prefer_cancel {
+            cancel.clone()
+        } else {
+            confirm.clone()
+        };
         glib::idle_add_local_once(move || {
             initial_focus.grab_focus();
             if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {

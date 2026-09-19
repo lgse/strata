@@ -174,7 +174,7 @@ pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
     }
 }
 
-pub(in crate::ui) fn rename_stem_end(name: &str) -> i32 {
+pub(crate) fn rename_stem_end(name: &str) -> i32 {
     let end = name
         .rfind('.')
         .filter(|position| *position > 0)

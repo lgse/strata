@@ -46,6 +46,22 @@ pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
     entry.filter(entry_supports_quick_preview)
 }
 
+fn find_mapped_scroller(widget: &gtk::Widget) -> Option<gtk::ScrolledWindow> {
+    if let Ok(scroller) = widget.clone().downcast::<gtk::ScrolledWindow>()
+        && scroller.is_mapped()
+    {
+        return Some(scroller);
+    }
+    let mut child = widget.first_child();
+    while let Some(candidate) = child {
+        if let Some(found) = find_mapped_scroller(&candidate) {
+            return Some(found);
+        }
+        child = candidate.next_sibling();
+    }
+    None
+}
+
 pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
         return false;
@@ -84,6 +100,14 @@ struct PrintProgress {
 enum DocumentView {
     Rendered,
     Source,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PreviewScroll {
+    Step,
+    HalfPage,
+    Page,
+    Edge,
 }
 
 struct PendingSourcePreview {
@@ -559,11 +583,115 @@ impl PreviewDrawer {
     }
 
     pub fn close(&self) {
+        self.set_owns_keys_chrome(false);
         self.state.close();
     }
 
     pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         self.state.toggle(entry, depth);
+    }
+
+    /// Scrolls the open preview document by half a viewport without moving the
+    /// file cursor. No-op when the drawer is closed, when media is playing
+    /// (video and audio have no document scroller), or when no preview
+    /// scroller is currently mapped. Never changes PDF zoom.
+    pub fn scroll_by(&self, direction: i32) -> bool {
+        self.scroll_preview(PreviewScroll::HalfPage, direction)
+    }
+
+    /// Line-sized preview motion for focused-pane `j`/`k` / arrows.
+    pub fn scroll_step(&self, direction: i32) -> bool {
+        self.scroll_preview(PreviewScroll::Step, direction)
+    }
+
+    /// Full-viewport preview motion for `Ctrl+B`/`F` and Page Up/Down.
+    pub fn scroll_page(&self, direction: i32) -> bool {
+        self.scroll_preview(PreviewScroll::Page, direction)
+    }
+
+    /// Jump to the top (`direction < 0`) or bottom of the mapped preview.
+    pub fn scroll_to_edge(&self, direction: i32) -> bool {
+        self.scroll_preview(PreviewScroll::Edge, direction)
+    }
+
+    fn scroll_preview(&self, kind: PreviewScroll, direction: i32) -> bool {
+        if direction == 0 || !self.is_open() || self.has_video() {
+            return false;
+        }
+        let Some(scroller) = self.mapped_preview_scroller() else {
+            return false;
+        };
+        let adjustment = scroller.vadjustment();
+        let lower = adjustment.lower();
+        let upper = (adjustment.upper() - adjustment.page_size()).max(lower);
+        let delta = match kind {
+            PreviewScroll::Step => {
+                let step = adjustment.step_increment();
+                if step > 0.0 { step } else { 24.0 }
+            }
+            PreviewScroll::HalfPage => {
+                let step = adjustment.page_size() / 2.0;
+                if step <= 0.0 {
+                    return false;
+                }
+                step
+            }
+            PreviewScroll::Page => {
+                let step = adjustment.page_size();
+                if step <= 0.0 {
+                    return false;
+                }
+                step
+            }
+            PreviewScroll::Edge => {
+                let target = if direction < 0 { lower } else { upper };
+                if (target - adjustment.value()).abs() < f64::EPSILON {
+                    return false;
+                }
+                adjustment.set_value(target);
+                return true;
+            }
+        };
+        let target = adjustment.value() + f64::from(direction) * delta;
+        let clamped = target.clamp(lower, upper);
+        if (clamped - adjustment.value()).abs() < f64::EPSILON {
+            return false;
+        }
+        adjustment.set_value(clamped);
+        true
+    }
+
+    /// Keyboard ownership target for minimal-mode Right/`l`. The pane is not a
+    /// text widget, so `j`/`k` stay with the dispatcher instead of the source
+    /// view.
+    pub fn grab_pane_focus(&self) -> bool {
+        let pane = &self.state.pane;
+        pane.set_can_focus(true);
+        pane.set_focusable(true);
+        pane.grab_focus()
+    }
+
+    /// Miller-style header accent while minimal mode owns keys in this pane.
+    pub fn set_owns_keys_chrome(&self, owned: bool) {
+        if owned {
+            self.state.pane.add_css_class("preview-owns-keys");
+        } else {
+            self.state.pane.remove_css_class("preview-owns-keys");
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn owns_keys_chrome(&self) -> bool {
+        self.state.pane.has_css_class("preview-owns-keys")
+    }
+
+    pub(crate) fn mapped_preview_scroller(&self) -> Option<gtk::ScrolledWindow> {
+        if let Some(scroll) = self.state.text_scroll.borrow().as_ref()
+            && scroll.is_mapped()
+        {
+            return Some(scroll.clone());
+        }
+        find_mapped_scroller(self.state.content.upcast_ref())
     }
 
     pub fn print_entry(&self, entry: FileEntry) {
@@ -648,6 +776,7 @@ impl PreviewState {
     }
 
     fn stop(&self) {
+        self.pane.remove_css_class("preview-owns-keys");
         self.set_enabled(false);
         self.clear_target();
         self.cancel_print();

@@ -14,7 +14,11 @@ use gtk::{
 use crate::{
     app::Browser,
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
+        browser::BrowserView,
+        minimal_mode::{MinimalPrompt, MinimalState},
+        preferences::PreferenceManager,
+        preview::PreviewDrawer,
+        shortcut_footer::ShortcutFooter,
         top_bar_navigation::TopBarNavigation,
     },
 };
@@ -24,6 +28,7 @@ use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 mod commands;
 mod focus;
 mod items;
+mod minimal;
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
@@ -34,26 +39,72 @@ pub(super) struct Bindings {
     pub preview: PreviewDrawer,
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
+    pub open_settings: Rc<dyn Fn()>,
 }
 
 pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bindings: Bindings) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak_browser = Rc::downgrade(&bindings.view.browser());
+    let preferences = bindings.type_to_search.preferences.clone();
+    let apply_view = bindings.view.clone();
+    let apply_footer = bindings.shortcuts.clone();
+    let apply_sidebar = sidebar.state.clone();
+    let minimal = Rc::new(RefCell::new(MinimalState::new()));
+    let prompt_focus_lock = Rc::new(Cell::new(false));
     let dispatcher = Dispatcher {
         window: window.clone(),
         view: bindings.view,
         top_bar: bindings.top_bar,
         preview: bindings.preview,
         type_to_search: bindings.type_to_search,
-        shortcuts: bindings.shortcuts,
+        shortcuts: bindings.shortcuts.clone(),
+        open_settings: bindings.open_settings,
         sidebar: SidebarFocus {
             state: sidebar.state.clone(),
             widget: sidebar.widget.clone(),
             previous: RefCell::new(None),
         },
+        minimal: minimal.clone(),
+        prompt_focus_lock: prompt_focus_lock.clone(),
     };
-    let preferences = dispatcher.type_to_search.preferences.clone();
+    let prompt_focus = gtk::EventControllerFocus::new();
+    let focus_window = window.clone();
+    let focus_minimal = Rc::downgrade(&minimal);
+    let focus_footer = bindings.shortcuts.clone();
+    let focus_lock = prompt_focus_lock.clone();
+    let focus_view = apply_view.clone();
+    prompt_focus.connect_leave(move |_| {
+        let Some(minimal) = focus_minimal.upgrade() else {
+            return;
+        };
+        dismiss_prompt_after_focus_loss(
+            &focus_window,
+            &minimal,
+            &focus_footer,
+            &focus_view,
+            &focus_lock,
+        );
+    });
+    bindings
+        .shortcuts
+        .prompt_entry_widget()
+        .add_controller(prompt_focus);
+    let chord_teardown = {
+        let weak_minimal = Rc::downgrade(&minimal);
+        let weak_sidebar = Rc::downgrade(&sidebar.state);
+        let footer = bindings.shortcuts.clone();
+        Rc::new(move || {
+            if let Some(minimal) = weak_minimal.upgrade() {
+                minimal.borrow_mut().cancel_chord();
+            }
+            if let Some(sidebar) = weak_sidebar.upgrade() {
+                sidebar.clear_minimal_chord_hints();
+            }
+            footer.clear_chord_mark();
+        }) as Rc<dyn Fn()>
+    };
+    sidebar.state.set_minimal_chord_teardown(chord_teardown);
     keys.connect_key_pressed(move |_, key, _, modifiers| {
         let Some(browser) = weak_browser.upgrade() else {
             return Propagation::Proceed;
@@ -61,6 +112,14 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         dispatcher.handle_key(&browser, key, modifiers)
     });
     window.add_controller(keys);
+    apply_minimal_mode(
+        window,
+        &preferences,
+        &apply_view,
+        &apply_footer,
+        &apply_sidebar,
+        &minimal,
+    );
 
     // Ctrl+wheel mirrors the Ctrl +/- text-size shortcut. Capture phase so
     // scrolled windows cannot consume it first; the PDF preview's own zoom is
@@ -180,6 +239,52 @@ fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
     false
 }
 
+/// Per-window minimal-mode apply: CSS class, in-flight filter teardown when
+/// entering, and prompt/chord/visual teardown (keeping the filled selection)
+/// when leaving, including a toggle from another window. Application accels are
+/// bound separately in `composition::install_browser_actions`.
+fn apply_minimal_mode(
+    window: &gtk::ApplicationWindow,
+    preferences: &Rc<PreferenceManager>,
+    view: &BrowserView,
+    footer: &ShortcutFooter,
+    sidebar: &Rc<SidebarState>,
+    minimal: &Rc<RefCell<MinimalState>>,
+) {
+    let apply_view = view.clone();
+    let apply_footer = footer.clone();
+    let apply_sidebar = sidebar.clone();
+    let weak_minimal = Rc::downgrade(minimal);
+    preferences.bind_preference(
+        window,
+        PreferenceManager::minimal_mode,
+        move |widget, enabled| {
+            if enabled {
+                widget.add_css_class("minimal-mode");
+                apply_view.dismiss_hidden_filter();
+                apply_footer.set_filter_mark("");
+                if let Some(minimal) = weak_minimal.upgrade() {
+                    minimal.borrow_mut().clear_applied_filter();
+                }
+                tracing::debug!("minimal mode enabled");
+            } else {
+                widget.remove_css_class("minimal-mode");
+                if let Some(minimal) = weak_minimal.upgrade() {
+                    minimal.borrow_mut().reset();
+                }
+                apply_sidebar.clear_minimal_chord_hints();
+                apply_footer.clear_chord_mark();
+                apply_footer.hide_prompt();
+                apply_view.set_find_prompt_active(false);
+                apply_view.set_find_highlight("");
+                apply_view.browser().focus_active();
+                apply_view.restore_file_view_focus();
+                tracing::debug!("minimal mode disabled");
+            }
+        },
+    );
+}
+
 struct Dispatcher {
     window: gtk::ApplicationWindow,
     view: BrowserView,
@@ -188,6 +293,73 @@ struct Dispatcher {
     preview: PreviewDrawer,
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
+    open_settings: Rc<dyn Fn()>,
+    minimal: Rc<RefCell<MinimalState>>,
+    /// True while find/filter/search or prompt Up/Down re-grabs the entry
+    /// after a listing focus change. Those must not look like pointer dismiss.
+    prompt_focus_lock: Rc<Cell<bool>>,
+}
+
+/// Closes an open footer prompt when focus leaves the entry, keeping the
+/// pointer selection. Incremental find re-grabs under `prompt_focus_lock`.
+fn dismiss_prompt_after_focus_loss(
+    window: &gtk::ApplicationWindow,
+    minimal: &Rc<RefCell<MinimalState>>,
+    footer: &ShortcutFooter,
+    view: &BrowserView,
+    lock: &Cell<bool>,
+) {
+    if lock.get() || minimal.borrow().prompt().is_none() {
+        return;
+    }
+    if footer.is_prompt_entry(&gtk::prelude::RootExt::focus(window)) {
+        return;
+    }
+    let kind = minimal.borrow().prompt();
+    minimal.borrow_mut().leave_prompt();
+    footer.hide_prompt();
+    view.set_find_prompt_active(false);
+    if matches!(
+        kind,
+        Some(MinimalPrompt::FindNext | MinimalPrompt::FindPrev)
+    ) {
+        view.set_find_highlight("");
+    }
+    if kind == Some(MinimalPrompt::Search) {
+        let keep = view.force_recursive_search() && view.selected_search_results().is_some();
+        if keep {
+            if view.focus_first_search_result()
+                && let Some(index) = view.search_hit_index()
+            {
+                minimal.borrow_mut().set_search_cursor(Some(index));
+            }
+        } else if view.force_recursive_search() || view.selected_search_results().is_some() {
+            minimal.borrow_mut().clear_search_nav();
+            restore_applied_hidden_filter(view, footer, minimal);
+        }
+    }
+    tracing::debug!("minimal prompt dismissed on focus loss");
+}
+
+fn restore_applied_hidden_filter(
+    view: &BrowserView,
+    footer: &ShortcutFooter,
+    minimal: &RefCell<MinimalState>,
+) {
+    let query = minimal
+        .borrow()
+        .applied_filter()
+        .filter(|query| !query.trim().is_empty());
+    match query {
+        Some(query) => {
+            view.set_filter_query_without_revealer(&query);
+            footer.set_filter_mark(&query);
+        }
+        None => {
+            view.dismiss_hidden_filter();
+            footer.set_filter_mark("");
+        }
+    }
 }
 
 struct KeyEvent {
@@ -232,13 +404,29 @@ impl Dispatcher {
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
+        if matches!(key, Key::m | Key::M)
+            && modifiers.contains(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
+            && !modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        {
+            let preferences = &self.type_to_search.preferences;
+            if preferences.minimal_mode() {
+                self.leave_preview_keys();
+            }
+            preferences.set_minimal_mode(!preferences.minimal_mode());
+            return Propagation::Stop;
+        }
         let focused = gtk::prelude::RootExt::focus(&self.window);
-        let navigation_key = crate::ui::focus_navigation::navigation_key(
-            key,
-            modifiers,
-            self.type_to_search.preferences.type_to_search(),
-            focused.as_ref(),
-        );
+        let minimal = self.type_to_search.preferences.minimal_mode();
+        let navigation_key = if minimal {
+            key
+        } else {
+            crate::ui::focus_navigation::navigation_key(
+                key,
+                modifiers,
+                self.type_to_search.preferences.type_to_search(),
+                focused.as_ref(),
+            )
+        };
         let mut event = KeyEvent {
             key: navigation_key,
             modifiers,
@@ -246,6 +434,11 @@ impl Dispatcher {
             vim_navigation: navigation_key != key,
             header_left_boundary: false,
         };
+        if minimal {
+            return self
+                .minimal_commands(browser, &mut event)
+                .unwrap_or(Propagation::Proceed);
+        }
         self.window_commands(&event)
             .or_else(|| self.inline_editing(&event))
             .or_else(|| self.filter_and_location_commands(&event))

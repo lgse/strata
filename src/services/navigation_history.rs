@@ -106,6 +106,23 @@ impl NavigationHistory {
         self.search_at(query, unix_time())
     }
 
+    /// Minimal-mode `Z`: the same visits sorted by recency (`last_accessed`
+    /// descending). Empty-query `search("")` is frecency, not this.
+    pub(crate) fn recent(&self) -> Vec<SearchItem> {
+        let mut entries: Vec<_> = self.entries.borrow().iter().cloned().collect();
+        entries.sort_unstable_by(|left, right| {
+            right
+                .last_accessed
+                .cmp(&left.last_accessed)
+                .then_with(|| left.path.cmp(&right.path))
+        });
+        entries
+            .into_iter()
+            .take(MAX_RESULTS)
+            .map(|entry| SearchItem::for_history(entry.path))
+            .collect()
+    }
+
     fn search_at(&self, query: &str, now: u64) -> Vec<SearchItem> {
         let query = fold_for_search(query.trim());
         let mut matches = self

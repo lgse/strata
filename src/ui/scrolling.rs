@@ -247,6 +247,21 @@ pub(super) struct Page {
     distance: f64,
 }
 
+/// A fractional page move for half-page motions: the focus travels `items`
+/// entries while the viewport follows proportionally.
+pub(super) fn page_scaled(page: &Page, items: usize) -> Page {
+    if page.items == 0 {
+        return Page {
+            items,
+            distance: 0.0,
+        };
+    }
+    Page {
+        items,
+        distance: page.distance * (items as f64 / page.items as f64),
+    }
+}
+
 /// Brings the item a page move selected back into sight.
 ///
 /// GridView's `scroll_to` uses estimated cell sizes, which lag behind a thumbnail

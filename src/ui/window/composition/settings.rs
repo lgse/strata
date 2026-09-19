@@ -27,13 +27,14 @@ pub(super) fn install(
     window: &gtk::ApplicationWindow,
     content: &WindowContent,
     preferences: &Rc<PreferenceManager>,
-) -> UpdateNoticeHandler {
+) -> (UpdateNoticeHandler, Rc<dyn Fn()>) {
     // The same process-wide guard covers this window's notice, lazy Settings
     // layer, and every other window's update and rollback controls.
     let guard = settings::install_guard();
     let notice = bind_update_notice(window, &content.sidebar, &guard);
     settings::register_update_notice(&notice);
     bind_update_notice_preferences(window, preferences, &notice);
+    let restore_focus = content.browser.clone();
     let launcher = Rc::new(SettingsLauncher {
         layer: RefCell::new(None),
         button: content.header.settings.clone(),
@@ -42,23 +43,26 @@ pub(super) fn install(
         preferences: preferences.clone(),
         notice: notice.clone(),
         guard,
+        on_hide: Rc::new(move || restore_focus.restore_file_view_focus()),
     });
     let clicked_settings = launcher.clone();
     content
         .header
         .settings
         .connect_clicked(move |_| clicked_settings.show());
+    let shortcut_launcher = launcher.clone();
     let shortcut = gtk::EventControllerKey::new();
     shortcut.connect_key_pressed(move |_, key, _, modifiers| {
         if key != gtk::gdk::Key::comma || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         {
             return glib::Propagation::Proceed;
         }
-        launcher.show();
+        shortcut_launcher.show();
         glib::Propagation::Stop
     });
     window.add_controller(shortcut);
-    notice
+    let show = Rc::new(move || launcher.show()) as Rc<dyn Fn()>;
+    (notice, show)
 }
 
 struct SettingsLauncher {
@@ -69,6 +73,7 @@ struct SettingsLauncher {
     preferences: Rc<PreferenceManager>,
     notice: UpdateNoticeHandler,
     guard: InstallGuard,
+    on_hide: Rc<dyn Fn()>,
 }
 
 impl SettingsLauncher {
@@ -83,6 +88,8 @@ impl SettingsLauncher {
             self.notice.clone(),
             self.guard.clone(),
         );
+        let on_hide = self.on_hide.clone();
+        layer.connect_hide(move |_| on_hide());
         self.overlay.add_overlay(&layer);
         self.layer.borrow_mut().replace(layer.clone());
         layer

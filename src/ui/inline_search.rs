@@ -2,9 +2,9 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    rc::Rc,
+    rc::{Rc, Weak},
     time::Duration,
 };
 
@@ -32,7 +32,9 @@ struct State {
     generation: Cell<u64>,
     root: PathBuf,
     recursive: Cell<bool>,
+    force_recursive: Cell<bool>,
     context_menu_trigger: RefCell<Option<super::browser::ContextMenuTrigger>>,
+    listing_changed: Option<Weak<super::browser::ViewState>>,
 }
 
 impl State {
@@ -227,6 +229,237 @@ impl InlineSearch {
         };
         show_directory_listing(state);
     }
+
+    /// Focuses the selected result, or the first row when none is selected.
+    pub fn focus_selected_or_first_row(&self) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let index = state.current_row().map(|row| row.index()).unwrap_or(0);
+        self.focus_row_at(index, true)
+    }
+
+    /// Moves the result highlight by one row without requiring list focus.
+    pub fn move_selection(&self, direction: i32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let count = i32::try_from(state.items.borrow().len()).unwrap_or(0);
+        if count == 0 {
+            return false;
+        }
+        let current = state.current_row().map(|row| row.index());
+        let next = match (current, direction < 0) {
+            (None, false) => 0,
+            (None, true) => count - 1,
+            (Some(index), false) => (index + 1).min(count - 1),
+            (Some(index), true) => index.saturating_sub(1),
+        };
+        self.focus_row_at(next, true)
+    }
+
+    /// Jumps to the first or last result row without requiring list focus.
+    pub fn jump_selection(&self, direction: i32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let count = i32::try_from(state.items.borrow().len()).unwrap_or(0);
+        if count == 0 {
+            return false;
+        }
+        let next = if direction < 0 { 0 } else { count - 1 };
+        self.focus_row_at(next, true)
+    }
+
+    pub fn current_index(&self) -> Option<u32> {
+        let state = self.state.as_ref()?;
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return None;
+        }
+        state.current_row().map(|row| row.index() as u32)
+    }
+
+    pub fn hit_count(&self) -> u32 {
+        self.state
+            .as_ref()
+            .filter(|state| state.stack.visible_child_name().as_deref() == Some("search"))
+            .map(|state| state.items.borrow().len() as u32)
+            .unwrap_or(0)
+    }
+
+    pub fn selected_count(&self) -> u32 {
+        self.state
+            .as_ref()
+            .filter(|state| state.stack.visible_child_name().as_deref() == Some("search"))
+            .map(|state| state.list.selected_rows().len() as u32)
+            .unwrap_or(0)
+    }
+
+    pub fn index_is_selected(&self, index: u32) -> bool {
+        self.state
+            .as_ref()
+            .and_then(|state| state.list.row_at_index(index as i32))
+            .is_some_and(|row| row.is_selected())
+    }
+
+    pub fn focus_index(&self, index: u32, replace_selection: bool) -> bool {
+        self.focus_row_at(index as i32, replace_selection)
+    }
+
+    pub fn toggle_index(&self, index: u32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let Some(row) = state.list.row_at_index(index as i32) else {
+            return false;
+        };
+        if row.is_selected() {
+            state.list.unselect_row(&row);
+        } else {
+            state.list.select_row(Some(&row));
+        }
+        true
+    }
+
+    pub fn select_index_range(&self, from: u32, to: u32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
+        state.list.unselect_all();
+        for index in lo..=hi {
+            if let Some(row) = state.list.row_at_index(index as i32) {
+                state.list.select_row(Some(&row));
+            }
+        }
+        true
+    }
+
+    pub fn unselect_index_range(&self, from: u32, to: u32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
+        for index in lo..=hi {
+            if let Some(row) = state.list.row_at_index(index as i32) {
+                state.list.unselect_row(&row);
+            }
+        }
+        true
+    }
+
+    pub fn invert_selection(&self) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let count = state.items.borrow().len();
+        if count == 0 {
+            return false;
+        }
+        let selected: HashSet<i32> = state
+            .list
+            .selected_rows()
+            .into_iter()
+            .map(|row| row.index())
+            .collect();
+        state.list.unselect_all();
+        for index in 0..count as i32 {
+            if !selected.contains(&index)
+                && let Some(row) = state.list.row_at_index(index)
+            {
+                state.list.select_row(Some(&row));
+            }
+        }
+        true
+    }
+
+    fn focus_row_at(&self, index: i32, replace_selection: bool) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let Some(row) = state.list.row_at_index(index) else {
+            return false;
+        };
+        if replace_selection {
+            state.list.unselect_all();
+            state.list.select_row(Some(&row));
+        }
+        row.set_focusable(true);
+        if let Some(window) = state.list.root().and_downcast::<gtk::Window>() {
+            window.set_focus_visible(true);
+        }
+        let _ = row.grab_focus();
+        true
+    }
+
+    /// Whether a recursive search view is currently showing results.
+    pub fn has_results(&self) -> bool {
+        self.state.as_ref().is_some_and(|state| {
+            state.stack.visible_child_name().as_deref() == Some("search")
+                && !state.items.borrow().is_empty()
+        })
+    }
+
+    /// Hits on the search overlay, if that page is showing.
+    pub fn listing_entries(&self) -> Option<Vec<crate::model::FileEntry>> {
+        let state = self.state.as_ref()?;
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return None;
+        }
+        Some(
+            state
+                .items
+                .borrow()
+                .iter()
+                .map(super::browser::search_result_entry)
+                .collect(),
+        )
+    }
+
+    /// Minimal `s` always recurses; listing `f` follows include-subfolders.
+    /// Changing the flag drops the current feed so the next query starts a
+    /// new `index_filter` session.
+    pub fn set_force_recursive(&self, force: bool) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.force_recursive.replace(force) == force {
+            return false;
+        }
+        state.generation.set(state.generation.get().wrapping_add(1));
+        state.handle.borrow_mut().take();
+        true
+    }
+
+    pub fn force_recursive(&self) -> bool {
+        self.state
+            .as_ref()
+            .is_some_and(|state| state.force_recursive.get())
+    }
 }
 
 fn show_directory_listing(state: &State) {
@@ -238,6 +471,13 @@ fn show_directory_listing(state: &State) {
     state.anchor.set(None);
     clear_rows(&state.list);
     state.stack.set_visible_child_name("files");
+    notify_listing_changed(state);
+}
+
+fn notify_listing_changed(state: &State) {
+    if let Some(view) = state.listing_changed.as_ref().and_then(Weak::upgrade) {
+        view.notify_visible_listing();
+    }
 }
 
 /// Keeps the view's normal presentation intact when the recursive query is dismissed.
@@ -246,6 +486,7 @@ pub(super) fn wrap(
     entry: &gtk::Entry,
     root: Option<PathBuf>,
     browser: &Rc<Browser>,
+    listing_changed: Option<Weak<super::browser::ViewState>>,
 ) -> InlineSearch {
     let Some(root) = root else {
         return InlineSearch {
@@ -291,7 +532,9 @@ pub(super) fn wrap(
         generation: Cell::new(0),
         root: root.clone(),
         recursive: Cell::new(false),
+        force_recursive: Cell::new(false),
         context_menu_trigger: RefCell::new(None),
+        listing_changed,
     });
     install_selection(&state, &scroll, &overlay);
     let weak = Rc::downgrade(&state);
@@ -502,6 +745,7 @@ pub(super) fn wrap(
         state: Some(state.clone()),
     };
     super::browser::bind_filter_query(entry, move |text, recursive, restart| {
+        let recursive = recursive || state.force_recursive.get();
         state.recursive.set(recursive);
         if restart {
             state.generation.set(state.generation.get().wrapping_add(1));
@@ -512,7 +756,18 @@ pub(super) fn wrap(
             show_directory_listing(&state);
             return;
         }
+        let restore = state
+            .stack
+            .root()
+            .and_then(|root| root.focus())
+            .filter(|focus| {
+                focus != state.stack.upcast_ref::<gtk::Widget>() && !focus.is_ancestor(&state.stack)
+            });
         state.stack.set_visible_child_name("search");
+        notify_listing_changed(&state);
+        if let Some(focus) = restore.filter(|widget| widget.is_mapped()) {
+            focus.grab_focus();
+        }
         if state.items.borrow().is_empty() {
             state.status.set_text("Searching…");
             state.status.set_visible(true);
@@ -565,6 +820,7 @@ pub(super) fn wrap(
                     "No matching files".to_owned()
                 });
                 update_rows(&state, items, &result_root, recursive);
+                notify_listing_changed(&state);
             }
             glib::ControlFlow::Continue
         });
@@ -732,7 +988,7 @@ fn update_rows(state: &State, items: Vec<SearchItem>, root: &Path, recursive: bo
             if state.list.root().and_then(|root| root.focus()).as_ref() != Some(&focused) {
                 focused.grab_focus();
             }
-        } else if let Some(entry) = state.entry.upgrade() {
+        } else if let Some(entry) = state.entry.upgrade().filter(|entry| entry.is_mapped()) {
             entry.grab_focus();
         }
     }

@@ -2,7 +2,7 @@
 
 use super::{
     BoundRow, PendingActivationKind, PendingPointerActivation, column_size_text,
-    set_active_path_style, set_cut_path_style, should_activate_single_click,
+    set_active_path_style, set_clipboard_path_style, should_activate_single_click,
     should_preserve_drag_selection, should_preview_pointer_press,
 };
 use crate::ui::{
@@ -11,7 +11,7 @@ use crate::ui::{
         clipboard::{
             PreparedFileDrop, drag_actions_for_modifiers, drag_icon_with_count, file_drag_content,
             file_drop_action, file_drop_commit, locations_equal, locations_from_file_list_value,
-            prepare_file_drop_target, shared_cut_locations,
+            prepare_file_drop_target, shared_copy_locations, shared_cut_locations,
         },
         collection::{ViewMap, activate_recursive_search_result, cancel_source},
         entry::{
@@ -48,15 +48,21 @@ pub(super) struct ColumnRows {
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
 }
 
+pub(super) struct ColumnSearchBind<'a> {
+    pub recursive_active: &'a Rc<Cell<bool>>,
+    pub results: &'a Rc<RefCell<Vec<SearchItem>>>,
+}
+
 pub(super) fn column_rows(
     state: &Rc<ViewState>,
     depth: usize,
     map: &ViewMap,
     selection: &gtk::MultiSelection,
     modified_selection: &Rc<Cell<bool>>,
-    recursive_search_active: &Rc<Cell<bool>>,
-    search_results: &Rc<RefCell<Vec<SearchItem>>>,
+    search: ColumnSearchBind<'_>,
 ) -> ColumnRows {
+    let recursive_search_active = search.recursive_active;
+    let search_results = search.results;
     let factory = gtk::SignalListItemFactory::new();
     let bound_rows: Rc<RefCell<Vec<BoundRow>>> = Rc::new(RefCell::new(Vec::new()));
     let rows_for_setup = bound_rows.clone();
@@ -801,12 +807,17 @@ pub(super) fn column_rows(
                 .is_some_and(|browser| browser.is_open_child(depth, &entry.location))
         });
         set_active_path_style(&row, active);
-        set_cut_path_style(
+        set_clipboard_path_style(
             &row,
             entry.as_ref().is_some_and(|entry| {
                 shared_cut_locations()
                     .iter()
                     .any(|cut| locations_equal(cut, &entry.location))
+            }),
+            entry.as_ref().is_some_and(|entry| {
+                shared_copy_locations()
+                    .iter()
+                    .any(|copied| locations_equal(copied, &entry.location))
             }),
         );
         if let Some(entry) = entry.as_ref() {
@@ -855,6 +866,7 @@ pub(super) fn column_rows(
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);
             icon.set_hidden(false);
             icon.set_cut(false);
+            icon.set_copied(false);
             icon.set_base_opacity(0.72);
             chevron.set_visible(false);
         }
@@ -862,6 +874,12 @@ pub(super) fn column_rows(
         size.set_label(&size_text);
         size.set_visible(!size_text.is_empty());
         crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
+        if let Some(state) = state.as_ref() {
+            crate::ui::browser::find_highlight::apply_to_label(
+                &label,
+                &state.find_highlight_query(),
+            );
+        }
     });
     factory.connect_unbind(|_, item| crate::ui::thumbnail::cancel_list_item_thumbnails(item));
     ColumnRows {

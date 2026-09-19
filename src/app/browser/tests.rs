@@ -561,18 +561,11 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateDirectoryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        if request.unique_name {
-            let child =
-                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
-            emit(OperationEvent::EntryCreated {
-                request_id: request.id,
-                location: crate::adapters::location_for_file(&child).expect("created location"),
-            });
-        } else {
-            emit(OperationEvent::Created {
-                request_id: request.id,
-            });
-        }
+        let child = crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+        emit(OperationEvent::EntryCreated {
+            request_id: request.id,
+            location: crate::adapters::location_for_file(&child).expect("created location"),
+        });
         LoadHandle::new(|| {})
     }
 
@@ -581,18 +574,11 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateFileRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        if request.unique_name {
-            let child =
-                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
-            emit(OperationEvent::EntryCreated {
-                request_id: request.id,
-                location: crate::adapters::location_for_file(&child).expect("created location"),
-            });
-        } else {
-            emit(OperationEvent::Created {
-                request_id: request.id,
-            });
-        }
+        let child = crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+        emit(OperationEvent::EntryCreated {
+            request_id: request.id,
+            location: crate::adapters::location_for_file(&child).expect("created location"),
+        });
         LoadHandle::new(|| {})
     }
 

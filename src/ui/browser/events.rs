@@ -4,9 +4,8 @@
 //! presentations consume the event; preserve that order when adding a feature handler.
 
 use crate::app::BrowserEvent;
-use crate::model::FileEntry;
+use crate::model::{FileEntry, Location};
 use crate::services::LocationValidationError;
-use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::{
     column_size_text, prune_missing_search_results, restore_column_cursor, scroll_column_to,
     set_column_busy, set_column_selections, set_filter_placeholder, stop_column_spinner,
@@ -17,13 +16,16 @@ use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::trash::retryable_delete_entries;
+use crate::ui::browser::{BrowserView, ViewState};
 use crate::ui::browser_modes::BrowserMode;
-use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
+use crate::ui::modal::{
+    show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
@@ -592,7 +594,11 @@ impl ViewState {
                 }
             }
             BrowserEvent::EntryCreated { location } => {
-                self.rename_created_entry(location);
+                if self.pending_new_entry.borrow().is_some() {
+                    self.rename_created_entry(location);
+                } else {
+                    self.select_created_entry(location);
+                }
             }
             BrowserEvent::RenameCompleted { request_id } => {
                 self.complete_pending_rename(*request_id);
@@ -606,7 +612,15 @@ impl ViewState {
                 message,
             } => {
                 self.fail_pending_rename_from_browser(*request_id);
-                show_error_dialog(&self.overlay, "Unable to rename item", message);
+                let view = BrowserView {
+                    state: Rc::clone(self),
+                };
+                show_error_dialog_after_close(
+                    &self.overlay,
+                    "Unable to rename item",
+                    message,
+                    Rc::new(move || view.restore_file_view_focus()),
+                );
             }
             BrowserEvent::TransferStarted { total, moving } => {
                 let browser = self.browser.clone();
@@ -715,7 +729,15 @@ impl ViewState {
                     );
                     return;
                 }
-                show_error_dialog(&self.overlay, "Unable to complete operation", message);
+                let view = BrowserView {
+                    state: Rc::clone(self),
+                };
+                show_error_dialog_after_close(
+                    &self.overlay,
+                    "Unable to complete operation",
+                    message,
+                    Rc::new(move || view.restore_file_view_focus()),
+                );
             }
             BrowserEvent::OperationCompletedWithErrors {
                 message,
@@ -736,12 +758,16 @@ impl ViewState {
                         message,
                         Rc::new(move || {
                             if let Some(state) = weak_state.upgrade() {
-                                state.show_delete_confirmation(retryable_entries.clone());
+                                state.show_delete_confirmation(
+                                    retryable_entries.clone(),
+                                    true,
+                                    false,
+                                );
                             }
                         }),
                     );
                 } else {
-                    self.show_delete_confirmation(retryable_entries);
+                    self.show_delete_confirmation(retryable_entries, true, false);
                 }
             }
             BrowserEvent::OperationCancelled {
@@ -924,9 +950,9 @@ impl ViewState {
             }
             _ => false,
         };
-        self.mode_views
-            .borrow_mut()
-            .handle_with_deferred_empty(event, defer_empty);
+        if let Ok(mut views) = self.mode_views.try_borrow_mut() {
+            views.handle_with_deferred_empty(event, defer_empty);
+        }
         self.reconcile_pending_rename();
         match event {
             BrowserEvent::ColumnAdded { depth, .. } | BrowserEvent::ColumnReloaded { depth } => {
@@ -986,6 +1012,55 @@ impl ViewState {
         } else {
             self.browser.navigate(destination);
         }
+    }
+
+    /// `a` has no pending inline editor; still select the new row once it appears.
+    fn select_created_entry(self: &Rc<Self>, location: &Location) {
+        let Some(parent) = location.parent() else {
+            return;
+        };
+        let Some(depth) = (0..)
+            .map_while(|depth| {
+                self.browser
+                    .location_at(depth)
+                    .map(|current| (depth, current))
+            })
+            .find_map(|(depth, current)| (current == parent).then_some(depth))
+        else {
+            return;
+        };
+        let location = location.clone();
+        let weak = Rc::downgrade(self);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        self.overlay.add_tick_callback(move |_, _| {
+            let Some(state) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if Instant::now() >= deadline
+                || state.browser.location_at(depth).as_ref() != Some(&parent)
+            {
+                return glib::ControlFlow::Break;
+            }
+            let Some(snapshot) = state
+                .browser
+                .column_snapshot(depth)
+                .filter(|snapshot| !snapshot.loading)
+            else {
+                return glib::ControlFlow::Continue;
+            };
+            let position = state
+                .browser
+                .with_entries(depth, 0..snapshot.count, |entries| {
+                    entries.iter().position(|entry| entry.location == location)
+                })
+                .flatten();
+            if let Some(position) = position {
+                state.browser.select(depth, position);
+                state.reveal_focused_entry();
+                return glib::ControlFlow::Break;
+            }
+            glib::ControlFlow::Continue
+        });
     }
 
     pub(super) fn reveal_focused_entry(self: &Rc<Self>) {

@@ -50,7 +50,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         super::super::browser::PeekBehavior::default(),
     );
     let footer = ShortcutFooter::new(view.view_mode());
-    footer.observe_browser(&view.browser());
+    footer.observe_browser(&view);
     let directory = tempfile::tempdir().expect("count fixture");
     std::fs::write(directory.path().join("one.txt"), "one").expect("first file");
     std::fs::write(directory.path().join("two.txt"), "two").expect("second file");
@@ -256,10 +256,17 @@ fn footer_tracks_modes_and_shields_files_while_open() {
 
 impl ShortcutFooter {
     pub(crate) fn assert_hints_visible(&self, visible: bool) {
-        assert_eq!(
-            self.widget().is_visible(),
-            visible || self.paste.is_visible() || self.count.is_visible()
-        );
+        // The footer stays visible for the minimal MIN tag, filter mark,
+        // chord label, flash hint, or open prompt even when hints are off.
+        let status = visible
+            || self.paste.is_visible()
+            || self.count.is_visible()
+            || self.min_tag.is_visible()
+            || self.filter_mark.is_visible()
+            || self.chord_label.is_visible()
+            || self.flash_label.is_visible()
+            || self.prompt_box.is_visible();
+        assert_eq!(self.widget().is_visible(), status);
         assert_eq!(self.more.is_visible(), visible);
     }
 }
@@ -342,6 +349,105 @@ fn paste_availability_tracks_file_clipboard() {
             clipboard
                 .set_content(None::<&gdk::ContentProvider>)
                 .expect("fixture cleanup");
+        },
+    );
+}
+
+#[test]
+fn prompt_reopens_after_hide() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::prompt_reopens_after_hide",
+        || {
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            let window = gtk::Window::builder()
+                .child(footer.widget())
+                .default_width(600)
+                .default_height(80)
+                .build();
+            window.present();
+            settle();
+            footer.show_prompt("/", "find", "", None);
+            settle();
+            assert_eq!(footer.stack.visible_child_name().as_deref(), Some("prompt"));
+            assert!(footer.prompt_box.is_visible());
+            footer.hide_prompt();
+            settle();
+            assert_eq!(footer.stack.visible_child_name().as_deref(), Some("status"));
+            footer.show_prompt("/", "find", "", None);
+            settle();
+            assert_eq!(footer.stack.visible_child_name().as_deref(), Some("prompt"));
+            assert!(footer.prompt_box.is_visible());
+            assert_eq!(footer.prompt_prefix.label().as_str(), "/");
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn minimal_reference_lists_the_yazi_map() {
+    assert!(MINIMAL_NAVIGATION.contains(&("g g / Home", "First item")));
+    assert!(MINIMAL_NAVIGATION.contains(&("l / →", "Open a directory or enter the preview")));
+    assert!(MINIMAL_NAVIGATION.contains(&("h / ←", "Leave the preview, or parent folder")));
+    assert!(MINIMAL_NAVIGATION.contains(&("Enter", "Open the focused item")));
+    assert!(MINIMAL_NAVIGATION.contains(&("i", "Toggle the preview drawer")));
+    assert!(MINIMAL_SELECTION.contains(&("Space", "Toggle the focused item and move down")));
+    assert!(MINIMAL_SELECTION.contains(&("v / V", "Visual select / visual unset")));
+    assert!(MINIMAL_FILES.contains(&("y / x", "Yank / cut the selection (or the focused item)")));
+    assert!(MINIMAL_FILES.contains(&("d / Delete", "Move to Trash with confirmation")));
+    assert!(MINIMAL_PLACES.contains(&("g n", "Network")));
+    assert!(MINIMAL_PLACES.contains(&("g r", "Recent")));
+    assert!(MINIMAL_PLACES.contains(&("g k", "Documents")));
+    assert!(MINIMAL_PLACES.contains(&("g p", "Pictures")));
+    assert!(MINIMAL_PLACES.contains(&("g v", "Videos")));
+    assert!(MINIMAL_PLACES.contains(&("g 1–9", "Pinned places in sidebar order")));
+    assert!(
+        MINIMAL_PROMPTS.contains(&("Tab / Shift+Tab", "Cycle matching folders in the go prompt",))
+    );
+    assert!(MINIMAL_MODE.contains(&("q", "Leave minimal mode")));
+    assert!(MINIMAL_MODE.contains(&("Q", "Close the window")));
+}
+
+#[test]
+fn minimal_mode_tag_and_reference_name_the_experimental_feature() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::minimal_mode_tag_and_reference_name_the_experimental_feature",
+        || {
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.set_minimal(true);
+            let tooltip = footer
+                .min_tag
+                .tooltip_text()
+                .expect("MIN tag tooltip")
+                .as_str()
+                .to_string();
+            assert!(
+                tooltip.contains("Minimal mode")
+                    && tooltip.contains(crate::ui::minimal_mode::EXPERIMENTAL_NOTE),
+                "MIN tooltip names the experimental feature, got {tooltip:?}"
+            );
+            let headings: Vec<String> = {
+                let mut labels = Vec::new();
+                let mut child = footer.reference.first_child();
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    let mut nested = widget.first_child();
+                    while let Some(inner) = nested {
+                        nested = inner.next_sibling();
+                        if let Ok(label) = inner.downcast::<gtk::Label>()
+                            && label.has_css_class("shortcut-reference-heading")
+                        {
+                            labels.push(label.text().to_string());
+                        }
+                    }
+                }
+                labels
+            };
+            assert!(
+                headings
+                    .iter()
+                    .any(|text| text == crate::ui::minimal_mode::LABELED_TITLE),
+                "F1 heading includes the experimental note, got {headings:?}"
+            );
         },
     );
 }

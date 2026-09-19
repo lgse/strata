@@ -18,6 +18,7 @@ mod input_ownership;
 mod loading_skeleton;
 mod marquee;
 mod media;
+mod minimal_mode;
 mod modal;
 mod motion;
 mod open_with;

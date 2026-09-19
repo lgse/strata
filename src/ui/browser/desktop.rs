@@ -91,6 +91,51 @@ async fn resolve_default_application(
     Ok((content_type, default))
 }
 
+pub(super) fn show_open_with_for_entries(
+    parent: &impl IsA<gtk::Widget>,
+    entries: Vec<FileEntry>,
+    browser: Weak<Browser>,
+) {
+    if entries.is_empty() {
+        return;
+    }
+    let files: Vec<_> = entries
+        .iter()
+        .map(|entry| gio_file_for_location(&entry.location))
+        .collect();
+    let requires_uris = crate::ui::open_with::requires_uri_handlers(&files);
+    let content_type = if entries.iter().all(FileEntry::is_directory) {
+        "inode/directory".to_string()
+    } else {
+        files
+            .first()
+            .and_then(|file| {
+                file.query_info(
+                    "standard::content-type",
+                    gio::FileQueryInfoFlags::NONE,
+                    gio::Cancellable::NONE,
+                )
+                .ok()
+                .and_then(|info| info.content_type().map(|value| value.to_string()))
+            })
+            .unwrap_or_else(|| "application/octet-stream".to_string())
+    };
+    let (recommended_apps, other_apps) =
+        crate::ui::open_with::categorized_apps(&content_type, requires_uris);
+    crate::ui::open_with::show(
+        parent,
+        files,
+        recommended_apps,
+        other_apps,
+        crate::ui::open_with::OpenWithContext::Explicit,
+        Rc::new(move || {
+            if let Some(browser) = browser.upgrade() {
+                browser.focus_active();
+            }
+        }),
+    );
+}
+
 fn show_open_with_fallback(
     parent: &impl IsA<gtk::Widget>,
     file: gio::File,

@@ -9,8 +9,9 @@ use crate::services::{
     VolumeRelation, drop_commit, transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
-use crate::ui::browser::columns::set_cut_path_style;
+use crate::ui::browser::columns::set_clipboard_path_style;
 use crate::ui::browser::paths::{can_remove_location, is_trash_location};
+use crate::ui::browser::transfer::ConflictPrimary;
 use gtk::prelude::*;
 use gtk::{glib, graphene};
 use std::cell::{Cell, RefCell};
@@ -677,17 +678,45 @@ fn needs_shell_escape(c: char) -> bool {
         )
 }
 
-// Process-wide cut intent shared by every window. The GDK clipboard only
-// carries a `FileList` with no cut marker, so this thread-local (GTK stays on
-// the main thread) is the source of truth for both paste behavior and styling.
+// Process-wide cut/copy intent shared by every window. The GDK clipboard only
+// carries a `FileList` with no cut/copy marker, so these thread-locals (GTK
+// stays on the main thread) are the source of truth for paste behavior and
+// listing overlays.
 thread_local! {
     static SHARED_CUT_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+    static SHARED_COPY_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
     static CUT_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
+    static COPY_CLIPBOARD_WATCH: Cell<bool> = const { Cell::new(false) };
 }
 
 pub(super) fn register_cut_view(state: &Rc<ViewState>) {
+    watch_copy_clipboard();
     CUT_VIEWS.with(|views| views.borrow_mut().push(Rc::downgrade(state)));
     state.refresh_cut_rows();
+}
+
+fn watch_copy_clipboard() {
+    if COPY_CLIPBOARD_WATCH.get() {
+        return;
+    }
+    let Some(display) = gtk::gdk::Display::default() else {
+        return;
+    };
+    display.clipboard().connect_changed(|clipboard| {
+        if !file_clipboard_present(clipboard) {
+            clear_shared_copy();
+        }
+    });
+    COPY_CLIPBOARD_WATCH.set(true);
+}
+
+fn file_clipboard_present(clipboard: &gtk::gdk::Clipboard) -> bool {
+    let formats = clipboard.formats();
+    formats.contains_type(gtk::gdk::FileList::static_type())
+        || formats
+            .mime_types()
+            .iter()
+            .any(|mime| mime == "text/uri-list")
 }
 
 fn refresh_cut_views() {
@@ -703,23 +732,61 @@ fn refresh_cut_views() {
 }
 
 pub(crate) fn set_cut_result_style(row: &gtk::Box, location: &Location) {
-    let cut = shared_cut_locations()
-        .iter()
-        .any(|cut| locations_equal(cut, location));
-    set_cut_path_style(row, cut);
+    set_clipboard_path_style(
+        row,
+        location_marked(&shared_cut_locations(), location),
+        location_marked(&shared_copy_locations(), location),
+    );
 }
 
 pub(super) fn shared_cut_locations() -> Vec<Location> {
     SHARED_CUT_LOCATIONS.with(|cut| cut.borrow().clone())
 }
 
+pub(super) fn shared_copy_locations() -> Vec<Location> {
+    SHARED_COPY_LOCATIONS.with(|copy| copy.borrow().clone())
+}
+
+fn location_marked(marks: &[Location], location: &Location) -> bool {
+    marks.iter().any(|mark| locations_equal(mark, location))
+}
+
 fn set_shared_cut(locations: &[Location]) {
     SHARED_CUT_LOCATIONS.with(|cut| cut.replace(locations.to_vec()));
+    SHARED_COPY_LOCATIONS.with(|copy| copy.borrow_mut().clear());
     refresh_cut_views();
 }
 
+fn set_shared_copy(locations: &[Location]) {
+    SHARED_COPY_LOCATIONS.with(|copy| copy.replace(locations.to_vec()));
+    SHARED_CUT_LOCATIONS.with(|cut| cut.borrow_mut().clear());
+    refresh_cut_views();
+}
+
+#[cfg(test)]
 fn clear_shared_cut() {
     SHARED_CUT_LOCATIONS.with(|cut| cut.borrow_mut().clear());
+    refresh_cut_views();
+}
+
+fn clear_shared_copy() {
+    let changed = SHARED_COPY_LOCATIONS.with(|copy| {
+        let mut copy = copy.borrow_mut();
+        if copy.is_empty() {
+            false
+        } else {
+            copy.clear();
+            true
+        }
+    });
+    if changed {
+        refresh_cut_views();
+    }
+}
+
+fn clear_shared_marks() {
+    SHARED_CUT_LOCATIONS.with(|cut| cut.borrow_mut().clear());
+    SHARED_COPY_LOCATIONS.with(|copy| copy.borrow_mut().clear());
     refresh_cut_views();
 }
 
@@ -730,6 +797,11 @@ fn retain_shared_untransferred(transferred: &[Location]) {
 
 fn is_cut_match(sources: &[Location]) -> bool {
     same_locations(sources, &shared_cut_locations())
+}
+
+#[cfg(test)]
+fn is_copy_match(sources: &[Location]) -> bool {
+    same_locations(sources, &shared_copy_locations())
 }
 
 fn set_files_clipboard(entries: &[FileEntry]) -> bool {
@@ -802,7 +874,9 @@ fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
 impl ViewState {
     pub(super) fn copy_entries(&self, entries: &[FileEntry]) {
         if set_files_clipboard(entries) {
-            self.clear_cut();
+            let locations: Vec<Location> =
+                entries.iter().map(|entry| entry.location.clone()).collect();
+            set_shared_copy(&locations);
         }
     }
 
@@ -829,8 +903,8 @@ impl ViewState {
         self.start_transfer(destination, sources, false);
     }
 
-    fn clear_cut(&self) {
-        clear_shared_cut();
+    pub(super) fn clear_cut(&self) {
+        clear_shared_marks();
     }
 
     pub(super) fn complete_cut_transfer(&self, transferred: &[Location]) {
@@ -849,8 +923,10 @@ impl ViewState {
 
     fn refresh_cut_rows(&self) {
         let cut = shared_cut_locations();
-        self.mode_views.borrow().set_cut_locations(&cut);
-        let cut_lookup: HashSet<_> = cut.iter().collect();
+        let copied = shared_copy_locations();
+        self.mode_views
+            .borrow()
+            .set_clipboard_locations(&cut, &copied);
         for (depth, column) in self.columns.borrow().iter().enumerate() {
             column.bound_rows.borrow_mut().retain(|bound| {
                 let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
@@ -868,14 +944,19 @@ impl ViewState {
                         .source_position(item.position())
                         .and_then(|position| self.browser.entry_at(depth, position))
                 };
-                let is_cut = entry.is_some_and(|entry| cut_lookup.contains(&entry.location));
-                set_cut_path_style(&row, is_cut);
+                let is_cut = entry
+                    .as_ref()
+                    .is_some_and(|entry| location_marked(&cut, &entry.location));
+                let is_copied = entry
+                    .as_ref()
+                    .is_some_and(|entry| location_marked(&copied, &entry.location));
+                set_clipboard_path_style(&row, is_cut, is_copied);
                 true
             });
         }
     }
 
-    pub(super) fn paste_into(self: &Rc<Self>, destination: Location) {
+    pub(super) fn paste_into(self: &Rc<Self>, destination: Location, preferred: ConflictPrimary) {
         if is_trash_location(&destination) || destination.is_recent_location() {
             return;
         }
@@ -909,7 +990,12 @@ impl ViewState {
                 .collect::<Vec<_>>();
             if let Some(state) = weak.upgrade() {
                 let move_sources = is_cut_match(&sources);
-                state.start_transfer(destination, sources, move_sources);
+                state.start_transfer_with_conflict_preference(
+                    destination,
+                    sources,
+                    move_sources,
+                    preferred,
+                );
             }
         });
     }
