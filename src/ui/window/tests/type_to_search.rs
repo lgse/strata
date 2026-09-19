@@ -5,7 +5,8 @@ use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
 use crate::ui::{
-    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+    preferences::PreferenceManager, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
+    top_bar_navigation::TopBarNavigation,
 };
 
 pub(super) struct TextPreview;
@@ -18,7 +19,10 @@ impl PreviewProvider for TextPreview {
                 entry: request.entry,
                 content_type: "text/plain".into(),
                 content: PreviewContent::Text {
-                    content: "Space opens quick preview.\n".into(),
+                    content: (0..80)
+                        .map(|index| format!("preview line {index}"))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                     truncated: false,
                 },
             }))
@@ -39,6 +43,8 @@ fn exercise_type_to_search() {
     PreferenceManager::seed_saved_preferences_for_test();
     load_styles();
     let preferences = PreferenceManager::shared();
+    // The saved fixture enables minimal mode; default-map scenarios opt out.
+    preferences.set_minimal_mode(false);
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("notes.txt"), b"preview fixture").expect("fixture file");
     std::fs::create_dir(fixture.path().join("folder")).expect("fixture directory");
@@ -73,6 +79,7 @@ fn exercise_type_to_search() {
             preview: preview.clone(),
             type_to_search,
             shortcuts: ShortcutFooter::new(BrowserMode::Columns),
+            open_settings: std::rc::Rc::new(|| {}),
         },
     );
     let controllers = window.observe_controllers();

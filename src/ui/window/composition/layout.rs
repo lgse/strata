@@ -26,6 +26,7 @@ pub(super) struct Header {
     pub(super) content: gtk::Box,
     pub(super) sidebar_toggle: gtk::ToggleButton,
     pub(super) search: gtk::Button,
+    pub(super) close: gtk::Button,
     pub(super) settings: gtk::Button,
 }
 
@@ -52,8 +53,6 @@ impl Header {
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
         let close = header_action(icons::X, "Close window");
-        let closing_window = window.clone();
-        close.connect_clicked(move |_| closing_window.close());
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
         actions.append(&search);
@@ -67,13 +66,34 @@ impl Header {
         content.append(&location);
         content.append(&actions);
         widget.set_title_widget(Some(&content));
-        Self {
+        let header = Self {
             widget,
             content,
             sidebar_toggle,
             search,
+            close,
             settings,
-        }
+        };
+        // Minimal mode hides Search and Close; `Q` replaces window Close.
+        preferences.bind_preference(
+            &header.search,
+            PreferenceManager::minimal_mode,
+            |widget, minimal| {
+                widget.set_visible(!minimal);
+            },
+        );
+        preferences.bind_preference(
+            &header.close,
+            PreferenceManager::minimal_mode,
+            |widget, minimal| {
+                widget.set_visible(!minimal);
+            },
+        );
+        let closing_window = window.clone();
+        header
+            .close
+            .connect_clicked(move |_| closing_window.close());
+        header
     }
 }
 
@@ -207,7 +227,8 @@ impl FooterBinding {
     ) -> Self {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
-        shortcuts.observe_browser(&browser.browser());
+        shortcuts.bind_minimal_mode(preferences);
+        shortcuts.observe_browser(browser);
         let clipboard = window.clipboard();
         let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
         root.append(shortcuts.widget());

@@ -43,12 +43,14 @@ fn recent_sort_is_not_stored_as_an_ordinary_folder_default() {
 fn older_preferences_keep_backward_compatible_behavior_defaults() {
     let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
     saved.remove("filter_include_subfolders");
+    saved.remove("minimal_mode");
     saved.remove("open_folder_after_drop");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
         Preferences {
             filter_include_subfolders: true,
+            minimal_mode: false,
             open_folder_after_drop: false,
             ..non_default_preferences()
         }
@@ -300,6 +302,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.search_open_files_directly());
             assert!(!manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
+            assert!(manager.minimal_mode());
             assert!(!manager.filter_include_subfolders());
             assert!(!manager.show_keybinding_hints());
             assert!(manager.reduce_motion());
@@ -466,6 +469,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_search_open_files_directly(false),
                 |m| m.set_type_to_search(true),
                 |m| m.set_arrow_navigation_scoped(false),
+                |m| m.set_minimal_mode(false),
                 |m| m.set_filter_include_subfolders(true),
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_reduce_motion(false),

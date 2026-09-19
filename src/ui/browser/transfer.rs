@@ -38,18 +38,31 @@ enum ConflictChoice {
     KeepBoth,
 }
 
+/// Which conflict button a paste dialog focuses. Ctrl+V and other existing
+/// entry points keep Replace; minimal `p` focuses Keep Both for this paste
+/// only. Sequential dialogs in one transfer reuse the same choice.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(in crate::ui::browser) enum ConflictPrimary {
+    #[default]
+    Replace,
+    KeepBoth,
+}
+
+/// Which conflict buttons a replace dialog shows, and which one it prefers.
+#[derive(Clone, Copy)]
+struct ConflictDialogOptions {
+    apply_to_all_visible: bool,
+    skip_visible: bool,
+    allow_keep_both: bool,
+    allow_merge: bool,
+    preferred: ConflictPrimary,
+}
+
 #[derive(Clone)]
 struct TransferCollision {
     source: Location,
     /// Both colliding items are directories, so their contents can be merged.
     mergeable: bool,
-}
-
-/// Which non-destructive resolutions a conflict prompt offers.
-#[derive(Clone, Copy, Default)]
-struct ConflictActions {
-    keep_both: bool,
-    merge: bool,
 }
 
 fn location_exists(location: &Location) -> bool {
@@ -241,7 +254,26 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
-        self.start_transfer_with_reveal(destination, sources, move_sources, true);
+        self.start_transfer_with_reveal(
+            destination,
+            sources,
+            move_sources,
+            true,
+            ConflictPrimary::Replace,
+        );
+    }
+
+    /// Pastes like [`ViewState::start_transfer`], focusing the given conflict
+    /// action if a dialog appears. The preference applies to this transfer
+    /// only; every other entry point keeps Replace.
+    pub(super) fn start_transfer_with_conflict_preference(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        move_sources: bool,
+        preferred: ConflictPrimary,
+    ) {
+        self.start_transfer_with_reveal(destination, sources, move_sources, true, preferred);
     }
 
     fn start_drop_transfer(
@@ -251,7 +283,13 @@ impl ViewState {
         move_sources: bool,
     ) {
         let reveal = crate::ui::preferences::PreferenceManager::shared().open_folder_after_drop();
-        self.start_transfer_with_reveal(destination, sources, move_sources, reveal);
+        self.start_transfer_with_reveal(
+            destination,
+            sources,
+            move_sources,
+            reveal,
+            ConflictPrimary::Replace,
+        );
     }
 
     /// Paste and explicit "move/copy to" reveal their result independently of
@@ -262,6 +300,7 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
         reveal: bool,
+        preferred: ConflictPrimary,
     ) {
         if is_trash_location(&destination)
             || destination.is_recent_location()
@@ -287,7 +326,14 @@ impl ViewState {
                 }),
             }
         }
-        self.resolve_transfer_collisions(destination, collisions, accepted, move_sources, reveal);
+        self.resolve_transfer_collisions(
+            destination,
+            collisions,
+            accepted,
+            move_sources,
+            reveal,
+            preferred,
+        );
     }
 
     fn resolve_transfer_collisions(
@@ -297,6 +343,7 @@ impl ViewState {
         accepted: Vec<PasteItem>,
         move_sources: bool,
         reveal: bool,
+        preferred: ConflictPrimary,
     ) {
         if collisions.is_empty() {
             if !accepted.is_empty() {
@@ -330,11 +377,12 @@ impl ViewState {
         self.confirm_replace_conflict(
             &name,
             &explanation,
-            apply_to_all_visible,
-            skip_visible,
-            ConflictActions {
-                keep_both: !move_sources,
-                merge: allow_merge,
+            ConflictDialogOptions {
+                apply_to_all_visible,
+                skip_visible,
+                allow_keep_both: !move_sources,
+                allow_merge,
+                preferred,
             },
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
@@ -390,6 +438,7 @@ impl ViewState {
                     accepted,
                     move_sources,
                     reveal,
+                    preferred,
                 );
             }),
         );
@@ -482,9 +531,13 @@ impl ViewState {
         self.confirm_replace_conflict(
             &name,
             &explanation,
-            apply_to_all_visible,
-            skip_visible,
-            ConflictActions::default(),
+            ConflictDialogOptions {
+                apply_to_all_visible,
+                skip_visible,
+                allow_keep_both: false,
+                allow_merge: false,
+                preferred: ConflictPrimary::Replace,
+            },
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -517,9 +570,7 @@ impl ViewState {
         self: &Rc<Self>,
         name: &str,
         explanation: &str,
-        apply_to_all_visible: bool,
-        skip_visible: bool,
-        actions: ConflictActions,
+        options: ConflictDialogOptions,
         on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
     ) {
         let Some(ModalHost {
@@ -539,21 +590,21 @@ impl ViewState {
         );
         layout.body.append(&message_dialog_description(explanation));
         let apply_all = form_check_button("Apply to All");
-        apply_all.set_visible(apply_to_all_visible);
+        apply_all.set_visible(options.apply_to_all_visible);
         layout.actions.prepend(&apply_all);
         let skip = gtk::Button::with_label("Skip");
         skip.add_css_class("action-dialog-cancel");
-        skip.set_visible(skip_visible);
+        skip.set_visible(options.skip_visible);
         layout
             .actions
             .insert_child_after(&skip, Some(&layout.cancel));
         let keep_both = gtk::Button::with_label("Keep Both");
         keep_both.add_css_class("action-dialog-cancel");
-        keep_both.set_visible(actions.keep_both);
+        keep_both.set_visible(options.allow_keep_both);
         layout.actions.insert_child_after(&keep_both, Some(&skip));
         let merge = gtk::Button::with_label("Merge");
         merge.add_css_class("action-dialog-cancel");
-        merge.set_visible(actions.merge);
+        merge.set_visible(options.allow_merge);
         layout.actions.insert_child_after(&merge, Some(&keep_both));
         let content = layout.content;
         let cancel = layout.cancel;
@@ -604,14 +655,12 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let enter_buttons = [
-            skip,
-            keep_both,
-            merge,
-            replace.clone(),
-            cancel,
-            layout.close,
-        ];
+        let initial_focus = match options.preferred {
+            ConflictPrimary::KeepBoth if options.allow_keep_both => keep_both.clone(),
+            ConflictPrimary::KeepBoth => cancel.clone(),
+            ConflictPrimary::Replace => replace.clone(),
+        };
+        let enter_buttons = [skip, keep_both, merge, replace, cancel, layout.close];
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
@@ -628,7 +677,6 @@ impl ViewState {
             }
         });
         layer.add_controller(escape);
-        let initial_focus = replace.clone();
         glib::idle_add_local_once(move || {
             initial_focus.grab_focus();
             if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {

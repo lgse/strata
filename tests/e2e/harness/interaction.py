@@ -26,6 +26,7 @@ KEYSYMS: dict[str, int] = {
     "Left": 0xFF51,
     "Up": 0xFF52,
     "Right": 0xFF53,
+    "KP_Right": 0xFF98,
     "Down": 0xFF54,
     "Page_Up": 0xFF55,
     "Page_Down": 0xFF56,

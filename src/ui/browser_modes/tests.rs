@@ -9,9 +9,10 @@ use super::{
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue, SortDirection, SortKey};
 use crate::test_support::gtk_test;
 use gtk::{gio, prelude::*};
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
-use std::{cell::RefCell, collections::HashSet};
 
 impl super::ModeViews {
     pub(in crate::ui) fn assert_saved_preferences(
@@ -631,7 +632,15 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 duration_seconds: MetadataValue::Unknown,
             };
             let card = crate::ui::icons_cell::new_card(64);
-            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &entry,
+                &super::ClipboardMarks::default(),
+                64,
+                true,
+                None,
+            );
             assert!(crate::ui::icons_cell::rename_field(&card).is_none());
             let (icon, label) = crate::ui::icons_cell::parts(&card).expect("icons card");
             assert!(label.tooltip_text().is_none());
@@ -665,11 +674,20 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 job, initial_job,
                 "an unchanged row must retain its in-flight thumbnail"
             );
-            let mut cuts = HashSet::new();
-            cuts.insert(entry.location.clone());
-            super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &cuts);
+            let mut marks = super::ClipboardMarks::default();
+            marks.cuts.insert(entry.location.clone());
+            super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &marks);
             assert_eq!(label.tooltip_text().as_deref(), Some("icons-scroll.png"));
             assert!(card.has_css_class("cut"));
+            assert!(!card.has_css_class("copied"));
+            marks.copies.insert(entry.location.clone());
+            super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &marks);
+            assert!(card.has_css_class("cut"), "cut wins over copy");
+            assert!(!card.has_css_class("copied"));
+            marks.cuts.clear();
+            super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &marks);
+            assert!(!card.has_css_class("cut"));
+            assert!(card.has_css_class("copied"));
             assert_eq!(icon.opacity(), 1.0);
             assert_eq!(crate::ui::thumbnail::pending_thumbnail_id(&path), job);
             crate::ui::thumbnail::clear_thumbnail_runtime();
@@ -700,24 +718,56 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
             let card = crate::ui::icons_cell::new_card(64);
             let details = crate::ui::icons_cell::details_label(&card).expect("details label");
 
-            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &entry,
+                &super::ClipboardMarks::default(),
+                64,
+                false,
+                None,
+            );
             assert!(!details.is_visible());
 
             entry.image_dimensions = MetadataValue::Known((1920, 1080));
-            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &entry,
+                &super::ClipboardMarks::default(),
+                64,
+                false,
+                None,
+            );
             assert!(details.is_visible());
             assert_eq!(details.text().as_str(), "1920×1080");
 
             entry.image_dimensions = MetadataValue::Unavailable;
             entry.size = MetadataValue::Known(2048);
-            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &entry,
+                &super::ClipboardMarks::default(),
+                64,
+                false,
+                None,
+            );
             assert_eq!(details.text().as_str(), "2 kB");
 
             entry.location = Location::local("/fixture/movie.mp4");
             entry.native_name = "movie.mp4".into();
             entry.display_name = "movie.mp4".into();
             entry.duration_seconds = MetadataValue::Known(83);
-            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &entry,
+                &super::ClipboardMarks::default(),
+                64,
+                false,
+                None,
+            );
             assert_eq!(details.text().as_str(), "1:23");
 
             let mut folder_entry = FileEntry {
@@ -735,15 +785,39 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
                 child_count: MetadataValue::Known(12),
                 duration_seconds: MetadataValue::Unknown,
             };
-            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &folder_entry,
+                &super::ClipboardMarks::default(),
+                64,
+                false,
+                None,
+            );
             assert_eq!(details.text().as_str(), "12 items");
 
             folder_entry.child_count = MetadataValue::Known(1);
-            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &folder_entry,
+                &super::ClipboardMarks::default(),
+                64,
+                false,
+                None,
+            );
             assert_eq!(details.text().as_str(), "1 item");
 
             folder_entry.child_count = MetadataValue::Known(0);
-            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
+            super::apply_icons_entry(
+                None,
+                &card,
+                &folder_entry,
+                &super::ClipboardMarks::default(),
+                64,
+                false,
+                None,
+            );
             assert_eq!(details.text().as_str(), "No items");
         },
     );

@@ -134,7 +134,8 @@ fn exact_creation_reports_conflicts_and_unique_creation_rejects_invalid_names() 
         );
         assert!(matches!(
             create(fixture.path(), "exact", false, 1, directory).as_slice(),
-            [OperationEvent::Created { .. }]
+            [OperationEvent::EntryCreated { location, .. }]
+                if location == &Location::local(fixture.path().join("exact"))
         ));
         assert_eq!(fixture.path().join("exact").is_dir(), directory);
     }

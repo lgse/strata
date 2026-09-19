@@ -950,6 +950,7 @@ pub(super) struct SidebarState {
     pending_scroll: Cell<Option<f64>>,
     rebuild_queued: Cell<bool>,
     scroll_restore_queued: Cell<bool>,
+    minimal_chord_teardown: RefCell<Option<Rc<dyn Fn()>>>,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -1082,6 +1083,7 @@ impl SidebarView {
 
 impl SidebarState {
     fn queue_rebuild(self: &Rc<Self>) {
+        self.cancel_minimal_chord();
         self.capture_scroll();
         if self.rebuild_queued.replace(true) {
             return;
@@ -1096,6 +1098,7 @@ impl SidebarState {
     }
 
     fn rebuild(self: &Rc<Self>) {
+        self.cancel_minimal_chord();
         self.capture_scroll();
         while let Some(child) = self.widget.first_child() {
             self.widget.remove(&child);

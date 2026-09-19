@@ -5,6 +5,7 @@ mod context_menu;
 mod filtered_preview;
 mod keyboard;
 mod layout;
+mod minimal_chrome;
 mod selection;
 mod sizing;
 

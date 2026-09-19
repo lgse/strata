@@ -48,6 +48,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing keyboard navigation focus sidebar toolbar",
     },
     Target {
+        id: "minimal-mode",
+        page: "general",
+        title: "Minimal mode",
+        aliases: "yazi vim ranger lf vifm hjkl keyboard experimental",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",

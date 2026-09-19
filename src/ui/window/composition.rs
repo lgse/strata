@@ -60,7 +60,7 @@ impl WindowContent {
     ) -> UpdateNoticeHandler {
         search::install(window, self, preferences);
         install_browser_actions(window, &self.browser, preferences);
-        let notice = settings::install(window, self, preferences);
+        let (notice, open_settings) = settings::install(window, self, preferences);
         window.set_child(Some(&self.overlay));
         let click_browser = self.browser.clone();
         let click_window = window.clone();
@@ -93,6 +93,7 @@ impl WindowContent {
                     preferences: preferences.clone(),
                 },
                 shortcuts: self.footer.shortcuts.clone(),
+                open_settings,
             },
         );
         notice
@@ -141,6 +142,25 @@ fn install_browser_actions(
         for (action, accels) in super::DEFAULT_ACCELS {
             application.set_accels_for_action(action, accels);
         }
+        // Do not restore accels from window destroy while the preference is still true.
+        let accels_application = application.clone();
+        preferences.bind_preference(
+            window,
+            PreferenceManager::minimal_mode,
+            move |_, enabled| {
+                if enabled {
+                    for (action, _) in super::DEFAULT_ACCELS {
+                        accels_application.set_accels_for_action(action, &[]);
+                    }
+                    tracing::debug!("minimal mode accels cleared");
+                } else {
+                    for (action, accels) in super::DEFAULT_ACCELS {
+                        accels_application.set_accels_for_action(action, accels);
+                    }
+                    tracing::debug!("minimal mode accels restored");
+                }
+            },
+        );
     }
 }
 

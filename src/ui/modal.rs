@@ -272,9 +272,13 @@ pub(super) fn show_error_dialog_after_close(
         if dismissed.replace(true) {
             return;
         }
-        dismiss_modal_layer(&close_layer, &close_overlay, close_root.as_ref());
         let on_close = on_close.clone();
-        glib::timeout_add_local_once(Duration::from_millis(250), move || on_close());
+        dismiss_modal_layer_then(
+            &close_layer,
+            &close_overlay,
+            close_root.as_ref(),
+            move || on_close(),
+        );
     };
     let dismiss = Rc::new(dismiss);
     let clicked_dismiss = dismiss.clone();
@@ -299,7 +303,7 @@ pub(super) fn show_error_dialog_after_close(
 /// Trash (issue #179): rather than a dead-end "Done" button, this offers an
 /// actionable "Delete Permanently" button that invokes `on_retry` -- the
 /// caller's job is to re-run the delete for just the retryable entries,
-/// e.g. via `show_delete_confirmation(retryable_entries)`.
+/// e.g. via `show_delete_confirmation(retryable_entries, true, false)`.
 pub(super) fn show_delete_error_dialog(
     parent: &impl IsA<gtk::Widget>,
     detail: &str,
