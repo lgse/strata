@@ -51,6 +51,13 @@ impl Fixture {
         None
     }
 
+    fn assert_window_buttons_visible(&self, minimize: bool, maximize: bool, close: bool) {
+        let header = &self.content.header;
+        assert_eq!(header.minimize.is_visible(), minimize);
+        assert_eq!(header.maximize.is_visible(), maximize);
+        assert_eq!(header.close.is_visible(), close);
+    }
+
     fn close(self) {
         self.content.connect_cleanup(&self.window);
         self.window.destroy();
@@ -87,6 +94,17 @@ fn composition_initializes_live_preferences_before_settings_in_two_windows() {
                     .footer
                     .shortcuts
                     .assert_hints_visible(fixture.preferences.show_keybinding_hints());
+                fixture.assert_window_buttons_visible(
+                    fixture.preferences.window_show_minimize(),
+                    fixture.preferences.window_show_maximize(),
+                    fixture.preferences.window_show_close(),
+                );
+            }
+            first.preferences.set_window_show_minimize(false);
+            first.preferences.set_window_show_maximize(false);
+            first.preferences.set_window_show_close(true);
+            for fixture in [&first, &second] {
+                fixture.assert_window_buttons_visible(false, false, true);
             }
             first.preferences.set_show_keybinding_hints(false);
             first.preferences.set_browser_mode(BrowserMode::List);

@@ -27,6 +27,12 @@ pub(super) struct Header {
     pub(super) sidebar_toggle: gtk::ToggleButton,
     pub(super) search: gtk::Button,
     pub(super) settings: gtk::Button,
+    #[cfg(test)]
+    pub(super) minimize: gtk::Button,
+    #[cfg(test)]
+    pub(super) maximize: gtk::Button,
+    #[cfg(test)]
+    pub(super) close: gtk::Button,
 }
 
 impl Header {
@@ -51,14 +57,40 @@ impl Header {
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
+        let minimize = header_action(icons::MINUS, "Minimize window");
+        let minimizing_window = window.clone();
+        minimize.connect_clicked(move |_| minimizing_window.minimize());
+        let maximize = header_action(icons::MAXIMIZE, "Maximize window");
+        let maximizing_window = window.clone();
+        maximize.connect_clicked(move |_| {
+            if maximizing_window.is_maximized() {
+                maximizing_window.unmaximize();
+            } else {
+                maximizing_window.maximize();
+            }
+        });
+        bind_maximize_icon(window, &maximize);
         let close = header_action(icons::X, "Close window");
         let closing_window = window.clone();
         close.connect_clicked(move |_| closing_window.close());
+        for (button, read) in [
+            (
+                &minimize,
+                PreferenceManager::window_show_minimize as fn(&PreferenceManager) -> bool,
+            ),
+            (&maximize, PreferenceManager::window_show_maximize),
+            (&close, PreferenceManager::window_show_close),
+        ] {
+            preferences
+                .bind_preference(button, read, |widget, visible| widget.set_visible(visible));
+        }
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
         actions.append(&search);
         actions.append(&appearance);
         actions.append(&settings);
+        actions.append(&minimize);
+        actions.append(&maximize);
         actions.append(&close);
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         content.set_hexpand(true);
@@ -73,8 +105,38 @@ impl Header {
             sidebar_toggle,
             search,
             settings,
+            #[cfg(test)]
+            minimize,
+            #[cfg(test)]
+            maximize,
+            #[cfg(test)]
+            close,
         }
     }
+}
+
+fn bind_maximize_icon(window: &gtk::ApplicationWindow, button: &gtk::Button) {
+    let weak_button = button.downgrade();
+    let update = move |window: &gtk::ApplicationWindow| {
+        let Some(image) = weak_button
+            .upgrade()
+            .and_then(|button| button.child())
+            .and_downcast::<gtk::Image>()
+        else {
+            return;
+        };
+        let (icon, tooltip) = if window.is_maximized() {
+            (icons::MINIMIZE, "Restore window")
+        } else {
+            (icons::MAXIMIZE, "Maximize window")
+        };
+        assets::set_primary_icon(&image, icon);
+        if let Some(button) = weak_button.upgrade() {
+            button.set_tooltip_text(Some(tooltip));
+        }
+    };
+    update(window);
+    window.connect_maximized_notify(move |window| update(window));
 }
 
 fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
