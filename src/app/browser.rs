@@ -2583,8 +2583,7 @@ impl Browser {
                     include_icon_details,
                 };
                 if visible {
-                    // A fling can saturate the backlog before details complete. Admit the
-                    // current viewport rather than dropping it behind old offscreen work.
+                    // A saturated offscreen backlog must not strand newly visible details.
                     if queued.len() == MAX_PENDING_FILL_LOCATIONS {
                         queued.pop();
                     }

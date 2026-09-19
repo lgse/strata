@@ -84,8 +84,7 @@ fn deferred_work_resumes_after_the_last_scroll_allocation() {
                 MetadataValue::Unknown
             );
 
-            // Scroll just after a frame so the admission idle sees the old allocation.
-            // These mapped targets are not rebound: no map/bind or worker completion can rescue them.
+            // Force stale allocation without a rebind or worker completion to rescue admission.
             let clock = scroll.frame_clock().expect("frame clock");
             let handler = Rc::new(RefCell::new(None));
             let handler_for_paint = handler.clone();
@@ -269,7 +268,6 @@ fn large_icon_scroll_fills_the_final_viewport_without_another_input() {
             );
             for fraction in [0.4, 0.8, 1.0] {
                 adjustment.set_value((adjustment.upper() - adjustment.page_size()) * fraction);
-                // Let admission run before the next frame has necessarily allocated recycled cells.
                 wait_until("viewport admission did not yield", || {
                     !REFRESH_PENDING.with(Cell::get)
                 });
