@@ -67,7 +67,6 @@ pub(crate) use crate::ui::browser::collection::{
     notify_filter_query, prepare_collection_inline_edit, restore_filter_controls,
     reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
 };
-pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
 pub(super) use crate::ui::browser::context_menu::{
     ContextMenuTarget, ContextMenuTrigger, install_folder_context_menu, install_item_context_menu,

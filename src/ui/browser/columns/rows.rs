@@ -80,7 +80,7 @@ pub(super) fn column_rows(
             .halign(gtk::Align::Fill)
             .xalign(0.0)
             .hexpand(true)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
             .build();
         let rename = gtk::Entry::new();
         rename.add_css_class("inline-rename");

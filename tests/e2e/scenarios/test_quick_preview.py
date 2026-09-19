@@ -84,6 +84,28 @@ def test_space_opens_and_closes_the_quick_preview(strata, mode, selection):
     strata.pointer.click(close)
     strata.wait(lambda: strata.preview() is None, "the preview to close")
 
+    bounds = strata.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 640, 480)
+    strata.select_entry("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the compact preview")
+    bounds = strata.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 320, 320)
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the retained preview")
+    strata.wait(
+        lambda: strata.preview().find(role="button", name="Close preview (Space)").has_state("focused"),
+        "keyboard focus on compact preview dismissal",
+    )
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() is None, "Space to return to browsing")
+    strata.keyboard.press("End")
+    strata.wait_for_selection(["third.txt"])
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("third preview fixture"), "the next compact preview")
+    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.wait(lambda: strata.preview() is None, "the close button to return to browsing")
+    assert strata.selected_names() == ["third.txt"]
+
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("selection", ["keyboard", "pointer"])
@@ -516,14 +538,16 @@ def test_narrow_window_prioritizes_the_last_column_and_restores_the_latest_previ
     strata.wait(last_column_visible, "the entire last column to stay visible")
     column = strata.pane("folder").screen_bounds()
     assert column.x + column.width <= strata.preview().screen_bounds().x
-    resize(760)
-    strata.wait(lambda: strata.preview() is None, "the unusably narrow preview to hide")
-    strata.wait(last_column_visible, "the last column without the preview")
+    resize(640)
+    strata.wait(lambda: strata.preview_shows("inner"), "the compact preview to retain its content")
+    strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
+    strata.wait(lambda: strata.preview() is None, "dismissal to restore browsing")
     strata.keyboard.press("Down")
     strata.wait_for_selection(["nested-notes.txt"])
-    assert strata.preview() is None
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the latest compact preview")
     resize(900)
-    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the latest selection to resume")
+    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the same selection after expansion")
     strata.wait(last_column_visible, "the last column beside the resumed preview")
     resize(1200)
     strata.wait(lambda: strata.preview().screen_bounds().width == preferred, "the preferred preview width to return")
