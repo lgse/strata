@@ -28,6 +28,11 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
+            PreferenceManager::icons_thumbnail_size,
+            Self::set_icons_thumbnail_size,
+        );
+        self.bind_view_preference(
+            manager,
             PreferenceManager::browser_mode,
             Self::set_view_mode,
         );

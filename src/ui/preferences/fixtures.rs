@@ -57,6 +57,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         preview_autoplay: true,
         auto_refresh_interval: 600,
         thumbnail_workers: 6,
+        icons_thumbnail_size: 128,
         cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
         open_folder_after_drop: true,
         release_channel: "nightly".into(),
