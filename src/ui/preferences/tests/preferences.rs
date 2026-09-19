@@ -632,11 +632,27 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
             for label in &labels {
                 assert_eq!(label.label(), absolute("%B %-d, %Y, %H:%M"));
             }
+            crate::util::set_modified_date(&labels[0], None, "unknown");
             manager.set_date_format(crate::util::DateFormat::Relative);
-            for label in &labels {
-                let text = label.label();
-                assert!(text == "just now" || text.ends_with(" ago"), "{text}");
-            }
+            assert_eq!(labels[0].label(), "unknown");
+            let text = labels[1].label();
+            assert!(text == "just now" || text.ends_with(" ago"), "{text}");
+            let mut rebound = entry.clone();
+            rebound.modified_unix_seconds = MetadataValue::Known(seconds - 86400);
+            crate::util::set_modified_date(&labels[0], Some(&rebound), "—");
+            manager.set_date_format(crate::util::DateFormat::Iso8601);
+            let expected = glib::DateTime::from_unix_local(seconds - 86400)
+                .expect("rebound date")
+                .format("%Y-%m-%d %H:%M")
+                .expect("format");
+            assert_eq!(labels[0].label(), expected);
+            assert_eq!(labels[1].label(), absolute("%Y-%m-%d %H:%M"));
+            let rebuilt = gtk::Label::new(None);
+            windows[1].set_child(Some(&rebuilt));
+            crate::util::set_modified_date(&rebuilt, Some(&entry), "—");
+            assert_eq!(rebuilt.label(), absolute("%Y-%m-%d %H:%M"));
+            manager.set_date_format(crate::util::DateFormat::Long);
+            assert_eq!(rebuilt.label(), absolute("%B %-d, %Y, %H:%M"));
             for window in windows {
                 window.close();
             }

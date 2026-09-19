@@ -6,15 +6,11 @@ use gtk::prelude::*;
 
 use crate::model::{FileEntry, MetadataValue};
 
-/// How modified timestamps render in listings and detail panes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DateFormat {
-    /// "just now", "5m ago", "Yesterday, 14:30", then dated fallbacks.
     #[default]
     Relative,
-    /// Always `2026-09-17 14:30`.
     Iso8601,
-    /// Always `September 17, 2026, 14:30`.
     Long,
 }
 
@@ -35,8 +31,6 @@ impl DateFormat {
         }
     }
 
-    /// Absolute rendering for fixed formats; Relative uses it for
-    /// far-future dates and last-resort fallbacks.
     fn absolute_pattern(&self) -> &'static str {
         match self {
             Self::Long => "%B %-d, %Y, %H:%M",
@@ -52,11 +46,9 @@ struct ModifiedDateBinding {
 
 thread_local! {
     static MODIFIED_DATE_BINDINGS: RefCell<Vec<ModifiedDateBinding>> = const { RefCell::new(Vec::new()) };
-    /// Labels already listening for format changes; unlike the timestamp
-    /// bindings this set is not cleared when a row is rebound without a date.
+    // Keep subscriptions when recycled rows temporarily have no timestamp.
     static DATE_FORMAT_BOUND: RefCell<Vec<glib::WeakRef<gtk::Label>>> = const { RefCell::new(Vec::new()) };
-    /// Pushed by `PreferenceManager` on load and save; reading `shared()` here
-    /// would lazily run theme initialization inside list row binds.
+    // Avoid manager lookups on every row render.
     static MODIFIED_DATE_FORMAT: Cell<DateFormat> = const { Cell::new(DateFormat::Relative) };
     static MODIFIED_DATE_TIMER_ACTIVE: Cell<bool> = const { Cell::new(false) };
 }
@@ -118,8 +110,7 @@ pub fn set_modified_date(label: &gtk::Label, entry: Option<&FileEntry>, fallback
     }
 }
 
-/// Re-renders the label when the saved date format changes. Reads the latest
-/// timestamp back out of the binding table so recycled rows stay correct.
+// Resolve the current timestamp at notification time because rows are recycled.
 fn bind_date_format(label: &gtk::Label) {
     crate::ui::preferences::PreferenceManager::shared().bind_preference(
         label,
@@ -144,7 +135,6 @@ fn bind_date_format(label: &gtk::Label) {
     );
 }
 
-/// Formats a recent sample timestamp for settings previews.
 pub fn modified_date_example(format: DateFormat) -> String {
     let Ok(now) = glib::DateTime::now_local() else {
         return "—".to_owned();
@@ -224,14 +214,12 @@ fn modified_date_at(modified: &glib::DateTime, now: &glib::DateTime, format: Dat
     }
 
     let span = now.difference(modified).0;
-    // Timestamps slightly in the future are clock skew, not future files;
-    // they fall through to "just now". Beyond a minute the date is shown.
+    // Tolerate up to one minute of clock skew.
     if span < -60_000_000 {
         return absolute(DateFormat::Relative);
     }
 
-    // Sub-hour recency follows elapsed time: a file saved just before midnight
-    // is still "2m ago" once the clock rolls over, not "Yesterday".
+    // Preserve sub-hour recency across midnight.
     let minutes = span / 60_000_000;
     if minutes < 60 {
         return if minutes >= 1 {
