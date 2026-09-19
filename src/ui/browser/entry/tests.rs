@@ -122,6 +122,8 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "book.xls",
         "book.xlsx",
         "book.ods",
+        "memo.rtf",
+        "report.docx",
     ] {
         assert!(
             crate::ui::preview::entry_supports_quick_preview(&entry(

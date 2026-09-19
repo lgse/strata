@@ -91,7 +91,7 @@ pub enum PreviewContent {
         warnings: Vec<String>,
         truncated: bool,
     },
-    Workbook {
+    Rendered {
         document: DocumentLayout,
         warnings: Vec<String>,
     },

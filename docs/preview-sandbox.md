@@ -21,7 +21,10 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
 - Local XLS, XLSX, and ODS previews run Calamine inside the resource-limited
   helper, accepting at most 20 MiB of input. Only validated, bounded JSON cell
   values cross back into the application; macros and formulas are not executed.
-- Local [Markdown, bounded HTML, CSV, and TSV previews](document-previews.md) are parsed
+- Local DOCX previews run `docx-rs` in the same helper under the same 20 MiB input
+  limit. Only a validated, bounded JSON payload of generated HTML returns, and the
+  application reparses it with the existing bounded HTML parser.
+- Local [Markdown, bounded HTML, RTF, CSV, and TSV previews](document-previews.md) are parsed
   in-process by pure-Rust parsers that receive only the bounded source string and
   cannot initiate filesystem access, network access, JavaScript execution, or
   subresource loading. Relative Markdown images are separately confined to the
