@@ -1005,6 +1005,9 @@ fn publish(
 }
 
 fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
+    if !filter_name_matches(item.search_name(), query) {
+        return None;
+    }
     if !query.contains('*') {
         return fuzzy_score_normalized(item, query);
     }

@@ -184,7 +184,7 @@ pub(super) struct ViewState {
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
-    search_selection_handler: RefCell<Option<Rc<dyn Fn()>>>,
+    search_selection_handlers: RefCell<Vec<Rc<dyn Fn()>>>,
     pending_select: RefCell<Vec<String>>,
     pending_location_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
@@ -513,7 +513,7 @@ impl BrowserView {
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
-            search_selection_handler: RefCell::new(None),
+            search_selection_handlers: RefCell::new(Vec::new()),
             pending_select: RefCell::new(Vec::new()),
             pending_location_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
@@ -1582,8 +1582,11 @@ impl BrowserView {
             })
     }
 
-    pub(super) fn set_search_selection_handler(&self, handler: Rc<dyn Fn()>) {
-        self.state.search_selection_handler.replace(Some(handler));
+    pub(super) fn connect_search_selection_changed(&self, handler: Rc<dyn Fn()>) {
+        self.state
+            .search_selection_handlers
+            .borrow_mut()
+            .push(handler);
     }
 
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
@@ -1814,7 +1817,8 @@ impl BrowserView {
 
 impl ViewState {
     pub(super) fn notify_search_selection_changed(&self) {
-        if let Some(handler) = self.search_selection_handler.borrow().as_ref() {
+        let handlers = self.search_selection_handlers.borrow().clone();
+        for handler in handlers {
             handler();
         }
     }

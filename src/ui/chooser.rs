@@ -1128,7 +1128,7 @@ fn build_chooser_with_source(
     }
 
     let weak = Rc::downgrade(&state);
-    view.set_search_selection_handler(Rc::new(move || {
+    view.connect_search_selection_changed(Rc::new(move || {
         let weak = weak.clone();
         glib::idle_add_local_once(move || {
             if let Some(state) = weak.upgrade() {

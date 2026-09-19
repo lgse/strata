@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod compact;
+mod filtered;
 mod visibility;
 
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
