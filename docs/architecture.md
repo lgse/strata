@@ -86,7 +86,11 @@ widget parts without changing their layout. An owned binding snapshot resolves t
 source entry before updating GTK or requesting metadata.
 
 Fast-scroll binds update labels/accessibility and admit viewport-prioritized thumbnails
-and metadata without waiting for scrolling to stop. Cut styling, tooltips and date
+and metadata without waiting for scrolling to stop. Each viewport coalesces a follow-up
+admission pass after a frame, outside layout, so a final scroll cannot strand work
+classified against old allocations. Icons reserves a font-sized details line even when
+empty; metadata truncates within the caption width instead of resizing the grid.
+Cut styling, tooltips and date
 bindings refresh once per GTK frame, outside layout, for visible/overscan items.
 These presentation refreshes never resubmit file work or reset a name label or active
 rename editor. Identical active thumbnail/metadata requests are reused. Missing

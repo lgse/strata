@@ -277,6 +277,39 @@ impl CachedThumbnail {
     }
 }
 
+pub(super) fn preserve_renamed_thumbnail(from: &crate::model::Location, entry: &FileEntry) {
+    let Some((from, to)) = from.native_path().zip(entry.location.native_path()) else {
+        return;
+    };
+    if from == to || from.extension() != to.extension() {
+        return;
+    }
+    let (Some(modified), Some(file_size)) = (
+        known_metadata(&entry.modified_unix_seconds),
+        known_metadata(&entry.size),
+    ) else {
+        return;
+    };
+    THUMBNAIL_CACHE.with_borrow_mut(|cache| {
+        let key = ThumbnailKey {
+            path: from.to_path_buf(),
+            modified: Some(modified),
+            file_size: Some(file_size),
+            thumbnail_size: super::thumbnail_cache::CANONICAL_MAX_EDGE,
+        };
+        if let Some(CacheHit::Ready(texture)) = cache.get(&key) {
+            cache.remove(&key);
+            cache.insert(
+                ThumbnailKey {
+                    path: to.to_path_buf(),
+                    ..key
+                },
+                texture,
+            );
+        }
+    });
+}
+
 #[derive(Default)]
 struct ThumbnailQueue {
     running: usize,

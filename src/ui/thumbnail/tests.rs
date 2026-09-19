@@ -389,6 +389,61 @@ fn persist_queue_bounds_and_drains_oldest_first() {
     assert_eq!(drained, MAX_PERSIST_QUEUE);
 }
 
+#[test]
+fn renamed_thumbnail_rebind_reuses_texture_without_a_request() {
+    gtk_test(
+        "ui::thumbnail::tests::renamed_thumbnail_rebind_reuses_texture_without_a_request",
+        || {
+            for change in ["name", "size", "mtime", "unknown", "extension"] {
+                clear_thumbnail_runtime();
+                let from = Path::new("/rename/before.png");
+                let to = Path::new(if change == "extension" {
+                    "/rename/after.mp4"
+                } else {
+                    "/rename/after.png"
+                });
+                let pixels = glib::Bytes::from_owned(vec![255u8; 4]);
+                let texture: gdk::Texture =
+                    gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &pixels, 4).upcast();
+                let key = ThumbnailKey {
+                    path: from.to_path_buf(),
+                    modified: Some(1),
+                    file_size: Some(1),
+                    thumbnail_size: crate::ui::thumbnail_cache::CANONICAL_MAX_EDGE,
+                };
+                THUMBNAIL_CACHE.with_borrow_mut(|cache| cache.insert(key, texture.clone()));
+                let mut entry = sample_entry(to);
+                match change {
+                    "size" => entry.size = MetadataValue::Known(2),
+                    "mtime" => entry.modified_unix_seconds = MetadataValue::Known(2),
+                    "unknown" => entry.modified_unix_seconds = MetadataValue::Unknown,
+                    _ => {}
+                }
+                super::preserve_renamed_thumbnail(&Location::local(from), &entry);
+                let slot = super::ThumbnailSlot::new(64);
+                set_thumbnail_or_icon(&slot, &entry, crate::assets::icons::PICTURES, 32, 64);
+                if change != "name" {
+                    assert!(slot.texture().is_none());
+                    assert!(
+                        ACTIVE_REQUESTS.with_borrow(
+                            |requests| requests.contains_key(&(slot.as_ptr() as usize))
+                        )
+                    );
+                } else {
+                    assert_eq!(slot.texture(), Some(texture));
+                    assert!(
+                        !ACTIVE_REQUESTS.with_borrow(
+                            |requests| requests.contains_key(&(slot.as_ptr() as usize))
+                        )
+                    );
+                }
+                cancel_thumbnail(slot.as_ptr() as usize);
+            }
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
 fn sample_entry(path: &Path) -> FileEntry {
     FileEntry {
         location: Location::local(path),

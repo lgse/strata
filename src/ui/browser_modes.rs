@@ -643,6 +643,32 @@ impl ModeViews {
         }
     }
 
+    pub(in crate::ui) fn icons_rename_view(&self, depth: usize) -> Option<gtk::Widget> {
+        self.icons_panes
+            .iter()
+            .find(|pane| self.mode == BrowserMode::Icons && pane.depth == depth)
+            .map(Pane::focus_view)
+    }
+
+    pub(in crate::ui) fn icons_rename_row(
+        &self,
+        depth: usize,
+        source_position: usize,
+    ) -> Option<(gtk::Widget, u32, Option<gtk::Widget>)> {
+        let pane = self.icons_panes.iter().find(|pane| pane.depth == depth)?;
+        pane.item_sections().iter().find_map(|section| {
+            let position =
+                view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
+            let row = section.bound_items.borrow().iter().find_map(|bound| {
+                (bound.item.upgrade()?.position() == position)
+                    .then(|| bound.widget.upgrade())
+                    .flatten()
+                    .filter(|row| row.is_mapped() && row.is_ancestor(&section.view))
+            });
+            Some((section.view.clone(), position, row))
+        })
+    }
+
     pub(in crate::ui) fn list_rename_view(&self, depth: usize) -> Option<gtk::ListView> {
         self.list_pane
             .as_ref()
@@ -4372,12 +4398,7 @@ fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
     let Some(label) = super::icons_cell::details_label(card) else {
         return;
     };
-    if let Some(details) = entry_icons_item_info(entry) {
-        set_label_if_changed(&label, &details);
-        label.set_visible(true);
-    } else {
-        label.set_visible(false);
-    }
+    set_label_if_changed(&label, &entry_icons_item_info(entry).unwrap_or_default());
 }
 
 fn format_duration(seconds: u64) -> String {
