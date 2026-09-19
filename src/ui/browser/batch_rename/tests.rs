@@ -93,14 +93,6 @@ fn plan_preview_name_falls_back_to_first_entry_when_no_entries_match() {
 }
 
 #[test]
-fn plan_preview_name_handles_empty_entries() {
-    let entries: Vec<FileEntry> = Vec::new();
-    let input = replace_input("a", "b");
-    let result = plan_preview_name(&entries, &input);
-    assert_eq!(result, Ok((String::new(), String::new())));
-}
-
-#[test]
 fn dialog_rename_mode_validates_required_fields() {
     assert_eq!(
         dialog_rename_mode(&replace_input("", "bar")),

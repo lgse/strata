@@ -748,7 +748,7 @@ fn completed_deletions_remove_entries_without_reloading_the_column() {
 }
 
 #[test]
-fn rename_many_publishes_one_batch_and_skips_no_ops() {
+fn rename_many_publishes_one_batch_and_reports_failures() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
     let parent = Location::local("/fixture");
@@ -782,11 +782,11 @@ fn rename_many_publishes_one_batch_and_skips_no_ops() {
         .count();
     assert_eq!(splices, 1, "both renames publish in a single update");
     assert!(
-        !events
-            .borrow()
-            .iter()
-            .any(|event| matches!(event, BrowserEvent::OperationFailed { .. })),
-        "skipped items must not produce a failure summary"
+        events.borrow().iter().any(|event| matches!(
+            event,
+            BrowserEvent::OperationFailed { message } if message.contains("bravo")
+        )),
+        "invalid planned names must surface in the summary, not be skipped"
     );
 }
 

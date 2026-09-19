@@ -1487,10 +1487,9 @@ impl Browser {
     /// Renames several entries with one provider call, publishing a single
     /// consolidated update and recording one undo entry.
     ///
-    /// Items whose planned name is unchanged, invalid, or duplicated within
-    /// the batch are skipped; on-disk collisions surface as provider failures
-    /// and are reported in the summary. Returns the request id, or `None`
-    /// when every item was skipped.
+    /// Items whose planned name is unchanged or repeated verbatim are skipped;
+    /// invalid or duplicated planned names surface as provider failures in the
+    /// summary. Returns the request id, or `None` when every item was skipped.
     pub fn rename_many(
         self: &Rc<Self>,
         items: Vec<(FileEntry, String)>,
@@ -1499,8 +1498,7 @@ impl Browser {
         let mut batch = Vec::new();
         for (entry, new_name) in items {
             if new_name == entry.display_name
-                || validate_basename(&new_name).is_err()
-                || !seen.insert(new_name.clone())
+                || !seen.insert((entry.location.clone(), new_name.clone()))
             {
                 continue;
             }
