@@ -445,7 +445,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     capture_menu(&menu, &format!("{mode:?}-{place}-multiple"));
                     assert_actions(
                         &menu,
-                        &["Copy", "Duplicate", "Copy paths", "Copy to…"],
+                        &["Copy", "Duplicate", "Copy paths", "Copy to…", "Properties"],
                         &["Rename", "Print", "Open file location"],
                     );
                     if in_trash {

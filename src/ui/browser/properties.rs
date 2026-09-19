@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::directory_summary::{DirectorySummary, summarize_directory_with_progress};
+use crate::adapters::directory_summary::{
+    DirectorySummary, summarize_directory, summarize_directory_with_progress,
+};
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
@@ -755,6 +757,145 @@ impl ViewState {
                 .identity
                 .set_text(info.attribute_string("owner::group").as_deref().unwrap_or("—"));
         });
+    }
+}
+
+impl ViewState {
+    /// Compact multi-item summary: nested item count and total size across
+    /// the whole selection. Permissions, rename, and media stay
+    /// single-item-only; a lone entry falls back to the full dialog.
+    pub(super) fn show_selection_properties(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        if entries.len() < 2 {
+            if let Some(entry) = entries.into_iter().next() {
+                self.show_entry_properties(entry);
+            }
+            return;
+        }
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
+        else {
+            return;
+        };
+
+        let title = format!("{} items selected", entries.len());
+        let layout = modal_layout(crate::assets::icons::INFO, &title, "Selection", "Close");
+        layout.cancel.set_visible(false);
+        layout.confirm.set_visible(false);
+        while let Some(child) = layout.actions.first_child() {
+            layout.actions.remove(&child);
+        }
+
+        let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        details.add_css_class("properties-details");
+        let size_spinner = gtk::Spinner::new();
+        size_spinner.add_css_class("properties-size-spinner");
+        size_spinner.set_valign(gtk::Align::Center);
+        size_spinner.set_tooltip_text(Some("Calculating selection size…"));
+        crate::ui::accessibility::set_label(&size_spinner, "Calculating selection size");
+        size_spinner.set_spinning(true);
+        let size = properties_size_row(&details, &format_file_size(0), &size_spinner);
+        let measurement_warning =
+            crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
+        measurement_warning.set_halign(gtk::Align::End);
+        measurement_warning.set_valign(gtk::Align::Center);
+        measurement_warning.set_focusable(true);
+        measurement_warning.set_visible(false);
+        let items = properties_row_with_suffix(
+            &details,
+            "CONTAINS",
+            "Calculating…",
+            Some(measurement_warning.upcast_ref()),
+        );
+        layout.body.append(&details);
+        let content = layout.content;
+
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_properties_focus(&layer, &window_overlay);
+        window_overlay.add_overlay(&layer);
+
+        let close = layout.close.clone();
+        let closing_layer = layer.clone();
+        let closing_overlay = window_overlay.clone();
+        let closing_root = blurred_root.clone();
+        close.connect_clicked(move |_| {
+            dismiss_modal_layer(&closing_layer, &closing_overlay, closing_root.as_ref());
+        });
+        let escape = gtk::EventControllerKey::new();
+        let escaped_layer = layer.clone();
+        let escaped_overlay = window_overlay.clone();
+        let escaped_root = blurred_root.clone();
+        escape.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk::gdk::Key::Escape {
+                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        layer.add_controller(escape);
+        layer.grab_focus();
+
+        let weak_size = size.downgrade();
+        let weak_spinner = size_spinner.downgrade();
+        let weak_items = items.downgrade();
+        let weak_warning = measurement_warning.downgrade();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let mut total = DirectorySummary::default();
+            let mut unreadable = false;
+            for entry in &entries {
+                if entry.is_directory() {
+                    let directory = gio_file_for_location(&entry.location);
+                    match summarize_directory(&directory).await {
+                        Ok(summary) => {
+                            total.item_count = total.item_count.saturating_add(summary.item_count);
+                            total.total_size = total.total_size.saturating_add(summary.total_size);
+                            total.visible_file_count = total
+                                .visible_file_count
+                                .saturating_add(summary.visible_file_count);
+                            total.visible_folder_count = total
+                                .visible_folder_count
+                                .saturating_add(summary.visible_folder_count);
+                            total.issues.unreadable |= summary.issues.unreadable;
+                            total.issues.timed_out |= summary.issues.timed_out;
+                            total.issues.depth_limited |= summary.issues.depth_limited;
+                        }
+                        Err(_) => unreadable = true,
+                    }
+                } else {
+                    total.item_count = total.item_count.saturating_add(1);
+                    total.visible_file_count = total.visible_file_count.saturating_add(1);
+                    if let crate::model::MetadataValue::Known(size) = entry.size {
+                        total.total_size = total.total_size.saturating_add(size);
+                    }
+                }
+            }
+            total.issues.unreadable |= unreadable;
+            if let Some(spinner) = weak_spinner.upgrade() {
+                spinner.stop();
+                spinner.set_visible(false);
+            }
+            let Some(size) = weak_size.upgrade() else {
+                return;
+            };
+            let prefix = if total.truncated() { "≥ " } else { "" };
+            size.set_text(&format!("{prefix}{}", format_file_size(total.total_size)));
+            if let Some(items) = weak_items.upgrade() {
+                items.set_text(&directory_counts_label(&total));
+            }
+            if let Some(warning) = weak_warning.upgrade() {
+                set_measurement_warning(&warning, measurement_warning_text(&total).as_deref());
+            }
+        });
+        let task = Rc::new(task);
+        let closing_task = task.clone();
+        layer.connect_sensitive_notify(move |layer| {
+            if !layer.is_sensitive() {
+                closing_task.abort();
+            }
+        });
+        layer.connect_unrealize(move |_| task.abort());
     }
 }
 
