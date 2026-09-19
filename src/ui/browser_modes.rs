@@ -4096,7 +4096,7 @@ fn assemble_list_row() -> gtk::Box {
     name.add_css_class("alternate-rename-label");
     name.set_xalign(0.0);
     name.set_hexpand(true);
-    name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     // Keep the label's natural width from widening this fixed-width table cell.
     name.set_max_width_chars(1);
     let field = gtk::Entry::new();

@@ -757,7 +757,7 @@ fn result_row(
     let name = gtk::Label::builder()
         .label(&item.name)
         .xalign(0.0)
-        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .ellipsize(gtk::pango::EllipsizeMode::Middle)
         .build();
     let path = relative_result_path(result_root, &item.path);
     let origin = gtk::Label::builder()
