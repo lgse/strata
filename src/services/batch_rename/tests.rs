@@ -140,6 +140,72 @@ fn format_date_stamps_every_item_with_the_given_timestamp() {
 }
 
 #[test]
+fn format_counter_can_start_at_zero() {
+    let planned = plan_batch_rename(
+        &names(&["render.png", "render2.png"]),
+        &BatchRenameMode::Format {
+            custom_name: "frame".to_owned(),
+            style: FormatStyle::Counter,
+            start_number: 0,
+            before_name: false,
+        },
+        "2026-09-15",
+    );
+    assert_eq!(planned, names(&["frame 00000.png", "frame 00001.png"]));
+}
+
+#[test]
+fn format_index_can_start_at_zero() {
+    let planned = plan_batch_rename(
+        &names(&["render.png", "render2.png"]),
+        &BatchRenameMode::Format {
+            custom_name: "frame".to_owned(),
+            style: FormatStyle::Index,
+            start_number: 0,
+            before_name: false,
+        },
+        "2026-09-15",
+    );
+    assert_eq!(planned, names(&["frame 0.png", "frame 1.png"]));
+}
+
+#[test]
+fn format_date_honors_custom_start_number() {
+    let planned = plan_batch_rename(
+        &names(&["a.jpg", "b.png"]),
+        &BatchRenameMode::Format {
+            custom_name: "archive".to_owned(),
+            style: FormatStyle::Date,
+            start_number: 10,
+            before_name: false,
+        },
+        "2026-09-15",
+    );
+    assert_eq!(
+        planned,
+        names(&["archive 2026-09-15 10.jpg", "archive 2026-09-15 11.png"])
+    );
+}
+
+#[test]
+fn format_date_before_name_honors_start_number() {
+    let planned = plan_batch_rename(
+        &names(&["a.jpg", "b.png"]),
+        &BatchRenameMode::Format {
+            custom_name: "log".to_owned(),
+            style: FormatStyle::Date,
+            start_number: 0,
+            before_name: true,
+        },
+        "2026-09-15",
+    );
+    assert_eq!(
+        planned,
+        names(&["2026-09-15 0 log.jpg", "2026-09-15 1 log.png"])
+    );
+}
+
+#[test]
 fn format_with_empty_name_changes_nothing() {
     let input = names(&["a.jpg"]);
     let planned = plan_batch_rename(

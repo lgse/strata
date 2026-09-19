@@ -10,6 +10,9 @@
 //!
 //! - [`ViewState::show_batch_rename_dialog`]
 
+#[cfg(test)]
+mod tests;
+
 use crate::model::FileEntry;
 use crate::services::{BatchRenameMode, FormatStyle, plan_batch_rename};
 use crate::ui::browser::ViewState;
@@ -111,6 +114,7 @@ impl ViewState {
         layout.body.append(&format_box);
 
         let example = form_label("");
+        example.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         layout.body.append(&example);
 
         let entries_for_preview = entries.clone();
@@ -124,6 +128,7 @@ impl ViewState {
         let start_for_preview = start_entry.clone();
         let format_before_for_preview = format_before.clone();
         let mode_for_preview = mode.clone();
+        let confirm_for_preview = layout.confirm.clone();
         let refresh_preview = Rc::new(move || {
             let find = find_for_preview.text();
             let replace_with = replace_for_preview.text();
@@ -141,15 +146,22 @@ impl ViewState {
                 start: start.as_str(),
                 format_before: format_before_for_preview.get(),
             };
-            let Some(planned) = plan_preview_name(&entries_for_preview, &input) else {
-                preview.set_text("Enter text to preview the new names.");
-                return;
-            };
-            let (old, new) = planned;
-            if old == new {
-                preview.set_text("Names are unchanged.");
-            } else {
-                preview.set_text(&format!("{old} → {new}"));
+            let is_valid = dialog_rename_mode(&input).is_ok();
+            confirm_for_preview.set_sensitive(is_valid);
+            match plan_preview_name(&entries_for_preview, &input) {
+                Ok((old, new)) => {
+                    if old == new {
+                        preview.set_text("Names are unchanged.");
+                    } else {
+                        preview.set_text(&format!("{old} → {new}"));
+                    }
+                }
+                Err(RenameDialogError::BadStart) => {
+                    preview.set_text("Enter a number.");
+                }
+                Err(_) => {
+                    preview.set_text("Enter text to preview the new names.");
+                }
             }
         });
         for field in [
@@ -160,7 +172,11 @@ impl ViewState {
             &start_entry,
         ] {
             let refresh = refresh_preview.clone();
-            field.connect_changed(move |_| refresh());
+            let field_for_change = field.clone();
+            field.connect_changed(move |_| {
+                clear_required_flag(&field_for_change);
+                refresh();
+            });
         }
 
         let replace_for_mode = replace_box.clone();
@@ -187,6 +203,9 @@ impl ViewState {
                     return;
                 }
                 mode.set(selected);
+                clear_required_flag(&find_for_mode);
+                clear_required_flag(&text_for_mode);
+                clear_required_flag(&base_for_mode);
                 replace_for_mode.set_visible(selected == RenameDialogMode::Replace);
                 add_for_mode.set_visible(selected == RenameDialogMode::Add);
                 format_for_mode.set_visible(selected == RenameDialogMode::Format);
@@ -226,6 +245,8 @@ impl ViewState {
                 refresh();
             });
         }
+        let start_label_for_style = start_label.clone();
+        let start_entry_for_style = start_entry.clone();
         for (option, format_style) in style_options.into_iter().zip([
             FormatStyle::Counter,
             FormatStyle::Index,
@@ -233,11 +254,16 @@ impl ViewState {
         ]) {
             let style = style.clone();
             let refresh = refresh_preview.clone();
+            let start_label = start_label_for_style.clone();
+            let start_entry = start_entry_for_style.clone();
             option.connect_toggled(move |option| {
                 if !option.is_active() {
                     return;
                 }
                 style.set(format_style);
+                let show_start = format_style != FormatStyle::Date;
+                start_label.set_visible(show_start);
+                start_entry.set_visible(show_start);
                 refresh();
             });
         }
@@ -370,7 +396,7 @@ struct RenameDialogInput<'a> {
     format_before: bool,
 }
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RenameDialogError {
     MissingFind,
     MissingText,
@@ -402,29 +428,46 @@ fn dialog_rename_mode(input: &RenameDialogInput) -> Result<BatchRenameMode, Rena
             if input.base.is_empty() {
                 return Err(RenameDialogError::MissingBase);
             }
-            let Ok(start_number) = input.start.parse::<usize>() else {
-                return Err(RenameDialogError::BadStart);
+            let start_number = if input.style == FormatStyle::Date {
+                1
+            } else {
+                match input.start.parse::<usize>() {
+                    Ok(num) => num,
+                    Err(_) => return Err(RenameDialogError::BadStart),
+                }
             };
             Ok(BatchRenameMode::Format {
                 custom_name: input.base.to_owned(),
                 style: input.style,
-                start_number: start_number.max(1),
+                start_number,
                 before_name: input.format_before,
             })
         }
     }
 }
 
-/// Previews the first entry's planned name for the example line.
-fn plan_preview_name(entries: &[FileEntry], input: &RenameDialogInput) -> Option<(String, String)> {
-    let first = entries.first()?;
-    let planned_mode = dialog_rename_mode(input).ok()?;
-    let planned = plan_batch_rename(
-        std::slice::from_ref(&first.display_name),
-        &planned_mode,
-        &batch_rename_timestamp(),
-    );
-    Some((first.display_name.clone(), planned.into_iter().next()?))
+/// Previews the first changed entry's planned name for the example line, or
+/// falls back to the first entry if none are changed.
+fn plan_preview_name(
+    entries: &[FileEntry],
+    input: &RenameDialogInput,
+) -> Result<(String, String), RenameDialogError> {
+    let planned_mode = dialog_rename_mode(input)?;
+    let names: Vec<String> = entries
+        .iter()
+        .map(|entry| entry.display_name.clone())
+        .collect();
+    let planned = plan_batch_rename(&names, &planned_mode, &batch_rename_timestamp());
+    for (entry, new_name) in entries.iter().zip(planned) {
+        if entry.display_name != new_name {
+            return Ok((entry.display_name.clone(), new_name));
+        }
+    }
+    let first = entries
+        .first()
+        .map(|entry| entry.display_name.clone())
+        .unwrap_or_default();
+    Ok((first.clone(), first))
 }
 
 fn batch_rename_timestamp() -> String {
@@ -439,4 +482,9 @@ fn flag_required(field: &gtk::Entry, message: &str) {
     field.add_css_class("error");
     field.set_tooltip_text(Some(message));
     field.grab_focus();
+}
+
+fn clear_required_flag(field: &gtk::Entry) {
+    field.remove_css_class("error");
+    field.set_tooltip_text(None);
 }

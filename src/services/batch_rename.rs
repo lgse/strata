@@ -90,7 +90,7 @@ pub fn plan_batch_rename(names: &[String], mode: &BatchRenameMode, timestamp: &s
                         FormatStyle::Date => (timestamp.to_owned(), true),
                     };
                     if numbered {
-                        let position = index + 1;
+                        let position = start_number.saturating_add(index);
                         if *before_name {
                             format!("{stamp} {position} {custom_name}{extension}")
                         } else {
