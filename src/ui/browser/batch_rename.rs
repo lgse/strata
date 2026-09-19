@@ -56,6 +56,7 @@ impl ViewState {
             &entry_kind_summary(&entries),
             "Rename",
         );
+        layout.content.set_size_request(480, -1);
 
         let mode = Rc::new(Cell::new(RenameDialogMode::Replace));
         let (mode_control, mode_options) =
@@ -114,7 +115,9 @@ impl ViewState {
         layout.body.append(&format_box);
 
         let example = form_label("");
+        example.set_hexpand(true);
         example.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        example.set_max_width_chars(1);
         layout.body.append(&example);
 
         let entries_for_preview = entries.clone();
@@ -152,15 +155,20 @@ impl ViewState {
                 Ok((old, new)) => {
                     if old == new {
                         preview.set_text("Names are unchanged.");
+                        preview.set_tooltip_text(None);
                     } else {
-                        preview.set_text(&format!("{old} → {new}"));
+                        let text = format!("{old} → {new}");
+                        preview.set_text(&text);
+                        preview.set_tooltip_text(Some(&text));
                     }
                 }
                 Err(RenameDialogError::BadStart) => {
                     preview.set_text("Enter a number.");
+                    preview.set_tooltip_text(None);
                 }
                 Err(_) => {
                     preview.set_text("Enter text to preview the new names.");
+                    preview.set_tooltip_text(None);
                 }
             }
         });
