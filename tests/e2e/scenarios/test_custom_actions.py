@@ -236,10 +236,6 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     applied = script.text
     assert applied != "print('my draft')"
     strata.pointer.click(editor.find(role="page tab", name="Behavior"))
-    menu_item = strata.wait(
-        lambda: editor.find(role="toggle button", name="Menu item"), "placement control"
-    )
-    strata.pointer.click(menu_item)
     strata.pointer.click(editor.find(role="button", name="Create action"))
     action_dir = strata.environment.config_home / "strata/actions/checksum-job"
     strata.wait(lambda: (action_dir / "action.toml").exists(), "saved example")
@@ -259,6 +255,18 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     )
     original = strata.fixture.path("todo.txt").read_bytes()
     strata.open_context_menu("todo.txt")
+    actions = strata.menu_item("Actions")
+    strata.pointer.move_to(*actions.screen_bounds().center)
+    item = strata.menu_item("Checksum job")
+    strata.pointer.move_to(*item.screen_bounds().center)
+    strata.wait(lambda: item.is_rendered(), "submenu stays open while entering it")
+    strata.pointer.move_to(*strata.menu_item("Cut").screen_bounds().center)
+    strata.wait(
+        lambda: strata.window.find(role="menu item", name="Checksum job") is None,
+        "submenu closes when leaving its branch",
+    )
+    assert strata.context_menu() is not None
+    strata.pointer.move_to(*actions.screen_bounds().center)
     strata.choose_menu_item("Checksum job")
     checksum = strata.fixture.path("todo.txt.sha256")
     strata.wait(checksum.exists, "the recipe to create a checksum")
@@ -275,7 +283,18 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     strata.wait(lambda: strata.window.find(role="label", name_matches="Created .*todo.txt.sha256") is None, "hidden output")
     strata.pointer.click(strata.window.find(role="button", name="Minimize"))
     strata.open_context_menu("todo.txt")
-    strata.choose_menu_item("Checksum job")
+    actions = strata.menu_item("Actions")
+    strata.keyboard.press("Home")
+    for _ in strata.menu_items():
+        if actions.has_state("focused"):
+            break
+        strata.keyboard.press("Down")
+    assert actions.has_state("focused")
+    strata.keyboard.press("Return")
+    strata.menu_item("Checksum job")
+    strata.keyboard.press("Home")
+    strata.keyboard.press("Return")
+    strata.wait_for_menu_closed()
     strata.wait(lambda: strata.window.find(name="2 jobs finished · failures"), "failed rerun in history")
     strata.wait(lambda: strata.window.find(role="label", name="Failed"), "failed job row")
     assert strata.window.find(role="label", name="Completed") is not None

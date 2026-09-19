@@ -204,6 +204,11 @@ Opening the folder background menu offers the same rules with the folder itself 
 the single input. Actions are only offered for native paths: Trash, GVfs, and other
 non-native locations are excluded in this release.
 
+Custom actions occupy a separate section between the opening/printing commands
+and Cut/Copy. Hover over **Actions** to open its submenu; it stays open while
+moving into the submenu and closes when the pointer leaves that branch. Clicking
+or keyboard activation also opens it.
+
 ## How an invocation runs
 
 Nothing is ever passed through a shell. Programs and interpreters receive argv
@@ -323,7 +328,8 @@ wait for subprocesses that need the invocation's context or captured output.
 
 Finished jobs stay in the dashboard for the current session, including successes,
 failures, and cancellations. **Details** expands captured output and **Hide**
-collapses it. **Minimize** keeps history; **Dismiss** removes one finished job,
+collapses it. These controls use icon buttons with tooltips and accessible names.
+**Minimize** keeps history; **Dismiss** removes one finished job,
 and **Clear finished** removes finished history without disturbing active work.
 
 Cancelling stops the work that has not happened yet. It does not roll back changes

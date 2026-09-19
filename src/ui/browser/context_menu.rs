@@ -444,7 +444,7 @@ pub(in crate::ui) fn install_folder_context_menu(
 
     let action_section =
         actions::ActionMenuSection::new(actions::ActionMenuStyle::Folder, &popover);
-    content.append(action_section.widget());
+    content.insert_child_after(action_section.widget(), Some(&open_terminal));
 
     let popover_for_trigger = popover.clone();
     let browser_for_trigger = state.browser.clone();
@@ -585,6 +585,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     content.append(&header_separator);
 
     let single = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let single_open = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    single
+        .bind_property("visible", &single_open, "visible")
+        .sync_create()
+        .build();
     let open = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "↵");
     let open_with = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
     let open_file_location =
@@ -628,18 +633,19 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let compress = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
     let extract = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract here", "");
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
-    single.append(&open);
-    single.append(&open_with);
-    single.append(&open_file_location);
-    single.append(&run);
-    single.append(&open_terminal);
-    single.append(&preview);
-    single.append(&print);
-    single.append(&restore);
-    single.append(&extract);
-    single.append(&extract_to);
+    single_open.append(&open);
+    single_open.append(&open_with);
+    single_open.append(&open_file_location);
+    single_open.append(&run);
+    single_open.append(&open_terminal);
+    single_open.append(&preview);
+    single_open.append(&restore);
+    single_open.append(&extract);
+    single_open.append(&extract_to);
+    single_open.append(&pin);
+    single_open.append(&print);
+    content.append(&single_open);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    single.append(&pin);
     single.append(&cut);
     single.append(&copy);
     single.append(&duplicate);
@@ -662,6 +668,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     content.append(&single);
 
     let multiple = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let multiple_open = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    multiple
+        .bind_property("visible", &multiple_open, "visible")
+        .sync_create()
+        .build();
     let open_multiple = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "Enter");
     let open_with_multiple =
         item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
@@ -689,9 +700,11 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     permanent_delete_multiple.add_css_class("danger");
     let compress_multiple =
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
-    multiple.append(&open_multiple);
-    multiple.append(&open_with_multiple);
-    multiple.append(&restore_multiple);
+    multiple_open.append(&open_multiple);
+    multiple_open.append(&open_with_multiple);
+    multiple_open.append(&restore_multiple);
+    content.insert_child_after(&multiple_open, Some(&single_open));
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
     multiple.append(&duplicate_multiple);
@@ -715,7 +728,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     bind_column_context_owner(state, &popover, depth);
 
     let action_section = actions::ActionMenuSection::new(actions::ActionMenuStyle::Item, &popover);
-    content.append(action_section.widget());
+    content.insert_child_after(action_section.widget(), Some(&multiple_open));
 
     let target = Rc::new(RefCell::new(None::<ContextTarget>));
     let open_with_selection = Rc::new(RefCell::new(None::<OpenWithSelection>));

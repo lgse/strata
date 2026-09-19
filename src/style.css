@@ -5701,10 +5701,9 @@ popover.settings-search-popover.background {
   border-radius: 4px;
   box-shadow: none;
   color: @theme_text;
-  font-size: 0.85em;
-  min-height: 22px;
-  min-width: 0;
-  padding: 0 6px;
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0;
 }
 
 .job-action:hover {

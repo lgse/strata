@@ -277,7 +277,7 @@ fn dashboard_button(root: &impl IsA<gtk::Widget>, label: &str) -> gtk::Button {
     descendants(root)
         .into_iter()
         .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-        .find(|button| button.label().as_deref() == Some(label))
+        .find(|button| button.tooltip_text().as_deref() == Some(label))
         .unwrap_or_else(|| panic!("missing dashboard action: {label}"))
 }
 
@@ -355,7 +355,7 @@ fn finished_jobs_and_details_survive_the_indicator_builder() {
                 !descendants(&popover)
                     .into_iter()
                     .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-                    .any(|button| button.label().as_deref() == Some("Cancel"))
+                    .any(|button| button.tooltip_text().as_deref() == Some("Cancel"))
             );
             dashboard_button(&popover, "Clear finished").emit_clicked();
             assert_eq!(service.finished_count(), 0);

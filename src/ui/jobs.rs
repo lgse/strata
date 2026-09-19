@@ -109,8 +109,7 @@ impl JobsIndicator {
             .hexpand(true)
             .build();
         title.add_css_class("shortcut-reference-title");
-        let minimize = gtk::Button::with_label("Minimize");
-        minimize.add_css_class("shortcut-reference-close");
+        let minimize = job_button("Minimize", crate::assets::icons::MINUS);
         header.append(&title);
         header.append(&minimize);
         body.append(&header);
@@ -128,8 +127,7 @@ impl JobsIndicator {
         body.append(&scroll);
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         footer.set_halign(gtk::Align::End);
-        let clear = gtk::Button::with_label("Clear finished");
-        clear.add_css_class("shortcut-reference-close");
+        let clear = job_button("Clear finished", crate::assets::icons::TRASH);
         clear.set_visible(false);
         footer.append(&clear);
         body.append(&footer);
@@ -481,8 +479,7 @@ fn job_controls(
             } else {
                 "Cancel"
             };
-            let button = gtk::Button::with_label(label);
-            button.add_css_class("job-action");
+            let button = job_button(label, crate::assets::icons::X);
             let service = state.service.clone();
             let id = snapshot.id;
             let refresh = refresh.clone();
@@ -495,8 +492,14 @@ fn job_controls(
         JobStatus::Cancelling => {}
         _ => {
             let expanded = state.expanded.borrow().contains(&snapshot.id);
-            let details = gtk::Button::with_label(if expanded { "Hide" } else { "Details" });
-            details.add_css_class("job-action");
+            let details = job_button(
+                if expanded { "Hide" } else { "Details" },
+                if expanded {
+                    crate::assets::icons::EYE_OFF
+                } else {
+                    crate::assets::icons::EYE
+                },
+            );
             let id = snapshot.id;
             let expanded_state = state.expanded.clone();
             let details_refresh = refresh.clone();
@@ -512,8 +515,7 @@ fn job_controls(
             });
             buttons.push(details);
 
-            let dismiss = gtk::Button::with_label("Dismiss");
-            dismiss.add_css_class("job-action");
+            let dismiss = job_button("Dismiss", crate::assets::icons::X);
             let service = state.service.clone();
             let id = snapshot.id;
             let dismiss_refresh = refresh.clone();
@@ -525,6 +527,19 @@ fn job_controls(
         }
     }
     buttons
+}
+
+fn job_button(label: &str, icon: &str) -> gtk::Button {
+    let image = crate::assets::primary_icon(icon, crate::assets::CHROME_ICON_PX);
+    image.set_halign(gtk::Align::Center);
+    image.set_valign(gtk::Align::Center);
+    let button = gtk::Button::builder()
+        .child(&image)
+        .tooltip_text(label)
+        .build();
+    button.add_css_class("job-action");
+    crate::ui::accessibility::set_label(&button, label);
+    button
 }
 
 pub(crate) fn indicator_label(service: &JobService) -> String {

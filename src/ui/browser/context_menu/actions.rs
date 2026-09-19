@@ -55,7 +55,7 @@ impl ActionMenuSection {
         submenu_scroll.add_css_class("context-menu-scroll");
         let submenu_popover = gtk::Popover::builder()
             .has_arrow(false)
-            .autohide(true)
+            .autohide(false)
             .position(gtk::PositionType::Right)
             .child(&submenu_scroll)
             .build();
@@ -64,21 +64,21 @@ impl ActionMenuSection {
 
         let submenu_button = match style {
             ActionMenuStyle::Item => item_context_option(icons::PLAY, "Actions", ""),
-            ActionMenuStyle::Folder => context_menu_option(icons::PLAY, "Actions ▸", ""),
+            ActionMenuStyle::Folder => context_menu_option(icons::PLAY, "Actions", ""),
         };
+        if let Some(row) = submenu_button.child().and_downcast::<gtk::Box>() {
+            row.append(&crate::assets::primary_icon(icons::CHEVRON_RIGHT, 14));
+        }
         submenu_button.set_visible(false);
         let weak_popover = submenu_popover.downgrade();
         submenu_button.connect_clicked(move |button| {
             let Some(popover) = weak_popover.upgrade() else {
                 return;
             };
-            if popover.parent().is_none() {
-                popover.set_parent(button);
-            }
-            if !popover.is_visible() {
-                popover.popup();
-            }
+            show_submenu(button, &popover);
+            keyboard::focus_first_or_last_menu_item(&popover, true);
         });
+        install_hover(&submenu_button, &submenu_popover);
         container.append(&submenu_button);
         submenu_popover.set_parent(&submenu_button);
 
@@ -263,6 +263,63 @@ impl ActionMenuSection {
             button.set_tooltip_text(action.action.unavailable_reason());
         }
         button
+    }
+}
+
+fn install_hover(button: &gtk::Button, popover: &gtk::Popover) {
+    let row_motion = gtk::EventControllerMotion::new();
+    let submenu_motion = gtk::EventControllerMotion::new();
+    let pending = Rc::new(std::cell::Cell::new(false));
+    for controller in [&row_motion, &submenu_motion] {
+        let row = row_motion.downgrade();
+        let submenu = submenu_motion.downgrade();
+        let popover = popover.downgrade();
+        let pending = pending.clone();
+        controller.connect_contains_pointer_notify(move |motion| {
+            if motion.contains_pointer() {
+                if let (Some(button), Some(popover)) = (
+                    motion.widget().and_downcast::<gtk::Button>(),
+                    popover.upgrade(),
+                ) {
+                    show_submenu(&button, &popover);
+                }
+                return;
+            }
+            if pending.replace(true) {
+                return;
+            }
+            let (row, submenu, popover, pending) = (
+                row.clone(),
+                submenu.clone(),
+                popover.clone(),
+                pending.clone(),
+            );
+            // Native surfaces deliver leave before enter; evaluate both after crossing.
+            gtk::glib::idle_add_local_once(move || {
+                pending.set(false);
+                if !row
+                    .upgrade()
+                    .is_some_and(|motion| motion.contains_pointer())
+                    && !submenu
+                        .upgrade()
+                        .is_some_and(|motion| motion.contains_pointer())
+                    && let Some(popover) = popover.upgrade()
+                {
+                    popover.popdown();
+                }
+            });
+        });
+    }
+    button.add_controller(row_motion);
+    popover.add_controller(submenu_motion);
+}
+
+fn show_submenu(button: &gtk::Button, popover: &gtk::Popover) {
+    if popover.parent().is_none() {
+        popover.set_parent(button);
+    }
+    if !popover.is_visible() {
+        popover.popup();
     }
 }
 
