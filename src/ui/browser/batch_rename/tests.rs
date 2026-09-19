@@ -14,6 +14,7 @@ fn test_entry(name: &str) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,

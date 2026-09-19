@@ -5,7 +5,35 @@ from __future__ import annotations
 
 import pytest
 
+from harness.browser import ENTRY_ROLES
 from harness.modes import ALL_MODES
+
+
+def _scroll_pane(node):
+    for ancestor in node.ancestors():
+        if ancestor.role == "scroll pane":
+            return ancestor
+    raise AssertionError("the node should sit inside a scroll viewport")
+
+
+def _entry_name(row):
+    label = next((node for _, node in row.walk() if node.role == "label"), None)
+    return label.name if label is not None and label.name else row.name
+
+
+def _visible_rows(container, viewport):
+    viewport_bounds = viewport.screen_bounds()
+    origin = container.screen_bounds().y - container.window_bounds().y
+    for row in container.children:
+        if row.role not in ENTRY_ROLES:
+            continue
+        bounds = row.window_bounds()
+        if (
+            bounds.height > 0
+            and bounds.y + origin >= viewport_bounds.y
+            and bounds.y + origin + bounds.height <= viewport_bounds.y + viewport_bounds.height
+        ):
+            yield row
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -271,3 +299,148 @@ def test_starting_a_drag_cancels_a_folder_peek(strata):
         )
     finally:
         strata.pointer.connection.button(1, False)
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_dragging_from_a_clipped_column_in_a_narrow_window(strata):
+    fixture = strata.fixture
+    strata.open_directory("documents")
+
+    bounds = strata.window.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 600, bounds.height)
+    strata.wait(lambda: strata.window.window_bounds().width == 600, "a narrow window")
+
+    source = strata.entry("notes.txt", directory="documents")
+    destination = strata.environment.home / "notes.txt"
+
+    strata.pointer.drag(source, strata.sidebar_button("Home"))
+
+    strata.wait(lambda: destination.exists(), "the dragged file to arrive in Home")
+    strata.wait(
+        lambda: not fixture.path("documents/notes.txt").exists(),
+        "the dragged file to leave the clipped column",
+    )
+    assert destination.read_text() == "notes\n"
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_dragging_a_file_to_the_strip_edge_scrolls_columns_in(strata):
+    fixture = strata.fixture
+    nested = fixture.path("documents/deep/deeper")
+    nested.mkdir(parents=True)
+    (nested / "cargo.txt").write_text("cargo\n")
+
+    bounds = strata.window.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 640, 360)
+    strata.wait(lambda: strata.window.window_bounds().width == 640, "a narrow window")
+
+    strata.open_directory("documents")
+    strata.open_directory("deep", directory="documents")
+    strata.open_directory("deeper", directory="deep")
+    strata.settle(strata.pane("deeper"))
+
+    strip = _scroll_pane(strata.pane("deeper")).screen_bounds()
+    listing = _scroll_pane(strata.entry_container("deeper")).screen_bounds()
+    edge = (strip.x + 6, listing.y + listing.height - 4)
+
+    source = strata.entry("cargo.txt", "deeper")
+    strata.pointer.drag_points(strata.pointer.drag_origin(source), edge, release=False)
+    try:
+        root = fixture.root.name
+
+        def root_column_under_pointer():
+            for pane in strata.containers():
+                if pane.name == root:
+                    bounds = pane.screen_bounds()
+                    if bounds.x <= edge[0] < bounds.x + bounds.width:
+                        return pane
+            return None
+
+        strata.wait(
+            root_column_under_pointer,
+            "the parked drag to edge-scroll the root column under the pointer",
+        )
+        # Content moved under the held pointer; a nudge refreshes the drop site.
+        strata.pointer.move_to(edge[0], edge[1] - 4)
+    finally:
+        strata.pointer.connection.button(1, False)
+
+    strata.wait(
+        lambda: fixture.path("cargo.txt").exists(),
+        "the release to drop the file into the revealed root column",
+    )
+    assert not (nested / "cargo.txt").exists()
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_dragging_a_file_to_the_column_edge_scrolls_its_listing(strata):
+    fixture = strata.fixture
+    documents = fixture.path("documents")
+    for index in range(300):
+        (documents / f"{index:03}.txt").write_text("x\n")
+    strata.open_directory("documents")
+
+    container = strata.entry_container("documents")
+    assert container is not None
+    viewport = _scroll_pane(container)
+    bounds = viewport.screen_bounds()
+
+    source = strata.entry("000.txt", "documents")
+    strata.pointer.drag_points(
+        strata.pointer.drag_origin(source),
+        (bounds.center[0], bounds.y + bounds.height - 8),
+        release=False,
+    )
+    try:
+        strata.wait(
+            lambda: any(
+                _entry_name(row) >= "040.txt"
+                for row in _visible_rows(container, viewport)
+            ),
+            "the parked drag to edge-scroll the column's listing",
+        )
+    finally:
+        strata.pointer.connection.button(1, False)
+
+    strata.wait(
+        lambda: fixture.path("documents/000.txt").exists(),
+        "the file to stay in its own directory after the drag",
+    )
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_dropping_on_partially_visible_column_moves_file_without_jumping(strata):
+    fixture = strata.fixture
+    deep = fixture.path("documents/deep")
+    deep.mkdir(parents=True)
+    (deep / "cargo.txt").write_text("cargo\n")
+
+    bounds = strata.window.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 640, 360)
+    strata.wait(lambda: strata.window.window_bounds().width == 640, "a narrow window")
+
+    strata.open_directory("documents")
+    strata.open_directory("deep", directory="documents")
+    strata.settle(strata.pane("deep"))
+
+    documents_pane = strata.pane("documents")
+    assert documents_pane is not None
+
+    source = strata.entry("cargo.txt", "deep")
+    doc_bounds = documents_pane.screen_bounds()
+    strip = _scroll_pane(strata.pane("deep")).screen_bounds()
+    drop_x = max(doc_bounds.x + 10, strip.x + 10)
+    drop_y = doc_bounds.y + doc_bounds.height // 2
+
+    strata.pointer.drag_points(
+        strata.pointer.drag_origin(source),
+        (drop_x, drop_y),
+        release=True,
+    )
+
+    strata.wait(
+        lambda: fixture.path("documents/cargo.txt").exists(),
+        "the file to arrive in documents directory",
+    )
+    assert not (deep / "cargo.txt").exists()
+    assert strata.pane("deep") is not None

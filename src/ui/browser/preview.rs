@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use super::columns::ColumnSpan;
+use super::columns::{COLUMN_TRANSITION, ColumnSpan};
 use super::*;
+use crate::ui::motion::{animations_enabled, emphasized_deceleration};
+use std::time::Instant;
 
 impl ViewState {
     pub(super) fn column_span(&self, depth: usize) -> Option<ColumnSpan> {
@@ -90,6 +92,55 @@ impl BrowserView {
         self.state.columns_widget.set_margin_end(0);
     }
 
+    // Shrinking the preserved margin re-clamps the scroll offset each frame,
+    // so columns slide into the reclaimed viewport instead of snapping.
+    fn release_preview_scroll_space(&self, preview: &glib::WeakRef<gtk::Revealer>) {
+        let margin = self.state.columns_widget.margin_end();
+        if margin <= 0 {
+            return;
+        }
+        let animation_id = self
+            .state
+            .horizontal_scroll_generation
+            .get()
+            .saturating_add(1);
+        self.state.horizontal_scroll_generation.set(animation_id);
+        if !animations_enabled() {
+            self.state.columns_widget.set_margin_end(0);
+            return;
+        }
+        let started = Instant::now();
+        let generation = self.state.horizontal_scroll_generation.clone();
+        let preview = preview.clone();
+        let weak = self.downgrade();
+        let _tick = self.state.scroller.add_tick_callback(move |_, _| {
+            let Some(view) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let reopened = preview
+                .upgrade()
+                .is_some_and(|preview| preview.reveals_child());
+            if reopened
+                || generation.get() != animation_id
+                || view.view_mode() != BrowserMode::Columns
+            {
+                return glib::ControlFlow::Break;
+            }
+            let progress =
+                (started.elapsed().as_secs_f64() / COLUMN_TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
+            let eased = emphasized_deceleration(progress);
+            view.state
+                .columns_widget
+                .set_margin_end((f64::from(margin) * (1.0 - eased)).round() as i32);
+            if progress >= 1.0 {
+                view.state.columns_widget.set_margin_end(0);
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
+        });
+    }
+
     pub(in crate::ui) fn bind_preview_scrolling(&self, preview: &gtk::Revealer) {
         let weak = self.downgrade();
         let weak_preview = preview.downgrade();
@@ -150,6 +201,7 @@ impl BrowserView {
                         .max(0);
                         let gap = view.state.columns_widget.margin_end().min(maximum_gap);
                         view.state.columns_widget.set_margin_end(gap);
+                        view.release_preview_scroll_space(&weak_preview);
                     }
                 });
             });

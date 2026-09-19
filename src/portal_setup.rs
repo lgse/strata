@@ -4,6 +4,7 @@
 mod tests;
 
 mod omarchy;
+pub(crate) mod udiskie;
 
 use std::{
     env, fs, io,
@@ -13,12 +14,14 @@ use std::{
         fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
     },
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::Stdio,
 };
 
 use serde::{Deserialize, Serialize};
 
 use glib::{KeyFile, KeyFileFlags};
+
+pub(crate) use omarchy::omarchy_is_present;
 
 const FILE_CHOOSER_KEY: &str = "org.freedesktop.impl.portal.FileChooser";
 const PORTAL_FILE: &str = "strata.portal";
@@ -276,7 +279,8 @@ fn find_file_manager_conflict(service_directory: &Path) -> Result<Option<String>
 }
 
 fn query_default_file_manager() -> Option<String> {
-    Command::new("xdg-mime")
+    crate::trusted_command::command("xdg-mime")
+        .ok()?
         .args(["query", "default", INODE_DIRECTORY])
         .output()
         .ok()
@@ -287,7 +291,8 @@ fn query_default_file_manager() -> Option<String> {
 }
 
 fn set_default_file_manager() -> Result<(), String> {
-    let status = Command::new("xdg-mime")
+    let status = crate::trusted_command::command("xdg-mime")
+        .map_err(|error| format!("Could not set the default file manager: {error}"))?
         .args(["default", DESKTOP_ID, INODE_DIRECTORY])
         .status()
         .map_err(|error| format!("Could not set the default file manager: {error}"))?;
@@ -304,7 +309,8 @@ fn set_default_file_manager() -> Result<(), String> {
 }
 
 fn restore_default_file_manager(previous: &str) -> Result<(), String> {
-    let status = Command::new("xdg-mime")
+    let status = crate::trusted_command::command("xdg-mime")
+        .map_err(|error| format!("Could not restore the previous file manager: {error}"))?
         .args(["default", previous, INODE_DIRECTORY])
         .status()
         .map_err(|error| format!("Could not restore the previous file manager: {error}"))?;
@@ -315,8 +321,9 @@ fn restore_default_file_manager(previous: &str) -> Result<(), String> {
 }
 
 fn reload_dbus() {
-    let _ = Command::new("gdbus")
-        .args([
+    let _ = run_trusted(
+        "gdbus",
+        &[
             "call",
             "--session",
             "--dest",
@@ -325,10 +332,8 @@ fn reload_dbus() {
             "/org/freedesktop/DBus",
             "--method",
             "org.freedesktop.DBus.ReloadConfig",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+        ],
+    );
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -982,14 +987,10 @@ fn path_error(action: &str, path: &Path, error: io::Error) -> String {
 }
 
 fn refresh_portals() -> &'static str {
-    let backend_stopped = Command::new("systemctl")
-        .args(["--user", "stop", PORTAL_BACKEND_UNIT])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    let dbus_reloaded = Command::new("gdbus")
-        .args([
+    let backend_stopped = run_trusted("systemctl", &["--user", "stop", PORTAL_BACKEND_UNIT]);
+    let dbus_reloaded = run_trusted(
+        "gdbus",
+        &[
             "call",
             "--session",
             "--dest",
@@ -998,20 +999,29 @@ fn refresh_portals() -> &'static str {
             "/org/freedesktop/DBus",
             "--method",
             "org.freedesktop.DBus.ReloadConfig",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-    let portal_restarted = Command::new("systemctl")
-        .args(["--user", "restart", "xdg-desktop-portal.service"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
+        ],
+    );
+    let portal_restarted = run_trusted(
+        "systemctl",
+        &["--user", "restart", "xdg-desktop-portal.service"],
+    );
     if backend_stopped && dbus_reloaded && portal_restarted {
         ""
     } else {
         "\nCould not reload every portal service. Ensure xdg-desktop-portal is installed, then log out and back in before testing."
     }
+}
+
+fn run_trusted(name: &str, args: &[&str]) -> bool {
+    crate::trusted_command::command(name)
+        .ok()
+        .and_then(|mut command| {
+            command
+                .args(args)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .ok()
+        })
+        .is_some_and(|status| status.success())
 }

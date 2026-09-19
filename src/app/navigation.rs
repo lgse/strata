@@ -461,6 +461,9 @@ impl NavigationState {
                             .get(position.min(column.entries.len().saturating_sub(1)))
                             .map(|entry| entry.location.clone())
                     });
+                    if let Some(ref replacement) = selected_location {
+                        column.selected_locations.insert(replacement.clone());
+                    }
                 }
             }
             DirectoryChange::Move { from, entry } => {
@@ -601,11 +604,25 @@ impl NavigationState {
         if depth >= self.columns.len() {
             return None;
         }
-        if preferences.sort_key != SortKey::DeviceOrder {
+        let recent = self.columns[depth].location.is_recent_root();
+        if !recent && preferences.sort_key == SortKey::Recency {
+            return None;
+        }
+        let preferences = if recent {
+            ViewPreferences {
+                folders_first: false,
+                ..preferences
+            }
+        } else {
+            preferences
+        };
+        if !recent && preferences.sort_key != SortKey::DeviceOrder {
             self.preferences.sort_key = preferences.sort_key;
             self.preferences.sort_direction = preferences.sort_direction;
         }
-        self.preferences.folders_first = preferences.folders_first;
+        if !recent {
+            self.preferences.folders_first = preferences.folders_first;
+        }
         let column = &mut self.columns[depth];
         let selected_location = column
             .selected
@@ -1331,7 +1348,11 @@ fn preferences_for_location(
     mut preferences: ViewPreferences,
     location: &Location,
 ) -> ViewPreferences {
-    if location.is_camera_photo_root() {
+    if location.is_recent_root() {
+        preferences.folders_first = false;
+        preferences.sort_key = SortKey::Recency;
+        preferences.sort_direction = SortDirection::Descending;
+    } else if location.is_camera_photo_root() {
         preferences.sort_key = SortKey::DeviceOrder;
     }
     preferences
@@ -1490,6 +1511,7 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
 
     let ordering = match preferences.sort_key {
         SortKey::DeviceOrder => Ordering::Equal,
+        SortKey::Recency => compare_metadata(&left.recent_unix_seconds, &right.recent_unix_seconds),
         SortKey::Name => compare_display_names(&left.display_name, &right.display_name),
         SortKey::Type => compare_entry_types(left, right),
         SortKey::Size => compare_metadata(&left.size, &right.size),

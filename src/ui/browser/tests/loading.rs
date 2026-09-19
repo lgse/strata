@@ -69,6 +69,7 @@ impl HeldSource {
                 size: crate::model::MetadataValue::Unknown,
                 modified_unix_seconds: crate::model::MetadataValue::Unknown,
                 mode: crate::model::MetadataValue::Unknown,
+                recent_unix_seconds: crate::model::MetadataValue::Unknown,
                 is_hidden: false,
                 image_dimensions: crate::model::MetadataValue::Unknown,
                 child_count: crate::model::MetadataValue::Unknown,
@@ -106,6 +107,61 @@ fn settle() {
         while glib::MainContext::default().iteration(false) {}
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
+}
+
+#[test]
+fn parked_keyboard_navigation_selects_the_requested_endpoint() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::loading::parked_keyboard_navigation_selects_the_requested_endpoint",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                let source = Rc::new(HeldSource::default());
+                let view = BrowserView::new(source.clone(), PeekBehavior::default());
+                view.set_view_mode(mode);
+                let outside = gtk::Entry::new();
+                let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                root.append(&outside);
+                root.append(&view.widget());
+                let window = gtk::Window::builder()
+                    .child(&root)
+                    .default_width(900)
+                    .default_height(600)
+                    .build();
+                window.present();
+                view.browser().navigate(Location::local("/fixture"));
+                source.batch_at(Location::local("/fixture/a.txt"));
+                source.batch_at(Location::local("/fixture/z.txt"));
+                source.finish();
+                settle();
+                let stack = stacks(&view.widget())
+                    .into_iter()
+                    .find(|stack| stack.is_mapped())
+                    .expect("visible pane");
+                for (direction, expected) in [(1, "z.txt"), (-1, "a.txt")] {
+                    assert!(stack.grab_focus());
+                    assert!(view.jump_parked_selection(direction));
+                    settle();
+                    assert_eq!(
+                        view.browser()
+                            .focused_entry()
+                            .expect("selected endpoint")
+                            .display_name,
+                        expected
+                    );
+                    assert!(outside.grab_focus());
+                    assert!(!view.jump_parked_selection(-direction));
+                    assert_eq!(
+                        view.browser()
+                            .focused_entry()
+                            .expect("preserved endpoint")
+                            .display_name,
+                        expected
+                    );
+                }
+                window.close();
+            }
+        },
+    );
 }
 
 #[test]

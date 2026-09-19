@@ -8,7 +8,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, gio::prelude::EmblemedIconExt as _, glib, prelude::*};
+use gtk::{
+    gio,
+    gio::prelude::{EmblemedIconExt as _, VfsExt as _},
+    glib,
+    prelude::*,
+};
 
 use crate::{
     adapters::{LocalFileSource, LocalOperationProvider, RevealRequest, location_for_file},
@@ -27,7 +32,7 @@ use super::{
     controls::{ModalTone, message_dialog_description, message_dialog_layout},
     modal::{ModalHost, dismiss_modal_layer, modal_layer},
     motion::{animations_enabled, emphasized_deceleration},
-    theme::ThemeManager,
+    preferences::PreferenceManager,
 };
 
 mod composition;
@@ -35,18 +40,53 @@ mod devices;
 mod keyboard;
 mod open_argument;
 mod sidebar;
+mod unlock_argument;
 mod volume_password;
 
 pub use open_argument::present_open;
+pub use unlock_argument::{UnlockTarget, present_unlock};
 
 use sidebar::PlaceNavigation;
 pub(super) use sidebar::build_sidebar;
 
-pub(super) const SIDEBAR_WIDTH: i32 = 208;
-pub(super) const MIN_SIDEBAR_WIDTH: i32 = 176;
+pub(super) const SIDEBAR_WIDTH: i32 = 201;
+pub(super) const MIN_SIDEBAR_WIDTH: i32 = 169;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
 const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RecentAvailability {
+    platform_tracking_enabled: bool,
+    runtime_backend_supported: bool,
+}
+
+impl RecentAvailability {
+    fn from_runtime() -> Self {
+        let platform_tracking_enabled =
+            gtk::Settings::default().is_some_and(|settings| settings.is_gtk_recent_files_enabled());
+        let runtime_backend_supported = gio::Vfs::default()
+            .supported_uri_schemes()
+            .iter()
+            .any(|scheme| scheme.as_str().eq_ignore_ascii_case("recent"));
+        Self {
+            platform_tracking_enabled,
+            runtime_backend_supported,
+        }
+    }
+
+    fn is_available(self) -> bool {
+        self.platform_tracking_enabled && self.runtime_backend_supported
+    }
+}
+
+fn should_show_recent_place(
+    show_recent: bool,
+    local_only: bool,
+    availability: RecentAvailability,
+) -> bool {
+    show_recent && !local_only && availability.is_available()
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MouseHistoryAction {
@@ -57,7 +97,7 @@ enum MouseHistoryAction {
 #[derive(Clone)]
 struct TypeToSearch {
     view: BrowserView,
-    preferences: Rc<ThemeManager>,
+    preferences: Rc<PreferenceManager>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -103,7 +143,7 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
 
 fn bind_update_notice_preferences(
     anchor: &impl IsA<gtk::Widget>,
-    manager: &ThemeManager,
+    manager: &PreferenceManager,
     notice: &super::settings::UpdateNoticeHandler,
 ) {
     let initial = Cell::new(true);
@@ -137,7 +177,8 @@ pub(super) fn present_target(
 ) -> BrowserView {
     let present_started = std::time::Instant::now();
     crate::assets::register_icon_theme();
-    let theme_manager = super::theme::ThemeManager::shared();
+    let _theme_manager = super::theme::ThemeManager::shared();
+    let preference_manager = super::preferences::PreferenceManager::shared();
     load_styles();
     tracing::debug!(
         elapsed_ms = present_started.elapsed().as_millis() as u64,
@@ -151,16 +192,16 @@ pub(super) fn present_target(
         .default_height(760)
         .build();
 
-    let content = composition::WindowContent::new(&window, &theme_manager);
-    content.bind(&window, &theme_manager);
+    let content = composition::WindowContent::new(&window, &preference_manager);
+    content.bind(&window, &preference_manager);
     let browser = content.browser.clone();
     browser.connect_navigation_cleanup(window.upcast_ref());
-    schedule_after_first_paint(&window, &content.sidebar, &theme_manager);
+    schedule_after_first_paint(&window, &content.sidebar, &preference_manager);
     content.connect_cleanup(&window);
     window.present();
     crate::metrics::mark_window_presented();
     if auto_navigate {
-        let pending_location = location.unwrap_or_else(|| startup_location(&theme_manager));
+        let pending_location = location.unwrap_or_else(|| startup_location(&preference_manager));
         if !selection.is_empty() {
             browser.select_after_load(selection, properties);
         }
@@ -180,7 +221,7 @@ pub(super) fn present_target(
 fn schedule_after_first_paint(
     window: &gtk::ApplicationWindow,
     sidebar: &SidebarView,
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
 ) {
     let state = sidebar.state.clone();
     let manager = manager.clone();
@@ -214,7 +255,7 @@ fn schedule_after_first_paint(
 }
 
 pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
-    ThemeManager::shared().bind_interface_scale(paned, |widget, scale| {
+    PreferenceManager::shared().bind_interface_scale(paned, |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
         if paned.position() > 0 {
             paned.set_position(scaled_sidebar_width(paned, scale));
@@ -244,7 +285,7 @@ fn animate_sidebar(
     animating.set(true);
     paned.set_shrink_start_child(true);
     let target = if expanded {
-        scaled_sidebar_width(paned, ThemeManager::shared().interface_scale())
+        scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
     } else {
         0
     };
@@ -384,6 +425,16 @@ fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bo
         && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
+fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
+        && matches!(
+            key,
+            gtk::gdk::Key::a | gtk::gdk::Key::c | gtk::gdk::Key::v | gtk::gdk::Key::x
+        )
+}
+
 fn type_to_search_query(
     key: gtk::gdk::Key,
     modifiers: gtk::gdk::ModifierType,
@@ -425,6 +476,7 @@ fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
 
 const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.search", &["<Control>k"]),
+    ("win.jump-folder", &["<Control><Shift>k"]),
     ("win.open-terminal", &["<Primary>t"]),
     ("win.refresh", &["F5"]),
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
@@ -525,7 +577,7 @@ pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {
 
 pub(super) fn apply_browser_mode(
     view: &BrowserView,
-    preferences: &super::theme::ThemeManager,
+    preferences: &super::preferences::PreferenceManager,
     mode: BrowserMode,
 ) {
     view.set_view_mode(mode);
@@ -544,7 +596,7 @@ pub(super) fn browser_mode_for_digit(key: gtk::gdk::Key) -> Option<BrowserMode> 
 pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
-    preferences: Rc<super::theme::ThemeManager>,
+    preferences: Rc<super::preferences::PreferenceManager>,
     preview: &super::preview::PreviewDrawer,
 ) -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -595,7 +647,7 @@ pub(super) fn build_appearance_menu(
     group_by_type.set_tooltip_text(Some("Group List entries under file-type headings"));
     preferences.bind_preference(
         &group_check,
-        ThemeManager::group_by_type,
+        PreferenceManager::group_by_type,
         |widget, enabled| widget.set_visible(enabled),
     );
     {
@@ -690,12 +742,12 @@ pub(super) fn build_appearance_menu(
     );
     preferences.bind_preference(
         &compact_check,
-        ThemeManager::browser_density,
+        PreferenceManager::browser_density,
         |widget, density| widget.set_visible(density == BrowserDensity::Compact),
     );
     preferences.bind_preference(
         &airy_check,
-        ThemeManager::browser_density,
+        PreferenceManager::browser_density,
         |widget, density| widget.set_visible(density == BrowserDensity::Airy),
     );
     {
@@ -728,43 +780,25 @@ pub(super) fn build_appearance_menu(
     let sample = gtk::Label::new(Some("Aa"));
     sample.add_css_class("appearance-text-sample");
     text_controls.append(&sample);
-    let stepper = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    stepper.add_css_class("appearance-text-stepper");
-    stepper.set_hexpand(true);
-    stepper.set_halign(gtk::Align::End);
+    let (stepper, [decrease, reset_size, increase]) = super::controls::stepper([
+        "Decrease text size (Ctrl+−)",
+        "Reset text size (Ctrl+0)",
+        "Increase text size (Ctrl++)",
+    ]);
     text_controls.append(&stepper);
-    for (icon, tooltip, delta) in [
-        (
-            crate::assets::icons::MINUS,
-            "Decrease text size (Ctrl+−)",
-            -1,
-        ),
-        (crate::assets::icons::PLUS, "Increase text size (Ctrl++)", 1),
-    ] {
-        let image = crate::assets::primary_icon(icon, 16);
-        image.set_halign(gtk::Align::Center);
-        image.set_valign(gtk::Align::Center);
-        let button = gtk::Button::builder().child(&image).build();
-        button.add_css_class("appearance-text-step");
-        button.set_tooltip_text(Some(tooltip));
-        super::accessibility::set_label(&button, tooltip);
+    for (button, delta) in [(decrease, -1), (increase, 1)] {
         let manager = preferences.clone();
         button.connect_clicked(move |_| manager.set_text_size(manager.text_size().stepped(delta)));
-        stepper.append(&button);
     }
-    let reset_size = gtk::Button::new();
-    reset_size.add_css_class("appearance-text-value");
-    reset_size.set_hexpand(true);
-    reset_size.set_tooltip_text(Some("Reset text size (Ctrl+0)"));
-    preferences.bind_preference(&reset_size, ThemeManager::text_size, |widget, size| {
+    preferences.bind_preference(&reset_size, PreferenceManager::text_size, |widget, size| {
         widget
             .downcast_ref::<gtk::Button>()
             .expect("text size reset")
             .set_label(&format!("{} px", size.root_font_px()));
     });
     let manager = preferences.clone();
-    reset_size.connect_clicked(move |_| manager.set_text_size(super::theme::TextSize::default()));
-    stepper.insert_child_after(&reset_size, stepper.first_child().as_ref());
+    reset_size
+        .connect_clicked(move |_| manager.set_text_size(super::preferences::TextSize::default()));
     content.append(&text_controls);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -901,9 +935,9 @@ pub(super) struct SidebarState {
     browser: Rc<Browser>,
     volume_monitor: gio::VolumeMonitor,
     mount_monitor: gio_unix::MountMonitor,
-    theme_manager: Rc<super::theme::ThemeManager>,
+    preference_manager: Rc<super::preferences::PreferenceManager>,
     place_order: RefCell<Vec<&'static str>>,
-    places_visibility: RefCell<[bool; 8]>,
+    places_visibility: RefCell<[bool; 9]>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
     trash_contents: Cell<TrashContents>,
@@ -912,6 +946,7 @@ pub(super) struct SidebarState {
     trash_probe_running: Cell<bool>,
     trash_probe_pending: Cell<bool>,
     local_only: bool,
+    recent_availability: Cell<RecentAvailability>,
     pending_scroll: Cell<Option<f64>>,
     rebuild_queued: Cell<bool>,
     scroll_restore_queued: Cell<bool>,
@@ -980,15 +1015,67 @@ pub(super) struct SidebarView {
     update_label: gtk::Label,
     handlers: RefCell<Vec<glib::SignalHandlerId>>,
     mount_handler: RefCell<Option<glib::SignalHandlerId>>,
+    recent_setting_handler: RefCell<Option<(gtk::Settings, glib::SignalHandlerId)>>,
 }
 
 impl SidebarView {
+    // Device discovery can block on D-Bus; let the chooser paint before starting it.
+    pub(in crate::ui) fn schedule_after_first_paint(&self, window: &impl IsA<gtk::Widget>) {
+        let weak_state = Rc::downgrade(&self.state);
+        let armed = Rc::new(Cell::new(false));
+        let arm = {
+            let weak_state = weak_state.clone();
+            let armed = armed.clone();
+            move |widget: &gtk::Widget| {
+                if armed.get() {
+                    return;
+                }
+                armed.set(true);
+                let Some(clock) = widget.frame_clock() else {
+                    let weak = weak_state.clone();
+                    glib::idle_add_local_once(move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.rebuild();
+                        }
+                    });
+                    return;
+                };
+                let handler = Rc::new(RefCell::new(None));
+                let handler_for_paint = handler.clone();
+                let weak = weak_state.clone();
+                let id = clock.connect_after_paint(move |clock| {
+                    if let Some(id) = handler_for_paint.borrow_mut().take() {
+                        clock.disconnect(id);
+                    }
+                    let weak = weak.clone();
+                    glib::idle_add_local_once(move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.rebuild();
+                        }
+                    });
+                });
+                handler.replace(Some(id));
+            }
+        };
+        if window.is_mapped() {
+            arm(window.upcast_ref());
+        } else {
+            let arm_on_map = arm.clone();
+            window.connect_map(move |widget| {
+                arm_on_map(widget.upcast_ref());
+            });
+        }
+    }
+
     pub(super) fn disconnect(&self) {
         for handler in self.handlers.take() {
             self.state.volume_monitor.disconnect(handler);
         }
         if let Some(handler) = self.mount_handler.take() {
             self.state.mount_monitor.disconnect(handler);
+        }
+        if let Some((settings, handler)) = self.recent_setting_handler.take() {
+            settings.disconnect(handler);
         }
     }
 }
@@ -1067,26 +1154,33 @@ impl SidebarState {
     }
 
     fn append_static_places(self: &Rc<Self>) {
-        if self.theme_manager.sidebar_show_home() {
+        if self.preference_manager.sidebar_show_home() {
             let location = Location::local(home_directory());
             let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
             if !self.local_only {
                 self.attach_place_context_menu(&row, location, |state| {
-                    state.theme_manager.set_sidebar_show_home(false);
+                    state.preference_manager.set_sidebar_show_home(false);
                 });
             }
         }
         if !self.local_only {
-            if self.theme_manager.sidebar_show_trash() {
+            if self.preference_manager.sidebar_show_trash() {
                 self.append_trash_place();
             }
-            if self.theme_manager.sidebar_show_network() {
+            if self.preference_manager.sidebar_show_network() {
                 let location = Location::uri("network:///");
                 let row =
                     self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
                 self.attach_place_context_menu(&row, location, |state| {
-                    state.theme_manager.set_sidebar_show_network(false);
+                    state.preference_manager.set_sidebar_show_network(false);
                 });
+            }
+            if should_show_recent_place(
+                self.preference_manager.sidebar_show_recent(),
+                self.local_only,
+                self.recent_availability.get(),
+            ) {
+                self.append_recent_place();
             }
         }
         if self.has_visible_standard_places() && self.widget.first_child().is_some() {
@@ -1108,7 +1202,7 @@ impl SidebarState {
     }
 
     fn standard_place_visible(&self, id: &str) -> bool {
-        sidebar_standard_place_visible(&self.theme_manager, id)
+        sidebar_standard_place_visible(&self.preference_manager, id)
     }
 
     fn append_standard_places(self: &Rc<Self>) {
@@ -1388,6 +1482,14 @@ impl SidebarState {
         *self.trash_monitor.borrow_mut() = Some(monitor);
     }
 
+    fn append_recent_place(self: &Rc<Self>) {
+        let location = Location::uri("recent:///");
+        let row = sidebar_button(crate::assets::icons::CLOCK, "Recent");
+        row.set_tooltip_text(Some("recent:///"));
+        self.bind_place_row(&row, location, PlaceNavigation::Direct);
+        self.widget.append(&row);
+    }
+
     fn append_trash_place(self: &Rc<Self>) {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, "Trash");
@@ -1435,7 +1537,7 @@ impl SidebarState {
                 popover.popdown();
             }
             if let Some(state) = weak_state.upgrade() {
-                state.theme_manager.set_sidebar_show_trash(false);
+                state.preference_manager.set_sidebar_show_trash(false);
             }
         });
         let empty_popover = popover.downgrade();
@@ -1532,7 +1634,7 @@ impl SidebarState {
         row.set_tooltip_text(Some(&location.display_path()));
         self.bind_place_row(&row, location.clone(), PlaceNavigation::Direct);
         self.attach_place_context_menu(&row, location, move |state| {
-            let manager = &state.theme_manager;
+            let manager = &state.preference_manager;
             match id {
                 "desktop" => manager.set_sidebar_show_desktop(false),
                 "documents" => manager.set_sidebar_show_documents(false),
@@ -1568,7 +1670,7 @@ impl SidebarState {
                 .iter()
                 .map(|place| (*place).to_owned())
                 .collect();
-            self.theme_manager.set_sidebar_order(order);
+            self.preference_manager.set_sidebar_order(order);
             self.rebuild();
         }
     }
@@ -1613,10 +1715,20 @@ impl SidebarState {
         if let Some(mount) = volume.get_mount()
             && let Some(location) = location_for_file(&mount.root())
         {
+            if self.local_only && location.native_path().is_none() {
+                return;
+            }
             self.place_rows
                 .borrow_mut()
                 .push((location.clone(), row.clone()));
             install_sidebar_file_drop(&self.view, &row, location);
+        } else if self.local_only
+            && (gio_volume_unix_device(&volume).is_none()
+                || volume
+                    .activation_root()
+                    .is_some_and(|root| root.path().is_none()))
+        {
+            return;
         }
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
@@ -2813,7 +2925,10 @@ fn should_show_standard_place(id: &str, path: &std::path::Path, home: &std::path
     id != "desktop" || path != home
 }
 
-fn sidebar_standard_place_visible(manager: &super::theme::ThemeManager, id: &str) -> bool {
+fn sidebar_standard_place_visible(
+    manager: &super::preferences::PreferenceManager,
+    id: &str,
+) -> bool {
     match id {
         "desktop" => manager.sidebar_show_desktop(),
         "documents" => manager.sidebar_show_documents(),
@@ -3169,7 +3284,7 @@ pub(crate) fn default_save_folder() -> PathBuf {
     glib::user_special_dir(glib::UserDirectory::Downloads).unwrap_or_else(home_directory)
 }
 
-fn startup_location(manager: &ThemeManager) -> Location {
+fn startup_location(manager: &PreferenceManager) -> Location {
     let saved = manager.default_directory();
     if let Some(path) = &saved
         && path.is_dir()

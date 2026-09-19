@@ -406,6 +406,252 @@ class InstallerTests(unittest.TestCase):
                         contents,
                     )
 
+    def test_udiskie_unlock_flag_implies_non_interactive_and_leaves_other_options_ask(
+        self,
+    ) -> None:
+        result = bash(
+            "parse_args --with-udiskie-unlock; "
+            'printf "%s %s %s %s %s %s %s %s %s" "$NON_INTERACTIVE" "$WITH_UDISKIE_UNLOCK" '
+            '"$WITH_SMB" "$WITH_RAW" "$WITH_DESKTOP_ENTRY" "$WITH_FOLDER_ASSOCIATION" '
+            '"$WITH_FILE_MANAGER" "$WITH_FILE_CHOOSER" "$WITH_OMARCHY_KEYBINDS"'
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "yes yes ask ask ask ask ask ask ask")
+
+    def test_non_interactive_alone_leaves_udiskie_unlock_ask(self) -> None:
+        result = bash(
+            "parse_args --non-interactive; "
+            'printf "%s %s" "$NON_INTERACTIVE" "$WITH_UDISKIE_UNLOCK"'
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "yes ask")
+
+    def _configure_udiskie_unlock(
+        self,
+        setup: str,
+        *,
+        omarchy_major: str = "",
+        arch_based: str = "no",
+        udiskie: bool = False,
+        marker: bool = True,
+        host_udiskie: bool = False,
+        binary_rc: int = 0,
+        binary_contains_flag: bool = False,
+        repeat: int = 1,
+        extra_script: str = "",
+    ) -> tuple[subprocess.CompletedProcess[str], list[str], str, str, bool]:
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            path_dir = root / "path"
+            path_dir.mkdir()
+            if udiskie:
+                stub = path_dir / "udiskie"
+                stub.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                stub.chmod(0o755)
+            if host_udiskie:
+                host_dir = root / "host-bin"
+                host_dir.mkdir()
+                host = host_dir / "udiskie"
+                host.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                host.chmod(0o755)
+            extracted = root / "archive"
+            extracted.mkdir()
+            if marker:
+                unlock_dir = extracted / "udiskie"
+                unlock_dir.mkdir()
+                (unlock_dir / "unlock").write_text(
+                    "This release's strata binary supports --install-udiskie-unlock.\n",
+                    encoding="utf-8",
+                )
+            decoy = extracted / "strata"
+            decoy.write_text(
+                '#!/bin/sh\nprintf "EXTRACTED %s\\n" "$*" >> "$CALLS"\n',
+                encoding="utf-8",
+            )
+            decoy.chmod(0o755)
+            binary = root / "permanent" / "strata"
+            binary.parent.mkdir()
+            flag_comment = "# --install-udiskie-unlock\n" if binary_contains_flag else ""
+            binary.write_text(
+                "#!/bin/bash\n"
+                f"{flag_comment}"
+                'printf "%s %s\\n" "$0" "$*" >> "$CALLS"\n'
+                f'if [ "{binary_rc}" -ne 0 ]; then\n'
+                "  printf '%s\\n' "
+                "'Refusing to change udiskie configuration: "
+                "program_options must be a mapping' >&2\n"
+                "fi\n"
+                f"exit {binary_rc}\n",
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+            calls = root / "calls"
+            home = root / "home"
+            home.mkdir()
+            config_home = home / ".config"
+            invoke = "; ".join(
+                ['configure_udiskie_unlock "$EXTRACTED" "$OMARCHY_MAJOR" "$ARCH_BASED"']
+                * repeat
+            )
+            parts = [
+                part
+                for part in (
+                    setup,
+                    'BIN_PATH="$PERMANENT_BINARY"',
+                    invoke,
+                    extra_script,
+                )
+                if part
+            ]
+            result = bash(
+                "; ".join(parts),
+                env={
+                    "PATH": str(path_dir),
+                    "HOME": str(home),
+                    "XDG_CONFIG_HOME": str(config_home),
+                    "XDG_DATA_HOME": str(home / ".local/share"),
+                    "PERMANENT_BINARY": str(binary),
+                    "EXTRACTED": str(extracted),
+                    "CALLS": str(calls),
+                    "OMARCHY_MAJOR": omarchy_major,
+                    "ARCH_BASED": arch_based,
+                },
+            )
+            recorded = calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+            return (
+                result,
+                recorded,
+                str(binary),
+                binary.read_text(encoding="utf-8"),
+                (config_home / "udiskie").exists(),
+            )
+
+    def test_udiskie_unlock_runs_only_the_permanently_installed_binary_after_consent(
+        self,
+    ) -> None:
+        cases = [
+            {
+                "name": "consent_uses_permanent_binary",
+                "setup": "prompt() { return 0; }",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "expected_rc": 0,
+                "expected_args": ["--install-udiskie-unlock"],
+            },
+            {
+                "name": "declined",
+                "setup": "prompt() { return 1; }",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "expected_rc": 0,
+                "expected_args": [],
+            },
+            {
+                "name": "ineligible_ask",
+                "setup": "",
+                "omarchy_major": "",
+                "arch_based": "no",
+                "udiskie": True,
+                "expected_rc": 0,
+                "expected_args": [],
+            },
+            {
+                "name": "ineligible_flag",
+                "setup": "parse_args --with-udiskie-unlock",
+                "omarchy_major": "",
+                "arch_based": "no",
+                "udiskie": True,
+                "expected_rc": 1,
+                "expected_args": [],
+            },
+            {
+                "name": "missing_marker_ask",
+                "setup": "",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "marker": False,
+                "expected_rc": 0,
+                "expected_args": [],
+            },
+            {
+                "name": "missing_marker_flag",
+                "setup": "parse_args --with-udiskie-unlock",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "marker": False,
+                "expected_rc": 1,
+                "expected_args": [],
+            },
+            {
+                "name": "missing_udiskie_flag",
+                "setup": "parse_args --with-udiskie-unlock",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": False,
+                "expected_rc": 1,
+                "expected_args": [],
+            },
+            {
+                "name": "twice_uses_permanent_binary",
+                "setup": "prompt() { return 0; }",
+                "omarchy_major": "4",
+                "arch_based": "yes",
+                "udiskie": True,
+                "repeat": 2,
+                "expected_rc": 0,
+                "expected_args": ["--install-udiskie-unlock", "--install-udiskie-unlock"],
+            },
+        ]
+        for case in cases:
+            with self.subTest(case["name"]):
+                result, recorded, binary, _, wrote_udiskie_config = self._configure_udiskie_unlock(
+                    case["setup"],
+                    omarchy_major=case["omarchy_major"],
+                    arch_based=case["arch_based"],
+                    udiskie=case["udiskie"],
+                    marker=case.get("marker", True),
+                    host_udiskie=case.get("host_udiskie", False),
+                    repeat=case.get("repeat", 1),
+                )
+                self.assertEqual(result.returncode, case["expected_rc"], result.stderr)
+                expected = [f"{binary} {arg}" for arg in case["expected_args"]]
+                self.assertEqual(recorded, expected)
+                self.assertFalse(
+                    any(line.startswith("EXTRACTED") for line in recorded),
+                    recorded,
+                )
+                self.assertFalse(wrote_udiskie_config)
+                if case["expected_args"]:
+                    self.assertTrue(
+                        all(line.startswith(f"{binary} ") for line in recorded),
+                        recorded,
+                    )
+
+    def test_udiskie_unlock_capability_is_the_archive_marker_not_the_binary_string(
+        self,
+    ) -> None:
+        result, recorded, _, binary_source, _ = self._configure_udiskie_unlock(
+            "prompt() { return 0; }",
+            omarchy_major="4",
+            arch_based="yes",
+            udiskie=True,
+            marker=False,
+            binary_contains_flag=True,
+            extra_script=(
+                'if release_supports_udiskie_unlock "$EXTRACTED"; then '
+                'printf yes; else printf no; fi'
+            ),
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(recorded, [])
+        self.assertIn("--install-udiskie-unlock", binary_source)
+        self.assertEqual(result.stdout, "no")
+        self.assertNotIn("--install-udiskie-unlock", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

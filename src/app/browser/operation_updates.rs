@@ -8,7 +8,7 @@ use std::{
 use crate::{
     app::navigation::{EntrySplice, NavigationPath, NavigationState},
     model::{FileEntry, Location},
-    services::{DirectoryChange, RenameRecord},
+    services::{DirectoryChange, RenameBatchRecord},
 };
 
 use super::{Browser, BrowserEvent, DeferredDirectoryChanges};
@@ -151,7 +151,7 @@ impl Browser {
     /// published; those replays are no-ops. Records the monitor missed (or
     /// that arrived without one) apply here, and depths with entries that
     /// cannot be resolved at either end reload to cover the gap.
-    pub(super) fn publish_rename_batch(self: &Rc<Self>, renamed: &[RenameRecord]) {
+    pub(super) fn publish_rename_batch(self: &Rc<Self>, renamed: &[RenameBatchRecord]) {
         let mut by_depth: HashMap<usize, Vec<(Location, DirectoryChange)>> = HashMap::new();
         let mut refresh_depths: HashSet<usize> = HashSet::new();
         for record in renamed {
@@ -194,7 +194,7 @@ impl Browser {
     /// Resolves the post-rename entry for a record: the fresh entry when the
     /// monitor already published it, otherwise the stale entry rebased to the
     /// new location so unmonitored columns still update.
-    fn rename_batch_entry(&self, record: &RenameRecord) -> Option<FileEntry> {
+    fn rename_batch_entry(&self, record: &RenameBatchRecord) -> Option<FileEntry> {
         if let Some(entry) = self.find_entry_by_location(&record.current) {
             return Some(entry);
         }

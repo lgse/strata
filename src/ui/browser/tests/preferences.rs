@@ -28,6 +28,7 @@ impl FileSource for PhotoOrderSource {
                     size: MetadataValue::Known(size),
                     modified_unix_seconds: MetadataValue::Known(1),
                     mode: MetadataValue::Known(0o100644),
+                    recent_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
@@ -50,9 +51,9 @@ fn camera_device_order_overrides_saved_sort_without_changing_other_windows_or_re
     crate::test_support::gtk_test(
         "ui::browser::tests::preferences::camera_device_order_overrides_saved_sort_without_changing_other_windows_or_rebuilt_views",
         || {
-            use crate::ui::theme::ThemeManager;
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            use crate::ui::preferences::PreferenceManager;
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let saved = manager.sort_preferences();
             assert_eq!(saved.sort_key, SortKey::Size);
             let wait = |done: &dyn Fn() -> bool| {
@@ -195,8 +196,15 @@ fn camera_device_order_overrides_saved_sort_without_changing_other_windows_or_re
 }
 
 impl BrowserView {
-    pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
+    pub(in crate::ui) fn assert_saved_preferences(
+        &self,
+        manager: &crate::ui::preferences::PreferenceManager,
+    ) {
         assert_eq!(self.state.peek_enabled.get(), manager.folder_peeking());
+        assert_eq!(
+            crate::sandbox::browser::worker_limit(),
+            manager.thumbnail_workers()
+        );
         assert_eq!(
             self.single_click_previews_enabled(),
             manager.single_click_previews()

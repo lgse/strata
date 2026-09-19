@@ -8,8 +8,8 @@ use crate::{
     services::{BuildKind, InstallSource, ManagedInstall, ReleaseMetadata, UpdateMethod},
     ui::{
         blur::BlurBin,
+        preferences::PreferenceManager,
         settings::{self, InstallGuard, UpdateNoticeHandler},
-        theme::ThemeManager,
     },
 };
 
@@ -26,7 +26,7 @@ type AvailableUpdate = Rc<RefCell<Option<(ReleaseMetadata, String, UpdateMethod)
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
     content: &WindowContent,
-    preferences: &Rc<ThemeManager>,
+    preferences: &Rc<PreferenceManager>,
 ) -> UpdateNoticeHandler {
     // The same process-wide guard covers this window's notice, lazy Settings
     // layer, and every other window's update and rollback controls.
@@ -66,7 +66,7 @@ struct SettingsLauncher {
     button: gtk::Button,
     blurred_root: BlurBin,
     overlay: gtk::Overlay,
-    preferences: Rc<ThemeManager>,
+    preferences: Rc<PreferenceManager>,
     notice: UpdateNoticeHandler,
     guard: InstallGuard,
 }

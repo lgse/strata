@@ -2,20 +2,23 @@
 
 pub(super) mod media_size;
 mod preferences;
+mod source;
 
 use std::rc::Rc;
 
 use gtk::{glib, prelude::*};
 
 use super::{
-    MEDIA_PLUGIN_INSTALL_COMMAND, PreviewDrawer, format_file_size, format_media_time,
-    media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries, preview_target, print_fit,
-    print_page_starts, print_progress_for_page,
+    MEDIA_PLUGIN_INSTALL_COMMAND, PreviewDrawer, accepts_preview_event, format_file_size,
+    format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
+    preview_target, print_fit, print_page_starts, print_progress_for_page, source_chunk_end,
 };
 use crate::app::{Browser, BrowserEvent, EntrySplice};
 use crate::model::Location;
-use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest};
-use crate::ui::theme::ThemeManager;
+use crate::services::{
+    LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+};
+use crate::ui::preferences::PreferenceManager;
 
 struct UnusedPreviewProvider;
 
@@ -54,7 +57,7 @@ fn render_media_widgets(drawer: &PreviewDrawer, is_gif: bool) -> WeakMediaWidget
     drawer.state.content.append(&section);
     drawer.state.append_media_controls(
         media.upcast_ref(),
-        &ThemeManager::shared(),
+        &PreferenceManager::shared(),
         &section,
         &center_play,
         is_gif,
@@ -165,6 +168,43 @@ fn media_errors_explain_missing_runtime_plugins() {
 }
 
 #[test]
+fn incremental_source_chunks_keep_utf8_boundaries() {
+    let text = format!("{}é", "x".repeat(super::SOURCE_INSERT_CHUNK_BYTES - 1));
+    let end = source_chunk_end(&text, 0);
+    assert!(text.is_char_boundary(end));
+    assert_eq!(
+        &text[..end],
+        "x".repeat(super::SOURCE_INSERT_CHUNK_BYTES - 1)
+    );
+    assert_eq!(source_chunk_end(&text, end), text.len());
+
+    let lines = "x\n".repeat(super::SOURCE_INSERT_CHUNK_LINES + 1);
+    let end = source_chunk_end(&lines, 0);
+    assert_eq!(
+        lines[..end].lines().count(),
+        super::SOURCE_INSERT_CHUNK_LINES
+    );
+    assert!(end < lines.len());
+}
+
+#[test]
+fn stale_preview_responses_are_rejected() {
+    let current = PreviewRequestId(2);
+    assert!(accepts_preview_event(Some(current), current, current));
+    assert!(!accepts_preview_event(
+        Some(current),
+        PreviewRequestId(1),
+        PreviewRequestId(1)
+    ));
+    assert!(!accepts_preview_event(
+        Some(current),
+        current,
+        PreviewRequestId(1)
+    ));
+    assert!(!accepts_preview_event(None, current, current));
+}
+
+#[test]
 fn pdf_scroll_zoom_stays_within_its_supported_range() {
     assert!(pdf_zoom_after_scroll(1.0, -1.0) > 1.0);
     assert!(pdf_zoom_after_scroll(2.0, 1.0) < 2.0);
@@ -238,6 +278,7 @@ fn remote_images_and_supported_video_are_quick_preview_targets() {
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
             mode: MetadataValue::Unknown,
+            recent_unix_seconds: crate::model::MetadataValue::Unknown,
             is_hidden: false,
             image_dimensions: MetadataValue::Unknown,
             child_count: MetadataValue::Unknown,
@@ -268,6 +309,7 @@ fn preview_drag_entries_contains_only_the_loaded_entry() {
         size: crate::model::MetadataValue::Known(100),
         modified_unix_seconds: crate::model::MetadataValue::Known(1),
         mode: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
         image_dimensions: crate::model::MetadataValue::Unknown,
         child_count: crate::model::MetadataValue::Unknown,

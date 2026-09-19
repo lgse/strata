@@ -17,13 +17,13 @@ use crate::{
 struct Fixture {
     window: gtk::ApplicationWindow,
     content: WindowContent,
-    preferences: Rc<ThemeManager>,
+    preferences: Rc<PreferenceManager>,
     notice: UpdateNoticeHandler,
 }
 
 impl Fixture {
     fn new() -> Self {
-        let preferences = ThemeManager::shared();
+        let preferences = PreferenceManager::shared();
         let window = gtk::ApplicationWindow::builder()
             .application(&application())
             .default_width(1200)
@@ -73,7 +73,7 @@ fn composition_initializes_live_preferences_before_settings_in_two_windows() {
     gtk_test(
         "ui::window::composition::tests::composition_initializes_live_preferences_before_settings_in_two_windows",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let first = Fixture::new();
             let second = Fixture::new();
             for fixture in [&first, &second] {
@@ -136,6 +136,17 @@ fn search_button_and_action_share_one_dialog_and_dismissal_state() {
             button.emit_clicked();
             wait_until_hidden(&layer);
             assert!(!button.has_css_class("active"));
+
+            let jump = fixture
+                .window
+                .lookup_action("jump-folder")
+                .expect("folder jump action");
+            jump.activate(None);
+            assert!(layer.is_visible());
+            assert!(!button.has_css_class("active"));
+            jump.activate(None);
+            wait_until_hidden(&layer);
+
             assert_eq!(fixture.layer("search-backdrop"), Some(layer));
             fixture.close();
         },
@@ -181,7 +192,7 @@ fn settings_button_and_shortcut_reuse_the_lazy_layer_without_saving() {
     gtk_test(
         "ui::window::composition::tests::settings_button_and_shortcut_reuse_the_lazy_layer_without_saving",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let fixture = Fixture::new();
             let path = glib::user_config_dir().join("strata/settings.toml");
             let saved = std::fs::read(&path).expect("saved preferences");
@@ -221,7 +232,7 @@ fn update_notices_clear_in_both_windows_without_opening_settings() {
     gtk_test(
         "ui::window::composition::tests::update_notices_clear_in_both_windows_without_opening_settings",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let first = Fixture::new();
             let second = Fixture::new();
             let release = ReleaseMetadata {
@@ -276,7 +287,7 @@ fn update_notice_reaches_open_and_later_windows() {
     gtk_test(
         "ui::window::composition::tests::update_notice_reaches_open_and_later_windows",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             crate::ui::settings::clear_cached_update_notice();
             let first = Fixture::new();
             let second = Fixture::new();

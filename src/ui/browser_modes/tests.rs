@@ -14,7 +14,10 @@ use std::process::Command;
 use std::{cell::RefCell, collections::HashSet};
 
 impl super::ModeViews {
-    pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
+    pub(in crate::ui) fn assert_saved_preferences(
+        &self,
+        manager: &crate::ui::preferences::PreferenceManager,
+    ) {
         assert_eq!(self.density, manager.browser_density());
         assert_eq!(self.group_by_type, manager.group_by_type());
         assert_eq!(
@@ -112,6 +115,7 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         image_dimensions: MetadataValue::Unknown,
         child_count: MetadataValue::Unknown,
@@ -551,11 +555,64 @@ fn icons_hover_only_tracks_thumbnail_or_caption_content() {
 }
 
 #[test]
+fn continuous_scroll_refreshes_once_per_frame_without_waiting_for_settle() {
+    gtk_test(
+        "ui::browser_modes::tests::continuous_scroll_refreshes_once_per_frame_without_waiting_for_settle",
+        || {
+            use std::{
+                cell::Cell,
+                rc::Rc,
+                time::{Duration, Instant},
+            };
+            let scroll = gtk::ScrolledWindow::new();
+            let window = gtk::Window::builder().child(&scroll).build();
+            window.present();
+            let scrolling = Rc::new(Cell::new(false));
+            let frames = Rc::new(RefCell::new(HashSet::new()));
+            let frames_for_refresh = frames.clone();
+            let scroll_for_refresh = scroll.downgrade();
+            super::install_scroll_refresh(&scroll, scrolling.clone(), None, move || {
+                let clock = scroll_for_refresh
+                    .upgrade()
+                    .expect("scroller")
+                    .frame_clock()
+                    .expect("frame clock");
+                assert!(
+                    frames_for_refresh
+                        .borrow_mut()
+                        .insert(clock.frame_counter()),
+                    "one refresh per frame"
+                );
+            });
+            let tick = scroll.add_tick_callback(|scroll, _| {
+                for _ in 0..4 {
+                    scroll
+                        .vadjustment()
+                        .emit_by_name::<()>("value-changed", &[]);
+                }
+                gtk::glib::ControlFlow::Continue
+            });
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while frames.borrow().len() < 3 {
+                assert!(
+                    Instant::now() < deadline,
+                    "scrolling postponed presentation updates"
+                );
+                gtk::glib::MainContext::default().iteration(false);
+            }
+            tick.remove();
+            assert!(!scrolling.get());
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
     gtk_test(
         "ui::browser_modes::tests::icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome",
         || {
-            crate::ui::theme::ThemeManager::shared();
+            crate::ui::preferences::PreferenceManager::shared();
             crate::ui::thumbnail::hold_thumbnail_workers();
             let path = PathBuf::from("/fixture/icons-scroll.png");
             let entry = FileEntry {
@@ -567,6 +624,7 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 size: MetadataValue::Known(1),
                 modified_unix_seconds: MetadataValue::Known(1),
                 mode: MetadataValue::Known(0o100644),
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
@@ -585,9 +643,10 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 }
             }
             assert!(
-                !crate::ui::thumbnail::has_pending_thumbnail(&path),
-                "scrolling bind must not enqueue thumbnail work"
+                crate::ui::thumbnail::has_pending_thumbnail(&path),
+                "scrolling bind must admit viewport-prioritized thumbnail work"
             );
+            let initial_job = crate::ui::thumbnail::pending_thumbnail_id(&path);
             crate::ui::thumbnail::set_thumbnail_or_icon(
                 &icon,
                 &entry,
@@ -602,6 +661,10 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
             }
             assert!(crate::ui::thumbnail::has_pending_thumbnail(&path));
             let job = crate::ui::thumbnail::pending_thumbnail_id(&path);
+            assert_eq!(
+                job, initial_job,
+                "an unchanged row must retain its in-flight thumbnail"
+            );
             let mut cuts = HashSet::new();
             cuts.insert(entry.location.clone());
             super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &cuts);
@@ -628,6 +691,7 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Known(1),
                 mode: MetadataValue::Known(0o100644),
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 image_dimensions: MetadataValue::Unknown,
                 child_count: MetadataValue::Unknown,
@@ -665,6 +729,7 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Known(1),
                 mode: MetadataValue::Known(0o100755),
+                recent_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
                 image_dimensions: MetadataValue::Unavailable,
                 child_count: MetadataValue::Known(12),

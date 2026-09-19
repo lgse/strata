@@ -785,8 +785,57 @@ fn deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset
     );
 }
 
+#[test]
+fn folder_history_opens_ranked_results_and_filters_without_indexing() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::folder_history_opens_ranked_results_and_filters_without_indexing",
+        || {
+            let fixture = tempfile::tempdir().expect("history fixture");
+            let alpha = fixture.path().join("alpha-project");
+            let beta = fixture.path().join("beta-project");
+            std::fs::create_dir(&alpha).expect("alpha folder");
+            std::fs::create_dir(&beta).expect("beta folder");
+            let history = Rc::new(NavigationHistory::open(fixture.path().join("history.json")));
+            history.record(&alpha);
+            history.record(&beta);
+
+            let activated = Rc::new(RefCell::new(None));
+            let observed = activated.clone();
+            let dialog = SearchDialog::new(
+                Rc::new(move |item| {
+                    observed.replace(Some(item.path));
+                }),
+                Rc::new(|_| {}),
+                Rc::new(|| {}),
+            );
+            let window = gtk::Window::builder().child(&dialog.widget()).build();
+            window.present();
+            dialog.show_history(history);
+
+            assert_eq!(
+                dialog.state.field.placeholder_text().as_deref(),
+                Some("Jump to a folder…")
+            );
+            assert!(!dialog.state.indexing_spinner.is_visible());
+            assert_eq!(dialog.state.visible_results.borrow().len(), 2);
+            dialog.state.field.set_text("alpha");
+            assert_eq!(dialog.state.visible_results.borrow().len(), 1);
+            assert_eq!(dialog.state.visible_results.borrow()[0].path, alpha);
+
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Return,
+                gtk::gdk::ModifierType::empty(),
+            ));
+            assert_eq!(*activated.borrow(), Some(alpha));
+            wait_until(|| !dialog.is_visible());
+            window.destroy();
+        },
+    );
+}
+
 fn mapped_dialog(activate: Rc<dyn Fn(SearchItem)>) -> (SearchDialog, gtk::Window) {
-    let dialog = SearchDialog::new(activate, Rc::new(|| {}));
+    let dialog = SearchDialog::new(activate, Rc::new(|_| {}), Rc::new(|| {}));
     let window = gtk::Window::builder()
         .default_width(900)
         .default_height(600)
@@ -796,6 +845,115 @@ fn mapped_dialog(activate: Rc<dyn Fn(SearchItem)>) -> (SearchDialog, gtk::Window
     window.present();
     drain_main_context();
     (dialog, window)
+}
+
+#[test]
+fn result_menu_reveals_its_original_target_without_activation() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::result_menu_reveals_its_original_target_without_activation",
+        || {
+            let activated = Rc::new(Cell::new(false));
+            let observed = activated.clone();
+            let revealed = Rc::new(RefCell::new(None));
+            let target = revealed.clone();
+            let dismissed = Rc::new(Cell::new(false));
+            let closed = dismissed.clone();
+            let after_close = dismissed.clone();
+            let dialog = SearchDialog::new(
+                Rc::new(move |_| observed.set(true)),
+                Rc::new(move |item| {
+                    assert!(after_close.get(), "reveal runs after search is dismissed");
+                    target.replace(Some(item));
+                }),
+                Rc::new(move || closed.set(true)),
+            );
+            let overlay = gtk::Overlay::new();
+            overlay.add_overlay(&dialog.widget());
+            let window = gtk::Window::builder()
+                .default_width(900)
+                .default_height(600)
+                .child(&overlay)
+                .build();
+            dialog.state.layer.set_visible(true);
+            window.present();
+            let mut items = search_items("menu", 3);
+            let expected = items[1].clone();
+            render_results(
+                &dialog.state,
+                items.clone(),
+                false,
+                SearchCoverage::default(),
+            );
+            drain_main_context();
+            let row = dialog.state.list.row_at_index(1).expect("result row");
+            controller::<gtk::GestureClick>(&row)
+                .emit_by_name::<()>("pressed", &[&1i32, &5.0f64, &5.0f64]);
+            let menu = dialog
+                .state
+                .context_menu
+                .borrow()
+                .clone()
+                .expect("result menu");
+            assert!(menu.is_visible());
+            assert_selected(&dialog, 1);
+            assert!(!activated.get());
+            assert!(revealed.borrow().is_none());
+
+            items.swap(0, 1);
+            render_results(&dialog.state, items, false, SearchCoverage::default());
+            let keys = controller::<gtk::EventControllerKey>(&menu);
+            for key in [gdk::Key::Home, gdk::Key::Return] {
+                assert!(keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[&key, &0u32, &gdk::ModifierType::empty()],
+                ));
+            }
+            wait_until(|| revealed.borrow().is_some());
+            assert_eq!(revealed.borrow().as_ref(), Some(&expected));
+            assert!(!dialog.is_visible());
+            assert!(!activated.get());
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn alt_enter_reveals_the_selected_result_and_consumes_empty_searches() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::alt_enter_reveals_the_selected_result_and_consumes_empty_searches",
+        || {
+            for key in [gdk::Key::Return, gdk::Key::KP_Enter] {
+                let revealed = Rc::new(RefCell::new(None));
+                let observed = revealed.clone();
+                let dialog = SearchDialog::new(
+                    Rc::new(|_| panic!("reveal must not activate a result")),
+                    Rc::new(move |item| {
+                        observed.replace(Some(item));
+                    }),
+                    Rc::new(|| {}),
+                );
+                let window = gtk::Window::builder().child(&dialog.widget()).build();
+                dialog.state.layer.set_visible(true);
+                window.present();
+                assert!(emit_key(&dialog, key, gdk::ModifierType::ALT_MASK));
+                assert!(revealed.borrow().is_none());
+                assert!(dialog.is_visible());
+                let items = search_items("shortcut", 3);
+                render_results(
+                    &dialog.state,
+                    items.clone(),
+                    false,
+                    SearchCoverage::default(),
+                );
+                move_selection(&dialog.state, 1);
+                assert!(emit_key(&dialog, key, gdk::ModifierType::ALT_MASK));
+                wait_until(|| revealed.borrow().is_some());
+                assert_eq!(revealed.borrow().as_ref(), Some(&items[1]));
+                assert!(!dialog.is_visible());
+                window.destroy();
+            }
+        },
+    );
 }
 
 fn key_controller(dialog: &SearchDialog) -> gtk::EventControllerKey {
@@ -906,6 +1064,7 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
                 Rc::new(move |item| {
                     observed.replace(Some(item));
                 }),
+                Rc::new(|_| {}),
                 Rc::new(|| {}),
             );
             let window = gtk::Window::builder().child(&dialog.widget()).build();
@@ -968,7 +1127,12 @@ fn global_search_combines_home_and_drives_and_refreshes_mounts() {
             };
             render_results(&dialog.state, Vec::new(), false, coverage);
             assert!(dialog.state.truncated_hint.is_visible());
-            assert_eq!(dialog.state.truncated_hint.text(), coverage.message());
+            assert_eq!(
+                dialog.state.truncated_hint.tooltip_text().as_deref(),
+                Some(coverage.message().as_str())
+            );
+            render_results(&dialog.state, Vec::new(), false, SearchCoverage::default());
+            assert!(!dialog.state.truncated_hint.is_visible());
 
             dialog.show(vec![home, usb.clone()], false);
             dialog.state.field.set_text("needle");

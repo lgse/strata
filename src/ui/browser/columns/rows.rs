@@ -177,6 +177,7 @@ pub(super) fn column_rows(
         row.add_controller(motion);
 
         item.set_child(Some(&row));
+        let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
         let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
@@ -229,19 +230,21 @@ pub(super) fn column_rows(
                 } else {
                     vec![entry]
                 };
-                let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
                 if let Some((texture, hot_x, hot_y)) =
                     drag_icon_with_count(drag_icon.upcast_ref(), entries.len())
                 {
                     source.set_icon(Some(&texture), hot_x, hot_y);
                 } else {
+                    let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
                     source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
                 }
                 file_drag_content(&entries)
             });
             let dragged_row = row.downgrade();
             let weak_state_for_begin = weak_state.clone();
+            let pending_activation_for_drag = pending_activation.clone();
             drag.connect_drag_begin(move |_, _| {
+                pending_activation_for_drag.borrow_mut().take();
                 if let Some(row) = dragged_row.upgrade() {
                     row.add_css_class("dragging");
                 }
@@ -257,6 +260,7 @@ pub(super) fn column_rows(
                 }
                 if let Some(state) = weak_state_for_end.upgrade() {
                     state.cancel_peek();
+                    state.stop_drag_autoscroll();
                 }
             });
             row.add_controller(drag.clone());
@@ -332,6 +336,7 @@ pub(super) fn column_rows(
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
                 };
+                state.stop_drag_autoscroll();
                 let Some(destination) = drop_state.destination() else {
                     return false;
                 };
@@ -359,13 +364,32 @@ pub(super) fn column_rows(
         let search_active_for_click = search_active_for_factory.clone();
         let search_results_for_click = search_results_for_factory.clone();
         // Open on release so a press-and-move can start a drag first.
-        let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
         let pending_activation_for_press = pending_activation.clone();
         let pending_activation_for_motion = pending_activation.clone();
         let pending_activation_for_release = pending_activation.clone();
         let pending_activation_for_cancel = pending_activation;
+        let was_selected = Rc::new(Cell::new(false));
+        let was_selected_for_press = was_selected.clone();
+        let was_selected_for_release = was_selected.clone();
+        let press_moved = Rc::new(Cell::new(false));
+        let press_moved_for_press = press_moved.clone();
+        let press_moved_for_update = press_moved.clone();
+        let press_moved_for_release = press_moved.clone();
+        let press_origin = Rc::new(Cell::new((0.0, 0.0)));
+        let press_origin_for_press = press_origin.clone();
+        let press_origin_for_update = press_origin.clone();
+        let rename_position = Rc::new(Cell::new(None::<usize>));
+        let rename_position_for_press = rename_position.clone();
+        let rename_position_for_release = rename_position.clone();
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
+            rename_position_for_press.set(None);
+            was_selected_for_press.set(false);
+            press_moved_for_press.set(false);
+            press_origin_for_press.set((x, y));
+            if let Some(state) = weak_state_for_click.upgrade() {
+                state.cancel_click_rename();
+            }
             if gesture
                 .widget()
                 .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
@@ -383,12 +407,12 @@ pub(super) fn column_rows(
             let modifiers = gesture.current_event_state();
             let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
             let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            let selected_before = selection_for_click.is_selected(position);
+            let selected_count_before = selection_for_click.selection().size();
+            was_selected_for_press.set(selected_before);
             let preserve_group = !control
                 && !shift
-                && should_preserve_drag_selection(
-                    selection_for_click.is_selected(position),
-                    selection_for_click.selection().size(),
-                );
+                && should_preserve_drag_selection(selected_before, selected_count_before);
             modified_for_click.set(control || shift);
             if shift {
                 let anchor =
@@ -493,7 +517,27 @@ pub(super) fn column_rows(
                         shift,
                         preserve_group,
                     );
+                    let slow_click_rename = press_count == 1
+                        && selected_before
+                        && selected_count_before == 1
+                        && !modifiers.intersects(
+                            gtk::gdk::ModifierType::CONTROL_MASK
+                                | gtk::gdk::ModifierType::SHIFT_MASK
+                                | gtk::gdk::ModifierType::ALT_MASK
+                                | gtk::gdk::ModifierType::SUPER_MASK
+                                | gtk::gdk::ModifierType::META_MASK,
+                        )
+                        && !preserve_group
+                        && !activate
+                        && !state.browser.is_chooser_mode()
+                        && !is_trash_location(&entry.location);
+                    rename_position_for_press.set(if slow_click_rename {
+                        Some(source_position)
+                    } else {
+                        None
+                    });
                     let preview = !activate
+                        && !slow_click_rename
                         && should_preview_pointer_press(
                             press_count,
                             control,
@@ -524,16 +568,39 @@ pub(super) fn column_rows(
             ) {
                 pending.update(x, y, widget.settings().gtk_dnd_drag_threshold());
             }
+            if let (Some((x, y)), Some(widget)) = (gesture.point(sequence), gesture.widget()) {
+                let origin = press_origin_for_update.get();
+                if crate::ui::pointer::exceeds_drag_threshold(
+                    origin,
+                    (x, y),
+                    widget.settings().gtk_dnd_drag_threshold(),
+                ) {
+                    press_moved_for_update.set(true);
+                }
+            }
         });
         let weak_state_for_release = weak_state.clone();
         let search_results_for_release = search_results_for_factory.clone();
-        selection_click.connect_released(move |gesture, _, x, y| {
+        selection_click.connect_released(move |gesture, count, x, y| {
             if gesture.current_event_state().intersects(
                 gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
             ) {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
-            let Some(mut pending) = pending_activation_for_release.take() else {
+            let pending = pending_activation_for_release.take();
+            if pending.is_none()
+                && count == 1
+                && !press_moved_for_release.get()
+                && !gesture.current_event_state().intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+                )
+                && was_selected_for_release.get()
+                && let Some(state) = weak_state_for_release.upgrade()
+                && let Some(position) = rename_position_for_release.get()
+            {
+                state.schedule_click_rename(depth, position);
+            }
+            let Some(mut pending) = pending else {
                 return;
             };
             let Some(widget) = gesture.widget() else {
@@ -603,8 +670,12 @@ pub(super) fn column_rows(
                 }
             }
         });
+        let weak_state_for_cancel = weak_state.clone();
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
+            if let Some(state) = weak_state_for_cancel.upgrade() {
+                state.cancel_click_rename();
+            }
         });
         row.add_controller(selection_click.clone());
         if let Some(drag) = &content_drag {
@@ -721,7 +792,7 @@ pub(super) fn column_rows(
         path.set_label(origin.as_deref().unwrap_or_default());
         path.set_visible(
             origin.is_some()
-                && crate::ui::theme::ThemeManager::shared().filter_include_subfolders(),
+                && crate::ui::preferences::PreferenceManager::shared().filter_include_subfolders(),
         );
         row.set_tooltip_text(origin.as_deref());
         let active = entry.as_ref().is_some_and(|entry| {
@@ -770,9 +841,15 @@ pub(super) fn column_rows(
                 && let Some(position) = source_position
                 && metadata_needs_fill(entry)
             {
-                state
-                    .browser
-                    .request_metadata_fill(depth, position, entry.location.clone(), false);
+                crate::ui::thumbnail::request_metadata(
+                    &icon,
+                    &row,
+                    &state.browser,
+                    depth,
+                    position,
+                    entry.location.clone(),
+                    false,
+                );
             }
         } else {
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);

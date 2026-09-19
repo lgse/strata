@@ -120,15 +120,25 @@ impl ViewState {
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let pending = Rc::new(RefCell::new(None));
         let peek_sequence = Rc::new(Cell::new(false));
+        let origin = Rc::new(Cell::new(None::<(f64, f64)>));
+        let origin_for_press = origin.clone();
+        let origin_for_release = origin.clone();
         let weak = Rc::downgrade(self);
         let pressed = pending.clone();
         let sequence = peek_sequence.clone();
         click.connect_pressed(move |gesture, count, x, y| {
             if count > 1 && sequence.get() {
+                origin_for_press.set(None);
                 gesture.set_state(gtk::EventSequenceState::Claimed);
                 return;
             }
-            let target = weak.upgrade().and_then(|state| state.clipped_column(x, y));
+            origin_for_press.set(Some((x, y)));
+            let target = weak.upgrade().and_then(|state| {
+                let target = state.clipped_column(x, y)?;
+                let surface = gesture.widget()?;
+                let picked = surface.pick(x, y, gtk::PickFlags::DEFAULT)?;
+                (!is_file_row_target(picked)).then_some(target)
+            });
             sequence.set(target.is_some());
             *pressed.borrow_mut() = target;
             if sequence.get() {
@@ -137,8 +147,17 @@ impl ViewState {
         });
         let weak = Rc::downgrade(self);
         let released = pending.clone();
-        click.connect_released(move |_, count, _, _| {
+        click.connect_released(move |gesture, count, x, y| {
+            let (Some((start_x, start_y)), Some(surface)) =
+                (origin_for_release.take(), gesture.widget())
+            else {
+                released.borrow_mut().take();
+                return;
+            };
             let target = released.borrow_mut().take();
+            if surface.drag_check_threshold(start_x as i32, start_y as i32, x as i32, y as i32) {
+                return;
+            }
             if count == 1
                 && let Some((depth, location)) = target
                 && let Some(state) = weak.upgrade()
@@ -146,7 +165,9 @@ impl ViewState {
                 state.reveal_column_only(depth, &location);
             }
         });
+        let origin_for_stop = origin;
         click.connect_stopped(move |_| {
+            origin_for_stop.set(None);
             pending.borrow_mut().take();
         });
         self.scroller.add_controller(click);

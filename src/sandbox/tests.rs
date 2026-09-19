@@ -115,6 +115,7 @@ fn file_size_limit_holds_a_full_resolution_decoded_frame() {
     const RGBA_CHANNELS: u64 = 4;
 
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Pictures/photo.jpg"),
         Path::new("/tmp/private-output"),
@@ -145,8 +146,32 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 }
 
 #[test]
+fn sandbox_command_starts_absolute_bubblewrap() {
+    let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
+        Path::new("/tmp/strata"),
+        Path::new("/home/alice/Pictures/photo.jpg"),
+        Path::new("/tmp/private-output"),
+        ParseOperation::ThumbnailImage,
+        256,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    assert_eq!(command.get_program(), Path::new("/usr/bin/bwrap"));
+    let joined = command
+        .get_args()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(joined.contains("--unshare-all"));
+    assert!(joined.contains("--clearenv"));
+    assert!(joined.contains("--setenv PATH /usr/bin"));
+}
+
+#[test]
 fn sandbox_exposes_only_runtime_input_and_private_output() {
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Downloads/untrusted.pdf"),
         Path::new("/tmp/private-output"),
@@ -179,8 +204,38 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 }
 
 #[test]
+fn workbook_parser_uses_resource_limited_sandbox_and_validated_output() {
+    let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
+        Path::new("/app/strata"),
+        Path::new("/fixtures/book.xlsx"),
+        Path::new("/private-output"),
+        ParseOperation::PreviewWorkbook,
+        0,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let arguments = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(arguments.contains("--unshare-all --die-with-parent --new-session --clearenv"));
+    assert!(arguments.contains("--as=2147483648 --cpu=10"));
+    assert!(arguments.contains("preview-workbook /input.xlsx /output/result.json"));
+    assert!(!arguments.contains("--share-net"));
+    assert!(!arguments.contains("--dev-bind"));
+    assert!(valid_output(
+        ParseOperation::PreviewWorkbook,
+        br#"{"rows":[["a"],["1"]],"truncated":false}"#
+    ));
+    assert!(!valid_output(ParseOperation::PreviewWorkbook, b"invalid"));
+}
+
+#[test]
 fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -219,6 +274,7 @@ fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
 fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits() {
     let operation = MEDIA_PREVIEW;
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -321,6 +377,7 @@ fn every_polaris_range_uses_the_safe_default_but_remains_available_for_opt_in() 
     assert_eq!(devices.len(), blocked.len());
     assert!(polaris_gpu_available_at(&dev, &drm));
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -400,6 +457,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
         "/dev/nvidiactl".into(),
     ];
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -427,6 +485,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
 #[test]
 fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -449,6 +508,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
 #[test]
 fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -469,8 +529,9 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
 }
 
 #[test]
-fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
+fn video_thumbnails_execute_the_helper_inside_the_bounded_sandbox() {
     let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -491,12 +552,10 @@ fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
     assert!(joined.contains("--as=2147483648"));
     assert!(joined.contains("--cpu=10"));
     assert!(joined.contains("--fsize=33554432"));
-    assert!(
-        joined
-            .contains("/usr/bin/ffmpegthumbnailer -i /input.mkv -o /output/result.png -s 128 -q 8")
-    );
-    assert!(!joined.contains("/app/strata"));
-    assert!(!joined.contains("--preview-helper"));
+    assert!(joined.contains("--ro-bind /tmp/strata /app/strata"));
+    assert!(joined.contains(
+        "/app/strata --preview-helper thumbnail-video /input.mkv /output/result.png 128 software"
+    ));
     assert!(!joined.contains("--share-net"));
 }
 

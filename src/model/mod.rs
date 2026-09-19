@@ -26,6 +26,10 @@ pub(crate) fn uri_contains_credentials(uri: &gio::glib::Uri) -> bool {
         || uri.user().is_some_and(|user| user.contains([':', ';']))
 }
 
+fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
+    gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
+}
+
 impl Location {
     pub fn local(path: impl Into<PathBuf>) -> Self {
         Self {
@@ -53,7 +57,27 @@ impl Location {
         }
     }
 
+    /// Directory operations must reject virtual children as well as the root.
+    pub fn is_recent_location(&self) -> bool {
+        self.uri_value()
+            .is_some_and(|uri| uri_scheme_eq(uri, "recent"))
+    }
+
+    pub fn is_recent_root(&self) -> bool {
+        // Avoid GFile here: GVfs backends can SIGSEGV when tests call File APIs concurrently.
+        self.uri_value().is_some_and(|uri| {
+            if !uri_scheme_eq(uri, "recent") {
+                return false;
+            }
+            uri.split_once(':')
+                .is_some_and(|(_, rest)| rest.trim_start_matches('/').is_empty())
+        })
+    }
+
     pub fn parent(&self) -> Option<Self> {
+        if self.is_recent_root() {
+            return None;
+        }
         match &self.kind {
             LocationKind::Native(path) => {
                 let parent = path.parent()?;
@@ -61,11 +85,41 @@ impl Location {
             }
             LocationKind::Uri(uri) if uri == "trash:///" || uri == "network:///" => None,
             LocationKind::Uri(uri) => {
-                let file = gio::File::for_uri(uri);
-                let parent = file.parent()?;
-                let parent_uri = parent.uri();
+                // Walk the URI path. GVfs File::parent() can SIGSEGV on gphoto2
+                // and similar backends when many tests call it concurrently.
+                let parsed = gio::glib::Uri::parse(
+                    uri,
+                    gio::glib::UriFlags::HAS_PASSWORD
+                        | gio::glib::UriFlags::HAS_AUTH_PARAMS
+                        | gio::glib::UriFlags::ENCODED,
+                )
+                .ok()?;
+                let path = parsed.path();
+                let trimmed = path.trim_end_matches('/');
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let parent_path = match trimmed.rsplit_once('/') {
+                    Some(("", _)) => "/",
+                    Some((parent, _)) => parent,
+                    None => return None,
+                };
+                let parent_uri = gio::glib::Uri::build_with_user(
+                    gio::glib::UriFlags::ENCODED,
+                    &parsed.scheme(),
+                    parsed.user().as_deref(),
+                    parsed.password().as_deref(),
+                    parsed.auth_params().as_deref(),
+                    parsed.host().as_deref(),
+                    parsed.port(),
+                    parent_path,
+                    parsed.query().as_deref(),
+                    parsed.fragment().as_deref(),
+                )
+                .to_str()
+                .to_string();
                 let canonical = if parent_uri.ends_with("///") {
-                    parent_uri.to_string()
+                    parent_uri
                 } else {
                     parent_uri.trim_end_matches('/').to_owned()
                 };
@@ -209,8 +263,8 @@ impl Location {
 
     pub fn is_camera_photo_root(&self) -> bool {
         self.uri_value().is_some_and(|uri| {
-            let file = gio::File::for_uri(uri);
-            file.has_uri_scheme("gphoto2") && file.parent().is_none()
+            gio::glib::Uri::parse_scheme(uri).as_deref() == Some("gphoto2")
+                && self.parent().is_none()
         })
     }
 
@@ -224,6 +278,9 @@ impl Location {
     }
 
     pub fn display_name(&self) -> String {
+        if self.is_recent_root() {
+            return "Recent".into();
+        }
         if self.is_camera_photo_root() {
             return "Photos".into();
         }
@@ -249,6 +306,9 @@ impl Location {
     }
 
     pub fn breadcrumbs(&self) -> Vec<Self> {
+        if self.is_recent_root() {
+            return vec![self.clone()];
+        }
         if let Some(path) = self.native_path() {
             let mut locations: Vec<_> = path.ancestors().map(Self::local).collect();
             locations.reverse();
@@ -270,6 +330,8 @@ impl Location {
 pub enum SortKey {
     /// Camera-library-local streaming order; never a saved folder default.
     DeviceOrder,
+    /// Recent-library-local use time; never a saved folder default.
+    Recency,
     Name,
     Type,
     Size,
@@ -328,6 +390,7 @@ pub struct FileEntry {
     pub kind: EntryKind,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub recent_unix_seconds: MetadataValue<i64>,
     pub mode: MetadataValue<u32>,
     pub image_dimensions: MetadataValue<(u32, u32)>,
     pub child_count: MetadataValue<u64>,

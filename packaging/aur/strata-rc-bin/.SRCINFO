@@ -23,6 +23,7 @@ pkgbase = strata-rc-bin
 	optdepends = gvfs-smb: SMB network locations
 	optdepends = imagemagick: RAW image previews
 	optdepends = libraw: RAW image previews when ImageMagick is unavailable
+	optdepends = squashfs-tools: AppImage icon thumbnails
 	optdepends = xdg-terminal-exec: preferred Open in Terminal launcher (AUR)
 	provides = strata=0.9.0
 	conflicts = strata

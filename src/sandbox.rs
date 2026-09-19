@@ -17,6 +17,7 @@ use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::services::MediaPreviewSize;
 
+pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
 
@@ -97,8 +98,13 @@ pub(crate) enum ParseOperation {
     ThumbnailRaw,
     ThumbnailPdf,
     ThumbnailVideo,
+    ThumbnailAppImage,
     PreviewImage,
+    DocumentImage,
+    DocumentMermaid,
+    DocumentMath { display: bool },
     MediaMetadata,
+    PreviewWorkbook,
     PreviewPdf(PdfRenderSize),
     PreviewMedia(MediaPreviewSize),
 }
@@ -110,8 +116,14 @@ impl ParseOperation {
             Self::ThumbnailRaw => "thumbnail-raw",
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
+            Self::ThumbnailAppImage => "thumbnail-appimage",
             Self::PreviewImage => "preview-image",
+            Self::DocumentImage => "document-image",
+            Self::DocumentMermaid => "document-mermaid",
+            Self::DocumentMath { display: true } => "document-math",
+            Self::DocumentMath { display: false } => "document-inline-math",
             Self::MediaMetadata => "media-metadata",
+            Self::PreviewWorkbook => "preview-workbook",
             Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewMedia(_) => "preview-media",
         }
@@ -122,7 +134,7 @@ impl ParseOperation {
     }
 
     fn output_name(self) -> &'static str {
-        if self == Self::MediaMetadata {
+        if matches!(self, Self::MediaMetadata | Self::PreviewWorkbook) {
             "result.json"
         } else if self.is_media() {
             "result.media"
@@ -136,10 +148,14 @@ impl ParseOperation {
             Self::ThumbnailImage
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
-            | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
-            Self::PreviewImage => Some((800, 800, 800 * 800)),
+            | Self::ThumbnailVideo
+            | Self::ThumbnailAppImage => Some((256, 256, 256 * 256)),
+            Self::PreviewImage
+            | Self::DocumentImage
+            | Self::DocumentMermaid
+            | Self::DocumentMath { .. } => Some((800, 800, 800 * 800)),
             Self::PreviewPdf(size) => Some(size.image_limits()),
-            Self::PreviewMedia(_) | Self::MediaMetadata => None,
+            Self::PreviewMedia(_) | Self::MediaMetadata | Self::PreviewWorkbook => None,
         }
     }
 
@@ -150,7 +166,18 @@ impl ParseOperation {
             | Self::ThumbnailPdf
             | Self::PreviewImage
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
-            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata => None,
+            Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
+            Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
+            Self::DocumentMermaid => {
+                Some(crate::services::document_media::DIAGRAM_INPUT_LIMIT as u64)
+            }
+            Self::DocumentMath { .. } => {
+                Some(crate::services::document_media::MATH_INPUT_LIMIT as u64)
+            }
+            Self::ThumbnailVideo
+            | Self::ThumbnailAppImage
+            | Self::PreviewMedia(_)
+            | Self::MediaMetadata => None,
         }
     }
 }
@@ -208,8 +235,11 @@ pub(crate) fn parse(
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable =
         resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
+    let bwrap = crate::trusted_command::resolve("bwrap")
+        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
     let devices = Vec::new();
     let mut command = sandbox_command(
+        &bwrap,
         &executable,
         &input,
         output.path(),
@@ -222,7 +252,17 @@ pub(crate) fn parse(
     command.stdout(Stdio::null());
     let mut child = spawn_renderer(&mut command)
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
-    let status = wait_for_renderer(&mut child, cancellation, WALL_TIME_LIMIT)?;
+    let timeout = if matches!(
+        operation,
+        ParseOperation::DocumentImage
+            | ParseOperation::DocumentMermaid
+            | ParseOperation::DocumentMath { .. }
+    ) {
+        Duration::from_secs(3)
+    } else {
+        WALL_TIME_LIMIT
+    };
+    let status = wait_for_renderer(&mut child, cancellation, timeout)?;
     if !status.success() {
         return Err("The sandboxed preview renderer failed".to_owned());
     }
@@ -316,16 +356,8 @@ fn wait_for_renderer(
     }
 }
 
-fn sandbox_command(
-    executable: &Path,
-    input: &Path,
-    output: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    devices: &[PathBuf],
-) -> Command {
-    let mut command = Command::new("bwrap");
+fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
+    let mut command = Command::new(bwrap);
     command.args([
         "--unshare-all",
         "--die-with-parent",
@@ -389,10 +421,26 @@ fn sandbox_command(
             }
         }
     }
+    command
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "explicit executable path permits testing without installed bubblewrap"
+)]
+fn sandbox_command(
+    bwrap: &Path,
+    executable: &Path,
+    input: &Path,
+    output: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    devices: &[PathBuf],
+) -> Command {
+    let mut command = runtime_command(bwrap, operation);
     let sandbox_input = sandbox_input_path(input);
-    if operation != ParseOperation::ThumbnailVideo {
-        command.arg("--ro-bind").arg(executable).arg("/app/strata");
-    }
+    command.arg("--ro-bind").arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
     if !operation.is_media() {
         command.arg("--bind").arg(output).arg("/output");
@@ -423,15 +471,6 @@ fn sandbox_command(
                 }
             ))
             .arg("--");
-    }
-    if operation == ParseOperation::ThumbnailVideo {
-        command
-            .args(["/usr/bin/ffmpegthumbnailer", "-i", &sandbox_input, "-o"])
-            .arg(format!("/output/{}", operation.output_name()))
-            .arg("-s")
-            .arg(value.to_string())
-            .args(["-q", "8"]);
-        return command;
     }
     command.args([
         "/app/strata",
@@ -536,6 +575,9 @@ pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
 }
 
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
+    if operation == ParseOperation::PreviewWorkbook {
+        return crate::services::table::TableData::from_json(data).is_ok();
+    }
     if operation == ParseOperation::MediaMetadata {
         data.len() as u64 <= metadata::MAX_METADATA_BYTES
             && serde_json::from_slice::<serde_json::Value>(data).is_ok()

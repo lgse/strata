@@ -15,9 +15,9 @@ use crate::{
         browser::BrowserView,
         window::{
             apply_browser_mode, browser_mode_for_digit, is_browser_navigation_key,
-            is_context_menu_shortcut, is_open_terminal_shortcut, is_refresh_shortcut,
-            is_rename_shortcut, is_sidebar_focus_shortcut, is_toggle_hidden_shortcut,
-            is_undo_shortcut, type_to_search_query,
+            is_context_menu_shortcut, is_native_editing_shortcut, is_open_terminal_shortcut,
+            is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
+            is_toggle_hidden_shortcut, is_undo_shortcut, type_to_search_query,
         },
     },
 };
@@ -29,17 +29,28 @@ impl Dispatcher {
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && let Some(mode) = browser_mode_for_digit(event.key)
         {
-            apply_browser_mode(&self.view, &crate::ui::theme::ThemeManager::shared(), mode);
+            apply_browser_mode(
+                &self.view,
+                &crate::ui::preferences::PreferenceManager::shared(),
+                mode,
+            );
             return Some(Propagation::Stop);
         }
         if event.text_has_focus() {
             return None;
         }
-        if event.control() && matches!(event.key, Key::k | Key::K) {
-            if let Err(error) =
-                gtk::prelude::WidgetExt::activate_action(&self.window, "win.search", None)
+        if event.control()
+            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::k | Key::K)
+        {
+            let (action, label) = if event.shift() {
+                ("win.jump-folder", "folder jump")
+            } else {
+                ("win.search", "global search")
+            };
+            if let Err(error) = gtk::prelude::WidgetExt::activate_action(&self.window, action, None)
             {
-                tracing::warn!(%error, "unable to activate global search shortcut");
+                tracing::warn!(%error, "unable to activate {label} shortcut");
             }
             return Some(Propagation::Stop);
         }
@@ -207,10 +218,22 @@ impl Dispatcher {
             },
             _ => return None,
         };
-        if self.view.filter_has_focus() || event.text_has_focus() {
+        if self.view.filter_has_focus()
+            || event.text_has_focus()
+            || (self.preview_has_focus(event)
+                && is_native_editing_shortcut(event.key, event.modifiers))
+        {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)
+    }
+
+    fn preview_has_focus(&self, event: &KeyEvent) -> bool {
+        let preview = self.preview.widget();
+        event
+            .focused
+            .as_ref()
+            .is_some_and(|focused| focused == &preview || focused.is_ancestor(&preview))
     }
 
     pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {

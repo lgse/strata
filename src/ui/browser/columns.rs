@@ -30,7 +30,42 @@ use std::time::{Duration, Instant};
 
 pub(in crate::ui) const COLUMN_WIDTH: i32 = 300;
 
-const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+pub(super) const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+
+pub(super) fn install_horizontal_scroll(state: &Rc<ViewState>) {
+    let controller = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+    // Nested listing scrollers consume horizontal events even with horizontal scrolling disabled.
+    controller.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak_state = Rc::downgrade(state);
+    controller.connect_scroll(move |controller, dx, dy| {
+        let Some(state) = weak_state.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        let shifted = controller
+            .current_event_state()
+            .contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let (dx, dy) = if shifted { (dy, dx) } else { (dx, dy) };
+        if dx.abs() <= dy.abs() {
+            return glib::Propagation::Proceed;
+        }
+        let adjustment = state.scroller.hadjustment();
+        let max = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+        if max <= adjustment.lower() {
+            return glib::Propagation::Proceed;
+        }
+        let scale = match controller.unit() {
+            gtk::gdk::ScrollUnit::Wheel => adjustment.page_size().powf(2.0 / 3.0),
+            gtk::gdk::ScrollUnit::Surface => 2.5,
+            _ => 1.0,
+        };
+        state
+            .horizontal_scroll_generation
+            .set(state.horizontal_scroll_generation.get().saturating_add(1));
+        adjustment.set_value((adjustment.value() + dx * scale).clamp(adjustment.lower(), max));
+        glib::Propagation::Stop
+    });
+    state.scroller.add_controller(controller);
+}
 
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
@@ -1074,10 +1109,14 @@ impl ViewState {
         list.add_controller(selection_keys);
 
         let weak_browser = Rc::downgrade(&self.browser);
+        let weak_state_for_activate = Rc::downgrade(self);
         let map_for_activation = map.clone();
         let search_handle_for_activate = search_handle.clone();
         let search_results_for_activate = search_results.clone();
         list.connect_activate(move |_, position| {
+            if let Some(state) = weak_state_for_activate.upgrade() {
+                state.cancel_click_rename();
+            }
             if search_handle_for_activate.borrow().is_some() {
                 activate_recursive_search_result(
                     &weak_browser,
@@ -1178,6 +1217,7 @@ impl ViewState {
             marquee.group_background_click(&click);
         }
         if self.interactive {
+            install_directory_drop_target(self, &column, location.clone());
             install_directory_drop_target(self, &presentation.stack, location.clone());
         }
         let folder_context_trigger = install_folder_context_menu(
@@ -1273,7 +1313,7 @@ impl ViewState {
 
         shell.set_size_request(COLUMN_WIDTH, -1);
         let previous_scale = Cell::new(1.0);
-        crate::ui::theme::ThemeManager::shared().bind_interface_scale(
+        crate::ui::preferences::PreferenceManager::shared().bind_interface_scale(
             &shell,
             move |shell, scale| {
                 let ratio = scale / previous_scale.replace(scale);
@@ -1352,6 +1392,8 @@ impl ViewState {
         reveal_button.add_css_class("column-peek-target");
         reveal_button.set_focusable(false);
         reveal_button.set_focus_on_click(false);
+        // Let row drag sources receive presses through the peek overlay.
+        reveal_button.set_can_target(false);
         reveal_button.set_cursor_from_name(Some("pointer"));
         reveal_button.set_visible(false);
         crate::ui::accessibility::set_label(
@@ -1366,6 +1408,28 @@ impl ViewState {
                 state.reveal_column_only(depth, &revealed_location);
             }
         });
+        let peek_motion = gtk::EventControllerMotion::new();
+        let weak = Rc::downgrade(self);
+        peek_motion.connect_enter(move |_, _, _| {
+            if let Some(state) = weak.upgrade() {
+                state.hovered_column.set(Some(depth));
+                state.refresh_destination_style();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        peek_motion.connect_leave(move |_| {
+            if let Some(state) = weak.upgrade()
+                && state.hovered_column.get() == Some(depth)
+            {
+                state.hovered_column.set(None);
+                state.refresh_destination_style();
+            }
+        });
+        reveal_button.add_controller(peek_motion);
+        if self.interactive {
+            install_directory_drop_target(self, &reveal_button, location.clone());
+            install_directory_drop_target(self, &resize_handle, location.clone());
+        }
         column_overlay.add_overlay(&reveal_button);
         let animation_generation = Rc::new(Cell::new(0));
         let previous = depth
@@ -1462,8 +1526,10 @@ impl ViewState {
             let Some(state) = weak.upgrade() else {
                 return;
             };
+            state.suppress_focus_scroll.set(true);
             state.browser.set_active_column(depth);
             state.browser.focus_active();
+            state.suppress_focus_scroll.set(false);
             let shell = state
                 .columns
                 .borrow()
@@ -1480,6 +1546,7 @@ impl ViewState {
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
+        self.columns_widget.set_margin_end(0);
         let weak = Rc::downgrade(self);
         let measured_shell = shell.downgrade();
         let _tick = self.scroller.add_tick_callback(move |_, _| {
@@ -1567,6 +1634,7 @@ impl ViewState {
     }
 }
 
+pub(super) mod drag_scroll;
 mod reveal;
 mod rows;
 mod search;

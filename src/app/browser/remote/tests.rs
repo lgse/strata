@@ -33,6 +33,7 @@ fn entry(index: usize) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        recent_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
         mode: MetadataValue::Unknown,
         image_dimensions: MetadataValue::Unknown,
@@ -80,6 +81,58 @@ fn inserted_rows(events: &[BrowserEvent]) -> usize {
         .sum()
 }
 
+fn batch(browser: &Rc<Browser>, request_id: RequestId, indices: impl IntoIterator<Item = usize>) {
+    browser.handle_directory_event(DirectoryEvent::Batch {
+        request_id,
+        entries: indices.into_iter().map(entry).collect(),
+    });
+}
+
+#[track_caller]
+fn row_count(browser: &Browser, depth: usize) -> usize {
+    browser
+        .column_snapshot(depth)
+        .expect("column snapshot")
+        .count
+}
+
+#[track_caller]
+fn timer_id(browser: &Browser) -> u32 {
+    browser
+        .remote
+        .borrow()
+        .flush_timer
+        .as_ref()
+        .expect("armed timer")
+        .as_raw()
+}
+
+#[track_caller]
+fn assert_loading_progress(
+    browser: &Browser,
+    events: &RefCell<Vec<BrowserEvent>>,
+    inserted: usize,
+) {
+    assert_eq!(inserted_rows(&events.borrow()), inserted);
+    assert!(browser.column_snapshot(0).expect("loading column").loading);
+    assert_eq!(terminal_count(&events.borrow()), 0);
+}
+
+#[track_caller]
+fn assert_idle(browser: &Browser) {
+    assert!(!browser.remote.borrow().timer_armed());
+    assert!(browser.remote.borrow().has_no_work());
+}
+
+#[track_caller]
+fn assert_no_rows_at(events: &RefCell<Vec<BrowserEvent>>, removed_depth: usize) {
+    assert!(!events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::EntriesInserted { depth, .. }
+            | BrowserEvent::EntriesReplaced { depth, .. } if *depth == removed_depth
+    )));
+}
+
 #[test]
 fn camera_backlogs_yield_to_input_and_publish_small_chunks() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
@@ -108,7 +161,7 @@ fn camera_backlogs_yield_to_input_and_publish_small_chunks() {
             .collect(),
     });
     assert_eq!(
-        browser.column_snapshot(0).expect("camera").count,
+        row_count(&browser, 0),
         super::super::CAMERA_FLUSH_CAP,
         "neither the first batch nor a full queue may monopolize the producer callback"
     );
@@ -125,15 +178,9 @@ fn camera_backlogs_yield_to_input_and_publish_small_chunks() {
         input.get(),
         "input-priority work must run ahead of a ready camera flush"
     );
-    assert_eq!(
-        browser.column_snapshot(0).expect("camera").count,
-        super::super::CAMERA_FLUSH_CAP
-    );
+    assert_eq!(row_count(&browser, 0), super::super::CAMERA_FLUSH_CAP);
     browser.flush_coalesced_capped(Some(0));
-    assert_eq!(
-        browser.column_snapshot(0).expect("camera").count,
-        2 * super::super::CAMERA_FLUSH_CAP
-    );
+    assert_eq!(row_count(&browser, 0), 2 * super::super::CAMERA_FLUSH_CAP);
     browser.cancel_remote_timer();
 }
 
@@ -141,86 +188,40 @@ fn camera_backlogs_yield_to_input_and_publish_small_chunks() {
 fn depths_share_one_coalescing_timer() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
     let (browser, _, request) = fixture();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(0)],
-    });
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(1)],
-    });
+    batch(&browser, request, [0]);
+    batch(&browser, request, [1]);
     browser.descend(0, Location::uri("sftp://example.test/root/child"));
     let child = browser
         .state
         .borrow()
         .request_id_for_depth(1)
         .expect("child request");
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: child,
-        entries: vec![entry(2)],
-    });
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: child,
-        entries: vec![entry(3)],
-    });
+    batch(&browser, child, [2]);
+    batch(&browser, child, [3]);
     assert!(browser.remote.borrow().has_pending(0));
     assert!(browser.remote.borrow().has_pending(1));
-    let source = browser
-        .remote
-        .borrow()
-        .flush_timer
-        .as_ref()
-        .expect("shared timer")
-        .as_raw();
+    let source = timer_id(&browser);
     browser.flush_coalesced_capped(Some(0));
     assert!(browser.remote.borrow().has_pending(1));
-    assert_eq!(
-        browser
-            .remote
-            .borrow()
-            .flush_timer
-            .as_ref()
-            .expect("child timer")
-            .as_raw(),
-        source
-    );
+    assert_eq!(timer_id(&browser), source);
     browser.flush_coalesced_capped(Some(1));
-    assert!(!browser.remote.borrow().timer_armed());
-    assert!(browser.remote.borrow().has_no_work());
-    assert_eq!(browser.column_snapshot(0).expect("root").count, 2);
-    assert_eq!(browser.column_snapshot(1).expect("child").count, 2);
+    assert_idle(&browser);
+    assert_eq!(row_count(&browser, 0), 2);
+    assert_eq!(row_count(&browser, 1), 2);
 }
 
 #[test]
 fn superseding_a_load_discards_queued_batches_and_armed_timer() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
     let (browser, events, request) = fixture();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(0)],
-    });
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(1)],
-    });
-    assert!(
-        browser
-            .remote
-            .borrow()
-            .flush_timer
-            .as_ref()
-            .expect("old timer")
-            .as_raw()
-            > 0
-    );
+    batch(&browser, request, [0]);
+    batch(&browser, request, [1]);
+    assert!(timer_id(&browser) > 0);
     events.borrow_mut().clear();
     browser.navigate(Location::local("/replacement"));
     assert!(!browser.remote.borrow().timer_armed());
     events.borrow_mut().clear();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(2)],
-    });
+    batch(&browser, request, [2]);
     browser.handle_directory_event(DirectoryEvent::Finished {
         request_id: request,
         truncated: true,
@@ -238,37 +239,20 @@ fn superseding_a_load_discards_queued_batches_and_armed_timer() {
 fn capped_drains_preserve_all_entries_and_deferred_terminals() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
     let (browser, events, request) = fixture();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(0)],
-    });
+    batch(&browser, request, [0]);
     events.borrow_mut().clear();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: (1..=1536).map(entry).collect(),
-    });
+    batch(&browser, request, 1..=1536);
     browser.handle_directory_event(DirectoryEvent::Finished {
         request_id: request,
         truncated: true,
         can_trash: Some(false),
         can_delete: Some(true),
     });
-    assert_eq!(inserted_rows(&events.borrow()), 512);
-    assert!(browser.column_snapshot(0).expect("loading column").loading);
-    assert_eq!(terminal_count(&events.borrow()), 0);
+    assert_loading_progress(&browser, &events, 512);
     browser.flush_coalesced_capped(Some(0));
-    assert_eq!(inserted_rows(&events.borrow()), 1024);
-    assert!(
-        browser
-            .column_snapshot(0)
-            .expect("still loading column")
-            .loading
-    );
+    assert_loading_progress(&browser, &events, 1024);
     browser.flush_coalesced_capped(Some(0));
-    assert_eq!(
-        browser.column_snapshot(0).expect("after final drain").count,
-        1537
-    );
+    assert_eq!(row_count(&browser, 0), 1537);
     assert!(!browser.column_snapshot(0).expect("finished column").loading);
     assert_eq!(terminal_count(&events.borrow()), 1);
     assert!(matches!(
@@ -278,61 +262,44 @@ fn capped_drains_preserve_all_entries_and_deferred_terminals() {
             truncated: true
         })
     ));
-    let rows = browser.column_snapshot(0).expect("rows").count;
+    let rows = row_count(&browser, 0);
     browser.flush_coalesced_capped(Some(0));
-    assert_eq!(browser.column_snapshot(0).expect("stable rows").count, rows);
+    assert_eq!(row_count(&browser, 0), rows);
     assert_eq!(terminal_count(&events.borrow()), 1);
-    assert!(!browser.remote.borrow().timer_armed());
-    assert!(browser.remote.borrow().has_no_work());
+    assert_idle(&browser);
 }
 
 #[test]
 fn capped_drains_defer_failure_until_the_queue_is_empty() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
     let (browser, events, request) = fixture();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(0)],
-    });
+    batch(&browser, request, [0]);
     events.borrow_mut().clear();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: (1..=1025).map(entry).collect(),
-    });
+    batch(&browser, request, 1..=1025);
     browser.handle_directory_event(DirectoryEvent::Failed {
         request_id: request,
         message: "deferred failure".into(),
     });
-    assert_eq!(inserted_rows(&events.borrow()), 512);
-    assert!(browser.column_snapshot(0).expect("still loading").loading);
-    assert_eq!(terminal_count(&events.borrow()), 0);
+    assert_loading_progress(&browser, &events, 512);
     browser.flush_coalesced_capped(Some(0));
-    assert_eq!(inserted_rows(&events.borrow()), 1024);
-    assert!(browser.column_snapshot(0).expect("still loading").loading);
+    assert_loading_progress(&browser, &events, 1024);
     browser.flush_coalesced_capped(Some(0));
-    assert_eq!(browser.column_snapshot(0).expect("final row").count, 1026);
+    assert_eq!(row_count(&browser, 0), 1026);
     assert!(!browser.column_snapshot(0).expect("failed column").loading);
     assert!(
         matches!(events.borrow().last(), Some(BrowserEvent::LoadFailed { depth: 0, message }) if message == "deferred failure")
     );
     assert_eq!(terminal_count(&events.borrow()), 1);
-    assert!(!browser.remote.borrow().timer_armed());
-    assert!(browser.remote.borrow().has_no_work());
+    assert_idle(&browser);
 }
 
 #[test]
 fn cleanup_then_late_flush_cannot_publish_or_finish_old_work() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
     let (browser, events, request) = fixture();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(0)],
-    });
+    batch(&browser, request, [0]);
     events.borrow_mut().clear();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: (1..=1025).map(entry).collect(),
-    });
+    batch(&browser, request, 1..=1025);
     browser.handle_directory_event(DirectoryEvent::Finished {
         request_id: request,
         truncated: false,
@@ -347,71 +314,44 @@ fn cleanup_then_late_flush_cannot_publish_or_finish_old_work() {
     browser.flush_coalesced_capped(None);
     assert!(browser.remote.borrow().has_no_work());
     assert!(events.borrow().is_empty());
+}
 
+#[test]
+fn replacing_a_child_preserves_parent_backlog_without_publishing_child_rows() {
+    let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
     let (browser, events, request) = fixture();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(0)],
-    });
+    batch(&browser, request, [0]);
     browser.descend(0, Location::uri("sftp://example.test/root/child"));
     let removed = browser
         .state
         .borrow()
         .request_id_for_depth(1)
         .expect("child request");
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: removed,
-        entries: vec![entry(10)],
-    });
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: removed,
-        entries: (11..=523).map(entry).collect(),
-    });
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: (1..=513).map(entry).collect(),
-    });
+    batch(&browser, removed, [10]);
+    batch(&browser, removed, 11..=523);
+    batch(&browser, request, 1..=513);
     browser.descend(0, Location::uri("sftp://example.test/root/other-child"));
     events.borrow_mut().clear();
     browser.flush_coalesced_capped(None);
-    assert_eq!(
-        browser.column_snapshot(0).expect("retained root").count,
-        513
-    );
+    assert_eq!(row_count(&browser, 0), 513);
     assert!(browser.remote.borrow().has_pending(0));
     assert!(browser.remote.borrow().timer_armed());
-    assert!(!events.borrow().iter().any(|event| matches!(
-        event,
-        BrowserEvent::EntriesInserted { depth: 1, .. }
-            | BrowserEvent::EntriesReplaced { depth: 1, .. }
-    )));
+    assert_no_rows_at(&events, 1);
 
     browser.flush_coalesced_capped(None);
-    assert_eq!(
-        browser
-            .column_snapshot(0)
-            .expect("fully drained root")
-            .count,
-        514
-    );
+    assert_eq!(row_count(&browser, 0), 514);
     assert!(!browser.remote.borrow().has_pending(0));
-    assert!(!browser.remote.borrow().timer_armed());
-    assert!(browser.remote.borrow().has_no_work());
-    assert!(!events.borrow().iter().any(|event| matches!(
-        event,
-        BrowserEvent::EntriesInserted { depth: 1, .. }
-            | BrowserEvent::EntriesReplaced { depth: 1, .. }
-    )));
+    assert_idle(&browser);
+    assert_no_rows_at(&events, 1);
 }
 
 #[test]
 fn observer_can_reenter_queue_and_cleanup_without_refcell_panic() {
     let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
     let (browser, events, request) = fixture();
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(0)],
-    });
+    batch(&browser, request, [0]);
+    let reentered = Rc::new(std::cell::Cell::new(false));
+    let observed_reentry = reentered.clone();
     let weak: Weak<Browser> = Rc::downgrade(&browser);
     browser.observe(move |event| {
         if matches!(
@@ -419,22 +359,21 @@ fn observer_can_reenter_queue_and_cleanup_without_refcell_panic() {
             BrowserEvent::EntriesInserted { .. } | BrowserEvent::EntriesReplaced { .. }
         ) && let Some(browser) = weak.upgrade()
         {
+            observed_reentry.set(true);
             browser.accumulate_batch(request, 0, vec![entry(9_999)]);
             browser.remote.borrow_mut().clear();
         }
     });
-    browser.handle_directory_event(DirectoryEvent::Batch {
-        request_id: request,
-        entries: vec![entry(1)],
-    });
+    batch(&browser, request, [1]);
     browser.flush_coalesced_capped(Some(0));
-    assert!(browser.remote.borrow().has_no_work());
-    assert!(!browser.remote.borrow().timer_armed());
+    assert!(
+        reentered.get(),
+        "observer must reenter the queue before cleanup"
+    );
+    assert_idle(&browser);
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::EntriesReplaced { depth: 0, .. }
             | BrowserEvent::EntriesInserted { depth: 0, .. }
     )));
-    assert!(browser.remote.borrow().has_no_work());
-    assert!(!browser.remote.borrow().timer_armed());
 }

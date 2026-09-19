@@ -334,6 +334,11 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -2px;
 }
 
+.column-peek-target.file-drop-zone:drop(active) {
+  background: alpha(@theme_accent, 0.18);
+  box-shadow: inset 0 0 0 2px @theme_accent;
+}
+
 .location-entry,
 .location-entry:focus,
 .location-entry:focus-visible,
@@ -1849,6 +1854,25 @@ scrollbar slider:active {
   min-height: 6px;
 }
 
+.sidebar-scroll scrollbar.vertical {
+  min-width: 5px;
+}
+
+.sidebar-scroll scrollbar.vertical > range > trough > slider {
+  min-width: 3px;
+  margin: 0 1px;
+  border: none;
+  background: alpha(@theme_text, 0.35);
+}
+
+.sidebar-scroll scrollbar.vertical:hover > range > trough > slider {
+  background: alpha(@theme_accent, 0.65);
+}
+
+.sidebar-scroll scrollbar.vertical > range > trough > slider:active {
+  background: @theme_accent;
+}
+
 .columns-scroll scrollbar.horizontal {
   background: @theme_bg;
 }
@@ -1866,10 +1890,9 @@ scrollbar slider:active {
   min-width: 22px;
 }
 
-/* Reserve the overlay scrollbar's width so it cannot cover device controls. */
 .sidebar {
   background: @theme_surface;
-  padding: 8px 14px 8px 7px;
+  padding: 8px 7px;
 }
 
 .sidebar-update {
@@ -2047,13 +2070,13 @@ scrollbar slider:active {
   background-image: none;
   border: none;
   /* Offset sidebar padding; min-width keeps measurement nonnegative. */
-  margin: 6px -14px 6px -7px;
+  margin: 6px -7px;
   min-height: 1px;
-  min-width: 21px;
+  min-width: 14px;
 }
 
 .sidebar-update-separator {
-  margin: 0 4px;
+  margin: 0;
 }
 
 .sidebar-heading {
@@ -2072,21 +2095,14 @@ paned > separator {
   border-right: none;
 }
 
-.sidebar-split .sidebar-update {
-  margin-left: 4px;
-  padding-left: 9px;
-  padding-right: 9px;
-}
-
-.sidebar-split .sidebar-update-separator {
-  margin-right: 0;
-}
-
-.sidebar-split > separator {
-  padding: 0 2px 0 0;
+.sidebar-split > separator.wide {
+  min-width: 1px;
+  margin: 0;
+  padding: 0;
   border: none;
-  background: @theme_surface;
-  box-shadow: inset 1px 0 alpha(@theme_border, 0.6);
+  background: alpha(@theme_border, 0.6);
+  background-image: none;
+  box-shadow: none;
 }
 
 /* Share the column's edge without GTK's wider default handle overhang. */
@@ -2110,7 +2126,7 @@ paned > separator {
 }
 
 .preview-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.32);
+  border-bottom: 1px solid alpha(@theme_border, 0.6);
   min-height: 40px;
   padding: 0 6px 0 12px;
 }
@@ -2163,20 +2179,9 @@ paned > separator {
   opacity: 0.46;
 }
 
-.preview-metadata {
-  border-bottom: 1px solid alpha(@theme_border, 0.24);
-  padding: 10px 12px;
-}
-
-.preview-metadata-label {
+.preview-metadata label {
   color: @theme_dim_text;
-  font-size: 0.72em;
-  font-weight: 700;
-}
-
-.preview-metadata-value {
-  color: @theme_text;
-  font-size: 0.86em;
+  font-size: 0.65em;
 }
 
 .preview-content,
@@ -2207,6 +2212,168 @@ paned > separator {
   color: @theme_bg;
 }
 
+.preview-document-notice {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px solid alpha(@theme_accent, 0.42);
+  border-radius: 5px;
+  color: @theme_text;
+  font-size: 0.82em;
+  margin: 8px 12px;
+  padding: 7px 9px;
+}
+
+.preview-document-notice selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document {
+  background: @theme_surface;
+  color: @theme_text;
+}
+
+.preview-virtual-list,
+.preview-virtual-list > row,
+.preview-virtual-list > row:hover,
+.preview-virtual-list > row:active,
+.preview-virtual-list > row:selected,
+.preview-virtual-row {
+  background: @theme_surface;
+  border: none;
+  box-shadow: none;
+  color: @theme_text;
+  margin: 0;
+  outline: none;
+  padding: 0;
+}
+
+.preview-source-row {
+  background: @theme_surface;
+  color: @theme_text;
+  padding: 0 14px;
+}
+
+.preview-source-lines,
+.preview-source-lines text {
+  background: @theme_surface;
+  color: @theme_dim_text;
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+}
+
+.preview-virtual-source:focus-visible,
+.preview-virtual-list:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.preview-document text {
+  background: @theme_surface;
+  color: @theme_text;
+}
+
+.preview-document selection,
+.preview-document text selection {
+  background: transparent;
+  color: @theme_bg;
+}
+
+.preview-code-overlay {
+  background: transparent;
+}
+
+.preview-code-copy {
+  background: alpha(@theme_surface, 0.9);
+  border: 1px solid alpha(@theme_border, 0.72);
+  border-radius: 5px;
+  box-shadow: 0 2px 8px alpha(@theme_bg, 0.22);
+  color: @theme_text;
+  margin: 10px 24px 0 0;
+  min-height: 27px;
+  min-width: 27px;
+  opacity: 0;
+  padding: 3px;
+  transition: opacity 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out;
+}
+
+.preview-code-overlay:hover .preview-code-copy,
+.preview-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.preview-code-copy:hover {
+  background: alpha(@theme_highlight, 0.92);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.preview-code-copy:active {
+  background: alpha(@theme_muted, 0.88);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.preview-code-copy:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.58);
+  outline-offset: 1px;
+}
+
+.preview-table-interactive > scrolledwindow,
+.preview-table-interactive > scrolledwindow > viewport,
+.preview-document-table,
+.preview-document-table > listview {
+  background: @theme_surface;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.preview-document-table-cell {
+  background: @theme_surface;
+  color: @theme_text;
+  padding: 0;
+}
+
+.preview-document-table-cell selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document-table-cell.header {
+  background: alpha(@theme_highlight, 0.64);
+  color: @theme_accent;
+  font-weight: 700;
+}
+
+.preview-document-table-cell link {
+  color: @theme_accent;
+}
+
+.preview-document-table-cell link:hover {
+  background: alpha(@theme_highlight, 0.5);
+  color: @theme_text;
+}
+
+.preview-document-table-cell link:active {
+  background: alpha(@theme_muted, 0.72);
+  color: @theme_accent;
+}
+
+.preview-document-table-cell link:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline-offset: 1px;
+}
+
+.preview-table-interactive.selected .preview-document-table-cell,
+.preview-table-interactive.selected .preview-document-table-cell.header {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
 .preview-image,
 .preview-media {
   background: alpha(@theme_bg, 0.55);
@@ -2224,6 +2391,91 @@ paned > separator {
   color: @theme_dim_text;
   font-size: 0.8em;
   padding: 6px 10px;
+}
+
+.preview-document-table > header,
+.preview-document-table > header button {
+  background: @theme_muted;
+  color: @theme_text;
+  border-color: @theme_border;
+}
+
+.preview-document-table > header {
+  border: none;
+  box-shadow: none;
+}
+
+.preview-document-table > header button {
+  padding: 4px 6px;
+  min-height: 0;
+  background-image: none;
+  box-shadow: none;
+  border-width: 0 0 1px 1px;
+  border-style: solid;
+  border-radius: 0;
+}
+
+.preview-document-table > header button:first-child {
+  border-left-width: 0;
+}
+
+.preview-document-table > header button:hover {
+  background: @theme_highlight;
+  color: @theme_accent;
+}
+
+.preview-document-table > header button:active {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document-table > header button:focus-visible,
+.preview-document-table row:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.preview-document-table listview,
+.preview-document-table row,
+.preview-document-table cell {
+  background: @theme_surface;
+  color: @theme_text;
+  border-color: @theme_border;
+}
+
+.preview-document-table row {
+  padding: 0;
+  min-height: 0;
+}
+
+.preview-document-table cell {
+  padding: 4px 6px;
+  min-height: 0;
+}
+
+.preview-document-table row:hover {
+  background: @theme_highlight;
+}
+
+.preview-document-table > header separator,
+.preview-document-table > header sort-indicator {
+  color: @theme_accent;
+}
+
+.preview-document-table > header sort-indicator.ascending,
+.preview-document-table > header sort-indicator.descending {
+  -gtk-icon-source: -gtk-recolor(url("resource:///io/github/lgse/Strata/icons/scalable/actions/strata-caret.svg"));
+  -gtk-icon-size: 10px;
+  min-width: 12px;
+  min-height: 12px;
+}
+
+.preview-document-table > header sort-indicator.ascending {
+  -gtk-icon-transform: none;
+}
+
+.preview-document-table > header sort-indicator.descending {
+  -gtk-icon-transform: rotate(180deg);
 }
 
 .preview-volume-toggle {
@@ -3109,14 +3361,18 @@ menubutton.column-header-action > button:active {
   opacity: 0.46;
 }
 
-popover.folder-context-popover.background {
+popover.folder-context-popover.background,
+text > popover.menu.background,
+textview > popover.menu.background {
   background: transparent;
   border: none;
   box-shadow: none;
   padding: 0;
 }
 
-.folder-context-popover contents {
+.folder-context-popover contents,
+text > popover.menu > contents,
+textview > popover.menu > contents {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
@@ -3128,7 +3384,15 @@ popover.folder-context-popover.background {
 .context-menu-scroll,
 .context-menu-scroll > viewport,
 .context-menu-scroll overshoot,
-.context-menu-scroll undershoot {
+.context-menu-scroll undershoot,
+text > popover.menu scrolledwindow,
+text > popover.menu viewport,
+text > popover.menu overshoot,
+text > popover.menu undershoot,
+textview > popover.menu scrolledwindow,
+textview > popover.menu viewport,
+textview > popover.menu overshoot,
+textview > popover.menu undershoot {
   background: transparent;
   border: none;
   box-shadow: none;
@@ -3155,7 +3419,9 @@ popover.folder-context-popover.background {
 }
 
 .folder-context-menu,
-.item-context-menu {
+.item-context-menu,
+text > popover.menu > contents > scrolledwindow > viewport > stack,
+textview > popover.menu > contents > scrolledwindow > viewport > stack {
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
   padding: 8px;
 }
@@ -3183,7 +3449,9 @@ popover.folder-context-popover.background {
 }
 
 .folder-context-menu separator,
-.item-context-menu separator {
+.item-context-menu separator,
+text > popover.menu separator,
+textview > popover.menu separator {
   background: alpha(@theme_border, 0.2);
   margin: 5px 0;
   min-height: 1px;
@@ -3441,8 +3709,13 @@ colorchooser colorswatch overlay {
   border-radius: 9999px;
 }
 
+/* Native menu items use modelbutton on older GTK and button.model on newer GTK. */
 .item-context-option,
-.folder-context-option {
+.folder-context-option,
+text > popover.menu modelbutton,
+textview > popover.menu modelbutton,
+text > popover.menu button.model,
+textview > popover.menu button.model {
   background: transparent;
   border: none;
   border-radius: 5px;
@@ -3459,19 +3732,35 @@ colorchooser colorswatch overlay {
 .item-context-option:hover,
 .item-context-option:focus-visible,
 .folder-context-option:hover,
-.folder-context-option:focus-visible {
+.folder-context-option:focus-visible,
+text > popover.menu modelbutton:hover,
+text > popover.menu modelbutton:focus-visible,
+textview > popover.menu modelbutton:hover,
+textview > popover.menu modelbutton:focus-visible,
+text > popover.menu button.model:hover,
+text > popover.menu button.model:focus-visible,
+textview > popover.menu button.model:hover,
+textview > popover.menu button.model:focus-visible {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
 
 .item-context-option:active,
-.folder-context-option:active {
+.folder-context-option:active,
+text > popover.menu modelbutton:active,
+textview > popover.menu modelbutton:active,
+text > popover.menu button.model:active,
+textview > popover.menu button.model:active {
   background: alpha(@theme_accent, 0.22);
   transform: scale(0.97);
 }
 
 .item-context-option:disabled,
-.folder-context-option:disabled {
+.folder-context-option:disabled,
+text > popover.menu modelbutton:disabled,
+textview > popover.menu modelbutton:disabled,
+text > popover.menu button.model:disabled,
+textview > popover.menu button.model:disabled {
   background: transparent;
   color: @theme_dim_text;
   opacity: 0.42;
@@ -3483,9 +3772,19 @@ colorchooser colorswatch overlay {
 }
 
 .item-context-shortcut,
-.folder-context-shortcut {
+.folder-context-shortcut,
+text > popover.menu accelerator,
+textview > popover.menu accelerator {
   color: @theme_dim_text;
   font-size: 0.88em;
+}
+
+text > popover.menu modelbutton:focus-visible,
+textview > popover.menu modelbutton:focus-visible,
+text > popover.menu button.model:focus-visible,
+textview > popover.menu button.model:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .item-context-option.danger,
@@ -4291,6 +4590,22 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .file-icons > child .icons-card.content-hover .icons-card-label {
   background: alpha(@theme_accent, 0.10);
+}
+
+.file-icons > child:hover:not(:selected) .icons-card-label,
+.file-icons > child:not(:selected) .icons-card.content-hover .icons-card-label {
+  color: @theme_text;
+}
+
+.file-icons > child:hover:not(:selected) .icons-card-details,
+.file-icons > child:not(:selected) .icons-card.content-hover .icons-card-details {
+  color: @theme_dim_text;
+}
+
+.file-icons > child:selected:hover .icons-card-label,
+.file-icons > child:selected .icons-card.content-hover .icons-card-label {
+  background: @theme_accent;
+  color: @theme_bg;
 }
 
 .file-icons > child:selected {

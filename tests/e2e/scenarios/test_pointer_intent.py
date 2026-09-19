@@ -116,14 +116,14 @@ def test_pane_corner_marquee_does_not_resize_sidebar(strata, text_size, corner):
     container = strata.entry_container().screen_bounds()
     x = pane.x + 2 if corner == "leading" else container.x + container.width - 2
     start = (x, container.y + 2)
-    end = strata.entry("002.txt").screen_bounds().center
+    end = strata.entry("003.txt").screen_bounds().center
     strata.pointer.drag_points(start, end)
     strata.settle(strata.pane())
     assert sidebar.screen_bounds().width == sidebar_before.width, (
         f"{text_size}px {corner} pane corner must select files, not resize the sidebar"
     )
     strata.wait(
-        lambda: "002.txt" in strata.selected_names() and len(strata.selected_names()) > 1,
+        lambda: "003.txt" in strata.selected_names() and len(strata.selected_names()) > 1,
         "a marquee from the pane corner to select files",
     )
     selected = strata.selected_names()

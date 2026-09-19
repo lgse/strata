@@ -57,7 +57,7 @@ fn shifted_anchor_y(
     }
 }
 
-pub(super) fn context_menu_popover(
+pub(in crate::ui) fn context_menu_popover(
     content: &impl IsA<gtk::Widget>,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
     let viewport = gtk::Viewport::builder()
@@ -138,6 +138,17 @@ fn context_search_active(state: &ViewState, depth: usize) -> bool {
         .is_some_and(|column| column.search_handle.borrow().is_some())
 }
 
+fn context_filter_or_search_active(state: &ViewState, depth: usize) -> bool {
+    if state.mode_views.borrow().mode() != BrowserMode::Columns {
+        return state.mode_views.borrow().filter_active();
+    }
+    state.columns.borrow().get(depth).is_some_and(|column| {
+        column.search_handle.borrow().is_some()
+            || column.map.has_query()
+            || !column.filter_entry.text().trim().is_empty()
+    })
+}
+
 pub(super) fn focus_context_column(state: &Rc<ViewState>, depth: usize) {
     state
         .context_menu_generation
@@ -176,7 +187,7 @@ pub(super) fn focus_context_entry(
     focus_context_column(state, depth);
 }
 
-pub(super) fn show_context_popover(
+pub(in crate::ui) fn show_context_popover(
     popover: &gtk::Popover,
     scroll: &gtk::ScrolledWindow,
     anchor: &gtk::Widget,
@@ -255,24 +266,29 @@ pub(in crate::ui) fn install_folder_context_menu(
     let customize = context_menu_option(crate::assets::icons::PALETTE, "Customize…", "");
     let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
     let in_trash = is_trash_location(&location);
-    customize.set_visible(!in_trash && location.native_path().is_some());
-    new_folder.set_visible(!in_trash);
-    new_file.set_visible(!in_trash);
-    open_with.set_visible(!in_trash);
-    open_terminal.set_visible(!in_trash);
-    paste.set_visible(!in_trash);
+    let in_recent = location.is_recent_location();
+    let directory_actions = !in_trash && !in_recent;
+    customize.set_visible(directory_actions && location.native_path().is_some());
+    new_folder.set_visible(directory_actions);
+    new_file.set_visible(directory_actions);
+    open_with.set_visible(directory_actions);
+    open_terminal.set_visible(directory_actions);
+    paste.set_visible(directory_actions);
+    properties.set_visible(!in_recent);
     content.append(&new_folder);
     content.append(&new_file);
     content.append(&open_with);
     content.append(&open_terminal);
-    if !in_trash {
+    if directory_actions {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     }
     content.append(&paste);
     content.append(&select_all);
     content.append(&refresh);
     content.append(&toggle_hidden);
-    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    if customize.get_visible() || properties.get_visible() {
+        content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    }
     content.append(&customize);
     content.append(&properties);
 
@@ -390,6 +406,9 @@ pub(in crate::ui) fn install_folder_context_menu(
         let Some(state) = weak.upgrade() else {
             return;
         };
+        if open_with_location.is_recent_location() {
+            return;
+        }
         let file = gio_file_for_location(&open_with_location);
         let requires_uris =
             crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(&file));
@@ -561,6 +580,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let single = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let open = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "↵");
     let open_with = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
+    let open_file_location =
+        item_context_option(crate::assets::icons::FOLDER_OPEN, "Open file location", "");
     let run = item_context_option(crate::assets::icons::PLAY, "Run", "");
     let open_terminal =
         item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
@@ -602,6 +623,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
     single.append(&open);
     single.append(&open_with);
+    single.append(&open_file_location);
     single.append(&run);
     single.append(&open_terminal);
     single.append(&preview);
@@ -723,6 +745,42 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             } else {
                 state.browser.open_location(entry.location);
             }
+        }
+    });
+    let open_file_location_target = target.clone();
+    let open_file_location_state = Rc::downgrade(state);
+    let open_file_location_popover = popover.downgrade();
+    open_file_location.connect_clicked(move |_| {
+        if let Some(popover) = open_file_location_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some((_, entry)) = open_file_location_target.borrow().clone() else {
+            return;
+        };
+        if entry.is_directory() {
+            return;
+        }
+        let Some(parent) = entry.location.parent() else {
+            return;
+        };
+        let Some(state) = open_file_location_state.upgrade() else {
+            return;
+        };
+        if state.browser.location_at(depth).as_ref() == Some(&parent) {
+            if let Some(column) = state.columns.borrow().get(depth) {
+                column.filter_entry.set_text("");
+            }
+            state.mode_views.borrow().clear_filter(depth);
+            state
+                .browser
+                .select_entries_by_name_at(depth, &[entry.display_name]);
+            state.reveal_focused_entry();
+        } else {
+            state
+                .pending_select
+                .borrow_mut()
+                .push(entry.display_name.clone());
+            state.browser.navigate_location(parent, false);
         }
     });
     let run_target = target.clone();
@@ -1167,6 +1225,15 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         preview.set_visible(crate::ui::preview::entry_supports_quick_preview(&entry));
         print.set_visible(entry_supports_printing(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
+        let search_or_filter = context_filter_or_search_active(&state, depth);
+        let in_different_folder =
+            state.browser.location_at(depth).as_ref() != entry.location.parent().as_ref();
+        open_file_location.set_visible(
+            !in_trash
+                && !entry.is_directory()
+                && entry.location.parent().is_some()
+                && (search_or_filter || in_different_folder),
+        );
         let trash_visible =
             removable && move_to_trash_is_visible(in_trash, state.browser.can_trash_at(depth));
         move_to_trash.set_visible(trash_visible);
@@ -1546,7 +1613,11 @@ fn context_menu_row(
     (row, icon, title)
 }
 
-pub(super) fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
+pub(in crate::ui) fn context_menu_option(
+    icon: &str,
+    label: &str,
+    accelerator: &str,
+) -> gtk::Button {
     let (row, _, _) = context_menu_row(icon, label, accelerator);
     let button = crate::ui::accessibility::menu_item_button();
     crate::ui::accessibility::describe_menu_item(&button, label, accelerator);

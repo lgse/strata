@@ -2,19 +2,28 @@
 
 pub(crate) mod batch_rename;
 pub(crate) mod camera_preview;
+mod document;
+pub(crate) mod document_media;
 mod file_source;
 mod install_source;
 mod mime_type;
 mod native_fs;
+mod navigation_history;
 mod operations;
 mod preview;
 mod release_channel;
 mod search;
+pub(crate) mod table;
 mod transfer_action;
 mod update_check;
 mod update_install;
 
 pub use batch_rename::{BatchRenameMode, FormatStyle, plan_batch_rename};
+pub(crate) use document::{
+    DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
+    DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
+    has_web_scheme, layout_document, parse_document, parse_markdown,
+};
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
@@ -28,12 +37,14 @@ pub use mime_type::{
     entry_type_description, mime_description_for_name,
 };
 pub(crate) use native_fs::{is_hidden_name, native_hidden_names, native_kind};
+pub(crate) use navigation_history::NavigationHistory;
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
-    OperationRequestId, PasteItem, PasteRequest, RenameBatchItem, RenameBatchRequest, RenameRecord,
-    RenameRequest, RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict,
-    UndoCopyRequest, UndoMoveItem, UndoMoveRequest, validate_basename,
+    OperationRequestId, PasteItem, PasteRequest, RenameBatchItem, RenameBatchRecord,
+    RenameBatchRequest, RenameRecord, RenameRequest, RestoreRequest, RestoreSource,
+    RestoreTrashItem, TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest,
+    UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
 };
 pub use preview::{
     MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
@@ -41,7 +52,8 @@ pub use preview::{
 };
 pub(crate) use preview::{
     content_family, has_plain_text_extension, is_extensionless_dotfile, is_image_path,
-    is_media_path, is_non_executable_extensionless_dotfile, supports_remote_video,
+    is_media_path, is_non_executable_extensionless_dotfile, normalize_preview_text,
+    supports_remote_video,
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
@@ -58,8 +70,7 @@ pub(crate) use search::{
     index_filter, index_tree, index_trees,
 };
 pub(crate) use update_check::{
-    ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,
-    fetch_release_notes,
+    ReleaseMetadata, ReleaseNotes, UpdateCheck, check_for_updates, fetch_release_notes,
 };
 pub(crate) use update_install::{
     InstallRequest, UpdateInstall, UpdateMethod, install_update, update_method,

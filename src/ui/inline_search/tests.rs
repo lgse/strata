@@ -162,7 +162,7 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
                 .default_width(480)
                 .default_height(360)
                 .build();
-            let _theme = super::super::theme::ThemeManager::shared();
+            let _theme = super::super::preferences::PreferenceManager::shared();
             super::super::thumbnail::hold_thumbnail_workers();
             window.present();
             entry.set_text("same");

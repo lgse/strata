@@ -45,6 +45,7 @@ impl Source {
                     size: MetadataValue::Known(0),
                     modified_unix_seconds: MetadataValue::Known(1),
                     mode: MetadataValue::Known(0o40755),
+                    recent_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
                     image_dimensions: MetadataValue::Unknown,
                     child_count: MetadataValue::Unknown,
@@ -70,12 +71,12 @@ struct Fixture {
     browser: Rc<Browser>,
     views: Rc<RefCell<ModeViews>>,
     window: gtk::Window,
-    _theme: Rc<crate::ui::theme::ThemeManager>,
+    _theme: Rc<crate::ui::preferences::PreferenceManager>,
 }
 
 impl Fixture {
     fn new(grouped: bool) -> Self {
-        let theme = crate::ui::theme::ThemeManager::shared();
+        let theme = crate::ui::preferences::PreferenceManager::shared();
         crate::ui::prepare_portal_ui();
         let source = Rc::new(Source::default());
         let browser = Browser::new(source.clone());

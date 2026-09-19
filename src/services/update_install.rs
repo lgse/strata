@@ -421,7 +421,7 @@ fn try_install(
 
     let extract_dir = workdir.join("extracted");
     fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
-    run(Command::new("tar")
+    run(crate::trusted_command::command("tar")?
         .arg("-xzf")
         .arg(&archive_path)
         .arg("-C")
@@ -464,19 +464,22 @@ fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &P
         tracing::warn!("could not refresh the desktop entry: {error}");
     }
     match write_application_icon(package_dir, data_home) {
-        Ok(()) => {
-            if let Err(error) = run(Command::new("gtk-update-icon-cache")
-                .arg("-qtf")
-                .arg(data_home.join("icons/hicolor")))
-            {
+        Ok(()) => match crate::trusted_command::command("gtk-update-icon-cache") {
+            Ok(mut command) => {
+                if let Err(error) = run(command.arg("-qtf").arg(data_home.join("icons/hicolor"))) {
+                    tracing::warn!("could not refresh the application icon cache: {error}");
+                }
+            }
+            Err(error) => {
                 tracing::warn!("could not refresh the application icon cache: {error}");
             }
-        }
+        },
         Err(error) => tracing::warn!("could not refresh the application icon: {error}"),
     }
 
-    let _refreshed =
-        run(Command::new("update-desktop-database").arg(data_home.join("applications")));
+    if let Ok(mut command) = crate::trusted_command::command("update-desktop-database") {
+        let _refreshed = run(command.arg(data_home.join("applications")));
+    }
 }
 
 fn write_desktop_entry(
@@ -608,18 +611,47 @@ fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String
         .call()
         .and_then(|mut response| response.body_mut().read_to_string())
         .map_err(|error| format!("Could not verify the update: {error}"))?;
+    verify_archive_checksum(archive_path, &expected)
+}
+
+fn verify_archive_checksum(archive_path: &Path, published: &str) -> Result<(), String> {
     let expected_hash =
-        first_hash_token(&expected).ok_or_else(|| "The published checksum was empty".to_owned())?;
-
-    let output = run(Command::new("sha256sum").arg(archive_path))?;
-    let actual_hash =
-        first_hash_token(&output).ok_or_else(|| "sha256sum produced no output".to_owned())?;
-
+        first_hash_token(published).ok_or_else(|| "The published checksum was empty".to_owned())?;
+    let actual_hash = file_sha256_hex(archive_path)?;
     if actual_hash == expected_hash {
         Ok(())
     } else {
         Err("Downloaded update failed checksum verification".to_owned())
     }
+}
+
+fn file_sha256_hex(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let mut file =
+        fs::File::open(path).map_err(|error| format!("Could not read the update: {error}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Could not read the update: {error}"))?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hex_lower(&hasher.finalize()))
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        hex.push(HEX[(byte >> 4) as usize] as char);
+        hex.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    hex
 }
 
 fn first_hash_token(text: &str) -> Option<String> {

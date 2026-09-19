@@ -162,7 +162,7 @@ class QualityRunnerTests(unittest.TestCase):
             for name, content in {
                 "rustc": "exit 0\n",
                 "cargo": 'echo "$*" >> "$CALL_LOG"\ncase "$1" in "$FAIL_PHASE") exit 42;; esac\n',
-                "xvfb-run": 'echo "xvfb $*" >> "$CALL_LOG"\nshift\nexec "$@"\n',
+                "xvfb-run": 'echo "xvfb $*" >> "$CALL_LOG"\nwhile [ "$#" -gt 0 ]; do\ncase "$1" in -a) shift;; -s) shift 2;; *) break;; esac\ndone\nexec "$@"\n',
                 "dbus-run-session": 'echo "private-dbus $*" >> "$CALL_LOG"\nshift\nexec "$@"\n',
             }.items():
                 tool = root / name
@@ -180,7 +180,8 @@ class QualityRunnerTests(unittest.TestCase):
                 if failure in ("fmt", "clippy"):
                     self.assertNotIn("xvfb", text)
                 else:
-                    self.assertIn("xvfb -a dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11", text)
+                    self.assertIn("xvfb -a -s -screen 0 1280x1024x24 -nolisten tcp -noreset "
+                                  "dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11", text)
                     self.assertIn("GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1", text)
                     self.assertIn("test --locked --all-targets --all-features", text)
 
