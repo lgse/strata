@@ -566,8 +566,6 @@ fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
     );
 }
 
-/// Icon resolution reads folder color and custom icon from the manager, and
-/// already-shown slots refresh when those preferences change.
 #[test]
 fn path_customization_refreshes_rendered_icons() {
     gtk_test(
@@ -605,7 +603,7 @@ fn path_customization_refreshes_rendered_icons() {
             assert_eq!(fallback_pixels(&customized_slot), default_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
 
-            manager.set_folder_color(customized, Some(color));
+            manager.set_folder_color(customized, Some(color.clone()));
             assert_eq!(fallback_pixels(&customized_slot), colored_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
 
@@ -616,7 +614,57 @@ fn path_customization_refreshes_rendered_icons() {
             manager.clear_item_customization(customized);
             assert_eq!(fallback_pixels(&customized_slot), default_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
+
+            manager.set_folder_color(customized, Some(color.clone()));
+            show_customized_icon(&customized_slot, other, crate::assets::icons::FOLDER, 32);
+            assert_eq!(fallback_pixels(&customized_slot), default_pixels);
+            manager.clear_item_customization(customized);
+            manager.set_folder_color(other, Some(color));
+            assert_eq!(fallback_pixels(&customized_slot), colored_pixels);
+            assert_eq!(fallback_pixels(&other_slot), colored_pixels);
+
+            super::show_fallback_icon(&customized_slot, crate::assets::icons::PICTURES, 32);
+            let fallback = fallback_pixels(&customized_slot);
+            manager.clear_item_customization(other);
+            refresh_all_customized_icons();
+            assert_eq!(fallback_pixels(&customized_slot), fallback);
+            assert_eq!(fallback_pixels(&other_slot), default_pixels);
             clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn recycled_and_disposed_slots_release_thumbnail_tracking() {
+    gtk_test(
+        "ui::thumbnail::tests::recycled_and_disposed_slots_release_thumbnail_tracking",
+        || {
+            let path = Path::new("/fixture/old.png");
+            let replacement = Path::new("/fixture/new.png");
+            let slot = super::ThumbnailSlot::new(64);
+            let other = super::ThumbnailSlot::new(64);
+            let texture = sample_texture();
+            for image in [&slot, &other] {
+                show_customized_icon(image, path, crate::assets::icons::PICTURES, 64);
+                super::apply_thumbnail(image, &texture, path);
+            }
+            super::apply_thumbnail(&slot, &texture, replacement);
+            assert!(!super::displayed_thumbnail_matches(&slot, path));
+            assert!(super::displayed_thumbnail_matches(&slot, replacement));
+            assert!(super::displayed_thumbnail_matches(&other, path));
+
+            let id = slot.as_ptr() as usize;
+            let weak = slot.downgrade();
+            drop(slot);
+            assert!(weak.upgrade().is_none());
+            assert!(!super::TRACKED_THUMBNAILS.with_borrow(|tracked| tracked.contains_key(&id)));
+            assert!(
+                !super::TRACKED_CUSTOMIZED_ICONS.with_borrow(|tracked| tracked.contains_key(&id))
+            );
+            assert!(super::displayed_thumbnail_matches(&other, path));
+            super::show_fallback_icon(&other, crate::assets::icons::PICTURES, 64);
+            assert!(!super::displayed_thumbnail_matches(&other, path));
+            assert!(other.texture().is_none());
         },
     );
 }

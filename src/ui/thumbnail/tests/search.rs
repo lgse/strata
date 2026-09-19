@@ -73,7 +73,7 @@ fn search_results_load_thumbnails_in_every_view() {
                 finish_thumbnail_targets(targets, Some(&sample_texture()), &path);
                 wait_until(|| {
                     thumbnail::TRACKED_THUMBNAILS.with(|tracked| {
-                        tracked.borrow().iter().any(|tracked| {
+                        tracked.borrow().values().any(|tracked| {
                             tracked.path == path
                                 && tracked
                                     .image

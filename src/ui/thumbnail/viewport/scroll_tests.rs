@@ -182,7 +182,7 @@ fn fast_scroll_admits_dimensions_for_every_visible_cached_thumbnail() {
                 TRACKED_THUMBNAILS.with(|tracked| {
                     tracked
                         .borrow()
-                        .iter()
+                        .values()
                         .filter(|target| {
                             target
                                 .image

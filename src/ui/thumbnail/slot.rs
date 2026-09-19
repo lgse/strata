@@ -34,7 +34,11 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for ThumbnailSlot {}
+    impl ObjectImpl for ThumbnailSlot {
+        fn dispose(&self) {
+            super::super::forget_slot(self.obj().as_ptr() as usize);
+        }
+    }
 
     impl WidgetImpl for ThumbnailSlot {
         fn request_mode(&self) -> gtk::SizeRequestMode {
