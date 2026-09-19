@@ -334,11 +334,6 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -2px;
 }
 
-.column-peek-target.file-drop-zone:drop(active) {
-  background: alpha(@theme_accent, 0.18);
-  box-shadow: inset 0 0 0 2px @theme_accent;
-}
-
 .location-entry,
 .location-entry:focus,
 .location-entry:focus-visible,
@@ -3881,6 +3876,12 @@ textview > popover.menu button.model:focus-visible {
 
 .file-drop-zone:drop(active) {
   box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
+}
+
+.column-peek-target.file-drop-zone:drop(active),
+.columns > .drop-destination .column-drop-veil {
+  background: alpha(@theme_accent, 0.18);
+  box-shadow: inset 0 0 0 2px @theme_accent;
 }
 
 .file-list row:hover:not(:selected),
