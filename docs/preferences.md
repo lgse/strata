@@ -164,7 +164,7 @@ Paste and **Move/Copy to…** continue to reveal their destination independently
 
 ## Modified date format
 
-In **Settings → Appearance → Date & time**, **Modified date format** selects how file
+In **Settings → General → Date & time**, **Modified date format** selects how file
 modified times appear; each choice lists a live example rendered from the
 current time. **Relative** (default) renders elapsed buckets: "just
 now"/"5m ago" under an hour, "3h ago" for the same day, "Yesterday, 23:59", then

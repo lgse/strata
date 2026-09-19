@@ -139,7 +139,7 @@ const TARGETS: &[Target] = &[
     },
     Target {
         id: "date-format",
-        page: "theme",
+        page: "general",
         title: "Modified date format",
         aliases: "date time format relative iso 8601 long absolute modified timestamp clock appearance",
     },
