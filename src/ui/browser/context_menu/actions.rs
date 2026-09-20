@@ -138,6 +138,7 @@ impl ActionMenuSection {
         }
         self.popover.set_visible_submenu(Some("main"));
         super::show_model_context_popover(self.popover.upcast_ref(), anchor, x, y);
+        super::keyboard::focus_first_or_last_menu_item(self.popover.upcast_ref(), true);
     }
 
     pub(super) fn rebuild_for_selection(

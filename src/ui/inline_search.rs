@@ -447,9 +447,13 @@ impl InlineSearch {
         let position = state.collection.current_position()?;
         let (_, widget) = state.collection.bound_at(position)?;
         let bounds = widget.compute_bounds(&state.collection.view)?;
+        let x = match &state.collection.kind {
+            ResultKind::Rows => bounds.center().x(),
+            ResultKind::Icons { .. } => bounds.x() + bounds.width(),
+        };
         Some((
             state.context_menu_trigger.borrow().as_ref()?.clone(),
-            f64::from(bounds.x() + bounds.width()),
+            f64::from(x),
             f64::from(bounds.center().y()),
         ))
     }

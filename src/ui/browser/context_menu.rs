@@ -597,6 +597,83 @@ pub(in crate::ui) type ContextResolver = Rc<dyn Fn(&gtk::Widget) -> Option<Conte
 
 const ITEM_CONTEXT_SUMMARY_MAX_CHARS: i32 = 30;
 
+/// GTK consumes the outside press while autohiding a popover, but the release
+/// reaches the window. Re-resolve that release so one secondary click retargets.
+fn install_secondary_release_retarget(
+    popover: &gtk::Popover,
+    widget: &gtk::Widget,
+    reopen: ResolvedContextTrigger,
+) {
+    let installed = Rc::new(RefCell::new(
+        None::<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
+    ));
+    let installed_for_show = installed.clone();
+    let weak_widget = widget.downgrade();
+    let weak_popover = popover.downgrade();
+    popover.connect_show(move |_| {
+        if installed_for_show.borrow().is_some() {
+            return;
+        }
+        let (Some(widget), Some(popover)) = (weak_widget.upgrade(), weak_popover.upgrade()) else {
+            return;
+        };
+        let Some(root) = widget
+            .root()
+            .and_then(|root| root.dynamic_cast::<gtk::Widget>().ok())
+        else {
+            return;
+        };
+        let input = gtk::EventControllerLegacy::new();
+        input.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_popover = popover.downgrade();
+        let weak_widget = widget.downgrade();
+        let weak_root = root.downgrade();
+        let reopen = reopen.clone();
+        input.connect_event(move |_, event| {
+            let Some(button) = event
+                .downcast_ref::<gtk::gdk::ButtonEvent>()
+                .filter(|button| {
+                    event.event_type() == gtk::gdk::EventType::ButtonRelease && button.button() == 3
+                })
+            else {
+                return glib::Propagation::Proceed;
+            };
+            let (Some(popover), Some(widget), Some(root)) = (
+                weak_popover.upgrade(),
+                weak_widget.upgrade(),
+                weak_root.upgrade(),
+            ) else {
+                return glib::Propagation::Proceed;
+            };
+            if popover.is_visible() {
+                return glib::Propagation::Proceed;
+            }
+            let Some((x, y)) = button.position() else {
+                return glib::Propagation::Proceed;
+            };
+            let target = root
+                .compute_point(&widget, &gtk::graphene::Point::new(x as f32, y as f32))
+                .map(|point| (f64::from(point.x()), f64::from(point.y())));
+            if let Some((x, y)) = target {
+                let reopen = reopen.clone();
+                glib::idle_add_local_once(move || {
+                    reopen(x, y, None);
+                });
+            }
+            glib::Propagation::Proceed
+        });
+        root.add_controller(input.clone());
+        installed_for_show.replace(Some((root.downgrade(), input)));
+    });
+    widget.connect_unmap(move |_| {
+        if let Some((root, input)) = installed.borrow_mut().take()
+            && let Some(root) = root.upgrade()
+        {
+            root.remove_controller(&input);
+        }
+    });
+}
+
 pub(in crate::ui) fn install_item_context_menu(
     state: &Rc<ViewState>,
     widget: &gtk::Widget,
@@ -1344,6 +1421,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             action_section.show(&widget, x, y);
             true
         });
+
+    install_secondary_release_retarget(&popover, widget, open_at_resolved.clone());
 
     let open_for_trigger = open_at_resolved.clone();
     let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x, y| {

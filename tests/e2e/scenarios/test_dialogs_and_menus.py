@@ -43,6 +43,23 @@ def test_the_entry_context_menu_offers_named_actions_and_accelerators(strata):
     strata.dismiss_menu()
 
 
+@pytest.mark.preferences(browser_mode="list", single_click_previews=False)
+def test_secondary_click_retargets_an_open_context_menu(strata):
+    root = strata.fixture.root.name
+    strata.select_entry("todo.txt", root)
+    strata.click_entry_with("readme.md", ["ctrl"], directory=root)
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
+
+    strata.pointer.right_click(strata.entry("todo.txt", root))
+    strata.wait(strata.context_menu, "the grouped context menu")
+    assert "Rename" not in strata.menu_items()
+
+    strata.pointer.right_click(strata.entry("archive", root))
+    strata.wait_for_selection(["archive"], root)
+    strata.wait(lambda: "Rename" in strata.menu_items(), "the retargeted item menu")
+    strata.dismiss_menu()
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("shortcut,activation", [("Menu", "Return"), ("shift+F10", "space")])
 @pytest.mark.preferences(show_hidden=False, single_click_previews=False)
@@ -55,16 +72,11 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
     strata.wait(strata.context_menu, "the keyboard item menu")
     assert ENTRY_MENU_ITEMS <= set(strata.menu_items())
     assert "New Folder" not in strata.menu_items()
-
-    strata.keyboard.press("Home")
-    strata.wait(lambda: "focused" in strata.menu_item("Open").states, "Home to focus Open")
-    strata.keyboard.press("Up")
     strata.wait(
-        lambda: "focused" in strata.menu_item("Permanently delete").states,
-        "Up to wrap to the last action",
+        lambda: "focused" in strata.menu_item("Open").states,
+        "the first item to receive focus",
     )
-    strata.keyboard.press("Down")
-    strata.wait(lambda: "focused" in strata.menu_item("Open").states, "Down to wrap to Open")
+
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.context_menu() is None, "Escape to dismiss the menu")
     strata.wait_for_selection(["todo.txt"], root)

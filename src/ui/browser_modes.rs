@@ -1515,9 +1515,14 @@ impl ModeViews {
                     continue;
                 };
                 if let Some(bounds) = widget.compute_bounds(&section.view) {
+                    let x = if self.mode == BrowserMode::List {
+                        bounds.center().x()
+                    } else {
+                        bounds.x() + bounds.width()
+                    };
                     return Some((
                         section.item_context_trigger.clone(),
-                        f64::from(bounds.x() + bounds.width()),
+                        f64::from(x),
                         f64::from(bounds.center().y()),
                     ));
                 }

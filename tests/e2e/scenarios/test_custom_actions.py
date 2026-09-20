@@ -330,7 +330,7 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
             break
         strata.keyboard.press("Down")
     assert actions.has_state("focused")
-    strata.keyboard.press("Return")
+    strata.keyboard.press("Right")
     submenu_item = strata.menu_item("Checksum job")
     strata.wait(lambda: submenu_item.has_state("focused"), "submenu item to receive focus")
     strata.keyboard.press("Left")
@@ -340,8 +340,24 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     )
     assert strata.context_menu() is not None
     strata.wait(lambda: actions.has_state("focused"), "submenu owner to regain focus")
-    strata.keyboard.press("Right")
-    strata.menu_item("Checksum job")
+    parent_items = [strata.menu_item(name) for name in strata.menu_items()]
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: any(item.has_state("focused") for item in parent_items if item.name != "Actions"),
+        "parent menu to retain keyboard navigation after Left",
+    )
+    assert strata.context_menu() is not None
+    strata.keyboard.press("Home")
+    for _ in parent_items:
+        if actions.has_state("focused"):
+            break
+        strata.keyboard.press("Down")
+    assert actions.has_state("focused")
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: strata.menu_item("Checksum job").has_state("focused"),
+        "Space to reopen and focus the submenu",
+    )
     strata.keyboard.press("Home")
     strata.keyboard.press("Return")
     strata.wait_for_menu_closed()

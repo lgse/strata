@@ -53,8 +53,15 @@ fn restore_submenu_owner(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
 }
 
 fn return_from_submenu(submenu: &gtk::PopoverMenu, owner: &gtk::Widget, returned: &Cell<bool>) {
-    owner.activate();
     submenu.set_visible(false);
+    if let Some(root) = owner
+        .ancestor(gtk::PopoverMenu::static_type())
+        .and_downcast::<gtk::PopoverMenu>()
+    {
+        // Closing the nested surface releases its grab; reassert the visible
+        // parent popover so subsequent keys remain confined to the menu.
+        root.popup();
+    }
     returned.set(true);
     restore_submenu_owner(submenu, owner);
 }
@@ -213,9 +220,10 @@ pub(super) fn install_submenu_return(submenu: &gtk::PopoverMenu, owner: &gtk::Wi
     let owner_keys = gtk::EventControllerKey::new();
     owner_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     owner_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if key != Key::Right || !modifiers.is_empty() || !returned.replace(false) {
+        if key != Key::Right || !modifiers.is_empty() {
             return glib::Propagation::Proceed;
         }
+        returned.set(false);
         let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade()) else {
             return glib::Propagation::Proceed;
         };
@@ -277,7 +285,7 @@ pub(super) fn install(popover: &gtk::Popover) {
                     }
                 }
             }
-            _ => {}
+            _ => return glib::Propagation::Proceed,
         }
         glib::Propagation::Stop
     });
