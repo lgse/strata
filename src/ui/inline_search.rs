@@ -12,6 +12,7 @@ use gtk::{glib, prelude::*};
 
 use crate::{
     app::Browser,
+    model::{FileEntry, Location},
     services::{SearchEvent, SearchHandle, SearchItem, index_filter},
 };
 
@@ -162,6 +163,93 @@ impl InlineSearch {
         };
         state.list.select_all();
         true
+    }
+
+    pub(in crate::ui) fn begin_rename(
+        &self,
+        entry: &FileEntry,
+        active: Rc<RefCell<Option<super::browser_modes::ActiveModeRename>>>,
+        browser: std::rc::Weak<Browser>,
+        view_state: std::rc::Weak<super::browser::ViewState>,
+    ) -> bool {
+        let Some(state) = self
+            .state
+            .as_ref()
+            .filter(|state| state.stack.visible_child_name().as_deref() == Some("search"))
+        else {
+            return false;
+        };
+        let Some(path) = entry.location.native_path() else {
+            return false;
+        };
+        let position = state
+            .items
+            .borrow()
+            .iter()
+            .position(|item| item.path == path);
+        let Some(row) = position.and_then(|position| state.list.row_at_index(position as i32))
+        else {
+            return false;
+        };
+        let Some((labels, _, field)) = result_row_parts(&row) else {
+            return false;
+        };
+        field.set_text(&entry.display_name);
+        field.set_sensitive(true);
+        field.remove_css_class("error");
+        field.set_tooltip_text(None);
+        labels.set_visible(false);
+        field.set_visible(true);
+        super::browser_modes::install_mode_rename_handlers(
+            &field,
+            active.clone(),
+            browser,
+            view_state,
+        );
+        active.replace(Some(super::browser_modes::ActiveModeRename::new(
+            entry.clone(),
+            field.clone(),
+            labels.upcast(),
+            None,
+        )));
+        field.grab_focus();
+        field.select_region(
+            0,
+            if entry.is_directory() {
+                -1
+            } else {
+                super::browser::rename_stem_end(&entry.display_name)
+            },
+        );
+        true
+    }
+
+    pub(in crate::ui) fn rename_label_widgets(
+        &self,
+        old_location: &Location,
+        new_location: Option<&Location>,
+    ) -> Vec<gtk::Widget> {
+        let Some(state) = self.state.as_ref() else {
+            return Vec::new();
+        };
+        state
+            .items
+            .borrow()
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| {
+                let location = Location::local(&item.path);
+                location == *old_location
+                    || new_location.is_some_and(|new_location| location == *new_location)
+            })
+            .filter_map(|(position, _)| {
+                state
+                    .list
+                    .row_at_index(position as i32)
+                    .and_then(|row| result_row_parts(&row))
+                    .map(|(_, label, _)| label.upcast())
+            })
+            .collect()
     }
 
     pub fn focus_result(&self, path: &Path) -> bool {
@@ -639,6 +727,18 @@ pub(super) fn search_path_present(path: &Path) -> bool {
     )
 }
 
+fn result_row_parts(row: &gtk::ListBoxRow) -> Option<(gtk::Box, gtk::Label, gtk::Entry)> {
+    let line = row.child().and_downcast::<gtk::Box>()?;
+    let labels = line
+        .first_child()?
+        .next_sibling()?
+        .downcast::<gtk::Box>()
+        .ok()?;
+    let name = labels.first_child()?.downcast::<gtk::Label>().ok()?;
+    let field = labels.next_sibling()?.downcast::<gtk::Entry>().ok()?;
+    Some((labels, name, field))
+}
+
 fn result_at_widget(state: &State, picked: &gtk::Widget) -> Option<gtk::ListBoxRow> {
     let mut current = Some(picked.clone());
     while let Some(widget) = current {
@@ -682,10 +782,8 @@ fn update_rows(state: &State, items: Vec<SearchItem>, root: &Path, recursive: bo
     for item in items.iter() {
         let row = if let Some((previous, row)) = retained.remove(&item.path) {
             if previous.name == item.name && previous.is_directory == item.is_directory {
-                if let Some(origin) = row
-                    .child()
-                    .and_then(|line| line.last_child())
-                    .and_then(|labels| labels.last_child())
+                if let Some(origin) =
+                    result_row_parts(&row).and_then(|(labels, _, _)| labels.last_child())
                 {
                     origin.set_visible(recursive);
                 }
@@ -778,8 +876,16 @@ fn result_row(
     origin.set_visible(recursive);
     labels.append(&name);
     labels.append(&origin);
+    let field = gtk::Entry::new();
+    field.add_css_class("inline-rename");
+    super::accessibility::set_label(&field, "Rename");
+    field.set_hexpand(true);
+    field.set_width_chars(1);
+    gtk::prelude::EntryExt::set_alignment(&field, 0.5);
+    field.set_visible(false);
     row.set_tooltip_text(Some(&path));
     line.append(&labels);
+    line.append(&field);
     row.set_child(Some(&line));
     // Thumbnail scheduling resolves the owning viewport, so attach the row first.
     list.append(&row);

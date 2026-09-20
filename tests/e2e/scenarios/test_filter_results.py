@@ -337,9 +337,13 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
         if focus_filter:
             strata.pointer.click(field)
         strata.keyboard.press(trigger)
-    strata.wait_for_dialog()
+    strata.editable_field()
+    assert strata.dialog() is None
     strata.keyboard.press("Escape")
-    strata.wait(lambda: strata.dialog() is None, "rename dialog to close")
+    strata.wait(
+        lambda: strata.window.find(role="text", name="Rename", states={"editable"}) is None,
+        "inline rename to close",
+    )
     strata.wait(
         lambda: result(strata, "beta/match-note.txt").has_state("focused"),
         "focus to return to the originating result",
@@ -349,7 +353,6 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
     assert strata.fixture.path("beta/match-note.txt").read_text() == "beta source\n"
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
     strata.keyboard.press("F2")
-    strata.wait_for_dialog()
     strata.editable_field()
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("renamed.txt")
@@ -369,12 +372,32 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_properties_rename_opens_the_result_inline(strata, mode):
+    field = filter_results(strata)
+    row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
+    strata.pointer.right_click(row)
+    strata.choose_menu_item("Properties")
+    dialog = strata.wait_for_dialog()
+    strata.pointer.click(dialog.find(role="button", name="Rename"))
+    strata.wait(lambda: strata.dialog() is None, "properties dialog to close")
+    rename = strata.editable_field()
+    assert rename.text == "match-note.txt"
+    assert field.text == "match-note"
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: strata.window.find(role="text", name="Rename", states={"editable"}) is None,
+        "inline rename to close",
+    )
+    assert strata.fixture.path("beta/match-note.txt").read_text() == "beta source\n"
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_delete_trashes_filtered_result_without_touching_hidden_selection(strata, mode):
     filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
     strata.pointer.click(row, modifiers=("ctrl",))
     strata.keyboard.press("F2")
-    strata.wait_for_dialog()
+    strata.editable_field()
     strata.keyboard.press("Escape")
     strata.wait(lambda: result(strata, "beta/match-note.txt").has_state("focused"), "result focus")
     strata.keyboard.press("Delete")

@@ -310,14 +310,23 @@ impl ViewState {
         if location.is_recent_location() {
             return;
         }
-        self.show_properties(location.clone(), None);
+        self.show_properties(location.clone(), None, None);
     }
 
     pub(super) fn show_entry_properties(self: &Rc<Self>, entry: FileEntry) {
-        self.show_properties(entry.location.clone(), Some(entry));
+        self.show_properties(entry.location.clone(), Some(entry), None);
     }
 
-    fn show_properties(self: &Rc<Self>, location: Location, entry: Option<FileEntry>) {
+    pub(super) fn show_entry_properties_at(self: &Rc<Self>, entry: FileEntry, depth: usize) {
+        self.show_properties(entry.location.clone(), Some(entry), Some(depth));
+    }
+
+    fn show_properties(
+        self: &Rc<Self>,
+        location: Location,
+        entry: Option<FileEntry>,
+        rename_depth: Option<usize>,
+    ) {
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -438,7 +447,6 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .propagate_natural_height(true)
-            .propagate_natural_width(true)
             .max_content_height(400)
             .child(&layout.body)
             .build();
@@ -474,8 +482,34 @@ impl ViewState {
         let owner = permission_row(&permissions, "Owner");
         let group = permission_row(&permissions, "Group");
         let others = permission_row(&permissions, "Others");
-        let executable = form_check_button("Allow executing file as a program (+x)");
+        let executable_label = "Allow executing file as a program (+x)";
+        let executable = form_check_button(executable_label);
         executable.add_css_class("properties-executable");
+        executable.set_tooltip_text(Some(executable_label));
+        let responsive_actions = layout.actions.clone();
+        let responsive_executable = executable.clone();
+        layout.content.add_tick_callback(move |content, _| {
+            let compact = content.has_css_class("modal-constrained");
+            let orientation = if compact {
+                gtk::Orientation::Vertical
+            } else {
+                gtk::Orientation::Horizontal
+            };
+            if responsive_actions.orientation() != orientation {
+                responsive_actions.set_orientation(orientation);
+                responsive_actions.set_homogeneous(!compact);
+            }
+            let visible_label = if compact {
+                "Executable (+x)"
+            } else {
+                executable_label
+            };
+            if responsive_executable.label().as_deref() != Some(visible_label) {
+                responsive_executable.set_label(Some(visible_label));
+                crate::ui::accessibility::set_label(&responsive_executable, executable_label);
+            }
+            glib::ControlFlow::Continue
+        });
         executable.set_sensitive(false);
         executable.set_visible(!is_directory);
         permissions.append(&executable);
@@ -590,14 +624,19 @@ impl ViewState {
         let renamed_layer = layer.clone();
         let renamed_overlay = window_overlay.clone();
         let renamed_root = blurred_root.clone();
+        let renamed_entry = entry.clone();
+        let renamed_depth = rename_depth
+            .or_else(|| self.destination_depth())
+            .unwrap_or(0);
         let weak = Rc::downgrade(self);
         rename.connect_clicked(move |_| {
             restore_focus.set(false);
             dismiss_modal_layer(&renamed_layer, &renamed_overlay, renamed_root.as_ref());
             let weak = weak.clone();
+            let renamed_entry = renamed_entry.clone();
             glib::idle_add_local_once(move || {
-                if let Some(state) = weak.upgrade() {
-                    state.begin_rename();
+                if let (Some(state), Some(entry)) = (weak.upgrade(), renamed_entry) {
+                    state.begin_entry_rename(renamed_depth, &entry);
                 }
             });
         });

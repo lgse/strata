@@ -459,7 +459,7 @@ impl ViewState {
                                 }
                                 state.reveal_focused_entry();
                                 if properties && let Some(entry) = state.browser.focused_entry() {
-                                    state.show_entry_properties(entry);
+                                    state.show_entry_properties_at(entry, depth);
                                 }
                             }
                         });

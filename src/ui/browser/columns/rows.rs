@@ -87,6 +87,7 @@ pub(super) fn column_rows(
         crate::ui::accessibility::set_label(&rename, "Rename");
         rename.set_hexpand(true);
         rename.set_width_chars(1);
+        gtk::prelude::EntryExt::set_alignment(&rename, 0.5);
         rename.set_visible(false);
         rename.connect_changed(|field| {
             update_basename_validation(field);

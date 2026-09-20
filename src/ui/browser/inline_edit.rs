@@ -1024,6 +1024,67 @@ impl ViewState {
             .set(self.click_rename_generation.get() + 1);
     }
 
+    pub(in crate::ui) fn begin_entry_rename(
+        self: &Rc<Self>,
+        depth: usize,
+        entry: &FileEntry,
+    ) -> bool {
+        if self.begin_search_result_rename(depth, entry) {
+            return true;
+        }
+        self.sync_mode_selection();
+        if !self
+            .browser
+            .rename_item()
+            .is_some_and(|(_, _, selected)| selected.location == entry.location)
+        {
+            return false;
+        }
+        self.begin_rename()
+    }
+
+    pub(in crate::ui) fn begin_search_result_rename(
+        self: &Rc<Self>,
+        depth: usize,
+        entry: &FileEntry,
+    ) -> bool {
+        self.cancel_click_rename();
+        if self.rename_operation_pending() || is_trash_location(&entry.location) {
+            return false;
+        }
+        self.cancel_new_entry();
+        if self.mode_views.borrow().mode() != BrowserMode::Columns {
+            return self.mode_views.borrow().begin_search_rename(depth, entry);
+        }
+        let Some(path) = entry.location.native_path() else {
+            return false;
+        };
+        let position = {
+            let columns = self.columns.borrow();
+            let Some(column) = columns.get(depth) else {
+                return false;
+            };
+            if column.search_handle.borrow().is_none() {
+                return false;
+            }
+            column
+                .search_results
+                .borrow()
+                .iter()
+                .position(|item| item.path == path)
+        };
+        let Some(position) = position.and_then(|position| u32::try_from(position).ok()) else {
+            return false;
+        };
+        self.cancel_rename();
+        let Some(target) = self.resolve_columns_rename_target_at_view_position(depth, position)
+        else {
+            return false;
+        };
+        self.activate_columns_rename(target, entry.clone());
+        true
+    }
+
     pub(super) fn begin_rename(self: &Rc<Self>) -> bool {
         self.cancel_click_rename();
         if self.rename_operation_pending() {
@@ -1065,9 +1126,22 @@ impl ViewState {
         depth: usize,
         source_position: usize,
     ) -> Option<ColumnsRenameTarget> {
+        let filtered_position = self
+            .columns
+            .borrow()
+            .get(depth)?
+            .map
+            .view_position(source_position)?;
+        self.resolve_columns_rename_target_at_view_position(depth, filtered_position)
+    }
+
+    fn resolve_columns_rename_target_at_view_position(
+        &self,
+        depth: usize,
+        filtered_position: u32,
+    ) -> Option<ColumnsRenameTarget> {
         let columns = self.columns.borrow();
         let column = columns.get(depth)?;
-        let filtered_position = column.map.view_position(source_position)?;
         // Prepare before checking allocation: it cancels deferred scrolling and lets GTK bind
         // the row needed by the editor.
         super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);

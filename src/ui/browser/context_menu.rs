@@ -1155,7 +1155,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             return;
         };
         if let Some(state) = weak.upgrade() {
-            state.show_entry_properties(entry);
+            state.show_entry_properties_at(entry, depth);
         }
     });
     let weak = Rc::downgrade(state);
@@ -1443,90 +1443,7 @@ pub(super) fn rename_context_entry(
         });
         return;
     }
-    use crate::ui::{
-        controls::{form_entry, modal_layout},
-        modal::{ModalHost, dismiss_modal_layer, modal_layer, submit_on_enter},
-    };
-    let Some(host) = ModalHost::blurred_for(&state.overlay) else {
-        return;
-    };
-    let layout = modal_layout(
-        crate::assets::icons::PENCIL,
-        "Rename",
-        &compact_display_path(&entry.location),
-        "Rename",
-    );
-    let field = form_entry();
-    field.set_text(&entry.display_name);
-    super::super::accessibility::set_label(&field, "Name");
-    layout.body.append(&field);
-    let confirm = layout.confirm.downgrade();
-    field.connect_changed(move |field| {
-        if let Some(confirm) = confirm.upgrade() {
-            confirm.set_sensitive(super::update_basename_validation(field));
-        }
-    });
-    let layer = modal_layer(
-        &layout.content,
-        &host.overlay,
-        host.blurred_root.clone(),
-        None,
-    );
-    let submitted = Rc::new(Cell::new(false));
-    let submitted_on_unmap = submitted.clone();
-    let weak_state = Rc::downgrade(state);
-    let origin = entry.clone();
-    layer.connect_unmap(move |layer| {
-        if submitted_on_unmap.get() || !layer.has_css_class("dismissing") {
-            return;
-        }
-        let weak_state = weak_state.clone();
-        let origin = origin.clone();
-        glib::idle_add_local_once(move || {
-            if let Some(state) = weak_state.upgrade() {
-                focus_search_result(&state, depth, &origin);
-            }
-        });
-    });
-    let weak_layer = layer.downgrade();
-    let dismiss = Rc::new(move || {
-        if let Some(layer) = weak_layer.upgrade() {
-            dismiss_modal_layer(&layer, &host.overlay, host.blurred_root.as_ref());
-        }
-    });
-    for button in [&layout.cancel, &layout.close] {
-        let dismiss = dismiss.clone();
-        button.connect_clicked(move |_| dismiss());
-    }
-    let escape = gtk::EventControllerKey::new();
-    let dismiss_for_escape = dismiss.clone();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            dismiss_for_escape();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
-    submit_on_enter(&layout.body, &layout.confirm);
-    let weak = Rc::downgrade(state);
-    let field_for_submit = field.clone();
-    layout.confirm.connect_clicked(move |_| {
-        if super::update_basename_validation(&field_for_submit) {
-            let name = field_for_submit.text().to_string();
-            submitted.set(true);
-            dismiss();
-            if let Some(state) = weak.upgrade() {
-                super::queue_rename(&state.browser, entry.clone(), name);
-            }
-        }
-    });
-    if let Some(overlay) = crate::ui::modal::window_overlay(&state.overlay) {
-        overlay.add_overlay(&layer);
-    }
-    field.grab_focus();
-    field.select_region(0, -1);
+    state.begin_search_result_rename(depth, &entry);
 }
 
 fn selected_items_summary(entries: &[FileEntry]) -> String {

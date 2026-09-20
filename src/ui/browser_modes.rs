@@ -200,6 +200,22 @@ pub(in crate::ui) struct ActiveModeRename {
     viewport_tick: Option<gtk::TickCallbackId>,
 }
 
+impl ActiveModeRename {
+    pub(in crate::ui) fn new(
+        entry: FileEntry,
+        field: gtk::Entry,
+        label: gtk::Widget,
+        viewport_tick: Option<gtk::TickCallbackId>,
+    ) -> Self {
+        Self {
+            entry,
+            field,
+            label,
+            viewport_tick,
+        }
+    }
+}
+
 struct BoundModeItem {
     item: glib::WeakRef<gtk::ListItem>,
     widget: glib::WeakRef<gtk::Widget>,
@@ -602,6 +618,7 @@ impl ModeViews {
     ) -> Vec<gtk::Widget> {
         let mut labels = Vec::new();
         for pane in self.all_panes() {
+            labels.extend(pane.search.rename_label_widgets(old_location, new_location));
             for section in pane.item_sections() {
                 section.bound_items.borrow_mut().retain(|bound| {
                     let (Some(item), Some(_widget)) =
@@ -705,6 +722,24 @@ impl ModeViews {
                 .filter(|row| row.is_mapped() && row.is_ancestor(&section.view))
         });
         Some((position, row))
+    }
+
+    pub fn begin_search_rename(&self, depth: usize, entry: &FileEntry) -> bool {
+        let pane = match self.mode {
+            BrowserMode::Columns => return false,
+            BrowserMode::Icons => self.icons_panes.iter().find(|pane| pane.depth == depth),
+            BrowserMode::List => self.list_pane.as_ref().filter(|pane| pane.depth == depth),
+        };
+        let Some(pane) = pane else {
+            return false;
+        };
+        self.cancel_rename();
+        pane.search.begin_rename(
+            entry,
+            self.active_rename.clone(),
+            Rc::downgrade(&self.browser),
+            self.context_state.borrow().clone().unwrap_or_default(),
+        )
     }
 
     pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
@@ -1640,7 +1675,7 @@ fn submit_mode_rename(
     }
 }
 
-fn install_mode_rename_handlers(
+pub(in crate::ui) fn install_mode_rename_handlers(
     field: &gtk::Entry,
     active: Rc<RefCell<Option<ActiveModeRename>>>,
     browser: Weak<Browser>,
@@ -4230,6 +4265,7 @@ fn assemble_list_row() -> gtk::Box {
     field.add_css_class("inline-rename");
     super::accessibility::set_label(&field, "Rename");
     field.set_hexpand(true);
+    gtk::prelude::EntryExt::set_alignment(&field, 0.5);
     field.set_visible(false);
     name_cell.append(&icon);
     name_cell.append(&name);

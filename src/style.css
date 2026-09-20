@@ -6459,3 +6459,9 @@ popover.settings-action-library > contents {
 .settings-action-script scrollbar slider:active {
   background: @theme_accent;
 }
+
+.action-dialog.modal-constrained,
+.search-dialog.modal-constrained,
+.settings-dialog.modal-constrained {
+  min-width: 0;
+}

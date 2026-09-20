@@ -1810,6 +1810,13 @@ impl BrowserView {
     }
 
     pub fn dismiss_filter_on_outside_click(&self, root: &gtk::Widget, x: f64, y: f64) {
+        if root
+            .root()
+            .and_downcast::<gtk::Window>()
+            .is_some_and(|window| crate::ui::window::visible_modal_layer(&window).is_some())
+        {
+            return;
+        }
         if self.view_mode() != BrowserMode::Columns {
             return;
         }
