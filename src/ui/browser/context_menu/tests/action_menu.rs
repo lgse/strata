@@ -10,7 +10,6 @@ use crate::services::{
     DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError,
 };
 use crate::ui::browser::{BrowserView, PeekBehavior};
-use gtk::gdk::Key;
 
 const ALWAYS: &str = r#"
 schema_version = 1
@@ -82,24 +81,6 @@ fn button(widget: &gtk::Widget, text: &str) -> Option<gtk::Widget> {
         .into_iter()
         .filter(|widget| widget.accessible_role() == gtk::AccessibleRole::MenuItem)
         .find(|button| button.is_mapped() && button_text(button).as_deref() == Some(text))
-}
-
-fn press_item(widget: &gtk::Widget, key: Key) {
-    let controllers = widget.observe_controllers();
-    let handled = (0..controllers.n_items())
-        .filter_map(|index| {
-            controllers
-                .item(index)
-                .and_downcast::<gtk::EventControllerKey>()
-        })
-        .filter(|keys| keys.propagation_phase() == gtk::PropagationPhase::Capture)
-        .any(|keys| {
-            keys.emit_by_name::<bool>(
-                "key-pressed",
-                &[&key, &0u32, &gtk::gdk::ModifierType::empty()],
-            )
-        });
-    assert!(handled, "menu item key must be handled");
 }
 
 fn insensitive_button_names(widget: &gtk::Widget) -> Vec<String> {
@@ -194,6 +175,13 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             wait_until(|| !menu.is_mapped());
 
             let menu = open_menu(&view, Some("picture.png"));
+            let painted = Rc::new(Cell::new(false));
+            let ready = painted.clone();
+            let clock = menu.frame_clock().expect("menu frame clock");
+            let handler = clock.connect_after_paint(move |_| ready.set(true));
+            clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
+            wait_until(|| painted.get());
+            clock.disconnect(handler);
             assert!(
                 action_buttons(menu.upcast_ref())
                     .iter()
@@ -216,11 +204,21 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 .expect("the submenu lists the matching action");
             let submenu_item =
                 button(submenu.upcast_ref(), "PNG only").expect("native submenu item");
-            assert!(submenu_item.has_css_class("submenu-return-wired"));
             assert!(submenu_item.grab_focus());
-            press_item(&submenu_item, Key::Left);
+            submenu.emit_by_name::<()>("move-focus", &[&gtk::DirectionType::Left]);
             wait_until(|| !submenu.is_visible());
             assert!(menu.is_mapped(), "Left returns to the root menu");
+            wait_until(|| actions_button.has_focus());
+            menu.emit_by_name::<()>("move-focus", &[&gtk::DirectionType::Down]);
+            assert_eq!(
+                gtk::prelude::RootExt::focus(&window)
+                    .as_ref()
+                    .and_then(button_text)
+                    .as_deref(),
+                Some("Cut"),
+                "Down must navigate the parent after Left"
+            );
+            menu.emit_by_name::<()>("move-focus", &[&gtk::DirectionType::Up]);
             wait_until(|| actions_button.has_focus());
 
             assert!(actions_button.child_focus(gtk::DirectionType::Right));

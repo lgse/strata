@@ -22,6 +22,7 @@ pub(super) struct ActionMenuSection {
     actions: gio::SimpleActionGroup,
     dispatch: super::commands::MenuDispatch,
     _commands: super::commands::CommandMenus,
+    navigation: Rc<super::keyboard::NativeMenuNavigation>,
 }
 
 impl ActionMenuSection {
@@ -43,11 +44,13 @@ impl ActionMenuSection {
             popover.add_css_class("folder-menu-body");
         }
         let dispatch = super::commands::MenuDispatch;
+        let navigation = super::keyboard::NativeMenuNavigation::new(&popover);
         let commands = super::commands::CommandMenus::new(
             before.as_ref(),
             after.as_ref(),
             &popover,
             &dispatch,
+            &navigation,
         );
         popover.insert_action_group("builtin", Some(&commands.group));
         if let Some(header) = header {
@@ -67,7 +70,6 @@ impl ActionMenuSection {
         }
         let actions = gio::SimpleActionGroup::new();
         popover.insert_action_group("custom", Some(&actions));
-        super::keyboard::install_menu_edges(&popover);
         popover.connect_closed(|popover| {
             let Some(clock) = popover.frame_clock() else {
                 return;
@@ -101,7 +103,7 @@ impl ActionMenuSection {
                 popover.unparent();
             }
         });
-        refresh_presentation(&popover);
+        refresh_presentation(&popover, &navigation);
         Self {
             popover,
             model,
@@ -111,6 +113,7 @@ impl ActionMenuSection {
             actions,
             dispatch,
             _commands: commands,
+            navigation,
         }
     }
 
@@ -128,15 +131,17 @@ impl ActionMenuSection {
                 self.popover.set_parent(&owner);
             }
         }
+        self.navigation.begin();
         self._commands.refresh();
         if self.popover.menu_model().is_none() {
             self.popover.set_menu_model(Some(&self.root_model));
             if let Some(header) = &self.header {
                 assert!(self.popover.add_child(header, "context-header"));
             }
-            refresh_presentation(&self.popover);
+            refresh_presentation(&self.popover, &self.navigation);
         }
         self.popover.set_visible_submenu(Some("main"));
+        self.navigation.model_changed();
         super::show_model_context_popover(self.popover.upcast_ref(), anchor, x, y);
         super::keyboard::focus_first_or_last_menu_item(self.popover.upcast_ref(), true);
     }
@@ -242,16 +247,19 @@ impl ActionMenuSection {
             item.set_icon(&gio::ThemedIcon::new(icons::PLAY));
             self.model.append_item(&item);
         }
-        refresh_presentation(&self.popover);
+        refresh_presentation(&self.popover, &self.navigation);
     }
 }
 
-pub(super) fn refresh_presentation(root: &gtk::PopoverMenu) {
+pub(super) fn refresh_presentation(
+    root: &gtk::PopoverMenu,
+    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
+) {
     let mut items = Vec::new();
     if let Some(model) = root.menu_model() {
         collect_presentations(&model, &mut items);
     }
-    present_native_items(root.upcast_ref(), root, &items);
+    present_native_items(root.upcast_ref(), root, &items, navigation);
 }
 
 #[derive(Clone)]
@@ -325,7 +333,12 @@ fn submenu_owner(root: &gtk::PopoverMenu, submenu: &gtk::PopoverMenu) -> Option<
     find(root_widget, root_widget, &submenu)
 }
 
-fn present_native_items(widget: &gtk::Widget, root: &gtk::PopoverMenu, items: &[ItemPresentation]) {
+fn present_native_items(
+    widget: &gtk::Widget,
+    root: &gtk::PopoverMenu,
+    items: &[ItemPresentation],
+    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
+) {
     if widget.is::<gtk::Button>() {
         return;
     }
@@ -335,7 +348,7 @@ fn present_native_items(widget: &gtk::Widget, root: &gtk::PopoverMenu, items: &[
         if menu != root && !menu.has_css_class("actions-submenu") {
             menu.add_css_class("actions-submenu");
             if let Some(owner) = submenu_owner(root, menu) {
-                super::keyboard::install_submenu_return(menu, &owner);
+                super::keyboard::install_submenu_return(menu, &owner, navigation);
             }
             if gtk::minor_version() < 22 {
                 // Older GTK emits focus leave before updating contains-focus.
@@ -437,7 +450,7 @@ fn present_native_items(widget: &gtk::Widget, root: &gtk::PopoverMenu, items: &[
         }
     }
     for child in children {
-        present_native_items(&child, root, items);
+        present_native_items(&child, root, items, navigation);
     }
 }
 

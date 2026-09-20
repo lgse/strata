@@ -1,25 +1,185 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::Cell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::{gdk::Key, glib, prelude::*};
 
-pub(super) fn install_menu_edges(popover: &gtk::PopoverMenu) {
-    // Extend GTK's native menu navigation without replacing generated rows.
+pub(super) struct NativeMenuNavigation {
+    popover: glib::WeakRef<gtk::PopoverMenu>,
+    initial_focus: Cell<bool>,
+    focus_queued: Cell<bool>,
+    pointer_position: Cell<Option<(f64, f64)>>,
+    keyboard_owned: Cell<bool>,
+    pointer_controllers: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::EventController)>>,
+}
+
+impl NativeMenuNavigation {
+    pub(super) fn new(popover: &gtk::PopoverMenu) -> Rc<Self> {
+        let navigation = Rc::new(Self {
+            popover: popover.downgrade(),
+            initial_focus: Cell::new(false),
+            focus_queued: Cell::new(false),
+            pointer_position: Cell::new(None),
+            keyboard_owned: Cell::new(false),
+            pointer_controllers: RefCell::new(Vec::new()),
+        });
+        install_menu_edges(popover, &navigation);
+        let state = navigation.clone();
+        popover.connect_move_focus(move |_, _| state.keyboard_navigation());
+        let state = navigation.clone();
+        popover.connect_closed(move |_| state.pointer_navigation());
+        let pointer = gtk::EventControllerMotion::new();
+        pointer.set_name(Some("strata-context-pointer"));
+        pointer.set_propagation_phase(gtk::PropagationPhase::Capture);
+        pointer.set_propagation_limit(gtk::PropagationLimit::None);
+        let state = navigation.clone();
+        pointer.connect_enter(move |_, _, _| state.pointer_motion());
+        let state = navigation.clone();
+        pointer.connect_motion(move |_, _, _| state.pointer_motion());
+        popover.add_controller(pointer);
+        let state = navigation.clone();
+        let input = gtk::EventControllerLegacy::new();
+        input.set_propagation_phase(gtk::PropagationPhase::Capture);
+        input.set_propagation_limit(gtk::PropagationLimit::None);
+        input.connect_event(move |_, event| {
+            if matches!(
+                event.event_type(),
+                gtk::gdk::EventType::ButtonPress | gtk::gdk::EventType::TouchBegin
+            ) {
+                state.pointer_navigation();
+            }
+            glib::Propagation::Proceed
+        });
+        popover.add_controller(input);
+        navigation
+    }
+
+    pub(super) fn begin(&self) {
+        self.initial_focus.set(true);
+        self.keyboard_owned.set(true);
+        self.pointer_position.set(self.pointer_position());
+    }
+
+    fn pointer_position(&self) -> Option<(f64, f64)> {
+        let popover = self.popover.upgrade()?;
+        let window = popover.root()?.downcast::<gtk::Window>().ok()?;
+        let pointer = WidgetExt::display(&window).default_seat()?.pointer()?;
+        let root = window.surface()?;
+        let (surface, mut x, mut y) = pointer.surface_at_position();
+        let mut surface = surface?;
+        // A popup crossing is not mouse movement. Compare in the same
+        // toplevel coordinates on both X11 and Wayland.
+        while surface != root {
+            let popup = surface.downcast::<gtk::gdk::Popup>().ok()?;
+            x += f64::from(popup.position_x());
+            y += f64::from(popup.position_y());
+            surface = popup.parent()?;
+        }
+        Some((x, y))
+    }
+
+    fn keyboard_navigation(&self) {
+        self.initial_focus.set(false);
+        self.keyboard_owned.set(true);
+        self.pointer_position.set(self.pointer_position());
+        if let Some(popover) = self.popover.upgrade() {
+            self.suspend_native_pointer(popover.upcast_ref());
+        }
+    }
+
+    fn pointer_motion(&self) {
+        let position = self.pointer_position();
+        if position != self.pointer_position.replace(position) {
+            self.pointer_navigation();
+        }
+    }
+
+    fn pointer_navigation(&self) {
+        self.initial_focus.set(false);
+        self.keyboard_owned.set(false);
+        for (widget, controller) in self.pointer_controllers.take() {
+            if let Some(widget) = widget.upgrade() {
+                widget.add_controller(controller);
+            }
+        }
+    }
+
+    fn suspend_native_pointer(&self, widget: &gtk::Widget) {
+        let controllers = widget.observe_controllers();
+        let motion = (0..controllers.n_items())
+            .filter_map(|index| {
+                controllers
+                    .item(index)
+                    .and_downcast::<gtk::EventControllerMotion>()
+            })
+            .filter(|controller| controller.name().as_deref() != Some("strata-context-pointer"))
+            .collect::<Vec<_>>();
+        for controller in motion {
+            // GTK delivers pointer crossings even with propagation phase None.
+            widget.remove_controller(&controller);
+            self.pointer_controllers
+                .borrow_mut()
+                .push((widget.downgrade(), controller.upcast()));
+        }
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            self.suspend_native_pointer(&widget);
+            child = widget.next_sibling();
+        }
+    }
+
+    pub(super) fn model_changed(self: &Rc<Self>) {
+        self.pointer_controllers
+            .borrow_mut()
+            .retain(|(widget, _)| widget.upgrade().is_some());
+        if self.keyboard_owned.get()
+            && let Some(popover) = self.popover.upgrade()
+        {
+            self.suspend_native_pointer(popover.upcast_ref());
+        }
+        if !self.initial_focus.get() || self.focus_queued.replace(true) {
+            return;
+        }
+        let Some(popover) = self.popover.upgrade() else {
+            self.focus_queued.set(false);
+            return;
+        };
+        let state = self.clone();
+        // Wait for native rows, their action state and popup pointer crossing
+        // to settle. Later MIME updates may introduce an earlier menu item.
+        popover.add_tick_callback(move |_, _| {
+            let state = state.clone();
+            glib::idle_add_local_once(move || {
+                state.focus_queued.set(false);
+                if state.initial_focus.get()
+                    && let Some(popover) = state.popover.upgrade()
+                    && popover.is_mapped()
+                {
+                    focus_first_or_last_menu_item(popover.upcast_ref(), true);
+                }
+            });
+            glib::ControlFlow::Break
+        });
+    }
+}
+
+fn install_menu_edges(popover: &gtk::PopoverMenu, navigation: &Rc<NativeMenuNavigation>) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     keys.set_propagation_limit(gtk::PropagationLimit::None);
     let weak = popover.downgrade();
+    let navigation = navigation.clone();
     keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !modifiers.is_empty() {
+        navigation.keyboard_navigation();
+        if !modifiers.is_empty() || !matches!(key, Key::Home | Key::End) {
             return glib::Propagation::Proceed;
         }
         let Some(popover) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
-        if !matches!(key, Key::Home | Key::End) {
-            return glib::Propagation::Proceed;
-        }
         let active = popover
             .root()
             .and_then(|root| root.focus())
@@ -32,214 +192,30 @@ pub(super) fn install_menu_edges(popover: &gtk::PopoverMenu) {
     popover.add_controller(keys);
 }
 
-fn restore_submenu_owner(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
-    let submenu = submenu.downgrade();
-    let frames = Cell::new(0u8);
-    owner.add_tick_callback(move |owner, _| {
-        let Some(submenu) = submenu.upgrade() else {
-            return glib::ControlFlow::Break;
-        };
-        if submenu.is_visible() {
-            return glib::ControlFlow::Continue;
-        }
-        if !owner.is_mapped() {
-            return glib::ControlFlow::Break;
-        }
-        if frames.get() == 0
-            && let Some(parent) = owner
-                .ancestor(gtk::PopoverMenu::static_type())
-                .and_downcast::<gtk::PopoverMenu>()
-        {
-            // The nested surface releases the popup grab when it finishes
-            // hiding, so reacquire the parent before restoring item focus.
-            parent.popup();
-        }
-        if let Some(root) = owner.root() {
-            root.set_focus(Some(owner));
-        }
-        frames.set(frames.get() + 1);
-        if frames.get() >= 2 {
-            glib::ControlFlow::Break
-        } else {
-            glib::ControlFlow::Continue
-        }
-    });
-}
-
-fn return_from_submenu(submenu: &gtk::PopoverMenu, owner: &gtk::Widget, returned: &Cell<bool>) {
-    submenu.set_visible(false);
-    returned.set(true);
-    restore_submenu_owner(submenu, owner);
-}
-
-fn install_submenu_item_return(
-    widget: &gtk::Widget,
+pub(super) fn install_submenu_return(
     submenu: &gtk::PopoverMenu,
     owner: &gtk::Widget,
-    returned: &Rc<Cell<bool>>,
+    navigation: &Rc<NativeMenuNavigation>,
 ) {
-    if widget != submenu && widget.is::<gtk::Popover>() {
-        return;
-    }
-    if widget.accessible_role() == gtk::AccessibleRole::MenuItem
-        && !widget.has_css_class("submenu-return-wired")
-    {
-        widget.add_css_class("submenu-return-wired");
-        let weak_submenu = submenu.downgrade();
-        let weak_owner = owner.downgrade();
-        let returned = returned.clone();
-        let keys = gtk::EventControllerKey::new();
-        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-        keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key != Key::Left || !modifiers.is_empty() {
-                return glib::Propagation::Proceed;
-            }
-            let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade())
-            else {
-                return glib::Propagation::Proceed;
-            };
-            return_from_submenu(&submenu, &owner, &returned);
-            glib::Propagation::Stop
-        });
-        widget.add_controller(keys);
-    }
-    let mut child = widget.first_child();
-    while let Some(widget) = child {
-        install_submenu_item_return(&widget, submenu, owner, returned);
-        child = widget.next_sibling();
-    }
-}
-
-pub(super) fn install_submenu_return(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
-    let returned = Rc::new(Cell::new(false));
-    if let Some(root) = owner
-        .ancestor(gtk::PopoverMenu::static_type())
-        .and_downcast::<gtk::PopoverMenu>()
-    {
-        let weak_root = root.downgrade();
-        let weak_owner = owner.downgrade();
-        let weak_submenu = submenu.downgrade();
-        let returned_on_hide = returned.clone();
-        submenu.connect_hide(move |_| {
-            let weak_root = weak_root.clone();
-            let weak_owner = weak_owner.clone();
-            let weak_submenu = weak_submenu.clone();
-            let returned = returned_on_hide.clone();
-            glib::idle_add_local_once(move || {
-                let (Some(root), Some(owner), Some(submenu)) = (
-                    weak_root.upgrade(),
-                    weak_owner.upgrade(),
-                    weak_submenu.upgrade(),
-                ) else {
-                    return;
-                };
-                if root.is_mapped() && root.is_visible() && owner.is_mapped() {
-                    returned.set(true);
-                    restore_submenu_owner(&submenu, &owner);
-                }
-            });
-        });
-    }
-    install_submenu_item_return(submenu.upcast_ref(), submenu, owner, &returned);
     let weak_owner = owner.downgrade();
-    let returned_for_map = returned.clone();
-    submenu.connect_map(move |submenu| {
-        let Some(owner) = weak_owner.upgrade() else {
+    let navigation = navigation.clone();
+    // Native shortcuts emit move-focus before ordinary key controllers run.
+    submenu.connect_move_focus(move |submenu, direction| {
+        navigation.keyboard_navigation();
+        if direction != gtk::DirectionType::Left {
             return;
-        };
-        install_submenu_item_return(submenu.upcast_ref(), submenu, &owner, &returned_for_map);
-        let submenu = submenu.downgrade();
-        let owner = owner.downgrade();
-        let returned = returned_for_map.clone();
-        glib::idle_add_local_once(move || {
-            if let (Some(submenu), Some(owner)) = (submenu.upgrade(), owner.upgrade()) {
-                install_submenu_item_return(submenu.upcast_ref(), &submenu, &owner, &returned);
-            }
-        });
-    });
-    let weak_submenu = submenu.downgrade();
-    let weak_owner = owner.downgrade();
-    let returned_for_submenu = returned.clone();
-    let submenu_keys = gtk::EventControllerKey::new();
-    submenu_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    submenu_keys.set_propagation_limit(gtk::PropagationLimit::None);
-    submenu_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !modifiers.is_empty() {
-            return glib::Propagation::Proceed;
         }
-        let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade()) else {
-            return glib::Propagation::Proceed;
-        };
-        match key {
-            Key::Left => {
-                return_from_submenu(&submenu, &owner, &returned_for_submenu);
-                glib::Propagation::Stop
+        submenu.stop_signal_emission_by_name("move-focus");
+        // Hide without cascading, then let GTK clear its open-submenu state.
+        // Focusing the owner alone leaves arrows routed to the hidden branch.
+        submenu.set_visible(false);
+        if let Some(owner) = weak_owner.upgrade() {
+            if let Some(parent) = owner.ancestor(gtk::PopoverMenu::static_type()) {
+                parent.child_focus(gtk::DirectionType::Left);
             }
-            Key::Right if returned_for_submenu.replace(false) => {
-                owner.activate();
-                let submenu = submenu.downgrade();
-                glib::idle_add_local_once(move || {
-                    if let Some(submenu) = submenu.upgrade() {
-                        focus_first_or_last_menu_item(submenu.upcast_ref(), true);
-                    }
-                });
-                glib::Propagation::Stop
-            }
-            _ => glib::Propagation::Proceed,
+            owner.grab_focus();
         }
     });
-    submenu.add_controller(submenu_keys);
-
-    if let Some(root) = owner.root() {
-        let weak_submenu = submenu.downgrade();
-        let weak_owner = owner.downgrade();
-        let returned_for_root = returned.clone();
-        let action = gtk::CallbackAction::new(move |_, _| {
-            let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade())
-            else {
-                return glib::Propagation::Proceed;
-            };
-            let focus = submenu.root().and_then(|root| root.focus());
-            if !submenu.is_visible()
-                || !focus.is_some_and(|focus| focus == submenu || submenu.is_ancestor(&focus))
-            {
-                return glib::Propagation::Proceed;
-            }
-            return_from_submenu(&submenu, &owner, &returned_for_root);
-            glib::Propagation::Stop
-        });
-        let shortcut = gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                Key::Left,
-                gtk::gdk::ModifierType::empty(),
-            )),
-            Some(action),
-        );
-        let shortcuts = gtk::ShortcutController::new();
-        shortcuts.set_scope(gtk::ShortcutScope::Global);
-        shortcuts.add_shortcut(shortcut);
-        root.add_controller(shortcuts);
-    }
-
-    let weak_submenu = submenu.downgrade();
-    let weak_owner = owner.downgrade();
-    let owner_keys = gtk::EventControllerKey::new();
-    owner_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    owner_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if key != Key::Right || !modifiers.is_empty() {
-            return glib::Propagation::Proceed;
-        }
-        returned.set(false);
-        let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade()) else {
-            return glib::Propagation::Proceed;
-        };
-        owner.activate();
-        glib::idle_add_local_once(move || {
-            focus_first_or_last_menu_item(submenu.upcast_ref(), true);
-        });
-        glib::Propagation::Stop
-    });
-    owner.add_controller(owner_keys);
 }
 
 pub(super) fn install(popover: &gtk::Popover) {
