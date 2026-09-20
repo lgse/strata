@@ -20,6 +20,14 @@ fn visible_matches(widget: &gtk::Widget) -> Vec<String> {
         && ["needle.txt", "needle-folder", "needle-nested.txt"].contains(&label.text().as_str())
     {
         names.push(label.text().to_string());
+    } else if let Some(label) = widget.downcast_ref::<gtk::Inscription>()
+        && label.is_mapped()
+        && label.text().as_deref().is_some_and(|text| {
+            ["needle.txt", "needle-folder", "needle-nested.txt"].contains(&text)
+        })
+        && let Some(text) = label.text()
+    {
+        names.push(text.to_string());
     }
     let mut child = widget.first_child();
     while let Some(widget) = child {

@@ -20,17 +20,70 @@ pub(super) fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
-pub(super) fn search_results_list(widget: &gtk::Widget) -> Option<gtk::ListBox> {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListBox>()
+#[derive(Clone)]
+pub(super) enum SearchResults {
+    Rows(gtk::ListBox),
+    Collection(gtk::SelectionModel),
+}
+
+impl SearchResults {
+    pub(super) fn n_items(&self) -> u32 {
+        match self {
+            Self::Rows(list) => list.observe_children().n_items(),
+            Self::Collection(selection) => selection.n_items(),
+        }
+    }
+
+    pub(super) fn select(&self, position: u32, exclusive: bool) {
+        match self {
+            Self::Rows(list) => {
+                if exclusive {
+                    list.unselect_all();
+                }
+                list.select_row(list.row_at_index(position as i32).as_ref());
+            }
+            Self::Collection(selection) => {
+                selection.select_item(position, exclusive);
+            }
+        }
+    }
+
+    fn unselect_all(&self) {
+        match self {
+            Self::Rows(list) => list.unselect_all(),
+            Self::Collection(selection) => {
+                selection.unselect_all();
+            }
+        }
+    }
+}
+
+pub(super) fn search_results(widget: &gtk::Widget) -> Option<SearchResults> {
+    if let Some(list) = widget.downcast_ref::<gtk::ListBox>()
         && list.has_css_class("file-list")
+        && list.is_mapped()
         && list.row_at_index(0).is_some()
     {
-        return Some(list);
+        return Some(SearchResults::Rows(list.clone()));
+    }
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
+        && list.has_css_class("search-results")
+        && list.is_mapped()
+        && let Some(selection) = list.model()
+    {
+        return Some(SearchResults::Collection(selection));
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("search-results")
+        && grid.is_mapped()
+        && let Some(selection) = grid.model()
+    {
+        return Some(SearchResults::Collection(selection));
     }
     let mut child = widget.first_child();
     while let Some(current) = child {
-        if let Some(list) = search_results_list(&current) {
-            return Some(list);
+        if let Some(results) = search_results(&current) {
+            return Some(results);
         }
         child = current.next_sibling();
     }
@@ -38,9 +91,17 @@ pub(super) fn search_results_list(widget: &gtk::Widget) -> Option<gtk::ListBox> 
 }
 
 fn select_first_two_file_list_items(widget: &gtk::Widget) {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
         && list.has_css_class("file-list")
         && let Some(selection) = list.model()
+        && selection.n_items() >= 2
+    {
+        selection.select_item(0, true);
+        selection.select_item(1, false);
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("file-icons")
+        && let Some(selection) = grid.model()
         && selection.n_items() >= 2
     {
         selection.select_item(0, true);
@@ -54,10 +115,18 @@ fn select_first_two_file_list_items(widget: &gtk::Widget) {
 }
 
 fn select_first_file_list_item(widget: &gtk::Widget) {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
         && list.has_css_class("file-list")
         && list.is_mapped()
         && let Some(selection) = list.model()
+        && selection.n_items() >= 1
+    {
+        selection.select_item(0, true);
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("file-icons")
+        && grid.is_mapped()
+        && let Some(selection) = grid.model()
         && selection.n_items() >= 1
     {
         selection.select_item(0, true);
@@ -77,10 +146,19 @@ fn select_first_file_list_item(widget: &gtk::Widget) {
 }
 
 fn select_first_file_list_item_in_first_list(widget: &gtk::Widget) -> bool {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
         && list.has_css_class("file-list")
         && list.is_mapped()
         && let Some(selection) = list.model()
+        && selection.n_items() >= 1
+    {
+        selection.select_item(0, true);
+        return true;
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("file-icons")
+        && grid.is_mapped()
+        && let Some(selection) = grid.model()
         && selection.n_items() >= 1
     {
         selection.select_item(0, true);
@@ -585,11 +663,10 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
 
             state.view.show_filter_with_query("nested*.TXT");
             wait_until(|| {
-                search_results_list(&state.view.widget())
-                    .is_some_and(|list| list.row_at_index(1).is_some())
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 1)
             });
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             let first_selected = state
                 .view
                 .selected_search_results()
@@ -602,8 +679,8 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
                 first_selected == Location::local(&first)
                     || first_selected == Location::local(&nested)
             );
-            list.unselect_all();
-            list.select_row(list.row_at_index(1).as_ref());
+            results.unselect_all();
+            results.select(1, true);
             wait_until(|| {
                 state.view.selected_search_results().is_some_and(|entries| {
                     entries
@@ -680,9 +757,11 @@ fn dismissing_recursive_results_then_extending_widget_selection_accepts_current_
             });
 
             state.view.show_filter_with_query("nested");
-            wait_until(|| search_results_list(&state.view.widget()).is_some());
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            wait_until(|| {
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 0)
+            });
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             wait_until(|| {
                 state
                     .view
@@ -759,16 +838,18 @@ fn active_recursive_search_without_selection_does_not_accept_hidden_browser_sele
             });
 
             state.view.show_filter_with_query("nested");
-            wait_until(|| search_results_list(&state.view.widget()).is_some());
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            wait_until(|| {
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 0)
+            });
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             wait_until(|| {
                 state
                     .view
                     .selected_search_results()
                     .is_some_and(|entries| entries.len() == 1)
             });
-            list.unselect_all();
+            results.unselect_all();
             wait_until(|| state.view.selected_search_results() == Some(Vec::new()));
 
             state.accept_button.emit_clicked();
@@ -777,8 +858,7 @@ fn active_recursive_search_without_selection_does_not_accept_hidden_browser_sele
 
             state.view.show_filter_with_query("no-matches");
             wait_until(|| {
-                list.row_at_index(0).is_none()
-                    && state.view.selected_search_results() == Some(Vec::new())
+                results.n_items() == 0 && state.view.selected_search_results() == Some(Vec::new())
             });
             state.accept_button.emit_clicked();
             assert!(result.borrow().is_none(), "no results must not accept");
@@ -834,9 +914,9 @@ fn recursive_multi_selection_accepts_every_selected_file_in_all_modes() {
                 state.view.show_filter_with_query("nested");
                 wait_until(|| state.view.selected_search_results().is_some());
                 wait_until(|| {
-                    if let Some(list) = search_results_list(&state.view.widget()) {
-                        list.select_row(list.row_at_index(0).as_ref());
-                        list.select_row(list.row_at_index(1).as_ref());
+                    if let Some(results) = search_results(&state.view.widget()) {
+                        results.select(0, true);
+                        results.select(1, false);
                     } else {
                         select_first_two_file_list_items(&state.view.widget());
                     }
@@ -1179,9 +1259,11 @@ fn save_file_with_search_results_accepts_selected_folder_without_navigating_into
             });
 
             state.view.show_filter_with_query("target");
-            wait_until(|| search_results_list(&state.view.widget()).is_some());
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            wait_until(|| {
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 0)
+            });
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             wait_until(|| {
                 state.view.selected_search_results().is_some_and(|entries| {
                     entries

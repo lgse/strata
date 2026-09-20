@@ -62,10 +62,10 @@ pub(crate) use crate::ui::browser::clipboard::{
 };
 pub(super) use crate::ui::browser::clipboard::{file_drag_content, set_cut_result_style};
 pub(crate) use crate::ui::browser::collection::{
-    ActivePaneFilter, activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
-    detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
-    notify_filter_query, prepare_collection_inline_edit, restore_filter_controls,
-    reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
+    ActivePaneFilter, bind_filter_query, debounce_filter_entry, detach_collection_view,
+    focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
+    prepare_collection_inline_edit, restore_filter_controls, reveal_collection_after_layout,
+    scroll_collection_when_allocated, search_result_entry,
 };
 pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
 pub(super) use crate::ui::browser::context_menu::{
@@ -239,6 +239,13 @@ pub struct BrowserView {
 
 #[derive(Clone)]
 pub(crate) struct WeakBrowserView(Weak<ViewState>);
+
+pub(in crate::ui) fn claim_keyboard_navigation(state: &Rc<ViewState>) {
+    BrowserView {
+        state: state.clone(),
+    }
+    .keyboard_navigation();
+}
 
 impl WeakBrowserView {
     pub(crate) fn upgrade(&self) -> Option<BrowserView> {
@@ -1593,7 +1600,11 @@ impl BrowserView {
         self.state
             .search_selection_handlers
             .borrow_mut()
-            .push(handler);
+            .push(handler.clone());
+        self.state
+            .mode_views
+            .borrow()
+            .connect_search_selection_changed(Rc::new(move |_| handler()));
     }
 
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {

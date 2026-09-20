@@ -1,7 +1,54 @@
 // SPDX-License-Identifier: MIT
 
-use super::acceptance::{request, search_results_list, visible_collection_selection, wait_until};
+use super::acceptance::{request, visible_collection_selection, wait_until};
 use super::*;
+
+fn visible_search_selection(widget: &gtk::Widget) -> Option<gtk::SelectionModel> {
+    let selection = (widget.is_mapped() && widget.has_css_class("search-results"))
+        .then(|| {
+            widget
+                .downcast_ref::<gtk::ListView>()
+                .and_then(gtk::ListView::model)
+                .or_else(|| {
+                    widget
+                        .downcast_ref::<gtk::GridView>()
+                        .and_then(gtk::GridView::model)
+                })
+        })
+        .flatten();
+    if selection.is_some() {
+        return selection;
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if let Some(selection) = visible_search_selection(&current) {
+            return Some(selection);
+        }
+        child = current.next_sibling();
+    }
+    None
+}
+
+fn has_visible_text(widget: &gtk::Widget, text: &str) -> bool {
+    if widget.is_mapped()
+        && (widget
+            .downcast_ref::<gtk::Label>()
+            .is_some_and(|label| label.text() == text)
+            || widget
+                .downcast_ref::<gtk::Inscription>()
+                .is_some_and(|label| label.text().as_deref() == Some(text)))
+    {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if has_visible_text(&widget, text) {
+            return true;
+        }
+    }
+    false
+}
 
 #[test]
 fn save_filename_follows_widget_selection_without_accepting() {
@@ -82,7 +129,7 @@ fn save_filename_follows_recursive_search_selection() {
         "ui::chooser::tests::filename::save_filename_follows_recursive_search_selection",
         || {
             crate::ui::prepare_portal_ui();
-            for mode in [BrowserMode::List, BrowserMode::Columns] {
+            for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
                 PreferenceManager::shared().set_browser_mode(mode);
                 let root = tempfile::tempdir().expect("fixture");
                 let child = root.path().join("child");
@@ -102,20 +149,17 @@ fn save_filename_follows_recursive_search_selection() {
                         .is_some_and(|column| !column.loading)
                 });
                 state.view.show_filter_with_query("target");
-                wait_until(|| state.view.selected_search_results().is_some());
-                if mode == BrowserMode::Columns {
-                    wait_until(|| {
-                        visible_collection_selection(&state.view.widget())
-                            .is_some_and(|selection| selection.n_items() == 1)
-                    });
-                    visible_collection_selection(&state.view.widget())
-                        .expect("search results")
-                        .select_item(0, true);
-                } else {
-                    wait_until(|| search_results_list(&state.view.widget()).is_some());
-                    let list = search_results_list(&state.view.widget()).expect("search results");
-                    list.select_row(list.row_at_index(0).as_ref());
-                }
+                wait_until(|| has_visible_text(&state.view.widget(), "target.txt"));
+                wait_until(|| {
+                    visible_search_selection(&state.view.widget())
+                        .or_else(|| visible_collection_selection(&state.view.widget()))
+                        .is_some_and(|selection| selection.n_items() == 1)
+                });
+                let selection = visible_search_selection(&state.view.widget())
+                    .or_else(|| visible_collection_selection(&state.view.widget()))
+                    .expect("search results");
+                selection.unselect_all();
+                selection.select_item(0, true);
                 wait_until(|| state.filename.as_ref().expect("filename").text() == "target.txt");
                 state.window.close();
             }

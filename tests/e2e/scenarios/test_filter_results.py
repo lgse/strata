@@ -26,9 +26,22 @@ def fixture_tree():
         fixture.cleanup()
 
 
+def result_rows(strata):
+    container = strata.window.find(role="list", name="Search results")
+    role = "list item"
+    if container is None:
+        container = strata.window.find(role="table", name="Search results")
+        role = "table cell"
+    if container is None:
+        return strata.window.find_all(role="list item")
+    return container.find_all(role=role)
+
+
 def result(strata, path):
-    for row in strata.window.find_all(role="list item", name=Path(path).name):
-        if any(label.name.endswith(path) for label in row.find_all(role="label")):
+    for row in result_rows(strata):
+        if row.name == Path(path).name and any(
+            label.name.endswith(path) for label in row.find_all(role="label")
+        ):
             return row
     return None
 
@@ -51,8 +64,7 @@ def filter_results(strata, query="match-note", count=4, directory=None):
 def test_filtered_results_support_group_selection(strata, mode, route, recursive):
     count = 4 if recursive else 2
     filter_results(strata, count=count)
-    rows = strata.window.find_all(role="list item")
-    rows = [row for row in rows if "match-note" in row.name]
+    rows = [row for row in result_rows(strata) if "match-note" in row.name]
     assert len(rows) == count
     if route == "marquee":
         first = rows[0].screen_bounds()
@@ -69,8 +81,9 @@ def test_filtered_results_support_group_selection(strata, mode, route, recursive
             strata.keyboard.press("ctrl+f")
             strata.keyboard.press("Down")
             if route == "keyboard-range":
+                step = "shift+Right" if mode == "Icons" else "shift+Down"
                 for _ in range(count - 1):
-                    strata.keyboard.press("shift+Down")
+                    strata.keyboard.press(step)
             else:
                 strata.keyboard.press("ctrl+a")
     strata.wait(
@@ -209,10 +222,11 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     else:
         strata.keyboard.press("Down")
         strata.wait(lambda: not field.has_state("focused"), "Down to leave the filter input")
+        result_step = "Right" if mode == "Icons" else "Down"
         for _ in range(count):
             if row.has_state("focused"):
                 break
-            strata.keyboard.press("Down")
+            strata.keyboard.press(result_step)
         strata.wait(lambda: row.has_state("focused"), "keyboard focus on the actual result")
         strata.keyboard.press("ctrl+f")
         strata.wait(lambda: field.has_state("focused"), "Ctrl+F to refocus the query")
@@ -230,7 +244,7 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
         for _ in range(count):
             if row.has_state("focused"):
                 break
-            strata.keyboard.press("Down")
+            strata.keyboard.press(result_step)
         strata.wait(lambda: row.has_state("focused"), "keyboard result focus after the round trip")
         strata.keyboard.press("Menu")
         strata.wait(strata.context_menu, "the keyboard result menu")
@@ -241,6 +255,7 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     strata.wait(strata.context_menu, "the result menu")
     assert row.has_state("selected")
     assert "Quick preview" in strata.menu_items()
+    assert "Open file location" in strata.menu_items()
     assert "New Folder" not in strata.menu_items()
     if trigger == "keyboard":
         strata.keyboard.press("Home")
@@ -436,7 +451,7 @@ def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path
     field = strata.editable_field()
     strata.keyboard.type_text("thumb")
     strata.wait(lambda: len(strata.matches()) == 2, "image and text results")
-    row = strata.window.find(role="list item", name="thumb.png")
+    row = result(strata, "beta/thumb.png")
     assert row is not None
     strata.pointer.click(row, modifiers=("ctrl",))
     strata.pointer.click(field)

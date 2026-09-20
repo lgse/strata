@@ -166,7 +166,10 @@ fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
                         assert!(label(popup.upcast_ref(), "New Folder").is_some());
                         press(&popup, Key::Escape);
                         wait_until(|| !popup.is_mapped());
-                        assert!(view.browser().selected_entries().is_empty());
+                        assert!(
+                            view.browser().selected_entries().is_empty(),
+                            "{mode:?} chooser={chooser} grouped={grouped}"
+                        );
                         assert_eq!(native_selection_count(&view), 0);
                         view.browser().clear_observer();
                         window.destroy();

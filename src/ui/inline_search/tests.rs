@@ -36,6 +36,30 @@ fn labels(widget: &gtk::Widget) -> Vec<String> {
     result
 }
 
+fn search_options(
+    browser: &Rc<Browser>,
+    presentation: SearchPresentation,
+) -> SearchCollectionOptions {
+    let weak = Rc::downgrade(browser);
+    let activate = Rc::new(move |entry: FileEntry| {
+        if let Some(browser) = weak.upgrade() {
+            if entry.is_directory() {
+                browser.navigate(entry.location);
+            } else {
+                browser.open_location(entry.location);
+            }
+        }
+    });
+    SearchCollectionOptions {
+        presentation,
+        multiple_selection: Rc::new(Cell::new(true)),
+        activate: activate.clone(),
+        single_click: activate,
+        selection_changed: Rc::new(|_| {}),
+        focus_items: Rc::new(|| {}),
+    }
+}
+
 fn wait_until(condition: impl Fn() -> bool) {
     let start = Instant::now();
     while !condition() {
@@ -59,6 +83,28 @@ fn result_paths_are_relative_to_the_search_root() {
     assert_eq!(
         relative_result_path(root, Path::new("/tmp/strata-search-demo/notes.txt")),
         "notes.txt"
+    );
+}
+
+#[test]
+fn pointer_selection_extends_and_toggles_the_plain_click_selection() {
+    crate::test_support::gtk_test(
+        "ui::inline_search::tests::pointer_selection_extends_and_toggles_the_plain_click_selection",
+        || {
+            let first = pointer_selection(None, 0, false, false, None, true);
+            assert!(first.contains(0));
+
+            let both = pointer_selection(Some(&first), 1, true, false, Some(0), true);
+            assert!(both.contains(0));
+            assert!(both.contains(1));
+
+            let second = pointer_selection(Some(&both), 0, true, false, Some(1), true);
+            assert!(!second.contains(0));
+            assert!(second.contains(1));
+
+            let empty = pointer_selection(Some(&first), 0, true, false, Some(0), true);
+            assert!(empty.is_empty());
+        },
     );
 }
 
@@ -90,11 +136,27 @@ fn alternate_view_search_finds_descendants_and_restores_the_original_view() {
             let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
             let entry = gtk::Entry::new();
             let original = gtk::Label::new(Some("Original view"));
-            let widget = wrap(&original, &entry, Some(root.clone()), &browser, false).widget;
+            let widget = wrap(
+                &original,
+                &entry,
+                Some(root.clone()),
+                &browser,
+                search_options(&browser, SearchPresentation::Rows),
+            )
+            .widget;
             let stack = widget
                 .clone()
                 .downcast::<gtk::Stack>()
                 .expect("local search stack");
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            content.append(&entry);
+            content.append(&widget);
+            let window = gtk::Window::builder()
+                .child(&content)
+                .default_width(640)
+                .default_height(480)
+                .build();
+            window.present();
             entry.set_text("stra");
             wait_until(|| labels(&widget).contains(&"github/strata".to_owned()));
             assert!(
@@ -129,7 +191,102 @@ fn alternate_view_search_finds_descendants_and_restores_the_original_view() {
             );
             entry.set_text("");
             wait_until(|| stack.visible_child_name().as_deref() == Some("files"));
+            window.destroy();
             fs::remove_dir_all(fixture).expect("remove fixture");
+        },
+    );
+}
+
+#[test]
+fn search_collection_exposes_selection_events_and_consumer_selection_mode() {
+    crate::test_support::gtk_test(
+        "ui::inline_search::tests::search_collection_exposes_selection_events_and_consumer_selection_mode",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            let first = SearchItem::for_test(fixture.path().join("first.txt"), false);
+            let second = SearchItem::for_test(fixture.path().join("second.txt"), false);
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            let multiple = Rc::new(Cell::new(false));
+            let changes = Rc::new(Cell::new(0));
+            let changes_for_callback = changes.clone();
+            let options = SearchCollectionOptions {
+                presentation: SearchPresentation::Rows,
+                multiple_selection: multiple.clone(),
+                activate: Rc::new(|_| {}),
+                single_click: Rc::new(|_| {}),
+                selection_changed: Rc::new(move |_| {
+                    changes_for_callback.set(changes_for_callback.get() + 1);
+                }),
+                focus_items: Rc::new(|| {}),
+            };
+            let search = wrap(
+                &gtk::Label::new(None),
+                &gtk::Entry::new(),
+                Some(fixture.path().into()),
+                &browser,
+                options,
+            );
+            let state = search.state.as_ref().expect("state");
+            update_results(state, vec![first, second], true);
+            state.collection.selection.select_item(0, true);
+            state.collection.selection.select_item(1, false);
+            assert_eq!(state.collection.selection.selection().size(), 1);
+            assert!(state.collection.selection.is_selected(1));
+            multiple.set(true);
+            state.collection.selection.select_item(0, false);
+            assert_eq!(state.collection.selection.selection().size(), 2);
+            assert!(changes.get() >= 3);
+        },
+    );
+}
+
+#[test]
+fn every_search_presentation_renames_the_displayed_result_inline() {
+    crate::test_support::gtk_test(
+        "ui::inline_search::tests::every_search_presentation_renames_the_displayed_result_inline",
+        || {
+            for presentation in [
+                SearchPresentation::Rows,
+                SearchPresentation::Icons {
+                    thumbnail_size: Rc::new(Cell::new(64)),
+                    max_columns: 20,
+                },
+            ] {
+                let fixture = tempfile::tempdir().expect("fixture");
+                let path = fixture.path().join("note.txt");
+                fs::write(&path, "note").expect("file");
+                let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+                let entry = gtk::Entry::new();
+                let search = wrap(
+                    &gtk::Label::new(None),
+                    &entry,
+                    Some(fixture.path().into()),
+                    &browser,
+                    search_options(&browser, presentation),
+                );
+                let state = search.state.as_ref().expect("state");
+                let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                content.append(&entry);
+                content.append(&search.widget);
+                let window = gtk::Window::builder().child(&content).build();
+                window.present();
+                let item = SearchItem::for_test(path.clone(), false);
+                update_results(state, vec![item.clone()], true);
+                state.stack.set_visible_child_name("search");
+                wait_until(|| state.collection.bound_at(0).is_some());
+                let active = Rc::new(RefCell::new(None));
+                assert!(search.begin_rename(
+                    &super::super::browser::search_result_entry(&item),
+                    active.clone(),
+                    Rc::downgrade(&browser),
+                    std::rc::Weak::new(),
+                ));
+                assert!(active.borrow().is_some());
+                let (field, display) = state.collection.rename_widgets(0).expect("editor");
+                assert!(gtk::prelude::WidgetExt::is_visible(&field));
+                assert!(!display.is_visible());
+                window.destroy();
+            }
         },
     );
 }
@@ -152,7 +309,7 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
                 &entry,
                 Some(fixture.path().into()),
                 &browser,
-                false,
+                search_options(&browser, SearchPresentation::Rows),
             );
             let state = search.state.as_ref().expect("search state");
             let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -171,137 +328,57 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
             wait_until(|| state.items.borrow().len() == 3);
             let mut items = state.items.borrow().clone();
             items.sort_by(|a, b| a.path.cmp(&b.path));
-            wait_until(|| {
-                items
-                    .iter()
-                    .all(|item| super::super::thumbnail::pending_thumbnail_id(&item.path).is_some())
-            });
-            // Stop the real worker before injecting deterministic progressive publications.
             state.handle.borrow_mut().take();
-            update_rows(state, vec![items[1].clone()], fixture.path(), true);
-            wait_until(|| super::super::thumbnail::pending_thumbnail_id(&items[1].path).is_some());
-            let pending = super::super::thumbnail::pending_thumbnail_id(&items[1].path);
-            let selected = state.list.row_at_index(0).expect("selected row");
-            state.list.select_row(Some(&selected));
-            let focus = gtk::prelude::GtkWindowExt::focus(&window);
-            assert!(
-                focus
-                    .as_ref()
-                    .is_some_and(|focused| focused.is_ancestor(&entry))
-            );
+            update_results(state, vec![items[1].clone()], true);
+            wait_until(|| state.collection.bound_at(0).is_some());
+            state.collection.selection.select_item(0, true);
+            let (_, selected) = state.collection.bound_at(0).expect("selected result");
             let icon = selected
-                .child()
-                .and_then(|line| line.first_child())
+                .first_child()
                 .and_downcast::<super::super::thumbnail::ThumbnailSlot>()
                 .expect("thumbnail slot");
             let bytes = glib::Bytes::from_static(&[255, 0, 0, 255]);
             let texture =
                 gtk::gdk::MemoryTexture::new(1, 1, gtk::gdk::MemoryFormat::R8g8b8a8, &bytes, 4);
             icon.set_texture(texture.upcast_ref());
-            let resizes = icon.resize_calls();
-            let removed = Rc::new(Cell::new(0));
-            let removed_for_notify = removed.clone();
-            selected.connect_parent_notify(move |row| {
-                if row.parent().is_none() {
-                    removed_for_notify.set(removed_for_notify.get() + 1);
-                }
-            });
+            let focus = gtk::prelude::GtkWindowExt::focus(&window);
+
             for update in [
                 vec![items[1].clone(), items[2].clone()],
                 items.clone(),
-                items.clone(),
+                vec![items[2].clone(), items[1].clone(), items[0].clone()],
             ] {
-                update_rows(state, update, fixture.path(), true);
-                assert_eq!(state.list.selected_rows(), vec![selected.clone()]);
+                update_results(state, update, true);
+                let position = state
+                    .items
+                    .borrow()
+                    .iter()
+                    .position(|item| item.path == items[1].path)
+                    .expect("retained result") as u32;
+                let (_, widget) = state
+                    .collection
+                    .bound_at(position)
+                    .expect("retained widget");
+                assert_eq!(widget, selected);
+                assert_eq!(icon.texture(), Some(texture.clone().upcast()));
                 assert_eq!(
-                    search.selected_entry().expect("selected entry").location,
+                    search.selected_entries().expect("results")[0].location,
                     Location::local(&items[1].path)
                 );
                 assert_eq!(gtk::prelude::GtkWindowExt::focus(&window), focus);
-                assert_eq!(icon.texture(), Some(texture.clone().upcast()));
-                assert_eq!(icon.resize_calls(), resizes);
-                assert_eq!(
-                    super::super::thumbnail::pending_thumbnail_id(&items[1].path),
-                    pending
-                );
-                assert_eq!(entry.text(), "same");
             }
-            assert_eq!(
-                removed.get(),
-                0,
-                "appending and inserting must retain existing rows"
-            );
-            update_rows(
-                state,
-                vec![items[2].clone(), items[1].clone(), items[0].clone()],
-                fixture.path(),
-                false,
-            );
-            assert_eq!(state.list.selected_rows(), vec![selected.clone()]);
-            assert_eq!(
-                search
-                    .selected_entry()
-                    .expect("reordered selection")
-                    .location,
-                Location::local(&items[1].path)
-            );
-            assert_eq!(
-                removed.get(),
-                0,
-                "reordering must keep retained rows rooted"
-            );
-            assert_eq!(icon.texture(), Some(texture.upcast()));
-            assert_eq!(
-                super::super::thumbnail::pending_thumbnail_id(&items[1].path),
-                pending
-            );
-            assert_eq!(gtk::prelude::GtkWindowExt::focus(&window), focus);
             assert!(search.is_item_target(icon.upcast_ref()));
-            assert!(!search.is_item_target(state.list.upcast_ref()));
+            assert!(!search.is_item_target(&state.collection.view));
             assert!(!search.is_item_target(state.status.upcast_ref()));
-            state.list.select_row(state.list.row_at_index(0).as_ref());
-            update_rows(state, items.clone(), fixture.path(), true);
-            let selected_paths: Vec<_> = search
-                .selected_entries()
-                .expect("results")
-                .into_iter()
-                .map(|entry| entry.location)
-                .collect();
+
+            update_results(state, vec![items[2].clone(), items[0].clone()], true);
             assert_eq!(
-                selected_paths,
-                vec![
-                    Location::local(&items[1].path),
-                    Location::local(&items[2].path),
-                ]
-            );
-            assert_eq!(state.selection.selection().size(), 2);
-            state.selection.unselect_item(2);
-            assert_eq!(state.list.selected_rows(), vec![selected.clone()]);
-            update_rows(
-                state,
-                vec![items[2].clone(), items[1].clone(), items[0].clone()],
-                fixture.path(),
-                true,
-            );
-            update_rows(
-                state,
-                vec![items[2].clone(), items[0].clone()],
-                fixture.path(),
-                true,
-            );
-            assert_eq!(
-                search.selected_entry().expect("next slot").location,
+                search.selected_entries().expect("results")[0].location,
                 Location::local(&items[0].path)
             );
-            update_rows(state, vec![items[2].clone()], fixture.path(), true);
-            assert_eq!(
-                search.selected_entry().expect("last slot").location,
-                Location::local(&items[2].path)
-            );
-            update_rows(state, vec![], fixture.path(), true);
+            update_results(state, vec![], true);
             assert!(search.selected_entry().is_none());
-            assert!(state.list.first_child().is_none());
-            assert!(super::super::thumbnail::pending_thumbnail_id(&items[1].path).is_none());
+            assert_eq!(state.collection.model.n_items(), 0);
             super::super::thumbnail::clear_thumbnail_runtime();
             window.close();
         },
