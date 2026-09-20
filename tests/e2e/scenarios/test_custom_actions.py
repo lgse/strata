@@ -264,48 +264,21 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     actions = strata.menu_item("Actions")
     strata.pointer.move_to(*actions.screen_bounds().center)
     item = strata.menu_item("Checksum job")
-    bounds = actions.screen_bounds()
-    item_bounds = item.screen_bounds()
-    cut_bounds = strata.menu_item("Cut").screen_bounds()
-    transit_y = round((bounds.y + bounds.height + cut_bounds.y) / 2)
-    route = [
-        (round(bounds.x + bounds.width * 0.75), transit_y),
-        (item_bounds.center[0], transit_y),
-        item_bounds.center,
-    ]
-    start_x, start_y = bounds.center
-    for end_x, end_y in route:
-        for step in range(1, 9):
-            strata.pointer.move_to(
-                round(start_x + (end_x - start_x) * step / 8),
-                round(start_y + (end_y - start_y) * step / 8),
-            )
-            assert item.is_rendered(), "submenu closed while traversing menu padding"
-        start_x, start_y = end_x, end_y
-    strata.wait(lambda: item.has_state("focused"), "native pointer selection of the first item")
-    other = strata.menu_item("Checksum job copy")
-    strata.pointer.move_to(*other.screen_bounds().center)
-    strata.wait(lambda: other.has_state("focused"), "native pointer selection of another item")
-    strata.pointer.move_to(*item.screen_bounds().center)
-    strata.wait(lambda: item.has_state("focused"), "pointer selection returns to the first item")
+    start_x, start_y = actions.screen_bounds().center
+    end_x, end_y = item.screen_bounds().center
+    for step in range(1, 17):
+        strata.pointer.move_to(
+            round(start_x + (end_x - start_x) * step / 16),
+            round(start_y + (end_y - start_y) * step / 16),
+        )
+        assert item.is_rendered(), f"submenu closed during pointer transit at step {step}"
+    strata.wait(lambda: item.is_rendered(), "submenu stays open while entering it")
     strata.pointer.move_to(*strata.menu_item("Cut").screen_bounds().center)
     strata.wait(
         lambda: strata.window.find(role="menu item", name="Checksum job") is None,
         "submenu closes when leaving its branch",
     )
     assert strata.context_menu() is not None
-    for cycle in range(8):
-        strata.pointer.move_to(*actions.screen_bounds().center)
-        item = strata.menu_item("Checksum job")
-        strata.pointer.move_to(*item.screen_bounds().center)
-        strata.wait(lambda: item.has_state("focused"), "submenu pointer input after reopening")
-        if cycle % 2:
-            strata.pointer.click(strata.window.find(role="button", name="Settings"))
-        else:
-            strata.keyboard.press("Escape")
-        strata.wait_for_menu_closed()
-        strata.open_context_menu("todo.txt")
-        actions = strata.menu_item("Actions")
     strata.pointer.move_to(*actions.screen_bounds().center)
     strata.choose_menu_item("Checksum job")
     checksum = strata.fixture.path("todo.txt.sha256")

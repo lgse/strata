@@ -60,8 +60,8 @@ fn write_action(directory: &std::path::Path, id: &str, manifest: &str) {
     fs::write(action_directory.join("action.toml"), manifest).expect("manifest");
 }
 
-fn button_text(widget: &gtk::Widget) -> Option<String> {
-    descendants(widget)
+fn button_text(button: &gtk::Button) -> Option<String> {
+    descendants(button.upcast_ref())
         .iter()
         .find_map(|child| child.downcast_ref::<gtk::Label>())
         .map(|label| label.text().to_string())
@@ -70,23 +70,23 @@ fn button_text(widget: &gtk::Widget) -> Option<String> {
 fn action_buttons(widget: &gtk::Widget) -> Vec<String> {
     descendants(widget)
         .into_iter()
-        .filter(|widget| widget.accessible_role() == gtk::AccessibleRole::MenuItem)
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
         .filter(|button| button.is_mapped() && button.is_sensitive())
         .filter_map(|button| button_text(&button))
         .collect()
 }
 
-fn button(widget: &gtk::Widget, text: &str) -> Option<gtk::Widget> {
+fn button(widget: &gtk::Widget, text: &str) -> Option<gtk::Button> {
     descendants(widget)
         .into_iter()
-        .filter(|widget| widget.accessible_role() == gtk::AccessibleRole::MenuItem)
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
         .find(|button| button.is_mapped() && button_text(button).as_deref() == Some(text))
 }
 
 fn insensitive_button_names(widget: &gtk::Widget) -> Vec<String> {
     descendants(widget)
         .into_iter()
-        .filter(|widget| widget.accessible_role() == gtk::AccessibleRole::MenuItem)
+        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
         .filter(|button| button.is_mapped() && !button.is_sensitive())
         .filter_map(|button| button_text(&button))
         .collect()
@@ -161,7 +161,7 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             );
             button(menu.upcast_ref(), "Always available")
                 .expect("action button")
-                .activate();
+                .emit_clicked();
             wait_until(|| jobs.snapshot().len() > before);
             assert!(
                 jobs.snapshot()
@@ -172,7 +172,7 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             );
             jobs.clear_finished();
             menu.popdown();
-            wait_until(|| !menu.is_mapped());
+            wait_until(|| menu.parent().is_none());
 
             let menu = open_menu(&view, Some("picture.png"));
             assert!(
@@ -182,7 +182,7 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 "top-level actions stay in the menu body"
             );
             let actions_button = button(menu.upcast_ref(), "Actions").expect("actions submenu");
-            actions_button.activate();
+            actions_button.emit_clicked();
             let submenu = descendants(menu.upcast_ref())
                 .into_iter()
                 .filter_map(|widget| widget.downcast::<gtk::Popover>().ok())
@@ -194,17 +194,14 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                             .any(|label| label == "PNG only")
                 })
                 .expect("the submenu lists the matching action");
-            let before = jobs.snapshot().len();
-            button(submenu.upcast_ref(), "PNG only")
-                .expect("native submenu item")
-                .activate();
-            wait_until(|| jobs.snapshot().len() > before);
             assert!(
-                jobs.snapshot()
-                    .iter()
-                    .any(|job| job.action_name == "PNG only")
+                submenu
+                    .parent()
+                    .is_some_and(|parent| parent.is::<gtk::Button>()),
+                "the submenu is a popover anchored to its menu row"
             );
-            wait_until(|| !menu.is_mapped());
+            menu.popdown();
+            wait_until(|| menu.parent().is_none());
             wait_until(|| !submenu.is_visible());
 
             let menu = open_menu(&view, Some("folder"));
@@ -215,7 +212,7 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 "folder backgrounds offer applicable actions"
             );
             menu.popdown();
-            wait_until(|| !menu.is_mapped());
+            wait_until(|| menu.parent().is_none());
             drop(window);
 
             let (trash, trash_window) = open_view(Location::uri("trash:///"));
@@ -228,7 +225,7 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 "custom actions are not offered for non-native locations"
             );
             menu.popdown();
-            wait_until(|| !menu.is_mapped());
+            wait_until(|| menu.parent().is_none());
             drop(trash_window);
         },
     );

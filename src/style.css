@@ -3418,7 +3418,6 @@ textview > popover.menu undershoot {
   min-width: 6px;
 }
 
-.actions-context-popover,
 .folder-context-menu,
 .item-context-menu,
 text > popover.menu > contents > scrolledwindow > viewport > stack,
@@ -3449,7 +3448,6 @@ textview > popover.menu > contents > scrolledwindow > viewport > stack {
   font-size: 0.82em;
 }
 
-.actions-context-popover separator,
 .folder-context-menu separator,
 .item-context-menu separator,
 text > popover.menu separator,
@@ -3711,49 +3709,7 @@ colorchooser colorswatch overlay {
   border-radius: 9999px;
 }
 
-.actions-context-popover > contents {
-  padding-bottom: 8px;
-}
-
-.actions-context-popover.folder-menu-body > contents {
-  padding-top: 8px;
-}
-
-.actions-submenu > contents {
-  padding: 4px;
-}
-
-.actions-context-popover modelbutton,
-.actions-context-popover button.model {
-  margin-left: 8px;
-  margin-right: 8px;
-}
-
-.actions-submenu modelbutton,
-.actions-submenu button.model {
-  margin: 0;
-}
-
-.actions-context-popover modelbutton arrow,
-.actions-context-popover button.model arrow {
-  min-width: 10px;
-  min-height: 10px;
-  -gtk-icon-size: 10px;
-}
-
-.actions-submenu scrolledwindow,
-.actions-submenu viewport,
-.actions-submenu stack,
-.actions-submenu box {
-  padding-top: 0;
-  padding-bottom: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-}
-
 /* Native menu items use modelbutton on older GTK and button.model on newer GTK. */
-.actions-context-popover modelbutton,
-.actions-context-popover button.model,
 .item-context-option,
 .folder-context-option,
 text > popover.menu modelbutton,
@@ -3773,12 +3729,6 @@ textview > popover.menu button.model {
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
-.actions-context-popover modelbutton:hover,
-.actions-context-popover modelbutton:selected,
-.actions-context-popover modelbutton:focus-visible,
-.actions-context-popover button.model:hover,
-.actions-context-popover button.model:selected,
-.actions-context-popover button.model:focus-visible,
 .item-context-option:hover,
 .item-context-option:focus-visible,
 .folder-context-option:hover,
@@ -3795,8 +3745,6 @@ textview > popover.menu button.model:focus-visible {
   color: @theme_text;
 }
 
-.actions-context-popover modelbutton:active,
-.actions-context-popover button.model:active,
 .item-context-option:active,
 .folder-context-option:active,
 text > popover.menu modelbutton:active,
@@ -3807,8 +3755,6 @@ textview > popover.menu button.model:active {
   transform: scale(0.97);
 }
 
-.actions-context-popover modelbutton:disabled,
-.actions-context-popover button.model:disabled,
 .item-context-option:disabled,
 .folder-context-option:disabled,
 text > popover.menu modelbutton:disabled,
@@ -3820,14 +3766,11 @@ textview > popover.menu button.model:disabled {
   opacity: 0.42;
 }
 
-.actions-context-popover modelbutton image,
-.actions-context-popover button.model image,
 .item-context-icon,
 .folder-context-icon {
   opacity: 0.72;
 }
 
-.actions-context-popover accelerator,
 .item-context-shortcut,
 .folder-context-shortcut,
 text > popover.menu accelerator,
@@ -3836,8 +3779,6 @@ textview > popover.menu accelerator {
   font-size: 0.88em;
 }
 
-.actions-context-popover modelbutton:focus-visible,
-.actions-context-popover button.model:focus-visible,
 text > popover.menu modelbutton:focus-visible,
 textview > popover.menu modelbutton:focus-visible,
 text > popover.menu button.model:focus-visible,
@@ -3846,19 +3787,11 @@ textview > popover.menu button.model:focus-visible {
   outline-offset: -2px;
 }
 
-.actions-context-popover modelbutton.danger,
-.actions-context-popover button.model.danger,
 .item-context-option.danger,
 .folder-context-option.danger {
   color: @theme_danger;
 }
 
-.actions-context-popover modelbutton.danger:hover,
-.actions-context-popover modelbutton.danger:selected,
-.actions-context-popover modelbutton.danger:focus-visible,
-.actions-context-popover button.model.danger:hover,
-.actions-context-popover button.model.danger:selected,
-.actions-context-popover button.model.danger:focus-visible,
 .item-context-option.danger:hover,
 .item-context-option.danger:focus-visible,
 .folder-context-option.danger:hover,
@@ -3867,8 +3800,6 @@ textview > popover.menu button.model:focus-visible {
   color: @theme_danger;
 }
 
-.actions-context-popover modelbutton.danger:active,
-.actions-context-popover button.model.danger:active,
 .item-context-option.danger:active,
 .folder-context-option.danger:active {
   background: alpha(@theme_danger, 0.24);
