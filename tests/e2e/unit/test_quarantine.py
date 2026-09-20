@@ -8,20 +8,27 @@ from harness import quarantine
 
 
 @pytest.mark.parametrize("run_quarantined", [False, True])
-def test_quarantine_selects_only_the_recorded_parameter_case(monkeypatch, run_quarantined):
+@pytest.mark.parametrize("whole_function", [False, True])
+def test_quarantine_scope_and_opt_in(monkeypatch, run_quarantined, whole_function):
     known = "tests/e2e/scenarios/example.py::test_menu[list]"
-    monkeypatch.setattr(quarantine, "NODE_IDS", frozenset({known}))
-    markers = [[], [], []]
+    selector = known.split("[", 1)[0] if whole_function else known
+    monkeypatch.setattr(quarantine, "NODE_IDS", frozenset({selector}))
+    markers = [[], [], [], []]
     items = [
         SimpleNamespace(nodeid=nodeid, add_marker=marks.append)
         for nodeid, marks in zip(
-            [known, known + "@visual-baselines", known.replace("[list]", "[icons]")],
+            [
+                known,
+                known + "@visual-baselines",
+                known.replace("[list]", "[icons]"),
+                known.replace("test_menu", "test_menu_unrelated"),
+            ],
             markers,
         )
     ]
     quarantine.apply_quarantine(items, run_quarantined=run_quarantined)
     assert [len(marks) for marks in markers] == (
-        [0, 0, 0] if run_quarantined else [1, 1, 0]
+        [0, 0, 0, 0] if run_quarantined else [1, 1, int(whole_function), 0]
     )
     for marks in markers:
         for marker in marks:

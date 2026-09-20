@@ -79,7 +79,8 @@ def test_display_rejects_invalid_or_incomplete_readiness_line(monkeypatch, chunk
 def test_baselines_are_grouped_before_xdist_scheduling():
     from conftest import pytest_collection_modifyitems
 
-    baseline, ordinary = Mock(), Mock()
+    baseline = Mock(nodeid="tests/e2e/scenarios/example.py::test_baseline")
+    ordinary = Mock(nodeid="tests/e2e/scenarios/example.py::test_ordinary")
     ordinary.get_closest_marker.return_value = None
     config = Mock(getoption=lambda _name: False)
     pytest_collection_modifyitems(config, [baseline, ordinary])

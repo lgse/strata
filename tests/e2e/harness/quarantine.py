@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-"""Exact-case quarantine for tracked regressions; opt in with --run-quarantined."""
+"""Explicit case/function quarantine; opt in with --run-quarantined."""
 
 import json
 from pathlib import Path
@@ -16,5 +16,6 @@ def apply_quarantine(items, *, run_quarantined: bool) -> None:
     if run_quarantined:
         return
     for item in items:
-        if item.nodeid.removesuffix("@visual-baselines") in NODE_IDS:
+        node_id = item.nodeid.removesuffix("@visual-baselines")
+        if node_id in NODE_IDS or node_id.split("[", 1)[0] in NODE_IDS:
             item.add_marker(pytest.mark.skip(reason=REASON))
