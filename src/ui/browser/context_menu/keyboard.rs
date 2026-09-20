@@ -2,6 +2,31 @@
 
 use gtk::{gdk::Key, glib, prelude::*};
 
+pub(super) fn install_menu_edges(popover: &gtk::PopoverMenu) {
+    // Home/End extend GTK's native menu navigation without replacing it.
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    keys.set_propagation_limit(gtk::PropagationLimit::None);
+    let weak = popover.downgrade();
+    keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if !matches!(key, Key::Home | Key::End) || !modifiers.is_empty() {
+            return glib::Propagation::Proceed;
+        }
+        let Some(popover) = weak.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        let active = popover
+            .root()
+            .and_then(|root| root.focus())
+            .and_then(|focus| focus.ancestor(gtk::Popover::static_type()))
+            .and_downcast::<gtk::Popover>()
+            .unwrap_or_else(|| popover.clone().upcast());
+        focus_first_or_last_menu_item(&active, key == Key::Home);
+        glib::Propagation::Stop
+    });
+    popover.add_controller(keys);
+}
+
 pub(super) fn install(popover: &gtk::Popover) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -44,7 +69,11 @@ pub(super) fn install(popover: &gtk::Popover) {
                     .find(|button| button.has_focus())
                 {
                     // activate() waits for a key release that this controller consumes.
-                    button.emit_clicked();
+                    if let Some(button) = button.downcast_ref::<gtk::Button>() {
+                        button.emit_clicked();
+                    } else {
+                        button.activate();
+                    }
                 }
             }
             _ => {}
@@ -65,23 +94,28 @@ pub(super) fn focus_first_or_last_menu_item(popover: &gtk::Popover, first: bool)
     }
 }
 
-fn menu_buttons(popover: &gtk::Popover) -> Vec<gtk::Button> {
+fn menu_buttons(popover: &gtk::Popover) -> Vec<gtk::Widget> {
     let mut buttons = Vec::new();
-    collect_buttons(popover.upcast_ref(), &mut buttons);
+    collect_buttons(popover.upcast_ref(), popover, &mut buttons);
     buttons
 }
 
-fn collect_buttons(widget: &gtk::Widget, buttons: &mut Vec<gtk::Button>) {
-    if !widget.is_visible() || !widget.is_sensitive() {
+fn collect_buttons(widget: &gtk::Widget, popover: &gtk::Popover, buttons: &mut Vec<gtk::Widget>) {
+    if !widget.is_visible()
+        || !widget.is_sensitive()
+        || (widget.is::<gtk::Popover>() && widget != popover.upcast_ref::<gtk::Widget>())
+    {
         return;
     }
-    if let Some(button) = widget.downcast_ref::<gtk::Button>() {
-        buttons.push(button.clone());
+    if widget.is::<gtk::Button>()
+        || (widget.is_focusable() && widget.accessible_role() == gtk::AccessibleRole::MenuItem)
+    {
+        buttons.push(widget.clone());
         return;
     }
     let mut child = widget.first_child();
     while let Some(widget) = child {
-        collect_buttons(&widget, buttons);
+        collect_buttons(&widget, popover, buttons);
         child = widget.next_sibling();
     }
 }
