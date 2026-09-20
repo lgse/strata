@@ -32,13 +32,124 @@ pub(super) fn install_menu_edges(popover: &gtk::PopoverMenu) {
     popover.add_controller(keys);
 }
 
+fn restore_submenu_owner(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
+    owner.grab_focus();
+    let submenu = submenu.downgrade();
+    let frames = Cell::new(0u8);
+    owner.add_tick_callback(move |owner, _| {
+        if submenu.upgrade().is_none_or(|submenu| submenu.is_visible()) {
+            return glib::ControlFlow::Break;
+        }
+        if let Some(root) = owner.root() {
+            root.set_focus(Some(owner));
+        }
+        frames.set(frames.get() + 1);
+        if frames.get() >= 2 {
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+}
+
+fn return_from_submenu(submenu: &gtk::PopoverMenu, owner: &gtk::Widget, returned: &Cell<bool>) {
+    owner.activate();
+    submenu.set_visible(false);
+    returned.set(true);
+    restore_submenu_owner(submenu, owner);
+}
+
+fn install_submenu_item_return(
+    widget: &gtk::Widget,
+    submenu: &gtk::PopoverMenu,
+    owner: &gtk::Widget,
+    returned: &Rc<Cell<bool>>,
+) {
+    if widget != submenu && widget.is::<gtk::Popover>() {
+        return;
+    }
+    if widget.accessible_role() == gtk::AccessibleRole::MenuItem
+        && !widget.has_css_class("submenu-return-wired")
+    {
+        widget.add_css_class("submenu-return-wired");
+        let weak_submenu = submenu.downgrade();
+        let weak_owner = owner.downgrade();
+        let returned = returned.clone();
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            if key != Key::Left || !modifiers.is_empty() {
+                return glib::Propagation::Proceed;
+            }
+            let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade())
+            else {
+                return glib::Propagation::Proceed;
+            };
+            return_from_submenu(&submenu, &owner, &returned);
+            glib::Propagation::Stop
+        });
+        widget.add_controller(keys);
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        install_submenu_item_return(&widget, submenu, owner, returned);
+        child = widget.next_sibling();
+    }
+}
+
 pub(super) fn install_submenu_return(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
     let returned = Rc::new(Cell::new(false));
+    if let Some(root) = owner
+        .ancestor(gtk::PopoverMenu::static_type())
+        .and_downcast::<gtk::PopoverMenu>()
+    {
+        let weak_root = root.downgrade();
+        let weak_owner = owner.downgrade();
+        let weak_submenu = submenu.downgrade();
+        let returned_on_hide = returned.clone();
+        submenu.connect_hide(move |_| {
+            let weak_root = weak_root.clone();
+            let weak_owner = weak_owner.clone();
+            let weak_submenu = weak_submenu.clone();
+            let returned = returned_on_hide.clone();
+            glib::idle_add_local_once(move || {
+                let (Some(root), Some(owner), Some(submenu)) = (
+                    weak_root.upgrade(),
+                    weak_owner.upgrade(),
+                    weak_submenu.upgrade(),
+                ) else {
+                    return;
+                };
+                if root.is_mapped() && root.is_visible() && owner.is_mapped() {
+                    returned.set(true);
+                    restore_submenu_owner(&submenu, &owner);
+                }
+            });
+        });
+    }
+    install_submenu_item_return(submenu.upcast_ref(), submenu, owner, &returned);
+    let weak_owner = owner.downgrade();
+    let returned_for_map = returned.clone();
+    submenu.connect_map(move |submenu| {
+        let Some(owner) = weak_owner.upgrade() else {
+            return;
+        };
+        install_submenu_item_return(submenu.upcast_ref(), submenu, &owner, &returned_for_map);
+        let submenu = submenu.downgrade();
+        let owner = owner.downgrade();
+        let returned = returned_for_map.clone();
+        glib::idle_add_local_once(move || {
+            if let (Some(submenu), Some(owner)) = (submenu.upgrade(), owner.upgrade()) {
+                install_submenu_item_return(submenu.upcast_ref(), &submenu, &owner, &returned);
+            }
+        });
+    });
     let weak_submenu = submenu.downgrade();
     let weak_owner = owner.downgrade();
     let returned_for_submenu = returned.clone();
     let submenu_keys = gtk::EventControllerKey::new();
     submenu_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    submenu_keys.set_propagation_limit(gtk::PropagationLimit::None);
     submenu_keys.connect_key_pressed(move |_, key, _, modifiers| {
         if !modifiers.is_empty() {
             return glib::Propagation::Proceed;
@@ -48,9 +159,7 @@ pub(super) fn install_submenu_return(submenu: &gtk::PopoverMenu, owner: &gtk::Wi
         };
         match key {
             Key::Left => {
-                submenu.set_visible(false);
-                owner.grab_focus();
-                returned_for_submenu.set(true);
+                return_from_submenu(&submenu, &owner, &returned_for_submenu);
                 glib::Propagation::Stop
             }
             Key::Right if returned_for_submenu.replace(false) => {
@@ -67,6 +176,37 @@ pub(super) fn install_submenu_return(submenu: &gtk::PopoverMenu, owner: &gtk::Wi
         }
     });
     submenu.add_controller(submenu_keys);
+
+    if let Some(root) = owner.root() {
+        let weak_submenu = submenu.downgrade();
+        let weak_owner = owner.downgrade();
+        let returned_for_root = returned.clone();
+        let action = gtk::CallbackAction::new(move |_, _| {
+            let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade())
+            else {
+                return glib::Propagation::Proceed;
+            };
+            let focus = submenu.root().and_then(|root| root.focus());
+            if !submenu.is_visible()
+                || !focus.is_some_and(|focus| focus == submenu || submenu.is_ancestor(&focus))
+            {
+                return glib::Propagation::Proceed;
+            }
+            return_from_submenu(&submenu, &owner, &returned_for_root);
+            glib::Propagation::Stop
+        });
+        let shortcut = gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                Key::Left,
+                gtk::gdk::ModifierType::empty(),
+            )),
+            Some(action),
+        );
+        let shortcuts = gtk::ShortcutController::new();
+        shortcuts.set_scope(gtk::ShortcutScope::Global);
+        shortcuts.add_shortcut(shortcut);
+        root.add_controller(shortcuts);
+    }
 
     let weak_submenu = submenu.downgrade();
     let weak_owner = owner.downgrade();

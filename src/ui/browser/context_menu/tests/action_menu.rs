@@ -3,7 +3,6 @@
 use std::fs;
 use std::rc::Rc;
 
-use super::keyboard::press;
 use super::menus::{descendants, label, open_menu, wait_until};
 use super::*;
 use crate::model::{EntryKind, MetadataValue};
@@ -83,6 +82,24 @@ fn button(widget: &gtk::Widget, text: &str) -> Option<gtk::Widget> {
         .into_iter()
         .filter(|widget| widget.accessible_role() == gtk::AccessibleRole::MenuItem)
         .find(|button| button.is_mapped() && button_text(button).as_deref() == Some(text))
+}
+
+fn press_item(widget: &gtk::Widget, key: Key) {
+    let controllers = widget.observe_controllers();
+    let handled = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .filter(|keys| keys.propagation_phase() == gtk::PropagationPhase::Capture)
+        .any(|keys| {
+            keys.emit_by_name::<bool>(
+                "key-pressed",
+                &[&key, &0u32, &gtk::gdk::ModifierType::empty()],
+            )
+        });
+    assert!(handled, "menu item key must be handled");
 }
 
 fn insensitive_button_names(widget: &gtk::Widget) -> Vec<String> {
@@ -199,14 +216,12 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 .expect("the submenu lists the matching action");
             let submenu_item =
                 button(submenu.upcast_ref(), "PNG only").expect("native submenu item");
+            assert!(submenu_item.has_css_class("submenu-return-wired"));
             assert!(submenu_item.grab_focus());
-            press(&submenu, Key::Left);
+            press_item(&submenu_item, Key::Left);
             wait_until(|| !submenu.is_visible());
             assert!(menu.is_mapped(), "Left returns to the root menu");
-            assert!(
-                actions_button.has_focus(),
-                "the submenu owner regains focus"
-            );
+            wait_until(|| actions_button.has_focus());
 
             assert!(actions_button.child_focus(gtk::DirectionType::Right));
             wait_until(|| submenu.is_visible());
