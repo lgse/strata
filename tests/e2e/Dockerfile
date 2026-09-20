@@ -34,12 +34,13 @@ RUN mkdir /build-gtk && cd /build-gtk \
 
 FROM package-indexes AS runtime
 RUN sh /opt/e2e-install-packages.sh install \
-        at-spi2-core bubblewrap ca-certificates cantarell-fonts dbus ffmpeg \
+        at-spi2-core bubblewrap ca-certificates cantarell-fonts dbus diffutils ffmpeg \
         fontconfig gobject-introspection-runtime gst-libav gst-plugins-base \
         gst-plugins-good gtk4 gtksourceview5 imagemagick librsvg poppler-glib \
         python-gobject python-pip xorg-server-xvfb xorg-xauth \
     && rm -rf /var/cache/pacman/pkg/* \
-    && test "$(pacman -Q gtk4)" = 'gtk4 1:4.22.5-1'
+    && test "$(pacman -Q gtk4)" = 'gtk4 1:4.22.5-1' \
+    && command -v cmp >/dev/null
 COPY --from=gtk-build /opt/patched-gtk/libgtk-4.so.1.2200.5 /usr/lib/libgtk-4.so.1.2200.5
 COPY tests/e2e/gtk/coordinate-probe.py /opt/strata-e2e-coordinate-probe.py
 RUN mkdir -p /usr/share/strata-e2e \
