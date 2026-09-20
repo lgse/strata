@@ -142,7 +142,7 @@ fn the_collapsed_label_reports_failures_without_calling_them_running() {
 }
 
 #[test]
-fn status_labels_describe_partial_results_and_item_progress() {
+fn status_labels_describe_results_without_fabricating_progress() {
     let per_item = JobProgress {
         completed_items: 42,
         succeeded_items: 42,
@@ -155,7 +155,7 @@ fn status_labels_describe_partial_results_and_item_progress() {
             per_item.clone(),
             ExecutionMode::PerItem
         )),
-        "42 / 100"
+        "Running for 1m 05s"
     );
 
     let partial = JobProgress {
@@ -171,7 +171,7 @@ fn status_labels_describe_partial_results_and_item_progress() {
             partial,
             ExecutionMode::PerItem
         )),
-        "2 items failed"
+        "Failed after 1m 05s"
     );
     assert_eq!(
         status_label(&snapshot(
@@ -179,7 +179,7 @@ fn status_labels_describe_partial_results_and_item_progress() {
             per_item.clone(),
             ExecutionMode::PerItem
         )),
-        "Completed"
+        "Done in 1m 05s"
     );
     assert_eq!(
         status_label(&snapshot(
@@ -187,7 +187,7 @@ fn status_labels_describe_partial_results_and_item_progress() {
             per_item,
             ExecutionMode::PerItem
         )),
-        "Cancelled"
+        "Cancelled after 1m 05s"
     );
     assert_eq!(
         status_label(&snapshot(
@@ -195,7 +195,7 @@ fn status_labels_describe_partial_results_and_item_progress() {
             JobProgress::default(),
             ExecutionMode::WholeSelection
         )),
-        "Running",
+        "Running for 1m 05s",
         "an unmodified command shows no fabricated percentage"
     );
     assert_eq!(
@@ -209,7 +209,7 @@ fn status_labels_describe_partial_results_and_item_progress() {
 }
 
 #[test]
-fn meta_lines_show_progress_elapsed_time_and_failures() {
+fn failure_details_stay_in_details_while_metadata_shows_progress() {
     let mut item = snapshot(
         JobStatus::Running,
         JobProgress {
@@ -222,14 +222,23 @@ fn meta_lines_show_progress_elapsed_time_and_failures() {
     );
     let label = meta_label(&item);
     assert!(label.contains("Converting images"), "{label}");
-    assert!(label.contains("1m 05s elapsed"), "{label}");
+    assert!(label.contains("1/4"), "{label}");
 
     item.status = JobStatus::Failed;
     item.message = Some("Convert images exited with status 3".to_owned());
     let label = meta_label(&item);
-    assert!(label.contains("exited with status 3"), "{label}");
+    assert!(!label.contains("exited with status 3"), "{label}");
+    assert!(details_text(&item).contains("exited with status 3"));
+    item.log = "Convert images exited with status 3\ntrace".to_owned();
+    assert_eq!(
+        details_text(&item),
+        item.log,
+        "details do not repeat an existing error"
+    );
 
     item.status = JobStatus::Succeeded;
+    item.log = "Finished output".to_owned();
+    assert_eq!(details_text(&item), "Finished output");
     let label = meta_label(&item);
     assert!(
         !label.contains("exited with status 3"),
@@ -503,6 +512,30 @@ fn new_jobs_open_in_the_launching_window_without_reopening_on_progress() {
             }
             assert!(popover.is_visible(), "a new launch opens it again");
             assert_eq!(dashboard_snapshots(&indicator.state)[0].id, next);
+            service.pump();
+            assert!(dashboard_button(&popover, "Cancel").activate());
+            sinks.borrow().last().expect("next invocation")(ActionRunEvent::Progress(
+                ScriptProgress {
+                    completed: 1,
+                    total: Some(3),
+                    message: Some("Still processing".to_owned()),
+                },
+            ));
+            service.pump();
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while service.snapshot_of(next).expect("next job").status == JobStatus::Running
+                && std::time::Instant::now() < deadline
+            {
+                main.iteration(false);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(
+                service
+                    .snapshot_of(next)
+                    .expect("cancelled via button")
+                    .status,
+                JobStatus::Cancelling
+            );
             window.close();
             other_window.close();
         },

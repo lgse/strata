@@ -293,7 +293,7 @@ fn continue_on_error_keeps_going_and_reports_partial_success() {
     assert_eq!(snapshot.status, JobStatus::Failed);
     assert_eq!(snapshot.progress.completed_items, 2);
     assert_eq!(snapshot.progress.failed_items, 2);
-    assert!(!snapshot.progress.partial_success());
+    assert_eq!(snapshot.progress.succeeded_items, 0);
     assert!(
         snapshot
             .message
@@ -365,7 +365,6 @@ fn partial_success_is_reported_when_some_items_fail() {
     assert_eq!(snapshot.status, JobStatus::Failed);
     assert_eq!(snapshot.progress.succeeded_items, 1);
     assert_eq!(snapshot.progress.failed_items, 1);
-    assert!(snapshot.progress.partial_success());
     assert_eq!(
         snapshot.log, "item 0\nitem 1\n",
         "later items retain earlier output"

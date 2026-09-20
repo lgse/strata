@@ -212,18 +212,6 @@ impl JobProgress {
             }
         }
     }
-
-    pub fn active_label(&self) -> Option<String> {
-        if let Some(message) = self.message.clone() {
-            return Some(message);
-        }
-        (self.total_items > 1)
-            .then(|| format!("{} / {} items", self.completed_items, self.total_items))
-    }
-
-    pub fn partial_success(&self) -> bool {
-        self.succeeded_items > 0 && self.failed_items > 0
-    }
 }
 
 #[derive(Clone, Debug)]

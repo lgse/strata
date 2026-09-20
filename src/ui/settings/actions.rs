@@ -1325,6 +1325,7 @@ fn icon_chooser(selected: &Rc<std::cell::RefCell<Option<String>>>) -> gtk::Box {
         .child(&grid)
         .build();
     popover.add_css_class("column-popover");
+    popover.add_css_class("settings-action-icon-popover");
     more.set_popover(Some(&popover));
     let mut first: Option<gtk::ToggleButton> = None;
     let current = selected.borrow().clone();

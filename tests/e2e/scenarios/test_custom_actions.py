@@ -289,7 +289,7 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     )
     assert strata.fixture.path("todo.txt").read_bytes() == original
     strata.wait(lambda: strata.window.find(name="1 job finished"), "finished job indicator")
-    strata.wait(lambda: strata.window.find(role="label", name="Completed"), "automatically opened completed row")
+    strata.wait(lambda: strata.window.find(role="label", name_matches="Done in "), "automatically opened completed row")
     strata.pointer.click(strata.window.find(role="button", name="Details"))
     strata.wait(lambda: strata.window.find(role="label", name_matches="Created .*todo.txt.sha256"), "finished job output")
     strata.pointer.click(strata.window.find(role="button", name="Hide"))
@@ -309,8 +309,8 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     strata.keyboard.press("Return")
     strata.wait_for_menu_closed()
     strata.wait(lambda: strata.window.find(name="2 jobs finished · failures"), "failed rerun in history")
-    strata.wait(lambda: strata.window.find(role="label", name="Failed"), "failed job row")
-    assert strata.window.find(role="label", name="Completed") is not None
+    strata.wait(lambda: strata.window.find(role="label", name_matches="Failed after "), "failed job row")
+    assert strata.window.find(role="label", name_matches="Done in ") is not None
     strata.pointer.click(strata.window.find(role="button", name="Details"))
     strata.wait(lambda: strata.window.find(role="label", name_matches="FileExistsError"), "failure details")
     strata.pointer.click(strata.window.find(role="button", name="Dismiss"))
@@ -352,7 +352,7 @@ def test_batch_rename_template_confirms_before_renaming_and_opens_jobs(strata):
     strata.choose_menu_item("Batch rename")
     confirmation = strata.wait(lambda: strata.window.find(role="dialog", name="Run this action?"), "confirmation")
     strata.pointer.click(confirmation.find(role="button", name="Run"))
-    strata.wait(lambda: strata.window.find(role="label", name="Completed"), "automatically opened rename result")
+    strata.wait(lambda: strata.window.find(role="label", name_matches="Done in "), "automatically opened rename result")
     assert strata.window.find(role="dialog", name="Run this action?") is None
     strata.pointer.click(strata.window.find(role="button", name="Details"))
     strata.wait(lambda: strata.window.find(role="label", name_matches="001_readme.md"), "rename output")

@@ -328,8 +328,12 @@ wait for subprocesses that need the invocation's context or captured output.
 
 Finished jobs stay in the dashboard for the current session, including successes,
 failures, and cancellations. **Details** expands captured output and **Hide**
-collapses it. These controls use icon buttons with tooltips and accessible names.
-**Minimize** keeps history; **Dismiss** removes one finished job,
+collapses it. The header summarizes running, queued, and finished jobs. Rows use
+the action's icon and theme-accent status, with elapsed time and a check or X for
+finished results. Failure output appears only in Details, not a separate banner.
+The dashboard opens above the footer without covering it.
+Controls retain tooltips and accessible names. **Minimize** keeps history;
+**Dismiss** removes one finished job,
 and **Clear finished** removes finished history without disturbing active work.
 
 Cancelling stops the work that has not happened yet. It does not roll back changes
