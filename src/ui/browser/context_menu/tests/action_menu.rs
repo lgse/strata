@@ -3,6 +3,7 @@
 use std::fs;
 use std::rc::Rc;
 
+use super::keyboard::press;
 use super::menus::{descendants, label, open_menu, wait_until};
 use super::*;
 use crate::model::{EntryKind, MetadataValue};
@@ -10,6 +11,7 @@ use crate::services::{
     DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError,
 };
 use crate::ui::browser::{BrowserView, PeekBehavior};
+use gtk::gdk::Key;
 
 const ALWAYS: &str = r#"
 schema_version = 1
@@ -182,7 +184,8 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 "top-level actions stay in the menu body"
             );
             let actions_button = button(menu.upcast_ref(), "Actions").expect("actions submenu");
-            actions_button.activate();
+            assert!(actions_button.grab_focus());
+            assert!(actions_button.child_focus(gtk::DirectionType::Right));
             let submenu = descendants(menu.upcast_ref())
                 .into_iter()
                 .filter_map(|widget| widget.downcast::<gtk::Popover>().ok())
@@ -194,9 +197,22 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                             .any(|label| label == "PNG only")
                 })
                 .expect("the submenu lists the matching action");
+            let submenu_item =
+                button(submenu.upcast_ref(), "PNG only").expect("native submenu item");
+            assert!(submenu_item.grab_focus());
+            press(&submenu, Key::Left);
+            wait_until(|| !submenu.is_visible());
+            assert!(menu.is_mapped(), "Left returns to the root menu");
+            assert!(
+                actions_button.has_focus(),
+                "the submenu owner regains focus"
+            );
+
+            assert!(actions_button.child_focus(gtk::DirectionType::Right));
+            wait_until(|| submenu.is_visible());
             let before = jobs.snapshot().len();
             button(submenu.upcast_ref(), "PNG only")
-                .expect("native submenu item")
+                .expect("reopened native submenu item")
                 .activate();
             wait_until(|| jobs.snapshot().len() > before);
             assert!(

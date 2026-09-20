@@ -332,6 +332,15 @@ def test_script_library_filters_preserves_drafts_and_shows_finished_jobs(strata)
     assert actions.has_state("focused")
     strata.keyboard.press("Return")
     strata.menu_item("Checksum job")
+    strata.keyboard.press("Left")
+    strata.wait(
+        lambda: strata.window.find(role="menu item", name="Checksum job") is None,
+        "Left to return from the submenu",
+    )
+    assert strata.context_menu() is not None
+    strata.wait(lambda: actions.has_state("focused"), "submenu owner to regain focus")
+    strata.keyboard.press("Right")
+    strata.menu_item("Checksum job")
     strata.keyboard.press("Home")
     strata.keyboard.press("Return")
     strata.wait_for_menu_closed()

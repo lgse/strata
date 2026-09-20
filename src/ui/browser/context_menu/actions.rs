@@ -295,6 +295,35 @@ fn collect_presentations(model: &gio::MenuModel, items: &mut Vec<ItemPresentatio
 }
 
 // Preserve generated rows: GTK uses them to own submenu selection and grabs.
+fn submenu_owner(root: &gtk::PopoverMenu, submenu: &gtk::PopoverMenu) -> Option<gtk::Widget> {
+    fn find(
+        widget: &gtk::Widget,
+        root: &gtk::Widget,
+        submenu: &gtk::Popover,
+    ) -> Option<gtk::Widget> {
+        if widget != root && widget.is::<gtk::Popover>() {
+            return None;
+        }
+        if widget.find_property("popover").is_some()
+            && widget.property::<Option<gtk::Popover>>("popover").as_ref() == Some(submenu)
+        {
+            return Some(widget.clone());
+        }
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            if let Some(owner) = find(&widget, root, submenu) {
+                return Some(owner);
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+
+    let root_widget = root.upcast_ref::<gtk::Widget>();
+    let submenu = submenu.clone().upcast::<gtk::Popover>();
+    find(root_widget, root_widget, &submenu)
+}
+
 fn present_native_items(widget: &gtk::Widget, root: &gtk::PopoverMenu, items: &[ItemPresentation]) {
     if widget.is::<gtk::Button>() {
         return;
@@ -304,6 +333,9 @@ fn present_native_items(widget: &gtk::Widget, root: &gtk::PopoverMenu, items: &[
         menu.add_css_class("actions-context-popover");
         if menu != root && !menu.has_css_class("actions-submenu") {
             menu.add_css_class("actions-submenu");
+            if let Some(owner) = submenu_owner(root, menu) {
+                super::keyboard::install_submenu_return(menu, &owner);
+            }
             if gtk::minor_version() < 22 {
                 // Older GTK emits focus leave before updating contains-focus.
                 let focus = gtk::EventControllerFocus::new();

@@ -25,7 +25,7 @@ fn menu(window: &gtk::Window) -> gtk::Popover {
     popup
 }
 
-fn press(popover: &gtk::Popover, key: Key) {
+pub(super) fn press(popover: &gtk::Popover, key: Key) {
     if popover.is::<gtk::PopoverMenu>() && key == Key::Escape {
         popover.popdown();
         return;

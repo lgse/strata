@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: MIT
 
+use std::{cell::Cell, rc::Rc};
+
 use gtk::{gdk::Key, glib, prelude::*};
 
 pub(super) fn install_menu_edges(popover: &gtk::PopoverMenu) {
-    // Home/End extend GTK's native menu navigation without replacing it.
+    // Extend GTK's native menu navigation without replacing generated rows.
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     keys.set_propagation_limit(gtk::PropagationLimit::None);
     let weak = popover.downgrade();
     keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !matches!(key, Key::Home | Key::End) || !modifiers.is_empty() {
+        if !modifiers.is_empty() {
             return glib::Propagation::Proceed;
         }
         let Some(popover) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        if !matches!(key, Key::Home | Key::End) {
+            return glib::Propagation::Proceed;
+        }
         let active = popover
             .root()
             .and_then(|root| root.focus())
@@ -25,6 +30,62 @@ pub(super) fn install_menu_edges(popover: &gtk::PopoverMenu) {
         glib::Propagation::Stop
     });
     popover.add_controller(keys);
+}
+
+pub(super) fn install_submenu_return(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
+    let returned = Rc::new(Cell::new(false));
+    let weak_submenu = submenu.downgrade();
+    let weak_owner = owner.downgrade();
+    let returned_for_submenu = returned.clone();
+    let submenu_keys = gtk::EventControllerKey::new();
+    submenu_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    submenu_keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if !modifiers.is_empty() {
+            return glib::Propagation::Proceed;
+        }
+        let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade()) else {
+            return glib::Propagation::Proceed;
+        };
+        match key {
+            Key::Left => {
+                submenu.set_visible(false);
+                owner.grab_focus();
+                returned_for_submenu.set(true);
+                glib::Propagation::Stop
+            }
+            Key::Right if returned_for_submenu.replace(false) => {
+                owner.activate();
+                let submenu = submenu.downgrade();
+                glib::idle_add_local_once(move || {
+                    if let Some(submenu) = submenu.upgrade() {
+                        focus_first_or_last_menu_item(submenu.upcast_ref(), true);
+                    }
+                });
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
+        }
+    });
+    submenu.add_controller(submenu_keys);
+
+    let weak_submenu = submenu.downgrade();
+    let weak_owner = owner.downgrade();
+    let owner_keys = gtk::EventControllerKey::new();
+    owner_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    owner_keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if key != Key::Right || !modifiers.is_empty() || !returned.replace(false) {
+            return glib::Propagation::Proceed;
+        }
+        let (Some(submenu), Some(owner)) = (weak_submenu.upgrade(), weak_owner.upgrade()) else {
+            return glib::Propagation::Proceed;
+        };
+        owner.activate();
+        glib::idle_add_local_once(move || {
+            focus_first_or_last_menu_item(submenu.upcast_ref(), true);
+        });
+        glib::Propagation::Stop
+    });
+    owner.add_controller(owner_keys);
 }
 
 pub(super) fn install(popover: &gtk::Popover) {
