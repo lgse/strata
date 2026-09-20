@@ -113,7 +113,7 @@ impl InlineSearch {
         let bounds = row.compute_bounds(&state.list)?;
         Some((
             state.context_menu_trigger.borrow().as_ref()?.clone(),
-            f64::from(bounds.center().x()),
+            f64::from(bounds.x() + bounds.width()),
             f64::from(bounds.center().y()),
         ))
     }

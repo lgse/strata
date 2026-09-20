@@ -94,9 +94,16 @@ pub(super) fn bind_column_context_owner(
             && state.context_menu_column.get() == Some(depth)
         {
             if popover.is::<gtk::PopoverMenu>() {
+                if gtk::minor_version() >= 22 {
+                    restore_context_focus(&state, depth);
+                    state.context_menu_column.set(None);
+                    state.context_menu_focus.borrow_mut().take();
+                    state.refresh_destination_style();
+                    return;
+                }
                 let generation = state.context_menu_generation.get();
                 let weak = Rc::downgrade(&state);
-                // Native menu dismissal finishes its grab before restoring browser focus.
+                // Older GTK finishes the native menu grab after emitting closed.
                 glib::idle_add_local_once(move || {
                     if let Some(state) = weak.upgrade()
                         && state.context_menu_generation.get() == generation
@@ -391,29 +398,13 @@ pub(in crate::ui) fn install_folder_context_menu(
     let popover = action_section.popover();
     bind_column_context_owner(state, &popover, depth);
 
-    let pending_new_entry = Rc::new(Cell::new(None));
-    let pending_for_click = pending_new_entry.clone();
-    let new_folder_popover = popover.downgrade();
-    new_folder.connect_clicked(move |_| {
-        pending_for_click.set(Some(true));
-        if let Some(popover) = new_folder_popover.upgrade() {
-            popover.popdown();
-        }
-    });
-    let pending_for_click = pending_new_entry.clone();
-    let new_file_popover = popover.downgrade();
-    new_file.connect_clicked(move |_| {
-        pending_for_click.set(Some(false));
-        if let Some(popover) = new_file_popover.upgrade() {
-            popover.popdown();
-        }
-    });
     let weak = Rc::downgrade(state);
     let folder = location.clone();
-    popover.connect_closed(move |_| {
-        let Some(is_directory) = pending_new_entry.take() else {
-            return;
-        };
+    let new_entry_popover = popover.downgrade();
+    let schedule_new_entry = Rc::new(move |is_directory| {
+        if let Some(popover) = new_entry_popover.upgrade() {
+            popover.popdown();
+        }
         let weak = weak.clone();
         let folder = folder.clone();
         glib::idle_add_local_once(move || {
@@ -422,6 +413,9 @@ pub(in crate::ui) fn install_folder_context_menu(
             }
         });
     });
+    let schedule_new_folder = schedule_new_entry.clone();
+    new_folder.connect_clicked(move |_| schedule_new_folder(true));
+    new_file.connect_clicked(move |_| schedule_new_entry(false));
     let weak = Rc::downgrade(state);
     let folder = location.clone();
     let paste_popover = popover.downgrade();

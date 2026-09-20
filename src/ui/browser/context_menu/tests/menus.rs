@@ -359,7 +359,6 @@ fn capture_menu(menu: &gtk::Popover, name: &str) {
 }
 
 #[test]
-#[ignore = "Native-menu lifecycle regression: https://github.com/lgse/strata/issues/1154"]
 fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::menus_and_keyboard_actions_follow_supported_operations_in_every_mode",
@@ -556,7 +555,6 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
 }
 
 #[test]
-#[ignore = "Native-menu lifecycle regression: https://github.com/lgse/strata/issues/1154"]
 fn recent_background_menu_rejects_physical_directory_actions() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::recent_background_menu_rejects_physical_directory_actions",
@@ -708,7 +706,6 @@ fn vertical_offset(menu: &gtk::Popover, widget: &gtk::Widget) -> f32 {
 }
 
 #[test]
-#[ignore = "Native-menu dispatch regression: https://github.com/lgse/strata/issues/1154"]
 fn open_file_location_navigates_to_parent_folder_and_selects_file() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::open_file_location_navigates_to_parent_folder_and_selects_file",
@@ -762,6 +759,19 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
                         .is_some_and(|(_, _, entry)| entry.display_name == "direct.txt")
                 });
 
+                wait_until(|| match mode {
+                    BrowserMode::Columns => view.state.columns.borrow()[0]
+                        .filter_entry
+                        .text()
+                        .is_empty(),
+                    BrowserMode::Icons | BrowserMode::List => view
+                        .state
+                        .mode_views
+                        .borrow()
+                        .capture_active_filter()
+                        .query
+                        .is_empty(),
+                });
                 assert!(view.show_filter_with_query("target.pdf"));
                 wait_until(|| label(&view.widget(), "target.pdf").is_some());
 

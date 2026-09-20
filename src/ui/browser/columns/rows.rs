@@ -371,6 +371,10 @@ pub(super) fn column_rows(
         let was_selected = Rc::new(Cell::new(false));
         let was_selected_for_press = was_selected.clone();
         let was_selected_for_release = was_selected.clone();
+        let modified_press = Rc::new(Cell::new(false));
+        let modified_press_for_press = modified_press.clone();
+        let modified_press_for_release = modified_press.clone();
+        let modified_press_for_cancel = modified_press.clone();
         let press_moved = Rc::new(Cell::new(false));
         let press_moved_for_press = press_moved.clone();
         let press_moved_for_update = press_moved.clone();
@@ -407,6 +411,7 @@ pub(super) fn column_rows(
             let modifiers = gesture.current_event_state();
             let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
             let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            modified_press_for_press.set(control || shift);
             let selected_before = selection_for_click.is_selected(position);
             let selected_count_before = selection_for_click.selection().size();
             was_selected_for_press.set(selected_before);
@@ -433,14 +438,12 @@ pub(super) fn column_rows(
                     selection_for_click.select_item(position, true);
                 }
             }
-            if control || shift {
-                if let Some(widget) = gesture.widget()
-                    && crate::ui::pointer::hits_item_content(&widget, x, y)
-                    && let Some(item_widget) = widget.parent()
-                {
-                    item_widget.grab_focus();
-                }
-                gesture.set_state(gtk::EventSequenceState::Claimed);
+            if (control || shift)
+                && let Some(widget) = gesture.widget()
+                && crate::ui::pointer::hits_item_content(&widget, x, y)
+                && let Some(item_widget) = widget.parent()
+            {
+                item_widget.grab_focus();
             }
             modified_for_click.set(false);
 
@@ -582,9 +585,8 @@ pub(super) fn column_rows(
         let weak_state_for_release = weak_state.clone();
         let search_results_for_release = search_results_for_factory.clone();
         selection_click.connect_released(move |gesture, count, x, y| {
-            if gesture.current_event_state().intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
-            ) {
+            // Leave the sequence available to a marquee until the click completes.
+            if modified_press_for_release.replace(false) {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
             let pending = pending_activation_for_release.take();
@@ -672,6 +674,7 @@ pub(super) fn column_rows(
         });
         let weak_state_for_cancel = weak_state.clone();
         selection_click.connect_cancel(move |_, _| {
+            modified_press_for_cancel.set(false);
             pending_activation_for_cancel.take();
             if let Some(state) = weak_state_for_cancel.upgrade() {
                 state.cancel_click_rename();

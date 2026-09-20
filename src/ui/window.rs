@@ -669,6 +669,8 @@ pub(super) fn build_appearance_menu(
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
+            let browser = view.browser();
+            glib::idle_add_local_once(move || browser.focus_active());
         });
     }
     {

@@ -1472,7 +1472,7 @@ impl ModeViews {
                 if let Some(bounds) = widget.compute_bounds(&section.view) {
                     return Some((
                         section.item_context_trigger.clone(),
-                        f64::from(bounds.center().x()),
+                        f64::from(bounds.x() + bounds.width()),
                         f64::from(bounds.center().y()),
                     ));
                 }
@@ -1481,13 +1481,8 @@ impl ModeViews {
         }
         let width = f64::from(pane.stack.width());
         let height = f64::from(pane.stack.height());
-        (width > 0.0 && height > 0.0).then(|| {
-            (
-                pane.folder_context_trigger.clone(),
-                width / 2.0,
-                height / 2.0,
-            )
-        })
+        (width > 0.0 && height > 0.0)
+            .then(|| (pane.folder_context_trigger.clone(), width, height / 2.0))
     }
 
     fn clear_icons(&mut self) {
@@ -3613,6 +3608,10 @@ fn install_modified_selection_click(
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let modified_press = Rc::new(Cell::new(false));
+    let modified_press_for_pressed = modified_press.clone();
+    let modified_press_for_cancel = modified_press.clone();
+    let modified_press_for_release = modified_press.clone();
     let item = item.downgrade();
     let weak_state_for_pressed = weak_state.clone();
     click.connect_pressed(move |gesture, _, x, y| {
@@ -3632,6 +3631,7 @@ fn install_modified_selection_click(
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        modified_press_for_pressed.set(control || shift);
         let selected_before = selection.is_selected(position);
         let selected_count_before = selection.selection().size();
         slow_click.was_selected.set(selected_before);
@@ -3670,19 +3670,17 @@ fn install_modified_selection_click(
         {
             item_widget.grab_focus();
         }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     let weak_state_for_cancel = weak_state.clone();
     click.connect_cancel(move |_, _| {
+        modified_press_for_cancel.set(false);
         if let Some(state) = weak_state_for_cancel.upgrade() {
             state.cancel_click_rename();
         }
     });
-    click.connect_released(|gesture, _, _, _| {
-        if gesture
-            .current_event_state()
-            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
-        {
+    click.connect_released(move |gesture, _, _, _| {
+        // Leave the sequence available to a marquee until the click completes.
+        if modified_press_for_release.replace(false) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });

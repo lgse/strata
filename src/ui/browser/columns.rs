@@ -158,19 +158,14 @@ impl ColumnView {
             let bounds = row.compute_bounds(&self.list)?;
             return Some((
                 self.item_context_trigger.clone(),
-                f64::from(bounds.center().x()),
+                f64::from(bounds.x() + bounds.width()),
                 f64::from(bounds.center().y()),
             ));
         }
         let width = f64::from(self.presentation.stack.width());
         let height = f64::from(self.presentation.stack.height());
-        (width > 0.0 && height > 0.0).then(|| {
-            (
-                self.folder_context_trigger.clone(),
-                width / 2.0,
-                height / 2.0,
-            )
-        })
+        (width > 0.0 && height > 0.0)
+            .then(|| (self.folder_context_trigger.clone(), width, height / 2.0))
     }
 }
 

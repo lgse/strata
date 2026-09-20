@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from harness import quarantine, resources, screenshots, tree  # noqa: E402
+from harness import resources, screenshots, tree  # noqa: E402
 from harness.application import Application, build_binary  # noqa: E402
 from harness.artifacts import ArtifactCollector  # noqa: E402
 from harness.browser import Strata  # noqa: E402
@@ -30,11 +30,6 @@ pytest_plugins = ["harness.ci_plugin"]
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
-        "--run-quarantined",
-        action="store_true",
-        help="run known failing cases tracked in issue #1154 instead of skipping them",
-    )
-    parser.addoption(
         "--keep-artifacts",
         action="store_true",
         help="write the failure artifact bundle for passing scenarios too",
@@ -43,17 +38,26 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
     cpus, memory = resources.available_resources()
+    tasks = resources.available_tasks()
     try:
-        workers = resources.worker_count(cpus, memory, os.environ.get("STRATA_E2E_WORKERS", "auto"))
+        workers = resources.worker_count(
+            cpus,
+            memory,
+            os.environ.get("STRATA_E2E_WORKERS", "auto"),
+            tasks,
+        )
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
-    print(f"E2E resources: {cpus:g} CPUs, {memory / resources.GIB:.1f} GiB available; {workers} workers")
+    task_text = f", {tasks} task slots" if tasks else ""
+    print(
+        f"E2E resources: {cpus:g} CPUs, {memory / resources.GIB:.1f} GiB available"
+        f"{task_text}; {workers} workers"
+    )
     return workers
 
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    quarantine.apply_quarantine(items, run_quarantined=config.getoption("--run-quarantined"))
     for item in items:
         if item.get_closest_marker("baseline"):
             item.add_marker(pytest.mark.xdist_group("visual-baselines"))
