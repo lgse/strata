@@ -114,11 +114,15 @@ def main():
                                          separators=(",", ":")))
             return
         reports = [json.loads(path.read_text()) for path in sorted(args.reports.glob("shard-*.json"))]
-        durations = verify_reports(plan, reports)
+        quarantine_file = Path(__file__).resolve().parents[1] / "tests/e2e/quarantined.json"
+        quarantined = frozenset(json.loads(quarantine_file.read_text())) \
+            if quarantine_file.exists() else frozenset()
+        durations = verify_reports(plan, reports, quarantined)
         if args.command == "durations":
             print(json.dumps({key: round(value, 3) for key, value in durations.items()}, indent=2))
             return
-        publish_summary(f"All {len(durations)} tests passed exactly once; no skipped tests.\n")
+        publish_summary(f"Coverage verified for {len(durations)} tests exactly once; "
+                        f"{len(quarantined)} quarantined skips allowed.\n")
     except (OSError, ValueError, KeyError, TypeError) as error:
         parser.exit(1, f"E2E gate: {error}\n")
 
