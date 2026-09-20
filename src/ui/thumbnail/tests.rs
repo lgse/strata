@@ -63,7 +63,7 @@ fn key(index: usize) -> ThumbnailKey {
 }
 
 #[test]
-fn recognizes_mainstream_image_and_video_formats() {
+fn recognizes_mainstream_image_video_and_cover_art_audio_formats() {
     assert_eq!(
         thumbnail_kind(Path::new("photo.JPEG")),
         Some(ThumbnailKind::Image)
@@ -103,6 +103,26 @@ fn recognizes_mainstream_image_and_video_formats() {
         thumbnail_kind(Path::new("clip.ogv")),
         Some(ThumbnailKind::Video)
     );
+    for name in [
+        "song.MP3",
+        "song.flac",
+        "song.m4a",
+        "song.m4b",
+        "song.mka",
+        "song.aiff",
+        "song.aif",
+        "song.wma",
+    ] {
+        assert_eq!(
+            thumbnail_kind(Path::new(name)),
+            Some(ThumbnailKind::Video),
+            "{name}"
+        );
+    }
+    // Tag-only artwork: no decoder can produce a thumbnail, so no job is scheduled.
+    for name in ["song.ogg", "song.oga", "song.opus", "song.wav"] {
+        assert_eq!(thumbnail_kind(Path::new(name)), None, "{name}");
+    }
 }
 
 fn sample_texture() -> gdk::Texture {
