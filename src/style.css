@@ -5766,6 +5766,10 @@ popover.jobs-popover.background {
   font-size: 0.85em;
 }
 
+.job-action.jobs-clear label {
+  transform: translateY(1px);
+}
+
 .settings-actions-page .settings-action-row {
   min-height: 64px;
 }
