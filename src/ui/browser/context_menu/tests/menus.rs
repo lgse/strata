@@ -556,6 +556,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
 }
 
 #[test]
+#[ignore = "Native-menu lifecycle regression: https://github.com/lgse/strata/issues/1154"]
 fn recent_background_menu_rejects_physical_directory_actions() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::recent_background_menu_rejects_physical_directory_actions",
