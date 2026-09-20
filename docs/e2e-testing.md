@@ -22,6 +22,8 @@ quarantines all its parameter variants; an ID including `[parameters]` selects
 only that case. The owner authorized quarantining the menu-dependent groups
 because the lifecycle failures move between variants across runs. Unrelated
 functions remain enabled, and skipped cases remain visible in pytest/CI reports.
+The exact-coverage gate tolerates skips for listed selectors only; any other
+skip, or a quarantined case reporting a real failure, still fails the gate.
 
 Use `./scripts/e2e.sh --run-quarantined <test-path> -k <selection>` to reproduce a
 quarantined case without editing the list. For an ignored Rust case, use

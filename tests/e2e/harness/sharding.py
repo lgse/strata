@@ -74,7 +74,8 @@ def validate_plan(plan: dict, tests: list[dict] | None = None) -> None:
             raise ValueError("plan does not cover every collected test exactly once")
 
 
-def verify_reports(plan: dict, reports: list[dict]) -> dict[str, float]:
+def verify_reports(plan: dict, reports: list[dict],
+                   quarantined: frozenset[str] = frozenset()) -> dict[str, float]:
     validate_plan(plan)
     by_shard = {}
     for report in reports:
@@ -93,8 +94,15 @@ def verify_reports(plan: dict, reports: list[dict]) -> dict[str, float]:
         if set(results) != set(shard["nodeids"]):
             raise ValueError(f"shard {shard['index']} did not execute its exact assignment")
         for nodeid, result in results.items():
-            if result["outcomes"] != {"setup": "passed", "call": "passed", "teardown": "passed"}:
-                raise ValueError(f"test did not pass all phases (skips are not passes): {nodeid}")
+            outcomes = result["outcomes"]
+            if outcomes != {"setup": "passed", "call": "passed", "teardown": "passed"}:
+                listed = (nodeid in quarantined
+                          or nodeid.split("[", 1)[0] in quarantined)
+                skipped = ("skipped" in outcomes.values()
+                           and set(outcomes.values()) <= {"passed", "skipped"})
+                if not (listed and skipped):
+                    raise ValueError(
+                        f"test did not pass all phases (skips are not passes): {nodeid}")
             seconds = result["seconds"]
             if not math.isfinite(seconds) or seconds < 0:
                 raise ValueError(f"invalid measured duration: {nodeid}")
