@@ -19,5 +19,14 @@ pub use local_files::LocalFileSource;
 pub(crate) use local_files::query_file_entry;
 pub(crate) use local_jobs::LocalActionRunner;
 pub use local_operations::LocalOperationProvider;
+pub(crate) use local_operations::{
+    ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
+    INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, archive_payload_valid, encode_archive_result,
+    list_archive_entries_direct,
+};
+#[cfg(test)]
+pub(crate) use local_operations::{
+    ArchiveListing, ArchiveListingStatus, decode_archive_listing, write_compression_fixture,
+};
 pub use local_preview::LocalPreviewProvider;
 pub(crate) use volume::{DropVolumeQuery, DropVolumes, lookup_drop_volumes};

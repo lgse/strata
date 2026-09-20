@@ -66,6 +66,7 @@ control that might be midway through synchronization.
 | Theme, Omarchy following, text size | `ThemeManager` applies shared CSS when theme selection, Omarchy following, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
 | Thumbnail workers | Browser construction binds the shared decoder limit before Settings opens. Changes apply across windows and rebuilt views; lowering the limit lets active work finish and retires excess idle supervisors. |
+| Icons view thumbnail size | Every browser binds at construction, before the browser mode preference applies, so an Icons pane built at startup already uses the saved size. The popover slider's own live change persists it; other windows' visible Icons panes move their slider (and resize) to match. Clamped to 32–256 px; not exposed in Settings. |
 | Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
 | Preview text wrap | Every text preview and header toggle binds to the saved wrap choice, including newly loaded files. Off by default. |
 | Preview autoplay | Read when a video, audio, or GIF preview is first shown. Off by default: playback waits for an explicit play action, and the center play affordance is shown instead. Does not affect resuming playback that was already active before a preview pane was temporarily hidden by a resize. |
@@ -74,6 +75,7 @@ control that might be midway through synchronization.
 | Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. |
 | Sidebar order | Existing sidebars bind to the shared order. |
 | Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when GTK recent-file tracking or the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
+| Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. |
 | Folder colors/custom icons | Icon resolution reads the manager; existing customization refreshes notify rendered icons. |
 
 Location, selection, history, each column's sort, filter query, transient theme
@@ -160,6 +162,20 @@ Columns, or navigation in Icons and List. It is off by default and saved as
 `open_folder_after_drop = false`. Changes apply to subsequent drops across
 windows without restarting. Navigating away during a transfer is respected.
 Paste and **Move/Copy to…** continue to reveal their destination independently.
+
+## Modified date format
+
+In **Settings → General → Date & time**, **Modified date format** selects how file
+modified times appear; each choice lists a live example rendered from the
+current time. **Relative** (default) renders elapsed buckets: "just
+now"/"5m ago" under an hour, "3h ago" for the same day, "Yesterday, 23:59", then
+"Sep 1, 23:30"-style fallbacks. Sub-hour buckets follow elapsed time, so a file
+saved just before midnight still reads "2m ago" after the clock rolls over, and
+timestamps up to a minute in the future read "just now" as clock skew.
+**ISO 8601** always renders `2026-09-17 14:30`; **Long** renders
+"September 17, 2026, 14:30". Saved as `date_format = "relative"`. Open labels
+re-render immediately when the choice changes, and the 30-second refresh still
+applies for elapsed buckets.
 
 ## Filter scope
 

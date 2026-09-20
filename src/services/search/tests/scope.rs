@@ -81,8 +81,8 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
         ] {
             if recursive {
                 match query {
-                    "*.MOV" => expected.push("album.MOV/deep.MOV"),
-                    "*" | "MOV" => expected.extend(["album.MOV/nested.txt", "album.MOV/deep.MOV"]),
+                    "*.MOV" | "MOV" => expected.push("album.MOV/deep.MOV"),
+                    "*" => expected.extend(["album.MOV/nested.txt", "album.MOV/deep.MOV"]),
                     _ => {}
                 }
             }
@@ -105,6 +105,45 @@ fn wildcard_filters_match_basenames_within_the_selected_scope() {
     search.query("*.MOV");
     let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("hidden results");
     assert!(items.iter().any(|item| item.name == ".hidden.MOV"));
+}
+
+#[test]
+fn plain_filters_rank_literal_names_above_typos_and_reject_scattered_or_path_matches() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    for name in [
+        "strata-trash.svg",
+        "strata-trahs.svg",
+        "strata-sliders-horizontal.svg",
+        "strata-refresh.svg",
+        "strata-search.svg",
+        "strata-list-checks.svg",
+        "trash-folder/unrelated.svg",
+        "nested/STRATA-TRASH-FULL.svg",
+    ] {
+        fixture_file(fixture.path(), name);
+    }
+    for recursive in [false, true] {
+        let (search, events) = index_filter(fixture.path().into(), false, recursive);
+        for query in ["trash", "trahs"] {
+            search.query(query);
+            let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+            let actual: HashSet<_> = items.iter().map(|item| item.name.as_str()).collect();
+            let mut expected =
+                HashSet::from(["strata-trash.svg", "strata-trahs.svg", "trash-folder"]);
+            if recursive {
+                expected.insert("STRATA-TRASH-FULL.svg");
+            }
+            assert_eq!(actual, expected, "recursive={recursive}, query={query}");
+            let typo_position = items
+                .iter()
+                .position(|item| item.name == "strata-trahs.svg");
+            assert_eq!(
+                typo_position,
+                Some(if query == "trash" { items.len() - 1 } else { 0 }),
+                "literal matches rank first: recursive={recursive}, query={query}",
+            );
+        }
+    }
 }
 
 #[test]

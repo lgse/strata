@@ -5,6 +5,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 
 use crate::{
+    assets::icons,
     sandbox::MediaPreviewBackend,
     services::CrossVolumeDropStrategy,
     ui::{
@@ -48,6 +49,9 @@ pub(super) fn general_page(
         },
     );
 
+    let date_time = super::settings_group(&preferences, "DATE & TIME");
+    append_date_format_option(&date_time, &manager);
+
     let performance = super::settings_group(&preferences, "PERFORMANCE");
     append_auto_refresh_option(&performance, &manager);
     append_thumbnail_workers_option(&performance, &manager);
@@ -69,6 +73,90 @@ pub(super) fn general_page(
         vec![portal_row, udiskie_row],
         responsive_activation_rows,
     )
+}
+
+fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    const CHOICES: [(&str, crate::util::DateFormat); 3] = [
+        ("Relative", crate::util::DateFormat::Relative),
+        ("ISO 8601", crate::util::DateFormat::Iso8601),
+        ("Long", crate::util::DateFormat::Long),
+    ];
+    let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    menu.add_css_class("column-menu");
+    let popover = gtk::Popover::builder()
+        .child(&menu)
+        .has_arrow(false)
+        .build();
+    popover.add_css_class("column-popover");
+    let button = gtk::MenuButton::builder()
+        .popover(&popover)
+        .always_show_arrow(true)
+        .valign(gtk::Align::Center)
+        .build();
+    button.add_css_class("form-control");
+    button.add_css_class("settings-choice");
+    button.set_tooltip_text(Some("Modified date format"));
+    crate::ui::accessibility::set_label(&button, "Modified date format");
+    manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
+        if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
+            button.set_label(match format {
+                crate::util::DateFormat::Relative => "Relative",
+                crate::util::DateFormat::Iso8601 => "ISO 8601",
+                crate::util::DateFormat::Long => "Long",
+            });
+        }
+    });
+    let mut examples = Vec::new();
+    for (name, format) in CHOICES {
+        let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        copy.set_hexpand(true);
+        let title = gtk::Label::new(Some(name));
+        title.set_xalign(0.0);
+        let example = gtk::Label::new(None);
+        example.set_xalign(0.0);
+        example.add_css_class("settings-option-description");
+        copy.append(&title);
+        copy.append(&example);
+        let check = crate::assets::primary_icon(icons::CHECK, 16);
+        check.set_visible(manager.date_format() == format);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row.append(&copy);
+        row.append(&check);
+        let option = gtk::Button::builder().child(&row).build();
+        option.add_css_class("column-menu-option");
+        option.set_has_frame(false);
+        manager.bind_preference(
+            &check,
+            PreferenceManager::date_format,
+            move |widget, selected| widget.set_visible(selected == format),
+        );
+        let weak_button = button.downgrade();
+        let manager = manager.clone();
+        option.connect_clicked(move |_| {
+            manager.set_date_format(format);
+            if let Some(button) = weak_button.upgrade() {
+                button.popdown();
+            }
+        });
+        menu.append(&option);
+        examples.push((example, format));
+    }
+    let examples = Rc::new(examples);
+    let refresh = {
+        let examples = examples.clone();
+        move || {
+            for (label, format) in examples.iter() {
+                label.set_text(&crate::util::modified_date_example(*format));
+            }
+        }
+    };
+    refresh();
+    popover.connect_show(move |_| refresh());
+    content.append(&super::control_row(
+        "Modified date format",
+        "How file modified times appear in lists and details.",
+        &button,
+    ));
 }
 
 fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {

@@ -135,19 +135,18 @@ struct SlowClickRename {
     selected_count_before: Cell<u64>,
 }
 
-/// Maps a `StringList` item to its source index. Filter, sort, and flatten models
-/// pass those objects through, so bind can resolve without scanning the source.
+/// Filter, sort, and flatten models preserve item identity across position changes.
 #[derive(Clone, Default)]
 struct SourceIndexMap {
     by_item: Rc<RefCell<HashMap<glib::Object, usize>>>,
 }
 
 impl SourceIndexMap {
-    fn watch(source: &gtk::StringList) -> Self {
+    fn watch(source: &impl IsA<gio::ListModel>) -> Self {
+        let source = source.as_ref();
         let map = Self::default();
         let tracked = map.clone();
-        // Use the signal's list. Cloning it into this handler would pin the
-        // StringList (and every item) after the pane is dropped.
+        // Capturing the model here would keep it alive through its own signal.
         source.connect_items_changed(move |source, position, removed, added| {
             tracked.apply(source, position, removed, added);
         });
@@ -155,7 +154,7 @@ impl SourceIndexMap {
         map
     }
 
-    fn apply(&self, source: &gtk::StringList, position: u32, removed: u32, added: u32) {
+    fn apply(&self, source: &gio::ListModel, position: u32, removed: u32, added: u32) {
         let can_append = {
             let by_item = self.by_item.borrow();
             removed == 0
@@ -174,7 +173,7 @@ impl SourceIndexMap {
         self.rebuild(source);
     }
 
-    fn rebuild(&self, source: &gtk::StringList) {
+    fn rebuild(&self, source: &gio::ListModel) {
         let n_items = source.n_items() as usize;
         let mut by_item = HashMap::with_capacity(n_items);
         for position in 0..source.n_items() {
@@ -212,11 +211,20 @@ struct BoundModeItem {
 struct PaneSection {
     view: gtk::Widget,
     view_model: gio::ListModel,
+    view_index: SourceIndexMap,
     selection: gtk::MultiSelection,
     bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     syncing: Rc<Cell<bool>>,
     visit: super::marquee::ItemVisitor,
     item_context_trigger: Rc<dyn Fn(f64, f64)>,
+}
+
+impl PaneSection {
+    fn source_to_view(&self, source: &gtk::StringList, position: usize) -> Option<u32> {
+        self.view_index
+            .of_item(&source.item(position as u32)?)
+            .map(|position| position as u32)
+    }
 }
 
 type ListSorting = Rc<Cell<(SortKey, SortDirection)>>;
@@ -237,6 +245,7 @@ struct Pane {
     section: PaneSection,
     sections: Rc<RefCell<Vec<PaneSection>>>,
     icons: Option<Rc<IconsContext>>,
+    thumbnail_scale: Option<gtk::Scale>,
     targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
     detached: Rc<Cell<bool>>,
@@ -641,6 +650,32 @@ impl ModeViews {
                 field.set_text("");
             }
         }
+    }
+
+    pub(in crate::ui) fn icons_rename_view(&self, depth: usize) -> Option<gtk::Widget> {
+        self.icons_panes
+            .iter()
+            .find(|pane| self.mode == BrowserMode::Icons && pane.depth == depth)
+            .map(Pane::focus_view)
+    }
+
+    pub(in crate::ui) fn icons_rename_row(
+        &self,
+        depth: usize,
+        source_position: usize,
+    ) -> Option<(gtk::Widget, u32, Option<gtk::Widget>)> {
+        let pane = self.icons_panes.iter().find(|pane| pane.depth == depth)?;
+        pane.item_sections().iter().find_map(|section| {
+            let position =
+                view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
+            let row = section.bound_items.borrow().iter().find_map(|bound| {
+                (bound.item.upgrade()?.position() == position)
+                    .then(|| bound.widget.upgrade())
+                    .flatten()
+                    .filter(|row| row.is_mapped() && row.is_ancestor(&section.view))
+            });
+            Some((section.view.clone(), position, row))
+        })
     }
 
     pub(in crate::ui) fn list_rename_view(&self, depth: usize) -> Option<gtk::ListView> {
@@ -1077,6 +1112,20 @@ impl ModeViews {
         }
     }
 
+    pub fn set_icons_thumbnail_size(&mut self, size: i32) {
+        if self.icons_thumbnail_size.get() == size {
+            return;
+        }
+        match self
+            .icons_panes
+            .first()
+            .and_then(|pane| pane.thumbnail_scale.as_ref())
+        {
+            Some(scale) => scale.set_value(f64::from(size)),
+            None => self.icons_thumbnail_size.set(size),
+        }
+    }
+
     fn visible_panes(&self) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),
@@ -1174,6 +1223,50 @@ impl ModeViews {
             .any(|(_, bounds)| bounds.x() < current.x() - 1.0)
     }
 
+    pub(super) fn page_target(&self, depth: usize, direction: i32, page: usize) -> Option<usize> {
+        let pane = self
+            .visible_panes()
+            .into_iter()
+            .find(|pane| pane.depth == depth)?;
+        let sections = pane.item_sections();
+        let count: usize = sections
+            .iter()
+            .map(|section| section.view_model.n_items() as usize)
+            .sum();
+        let last = count.checked_sub(1)?;
+        let focused = self.browser.focused_item().filter(|(d, _, _)| *d == depth);
+        let current = if let Some((_, source, _)) = focused {
+            let mut offset = 0;
+            let current = sections.iter().find_map(|section| {
+                let position = section.source_to_view(&pane.model, source);
+                let start = offset;
+                offset += section.view_model.n_items() as usize;
+                position.map(|position| start + position as usize)
+            });
+            // A filtered-out cursor still needs the existing visual-order fallback.
+            Some(current?)
+        } else {
+            None
+        };
+        let mut target = match (current, direction.cmp(&0)) {
+            (_, std::cmp::Ordering::Equal) => return None,
+            (None, std::cmp::Ordering::Less) => last,
+            (None, _) => 0,
+            (Some(current), std::cmp::Ordering::Less) => current.saturating_sub(page.max(1)),
+            (Some(current), _) => current.saturating_add(page.max(1)).min(last),
+        };
+        for section in sections {
+            let count = section.view_model.n_items() as usize;
+            if target < count {
+                return pane
+                    .source_index
+                    .of_view_position(&section.view_model, target as u32);
+            }
+            target -= count;
+        }
+        None
+    }
+
     pub fn visual_order(&self, depth: usize) -> Vec<usize> {
         let Some(pane) = self
             .visible_panes()
@@ -1242,8 +1335,7 @@ impl ModeViews {
             .filter(|(focused_depth, _, _)| *focused_depth == depth)
             .and_then(|(_, source, _)| {
                 pane.item_sections().into_iter().find_map(|section| {
-                    let position =
-                        view_position_for_source(&pane.model, Some(&section.view_model), source)?;
+                    let position = section.source_to_view(&pane.model, source)?;
                     (position < section.view_model.n_items()).then_some((section.view, position))
                 })
             });
@@ -1851,6 +1943,7 @@ fn build_icons_pane(
             let size = scale.value().round() as i32;
             value_for_change.set_label(&format!("{size} px"));
             thumbnail_size_for_change.set(size);
+            crate::ui::preferences::PreferenceManager::shared().set_icons_thumbnail_size(size);
             if let (Some(stack), Some(context)) =
                 (loading_stack.upgrade(), loading_context.upgrade())
             {
@@ -1946,6 +2039,7 @@ fn build_icons_pane(
         section: pane_section,
         sections,
         icons: Some(context),
+        thumbnail_scale: Some(controls.thumbnail_scale),
         targets,
         detached: Rc::new(Cell::new(false)),
         loading: super::loading_skeleton::DelayedLoading::new(&stack),
@@ -1978,6 +2072,7 @@ fn pane_directory_name(browser: &Rc<Browser>, depth: usize) -> String {
 fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>) -> PaneSection {
     let depth = context.depth;
     let view_model = model.clone().upcast::<gio::ListModel>();
+    let view_index = SourceIndexMap::watch(&view_model);
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
     let syncing_selection = Rc::new(Cell::new(false));
     let bound_items: Rc<RefCell<Vec<BoundModeItem>>> = Rc::new(RefCell::new(Vec::new()));
@@ -2139,6 +2234,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     });
     let mut section = PaneSection {
         view: view.clone().upcast(),
+        view_index,
         view_model,
         selection,
         bound_items: bound_items.clone(),
@@ -2717,6 +2813,7 @@ fn build_list_pane(
         view_model.set_section_sorter(Some(&sorter));
     }
     let view_model_object = view_model.clone().upcast::<gio::ListModel>();
+    let view_index = SourceIndexMap::watch(&view_model_object);
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
     let syncing_selection = Rc::new(Cell::new(false));
     let sections: Rc<RefCell<Vec<PaneSection>>> = Rc::new(RefCell::new(Vec::new()));
@@ -2778,6 +2875,7 @@ fn build_list_pane(
     });
     let mut section = PaneSection {
         view: view.clone().upcast(),
+        view_index,
         view_model: view_model_object,
         selection,
         bound_items: bound_items.clone(),
@@ -2889,6 +2987,7 @@ fn build_list_pane(
         section,
         sections,
         icons: None,
+        thumbnail_scale: None,
         targets,
         detached: Rc::new(Cell::new(false)),
         loading: super::loading_skeleton::DelayedLoading::new(&stack),
@@ -3877,9 +3976,7 @@ fn set_selections(pane: &Pane, positions: &[usize]) {
         section.syncing.set(true);
         section.selection.unselect_all();
         for position in positions {
-            if let Some(position) =
-                view_position_for_source(&pane.model, Some(&section.view_model), *position)
-            {
+            if let Some(position) = section.source_to_view(&pane.model, *position) {
                 section.selection.select_item(position, false);
             }
         }
@@ -4372,12 +4469,7 @@ fn set_icons_entry_details(card: &gtk::Box, entry: &FileEntry) {
     let Some(label) = super::icons_cell::details_label(card) else {
         return;
     };
-    if let Some(details) = entry_icons_item_info(entry) {
-        set_label_if_changed(&label, &details);
-        label.set_visible(true);
-    } else {
-        label.set_visible(false);
-    }
+    set_label_if_changed(&label, &entry_icons_item_info(entry).unwrap_or_default());
 }
 
 fn format_duration(seconds: u64) -> String {

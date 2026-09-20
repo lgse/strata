@@ -139,7 +139,7 @@ pub(super) fn schedule_refresh() {
                 .or_insert_with(|| (browser.clone(), Vec::new()));
             if priority.0 < 2 {
                 visible.push(location.clone());
-                browser.request_metadata_fill(depth, position, location, details);
+                browser.request_visible_metadata_fill(depth, position, location, details);
             }
         }
         for ((_, depth), (browser, visible)) in viewports {
@@ -172,11 +172,36 @@ pub(super) fn hook_ancestors(widget: &impl IsA<gtk::Widget>) {
             false
         });
         if !hooked {
+            let pending = Rc::new(RefCell::new(None::<crate::ui::frame::FrameTask>));
+            let weak_viewport = viewport.downgrade();
+            let refresh = Rc::new(move || {
+                schedule_refresh();
+                if pending.borrow().is_some() {
+                    return;
+                }
+                let Some(viewport) = weak_viewport.upgrade().filter(|view| view.is_mapped()) else {
+                    return;
+                };
+                let pending_for_frame = pending.clone();
+                // Adjustment signals can precede allocation. Retry with the final bounds,
+                // even if all work was deferred and no worker or input can wake it again.
+                pending.replace(Some(crate::ui::frame::FrameTask::new(
+                    Some(viewport.upcast_ref()),
+                    move || {
+                        pending_for_frame.borrow_mut().take();
+                        schedule_refresh();
+                    },
+                )));
+            });
             for adjustment in [viewport.vadjustment(), viewport.hadjustment()] {
-                adjustment.connect_value_changed(|_| schedule_refresh());
-                adjustment.connect_changed(|_| schedule_refresh());
+                let refresh_value = refresh.clone();
+                adjustment.connect_value_changed(move |_| refresh_value());
+                let refresh_changed = refresh.clone();
+                adjustment.connect_changed(move |_| refresh_changed());
             }
-            viewport.connect_map(|_| schedule_refresh());
+            let refresh_map = refresh.clone();
+            viewport.connect_map(move |_| refresh_map());
+            refresh();
         }
     }
 }
@@ -185,6 +210,8 @@ pub(in crate::ui) fn near_viewport(widget: &impl IsA<gtk::Widget>) -> bool {
     visibility(widget).0 < 2
 }
 
+#[cfg(test)]
+mod scroll_tests;
 #[cfg(test)]
 mod tests;
 

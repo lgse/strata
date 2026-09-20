@@ -575,7 +575,7 @@ impl Worker {
                 };
                 let output = super::parse(
                     Path::new(&format!("/proc/self/fd/{}", file.as_raw_fd())),
-                    parse_operation,
+                    parse_operation.clone(),
                     256,
                     super::MediaPreviewBackend::Software,
                     &Cancellation::default(),

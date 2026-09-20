@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod compact;
+mod filtered;
 mod visibility;
 
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
@@ -78,10 +79,17 @@ struct Fixture {
 
 impl Fixture {
     fn new(chooser: bool) -> Self {
+        Self::with_files(chooser, &[])
+    }
+
+    fn with_files(chooser: bool, files: &[&str]) -> Self {
         crate::ui::prepare_portal_ui();
         let root = tempfile::tempdir().expect("column fixture");
         std::fs::create_dir_all(root.path().join("child/grandchild/g3/g4/g5"))
             .expect("nested folders");
+        for name in files {
+            std::fs::write(root.path().join(name), name).expect("file");
+        }
         let browser = if chooser {
             BrowserView::new_chooser(Rc::new(crate::adapters::LocalFileSource), false)
         } else {
