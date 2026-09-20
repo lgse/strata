@@ -2902,9 +2902,12 @@ impl Browser {
 
     fn remove_deleted_locations(self: &Rc<Self>, locations: &[Location]) {
         if locations.len() > MAX_INCREMENTAL_OPERATION_UPDATES {
+            // Recent entries resolve to targets outside their parents, so an
+            // open Recent view reloads too: bulk deletes skip per-entry splices.
             let parents: HashSet<_> = locations
                 .iter()
                 .filter_map(deletion_parent_location)
+                .chain(std::iter::once(Location::uri("recent:///")))
                 .collect();
             self.refresh_columns_at_many(&parents);
             return;
@@ -2919,6 +2922,7 @@ impl Browser {
                 let mut depth = 0;
                 while let Some(open_location) = state.location_at(depth) {
                     if open_location == parent
+                        || open_location.is_recent_root()
                         || open_location.contains_camera_photo_location(location)
                     {
                         depths.push((depth, open_location));

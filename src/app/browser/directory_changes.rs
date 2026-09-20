@@ -25,6 +25,15 @@ impl StagingLoad {
     }
 }
 
+fn removed_location(change: &DirectoryChange) -> Option<&Location> {
+    match change {
+        DirectoryChange::Remove(location) | DirectoryChange::Move { from: location, .. } => {
+            Some(location)
+        }
+        DirectoryChange::Upsert(_) | DirectoryChange::Rescan => None,
+    }
+}
+
 impl Browser {
     pub(super) fn handle_directory_change(
         self: &Rc<Self>,
@@ -34,6 +43,32 @@ impl Browser {
     ) {
         if self.location_at(depth).as_ref() != Some(watched) {
             return;
+        }
+        if let Some(removed) = removed_location(&change) {
+            // Recent entries resolve to targets outside the collection, so a
+            // removal anywhere can also retire an entry there. Only the
+            // removal side fans out: a moved target's new location is not a
+            // Recent member.
+            let fan_out: Vec<_> = {
+                let state = self.state.borrow();
+                (0..)
+                    .map_while(|open_depth| {
+                        state
+                            .location_at(open_depth)
+                            .map(|location| (open_depth, location))
+                    })
+                    .filter(|(open_depth, location)| {
+                        *open_depth != depth && location.is_recent_root()
+                    })
+                    .collect()
+            };
+            for (open_depth, recent) in fan_out {
+                self.handle_directory_change(
+                    open_depth,
+                    &recent,
+                    DirectoryChange::Remove(removed.clone()),
+                );
+            }
         }
         if self.deletion_operation.get() || self.restoration_operation.get() {
             self.deferred_file_operation_changes

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::model::{EntryKind, MetadataValue, SortDirection, SortKey, ViewPreferences};
-use crate::services::DirectoryEvent;
+use crate::services::{DirectoryChange, DirectoryEvent};
 use std::{cell::RefCell, rc::Rc};
 
 fn recent_entry(name: &str, kind: EntryKind, recent: i64, modified: i64) -> FileEntry {
@@ -313,5 +313,96 @@ fn recent_sort_selection_survives_reload() {
             preferences.folders_first,
         )),
         Some((SortKey::Recency, SortDirection::Ascending, false))
+    );
+}
+
+#[test]
+fn deleted_targets_are_spliced_out_of_the_recent_view() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, events, _) = load_recent(vec![
+        recent_entry("stale", EntryKind::File, 20, 1),
+        recent_entry("kept", EntryKind::File, 10, 2),
+    ]);
+    events.borrow_mut().clear();
+
+    browser.remove_deleted_locations(&[Location::local("/fixture/stale")]);
+
+    assert_eq!(column_names(&browser, 0), ["kept"]);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::EntriesSpliced { depth: 0, splices }
+            if splices.iter().any(|splice| splice.removed == 1)
+    )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
+    );
+}
+
+#[test]
+fn removals_in_other_columns_retire_matching_recent_targets() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, _, _) = load_recent(vec![
+        recent_entry("stale", EntryKind::File, 20, 1),
+        recent_entry("kept", EntryKind::File, 10, 2),
+    ]);
+    browser.descend(0, Location::local("/fixture"));
+
+    browser.handle_directory_change(
+        1,
+        &Location::local("/fixture"),
+        DirectoryChange::Remove(Location::local("/fixture/stale")),
+    );
+
+    assert_eq!(column_names(&browser, 0), ["kept"]);
+}
+
+#[test]
+fn moved_targets_retire_the_old_recent_location_without_inserting_the_new_one() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, _, _) = load_recent(vec![
+        recent_entry("stale", EntryKind::File, 20, 1),
+        recent_entry("kept", EntryKind::File, 10, 2),
+    ]);
+    browser.descend(0, Location::local("/fixture"));
+
+    browser.handle_directory_change(
+        1,
+        &Location::local("/fixture"),
+        DirectoryChange::Move {
+            from: Location::local("/fixture/stale"),
+            entry: recent_entry("renamed", EntryKind::File, 30, 3),
+        },
+    );
+
+    assert_eq!(column_names(&browser, 0), ["kept"]);
+}
+
+#[test]
+fn large_deletions_reload_an_open_recent_view() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, events, _) = load_recent(vec![recent_entry("stale", EntryKind::File, 20, 1)]);
+    events.borrow_mut().clear();
+
+    let deleted: Vec<_> = (0..=MAX_INCREMENTAL_OPERATION_UPDATES)
+        .map(|index| Location::local(format!("/bulk/{index}")))
+        .collect();
+    browser.remove_deleted_locations(&deleted);
+
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ColumnReloaded { depth: 0 }))
     );
 }
