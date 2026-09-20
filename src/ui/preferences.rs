@@ -248,6 +248,10 @@ fn default_double_clicks() -> u8 {
 
 fn default_sidebar_order() -> Vec<String> {
     vec![
+        "home".to_owned(),
+        "trash".to_owned(),
+        "network".to_owned(),
+        "recent".to_owned(),
         "desktop".to_owned(),
         "documents".to_owned(),
         "downloads".to_owned(),
