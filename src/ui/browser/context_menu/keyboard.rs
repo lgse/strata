@@ -37,7 +37,13 @@ fn restore_submenu_owner(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
     let submenu = submenu.downgrade();
     let frames = Cell::new(0u8);
     owner.add_tick_callback(move |owner, _| {
-        if submenu.upgrade().is_none_or(|submenu| submenu.is_visible()) {
+        let Some(submenu) = submenu.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        if submenu.is_visible() {
+            return glib::ControlFlow::Continue;
+        }
+        if !owner.is_mapped() {
             return glib::ControlFlow::Break;
         }
         if let Some(root) = owner.root() {
