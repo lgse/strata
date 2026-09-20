@@ -90,7 +90,7 @@ fn alternate_view_search_finds_descendants_and_restores_the_original_view() {
             let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
             let entry = gtk::Entry::new();
             let original = gtk::Label::new(Some("Original view"));
-            let widget = wrap(&original, &entry, Some(root.clone()), &browser).widget;
+            let widget = wrap(&original, &entry, Some(root.clone()), &browser, false).widget;
             let stack = widget
                 .clone()
                 .downcast::<gtk::Stack>()
@@ -152,6 +152,7 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
                 &entry,
                 Some(fixture.path().into()),
                 &browser,
+                false,
             );
             let state = search.state.as_ref().expect("search state");
             let content = gtk::Box::new(gtk::Orientation::Vertical, 0);

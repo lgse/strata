@@ -2053,6 +2053,7 @@ fn build_icons_pane(
             .location_at(depth)
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
         &context.browser,
+        true,
     );
     content.append(&search.widget);
     marquee.add_origin_surface(&header);
@@ -3002,6 +3003,7 @@ fn build_list_pane(
             .location_at(depth)
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
         &browser,
+        false,
     );
     content.append(&search.widget);
     let pane = Pane {
@@ -4265,7 +4267,6 @@ fn assemble_list_row() -> gtk::Box {
     field.add_css_class("inline-rename");
     super::accessibility::set_label(&field, "Rename");
     field.set_hexpand(true);
-    gtk::prelude::EntryExt::set_alignment(&field, 0.5);
     field.set_visible(false);
     name_cell.append(&icon);
     name_cell.append(&name);

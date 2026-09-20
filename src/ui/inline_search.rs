@@ -33,6 +33,7 @@ struct State {
     generation: Cell<u64>,
     root: PathBuf,
     recursive: Cell<bool>,
+    center_rename: bool,
     context_menu_trigger: RefCell<Option<super::browser::ContextMenuTrigger>>,
 }
 
@@ -340,6 +341,7 @@ pub(super) fn wrap(
     entry: &gtk::Entry,
     root: Option<PathBuf>,
     browser: &Rc<Browser>,
+    center_rename: bool,
 ) -> InlineSearch {
     let Some(root) = root else {
         return InlineSearch {
@@ -385,6 +387,7 @@ pub(super) fn wrap(
         generation: Cell::new(0),
         root: root.clone(),
         recursive: Cell::new(false),
+        center_rename,
         context_menu_trigger: RefCell::new(None),
     });
     install_selection(&state, &scroll, &overlay);
@@ -791,10 +794,10 @@ fn update_rows(state: &State, items: Vec<SearchItem>, root: &Path, recursive: bo
             } else {
                 super::thumbnail::cancel_thumbnails_in(row.upcast_ref());
                 state.list.remove(&row);
-                result_row(&state.list, item, root, recursive)
+                result_row(&state.list, item, root, recursive, state.center_rename)
             }
         } else {
-            result_row(&state.list, item, root, recursive)
+            result_row(&state.list, item, root, recursive, state.center_rename)
         };
         rows.push(row);
     }
@@ -847,6 +850,7 @@ fn result_row(
     item: &SearchItem,
     result_root: &Path,
     recursive: bool,
+    center_rename: bool,
 ) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.set_focusable(true);
@@ -881,7 +885,7 @@ fn result_row(
     super::accessibility::set_label(&field, "Rename");
     field.set_hexpand(true);
     field.set_width_chars(1);
-    gtk::prelude::EntryExt::set_alignment(&field, 0.5);
+    gtk::prelude::EntryExt::set_alignment(&field, if center_rename { 0.5 } else { 0.0 });
     field.set_visible(false);
     row.set_tooltip_text(Some(&path));
     line.append(&labels);
