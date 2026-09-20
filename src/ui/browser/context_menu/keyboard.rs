@@ -33,7 +33,6 @@ pub(super) fn install_menu_edges(popover: &gtk::PopoverMenu) {
 }
 
 fn restore_submenu_owner(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
-    owner.grab_focus();
     let submenu = submenu.downgrade();
     let frames = Cell::new(0u8);
     owner.add_tick_callback(move |owner, _| {
@@ -45,6 +44,15 @@ fn restore_submenu_owner(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
         }
         if !owner.is_mapped() {
             return glib::ControlFlow::Break;
+        }
+        if frames.get() == 0
+            && let Some(parent) = owner
+                .ancestor(gtk::PopoverMenu::static_type())
+                .and_downcast::<gtk::PopoverMenu>()
+        {
+            // The nested surface releases the popup grab when it finishes
+            // hiding, so reacquire the parent before restoring item focus.
+            parent.popup();
         }
         if let Some(root) = owner.root() {
             root.set_focus(Some(owner));
@@ -60,14 +68,6 @@ fn restore_submenu_owner(submenu: &gtk::PopoverMenu, owner: &gtk::Widget) {
 
 fn return_from_submenu(submenu: &gtk::PopoverMenu, owner: &gtk::Widget, returned: &Cell<bool>) {
     submenu.set_visible(false);
-    if let Some(root) = owner
-        .ancestor(gtk::PopoverMenu::static_type())
-        .and_downcast::<gtk::PopoverMenu>()
-    {
-        // Closing the nested surface releases its grab; reassert the visible
-        // parent popover so subsequent keys remain confined to the menu.
-        root.popup();
-    }
     returned.set(true);
     restore_submenu_owner(submenu, owner);
 }
