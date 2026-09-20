@@ -112,7 +112,7 @@ its runtime archive loader; an image in one engine's store is not visible to the
 other. Normal runs verify and reuse the
 local base image. If missing, they pull the published environment once, verify
 its input label and platform, and record it locally. They **never automatically
-build images or fetch distribution packages**. A missing publication fails with an
+build images or fetch Ubuntu packages**. A missing publication fails with an
 actionable message rather than silently bootstrapping.
 
 When intentionally updating the environment, or before its first publication,
@@ -123,12 +123,8 @@ STRATA_CONTAINER_ENGINE=podman python3 scripts/e2e_base.py build
 ./scripts/e2e.sh
 ```
 
-The recipe is `tests/e2e/Dockerfile`: digest-pinned Arch Linux, the dated
-2026-09-19 Arch package snapshot, GTK 4.24.0, GLib 2.90.0, Rust 1.98.1,
-and pinned Python dependencies. GTK and GLib are upstream stable releases
-selected explicitly from Arch's GNOME staging archive, with package signatures
-and SHA-256 checks; the staging repository is not enabled globally. Local runs
-and CI use this same recipe and toolkit, independent of the runner host OS.
+The recipe remains `tests/e2e/Dockerfile`: digest-pinned Ubuntu 24.04, a dated
+package snapshot (GTK 4.14 and fonts), Rust 1.98.1, and pinned Python dependencies.
 Changing those inputs selects a new base; application edits do not. The normal
 runner still compiles the checked-out application and retains Cargo's worktree
 cache. No host GTK libraries, fonts, desktop sockets, or Rust binaries are mounted.
@@ -143,11 +139,11 @@ The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
 and GTK's GStreamer media backend with the base/good/libav plugins. Rust media
 regressions exercise actual normalization, playback, and long-source duration
 limits rather than skipping when optional host tools are missing. These packages
-come from the dated Arch snapshot. The image uses distribution GTK/GStreamer
-packages without applying the experimental GstPlay patch in
-`packaging/media-runtime/`. That opt-in kit remains separate; changing the test
-image neither changes release packaging nor proves that the kit's media-lifetime
-issues are resolved.
+come from the existing dated Ubuntu snapshot; the GTK/GLib baseline and Rust
+compiler are unchanged. This test-only dependency addition does not apply or
+retire the version-specific GTK 4.22.4/GstPlay 1.28.6 patches in
+`packaging/media-runtime/`; that opt-in kit remains unchanged and is not shipped
+by this image update.
 
 Rootless Podman
 runs unmask `/proc/*` inside the test container so bubblewrap can mount its own
@@ -179,7 +175,7 @@ For a deliberate recipe-input change relative to the PR base (or previous main
 commit), CI may explicitly build that unpublished candidate from the pinned
 recipe, without publishing it. This lets environment-update PRs pass before the
 trusted-main publisher runs; it does not turn registry outages into repeated
-distribution bootstraps. Locally, environment builds still require the explicit command
+Ubuntu bootstraps. Locally, environment builds still require the explicit command
 shown above.
 
 Quality's Cargo home and build directory are under `target/quality-container`,
