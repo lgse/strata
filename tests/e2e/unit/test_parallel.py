@@ -81,7 +81,8 @@ def test_baselines_are_grouped_before_xdist_scheduling():
 
     baseline, ordinary = Mock(), Mock()
     ordinary.get_closest_marker.return_value = None
-    pytest_collection_modifyitems([baseline, ordinary])
+    config = Mock(getoption=lambda _name: False)
+    pytest_collection_modifyitems(config, [baseline, ordinary])
     assert baseline.add_marker.call_args.args[0].args == ("visual-baselines",)
     ordinary.add_marker.assert_not_called()
 

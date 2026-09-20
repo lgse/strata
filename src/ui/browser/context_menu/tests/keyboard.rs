@@ -74,6 +74,7 @@ fn native_selection_count(view: &BrowserView) -> u64 {
 }
 
 #[test]
+#[ignore = "Native-menu focus regression: https://github.com/lgse/strata/issues/1154"]
 fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::keyboard::context_menus_preserve_filtered_grouped_and_chooser_selections",

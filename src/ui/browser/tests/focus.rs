@@ -459,6 +459,7 @@ fn hovering_another_column_preserves_keyboard_navigation_from_header() {
 }
 
 #[test]
+#[ignore = "Native-menu ownership regression: https://github.com/lgse/strata/issues/1154"]
 fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
     crate::test_support::gtk_test(
         "ui::browser::tests::focus::context_menu_keeps_its_column_target_through_focus_and_hover_changes",

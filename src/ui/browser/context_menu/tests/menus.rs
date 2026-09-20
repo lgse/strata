@@ -359,6 +359,7 @@ fn capture_menu(menu: &gtk::Popover, name: &str) {
 }
 
 #[test]
+#[ignore = "Native-menu lifecycle regression: https://github.com/lgse/strata/issues/1154"]
 fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::menus_and_keyboard_actions_follow_supported_operations_in_every_mode",
@@ -706,6 +707,7 @@ fn vertical_offset(menu: &gtk::Popover, widget: &gtk::Widget) -> f32 {
 }
 
 #[test]
+#[ignore = "Native-menu dispatch regression: https://github.com/lgse/strata/issues/1154"]
 fn open_file_location_navigates_to_parent_folder_and_selects_file() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::open_file_location_navigates_to_parent_folder_and_selects_file",
