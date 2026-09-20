@@ -13,7 +13,7 @@ use super::{
 use std::{
     ffi::CString,
     os::unix::ffi::OsStrExt,
-    path::Path,
+    path::{Path, PathBuf},
     ptr,
     sync::{
         Arc,
@@ -170,7 +170,7 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+) -> Result<ArchiveOutcome<Vec<PathBuf>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
     let result = (|| {
         let path = CString::new(archive_path.as_os_str().as_bytes()).map_err(archive_failed)?;

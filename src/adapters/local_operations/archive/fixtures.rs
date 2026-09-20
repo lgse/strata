@@ -234,7 +234,7 @@ pub(super) fn completed_extract<T>(outcome: ArchiveOutcome<T>) -> Result<T, Stri
     }
 }
 
-pub(super) fn extract_zip(path: &Path, destination: &Path) -> Result<Option<String>, String> {
+pub(super) fn extract_zip(path: &Path, destination: &Path) -> Result<Vec<PathBuf>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
     completed_extract(

@@ -41,7 +41,7 @@ use extraction::ArchiveOutcome;
 use gtk::{gio, glib};
 use std::{
     collections::HashSet,
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{
         Arc,
@@ -198,7 +198,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
 /// Emits [`ArchiveStarted`] immediately, [`ArchiveProgress`] while running,
 /// then [`Extracted`], [`Failed`], or [`Cancelled`]. A cancel after some
 /// members have been written reports completed, failed, and not-attempted
-/// locations through [`CancelledOperation`].
+/// locations through [`CancelledOperation`]. Completed extractions spilling
+/// more than one top-level entry are bundled into a folder named after the
+/// archive stem; [`Extracted::first_name`] then selects that folder.
 ///
 /// # Concurrency
 ///
@@ -253,51 +255,67 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             archive_progress_timer(request.id, &progress, &total, &task_cancelled, &emit);
         let work_progress = progress.clone();
         let work_total = total.clone();
-        let result = gio::spawn_blocking(move || match format {
-            Some(ArchiveFormat::Zip) => {
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
-                work_total.store(archive.len(), Ordering::Relaxed);
-                extract_zip_from_archive(
-                    &mut archive,
+        let result = gio::spawn_blocking(move || {
+            let outcome = match format {
+                Some(ArchiveFormat::Zip) => {
+                    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                    let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
+                    work_total.store(archive.len(), Ordering::Relaxed);
+                    extract_zip_from_archive(
+                        &mut archive,
+                        &dest_dir,
+                        password.as_deref(),
+                        &work_progress,
+                        &work_cancelled,
+                    )
+                }
+                Some(ArchiveFormat::SevenZ) => {
+                    let pw = password
+                        .as_deref()
+                        .map(sevenz_rust2::Password::from)
+                        .unwrap_or_default();
+                    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress, &work_cancelled)
+                }
+                Some(ArchiveFormat::TarGz) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    true,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                Some(ArchiveFormat::Tar) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    false,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                Some(ArchiveFormat::Rar) => extract_rar(
+                    &archive_path,
                     &dest_dir,
                     password.as_deref(),
                     &work_progress,
                     &work_cancelled,
-                )
-            }
-            Some(ArchiveFormat::SevenZ) => {
-                let pw = password
-                    .as_deref()
-                    .map(sevenz_rust2::Password::from)
-                    .unwrap_or_default();
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                extract_7z_from_reader(file, &dest_dir, pw, &work_progress, &work_cancelled)
-            }
-            Some(ArchiveFormat::TarGz) => extract_tar(
-                &archive_path,
-                &dest_dir,
-                true,
-                &work_progress,
-                &work_cancelled,
-            ),
-            Some(ArchiveFormat::Tar) => extract_tar(
-                &archive_path,
-                &dest_dir,
-                false,
-                &work_progress,
-                &work_cancelled,
-            ),
-            Some(ArchiveFormat::Rar) => extract_rar(
-                &archive_path,
-                &dest_dir,
-                password.as_deref(),
-                &work_progress,
-                &work_cancelled,
-            ),
-            None => Err(archive_failed(format!(
-                "Unsupported archive format: {display_name}"
-            ))),
+                ),
+                None => Err(archive_failed(format!(
+                    "Unsupported archive format: {display_name}"
+                ))),
+            };
+            outcome.map(|outcome| match outcome {
+                ArchiveOutcome::Completed(roots) => ArchiveOutcome::Completed(
+                    bundle_extracted_roots(&dest_dir, &display_name, &roots),
+                ),
+                ArchiveOutcome::Cancelled {
+                    completed,
+                    failed,
+                    not_attempted,
+                } => ArchiveOutcome::Cancelled {
+                    completed,
+                    failed,
+                    not_attempted,
+                },
+            })
         })
         .await;
         timer_id.remove();
@@ -344,6 +362,62 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
     LoadHandle::new(move || {
         cancelled.store(true, Ordering::Relaxed);
     })
+}
+
+/// `backup.tar.gz` extracts under `backup`, like Finder's archive-stem folder.
+fn archive_stem(name: &str) -> &str {
+    const SUFFIXES: &[&str] = &[".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"];
+    let lower = name.to_ascii_lowercase();
+    for suffix in SUFFIXES {
+        if lower.ends_with(suffix) {
+            return &name[..name.len() - suffix.len()];
+        }
+    }
+    name
+}
+
+/// Returns the name the destination view should select after extraction.
+///
+/// An archive spilling more than one top-level entry is bundled into a fresh
+/// `<archive stem>` folder — Finder's behavior — so "Extract here" never
+/// litters the destination. Single-root and empty archives stay verbatim.
+/// The reserved folder takes `stem`, `stem (1)`, … past existing entries.
+fn bundle_extracted_roots(
+    dest_dir: &Path,
+    archive_name: &str,
+    roots: &[PathBuf],
+) -> Option<String> {
+    let verbatim = || {
+        roots
+            .first()
+            .map(|root| root.to_string_lossy().into_owned())
+    };
+    if roots.len() <= 1 {
+        return verbatim();
+    }
+    let stem = archive_stem(archive_name);
+    if stem.trim_matches('.').is_empty() || stem.contains('/') {
+        return verbatim();
+    }
+    for suffix in 0_u64.. {
+        let name = if suffix == 0 {
+            stem.to_owned()
+        } else {
+            format!("{stem} ({suffix})")
+        };
+        let wrapper = dest_dir.join(&name);
+        match std::fs::create_dir(&wrapper) {
+            Ok(()) => {
+                for root in roots {
+                    let _ = std::fs::rename(dest_dir.join(root), wrapper.join(root));
+                }
+                return Some(name);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => break,
+        }
+    }
+    verbatim()
 }
 
 /// Byte size of the reusable read/write buffer used by [`copy_with_big_buf`].

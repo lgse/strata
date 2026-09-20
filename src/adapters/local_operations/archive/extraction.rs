@@ -7,7 +7,7 @@
 //! without scanning ahead, probing the filesystem or reserving pending names.
 use std::{
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
@@ -52,7 +52,7 @@ pub(super) struct ExtractionSession<'a> {
     resolver: ExtractNameResolver,
     progress: &'a AtomicUsize,
     cancelled: &'a AtomicBool,
-    first_name: Option<String>,
+    roots: Vec<PathBuf>,
     completed: Vec<Location>,
     interrupted: Option<InterruptedMember>,
     written: u64,
@@ -89,7 +89,7 @@ impl<'a> ExtractionSession<'a> {
             resolver: ExtractNameResolver::new(),
             progress,
             cancelled,
-            first_name: None,
+            roots: Vec::new(),
             completed: Vec::new(),
             interrupted: None,
             written: 0,
@@ -163,11 +163,11 @@ impl<'a> ExtractionSession<'a> {
             self.ensure_member_fits(name, *declared)?;
         }
         let outpath = self.resolver.resolve(&self.directory, &path)?;
-        if self.first_name.is_none() {
-            self.first_name = outpath
-                .components()
-                .next()
-                .map(|component| component.as_os_str().to_string_lossy().into_owned());
+        if let Some(root) = outpath.components().next() {
+            let root = PathBuf::from(root.as_os_str());
+            if !self.roots.contains(&root) {
+                self.roots.push(root);
+            }
         }
         let created = match content {
             MemberContent::Directory => {
@@ -225,13 +225,16 @@ impl<'a> ExtractionSession<'a> {
     /// Pending names exclude members already passed to `extract_member`.
     /// Reports apply established top-level renames, but cannot predict final leaf
     /// conflicts for unattempted members. Invalid names are omitted, not errors.
+    ///
+    /// A completed extraction reports the distinct resolved top-level names it
+    /// wrote, in archive order, so the caller can bundle a spilled archive.
     pub(super) fn finish(
         self,
         result: Result<(), ArchiveError>,
         remaining: impl FnOnce() -> Vec<String>,
-    ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    ) -> Result<ArchiveOutcome<Vec<PathBuf>>, ArchiveError> {
         match result {
-            Ok(()) => Ok(ArchiveOutcome::Completed(self.first_name)),
+            Ok(()) => Ok(ArchiveOutcome::Completed(self.roots)),
             Err(ArchiveError::Cancelled) => {
                 let mut failed = Vec::new();
                 let mut not_attempted = Vec::new();

@@ -14,7 +14,7 @@ use std::{
     error::Error,
     fs,
     io::{self, Cursor, Read, Seek, SeekFrom, Write},
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -27,7 +27,7 @@ fn decode_fixture(
     format: ArchiveFormat,
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+) -> Result<ArchiveOutcome<Vec<PathBuf>>, ArchiveError> {
     let cancelled = never_cancelled();
     match format {
         ArchiveFormat::Zip => {
@@ -86,7 +86,7 @@ fn every_decoder_shares_nesting_conflicts_and_progress() -> Result<(), Box<dyn E
                 password,
                 &progress
             )?)?,
-            Some("folder (2)".to_owned()),
+            vec![PathBuf::from("folder (2)")],
             "{format:?}"
         );
         assert_eq!(progress.load(Ordering::Relaxed), 5, "{format:?}");
@@ -203,7 +203,7 @@ fn seven_z_extraction_preserves_all_file_contents() -> Result<(), Box<dyn Error>
                 &progress,
                 &never_cancelled(),
             )?)?,
-            Some("folder".to_owned())
+            vec![PathBuf::from("folder")]
         );
         for (name, contents) in &entries {
             assert_eq!(fs::read(destination.join(name))?, *contents);
@@ -239,7 +239,7 @@ fn seven_z_extraction_preserves_all_empty_files_and_directories() -> Result<(), 
             &progress,
             &never_cancelled(),
         )?)?,
-        Some("folder".to_owned())
+        vec![PathBuf::from("folder")]
     );
     assert!(destination.join("folder/empty").is_dir());
     for name in ["folder/one.txt", "folder/two.txt"] {
@@ -277,7 +277,7 @@ fn tar_extraction_skips_root_directories_and_preserves_contents() -> Result<(), 
                     &progress,
                     &never_cancelled(),
                 )?)?,
-                Some("folder (2)".to_owned()),
+                vec![PathBuf::from("folder (2)"), PathBuf::from("empty.txt")],
             );
             assert_eq!(progress.load(Ordering::Relaxed), 3);
             assert_eq!(
@@ -310,7 +310,7 @@ fn tar_extraction_root_only_completes_without_a_name_and_respects_cancellation()
                 &progress,
                 &never_cancelled(),
             )?)?,
-            None,
+            Vec::<PathBuf>::new(),
         );
         assert!(matches!(
             extract_tar(&archive, &destination, gzip, &progress, &always_cancelled())?,
@@ -473,8 +473,12 @@ fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Err
     )?;
 
     assert_eq!(
-        extract_zip(&archive_path, &destination)?.as_deref(),
-        Some("folder")
+        extract_zip(&archive_path, &destination)?,
+        [
+            PathBuf::from("folder"),
+            PathBuf::from("report (2).txt"),
+            PathBuf::from("existing (2)"),
+        ]
     );
     assert_eq!(
         fs::read(destination.join("folder/nested/item.txt"))?,
@@ -945,7 +949,7 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
         let destination = tempfile::tempdir()?;
         let progress = Arc::new(AtomicUsize::new(0));
 
-        let first_name = completed_extract(decode_fixture(
+        let roots = completed_extract(decode_fixture(
             &archive,
             destination.path(),
             format,
@@ -953,7 +957,7 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
             &progress,
         )?)?;
 
-        assert_eq!(first_name.as_deref(), Some("zeros.bin"), "{format:?}");
+        assert_eq!(roots, [PathBuf::from("zeros.bin")], "{format:?}");
         assert_eq!(
             fs::metadata(destination.path().join("zeros.bin"))?.len(),
             SIZE,
@@ -1404,7 +1408,7 @@ fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
                 &progress,
                 &never_cancelled(),
             )?)?,
-            Some("project".to_owned()),
+            vec![PathBuf::from("project")],
         );
         assert_eq!(progress.load(Ordering::Relaxed), 2);
         assert!(!destination.join("pax_global_header").exists());
@@ -1431,7 +1435,7 @@ fn rar_extracts_simple_archive() -> Result<(), Box<dyn Error>> {
             &progress,
             &never_cancelled(),
         )?)?,
-        Some("VERSION".to_owned())
+        vec![PathBuf::from("VERSION")]
     );
     assert_eq!(progress.load(Ordering::Relaxed), 1);
     assert_eq!(fs::read(destination.join("VERSION"))?, b"unrar-0.4.0");
@@ -1484,7 +1488,7 @@ fn rar_extracts_password_protected_archive() -> Result<(), Box<dyn Error>> {
             &progress,
             &never_cancelled(),
         )?)?,
-        Some(".gitignore".to_owned())
+        vec![PathBuf::from(".gitignore")]
     );
     assert_eq!(progress.load(Ordering::Relaxed), 1);
     assert_eq!(
@@ -1540,7 +1544,7 @@ fn rar_extracts_encrypted_headers_archive() -> Result<(), Box<dyn Error>> {
             &progress,
             &never_cancelled(),
         )?)?,
-        Some(".gitignore".to_owned())
+        vec![PathBuf::from(".gitignore")]
     );
     assert_eq!(progress.load(Ordering::Relaxed), 1);
     assert_eq!(
