@@ -97,7 +97,7 @@ struct TypeToSearch {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TypeToSearchQuery {
+pub(super) enum TypeToSearchQuery {
     Empty,
     Character(char),
 }
@@ -431,7 +431,7 @@ fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierT
         )
 }
 
-fn type_to_search_query(
+pub(super) fn type_to_search_query(
     key: gtk::gdk::Key,
     modifiers: gtk::gdk::ModifierType,
 ) -> Option<TypeToSearchQuery> {

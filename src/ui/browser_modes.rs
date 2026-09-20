@@ -4087,6 +4087,14 @@ fn connect_selection(
             }
             let selected_positions =
                 selected_source_positions(&source_index, &view_model, selection);
+            let changed_end = position.saturating_add(count) as usize;
+            let toggled = bitset_positions(&selection.selection())
+                .into_iter()
+                .rev()
+                .find(|candidate| *candidate >= position as usize && *candidate < changed_end)
+                .and_then(|position| {
+                    source_position_for_view(&source_index, Some(&view_model), position as u32)
+                });
             let native_focus = weak_view
                 .upgrade()
                 .and_then(|view| view.root())
@@ -4107,7 +4115,9 @@ fn connect_selection(
                     source_position_for_view(&source_index, Some(&view_model), position)
                 })
                 .filter(|position| selected_positions.contains(position));
-            let focused = native_focus.or_else(|| selected_positions.last().copied());
+            let focused = toggled
+                .or(native_focus)
+                .or_else(|| selected_positions.last().copied());
             sync_browser_selection(&sections, &browser, depth, &source_index, focused);
         });
 }

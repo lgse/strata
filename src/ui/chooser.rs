@@ -1858,6 +1858,18 @@ fn install_shortcuts(
             browser.extend_selection(1);
             return glib::Propagation::Stop;
         }
+        if state.view.item_view_has_focus()
+            && let Some(query) = super::window::type_to_search_query(key, modifiers)
+            && preferences.type_to_search()
+            && match query {
+                super::window::TypeToSearchQuery::Empty => state.view.show_filter(),
+                super::window::TypeToSearchQuery::Character(character) => {
+                    state.view.show_filter_with_query(&character.to_string())
+                }
+            }
+        {
+            return glib::Propagation::Stop;
+        }
         if !shift
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
             && !PreferenceManager::shared().arrow_navigation_scoped()
