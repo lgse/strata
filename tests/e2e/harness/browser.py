@@ -558,9 +558,12 @@ class Strata:
         )
 
     def preview(self) -> Node | None:
-        """The quick preview drawer, when it is on screen."""
+        """The preview surface, whether docked or in the Quick Look window."""
 
-        return self.window.find(name=PREVIEW_LABEL)
+        if docked := self.window.find(name=PREVIEW_LABEL):
+            return docked
+        floating = self.application.application_node.find(name=PREVIEW_LABEL)
+        return floating.toplevel() if floating is not None else None
 
     def peek(self) -> Node | None:
         """The folder peek popover, when it is on screen."""

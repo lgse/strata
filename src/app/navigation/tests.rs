@@ -194,6 +194,20 @@ fn keyboard_range_selection_extends_and_contracts_from_its_anchor() {
 }
 
 #[test]
+fn keyboard_range_selection_reanchors_after_native_selection_moves() {
+    let mut state = NavigationState::default();
+    listing_with_the_first_entry_selected(&mut state);
+
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![1, 2])
+    );
+    assert_eq!(state.selection_anchor_position(0), Some(1));
+}
+
+#[test]
 fn extending_from_no_selection_starts_at_a_single_edge_entry() {
     let mut state = NavigationState::default();
     listing_without_a_load_cursor(&mut state);

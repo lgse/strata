@@ -252,6 +252,7 @@ impl PreviewState {
 
     pub(super) fn hide_panel(&self) {
         if self.revealer.is_visible()
+            && !self.floating.get()
             && let Some(split) = self.split.borrow().as_ref()
         {
             self.preserve_column_positions(split.width());
@@ -296,6 +297,9 @@ impl PreviewState {
     }
 
     pub(super) fn sync_split(self: &Rc<Self>, split: &gtk::Paned) {
+        if self.floating.get() {
+            return;
+        }
         if self.current.borrow().is_none() {
             if !self.reserves_empty_preview() {
                 if self.revealer.reveals_child() {
@@ -408,6 +412,50 @@ impl PreviewState {
             .clamp(geometry.minimum_width(true), geometry.maximum_width());
         self.sizing.manual_width.set(Some(width));
         self.sync_split(split);
+    }
+}
+
+impl PreviewState {
+    pub(super) fn is_floating(&self) -> bool {
+        self.floating.get()
+    }
+
+    /// Detaches the shared preview content for a popup without changing panel chrome.
+    pub(super) fn float_to(&self) -> gtk::Widget {
+        self.floating.set(true);
+        self.sizing.suspended.set(false);
+        self.sizing.resume_media.set(false);
+        self.sizing.reload_on_resume.set(false);
+        if let Some(split) = self.split.borrow().as_ref() {
+            split.set_end_child(None::<&gtk::Widget>);
+        } else if self.revealer.parent().is_some() {
+            self.revealer.unparent();
+        }
+        if self.header.parent().is_some() {
+            self.header.unparent();
+        }
+        self.metadata.set_visible(false);
+        self.pane.add_css_class("quick-look-preview");
+        self.revealer.clone().upcast()
+    }
+
+    /// Returns the preview content to the browser split after floating.
+    pub(super) fn dock_from_float(self: &Rc<Self>) {
+        if !self.floating.replace(false) {
+            return;
+        }
+        self.pane.remove_css_class("quick-look-preview");
+        self.pane.prepend(&self.header);
+        self.metadata.set_visible(self.current.borrow().is_some());
+        if self.revealer.parent().is_some() {
+            self.revealer.unparent();
+        }
+        if let Some(split) = self.split.borrow().as_ref() {
+            split.set_end_child(Some(&self.revealer));
+            if self.is_enabled() {
+                self.sync_split(split);
+            }
+        }
     }
 }
 

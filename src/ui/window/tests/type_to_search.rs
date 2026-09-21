@@ -62,7 +62,7 @@ fn exercise_type_to_search() {
         .default_width(1000)
         .default_height(600)
         .build();
-    let quick_look = PreviewPopup::new(Rc::new(TextPreview), &window);
+    let quick_look = PreviewPopup::new(&window, preview.clone());
     quick_look.observe_browser(&browser);
     let type_to_search = TypeToSearch {
         view: view.clone(),
@@ -151,8 +151,8 @@ fn exercise_type_to_search() {
                     "Space must not navigate: {mode:?}, {name}"
                 );
             }
-                preview.close();
-                quick_look.close();
+            preview.close();
+            quick_look.close();
         }
     }
 

@@ -77,9 +77,8 @@ impl Dispatcher {
     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
         if event.key == Key::space
             && event.alt()
-            && event.without(
-                Modifiers::CONTROL_MASK | Modifiers::SUPER_MASK | Modifiers::SHIFT_MASK,
-            )
+            && event
+                .without(Modifiers::CONTROL_MASK | Modifiers::SUPER_MASK | Modifiers::SHIFT_MASK)
             && let Some(entry) = self.view.selected_search_result()
         {
             if self.view.activate_directory_column() {
@@ -91,13 +90,17 @@ impl Dispatcher {
             );
             return Some(Propagation::Stop);
         }
-        if event.key == Key::space
+        if ((event.key == Key::space
             && event.without(
                 Modifiers::CONTROL_MASK
                     | Modifiers::ALT_MASK
                     | Modifiers::SUPER_MASK
                     | Modifiers::SHIFT_MASK,
-            )
+            ))
+            || (matches!(event.key, Key::y | Key::Y)
+                && event.control()
+                && event
+                    .without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK | Modifiers::SHIFT_MASK)))
             && let Some(entry) = self.view.selected_search_result()
         {
             if self.view.activate_directory_column() {
@@ -240,7 +243,16 @@ impl Dispatcher {
     }
 
     fn browser_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
-        if is_toggle_hidden_shortcut(event.key, event.modifiers) {
+        if event.control()
+            && event.shift()
+            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::p | Key::P)
+        {
+            self.preview.toggle(
+                crate::ui::preview::preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            );
+        } else if is_toggle_hidden_shortcut(event.key, event.modifiers) {
             browser.toggle_hidden();
         } else if is_open_terminal_shortcut(event.key, event.modifiers) {
             self.view.open_terminal();

@@ -70,6 +70,8 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         || crate::services::is_extensionless_dotfile(&entry.native_name)
 }
 
+type PdfVisiblePages = Rc<RefCell<HashMap<i32, (gtk::Overlay, gtk::Picture)>>>;
+
 struct PrintProgress {
     layer: gtk::Box,
     overlay: gtk::Overlay,
@@ -82,6 +84,7 @@ struct PreviewState {
     provider: Rc<dyn PreviewProvider>,
     revealer: gtk::Revealer,
     pane: gtk::Box,
+    header: gtk::Box,
     header_handle: gtk::Box,
     icon: gtk::Image,
     title: gtk::Label,
@@ -100,6 +103,15 @@ struct PreviewState {
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
+    media_transform_provider: RefCell<Option<gtk::CssProvider>>,
+    media_transform_class: RefCell<Option<String>>,
+    media_rotation: Cell<i32>,
+    media_zoom: Cell<f64>,
+    media_pan: Cell<(f64, f64)>,
+    pdf_zoom: RefCell<Option<Rc<Cell<f64>>>>,
+    pdf_scroll: RefCell<Option<gtk::ScrolledWindow>>,
+    pdf_page_width: RefCell<Option<Rc<Cell<i32>>>>,
+    pdf_visible_pages: RefCell<Option<PdfVisiblePages>>,
     split: RefCell<Option<gtk::Paned>>,
     sizing: layout::SplitSizing,
     current: RefCell<Option<FileEntry>>,
@@ -115,6 +127,7 @@ struct PreviewState {
     enabled_action: gio::SimpleAction,
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
+    floating: Cell<bool>,
 }
 
 pub(super) const PREVIEW_LABEL: &str = "Preview";
@@ -150,6 +163,7 @@ impl PreviewDrawer {
         )));
         open.add_css_class("preview-header-action");
         open.set_visible(allow_external_open);
+        super::accessibility::set_label(&open, "Open in default application");
         let print = gtk::Button::builder()
             .tooltip_text("Print")
             .valign(gtk::Align::Center)
@@ -159,6 +173,7 @@ impl PreviewDrawer {
         )));
         print.add_css_class("preview-header-action");
         print.set_visible(false);
+        super::accessibility::set_label(&print, "Print");
         let wrap = gtk::ToggleButton::builder()
             .tooltip_text("Toggle word wrap")
             .valign(gtk::Align::Center)
@@ -168,13 +183,15 @@ impl PreviewDrawer {
         )));
         wrap.add_css_class("preview-header-action");
         wrap.set_visible(false);
+        super::accessibility::set_label(&wrap, "Toggle word wrap");
         let close = gtk::Button::builder()
-            .tooltip_text("Close preview (Space)")
+            .tooltip_text("Close preview panel (Ctrl+Shift+P)")
             .valign(gtk::Align::Center)
             .build();
         close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
         close.add_css_class("preview-close");
         close.add_css_class("preview-header-action");
+        super::accessibility::set_label(&close, "Close preview panel (Ctrl+Shift+P)");
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header_handle.add_css_class("preview-header-handle");
         header_handle.set_hexpand(true);
@@ -224,6 +241,7 @@ impl PreviewDrawer {
             provider,
             revealer,
             pane,
+            header,
             header_handle: header_handle.clone(),
             icon,
             title,
@@ -242,6 +260,15 @@ impl PreviewDrawer {
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
             media_toggle_mute: RefCell::new(None),
+            media_transform_provider: RefCell::new(None),
+            media_transform_class: RefCell::new(None),
+            media_rotation: Cell::new(0),
+            media_zoom: Cell::new(1.0),
+            media_pan: Cell::new((0.0, 0.0)),
+            pdf_zoom: RefCell::new(None),
+            pdf_scroll: RefCell::new(None),
+            pdf_page_width: RefCell::new(None),
+            pdf_visible_pages: RefCell::new(None),
             split: RefCell::new(None),
             sizing: layout::SplitSizing::default(),
             current: RefCell::new(None),
@@ -261,6 +288,7 @@ impl PreviewDrawer {
             ),
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
+            floating: Cell::new(false),
         });
         let weak = Rc::downgrade(&state);
         state.enabled_action.connect_activate(move |_, _| {
@@ -282,7 +310,9 @@ impl PreviewDrawer {
         install_preview_drag(&header_handle, &state);
         let weak = Rc::downgrade(&state);
         state.pane.connect_unrealize(move |_| {
-            if let Some(state) = weak.upgrade() {
+            if let Some(state) = weak.upgrade()
+                && !state.floating.get()
+            {
                 state.stop();
             }
         });
@@ -490,12 +520,44 @@ impl PreviewDrawer {
         self.state.close();
     }
 
+    pub fn is_floating(&self) -> bool {
+        self.state.is_floating()
+    }
+
+    pub(super) fn float_to(&self) -> gtk::Widget {
+        self.state.float_to()
+    }
+
+    pub(super) fn dock_from_float(&self) {
+        self.state.dock_from_float();
+    }
+
     pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         self.state.toggle(entry, depth);
     }
 
     pub fn print_entry(&self, entry: FileEntry) {
         self.state.print_entry(entry);
+    }
+
+    pub fn rotate_clockwise(&self) {
+        self.state.rotate_clockwise();
+    }
+
+    pub fn rotate_counter_clockwise(&self) {
+        self.state.rotate_counter_clockwise();
+    }
+
+    pub fn zoom_in(&self) {
+        self.state.zoom_in();
+    }
+
+    pub fn zoom_out(&self) {
+        self.state.zoom_out();
+    }
+
+    pub fn reset_zoom(&self) {
+        self.state.reset_zoom();
     }
 }
 
@@ -511,6 +573,16 @@ impl PreviewState {
         self.set_enabled(true);
         let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
         let already_showing = self.current.borrow().as_ref() == Some(&entry);
+        if self.floating.get() {
+            let was_visible = self.revealer.reveals_child();
+            if !was_visible {
+                self.show_panel();
+            }
+            if !was_visible || !already_showing {
+                self.load(entry, 0);
+            }
+            return;
+        }
         let split = self.split.borrow().clone();
         if let Some(split) = split.as_ref()
             && (!self.can_show_in(split) || self.sizing.is_suspended())
@@ -545,6 +617,7 @@ impl PreviewState {
     }
 
     fn close(self: &Rc<Self>) {
+        self.dock_from_float();
         self.stop();
         self.pane.set_size_request(MIN_WIDTH, -1);
     }
@@ -774,7 +847,9 @@ impl PreviewState {
     }
 
     fn media_preview_size(&self) -> MediaPreviewSize {
-        let split = self.split.borrow();
+        let split = (!self.floating.get())
+            .then(|| self.split.borrow().clone())
+            .flatten();
         let width = split
             .as_ref()
             .filter(|split| split.width() > 0)
@@ -810,7 +885,7 @@ impl PreviewState {
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
-        self.metadata.set_visible(true);
+        self.metadata.set_visible(!self.floating.get());
         self.icon.set_visible(true);
         self.open.set_sensitive(true);
         self.header_handle.set_cursor_from_name(Some("grab"));
@@ -936,6 +1011,7 @@ impl PreviewState {
                         picture.set_vexpand(true);
                         picture.set_cursor_from_name(Some("grab"));
                         install_preview_drag(&picture, self);
+                        self.attach_media_transform(&picture);
                         self.content
                             .append(&media_layout::section(&picture, &texture));
                     }
@@ -1016,6 +1092,7 @@ impl PreviewState {
         picture.set_vexpand(true);
         picture.set_cursor_from_name(Some("grab"));
         install_preview_drag(&picture, self);
+        self.attach_media_transform(&picture);
         let weak_state = Rc::downgrade(self);
         let weak_media = media.downgrade();
         picture.add_tick_callback(move |_, _| {
@@ -1092,6 +1169,9 @@ impl PreviewState {
         let visible_pages = Rc::new(RefCell::new(
             HashMap::<i32, (gtk::Overlay, gtk::Picture)>::new(),
         ));
+        self.pdf_zoom.replace(Some(zoom.clone()));
+        self.pdf_page_width.replace(Some(page_width.clone()));
+        self.pdf_visible_pages.replace(Some(visible_pages.clone()));
 
         factory.connect_setup(|_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -1240,9 +1320,44 @@ impl PreviewState {
             .hexpand(true)
             .vexpand(true)
             .build();
+        self.pdf_scroll.replace(Some(scroll.clone()));
+
+        let zoom_gesture = gtk::GestureZoom::new();
+        zoom_gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let base_zoom = Rc::new(Cell::new(PDF_MIN_ZOOM));
+        let base_for_begin = base_zoom.clone();
+        let zoom_for_begin = zoom.clone();
+        zoom_gesture.connect_begin(move |_, _| {
+            base_for_begin.set(zoom_for_begin.get());
+        });
+
+        let base_for_scale = base_zoom.clone();
+        let zoom_for_scale = zoom.clone();
+        let page_width_for_gesture = page_width.clone();
+        let visible_pages_for_gesture = visible_pages.clone();
+        let weak_scroll_for_gesture = scroll.downgrade();
+        zoom_gesture.connect_scale_changed(move |_, scale| {
+            if scale <= 0.0 {
+                return;
+            }
+            let Some(scroll) = weak_scroll_for_gesture.upgrade() else {
+                return;
+            };
+            let previous = zoom_for_scale.get();
+            let next = (base_for_scale.get() * scale).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM);
+            if (next - previous).abs() < 0.002 {
+                return;
+            }
+            zoom_for_scale.set(next);
+            let width = pdf_page_width(&scroll, next);
+            page_width_for_gesture.set(width);
+            resize_pdf_pages(&visible_pages_for_gesture.borrow(), width);
+            preserve_pdf_view_center(&scroll, next / previous);
+        });
+        scroll.add_controller(zoom_gesture);
 
         let zoom_scroll =
-            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
+            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
         zoom_scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak_scroll = scroll.downgrade();
         let zoom_for_scroll = zoom.clone();
@@ -1260,7 +1375,7 @@ impl PreviewState {
             };
             let previous = zoom_for_scroll.get();
             let next = pdf_zoom_after_scroll(previous, dy);
-            if (next - previous).abs() < f64::EPSILON {
+            if (next - previous).abs() < 0.001 {
                 return glib::Propagation::Stop;
             }
             zoom_for_scroll.set(next);
@@ -1279,20 +1394,39 @@ impl PreviewState {
         let page_width_for_reset = page_width.clone();
         let visible_pages_for_reset = visible_pages.clone();
         reset_zoom.connect_key_pressed(move |_, key, _, modifiers| {
-            if key.to_unicode() != Some('0')
-                || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-            {
+            if !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
                 return glib::Propagation::Proceed;
             }
             let Some(scroll) = weak_scroll.upgrade() else {
                 return glib::Propagation::Stop;
             };
-            zoom_for_reset.set(PDF_MIN_ZOOM);
-            let width = pdf_page_width(&scroll, PDF_MIN_ZOOM);
-            page_width_for_reset.set(width);
-            resize_pdf_pages(&visible_pages_for_reset.borrow(), width);
-            set_adjustment_value(&scroll.hadjustment(), 0.0);
-            glib::Propagation::Stop
+            match key {
+                gtk::gdk::Key::_0 | gtk::gdk::Key::KP_0 => {
+                    zoom_for_reset.set(PDF_MIN_ZOOM);
+                    let width = pdf_page_width(&scroll, PDF_MIN_ZOOM);
+                    page_width_for_reset.set(width);
+                    resize_pdf_pages(&visible_pages_for_reset.borrow(), width);
+                    set_adjustment_value(&scroll.hadjustment(), 0.0);
+                    glib::Propagation::Stop
+                }
+                gtk::gdk::Key::plus | gtk::gdk::Key::equal | gtk::gdk::Key::KP_Add => {
+                    let next = (zoom_for_reset.get() + 0.25).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM);
+                    zoom_for_reset.set(next);
+                    let width = pdf_page_width(&scroll, next);
+                    page_width_for_reset.set(width);
+                    resize_pdf_pages(&visible_pages_for_reset.borrow(), width);
+                    glib::Propagation::Stop
+                }
+                gtk::gdk::Key::minus | gtk::gdk::Key::underscore | gtk::gdk::Key::KP_Subtract => {
+                    let next = (zoom_for_reset.get() - 0.25).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM);
+                    zoom_for_reset.set(next);
+                    let width = pdf_page_width(&scroll, next);
+                    page_width_for_reset.set(width);
+                    resize_pdf_pages(&visible_pages_for_reset.borrow(), width);
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
         });
         list.add_controller(reset_zoom);
 
@@ -1560,6 +1694,19 @@ impl PreviewState {
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
+        if let Some(old_provider) = self.media_transform_provider.take()
+            && let Some(display) = gtk::gdk::Display::default()
+        {
+            gtk::style_context_remove_provider_for_display(&display, &old_provider);
+        }
+        self.media_transform_class.replace(None);
+        self.media_rotation.set(0);
+        self.media_zoom.set(1.0);
+        self.media_pan.set((0.0, 0.0));
+        self.pdf_zoom.replace(None);
+        self.pdf_scroll.replace(None);
+        self.pdf_page_width.replace(None);
+        self.pdf_visible_pages.replace(None);
         self.print.set_visible(false);
         self.wrap.set_visible(false);
         self.text_view.take();
@@ -1651,6 +1798,222 @@ impl PreviewState {
             box_.append(&copyable_command(command));
         }
         self.content.append(&box_);
+    }
+
+    fn attach_media_transform(self: &Rc<Self>, picture: &gtk::Picture) {
+        if let Some(old_provider) = self.media_transform_provider.take()
+            && let Some(display) = gtk::gdk::Display::default()
+        {
+            gtk::style_context_remove_provider_for_display(&display, &old_provider);
+        }
+        let provider = gtk::CssProvider::new();
+        if let Some(display) = gtk::gdk::Display::default() {
+            gtk::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+            );
+        }
+        self.media_transform_provider.replace(Some(provider));
+        let transform_class = format!("preview-transform-{:x}", Rc::as_ptr(self) as usize);
+        picture.add_css_class(&transform_class);
+        self.media_transform_class.replace(Some(transform_class));
+        self.apply_media_transform();
+
+        let zoom_gesture = gtk::GestureZoom::new();
+        zoom_gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let base_zoom = Rc::new(Cell::new(1.0));
+        let base_for_begin = base_zoom.clone();
+        let weak_state = Rc::downgrade(self);
+        zoom_gesture.connect_begin(move |_, _| {
+            if let Some(state) = weak_state.upgrade() {
+                base_for_begin.set(state.media_zoom.get());
+            }
+        });
+
+        let base_for_scale = base_zoom.clone();
+        let weak_state = Rc::downgrade(self);
+        zoom_gesture.connect_scale_changed(move |_, scale| {
+            if scale <= 0.0 {
+                return;
+            }
+            if let Some(state) = weak_state.upgrade() {
+                let next = (base_for_scale.get() * scale).clamp(0.25, 10.0);
+                state.set_media_zoom(next);
+            }
+        });
+        picture.add_controller(zoom_gesture);
+
+        let scroll_ctrl = gtk::EventControllerScroll::new(
+            gtk::EventControllerScrollFlags::BOTH_AXES | gtk::EventControllerScrollFlags::KINETIC,
+        );
+        scroll_ctrl.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_state = Rc::downgrade(self);
+        scroll_ctrl.connect_scroll(move |controller, dx, dy| {
+            let Some(state) = weak_state.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            if controller
+                .current_event_state()
+                .contains(gtk::gdk::ModifierType::CONTROL_MASK)
+            {
+                let clamped_dy = dy.clamp(-4.0, 4.0);
+                let factor = (-clamped_dy * 0.08).exp();
+                let current = state.media_zoom.get();
+                let next = (current * factor).clamp(0.25, 10.0);
+                if (next - current).abs() > 0.001 {
+                    state.set_media_zoom(next);
+                    return glib::Propagation::Stop;
+                }
+            } else if state.media_zoom.get() > 1.05 {
+                let (px, py) = state.media_pan.get();
+                state.media_pan.set((px - dx * 12.0, py - dy * 12.0));
+                state.apply_media_transform();
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        picture.add_controller(scroll_ctrl);
+
+        let drag_origin = Rc::new(Cell::new((0.0, 0.0)));
+        let pan_gesture = gtk::GestureDrag::new();
+        pan_gesture.set_button(0);
+        pan_gesture.set_propagation_phase(gtk::PropagationPhase::Bubble);
+        let weak_picture = picture.downgrade();
+        let weak_state = Rc::downgrade(self);
+        let drag_origin_for_begin = drag_origin.clone();
+        pan_gesture.connect_drag_begin(move |gesture, _, _| {
+            if let Some(state) = weak_state.upgrade()
+                && (state.media_zoom.get() > 1.05 || gesture.current_button() == 2)
+            {
+                if let Some(picture) = weak_picture.upgrade() {
+                    picture.set_cursor_from_name(Some("grabbing"));
+                }
+                drag_origin_for_begin.set(state.media_pan.get());
+            }
+        });
+
+        let weak_state = Rc::downgrade(self);
+        let drag_origin_for_update = drag_origin.clone();
+        pan_gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
+            if let Some(state) = weak_state.upgrade()
+                && (state.media_zoom.get() > 1.05 || gesture.current_button() == 2)
+            {
+                let (start_x, start_y) = drag_origin_for_update.get();
+                state
+                    .media_pan
+                    .set((start_x + offset_x, start_y + offset_y));
+                state.apply_media_transform();
+            }
+        });
+
+        let weak_picture = picture.downgrade();
+        pan_gesture.connect_drag_end(move |_, _, _| {
+            if let Some(picture) = weak_picture.upgrade() {
+                picture.set_cursor_from_name(Some("grab"));
+            }
+        });
+        picture.add_controller(pan_gesture);
+    }
+
+    fn set_media_zoom(&self, zoom: f64) {
+        self.media_zoom.set(zoom);
+        if zoom <= 1.05 {
+            self.media_pan.set((0.0, 0.0));
+        }
+        self.apply_media_transform();
+    }
+
+    fn apply_media_transform(&self) {
+        let provider = self.media_transform_provider.borrow();
+        let class = self.media_transform_class.borrow();
+        if let (Some(provider), Some(class)) = (provider.as_ref(), class.as_ref()) {
+            let (pan_x, pan_y) = self.media_pan.get();
+            let rotation = self.media_rotation.get();
+            let zoom = self.media_zoom.get();
+            let css = format!(
+                "picture.{class} {{ transform: translate({pan_x:.1}px, {pan_y:.1}px) rotate({rotation}deg) scale({zoom:.3}); }}"
+            );
+            provider.load_from_string(&css);
+        }
+    }
+
+    pub fn rotate_clockwise(&self) {
+        let current = self.media_rotation.get();
+        let next = (current + 90) % 360;
+        self.media_rotation.set(next);
+        self.apply_media_transform();
+    }
+
+    pub fn rotate_counter_clockwise(&self) {
+        let current = self.media_rotation.get();
+        let next = (current + 270) % 360;
+        self.media_rotation.set(next);
+        self.apply_media_transform();
+    }
+
+    pub fn zoom_in(&self) {
+        if let Some(pdf_zoom) = self.pdf_zoom.borrow().as_ref() {
+            let current = pdf_zoom.get();
+            let next = (current + 0.25).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM);
+            pdf_zoom.set(next);
+            if let Some(scroll) = self.pdf_scroll.borrow().as_ref() {
+                let width = pdf_page_width(scroll, next);
+                if let Some(page_width) = self.pdf_page_width.borrow().as_ref() {
+                    page_width.set(width);
+                }
+                if let Some(visible_pages) = self.pdf_visible_pages.borrow().as_ref() {
+                    resize_pdf_pages(&visible_pages.borrow(), width);
+                }
+                preserve_pdf_view_center(scroll, next / current);
+            }
+            return;
+        }
+        let current = self.media_zoom.get();
+        let next = (current * 1.25).clamp(0.25, 10.0);
+        self.set_media_zoom(next);
+    }
+
+    pub fn zoom_out(&self) {
+        if let Some(pdf_zoom) = self.pdf_zoom.borrow().as_ref() {
+            let current = pdf_zoom.get();
+            let next = (current - 0.25).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM);
+            pdf_zoom.set(next);
+            if let Some(scroll) = self.pdf_scroll.borrow().as_ref() {
+                let width = pdf_page_width(scroll, next);
+                if let Some(page_width) = self.pdf_page_width.borrow().as_ref() {
+                    page_width.set(width);
+                }
+                if let Some(visible_pages) = self.pdf_visible_pages.borrow().as_ref() {
+                    resize_pdf_pages(&visible_pages.borrow(), width);
+                }
+                preserve_pdf_view_center(scroll, next / current);
+            }
+            return;
+        }
+        let current = self.media_zoom.get();
+        let next = (current / 1.25).clamp(0.25, 10.0);
+        self.set_media_zoom(next);
+    }
+
+    pub fn reset_zoom(&self) {
+        if let Some(pdf_zoom) = self.pdf_zoom.borrow().as_ref() {
+            pdf_zoom.set(PDF_MIN_ZOOM);
+            if let Some(scroll) = self.pdf_scroll.borrow().as_ref() {
+                let width = pdf_page_width(scroll, PDF_MIN_ZOOM);
+                if let Some(page_width) = self.pdf_page_width.borrow().as_ref() {
+                    page_width.set(width);
+                }
+                if let Some(visible_pages) = self.pdf_visible_pages.borrow().as_ref() {
+                    resize_pdf_pages(&visible_pages.borrow(), width);
+                }
+                set_adjustment_value(&scroll.hadjustment(), 0.0);
+            }
+            return;
+        }
+        self.media_zoom.set(1.0);
+        self.media_pan.set((0.0, 0.0));
+        self.apply_media_transform();
     }
 }
 
@@ -1946,7 +2309,8 @@ fn text_hscroll_policy(wrapped: bool) -> gtk::PolicyType {
 }
 
 fn pdf_zoom_after_scroll(current: f64, dy: f64) -> f64 {
-    (current * (-dy * 0.14).exp()).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM)
+    let clamped_dy = dy.clamp(-4.0, 4.0);
+    (current * (-clamped_dy * 0.08).exp()).clamp(PDF_MIN_ZOOM, PDF_MAX_ZOOM)
 }
 
 fn pdf_page_width(scroll: &gtk::ScrolledWindow, zoom: f64) -> i32 {
@@ -1981,6 +2345,9 @@ fn resize_pdf_page(overlay: &gtk::Overlay, picture: &gtk::Picture, target_width:
 }
 
 fn preserve_pdf_view_center(scroll: &gtk::ScrolledWindow, factor: f64) {
+    if (factor - 1.0).abs() < f64::EPSILON {
+        return;
+    }
     let horizontal = scroll.hadjustment();
     let vertical = scroll.vadjustment();
     let horizontal_center = horizontal.value() + horizontal.page_size() / 2.0;
@@ -2122,6 +2489,16 @@ fn install_preview_drag(widget: &impl IsA<gtk::Widget>, state: &Rc<PreviewState>
     let weak = Rc::downgrade(state);
     drag.connect_prepare(move |source, x, y| {
         let state = weak.upgrade()?;
+        let transform_class = state.media_transform_class.borrow();
+        let panning_media = state.media_zoom.get() > 1.05
+            && transform_class.as_ref().is_some_and(|class| {
+                source
+                    .widget()
+                    .is_some_and(|widget| widget.has_css_class(class))
+            });
+        if panning_media {
+            return None;
+        }
         let entries = preview_drag_entries(state.current.borrow().as_ref())?;
         let paintable = gtk::WidgetPaintable::new(Some(&state.header_handle));
         source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);

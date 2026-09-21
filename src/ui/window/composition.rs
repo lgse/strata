@@ -5,9 +5,11 @@ use std::rc::Rc;
 use gtk::{gio, prelude::*};
 
 use crate::ui::{
-    blur::BlurBin, browser::BrowserView,
+    blur::BlurBin,
+    browser::BrowserView,
     preview::{PreviewDrawer, PreviewPopup},
-    settings::UpdateNoticeHandler, theme::ThemeManager,
+    settings::UpdateNoticeHandler,
+    theme::ThemeManager,
 };
 
 use super::{SidebarView, TypeToSearch, keyboard};

@@ -96,9 +96,9 @@ pub(super) fn preview(
     let provider = Rc::new(LocalPreviewProvider::new(Rc::new(move || {
         preferences.media_preview_backend()
     })));
-    let preview = PreviewDrawer::new(provider.clone(), true);
+    let preview = PreviewDrawer::new(provider, true);
     preview.observe_browser(&browser.browser());
-    let quick_look = PreviewPopup::new(provider, window);
+    let quick_look = PreviewPopup::new(window, preview.clone());
     quick_look.observe_browser(&browser.browser());
     (preview, quick_look)
 }

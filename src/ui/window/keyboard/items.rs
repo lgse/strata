@@ -129,6 +129,27 @@ impl Dispatcher {
     }
 
     fn item_commands(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
+        if event.control()
+            && event.without(Modifiers::ALT_MASK | Modifiers::SUPER_MASK | Modifiers::SHIFT_MASK)
+            && matches!(event.key, Key::y | Key::Y)
+        {
+            self.quick_look.toggle(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            );
+            return Some(Propagation::Stop);
+        }
+        if event.alt()
+            && event
+                .without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+            && matches!(event.key, Key::space)
+        {
+            self.quick_look.open_fullscreen(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            );
+            return Some(Propagation::Stop);
+        }
         if !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
             return None;
         }
@@ -145,19 +166,6 @@ impl Dispatcher {
                 self.view.copy_path();
             }
             Key::p | Key::P => self.view.pin_focused(),
-            Key::space
-                if event.alt()
-                    && event.without(
-                        Modifiers::CONTROL_MASK
-                            | Modifiers::SHIFT_MASK
-                            | Modifiers::SUPER_MASK,
-                    ) =>
-            {
-                self.quick_look.open_fullscreen(
-                    preview_target(browser.focused_entry()),
-                    browser.active_depth(),
-                );
-            }
             Key::space
                 if event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
                     && self.view.activate_directory_column() => {}

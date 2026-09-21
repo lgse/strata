@@ -55,7 +55,7 @@ impl KeyboardFixture {
             .default_width(1000)
             .default_height(600)
             .build();
-        let quick_look = PreviewPopup::new(provider, &window);
+        let quick_look = PreviewPopup::new(&window, preview.clone());
         quick_look.observe_browser(&view.browser());
         keyboard::install(
             &window,
@@ -312,10 +312,10 @@ fn clipboard_and_delete_shortcuts_proceed_inside_preview_text() {
             let fixture = KeyboardFixture::new();
             assert!(fixture.press(Key::space, ModifierType::empty()));
             wait_until(|| {
-                fixture.quick_look.is_open()
-                    && text_view_in(&fixture.quick_look.widget()).is_some()
+                fixture.quick_look.is_open() && text_view_in(&fixture.quick_look.widget()).is_some()
             });
             let text = text_view_in(&fixture.quick_look.widget()).expect("preview text");
+            fixture.quick_look.window().present();
             text.grab_focus();
             wait_until(|| text.has_focus());
 
@@ -511,6 +511,29 @@ fn arrow_scope_preference_keeps_up_in_the_file_list() {
                     }
                 }
             }
+        },
+    );
+}
+
+#[test]
+fn ctrl_y_and_alt_space_toggle_quick_look() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::ctrl_y_and_alt_space_toggle_quick_look",
+        || {
+            let fixture = KeyboardFixture::new();
+            assert!(!fixture.quick_look.is_open());
+
+            assert!(fixture.press(Key::y, ModifierType::CONTROL_MASK));
+            assert!(fixture.quick_look.is_open());
+
+            assert!(fixture.press(Key::y, ModifierType::CONTROL_MASK));
+            assert!(!fixture.quick_look.is_open());
+
+            assert!(fixture.press(Key::space, ModifierType::ALT_MASK));
+            assert!(fixture.quick_look.is_open());
+
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            assert!(!fixture.quick_look.is_open());
         },
     );
 }

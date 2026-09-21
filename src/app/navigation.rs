@@ -837,6 +837,7 @@ impl NavigationState {
             column
                 .selection_anchor
                 .as_ref()
+                .filter(|location| column.selected_locations.contains(*location))
                 .and_then(|location| {
                     column
                         .entries
