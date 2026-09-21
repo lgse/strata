@@ -308,17 +308,24 @@ impl ViewState {
                         *depth,
                         &column.sort_direction_button,
                     );
-                    column.search_handle.borrow_mut().take();
-                    column
-                        .search_generation
-                        .set(column.search_generation.get().saturating_add(1));
-                    column.search_results.borrow_mut().clear();
-                    column
-                        .search_model
-                        .splice(0, column.search_model.n_items(), &[]);
-                    column.filter_entry.set_text("");
-                    column.syncing_selection.set(true);
-                    column.selection.set_model(None::<&gio::ListModel>);
+                    let preserve_search =
+                        self.refreshing_source_filter.get() && column.recursive_search_active.get();
+                    if !preserve_search {
+                        column.search_handle.borrow_mut().take();
+                        column
+                            .search_generation
+                            .set(column.search_generation.get().saturating_add(1));
+                        super::collection::deactivate_recursive_search(
+                            &column.recursive_search_active,
+                            &column.search_results,
+                            &column.search_model,
+                            &column.filtered_model,
+                            &column.model,
+                        );
+                        column.filter_entry.set_text("");
+                        column.syncing_selection.set(true);
+                        column.selection.set_model(None::<&gio::ListModel>);
+                    }
                     touch_source_model(column);
                     column.model.replace(0);
                     column.entry_count.set(0);
@@ -327,7 +334,9 @@ impl ViewState {
                     column.spinner.set_visible(true);
                     column.spinner.start();
                     set_column_busy(column, true);
-                    column.presentation.show_loading();
+                    if !preserve_search {
+                        column.presentation.show_loading();
+                    }
                 }
             }
             BrowserEvent::HiddenToggled { show_hidden } => {
@@ -365,11 +374,13 @@ impl ViewState {
                         .into_iter()
                         .filter_map(|position| column.map.view_position(position))
                         .collect();
-                    set_column_selections(column, &positions);
+                    if !column.recursive_search_active.get() {
+                        set_column_selections(column, &positions);
+                    }
                     stop_column_spinner(column);
                     column.truncated_hint.set_visible(*truncated);
                     let count = column.entry_count.get();
-                    if count == 0 {
+                    if count == 0 && !column.recursive_search_active.get() {
                         if !defer_empty {
                             column.presentation.show_empty();
                         }

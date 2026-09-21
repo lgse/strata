@@ -267,9 +267,10 @@ fn position_model_context_popover(popover: &gtk::Popover, anchor: &gtk::Widget, 
     ) else {
         return;
     };
-    let click = anchor
-        .compute_point(&window, &gtk::graphene::Point::new(x as f32, y as f32))
-        .unwrap_or(gtk::graphene::Point::new(x as f32, y as f32));
+    let Some(click) = anchor.compute_point(&window, &gtk::graphene::Point::new(x as f32, y as f32))
+    else {
+        return;
+    };
     let (position, available) = context_menu_placement(window.height(), f64::from(click.y()));
     popover.set_position(position);
     if let Some(scroll) = popover.child().and_downcast::<gtk::ScrolledWindow>() {
@@ -281,9 +282,18 @@ fn position_model_context_popover(popover: &gtk::Popover, anchor: &gtk::Widget, 
         .map_or(1, |child| child.measure(gtk::Orientation::Vertical, -1).1)
         .saturating_add(CONTEXT_MENU_EDGE_MARGIN);
     let y = shifted_anchor_y(position, window.height(), click.y().round() as i32, height);
-    let point = window
-        .compute_point(&parent, &gtk::graphene::Point::new(click.x(), y as f32))
-        .unwrap_or(click);
+    let width = popover
+        .child()
+        .map_or(1, |child| child.measure(gtk::Orientation::Horizontal, -1).1);
+    let inset = (width / 2 + CONTEXT_MENU_EDGE_MARGIN)
+        .min(window.width() / 2)
+        .max(0);
+    let x = click
+        .x()
+        .clamp(inset as f32, (window.width() - inset).max(inset) as f32);
+    let Some(point) = window.compute_point(&parent, &gtk::graphene::Point::new(x, y as f32)) else {
+        return;
+    };
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
         point.x().round() as i32,
         point.y().round() as i32,

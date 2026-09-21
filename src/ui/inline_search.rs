@@ -598,6 +598,27 @@ impl InlineSearch {
         }
     }
 
+    pub fn refresh_source_filter(&self, browser: &Browser) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        let handle = state.handle.borrow();
+        let Some(handle) = handle.as_ref() else {
+            return;
+        };
+        let items = state
+            .items
+            .borrow()
+            .iter()
+            .filter(|item| browser.allows_entry(&super::browser::search_result_entry(item)))
+            .cloned()
+            .collect();
+        update_results(state, items, state.recursive.get());
+        if let Some(entry) = state.entry.upgrade() {
+            handle.query(entry.text().trim());
+        }
+    }
+
     pub fn prune_missing(&self) {
         let Some(state) = self.state.as_ref() else {
             return;
@@ -1375,6 +1396,7 @@ pub(super) fn wrap(
         handle.query(query);
         state.handle.replace(Some(handle));
         let weak = Rc::downgrade(&state);
+        let browser = weak_browser.clone();
         glib::timeout_add_local(Duration::from_millis(16), move || {
             let Some(state) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
@@ -1391,14 +1413,24 @@ pub(super) fn wrap(
             }
             if let Some(SearchEvent::Results {
                 query: returned,
-                mut items,
+                items,
                 indexing,
                 coverage,
+                has_more,
             }) = latest
                 && !returned.is_empty()
                 && returned == entry.text().trim()
             {
-                items.retain(|item| search_path_present(&item.path));
+                let Some(browser) = browser.upgrade() else {
+                    return glib::ControlFlow::Break;
+                };
+                let items = eligible_results(
+                    &browser,
+                    state.handle.borrow().as_ref().expect("active search"),
+                    &returned,
+                    items,
+                    has_more,
+                );
                 state
                     .status
                     .set_visible(items.is_empty() || coverage.is_partial());
@@ -1420,6 +1452,30 @@ pub(super) fn wrap(
 fn update_results(state: &State, items: Vec<SearchItem>, recursive: bool) {
     state.items.replace(items.clone());
     state.collection.update(&items, recursive);
+}
+
+pub(super) fn eligible_results(
+    browser: &Browser,
+    handle: &crate::services::SearchHandle,
+    query: &str,
+    items: Vec<SearchItem>,
+    has_more: bool,
+) -> Vec<SearchItem> {
+    let candidates = items.len();
+    let items = items
+        .into_iter()
+        .filter(|item| {
+            browser.allows_entry(&super::browser::search_result_entry(item))
+                && search_path_present(&item.path)
+        })
+        .take(crate::services::SEARCH_RESULT_LIMIT)
+        .collect::<Vec<_>>();
+    // Type/folder predicates run on GTK's thread, after ranking but before the display cap.
+    // Continue through lower-ranked candidates rather than starving eligible matches.
+    if has_more && items.len() < crate::services::SEARCH_RESULT_LIMIT {
+        handle.query_candidates(query, candidates.saturating_mul(2));
+    }
+    items
 }
 
 pub(super) fn search_path_present(path: &Path) -> bool {

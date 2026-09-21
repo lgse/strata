@@ -788,6 +788,10 @@ impl Browser {
         self.state.borrow().can_delete_at(depth)
     }
 
+    pub fn allows_entry(&self, entry: &FileEntry) -> bool {
+        self.source.allows_entry(entry)
+    }
+
     /// Synchronizes widget focus without changing selection or reopening a directory.
     pub fn set_active_column(&self, depth: usize) {
         self.state.borrow_mut().focus_column(depth);
@@ -2017,6 +2021,12 @@ impl Browser {
                     restored.is_hidden = is_hidden;
                     browser.publish_rename(&current_for_publish, restored);
                 } else {
+                    if let (Some(from), Some(to)) = (
+                        current_for_publish.native_path(),
+                        original_for_publish.native_path(),
+                    ) {
+                        crate::services::refresh_search_indexes_for_rename(from, to);
+                    }
                     browser.relocate_open_columns(&current_for_publish, &original_for_publish);
                 }
             }
@@ -2376,6 +2386,9 @@ impl Browser {
     }
 
     fn publish_rename(self: &Rc<Self>, old: &Location, entry: FileEntry) {
+        if let (Some(from), Some(to)) = (old.native_path(), entry.location.native_path()) {
+            crate::services::refresh_search_indexes_for_rename(from, to);
+        }
         if !(0..)
             .map_while(|depth| self.location_at(depth))
             .any(|location| location.is_within(old))

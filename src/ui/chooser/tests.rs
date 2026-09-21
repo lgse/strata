@@ -61,11 +61,11 @@ fn native_filters_match_globs_and_mime_types_without_hiding_directories() {
     ));
     let hidden = entry("archive.zip", EntryKind::File);
     assert!(
-        matches!(filter_directory_change(Some(&filter), DirectoryChange::Upsert(hidden.clone())), DirectoryChange::Remove(location) if location == hidden.location)
+        matches!(filter_directory_change(Some(&filter), false, DirectoryChange::Upsert(hidden.clone())), DirectoryChange::Remove(location) if location == hidden.location)
     );
     let previous = Location::local("/tmp/previous.txt");
     assert!(
-        matches!(filter_directory_change(Some(&filter), DirectoryChange::Move { from: previous.clone(), entry: hidden }), DirectoryChange::Remove(location) if location == previous)
+        matches!(filter_directory_change(Some(&filter), false, DirectoryChange::Move { from: previous.clone(), entry: hidden }), DirectoryChange::Remove(location) if location == previous)
     );
 }
 

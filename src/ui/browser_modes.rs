@@ -444,6 +444,12 @@ impl ModeViews {
         }
     }
 
+    pub fn refresh_source_filter(&self) {
+        for pane in self.visible_panes() {
+            pane.search.refresh_source_filter(&self.browser);
+        }
+    }
+
     pub fn prune_stale_search_results(&self) {
         if let Some(pane) = self.single_pane() {
             pane.search.prune_missing();
@@ -1531,8 +1537,13 @@ impl ModeViews {
         }
         let width = f64::from(pane.stack.width());
         let height = f64::from(pane.stack.height());
-        (width > 0.0 && height > 0.0)
-            .then(|| (pane.folder_context_trigger.clone(), width, height / 2.0))
+        (width > 0.0 && height > 0.0).then(|| {
+            (
+                pane.folder_context_trigger.clone(),
+                width / 2.0,
+                height / 2.0,
+            )
+        })
     }
 
     fn clear_icons(&mut self) {

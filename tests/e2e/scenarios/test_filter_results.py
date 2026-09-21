@@ -387,6 +387,38 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+def test_matching_rename_stays_searchable_at_the_real_parent(strata, mode):
+    field = filter_results(strata)
+    row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
+    strata.pointer.click(row, modifiers=("ctrl",))
+    strata.keyboard.press("F2")
+    strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("match-note-renamed.txt")
+    strata.keyboard.press("Return")
+    renamed = strata.fixture.path("beta/match-note-renamed.txt")
+    strata.wait(lambda: renamed.exists(), "the nested rename")
+    assert renamed.read_text() == "beta source\n"
+    assert not strata.fixture.path("beta/match-note.txt").exists()
+    assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
+    assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
+    assert field.text == "match-note"
+    strata.wait(lambda: result(strata, "beta/match-note-renamed.txt"), "the matching renamed result")
+    strata.wait(lambda: result(strata, "beta/match-note.txt") is None, "the old result to leave")
+    strata.pointer.click(field)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("nothing-matches")
+    strata.wait(lambda: not strata.matches(), "the empty query result")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("renamed")
+    row = strata.wait(lambda: result(strata, "beta/match-note-renamed.txt"), "the fresh index result")
+    strata.pointer.right_click(row)
+    strata.choose_menu_item("Open file location")
+    strata.wait_for_directory("beta")
+    strata.wait_for_selection(["match-note-renamed.txt"], "beta")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_filtered_properties_rename_opens_the_result_inline(strata, mode):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")

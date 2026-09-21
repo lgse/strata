@@ -136,6 +136,7 @@ pub(super) struct ColumnView {
     pub(super) search_handle: Rc<RefCell<Option<crate::services::SearchHandle>>>,
     pub(super) search_generation: Rc<Cell<u64>>,
     pub(super) search_model: gtk::StringList,
+    pub(super) recursive_search_active: Rc<Cell<bool>>,
 }
 
 impl ColumnView {
@@ -164,8 +165,13 @@ impl ColumnView {
         }
         let width = f64::from(self.presentation.stack.width());
         let height = f64::from(self.presentation.stack.height());
-        (width > 0.0 && height > 0.0)
-            .then(|| (self.folder_context_trigger.clone(), width, height / 2.0))
+        (width > 0.0 && height > 0.0).then(|| {
+            (
+                self.folder_context_trigger.clone(),
+                width / 2.0,
+                height / 2.0,
+            )
+        })
     }
 }
 
@@ -213,6 +219,28 @@ pub(super) fn set_column_busy(column: &ColumnView, busy: bool) {
     column
         .list
         .update_state(&[gtk::accessible::State::Busy(busy)]);
+}
+
+pub(super) fn refresh_source_filter(column: &ColumnView, browser: &crate::app::Browser) {
+    let handle = column.search_handle.borrow();
+    let Some(handle) = handle.as_ref() else {
+        return;
+    };
+    let items = column
+        .search_results
+        .borrow()
+        .iter()
+        .filter(|item| browser.allows_entry(&super::search_result_entry(item)))
+        .cloned()
+        .collect();
+    search::update_results(
+        &column.search_model,
+        &column.search_results,
+        &column.selection,
+        &column.syncing_selection,
+        items,
+    );
+    handle.query(column.filter_entry.text().trim());
 }
 
 pub(super) fn prune_missing_search_results(column: &ColumnView) {
@@ -907,6 +935,8 @@ impl ViewState {
                 let gen_check = search_gen.clone();
                 let selection_for_poll = selection_for_poll.clone();
                 let syncing_for_poll = syncing_for_poll.clone();
+                let browser = Rc::downgrade(&state.browser);
+                let handle_for_poll = handle.clone();
                 let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
                     if gen_check.get() != poll_gen {
                         return glib::ControlFlow::Break;
@@ -922,7 +952,10 @@ impl ViewState {
                         }
                     }
                     if let Some(crate::services::SearchEvent::Results {
-                        query, mut items, ..
+                        query,
+                        items,
+                        has_more,
+                        ..
                     }) = latest
                         && let Some(entry) = weak_entry.upgrade()
                         && !query.is_empty()
@@ -931,9 +964,16 @@ impl ViewState {
                         let Some(sm) = weak_sm.upgrade() else {
                             return glib::ControlFlow::Break;
                         };
-                        items.retain(|item| {
-                            crate::ui::inline_search::search_path_present(&item.path)
-                        });
+                        let Some(browser) = browser.upgrade() else {
+                            return glib::ControlFlow::Break;
+                        };
+                        let items = crate::ui::inline_search::eligible_results(
+                            &browser,
+                            handle_for_poll.borrow().as_ref().expect("active search"),
+                            &query,
+                            items,
+                            has_more,
+                        );
                         search::update_results(
                             &sm,
                             &results,
@@ -1473,6 +1513,7 @@ impl ViewState {
             search_handle,
             search_generation,
             search_model,
+            recursive_search_active,
         });
 
         if let Some(column) = self.columns.borrow().last() {

@@ -159,6 +159,7 @@ pub(super) struct ViewState {
     horizontal_scroll_generation: Rc<Cell<u64>>,
     suppress_focus_scroll: Cell<bool>,
     source_generation: Rc<Cell<u64>>,
+    refreshing_source_filter: Cell<bool>,
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
     pending_close: RefCell<Option<glib::SourceId>>,
@@ -495,6 +496,7 @@ impl BrowserView {
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             suppress_focus_scroll: Cell::new(false),
             source_generation,
+            refreshing_source_filter: Cell::new(false),
             peek: RefCell::new(None),
             pending_peek: RefCell::new(None),
             pending_close: RefCell::new(None),
@@ -775,6 +777,20 @@ impl BrowserView {
         } else {
             self.state.browser.navigate_location(parent, false);
         }
+    }
+
+    pub(super) fn refresh_source_filter(&self) {
+        self.state.refreshing_source_filter.set(true);
+        if let Some(last) = self.state.browser.active_depth() {
+            for depth in 0..=last {
+                self.state.browser.retry_column(depth);
+            }
+        }
+        self.state.refreshing_source_filter.set(false);
+        for column in self.state.columns.borrow().iter() {
+            columns::refresh_source_filter(column, &self.state.browser);
+        }
+        self.state.mode_views.borrow().refresh_source_filter();
     }
 
     pub fn browser(&self) -> Rc<Browser> {
