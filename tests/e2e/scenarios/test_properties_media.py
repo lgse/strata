@@ -106,11 +106,11 @@ def test_raw_details_match_in_preview_and_properties_and_clear_on_selection(stra
         "ISO": "400",
         "GPS COORDINATES": "-12.500000, -45.250000",
     }
-    if name == "broken.NEF":
-        expected = dict.fromkeys(expected, "N/A")
+    unavailable = dict.fromkeys(expected, "N/A")
+    initial = unavailable if name == "broken.NEF" else expected
 
-    def assert_details(surface):
-        for field, value in expected.items():
+    def assert_details(surface, values):
+        for field, value in values.items():
             strata.wait(
                 lambda: (label := surface.find(role="label", description=field, rendered=False))
                 is not None and label.name == value,
@@ -120,13 +120,17 @@ def test_raw_details_match_in_preview_and_properties_and_clear_on_selection(stra
     strata.select_entry(name)
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview() is not None, "RAW preview panel")
-    assert_details(strata.preview())
+    assert_details(strata.preview(), initial)
     # Native-menu dispatch is covered by the quarantined #1154 regressions.
     strata.keyboard.press("alt+Return")
     dialog = strata.wait_for_dialog()
-    assert_details(dialog)
+    assert_details(dialog, initial)
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "Properties to close")
+    next_name = "camera.DNG" if name == "broken.NEF" else "broken.NEF"
+    strata.select_entry(next_name)
+    strata.wait(lambda: strata.preview_shows(next_name), "next RAW preview target")
+    assert_details(strata.preview(), expected if next_name == "camera.DNG" else unavailable)
     strata.select_entry("photo.png")
     strata.wait(lambda: strata.preview_shows("photo.png"), "ordinary image preview")
     for field in expected:

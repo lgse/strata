@@ -72,62 +72,85 @@ fn rows(metadata: &RawMetadata) -> [(&'static str, String); 7] {
     ]
 }
 
-fn show(section: &gtk::Box, metadata: &RawMetadata) {
-    while let Some(child) = section.first_child() {
-        section.remove(&child);
+pub(super) struct RawDetails {
+    pub(super) section: gtk::Box,
+    values: [gtk::Label; 7],
+}
+
+impl RawDetails {
+    pub(super) fn new() -> Self {
+        let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let headings = gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal);
+        let values = rows(&RawMetadata::default()).map(|(name, value)| {
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            row.add_css_class("properties-row");
+            let heading = gtk::Label::new(Some(name));
+            heading.add_css_class("properties-row-label");
+            heading.set_xalign(0.0);
+            headings.add_widget(&heading);
+            let label = gtk::Label::new(Some(&value));
+            label.add_css_class("properties-row-value");
+            label.set_xalign(0.0);
+            label.set_hexpand(true);
+            label.set_selectable(true);
+            label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+            label.set_max_width_chars(32);
+            label.set_tooltip_text(Some(&value));
+            label.update_property(&[gtk::accessible::Property::Description(name)]);
+            row.append(&heading);
+            row.append(&label);
+            section.append(&row);
+            label
+        });
+        Self { section, values }
     }
-    let headings = gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal);
-    for (name, value) in rows(metadata) {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        row.add_css_class("properties-row");
-        let heading = gtk::Label::new(Some(name));
-        heading.add_css_class("properties-row-label");
-        heading.set_xalign(0.0);
-        headings.add_widget(&heading);
-        let label = gtk::Label::new(Some(&value));
-        label.add_css_class("properties-row-value");
-        label.set_xalign(0.0);
-        label.set_hexpand(true);
-        label.set_selectable(true);
-        label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-        label.set_max_width_chars(32);
-        label.set_tooltip_text(Some(&value));
-        label.update_property(&[gtk::accessible::Property::Description(name)]);
-        row.append(&heading);
-        row.append(&label);
-        section.append(&row);
+
+    pub(super) fn reset(&self) {
+        for (label, (_, value)) in self.values.iter().zip(rows(&RawMetadata::default())) {
+            label.set_text(&value);
+            label.set_tooltip_text(Some(&value));
+        }
     }
-    section.set_visible(true);
+
+    pub(super) fn load(&self, path: Option<PathBuf>) -> MetadataLoad {
+        let cancellation = Cancellation::default();
+        let handle = MetadataLoad(cancellation.clone());
+        self.reset();
+        let Some(path) = path else { return handle };
+        let values = self.values.each_ref().map(|label| label.downgrade());
+        glib::MainContext::default().spawn_local(async move {
+            let worker_cancellation = cancellation.clone();
+            let result = gio::spawn_blocking(move || {
+                sandbox::parse(
+                    &path,
+                    ParseOperation::RawMetadata,
+                    0,
+                    MediaPreviewBackend::Software,
+                    &worker_cancellation,
+                )
+                .and_then(|output| RawMetadata::from_json(&output.data))
+            })
+            .await;
+            if cancellation.is_cancelled() {
+                return;
+            }
+            let metadata = result.ok().and_then(Result::ok).unwrap_or_default();
+            for (label, (_, value)) in values.iter().zip(rows(&metadata)) {
+                if let Some(label) = label.upgrade() {
+                    label.set_text(&value);
+                    label.set_tooltip_text(Some(&value));
+                }
+            }
+        });
+        handle
+    }
 }
 
 pub(super) fn load(section: &gtk::Box, path: Option<PathBuf>) -> MetadataLoad {
-    let cancellation = Cancellation::default();
-    let handle = MetadataLoad(cancellation.clone());
-    show(section, &RawMetadata::default());
-    let Some(path) = path else { return handle };
-    let section = section.downgrade();
-    glib::MainContext::default().spawn_local(async move {
-        let worker_cancellation = cancellation.clone();
-        let result = gio::spawn_blocking(move || {
-            sandbox::parse(
-                &path,
-                ParseOperation::RawMetadata,
-                0,
-                MediaPreviewBackend::Software,
-                &worker_cancellation,
-            )
-            .and_then(|output| RawMetadata::from_json(&output.data))
-        })
-        .await;
-        if cancellation.is_cancelled() {
-            return;
-        }
-        if let Some(section) = section.upgrade() {
-            let metadata = result.ok().and_then(Result::ok).unwrap_or_default();
-            show(&section, &metadata);
-        }
-    });
-    handle
+    let details = RawDetails::new();
+    section.append(&details.section);
+    section.set_visible(true);
+    details.load(path)
 }
 
 #[cfg(test)]

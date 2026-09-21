@@ -263,6 +263,8 @@ existing 512 MiB input limit, memory/CPU/wall-time limits, and a 64 KiB output
 budget. Only the seven validated properties reach the UI; camera/lens strings
 are bounded plain text. Remote RAW files are not downloaded for metadata and
 show `N/A`. Selection changes and closing either surface cancel pending work.
+RAW preview labels remain in place during selection debounce and metadata loading;
+only their values reset to `N/A` and update when inspection completes.
 Detailed RAW inspection does not run for browser thumbnails.
 
 ## Incremental media playback

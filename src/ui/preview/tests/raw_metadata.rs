@@ -24,13 +24,36 @@ fn selection_changes_and_close_cancel_raw_metadata() {
             assert!(drawer.state.raw_details_scroll.is_visible());
             drawer
                 .state
-                .show_after_focus_change(media_size::entry("plain.png"), None);
+                .show_after_focus_change(media_size::entry("next-metadata.NEF"), None);
             assert!(first_load.is_cancelled());
+            assert!(drawer.state.raw_metadata_load.borrow().is_none());
+            media_size::wait_until(|| {
+                drawer
+                    .state
+                    .current
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|entry| entry.native_name == "next-metadata.NEF")
+            });
+            let second_load = cancellation();
+            drawer
+                .state
+                .show_after_focus_change(media_size::entry("plain.png"), None);
+            assert!(second_load.is_cancelled());
+            media_size::wait_until(|| {
+                drawer
+                    .state
+                    .current
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|entry| entry.native_name == "plain.png")
+            });
+            assert!(drawer.state.raw_metadata_load.borrow().is_none());
             assert!(!drawer.state.raw_details_scroll.is_visible());
             drawer.show(entry, None);
-            let second_load = cancellation();
+            let closing_load = cancellation();
             drawer.close();
-            assert!(second_load.is_cancelled());
+            assert!(closing_load.is_cancelled());
             while glib::MainContext::default().iteration(false) {}
             assert!(!drawer.state.raw_details_scroll.is_visible());
             assert!(drawer.state.raw_metadata_load.borrow().is_none());
