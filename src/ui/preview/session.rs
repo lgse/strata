@@ -55,6 +55,7 @@ impl PreviewState {
         self.current_depth.set(None);
         self.current.borrow_mut().take();
         self.load.borrow_mut().take();
+        self.clear_raw_details();
         self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
         self.clear_content();

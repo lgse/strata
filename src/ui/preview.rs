@@ -134,6 +134,9 @@ struct PreviewState {
     document_preview: RefCell<Option<DocumentPreview>>,
     source_preview: SourcePreviewView,
     metadata: gtk::Box,
+    raw_details: gtk::Box,
+    raw_details_scroll: gtk::ScrolledWindow,
+    raw_metadata_load: RefCell<Option<super::raw_details::MetadataLoad>>,
     open: gtk::Button,
     close_button: gtk::Button,
     print: gtk::Button,
@@ -270,6 +273,21 @@ impl PreviewDrawer {
         content.set_vexpand(true);
         pane.append(&content);
 
+        let raw_details = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        raw_details.set_margin_start(16);
+        raw_details.set_margin_end(16);
+        raw_details.set_margin_bottom(12);
+        let raw_details_scroll = gtk::ScrolledWindow::builder()
+            .child(&raw_details)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
+            .max_content_height(240)
+            .visible(false)
+            .build();
+        raw_details_scroll.add_css_class("media-details-scroll");
+        pane.append(&raw_details_scroll);
+
         let revealer = gtk::Revealer::builder()
             .child(&pane)
             .transition_duration(0)
@@ -294,6 +312,9 @@ impl PreviewDrawer {
             document_preview: RefCell::new(None),
             source_preview: SourcePreviewView::new(),
             metadata,
+            raw_details,
+            raw_details_scroll,
+            raw_metadata_load: RefCell::new(None),
             open: open.clone(),
             close_button: close.clone(),
             print: print.clone(),
@@ -609,6 +630,7 @@ impl PreviewState {
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
+        self.clear_raw_details();
         // Keep the displayed target during debounce: split synchronization must
         // not mistake a replacement request for an empty, closed drawer.
 
@@ -641,6 +663,7 @@ impl PreviewState {
                 self.load.borrow_mut().take();
                 self.cancel_loading();
                 self.pdf_loads.borrow_mut().clear();
+                self.clear_raw_details();
                 self.clear_content();
                 self.sizing.defer_load();
             }
@@ -969,6 +992,12 @@ impl PreviewState {
         self.load_request(entry, pdf_page, render_document, archive_password);
     }
 
+    fn clear_raw_details(&self) {
+        self.raw_metadata_load.borrow_mut().take();
+        self.raw_details_scroll.set_visible(false);
+        clear_box(&self.raw_details);
+    }
+
     fn load_request(
         self: &Rc<Self>,
         entry: FileEntry,
@@ -976,6 +1005,17 @@ impl PreviewState {
         render_document: bool,
         archive_password: Option<SecretString>,
     ) {
+        self.clear_raw_details();
+        if !entry.is_directory()
+            && crate::sandbox::raw_metadata::is_raw(Path::new(&entry.native_name))
+        {
+            let load = super::raw_details::load(
+                &self.raw_details,
+                entry.location.native_path().map(ToOwned::to_owned),
+            );
+            self.raw_metadata_load.replace(Some(load));
+            self.raw_details_scroll.set_visible(true);
+        }
         self.metadata.set_visible(true);
         self.icon.set_visible(true);
         self.open.set_sensitive(true);

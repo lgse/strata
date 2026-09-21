@@ -23,6 +23,7 @@ use crate::{
 mod appimage;
 mod document_media;
 mod media;
+mod raw_metadata;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
@@ -75,6 +76,9 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     }
     if operation == "media-metadata" {
         return write_media_metadata(input, output);
+    }
+    if operation == "raw-metadata" {
+        return fs::write(output, raw_metadata::read(input)?).map_err(|error| error.to_string());
     }
     if operation == "archive-list" {
         return run_archive_list(input, output, value, secret_fd);

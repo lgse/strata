@@ -1411,13 +1411,13 @@ fn cancel_thumbnail(image_id: usize) {
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
+    if crate::sandbox::raw_metadata::is_raw(path) {
+        return Some(ThumbnailKind::RawImage);
+    }
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" | "heic"
         | "heif" | "avif" | "jxl" => Some(ThumbnailKind::Image),
-        "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
-        | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
-        | "x3f" => Some(ThumbnailKind::RawImage),
         "pdf" => Some(ThumbnailKind::Pdf),
         "appimage" => Some(ThumbnailKind::AppImage),
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {

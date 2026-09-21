@@ -2,6 +2,7 @@
 
 pub(super) mod media_size;
 mod preferences;
+mod raw_metadata;
 mod source;
 
 use std::{cell::RefCell, rc::Rc};

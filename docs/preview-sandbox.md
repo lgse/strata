@@ -225,8 +225,9 @@ resolution; audio/video duration and overall bitrate; video codec and frame rate
 and audio codec, sample rate, and channel count. These describe the original file,
 not the preview's scaled frames or resampled audio. Attached album artwork is not
 reported as a video track, and still images do not show synthetic video timing.
-Missing individual fields are omitted; an unsuccessful inspection shows
-`Media: Unavailable` without blocking the other file information.
+For ordinary images and audio/video, missing individual fields are omitted; an
+unsuccessful inspection shows `Media: Unavailable` without blocking the other
+file information.
 
 Properties uses an asynchronous inspector. Only regular files with a
 local source are inspected; remote files are not downloaded for metadata. The
@@ -238,8 +239,31 @@ sandboxes expose only the optional BLAS/LAPACK runtime alternatives for supporte
 x86-64 and ARM64 Debian-family installations, not all of `/etc/alternatives`. Only
 validated numeric fields and bounded codec identifiers reach the UI, not arbitrary
 embedded tags. Closing Properties cancels its work and prevents stale results
-from appearing. The preview pane retains only its normal size, modified date,
-and type information; it does not run this metadata inspector.
+from appearing. Ordinary image and audio/video previews retain their normal size,
+modified date, and type information; they do not run this metadata inspector.
+
+Camera RAW files additionally show **Dimensions, Camera, Lens, Focal length,
+Shutter speed, ISO, and GPS coordinates**, in that order, in both the preview
+panel and Properties. All seven fields remain visible; missing or unreadable
+values show `N/A`. Dimensions describe the original image, account for orientation,
+and never use an embedded thumbnail's size. GPS is signed decimal latitude,
+then longitude; there is no reverse geocoding or network request.
+
+RAW inspection reuses LibRaw's `raw-identify -v` or classic `dcraw -i -v` when
+installed, with a three-second limit per identification attempt. The bundled
+`kamadak-exif` reader supplements capture and GPS tags from supported EXIF
+containers, including TIFF-based RAW files, without decoding pixels. It is also
+the fallback when those optional utilities are absent. ImageMagick's RAW metadata
+output is not used: DNG redirection and incomplete EXIF exposure vary by version.
+Support depends on the format and available tools; unavailable tags in other
+RAW containers remain `N/A`.
+
+Both parsers run only inside a short-lived, software-only sandbox with the
+existing 512 MiB input limit, memory/CPU/wall-time limits, and a 64 KiB output
+budget. Only the seven validated properties reach the UI; camera/lens strings
+are bounded plain text. Remote RAW files are not downloaded for metadata and
+show `N/A`. Selection changes and closing either surface cancel pending work.
+Detailed RAW inspection does not run for browser thumbnails.
 
 ## Incremental media playback
 

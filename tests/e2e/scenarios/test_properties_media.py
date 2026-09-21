@@ -6,6 +6,8 @@ import subprocess
 import pytest
 from PIL import Image
 
+from harness.raw_photo import write_raw_photo
+
 
 def _media_fixture(tree):
     Image.new("RGB", (1600, 900), "green").save(tree.path("photo.png"))
@@ -30,6 +32,8 @@ def _media_fixture(tree):
         timeout=30,
     )
     tree.path("broken.mp4").write_bytes(b"not a media container")
+    write_raw_photo(tree.path("camera.DNG"))
+    tree.path("broken.NEF").write_bytes(b"not a RAW image")
 
 
 @pytest.fixture
@@ -88,6 +92,45 @@ def test_properties_reports_available_media_metadata(strata, fixture_tree, name,
     dialog = strata.wait_for_dialog()
     strata.wait(lambda: dialog.find(role="label", name="10 B"), "ordinary file properties")
     assert dialog.find(role="label", name="MEDIA") is None
+
+
+@pytest.mark.parametrize("name", ["camera.DNG", "broken.NEF"])
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_raw_details_match_in_preview_and_properties_and_clear_on_selection(strata, name):
+    expected = {
+        "DIMENSIONS": "600 × 400 pixels",
+        "CAMERA": "Strata Test Camera",
+        "LENS": "Synthetic 50mm lens",
+        "FOCAL LENGTH": "50 mm",
+        "SHUTTER SPEED": "1/250 s",
+        "ISO": "400",
+        "GPS COORDINATES": "-12.500000, -45.250000",
+    }
+    if name == "broken.NEF":
+        expected = dict.fromkeys(expected, "N/A")
+
+    def assert_details(surface):
+        for field, value in expected.items():
+            strata.wait(
+                lambda: (label := surface.find(role="label", description=field, rendered=False))
+                is not None and label.name == value,
+                f"{field} to report {value} for {name}",
+            )
+
+    strata.select_entry(name)
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() is not None, "RAW preview panel")
+    assert_details(strata.preview())
+    # Native-menu dispatch is covered by the quarantined #1154 regressions.
+    strata.keyboard.press("alt+Return")
+    dialog = strata.wait_for_dialog()
+    assert_details(dialog)
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "Properties to close")
+    strata.select_entry("photo.png")
+    strata.wait(lambda: strata.preview_shows("photo.png"), "ordinary image preview")
+    for field in expected:
+        assert strata.preview().find(role="label", description=field, rendered=False) is None
 
 
 @pytest.mark.preferences(browser_mode="icons", single_click_previews=False)

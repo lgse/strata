@@ -508,10 +508,20 @@ impl ViewState {
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         let restore_focus = remember_properties_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
-        if !is_directory
-            && let Some(path) = entry.as_ref().and_then(FileEntry::local_thumbnail_path)
-        {
-            let load = Rc::new(media::load(&media_section, path.to_path_buf()));
+        let metadata_load = entry.as_ref().filter(|_| !is_directory).and_then(|entry| {
+            if crate::sandbox::raw_metadata::is_raw(std::path::Path::new(&entry.native_name)) {
+                Some(crate::ui::raw_details::load(
+                    &media_section,
+                    entry.location.native_path().map(ToOwned::to_owned),
+                ))
+            } else {
+                entry
+                    .local_thumbnail_path()
+                    .map(|path| media::load(&media_section, path.to_path_buf()))
+            }
+        });
+        if let Some(load) = metadata_load {
+            let load = Rc::new(load);
             let closing = load.clone();
             layer.connect_sensitive_notify(move |layer| {
                 if !layer.is_sensitive() {
