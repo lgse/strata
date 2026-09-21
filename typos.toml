@@ -29,3 +29,7 @@ darcula = "darcula"
 Strata = "Strata"
 WRONLY = "WRONLY"
 gir = "gir"
+# File format names, spelled as the formats define them.
+als = "als"
+tak = "tak"
+ODF = "ODF"
