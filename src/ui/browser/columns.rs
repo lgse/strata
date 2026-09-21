@@ -1210,6 +1210,17 @@ impl ViewState {
                     });
                 }),
             }]));
+        // The focus clicks must see presses before the marquee drag: they mark
+        // returning_to_column, which the press-time clear path already reads.
+        let background_clicks: Vec<_> = [
+            presentation.stack.upcast_ref::<gtk::Widget>(),
+            header.upcast_ref(),
+        ]
+        .into_iter()
+        .map(|surface| {
+            self.install_column_background_focus(surface, depth, returning_to_column.clone())
+        })
+        .collect();
         let marquee = crate::ui::marquee::install(crate::ui::marquee::MarqueeSetup {
             view: list.clone().upcast(),
             surface: presentation.stack.clone().upcast(),
@@ -1233,6 +1244,9 @@ impl ViewState {
             }),
         });
         marquee.add_origin_surface(&header);
+        for click in &background_clicks {
+            marquee.group_background_click(click);
+        }
 
         presentation.stack.set_focusable(true);
         let focus = gtk::EventControllerFocus::new();
@@ -1249,14 +1263,6 @@ impl ViewState {
             }
         });
         column.add_controller(focus);
-        for surface in [
-            presentation.stack.upcast_ref::<gtk::Widget>(),
-            header.upcast_ref(),
-        ] {
-            let click =
-                self.install_column_background_focus(surface, depth, returning_to_column.clone());
-            marquee.group_background_click(&click);
-        }
         if self.interactive {
             install_directory_drop_target(self, &column, location.clone());
             install_directory_drop_target(self, &presentation.stack, location.clone());

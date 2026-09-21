@@ -224,9 +224,9 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
             return;
         };
         state_for_begin.begin(anchor, gesture.current_event_state());
-        state_for_begin
-            .clear_on_click
-            .set(!starts_on_item && super::pointer::is_background(&origin, x, y));
+        let clearable = !starts_on_item && super::pointer::is_background(&origin, x, y);
+        state_for_begin.clear_on_click.set(clearable);
+        state_for_begin.clear_at_press();
     });
     connect_drag_progress(&gesture, &state);
     surface.add_controller(gesture.clone());
@@ -252,7 +252,6 @@ impl Marquee {
         gesture.set_button(1);
         let state_for_begin = self.state.clone();
         gesture.connect_drag_begin(move |gesture, x, y| {
-            state_for_begin.end();
             let Some(surface) = gesture.widget() else {
                 return;
             };
@@ -273,6 +272,7 @@ impl Marquee {
             };
             gesture.set_state(gtk::EventSequenceState::Claimed);
             state_for_begin.begin(anchor, gesture.current_event_state());
+            state_for_begin.clear_at_press();
         });
         connect_drag_progress(&gesture, &self.state);
         surface.add_controller(gesture.clone());
@@ -291,6 +291,8 @@ impl Marquee {
 
 /// Chrome such as a pane header can begin a marquee drag, but only where the press
 /// lands on the container itself rather than on a button, entry, or other control.
+/// Item containers count as controls: the preview pane hosts lists of its own whose
+/// presses must not be claimed.
 fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
     let mut current = Some(picked.clone());
     while let Some(widget) = current {
@@ -301,6 +303,12 @@ fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
             || widget.is::<gtk::Editable>()
             || widget.is::<gtk::Range>()
             || widget.is::<gtk::Scrollbar>()
+            || widget.is::<gtk::TextView>()
+            || widget.is::<gtk::ListView>()
+            || widget.is::<gtk::GridView>()
+            || widget.is::<gtk::ColumnView>()
+            || widget.is::<gtk::ListBox>()
+            || widget.is::<gtk::FlowBox>()
         {
             return false;
         }
@@ -350,6 +358,7 @@ pub(super) fn install_shared_origin_surface(
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         state.begin(anchor, gesture.current_event_state());
+        state.clear_at_press();
         target_for_begin.replace(Some(state));
     });
     let target_for_update = target.clone();
@@ -548,6 +557,14 @@ impl MarqueeState {
             });
         }
         nearest.map(|(_, _, widget)| widget)
+    }
+
+    /// A plain press on clearable background deselects immediately; Ctrl/Shift presses
+    /// keep the selection until release so marquee can still union or range from it.
+    fn clear_at_press(&self) {
+        if self.clear_on_click.get() && self.modifiers.get() == (false, false) {
+            (self.clear_selection)();
+        }
     }
 
     fn finish(&self) {
