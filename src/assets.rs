@@ -316,6 +316,22 @@ pub fn primary_icon_paintable(name: &str) -> Option<gdk::Texture> {
     primary_icon_texture(name, &primary_icon_color())
 }
 
+pub fn themed_svg_paintable(
+    name: &str,
+    source: &str,
+    substitutions: &[(&str, &str)],
+    pixel_size: i32,
+) -> Option<gdk::Texture> {
+    let mut themed = source.to_owned();
+    let mut palette_key = String::new();
+    for (placeholder, color) in substitutions {
+        themed = themed.replace(placeholder, color);
+        palette_key.push_str(color);
+        palette_key.push('|');
+    }
+    texture_from_svg(&format!("themed:{name}"), &palette_key, pixel_size, themed)
+}
+
 pub fn custom_colored_icon_paintable(name: &str, color: &str) -> Option<gdk::Texture> {
     primary_icon_texture(name, color)
 }

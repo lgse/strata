@@ -16,6 +16,7 @@ mod imp {
         pub texture: RefCell<Option<gdk::Texture>>,
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
+        pub fallback_art: Cell<bool>,
         pub cut: Cell<bool>,
         pub hidden: Cell<bool>,
         pub base_opacity: Cell<f64>,
@@ -74,7 +75,7 @@ mod imp {
                 return;
             };
 
-            let scale = if self.texture.borrow().is_some() || is_cut {
+            let scale = if self.texture.borrow().is_some() || self.fallback_art.get() || is_cut {
                 1.0
             } else {
                 self.fallback_scale.get()
@@ -202,20 +203,32 @@ impl ThumbnailSlot {
     }
 
     pub(crate) fn set_fallback(&self, icon: &str, texture: Option<&gdk::Texture>) {
+        self.set_fallback_texture(icon, texture, false);
+    }
+
+    pub(crate) fn set_fallback_art(&self, icon: &str, texture: Option<&gdk::Texture>) {
+        self.set_fallback_texture(icon, texture, true);
+    }
+
+    fn set_fallback_texture(&self, icon: &str, texture: Option<&gdk::Texture>, is_art: bool) {
         if self.imp().texture.borrow().is_none()
             && self.imp().fallback_icon.borrow().as_deref() == Some(icon)
+            && self.imp().fallback_art.get() == is_art
             && same_texture(self.imp().fallback.borrow().as_ref(), texture)
         {
             return;
         }
         self.imp().texture.replace(None);
-        let scale =
-            if self.imp().limit_fallback_height.get() && icon != crate::assets::icons::FOLDER {
-                texture.map_or(1.0, folder_height_scale)
-            } else {
-                1.0
-            };
+        let scale = if !is_art
+            && self.imp().limit_fallback_height.get()
+            && icon != crate::assets::icons::FOLDER
+        {
+            texture.map_or(1.0, folder_height_scale)
+        } else {
+            1.0
+        };
         self.imp().fallback_scale.set(scale);
+        self.imp().fallback_art.set(is_art);
         self.imp().fallback_icon.replace(Some(icon.to_owned()));
         self.imp().fallback.replace(texture.cloned());
         self.update_state_opacity();
@@ -251,7 +264,10 @@ impl ThumbnailSlot {
     fn update_state_opacity(&self) {
         let opacity = if self.imp().hidden.get() {
             0.65
-        } else if self.imp().cut.get() || self.imp().texture.borrow().is_some() {
+        } else if self.imp().cut.get()
+            || self.imp().texture.borrow().is_some()
+            || self.imp().fallback_art.get()
+        {
             1.0
         } else {
             self.imp().base_opacity.get()

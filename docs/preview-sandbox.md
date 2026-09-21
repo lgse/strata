@@ -98,12 +98,14 @@ Cache reads and rendering have separate bounded queues and dedicated thread
 executors; decoder waits never occupy GIO's listing threads. Thumbnail admission
 does not wait for a GIO metadata fill. Lookup resolves local size/mtime off the
 GTK thread, then rechecks the RAM cache before decoding a disk hit.
-All views reuse the canonical 256-pixel RAM rendition irrespective of icon size;
-the Freedesktop `large` disk cache remains unchanged. These thumbnail caches do not
-carry source dimensions or duration: cache hits still use the separately prioritized
-metadata path, whereas fresh image decodes publish their source dimensions directly.
-PNG texture decoding runs off the GTK thread. Persistence remains bounded and
-asynchronous.
+All views reuse the canonical 256-pixel RAM rendition irrespective of icon size,
+except that text and syntax previews below 32 pixels keep the immediate themed
+fallback instead of generating content that cannot be read at that size; visual
+media still thumbnails in compact rows. The Freedesktop `large` disk cache remains
+unchanged. These thumbnail caches do not carry source dimensions or duration:
+cache hits still use the separately prioritized metadata path, whereas fresh image
+decodes publish their source dimensions directly. PNG texture decoding runs off
+the GTK thread. Persistence remains bounded and asynchronous.
 
 Scheduling ranks visible targets before a small overscan region across enclosing
 scrollers (including horizontally hidden Columns panes). Offscreen requests stay
@@ -115,8 +117,8 @@ repeated scrolling does not re-arm the pending frame. Work that inspects widgets
 runs from idle after the frame, outside GTK binding/layout callbacks. Identical
 in-flight file requests are reused, and presentation refreshes do not resubmit
 them. This removes fixed scheduling waits, not the time needed for I/O or decoding.
-With more than one render slot, slow
-RAW/PDF/video work leaves capacity for ordinary images. Browser metadata admission
+With more than one render slot, slow RAW/PDF/video work leaves capacity for
+ordinary images. Browser metadata admission
 uses the same viewport policy; cheap filesystem metadata is published before
 media inspection or directory counting. Each completed detail is published
 without waiting for other probes. Viewport fills keep one active batch per folder,

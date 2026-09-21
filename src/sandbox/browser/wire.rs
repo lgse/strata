@@ -11,23 +11,41 @@ use rustix::net::{
     SendAncillaryMessage, SendFlags, recvmsg, sendmsg,
 };
 
-use super::super::metadata::MAX_METADATA_BYTES;
+use super::super::{CodeLanguage, metadata::MAX_METADATA_BYTES};
 
 pub(super) const MAX_OUTPUT_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
 pub(crate) enum Operation {
-    Image = 1,
-    Raw = 2,
-    Pdf = 3,
-    Video = 4,
-    ImageMetadata = 5,
-    MediaMetadata = 6,
+    Image,
+    Raw,
+    Pdf,
+    Video,
+    ImageMetadata,
+    MediaMetadata,
+    Embedded,
+    AudioArt,
+    Text,
+    Code(CodeLanguage),
 }
 
 impl Operation {
-    pub(super) fn parse(value: u8) -> io::Result<Self> {
+    fn encode(self) -> [u8; 2] {
+        match self {
+            Self::Image => [1, 0],
+            Self::Raw => [2, 0],
+            Self::Pdf => [3, 0],
+            Self::Video => [4, 0],
+            Self::ImageMetadata => [5, 0],
+            Self::MediaMetadata => [6, 0],
+            Self::Embedded => [7, 0],
+            Self::AudioArt => [8, 0],
+            Self::Text => [9, 0],
+            Self::Code(language) => [10, language.id()],
+        }
+    }
+
+    pub(super) fn parse(value: u8, detail: u8) -> io::Result<Self> {
         match value {
             1 => Ok(Self::Image),
             2 => Ok(Self::Raw),
@@ -35,6 +53,12 @@ impl Operation {
             4 => Ok(Self::Video),
             5 => Ok(Self::ImageMetadata),
             6 => Ok(Self::MediaMetadata),
+            7 => Ok(Self::Embedded),
+            8 => Ok(Self::AudioArt),
+            9 => Ok(Self::Text),
+            10 => CodeLanguage::from_id(detail)
+                .map(Self::Code)
+                .ok_or_else(|| io::Error::other("Unknown code language")),
             _ => Err(io::Error::other("Unknown browser operation")),
         }
     }
@@ -52,14 +76,14 @@ pub(super) fn send(
     if !ancillary.push(SendAncillaryMessage::ScmRights(&descriptors)) {
         return Err(io::Error::other("Unable to send browser input"));
     }
-    let bytes = [operation as u8];
+    let bytes = operation.encode();
     let count = sendmsg(
         socket,
         &[io::IoSlice::new(&bytes)],
         &mut ancillary,
         SendFlags::NOSIGNAL,
     )?;
-    if count != 1 {
+    if count != bytes.len() {
         return Err(io::Error::other("Incomplete browser request"));
     }
     Ok(())
@@ -68,7 +92,7 @@ pub(super) fn send(
 pub(super) fn receive(socket: &impl AsFd) -> io::Result<Option<(Operation, OwnedFd, OwnedFd)>> {
     let mut space = [MaybeUninit::uninit(); rustix::cmsg_space!(ScmRights(3))];
     let mut ancillary = RecvAncillaryBuffer::new(&mut space);
-    let mut bytes = [0];
+    let mut bytes = [0; 2];
     let result = recvmsg(
         socket,
         &mut [io::IoSliceMut::new(&mut bytes)],
@@ -85,7 +109,7 @@ pub(super) fn receive(socket: &impl AsFd) -> io::Result<Option<(Operation, Owned
     if result.bytes == 0 && descriptors.is_empty() {
         return Ok(None);
     }
-    if result.bytes != 1
+    if result.bytes != bytes.len()
         || result
             .flags
             .intersects(rustix::net::ReturnFlags::TRUNC | rustix::net::ReturnFlags::CTRUNC)
@@ -95,7 +119,7 @@ pub(super) fn receive(socket: &impl AsFd) -> io::Result<Option<(Operation, Owned
     }
     let mut descriptors = descriptors.into_iter();
     Ok(Some((
-        Operation::parse(bytes[0])?,
+        Operation::parse(bytes[0], bytes[1])?,
         descriptors
             .next()
             .ok_or_else(|| io::Error::other("Missing input"))?,

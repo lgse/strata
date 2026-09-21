@@ -395,6 +395,7 @@ impl ThemeManager {
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_text_icon_color(&tokens.text);
         crate::assets::set_danger_icon_color(&tokens.danger);
+        super::thumbnail::set_theme_palette(tokens);
         super::thumbnail::refresh_all_customized_icons();
         stage_source_style_scheme(tokens, source_palette);
         style_document_buffers(tokens);

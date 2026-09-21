@@ -147,6 +147,10 @@ pub(crate) fn thumbnail(
         ParseOperation::ThumbnailRaw => Operation::Raw,
         ParseOperation::ThumbnailPdf => Operation::Pdf,
         ParseOperation::ThumbnailVideo => Operation::Video,
+        ParseOperation::ThumbnailEmbedded => Operation::Embedded,
+        ParseOperation::ThumbnailAudioArt => Operation::AudioArt,
+        ParseOperation::ThumbnailText => Operation::Text,
+        ParseOperation::ThumbnailCode(language) => Operation::Code(language),
         _ => return Err("Not a browser thumbnail operation".into()),
     };
     let result = request(path, operation, cancellation)?;
@@ -569,6 +573,10 @@ impl Worker {
                     Operation::Raw => ParseOperation::ThumbnailRaw,
                     Operation::Pdf => ParseOperation::ThumbnailPdf,
                     Operation::Video => ParseOperation::ThumbnailVideo,
+                    Operation::Embedded => ParseOperation::ThumbnailEmbedded,
+                    Operation::AudioArt => ParseOperation::ThumbnailAudioArt,
+                    Operation::Text => ParseOperation::ThumbnailText,
+                    Operation::Code(language) => ParseOperation::ThumbnailCode(language),
                     Operation::ImageMetadata | Operation::MediaMetadata => {
                         ParseOperation::MediaMetadata
                     }

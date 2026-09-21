@@ -12,7 +12,7 @@ use gtk::{gdk, gio, glib, prelude::*};
 
 use crate::{
     model::{FileEntry, MetadataValue},
-    sandbox::{Cancellation, ParseOperation},
+    sandbox::{Cancellation, CodeLanguage, ParseOperation},
 };
 
 mod background;
@@ -34,6 +34,7 @@ thread_local! {
 }
 const MAX_QUEUED_THUMBNAILS: usize = 64;
 const FAILED_THUMBNAIL_TTL: Duration = Duration::from_secs(30);
+const MIN_PREVIEW_SIZE: i32 = 32;
 
 thread_local! {
     static ACTIVE_REQUESTS: RefCell<HashMap<usize, ActiveRequest>> =
@@ -51,9 +52,9 @@ thread_local! {
 }
 
 struct TrackedThumbnail {
-    #[cfg(test)]
     image: glib::WeakRef<ThumbnailSlot>,
     path: PathBuf,
+    source: gdk::Texture,
 }
 
 struct TrackedCustomizedIcon {
@@ -352,6 +353,10 @@ enum ThumbnailKind {
     Pdf,
     Video,
     AppImage,
+    Embedded,
+    AudioArt,
+    Text,
+    Code(CodeLanguage),
 }
 
 pub(super) fn set_thumbnail_or_icon(
@@ -477,6 +482,17 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
         );
         return;
     };
+    if thumbnail_size < MIN_PREVIEW_SIZE
+        && matches!(kind, ThumbnailKind::Text | ThumbnailKind::Code(_))
+    {
+        set_fallback_icon(
+            request.image,
+            customization_path,
+            request.fallback_icon,
+            request.icon_size,
+        );
+        return;
+    }
     if displayed_thumbnail_matches(request.image, request.path) {
         return;
     }
@@ -823,9 +839,7 @@ fn start_thumbnail_jobs() {
 
 async fn run_thumbnail_job(mut job: ThumbnailJob) {
     let mut key = job.key.clone();
-    let cached = if job.kind == ThumbnailKind::Camera {
-        None
-    } else {
+    let cached = if uses_disk_cache(job.kind) {
         let lookup = background::cache(move || {
             use std::os::unix::fs::MetadataExt;
             if let Ok(metadata) = std::fs::metadata(&key.path) {
@@ -845,6 +859,8 @@ async fn run_thumbnail_job(mut job: ThumbnailJob) {
             }
             Err(_) => None,
         }
+    } else {
+        None
     };
     let memory = THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&job.resolved));
     if let Some(hit) = memory {
@@ -877,10 +893,20 @@ async fn run_thumbnail_job(mut job: ThumbnailJob) {
     retry_deferred_thumbnails();
 }
 
+fn uses_disk_cache(kind: ThumbnailKind) -> bool {
+    !matches!(
+        kind,
+        ThumbnailKind::Camera | ThumbnailKind::AudioArt | ThumbnailKind::Code(_)
+    )
+}
+
 fn heavy(kind: ThumbnailKind) -> bool {
     matches!(
         kind,
-        ThumbnailKind::RawImage | ThumbnailKind::Pdf | ThumbnailKind::Video
+        ThumbnailKind::RawImage
+            | ThumbnailKind::Pdf
+            | ThumbnailKind::Video
+            | ThumbnailKind::AudioArt
     )
 }
 
@@ -964,6 +990,7 @@ async fn finish_thumbnail_job(
     result: Result<(crate::sandbox::browser::Thumbnail, bool), String>,
 ) {
     let targets = take_pending_targets(&job.key, job.id);
+    let persist = uses_disk_cache(job.kind);
     let key = job.resolved;
     let path = key.path.clone();
     if let Some(targets) = targets {
@@ -990,7 +1017,10 @@ async fn finish_thumbnail_job(
                 } else {
                     finish_thumbnail_targets(targets, None, &path);
                 }
-                if rendered && let Some(mtime) = key.modified {
+                if rendered
+                    && persist
+                    && let Some(mtime) = key.modified
+                {
                     enqueue_persist(key.path.clone(), mtime, png);
                 }
             }
@@ -1118,8 +1148,186 @@ fn known_metadata<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
 }
 
 fn apply_thumbnail(image: &ThumbnailSlot, texture: &gdk::Texture, path: &Path) {
-    image.set_texture(texture);
-    register_displayed_thumbnail(image, path);
+    let display = themed_thumbnail(texture, path).unwrap_or_else(|| texture.clone());
+    image.set_texture(&display);
+    register_displayed_thumbnail(image, path, texture);
+}
+
+fn themed_thumbnail(texture: &gdk::Texture, path: &Path) -> Option<gdk::Texture> {
+    let kind = thumbnail_kind(path)?;
+    THUMBNAIL_PALETTE.with(|palette| {
+        let palette = palette.borrow();
+        match kind {
+            ThumbnailKind::AudioArt => themed_audio_texture(texture, &palette),
+            ThumbnailKind::Code(_) => themed_code_texture(texture, &palette),
+            _ => None,
+        }
+    })
+}
+
+fn themed_audio_texture(source: &gdk::Texture, palette: &ThumbnailPalette) -> Option<gdk::Texture> {
+    let width = usize::try_from(source.width()).ok()?;
+    let height = usize::try_from(source.height()).ok()?;
+    if width < 8 || height < 8 {
+        return None;
+    }
+    let mut downloader = gdk::TextureDownloader::new(source);
+    downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+    let (mask, mask_stride) = downloader.download_bytes();
+    let surface = color_bytes(&palette.surface)?;
+    let border = color_bytes(&palette.border)?;
+    let accent = color_bytes(&palette.accent)?;
+    let stride = width * 4;
+    let mut pixels = vec![0; stride * height];
+    let inset = (width.min(height) / 32).max(2);
+    let radius = (width.min(height) * 3 / 32).max(4);
+    let border_width = (width.min(height) / 96).max(2);
+
+    for y in 0..height {
+        for x in 0..width {
+            if !inside_rounded_rect(x, y, width, height, inset, radius) {
+                continue;
+            }
+            let inner_inset = inset + border_width;
+            let inner_radius = radius.saturating_sub(border_width);
+            let base = if inside_rounded_rect(x, y, width, height, inner_inset, inner_radius) {
+                surface
+            } else {
+                border
+            };
+            let source_alpha = mask[y * mask_stride + x * 4 + 3];
+            let alpha = f32::from(source_alpha) / 255.0;
+            let output = y * stride + x * 4;
+            for channel in 0..3 {
+                pixels[output + channel] = (f32::from(base[channel]) * (1.0 - alpha)
+                    + f32::from(accent[channel]) * alpha)
+                    .round() as u8;
+            }
+            pixels[output + 3] = 255;
+        }
+    }
+
+    let bytes = glib::Bytes::from_owned(pixels);
+    Some(
+        gdk::MemoryTexture::new(
+            source.width(),
+            source.height(),
+            gdk::MemoryFormat::R8g8b8a8,
+            &bytes,
+            stride,
+        )
+        .upcast(),
+    )
+}
+
+fn themed_code_texture(source: &gdk::Texture, palette: &ThumbnailPalette) -> Option<gdk::Texture> {
+    let width = usize::try_from(source.width()).ok()?;
+    let height = usize::try_from(source.height()).ok()?;
+    if width < 8 || height < 8 {
+        return None;
+    }
+    let mut downloader = gdk::TextureDownloader::new(source);
+    downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+    let (mask, mask_stride) = downloader.download_bytes();
+    let surface = color_bytes(&palette.surface)?;
+    let border = color_bytes(&palette.border)?;
+    let text = color_bytes(&palette.text)?;
+    let dim_text = color_bytes(&palette.dim_text)?;
+    let accent = color_bytes(&palette.accent)?;
+    let keyword = color_bytes(&palette.keyword)?;
+    let string = color_bytes(&palette.string)?;
+    let constant = color_bytes(&palette.constant)?;
+    let type_color = color_bytes(&palette.type_color)?;
+    let stride = width * 4;
+    let mut pixels = vec![0; stride * height];
+    let inset = (width.min(height) / 64).max(1);
+    let radius = (width.min(height) * 3 / 32).max(4);
+    let border_width = (width.min(height) / 96).max(2);
+
+    for y in 0..height {
+        for x in 0..width {
+            if !inside_rounded_rect(x, y, width, height, inset, radius) {
+                continue;
+            }
+            let inner_inset = inset + border_width;
+            let inner_radius = radius.saturating_sub(border_width);
+            let base = if inside_rounded_rect(x, y, width, height, inner_inset, inner_radius) {
+                surface
+            } else {
+                border
+            };
+            let source_pixel = y * mask_stride + x * 4;
+            let source_alpha = mask[source_pixel + 3];
+            let foreground = match (
+                mask[source_pixel] > 127,
+                mask[source_pixel + 1] > 127,
+                mask[source_pixel + 2] > 127,
+            ) {
+                (true, true, true) => text,
+                (true, false, false) => keyword,
+                (false, true, false) => string,
+                (false, false, true) => constant,
+                (true, true, false) => type_color,
+                (false, true, true) => dim_text,
+                (true, false, true) => accent,
+                (false, false, false) => surface,
+            };
+            let alpha = f32::from(source_alpha) / 255.0;
+            let output = y * stride + x * 4;
+            for channel in 0..3 {
+                pixels[output + channel] = (f32::from(base[channel]) * (1.0 - alpha)
+                    + f32::from(foreground[channel]) * alpha)
+                    .round() as u8;
+            }
+            pixels[output + 3] = 255;
+        }
+    }
+
+    let bytes = glib::Bytes::from_owned(pixels);
+    Some(
+        gdk::MemoryTexture::new(
+            source.width(),
+            source.height(),
+            gdk::MemoryFormat::R8g8b8a8,
+            &bytes,
+            stride,
+        )
+        .upcast(),
+    )
+}
+
+fn color_bytes(value: &str) -> Option<[u8; 3]> {
+    let color = gdk::RGBA::parse(value).ok()?;
+    Some([
+        (color.red() * 255.0).round() as u8,
+        (color.green() * 255.0).round() as u8,
+        (color.blue() * 255.0).round() as u8,
+    ])
+}
+
+fn inside_rounded_rect(
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+    inset: usize,
+    radius: usize,
+) -> bool {
+    if x < inset || y < inset || x >= width - inset || y >= height - inset {
+        return false;
+    }
+    let left = inset + radius;
+    let right = width - inset - radius - 1;
+    let top = inset + radius;
+    let bottom = height - inset - radius - 1;
+    if (left..=right).contains(&x) || (top..=bottom).contains(&y) {
+        return true;
+    }
+    let center_x = if x < left { left } else { right };
+    let center_y = if y < top { top } else { bottom };
+    let dx = x.abs_diff(center_x);
+    let dy = y.abs_diff(center_y);
+    dx * dx + dy * dy <= radius * radius
 }
 
 fn displayed_thumbnail_matches(image: &ThumbnailSlot, path: &Path) -> bool {
@@ -1130,16 +1338,30 @@ fn displayed_thumbnail_matches(image: &ThumbnailSlot, path: &Path) -> bool {
     })
 }
 
-fn register_displayed_thumbnail(image: &ThumbnailSlot, path: &Path) {
+fn register_displayed_thumbnail(image: &ThumbnailSlot, path: &Path, source: &gdk::Texture) {
     TRACKED_THUMBNAILS.with_borrow_mut(|thumbnails| {
         thumbnails.insert(
             image.as_ptr() as usize,
             TrackedThumbnail {
-                #[cfg(test)]
                 image: image.downgrade(),
                 path: path.to_path_buf(),
+                source: source.clone(),
             },
         );
+    });
+}
+
+fn refresh_themed_thumbnails() {
+    TRACKED_THUMBNAILS.with(|thumbnails| {
+        thumbnails.borrow_mut().retain(|_, tracked| {
+            let Some(image) = tracked.image.upgrade() else {
+                return false;
+            };
+            if let Some(texture) = themed_thumbnail(&tracked.source, &tracked.path) {
+                image.set_texture(&texture);
+            }
+            true
+        });
     });
 }
 
@@ -1215,6 +1437,204 @@ fn prepare_thumbnail_target(image: &ThumbnailSlot, size: i32) -> (usize, u64) {
     (image_id, request)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ThumbnailPalette {
+    surface: String,
+    muted: String,
+    accent: String,
+    border: String,
+    text: String,
+    dim_text: String,
+    keyword: String,
+    string: String,
+    constant: String,
+    type_color: String,
+}
+
+impl ThumbnailPalette {
+    fn from_theme(tokens: &super::theme::ThemeTokens) -> Self {
+        Self {
+            surface: tokens.surface.clone(),
+            muted: tokens.muted.clone(),
+            accent: tokens.accent.clone(),
+            border: tokens.border.clone(),
+            text: tokens.text.clone(),
+            dim_text: tokens.dim_text.clone(),
+            keyword: tokens
+                .syntax_keyword
+                .clone()
+                .unwrap_or_else(|| tokens.accent.clone()),
+            string: tokens
+                .syntax_string
+                .clone()
+                .unwrap_or_else(|| tokens.text.clone()),
+            constant: tokens
+                .syntax_constant
+                .clone()
+                .unwrap_or_else(|| tokens.accent.clone()),
+            type_color: tokens
+                .syntax_type
+                .clone()
+                .unwrap_or_else(|| tokens.text.clone()),
+        }
+    }
+
+    fn substitutions(&self) -> [(&str, &str); 4] {
+        [
+            ("#010101", &self.surface),
+            ("#020202", &self.muted),
+            ("#030303", &self.accent),
+            ("#090909", &self.border),
+        ]
+    }
+}
+
+impl Default for ThumbnailPalette {
+    fn default() -> Self {
+        Self {
+            surface: "#18233d".into(),
+            muted: "#2a3858".into(),
+            accent: "#8bc9eb".into(),
+            border: "#42526f".into(),
+            text: "#f8fafc".into(),
+            dim_text: "#9aa8c7".into(),
+            keyword: "#d8b4fe".into(),
+            string: "#86efac".into(),
+            constant: "#f9a8d4".into(),
+            type_color: "#fde68a".into(),
+        }
+    }
+}
+
+thread_local! {
+    static THUMBNAIL_PALETTE: RefCell<ThumbnailPalette> = RefCell::new(ThumbnailPalette::default());
+}
+
+pub(super) fn set_theme_palette(tokens: &super::theme::ThemeTokens) {
+    let next = ThumbnailPalette::from_theme(tokens);
+    let changed = THUMBNAIL_PALETTE.with(|palette| {
+        if *palette.borrow() == next {
+            return false;
+        }
+        palette.replace(next);
+        true
+    });
+    if changed {
+        refresh_themed_thumbnails();
+    }
+}
+
+const ARCHIVE_ART: &str = include_str!("../../data/thumbnails/strata-archive.svg");
+const AUDIO_ART: &str = include_str!("../../data/thumbnails/strata-audio.svg");
+const AUDIO_PROJECT_ART: &str = include_str!("../../data/thumbnails/strata-audio-project.svg");
+const CERT_ART: &str = include_str!("../../data/thumbnails/strata-certificate.svg");
+const COMICS_ART: &str = include_str!("../../data/thumbnails/strata-comics.svg");
+const CONFIG_ART: &str = include_str!("../../data/thumbnails/strata-config.svg");
+const DATABASE_ART: &str = include_str!("../../data/thumbnails/strata-database.svg");
+const DESIGN_ART: &str = include_str!("../../data/thumbnails/strata-design-cad.svg");
+const DOCX_ART: &str = include_str!("../../data/thumbnails/strata-docx.svg");
+const EBOOKS_ART: &str = include_str!("../../data/thumbnails/strata-ebooks.svg");
+const FONT_ART: &str = include_str!("../../data/thumbnails/strata-font.svg");
+const IMAGE_ART: &str = include_str!("../../data/thumbnails/strata-image.svg");
+const ISO_ART: &str = include_str!("../../data/thumbnails/strata-iso.svg");
+const LOG_ART: &str = include_str!("../../data/thumbnails/strata-log.svg");
+const MAPS_ART: &str = include_str!("../../data/thumbnails/strata-maps-gis.svg");
+const MODELS_3D_ART: &str = include_str!("../../data/thumbnails/strata-models-3d.svg");
+const MUSIC_ART: &str = include_str!("../../data/thumbnails/strata-music-score.svg");
+const PACKAGE_ART: &str = include_str!("../../data/thumbnails/strata-package.svg");
+const PLAYLISTS_ART: &str = include_str!("../../data/thumbnails/strata-playlists.svg");
+const PPTX_ART: &str = include_str!("../../data/thumbnails/strata-pptx.svg");
+const SCIENCE_ART: &str = include_str!("../../data/thumbnails/strata-scientific-data.svg");
+const SPREADSHEET_ART: &str = include_str!("../../data/thumbnails/strata-spreadsheets.svg");
+const SQL_ART: &str = include_str!("../../data/thumbnails/strata-sql.svg");
+const SUBTITLES_ART: &str = include_str!("../../data/thumbnails/strata-subtitles.svg");
+const TEXT_ART: &str = include_str!("../../data/thumbnails/strata-text-code.svg");
+const VIDEO_ART: &str = include_str!("../../data/thumbnails/strata-video.svg");
+const VIRTUAL_DISK_ART: &str = include_str!("../../data/thumbnails/strata-virtual-disk.svg");
+const VM_ART: &str = include_str!("../../data/thumbnails/strata-virtual-machine.svg");
+const WEB_ART: &str = include_str!("../../data/thumbnails/strata-web.svg");
+
+fn fallback_art_source(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match extension.as_str() {
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "heic" | "heif"
+        | "avif" | "jxl" | "ico" | "icns" | "tga" | "pcx" | "jp2" | "j2k" | "qoi" | "dds"
+        | "exr" | "hdr" | "pam" | "pbm" | "pgm" | "ppm" | "pnm" | "xbm" | "xpm" | "jfif"
+        | "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
+        | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
+        | "x3f" => IMAGE_ART,
+        "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" | "flv" | "wmv"
+        | "m2ts" | "3gp" | "asf" | "vob" | "divx" | "mts" | "m2v" | "f4v" | "mxf" | "wtv"
+        | "rm" | "rmvb" | "dv" => VIDEO_ART,
+        "svg" | "psd" | "psb" | "xcf" | "ai" | "sketch" | "dxf" | "dwg" | "dgn" | "eps" | "ps"
+        | "kra" | "clip" | "step" | "stp" | "iges" | "igs" | "indd" | "indt" | "fig" | "xd"
+        | "afphoto" | "afdesign" | "afpub" | "cdr" | "vsd" | "vsdx" | "odg" | "drawio"
+        | "procreate" | "swf" | "fla" | "prproj" | "aep" => DESIGN_ART,
+        "mp3" | "flac" | "m4a" | "aac" | "wav" | "aiff" | "aif" | "ogg" | "oga" | "opus"
+        | "wma" | "ape" | "wv" | "mka" | "amr" | "spx" | "dsf" | "dff" | "tak" => AUDIO_ART,
+        "mid" | "midi" | "mscz" | "musx" | "kar" => MUSIC_ART,
+        "aup3" | "als" | "flp" | "logicx" => AUDIO_PROJECT_ART,
+        "epub" | "mobi" | "azw" | "azw3" | "fb2" | "djvu" | "djv" | "kfx" | "lrf" | "pdb"
+        | "prc" | "chm" | "lit" => EBOOKS_ART,
+        "cbz" | "cbr" | "cb7" | "cbt" | "cba" => COMICS_ART,
+        "pdf" | "docx" | "doc" | "odt" | "rtf" | "docm" | "dotx" | "xps" | "oxps" | "hwp"
+        | "wpd" | "wps" | "msg" | "ott" | "pages" => DOCX_ART,
+        "xls" | "xlsx" | "ods" | "xlsm" | "csv" | "tsv" | "ots" | "numbers" => SPREADSHEET_ART,
+        "pptx" | "ppt" | "odp" | "key" | "ppsx" | "pps" | "otp" => PPTX_ART,
+        "srt" | "vtt" | "ass" | "ssa" | "sbv" | "lrc" => SUBTITLES_ART,
+        "m3u" | "m3u8" | "xspf" | "pls" => PLAYLISTS_ART,
+        "gpx" | "kml" | "kmz" | "geojson" | "shp" | "osm" | "gpkg" | "mbtiles" => MAPS_ART,
+        "obj" | "stl" | "gltf" | "glb" | "fbx" | "usdz" | "blend" | "max" | "c4d" | "3ds"
+        | "3mf" | "dae" | "ply" => MODELS_3D_ART,
+        "iso" | "img" | "bin" | "cue" | "nrg" | "mdf" | "mds" | "mdx" | "ccd" => ISO_ART,
+        "vhd" | "vhdx" | "vmdk" | "qcow2" | "vdi" => VIRTUAL_DISK_ART,
+        "vmx" | "ovf" | "ova" | "box" | "vagrant" => VM_ART,
+        "zip" | "jar" | "war" | "7z" | "tar" | "tgz" | "gz" | "zst" | "tzst" | "rar" | "xz"
+        | "txz" | "bz2" | "tbz" | "tbz2" | "lz" | "lz4" | "cab" | "arj" | "dmg" | "cpio"
+        | "lzh" | "lha" | "zoo" | "arc" | "ace" | "squashfs" | "wim" | "ear" => ARCHIVE_ART,
+        "apk" | "deb" | "rpm" | "pkg" | "ipa" | "appx" | "msix" | "exe" | "msi" | "xapk"
+        | "xpi" | "crx" | "vsix" | "whl" | "egg" | "gem" | "nupkg" | "snap" | "flatpak"
+        | "appimage" => PACKAGE_ART,
+        "ttf" | "otf" | "ttc" | "woff" | "woff2" | "pfb" | "pfm" | "afm" | "bdf" | "fon"
+        | "fnt" => FONT_ART,
+        "html" | "htm" | "xhtml" | "mhtml" | "mht" | "url" | "webloc" => WEB_ART,
+        "toml" | "xml" | "ini" | "cfg" | "conf" | "env" | "json" | "jsonl" | "yaml" | "yml"
+        | "plist" | "desktop" => CONFIG_ART,
+        "log" => LOG_ART,
+        "db" | "sqlite" | "sqlite3" | "mdb" | "accdb" => DATABASE_ART,
+        "sql" => SQL_ART,
+        "cer" | "crt" | "pem" | "p12" | "pfx" | "p7b" | "p7s" | "der" | "csr" | "crl" | "ovpn" => {
+            CERT_ART
+        }
+        "fits" | "hdf5" | "h5" | "mat" | "nc" | "parquet" | "avro" | "orc" | "arrow"
+        | "feather" | "grib" => SCIENCE_ART,
+        "txt" | "md" | "rst" | "diff" | "patch" | "rs" | "py" | "js" | "mjs" | "ts" | "jsx"
+        | "tsx" | "c" | "h" | "cpp" | "cxx" | "cc" | "hpp" | "java" | "kt" | "kts" | "swift"
+        | "go" | "rb" | "php" | "sh" | "bash" | "zsh" | "css" | "scss" | "less" | "tex" | "bib"
+        | "lua" | "pl" | "pm" | "r" | "jl" | "ex" | "exs" | "erl" | "hrl" | "clj" | "cljs"
+        | "scala" | "hs" | "ml" | "fs" | "fsx" | "vb" | "cs" | "d" | "nim" | "zig" | "v"
+        | "sol" | "ada" | "f" | "f90" | "f95" | "for" | "pas" | "pp" | "inc" | "asm" | "s"
+        | "vue" | "svelte" | "astro" | "coffee" | "dart" | "elm" | "purs" | "jinja" | "j2"
+        | "tmpl" | "tpl" | "ejs" | "pug" | "hbs" | "haml" | "slim" | "mk" | "cmake"
+        | "properties" | "gradle" | "groovy" | "rmd" | "lock" | "ipynb" | "eml" | "ics" | "vcf"
+        | "bat" | "cmd" | "ps1" | "reg" | "po" | "pot" => TEXT_ART,
+        _ => return None,
+    })
+}
+
+fn fallback_art(path: &Path) -> Option<gdk::Texture> {
+    let source = fallback_art_source(path)?;
+    THUMBNAIL_PALETTE.with(|palette| {
+        let palette = palette.borrow();
+        crate::assets::themed_svg_paintable(
+            &format!("thumbnail:{:p}", source.as_ptr()),
+            source,
+            &palette.substitutions(),
+            256,
+        )
+    })
+}
+
 fn set_fallback_icon(
     image: &ThumbnailSlot,
     path: Option<&Path>,
@@ -1223,10 +1643,14 @@ fn set_fallback_icon(
 ) -> (usize, u64) {
     let ids = prepare_thumbnail_target(image, size);
     clear_displayed_thumbnail(image);
-    let (texture, customized) = path_icon_texture(path, icon);
-    image.set_fallback(icon, texture.as_ref());
+    let resolved = path_icon_texture(path, icon);
+    if resolved.artwork {
+        image.set_fallback_art(icon, resolved.texture.as_ref());
+    } else {
+        image.set_fallback(icon, resolved.texture.as_ref());
+    }
     if let Some(p) = path {
-        register_tracked_icon(image, p, icon, customized);
+        register_tracked_icon(image, p, icon, resolved.customized);
     } else {
         TRACKED_CUSTOMIZED_ICONS.with_borrow_mut(|icons| {
             icons.remove(&(image.as_ptr() as usize));
@@ -1235,14 +1659,25 @@ fn set_fallback_icon(
     ids
 }
 
-fn path_icon_texture(path: Option<&Path>, fallback_icon: &str) -> (Option<gdk::Texture>, bool) {
+struct PathIconTexture {
+    texture: Option<gdk::Texture>,
+    customized: bool,
+    artwork: bool,
+}
+
+fn path_icon_texture(path: Option<&Path>, fallback_icon: &str) -> PathIconTexture {
     let Some(path) = path else {
-        return (crate::assets::primary_icon_paintable(fallback_icon), false);
+        return PathIconTexture {
+            texture: crate::assets::primary_icon_paintable(fallback_icon),
+            customized: false,
+            artwork: false,
+        };
     };
     let preference_manager = super::preferences::PreferenceManager::shared();
     let custom_icon = preference_manager.custom_icon(path);
     let color = preference_manager.folder_color(path);
     let customized = custom_icon.is_some() || color.is_some();
+    let mut artwork = false;
     let texture = if fallback_icon == crate::assets::icons::FOLDER
         && let Some(decoration) = custom_icon.as_deref()
     {
@@ -1261,17 +1696,31 @@ fn path_icon_texture(path: Option<&Path>, fallback_icon: &str) -> (Option<gdk::T
         let rendered_icon = custom_icon.as_deref().unwrap_or(fallback_icon);
         if let Some(color) = color {
             crate::assets::custom_colored_icon_paintable(rendered_icon, color.hex())
+        } else if custom_icon.is_none()
+            && fallback_icon != crate::assets::icons::FOLDER
+            && let Some(art) = fallback_art(path)
+        {
+            artwork = true;
+            Some(art)
         } else {
             crate::assets::primary_icon_paintable(rendered_icon)
         }
     };
-    (texture, customized)
+    PathIconTexture {
+        texture,
+        customized,
+        artwork,
+    }
 }
 
 fn apply_path_customization(image: &ThumbnailSlot, path: &Path, fallback_icon: &str) -> bool {
-    let (texture, customized) = path_icon_texture(Some(path), fallback_icon);
-    image.set_fallback(fallback_icon, texture.as_ref());
-    customized
+    let resolved = path_icon_texture(Some(path), fallback_icon);
+    if resolved.artwork {
+        image.set_fallback_art(fallback_icon, resolved.texture.as_ref());
+    } else {
+        image.set_fallback(fallback_icon, resolved.texture.as_ref());
+    }
+    resolved.customized
 }
 
 fn apply_path_customization_image(image: &gtk::Image, path: &Path, fallback_icon: &str) -> bool {
@@ -1411,22 +1860,43 @@ fn cancel_thumbnail(image_id: usize) {
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
+    if let Some(language) = CodeLanguage::from_path(path) {
+        return Some(ThumbnailKind::Code(language));
+    }
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
         "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" | "heic"
-        | "heif" | "avif" | "jxl" => Some(ThumbnailKind::Image),
+        | "heif" | "avif" | "jxl" | "psd" | "psb" | "xcf" | "ico" | "icns" | "tga" | "pcx"
+        | "jp2" | "j2k" | "qoi" | "dds" | "exr" | "hdr" | "pam" | "pbm" | "pgm" | "ppm" | "pnm"
+        | "xbm" | "xpm" | "jfif" => Some(ThumbnailKind::Image),
         "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"
         | "nef" | "nrw" | "orf" | "pef" | "raf" | "raw" | "rw2" | "rwl" | "sr2" | "srf" | "srw"
         | "x3f" => Some(ThumbnailKind::RawImage),
-        "pdf" => Some(ThumbnailKind::Pdf),
+        "pdf" | "ai" => Some(ThumbnailKind::Pdf),
         "appimage" => Some(ThumbnailKind::AppImage),
-        "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
-            Some(ThumbnailKind::Video)
+        "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" | "flv" | "wmv"
+        | "m2ts" | "3gp" | "asf" | "vob" | "divx" | "mts" | "m2v" | "f4v" | "mxf" | "wtv"
+        | "rm" | "rmvb" | "dv" => Some(ThumbnailKind::Video),
+        "epub" | "cbz" | "cbr" | "fb2" | "mobi" | "azw" | "azw3" | "djvu" | "djv" | "sketch"
+        | "kra" | "ipa" | "appx" | "msix" | "apk" | "pdb" | "prc" => Some(ThumbnailKind::Embedded),
+        "mp3" | "flac" | "m4a" | "m4b" | "aac" | "wav" | "aiff" | "aif" | "ogg" | "oga"
+        | "opus" | "wma" | "ape" | "wv" | "mka" | "amr" | "spx" | "dsf" | "dff" | "tak" => {
+            Some(ThumbnailKind::AudioArt)
         }
-        // FFmpeg exposes no art stream for tag-only Ogg, Opus or WAV covers.
-        "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => {
-            Some(ThumbnailKind::Video)
-        }
+        "txt" | "md" | "rst" | "log" | "csv" | "tsv" | "json" | "jsonl" | "yaml" | "yml"
+        | "toml" | "xml" | "ini" | "cfg" | "conf" | "diff" | "patch" | "rs" | "py" | "js"
+        | "mjs" | "ts" | "jsx" | "tsx" | "c" | "h" | "cpp" | "cxx" | "cc" | "hpp" | "java"
+        | "kt" | "kts" | "swift" | "go" | "rb" | "php" | "sh" | "bash" | "zsh" | "css" | "scss"
+        | "less" | "html" | "htm" | "rtf" | "srt" | "vtt" | "ass" | "ssa" | "m3u" | "m3u8"
+        | "xspf" | "gpx" | "kml" | "geojson" | "obj" | "stl" | "gltf" | "dxf" | "sql" | "xhtml"
+        | "mhtml" | "mht" | "tex" | "bib" | "lua" | "pl" | "pm" | "r" | "jl" | "ex" | "exs"
+        | "erl" | "hrl" | "clj" | "cljs" | "scala" | "hs" | "ml" | "fs" | "fsx" | "vb" | "cs"
+        | "d" | "nim" | "zig" | "v" | "sol" | "ada" | "f" | "f90" | "f95" | "for" | "pas"
+        | "pp" | "inc" | "asm" | "s" | "vue" | "svelte" | "astro" | "coffee" | "dart" | "elm"
+        | "purs" | "jinja" | "j2" | "tmpl" | "tpl" | "ejs" | "pug" | "hbs" | "haml" | "slim"
+        | "mk" | "cmake" | "properties" | "gradle" | "groovy" | "rmd" | "lock" | "ipynb"
+        | "eml" | "ics" | "vcf" | "sbv" | "lrc" | "url" | "webloc" | "bat" | "cmd" | "ps1"
+        | "reg" | "desktop" | "po" | "pot" => Some(ThumbnailKind::Text),
         _ => None,
     }
 }
@@ -1443,6 +1913,10 @@ fn render_thumbnail(
         ThumbnailKind::Pdf => ParseOperation::ThumbnailPdf,
         ThumbnailKind::Video => ParseOperation::ThumbnailVideo,
         ThumbnailKind::AppImage => ParseOperation::ThumbnailAppImage,
+        ThumbnailKind::Embedded => ParseOperation::ThumbnailEmbedded,
+        ThumbnailKind::AudioArt => ParseOperation::ThumbnailAudioArt,
+        ThumbnailKind::Text => ParseOperation::ThumbnailText,
+        ThumbnailKind::Code(language) => ParseOperation::ThumbnailCode(language),
     };
     crate::sandbox::browser::thumbnail(path, operation, cancellation)
 }

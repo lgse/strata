@@ -148,6 +148,28 @@ fn cut_replaces_thumbnail_and_hidden_controls_its_opacity() {
 }
 
 #[test]
+fn category_art_keeps_thumbnail_brightness_and_canvas_scale() {
+    gtk_test(
+        "ui::thumbnail::slot::tests::category_art_keeps_thumbnail_brightness_and_canvas_scale",
+        || {
+            let slot = ThumbnailSlot::new(64);
+            slot.limit_fallback_height_to_folder();
+            slot.set_base_opacity(0.72);
+
+            let pixels = glib::Bytes::from_owned(vec![255_u8; 32 * 32 * 4]);
+            let art = gdk::MemoryTexture::new(32, 32, gdk::MemoryFormat::R8g8b8a8, &pixels, 32 * 4);
+            slot.set_fallback_art("category-art", Some(art.upcast_ref()));
+
+            assert_eq!(slot.opacity(), 1.0);
+            assert_eq!(slot.imp().fallback_scale.get(), 1.0);
+
+            slot.set_hidden(true);
+            assert!((slot.opacity() - 0.65).abs() < 0.01);
+        },
+    );
+}
+
+#[test]
 fn fallback_restores_base_opacity_after_thumbnail() {
     gtk_test(
         "ui::thumbnail::slot::tests::fallback_restores_base_opacity_after_thumbnail",
