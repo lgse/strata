@@ -181,7 +181,7 @@ fn context_search_active(state: &ViewState, depth: usize) -> bool {
         .columns
         .borrow()
         .get(depth)
-        .is_some_and(|column| column.search_handle.borrow().is_some())
+        .is_some_and(|column| column.recursive_search_active.get())
 }
 
 fn context_filter_or_search_active(state: &ViewState, depth: usize) -> bool {
@@ -189,7 +189,7 @@ fn context_filter_or_search_active(state: &ViewState, depth: usize) -> bool {
         return state.mode_views.borrow().filter_active();
     }
     state.columns.borrow().get(depth).is_some_and(|column| {
-        column.search_handle.borrow().is_some()
+        column.recursive_search_active.get()
             || column.map.has_query()
             || !column.filter_entry.text().trim().is_empty()
     })
@@ -701,7 +701,7 @@ pub(in crate::ui) fn install_item_context_menu(
         let columns = state.columns.borrow();
         let search = columns.get(depth).filter(|column| {
             state.mode_views.borrow().mode() == BrowserMode::Columns
-                && column.search_handle.borrow().is_some()
+                && column.recursive_search_active.get()
         });
         let target = if let Some(column) = search {
             (
@@ -1488,7 +1488,7 @@ fn focus_search_result(state: &ViewState, depth: usize, entry: &FileEntry) {
     let Some(column) = state.columns.borrow().get(depth).cloned() else {
         return;
     };
-    if column.search_handle.borrow().is_none() {
+    if !column.recursive_search_active.get() {
         return;
     }
     let position = column

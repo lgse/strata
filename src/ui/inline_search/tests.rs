@@ -4,7 +4,7 @@ use super::*;
 use crate::model::Location;
 use std::{
     fs,
-    time::{Instant, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 #[test]
@@ -83,28 +83,6 @@ fn result_paths_are_relative_to_the_search_root() {
     assert_eq!(
         relative_result_path(root, Path::new("/tmp/strata-search-demo/notes.txt")),
         "notes.txt"
-    );
-}
-
-#[test]
-fn pointer_selection_extends_and_toggles_the_plain_click_selection() {
-    crate::test_support::gtk_test(
-        "ui::inline_search::tests::pointer_selection_extends_and_toggles_the_plain_click_selection",
-        || {
-            let first = pointer_selection(None, 0, false, false, None, true);
-            assert!(first.contains(0));
-
-            let both = pointer_selection(Some(&first), 1, true, false, Some(0), true);
-            assert!(both.contains(0));
-            assert!(both.contains(1));
-
-            let second = pointer_selection(Some(&both), 0, true, false, Some(1), true);
-            assert!(!second.contains(0));
-            assert!(second.contains(1));
-
-            let empty = pointer_selection(Some(&first), 0, true, false, Some(0), true);
-            assert!(empty.is_empty());
-        },
     );
 }
 
@@ -275,16 +253,35 @@ fn every_search_presentation_renames_the_displayed_result_inline() {
                 state.stack.set_visible_child_name("search");
                 wait_until(|| state.collection.bound_at(0).is_some());
                 let active = Rc::new(RefCell::new(None));
-                assert!(search.begin_rename(
-                    &super::super::browser::search_result_entry(&item),
-                    active.clone(),
-                    Rc::downgrade(&browser),
-                    std::rc::Weak::new(),
+                let target = search
+                    .edit_target(&super::super::browser::search_result_entry(&item))
+                    .expect("target");
+                assert!(super::super::collection_edit::begin(
+                    &active,
+                    super::super::browser::search_result_entry(&item),
+                    target,
+                    Rc::new(|_| {})
                 ));
                 assert!(active.borrow().is_some());
-                let (field, display) = state.collection.rename_widgets(0).expect("editor");
+                let edit = state.collection.edit_widgets(0).expect("editor");
+                let (field, display) = (edit.field, edit.display);
                 assert!(gtk::prelude::WidgetExt::is_visible(&field));
                 assert!(!display.is_visible());
+                field.set_text("draft.txt");
+                update_results(state, vec![item.clone()], true);
+                assert!(
+                    active.borrow().is_some(),
+                    "no-op results retain the edit lease"
+                );
+                assert_eq!(field.text(), "draft.txt");
+                assert!(gtk::prelude::WidgetExt::is_visible(&field));
+                update_results(state, vec![], true);
+                assert!(
+                    active.borrow().is_none(),
+                    "removing the edited identity revokes the lease"
+                );
+                assert!(!gtk::prelude::WidgetExt::is_visible(&field));
+                assert!(display.is_visible());
                 window.destroy();
             }
         },
@@ -325,10 +322,10 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
             window.present();
             entry.set_text("same");
             entry.grab_focus();
-            wait_until(|| state.items.borrow().len() == 3);
-            let mut items = state.items.borrow().clone();
+            wait_until(|| state.collection.items().len() == 3);
+            let mut items = state.collection.items();
             items.sort_by(|a, b| a.path.cmp(&b.path));
-            state.handle.borrow_mut().take();
+            state.session.cancel();
             update_results(state, vec![items[1].clone()], true);
             wait_until(|| state.collection.bound_at(0).is_some());
             state.collection.selection.select_item(0, true);
@@ -350,8 +347,8 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
             ] {
                 update_results(state, update, true);
                 let position = state
-                    .items
-                    .borrow()
+                    .collection
+                    .items()
                     .iter()
                     .position(|item| item.path == items[1].path)
                     .expect("retained result") as u32;
@@ -381,6 +378,126 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
             assert_eq!(state.collection.model.n_items(), 0);
             super::super::thumbnail::clear_thumbnail_runtime();
             window.close();
+        },
+    );
+}
+
+#[test]
+fn result_publication_is_coherent_through_insert_remove_reorder_and_reentry() {
+    crate::test_support::gtk_test(
+        "ui::inline_search::tests::result_publication_is_coherent_through_insert_remove_reorder_and_reentry",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            let items: Vec<_> = ["a/same.txt", "b/same.txt", "c/same.txt"]
+                .into_iter()
+                .map(|path| SearchItem::for_test(root.path().join(path), false))
+                .collect();
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            let entry = gtk::Entry::new();
+            let search = wrap(
+                &gtk::Label::new(None),
+                &entry,
+                Some(root.path().into()),
+                &browser,
+                search_options(&browser, SearchPresentation::Rows),
+            );
+            let state = search.state.as_ref().expect("search state");
+            state.stack.set_visible_child_name("search");
+            update_results(state, vec![items[1].clone()], true);
+            state.collection.selection.select_item(0, true);
+            let expected = Rc::new(RefCell::new(vec![items[1].path.clone()]));
+            let notifications = Rc::new(RefCell::new(Vec::new()));
+            let weak = Rc::downgrade(state);
+            let expected_callback = expected.clone();
+            let notifications_callback = notifications.clone();
+            state
+                .selection_callbacks
+                .borrow_mut()
+                .push(Rc::new(move |entries| {
+                    let state = weak.upgrade().expect("live search");
+                    assert_eq!(
+                        state
+                            .collection
+                            .items()
+                            .iter()
+                            .map(|item| item.path.clone())
+                            .collect::<Vec<_>>(),
+                        *expected_callback.borrow()
+                    );
+                    let paths: Vec<_> =
+                        entries.iter().map(|entry| entry.location.clone()).collect();
+                    assert_eq!(
+                        paths,
+                        state
+                            .selected_entries()
+                            .iter()
+                            .map(|entry| entry.location.clone())
+                            .collect::<Vec<_>>()
+                    );
+                    notifications_callback.borrow_mut().push(paths);
+                }));
+            for update in [
+                items.clone(),
+                vec![items[2].clone(), items[1].clone(), items[0].clone()],
+            ] {
+                expected.replace(update.iter().map(|item| item.path.clone()).collect());
+                update_results(state, update, true);
+                assert_eq!(
+                    state.selected_entries()[0].location,
+                    Location::local(&items[1].path)
+                );
+            }
+            assert!(
+                notifications.borrow().is_empty(),
+                "identity-preserving updates do not publish transient index changes"
+            );
+            expected.replace(vec![items[2].path.clone(), items[0].path.clone()]);
+            update_results(state, vec![items[2].clone(), items[0].clone()], true);
+            assert_eq!(
+                state.selected_entries()[0].location,
+                Location::local(&items[0].path)
+            );
+            expected.replace(vec![]);
+            update_results(state, vec![], true);
+            assert!(
+                notifications
+                    .borrow()
+                    .last()
+                    .expect("empty selection notification")
+                    .is_empty()
+            );
+
+            state.selection_callbacks.borrow_mut().clear();
+            update_results(state, items.clone(), true);
+            let weak = Rc::downgrade(state);
+            let replacement = vec![items[2].clone()];
+            state
+                .selection_callbacks
+                .borrow_mut()
+                .push(Rc::new(move |entries| {
+                    if entries[0].location != Location::local(&replacement[0].path) {
+                        update_results(
+                            &weak.upgrade().expect("live search"),
+                            replacement.clone(),
+                            true,
+                        );
+                    }
+                }));
+            let weak = Rc::downgrade(state);
+            state
+                .selection_callbacks
+                .borrow_mut()
+                .push(Rc::new(move |entries| {
+                    assert_eq!(
+                        entries[0].location,
+                        weak.upgrade().expect("live search").selected_entries()[0].location
+                    );
+                }));
+            state.collection.selection.select_item(0, true);
+            assert_eq!(
+                state.selected_entries()[0].location,
+                Location::local(&items[2].path)
+            );
         },
     );
 }

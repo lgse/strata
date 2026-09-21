@@ -196,7 +196,7 @@ impl ViewState {
                         .collect();
                     if !filled.is_empty() {
                         column.bound_rows.borrow_mut().retain(|bound| {
-                            let (Some(item), Some(row)) =
+                            let (Some(item), Some(_row)) =
                                 (bound.item.upgrade(), bound.row.upgrade())
                             else {
                                 return false;
@@ -204,20 +204,10 @@ impl ViewState {
                             let position = column.map.source_position(item.position());
                             if let Some(position) = position
                                 && let Some(&entry) = filled.get(&position)
-                                && let Some(size) = row
-                                    .first_child()
-                                    .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
-                                    .and_then(|icon| icon.next_sibling())
-                                    .and_then(|middle| middle.downcast::<gtk::Overlay>().ok())
-                                    .and_then(|middle| middle.last_child())
-                                    .and_downcast::<gtk::Label>()
                             {
+                                let size = &bound.size;
                                 let text = column_size_text(Some(entry));
-                                let actively_renaming = self
-                                    .active_rename
-                                    .borrow()
-                                    .as_ref()
-                                    .is_some_and(|rename| rename.size == size);
+                                let actively_renaming = bound.edit.is_editing();
                                 size.set_label(&text);
                                 size.set_visible(!text.is_empty() && !actively_renaming);
                             }
@@ -311,10 +301,7 @@ impl ViewState {
                     let preserve_search =
                         self.refreshing_source_filter.get() && column.recursive_search_active.get();
                     if !preserve_search {
-                        column.search_handle.borrow_mut().take();
-                        column
-                            .search_generation
-                            .set(column.search_generation.get().saturating_add(1));
+                        column.search_session.cancel();
                         super::collection::deactivate_recursive_search(
                             &column.recursive_search_active,
                             &column.search_results,
@@ -1052,8 +1039,13 @@ impl ViewState {
     }
 
     fn prune_stale_search_results(&self) {
-        for column in self.columns.borrow().iter() {
-            prune_missing_search_results(column);
+        let columns = self.columns.borrow().clone();
+        let mut changed = false;
+        for column in &columns {
+            changed |= prune_missing_search_results(column);
+        }
+        if changed {
+            self.notify_search_selection_changed();
         }
         self.mode_views.borrow().prune_stale_search_results();
     }
