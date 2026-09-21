@@ -275,7 +275,6 @@ impl Marquee {
             };
             gesture.set_state(gtk::EventSequenceState::Claimed);
             state_for_begin.begin(anchor, gesture.current_event_state());
-            state_for_begin.clear_at_press();
         });
         connect_drag_progress(&gesture, &self.state);
         surface.add_controller(gesture.clone());
@@ -361,7 +360,6 @@ pub(super) fn install_shared_origin_surface(
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         state.begin(anchor, gesture.current_event_state());
-        state.clear_at_press();
         target_for_begin.replace(Some(state));
     });
     let target_for_update = target.clone();

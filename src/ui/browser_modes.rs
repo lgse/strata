@@ -2160,7 +2160,6 @@ fn build_icons_pane(
     );
     content.append(&search.widget);
     marquee.add_origin_surface(&header);
-    marquee.add_origin_surface(&stack);
     let pane = Pane {
         depth,
         location,
@@ -3094,7 +3093,6 @@ fn build_list_pane(
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
-    marquee.add_origin_surface(&stack);
     let table_scroll = gtk::ScrolledWindow::builder()
         .child(&table)
         .hscrollbar_policy(gtk::PolicyType::Automatic)
