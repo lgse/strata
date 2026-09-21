@@ -288,6 +288,12 @@ impl InlineSearch {
         }
     }
 
+    pub(super) fn set_show_hidden(&self, show_hidden: bool) {
+        if let Some(state) = &self.state {
+            state.session.set_show_hidden(show_hidden);
+        }
+    }
+
     pub fn refresh_source_filter(&self, browser: &Browser) {
         let Some(state) = self.state.as_ref() else {
             return;

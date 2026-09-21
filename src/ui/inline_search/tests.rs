@@ -368,6 +368,22 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
             assert!(!search.is_item_target(&state.collection.view));
             assert!(!search.is_item_target(state.status.upcast_ref()));
 
+            state.collection.focus(1, true);
+            wait_until(|| {
+                window
+                    .root()
+                    .and_then(|root| root.focus())
+                    .and_then(|focus| state.collection.position_at(&focus))
+                    == Some(1)
+            });
+            state.collection.selection.unselect_all();
+            update_results(state, items.clone(), true);
+            assert!(
+                state.selected_entries().is_empty(),
+                "restoring focus must not reselect an explicitly deselected entry"
+            );
+            state.collection.selection.select_item(1, true);
+
             update_results(state, vec![items[2].clone(), items[0].clone()], true);
             assert_eq!(
                 search.selected_entries().expect("results")[0].location,
@@ -467,6 +483,24 @@ fn result_publication_is_coherent_through_insert_remove_reorder_and_reentry() {
                     .is_empty()
             );
 
+            expected.replace(items.iter().map(|item| item.path.clone()).collect());
+            update_results(state, items.clone(), true);
+            state.collection.selection.select_item(1, true);
+            state.collection.selection.select_item(2, false);
+            let reordered = vec![items[2].clone(), items[1].clone(), items[0].clone()];
+            expected.replace(reordered.iter().map(|item| item.path.clone()).collect());
+            update_results(state, reordered.clone(), true);
+            assert_eq!(
+                notifications.borrow().last().expect("reordered selection"),
+                &vec![
+                    Location::local(&items[2].path),
+                    Location::local(&items[1].path)
+                ]
+            );
+            let before = notifications.borrow().len();
+            update_results(state, reordered, true);
+            assert_eq!(notifications.borrow().len(), before, "no-op publication");
+
             state.selection_callbacks.borrow_mut().clear();
             update_results(state, items.clone(), true);
             let weak = Rc::downgrade(state);
@@ -497,6 +531,44 @@ fn result_publication_is_coherent_through_insert_remove_reorder_and_reentry() {
             assert_eq!(
                 state.selected_entries()[0].location,
                 Location::local(&items[2].path)
+            );
+        },
+    );
+}
+
+#[test]
+fn detaching_retires_the_query_binding_and_pending_debounce() {
+    crate::test_support::gtk_test(
+        "ui::inline_search::tests::detaching_retires_the_query_binding_and_pending_debounce",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            let entry = gtk::Entry::new();
+            let search = wrap(
+                &gtk::Label::new(None),
+                &entry,
+                Some(fixture.path().into()),
+                &browser,
+                search_options(&browser, SearchPresentation::Rows),
+            );
+            let weak = Rc::downgrade(search.state.as_ref().expect("search state"));
+            let widget = search.widget.clone();
+            entry.set_text("pending");
+            search.detach();
+            drop(search);
+            assert!(
+                weak.upgrade().is_none(),
+                "neither the entry nor queued debounce may retain a detached collection"
+            );
+            entry.set_text("later");
+            while glib::MainContext::default().iteration(false) {}
+            assert_eq!(
+                widget
+                    .downcast::<gtk::Stack>()
+                    .expect("stack")
+                    .visible_child_name()
+                    .as_deref(),
+                Some("files")
             );
         },
     );

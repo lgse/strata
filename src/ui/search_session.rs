@@ -73,6 +73,25 @@ impl SearchSession {
         self.0.query.borrow_mut().clear();
     }
 
+    pub(super) fn set_show_hidden(&self, show_hidden: bool) {
+        let input = self
+            .0
+            .worker
+            .borrow()
+            .as_ref()
+            .map(|worker| worker.input.clone());
+        let deliver = self.0.deliver.borrow().clone();
+        let (Some(mut input), Some(deliver)) = (input, deliver) else {
+            return;
+        };
+        if input.show_hidden == show_hidden {
+            return;
+        }
+        input.show_hidden = show_hidden;
+        let query = self.0.query.borrow().clone();
+        self.update(input, &query, false, deliver);
+    }
+
     pub(super) fn expect_query(&self, query: &str) {
         self.0.query.replace(query.trim().to_owned());
     }

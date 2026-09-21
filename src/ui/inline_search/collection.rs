@@ -130,13 +130,17 @@ impl ResultCollection {
         self.selection.select_item(position, exclusive);
         self.gesture_selection
             .replace(Some(self.selection.selection().copy()));
+        self.restore_focus(position);
+        true
+    }
+
+    fn restore_focus(&self, position: u32) {
         self.view.grab_focus();
         if let Some(list) = self.view.downcast_ref::<gtk::ListView>() {
             list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
         } else if let Some(grid) = self.view.downcast_ref::<gtk::GridView>() {
             grid.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
         }
-        true
     }
 
     pub(super) fn first_visual_row(&self, position: u32) -> bool {
@@ -263,7 +267,7 @@ impl ResultCollection {
             (0..self.selection.n_items())
                 .find(|position| self.item(*position).is_some_and(|item| &item.path == path))
         }) {
-            self.focus(position, false);
+            self.restore_focus(position);
         }
         self.refresh_bindings(recursive);
         self.reconciling.set(false);

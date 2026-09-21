@@ -144,7 +144,8 @@ resolve activation, selection, drag, context and edit targets through the sorted
 the path/rank map only supplies ordering to its sorter. Basenames are never identity.
 
 Single-pane publication captures selected/focused paths before reconciliation and restores
-selection by identity. If the last selected result disappears, it retains the nearest previous
+selection by identity. Restoring focus never reselects an explicitly deselected entry.
+If the last selected result disappears, it retains the nearest previous
 selection slot; Columns intentionally leaves the selection empty when its selected result
 vanishes. Columns uses per-column hidden-file preferences and does not display a separate
 coverage/status row; single-pane search uses browser preferences and shows partial coverage or

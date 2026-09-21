@@ -396,6 +396,7 @@ impl ModeViews {
         for pane in self.all_panes() {
             pane.show_hidden.set(show_hidden);
             pane.filter.changed(gtk::FilterChange::Different);
+            pane.search.set_show_hidden(show_hidden);
         }
     }
 

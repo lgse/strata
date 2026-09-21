@@ -329,6 +329,7 @@ impl ViewState {
             BrowserEvent::HiddenToggled { show_hidden } => {
                 for column in self.columns.borrow().iter() {
                     column.show_hidden.set(*show_hidden);
+                    column.search_session.set_show_hidden(*show_hidden);
                     touch_source_model(column);
                     column.filter.changed(gtk::FilterChange::Different);
                 }
