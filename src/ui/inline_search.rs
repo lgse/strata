@@ -1219,6 +1219,7 @@ fn install_marquee(state: &Rc<State>, scroll: &gtk::ScrolledWindow, overlay: &gt
                 state.collection.selection.unselect_all();
             }
         }),
+        allow_drag: Rc::new(Cell::new(true)),
     });
 }
 

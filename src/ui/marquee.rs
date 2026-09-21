@@ -114,6 +114,7 @@ pub(super) struct MarqueeSetup {
     pub targets: MarqueeTargets,
     pub is_item: ItemPredicate,
     pub clear_selection: Rc<dyn Fn()>,
+    pub allow_drag: Rc<Cell<bool>>,
 }
 
 #[derive(Clone)]
@@ -135,6 +136,7 @@ struct MarqueeState {
     dragging: Cell<bool>,
     clear_on_click: Cell<bool>,
     clear_selection: Rc<dyn Fn()>,
+    allow_drag: Rc<Cell<bool>>,
     /// Anchor in scroll-content coordinates. Native GtkScrollable views move their
     /// rows internally, whereas GtkViewport moves its child; neither may move the anchor.
     anchor: Cell<(f64, f64)>,
@@ -177,6 +179,7 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         dragging: Cell::new(false),
         clear_on_click: Cell::new(false),
         clear_selection: setup.clear_selection,
+        allow_drag: setup.allow_drag,
         anchor: Cell::new((0.0, 0.0)),
         pointer: Cell::new((0.0, 0.0)),
         initial: RefCell::new(Vec::new()),
@@ -416,6 +419,9 @@ fn connect_drag_progress(gesture: &gtk::GestureDrag, state: &Rc<MarqueeState>) {
             return;
         }
         if !state_for_update.dragging.get() {
+            if !state_for_update.allow_drag.get() {
+                return;
+            }
             if !super::pointer::exceeds_drag_threshold(
                 (0.0, 0.0),
                 (offset_x, offset_y),

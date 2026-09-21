@@ -2132,7 +2132,13 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone(), false);
+    let (collection, marquee) = collection_with_marquee(
+        &root,
+        scroll,
+        targets.clone(),
+        false,
+        context.click.multiple_selection.clone(),
+    );
     let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -3078,8 +3084,13 @@ fn build_list_pane(
     table.set_vexpand(true);
     table.append(&headings);
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), true);
+    let (collection, marquee) = collection_with_marquee(
+        view.upcast_ref(),
+        scroll,
+        targets.clone(),
+        true,
+        click_options.multiple_selection.clone(),
+    );
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -3347,6 +3358,7 @@ fn collection_with_marquee(
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
     list_rows: bool,
+    multiple_selection: Rc<Cell<bool>>,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -3379,6 +3391,7 @@ fn collection_with_marquee(
                 selection.unselect_all();
             }
         }),
+        allow_drag: multiple_selection,
     });
     (overlay, marquee)
 }

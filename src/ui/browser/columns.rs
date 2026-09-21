@@ -1242,6 +1242,7 @@ impl ViewState {
                     }
                 }
             }),
+            allow_drag: self.multiple_selection.clone(),
         });
         marquee.add_origin_surface(&header);
         for click in &background_clicks {
