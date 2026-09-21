@@ -2,6 +2,58 @@
 
 use super::*;
 
+#[test]
+fn breadcrumb_navigation_restores_scrolling_after_compact_preview() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::compact::breadcrumb_navigation_restores_scrolling_after_compact_preview",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            for reduced_motion in [true, false] {
+                preferences.set_reduce_motion(reduced_motion);
+                let fixture = Fixture::new(false);
+                fixture.preview.observe_browser(&fixture.browser.browser());
+                fixture.resize(640);
+                fixture.enter_descendants(4);
+                wait_until(|| fixture.adjustment().value() > 0.0);
+                fixture.preview.show(entry("preview.png"), Some(4));
+                fixture.settle();
+                assert!(fixture.preview.state.sizing.is_compact());
+
+                let breadcrumbs =
+                    find(&fixture.browser.location_widget(), "breadcrumbs").expect("breadcrumbs");
+                let mut child = breadcrumbs.first_child();
+                let mut ancestor = None;
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    if let Ok(button) = widget.downcast::<gtk::Button>()
+                        && button.label().as_deref() == Some("child")
+                    {
+                        ancestor = Some(button);
+                        break;
+                    }
+                }
+                ancestor.expect("ancestor breadcrumb").emit_clicked();
+                wait_until(|| !fixture.preview.is_open());
+                wait_until(|| {
+                    fixture
+                        .browser
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                assert_eq!(
+                    fixture.browser.browser().location_at(0),
+                    Some(Location::local(fixture.root.path().join("child")))
+                );
+                // Breadcrumb navigation starts a new column chain, so its old offset must reset.
+                wait_until(|| fixture.adjustment().value() == 0.0);
+                fixture.close();
+            }
+        },
+    );
+}
+
 fn assert_dismissal_focus_stays_put(fixture: &Fixture) {
     let close = fixture.preview.state.close_button.clone();
     wait_until(|| close.has_focus());
