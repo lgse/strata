@@ -798,8 +798,8 @@ headerbar menubutton.header-action > button:focus-visible {
   background: alpha(@theme_highlight, 0.64);
   border: 1px solid alpha(@theme_accent, 0.24);
   border-radius: 6px;
-  min-height: 40px;
-  min-width: 40px;
+  min-height: 3.076923rem;
+  min-width: 3.076923rem;
 }
 
 .action-dialog-symbol.danger {

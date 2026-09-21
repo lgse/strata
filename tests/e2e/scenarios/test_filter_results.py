@@ -6,7 +6,7 @@ import pytest
 from PIL import Image, ImageColor
 
 from harness.fixtures import FixtureTree
-from harness.modes import ALL_MODES, SINGLE_PANE_MODES
+from harness.modes import ALL_MODES
 
 
 @pytest.fixture
@@ -477,8 +477,8 @@ def test_filter_rename_shortcuts_do_not_target_the_hidden_directory_selection(st
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
 
 
-@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
-def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_thumbnail_stays_rendered_across_updates_and_rename(strata, mode, tmp_path):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("thumb")
@@ -491,11 +491,10 @@ def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path
     assert icon is not None
 
     def thumbnail_pixel():
-        row_bounds = strata.settle(row).screen_bounds()
-        bounds = icon.screen_bounds()
+        bounds = strata.settle(icon).screen_bounds()
         capture = strata.screenshot(tmp_path / "thumbnail.png")
         with Image.open(capture) as image:
-            return image.convert("RGB").getpixel((bounds.center[0], row_bounds.center[1]))
+            return image.convert("RGB").getpixel(bounds.center)
 
     strata.wait(lambda: thumbnail_pixel() == (230, 40, 60), "the generated red thumbnail")
     for query, count in [("thumb.p", 1), ("thumb", 2)]:
@@ -506,3 +505,20 @@ def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path
         # AT-SPI result updates can precede the corresponding rendered frame.
         strata.wait(lambda: thumbnail_pixel() == (230, 40, 60), "the updated red thumbnail")
         assert field.has_state("focused")
+
+    original = strata.fixture.path("beta/thumb.png").read_bytes()
+    strata.keyboard.press("Down")
+    strata.keyboard.press("F2")
+    strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("thumb-renamed.png")
+    strata.keyboard.press("Return")
+    renamed = strata.fixture.path("beta/thumb-renamed.png")
+    strata.wait(lambda: renamed.exists(), "the image rename")
+    assert renamed.read_bytes() == original
+    assert not strata.fixture.path("beta/thumb.png").exists()
+    assert field.text == "thumb"
+    row = strata.wait(lambda: result(strata, "beta/thumb-renamed.png"), "the renamed image result")
+    icon = row.find(role="image")
+    assert icon is not None
+    strata.wait(lambda: thumbnail_pixel() == (230, 40, 60), "the renamed red thumbnail")
