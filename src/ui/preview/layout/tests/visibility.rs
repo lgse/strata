@@ -528,7 +528,7 @@ fn icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled()
                 }
                 fixture.settle();
                 assert_eq!(fixture.browser.widget().width(), width);
-                fixture.resize(700);
+                fixture.resize(480);
                 wait_until(|| !fixture.preview.is_open());
                 fixture.settle();
                 let constrained_width = fixture.browser.widget().width();
@@ -656,6 +656,60 @@ fn temporarily_hiding_a_document_keeps_its_view_and_scroll_position() {
             );
             assert_eq!(scroll.vadjustment().value(), 200.0);
             assert_eq!(fixture.requests.borrow().len(), 1);
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn resizing_across_narrow_and_wide_windows_with_preview_transitions_rail_and_compact_smoothly() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::resizing_across_narrow_and_wide_windows_with_preview_transitions_rail_and_compact_smoothly",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_browser_mode(BrowserMode::List);
+            preferences.set_reduce_motion(true);
+            let fixture = Fixture::new(false);
+            fixture.resize(1400);
+            fixture.preview.show(entry("notes.txt"), None);
+            fixture.settle();
+
+            assert!(!fixture._sidebar.state.rail.get());
+            assert!(!fixture.preview.state.sizing.is_compact());
+
+            fixture.resize(1200);
+            fixture.settle();
+            assert!(!fixture._sidebar.state.rail.get());
+            assert!(!fixture.preview.state.sizing.is_compact());
+
+            for width in [700, 600] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(fixture._sidebar.state.rail.get());
+                assert!(!fixture.preview.state.sizing.is_compact());
+            }
+
+            for width in [500, 400] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(fixture._sidebar.state.rail.get());
+                assert!(fixture.preview.state.sizing.is_compact());
+            }
+
+            for width in [600, 700] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(fixture._sidebar.state.rail.get());
+                assert!(!fixture.preview.state.sizing.is_compact());
+            }
+
+            for width in [800, 1000, 1200, 1400] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(!fixture._sidebar.state.rail.get());
+                assert!(!fixture.preview.state.sizing.is_compact());
+            }
+
             fixture.close();
         },
     );

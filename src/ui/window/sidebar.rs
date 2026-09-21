@@ -24,7 +24,13 @@ pub(in crate::ui) fn build_sidebar(
     local_only: bool,
 ) -> SidebarView {
     let shell = SidebarShell::new();
-    let state = SidebarState::new(shell.places, view, preferences, local_only);
+    let state = SidebarState::new(
+        shell.places,
+        view,
+        preferences,
+        local_only,
+        shell.update_label.clone(),
+    );
     state.bind_order();
     state.observe_navigation_and_trash();
     let (handlers, mount_handler) = connect_device_changes(&state);
@@ -131,6 +137,7 @@ impl SidebarState {
         view: BrowserView,
         preference_manager: Rc<PreferenceManager>,
         local_only: bool,
+        update_label: gtk::Label,
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
         let place_order = resolve_place_order(&preference_manager.sidebar_order());
@@ -156,6 +163,8 @@ impl SidebarState {
             pending_scroll: Cell::new(None),
             rebuild_queued: Cell::new(false),
             scroll_restore_queued: Cell::new(false),
+            rail: Cell::new(false),
+            update_label,
         })
     }
 

@@ -39,6 +39,74 @@ fn select(browser: &crate::app::Browser, depth: usize, name: &str) {
     browser.select(depth, position);
 }
 
+fn settle_for(duration: std::time::Duration) {
+    let deadline = std::time::Instant::now() + duration;
+    while std::time::Instant::now() < deadline {
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn reopening_the_sidebar_with_a_two_column_preview_keeps_the_icon_rail_and_file_list() {
+    gtk_test(
+        "ui::window::composition::tests::preview_session::reopening_the_sidebar_with_a_two_column_preview_keeps_the_icon_rail_and_file_list",
+        || {
+            let directory = tempfile::tempdir().expect("session files");
+            std::fs::create_dir(directory.path().join("folder")).expect("folder");
+            std::fs::write(directory.path().join("folder/nested.txt"), "nested")
+                .expect("fixture file");
+            let preferences = PreferenceManager::shared();
+            preferences.set_text_size(crate::ui::preferences::TextSize::new(24));
+            let fixture = Fixture::new();
+            fixture.preferences.set_browser_mode(BrowserMode::Columns);
+            fixture.preferences.set_reduce_motion(false);
+            gtk::Settings::default()
+                .expect("GTK settings")
+                .set_gtk_enable_animations(true);
+            fixture.window.set_default_size(900, 760);
+            fixture.window.set_size_request(900, 760);
+            wait(|| fixture.window.width() == 900);
+
+            let browser = fixture.content.browser.browser();
+            browser.navigate(crate::model::Location::local(directory.path()));
+            wait(|| browser.column_snapshot(0).is_some_and(|c| !c.loading));
+            select(&browser, 0, "folder");
+            browser.enter_focused_directory();
+            wait(|| browser.column_snapshot(1).is_some_and(|c| !c.loading));
+            select(&browser, 1, "nested.txt");
+            let preview_toggle =
+                toggle(fixture.content.header.content.upcast_ref()).expect("appearance toggle");
+            preview_toggle.emit_clicked();
+            wait(|| fixture.content.preview.is_open());
+
+            settle_for(std::time::Duration::from_millis(450));
+            assert!(fixture.content.sidebar.state.rail.get());
+            assert!(fixture.content.browser.widget().is_visible());
+
+            fixture.content.header.sidebar_toggle.set_active(false);
+            wait(|| !fixture.content.sidebar.widget.is_visible());
+            fixture.content.header.sidebar_toggle.set_active(true);
+            settle_for(std::time::Duration::from_millis(450));
+
+            assert!(fixture.content.sidebar.state.rail.get());
+            assert!(
+                fixture.content.browser.widget().is_visible(),
+                "the file list must not disappear behind the preview"
+            );
+
+            fixture.content.preview.clear_target();
+            settle_for(std::time::Duration::from_millis(100));
+            assert!(!fixture.content.preview.is_open());
+            assert!(
+                !fixture.content.sidebar.state.rail.get(),
+                "an enabled session without a preview pane must release the rail"
+            );
+            fixture.close();
+        },
+    );
+}
+
 #[test]
 fn appearance_and_space_share_a_window_local_preview_session_across_unsupported_selections() {
     gtk_test(

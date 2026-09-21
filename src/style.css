@@ -2079,6 +2079,33 @@ scrollbar slider:active {
   margin: 0;
 }
 
+/* Icon rail: labels are hidden in code; keep the remaining icons centered. */
+.sidebar-rail .sidebar {
+  padding: 8px 6px;
+}
+
+.sidebar-rail .sidebar-row {
+  padding: 3px 4px;
+}
+
+.sidebar-rail .sidebar-row label,
+.sidebar-rail .sidebar-heading,
+.sidebar-rail .sidebar-device-actions,
+.sidebar-rail .sidebar-update-label {
+  opacity: 0;
+  min-width: 0;
+  min-height: 0;
+  font-size: 0;
+}
+
+.sidebar-rail .sidebar-separator {
+  margin: 6px -6px;
+}
+
+.sidebar-rail .sidebar-update {
+  padding: 4px 6px;
+}
+
 .sidebar-heading {
   color: @theme_dim_text;
   font-size: 0.78em;

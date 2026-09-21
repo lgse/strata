@@ -28,8 +28,8 @@ mod layout;
 mod media_layout;
 mod session;
 
-const DEFAULT_WIDTH: i32 = 520;
-const MIN_WIDTH: i32 = 560;
+pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
+pub(in crate::ui) const MIN_WIDTH: i32 = 240;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;

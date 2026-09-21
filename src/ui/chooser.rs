@@ -988,7 +988,7 @@ fn build_chooser_with_source(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    preview.attach_split(&preview_split, &content, &view);
+    preview.attach_split(&preview_split, &content, &view, Some(&sidebar));
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
     details.add_css_class("chooser-details");
