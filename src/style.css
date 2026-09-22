@@ -4368,8 +4368,8 @@ textview > popover.menu button.model:focus-visible {
 
 .keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
 .file-list row:focus-within .file-row.filter-result {
-  outline: 1px solid @theme_accent;
-  outline-offset: -1px;
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
