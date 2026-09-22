@@ -3,6 +3,7 @@
 use std::{
     fs,
     io::{self, Read},
+    os::fd::RawFd,
     path::Path,
     process::{Child, Command, Output, Stdio},
     sync::mpsc,
@@ -14,8 +15,9 @@ use gdk_pixbuf::prelude::*;
 use gtk::gio;
 
 use crate::{
+    adapters::{encode_archive_result, list_archive_entries_direct},
     sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, PdfRenderSize},
-    services::MediaPreviewSize,
+    services::{ArchiveFormat, MediaPreviewSize},
 };
 
 mod appimage;
@@ -34,7 +36,18 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         ),
         _ => (arguments, 0),
     };
-    let [operation, input, output, value, media_backend] = arguments else {
+    let secret_fd = match arguments {
+        [operation, ..] if operation == "archive-list" && arguments.len() == 6 => Some(
+            arguments[5]
+                .parse::<RawFd>()
+                .ok()
+                .filter(|fd| *fd >= 0)
+                .ok_or_else(|| "Invalid preview helper secret descriptor".to_owned())?,
+        ),
+        _ if arguments.len() == 5 => None,
+        _ => return Err("Invalid preview helper arguments".to_owned()),
+    };
+    let [operation, input, output, value, media_backend] = &arguments[..5] else {
         return Err("Invalid preview helper arguments".to_owned());
     };
     let input = Path::new(input);
@@ -52,8 +65,19 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         }
         return fs::write(output, bytes).map_err(|e| e.to_string());
     }
+    if operation == "preview-document" {
+        let document = crate::services::docx::read_document(input)?;
+        let bytes = serde_json::to_vec(&document).map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > MAX_OUTPUT_BYTES {
+            return Err("Document output budget exceeded".into());
+        }
+        return fs::write(output, bytes).map_err(|e| e.to_string());
+    }
     if operation == "media-metadata" {
         return write_media_metadata(input, output);
+    }
+    if operation == "archive-list" {
+        return run_archive_list(input, output, value, secret_fd);
     }
     let numeric_value = || {
         value
@@ -93,6 +117,53 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             .map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+fn run_archive_list(
+    input: &Path,
+    output: &Path,
+    format: &str,
+    secret_fd: Option<RawFd>,
+) -> Result<(), String> {
+    use crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES;
+
+    let format = match format {
+        "zip" => ArchiveFormat::Zip,
+        "7z" => ArchiveFormat::SevenZ,
+        "tar" => ArchiveFormat::Tar,
+        "tar.gz" => ArchiveFormat::TarGz,
+        _ => return Err("Unknown archive format for preview.".to_owned()),
+    };
+    let password = match secret_fd {
+        None => None,
+        Some(descriptor) => {
+            let secret = read_secret_fd(descriptor)?;
+            if secret.len() > MAX_ARCHIVE_PASSWORD_BYTES {
+                return Err("Archive password is too long.".to_owned());
+            }
+            Some(
+                String::from_utf8(secret)
+                    .map_err(|_| "Archive password is not valid text.".to_owned())?,
+            )
+        }
+    };
+    // The parent cancels the helper by terminating its process group.
+    let cancelled = std::sync::atomic::AtomicBool::new(false);
+    let result = list_archive_entries_direct(input, format, password.as_deref(), &cancelled);
+    fs::write(output, encode_archive_result(&result)).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+// Reopen to read from offset zero without changing the inherited description's offset.
+fn read_secret_fd(descriptor: RawFd) -> Result<Vec<u8>, String> {
+    let mut secret = Vec::new();
+    fs::File::open(format!("/proc/self/fd/{descriptor}"))
+        .and_then(|file| {
+            file.take(crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES as u64 + 1)
+                .read_to_end(&mut secret)
+        })
+        .map_err(|error| format!("Unable to read the preview secret: {error}"))?;
+    Ok(secret)
 }
 
 fn write_media_metadata(input: &Path, output: &Path) -> Result<(), String> {

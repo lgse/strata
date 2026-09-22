@@ -158,7 +158,7 @@ pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool
             || filter_name_matches(&fold_for_search(model_display_name(value)), query))
 }
 
-pub(super) fn icon_for_name(name: &str) -> &'static str {
+pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
     let extension = name
         .rsplit_once('.')
         .map(|(_, extension)| extension.to_ascii_lowercase());

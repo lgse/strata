@@ -38,16 +38,26 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
     cpus, memory = resources.available_resources()
+    tasks = resources.available_tasks()
     try:
-        workers = resources.worker_count(cpus, memory, os.environ.get("STRATA_E2E_WORKERS", "auto"))
+        workers = resources.worker_count(
+            cpus,
+            memory,
+            os.environ.get("STRATA_E2E_WORKERS", "auto"),
+            tasks,
+        )
     except ValueError as error:
         raise pytest.UsageError(str(error)) from error
-    print(f"E2E resources: {cpus:g} CPUs, {memory / resources.GIB:.1f} GiB available; {workers} workers")
+    task_text = f", {tasks} task slots" if tasks else ""
+    print(
+        f"E2E resources: {cpus:g} CPUs, {memory / resources.GIB:.1f} GiB available"
+        f"{task_text}; {workers} workers"
+    )
     return workers
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     for item in items:
         if item.get_closest_marker("baseline"):
             item.add_marker(pytest.mark.xdist_group("visual-baselines"))

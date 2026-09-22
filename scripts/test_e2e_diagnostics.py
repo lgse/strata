@@ -25,23 +25,28 @@ class ClassificationTests(unittest.TestCase):
 
     def test_snapshot_errors_are_attributed_to_bootstrap_not_gui_assertions(self):
         log = "\n".join(
-            f"E: Failed to fetch https://snapshot.ubuntu.com/ubuntu/date/dists/noble/InRelease  {code} Error"
-            for code in (503, 500, 502, 503))
+            "error: failed retrieving file 'core.db' from archive.archlinux.org : "
+            f"The requested URL returned error: {code}"
+            for code in (503, 500, 502, 503)
+        )
         reason = classify_log(log)
         self.assertIn("HTTP 500/502/503", reason)
         self.assertIn("not a GUI assertion", reason)
 
-    def test_commands_urls_and_unrelated_ubuntu_errors_are_not_outage_evidence(self):
-        for log in ("RUN apt-get update https://snapshot.ubuntu.com/ubuntu/date",
-                    "error: exit code 100", "some request returned 503",
-                    "E: Failed to fetch https://archive.ubuntu.com/ubuntu/pkg  503 Error",
-                    "E: Failed to fetch https://snapshot.ubuntu.com.evil.test/pkg  503 Error"):
+    def test_commands_urls_and_unrelated_archive_errors_are_not_outage_evidence(self):
+        for log in (
+            "RUN pacman -Syy https://archive.archlinux.org/repos/date",
+            "error: exit code 1",
+            "some request returned 503",
+            "https://archive.archlinux.org.evil.test/pkg returned error: 503",
+            "archive.archlinux.org package request failed without an HTTP status",
+        ):
             with self.subTest(log=log):
                 self.assertIsNone(classify_log(log))
 
     def test_compiler_integrity_and_provenance_failures_are_distinct(self):
         self.assertIn("E0382", classify_log("error[E0382]: use of moved value"))
-        self.assertIn("integrity", classify_log("E: Hash Sum mismatch"))
+        self.assertIn("integrity", classify_log("error: fixture: signature from key is invalid"))
         self.assertIn("bundle", classify_log("E2E bundle: source differs"))
 
 
@@ -49,7 +54,7 @@ class SummaryTests(unittest.TestCase):
     def test_build_failure_explains_no_tests_and_links_to_the_failed_step(self):
         job = failed_job()
         title, summary = failure_summary("failure", "skipped", [job], {1:
-            "E: Failed to fetch http://snapshot.ubuntu.com/ubuntu/date/pkg  502 Bad Gateway"}, set())
+            "archive.archlinux.org/pkg: The requested URL returned error: 502"}, set())
         self.assertIn("bootstrap", title)
         self.assertIn("No E2E scenarios ran", summary)
         self.assertIn(job["html_url"], summary)
@@ -65,11 +70,11 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("logs were unavailable", summary)
         self.assertIn("could not be extracted", summary)
 
-    def test_timeout_without_log_evidence_does_not_claim_an_ubuntu_outage(self):
+    def test_timeout_without_log_evidence_does_not_claim_an_archive_outage(self):
         _, summary = failure_summary("timed_out", "skipped",
                                      [failed_job(conclusion="timed_out")], {}, set())
         self.assertIn("timeout alone does not establish", summary)
-        self.assertNotIn("Ubuntu Snapshot returned", summary)
+        self.assertNotIn("Arch Linux Archive returned", summary)
 
     def test_success_needs_no_diagnostic_api_calls(self):
         jobs, publish = Mock(), Mock()

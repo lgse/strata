@@ -112,8 +112,8 @@ its runtime archive loader; an image in one engine's store is not visible to the
 other. Normal runs verify and reuse the
 local base image. If missing, they pull the published environment once, verify
 its input label and platform, and record it locally. They **never automatically
-build images or fetch Ubuntu packages**. A missing publication fails with an
-actionable message rather than silently bootstrapping.
+build images or fetch distribution packages**. A missing publication fails with
+an actionable message rather than silently bootstrapping.
 
 When intentionally updating the environment, or before its first publication,
 explicitly build the local base once:
@@ -123,8 +123,13 @@ STRATA_CONTAINER_ENGINE=podman python3 scripts/e2e_base.py build
 ./scripts/e2e.sh
 ```
 
-The recipe remains `tests/e2e/Dockerfile`: digest-pinned Ubuntu 24.04, a dated
-package snapshot (GTK 4.14 and fonts), Rust 1.98.1, and pinned Python dependencies.
+The recipe is `tests/e2e/Dockerfile`: a digest-pinned Arch Linux base, the dated
+2026-09-11 Arch package snapshot, GTK 4.22.5, GLib 2.88.3, GStreamer 1.28.7,
+Rust 1.98.1, and pinned Python dependencies. Pacman verifies the snapshot's
+signed packages. The image replaces only GTK's versioned shared library with a
+matching-source build carrying the accessibility-coordinate patch documented in
+[`tests/e2e/gtk/README.md`](../tests/e2e/gtk/README.md); an image-build probe checks
+the loaded library and rendered/accessibility coordinates on a private display.
 Changing those inputs selects a new base; application edits do not. The normal
 runner still compiles the checked-out application and retains Cargo's worktree
 cache. No host GTK libraries, fonts, desktop sockets, or Rust binaries are mounted.
@@ -139,9 +144,8 @@ The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
 and GTK's GStreamer media backend with the base/good/libav plugins. Rust media
 regressions exercise actual normalization, playback, and long-source duration
 limits rather than skipping when optional host tools are missing. These packages
-come from the existing dated Ubuntu snapshot; the GTK/GLib baseline and Rust
-compiler are unchanged. This test-only dependency addition does not apply or
-retire the version-specific GTK 4.22.4/GstPlay 1.28.6 patches in
+come from the dated Arch snapshot. The accessibility patch is test-only and does
+not apply or retire the version-specific GTK/GstPlay work in
 `packaging/media-runtime/`; that opt-in kit remains unchanged and is not shipped
 by this image update.
 
@@ -175,8 +179,8 @@ For a deliberate recipe-input change relative to the PR base (or previous main
 commit), CI may explicitly build that unpublished candidate from the pinned
 recipe, without publishing it. This lets environment-update PRs pass before the
 trusted-main publisher runs; it does not turn registry outages into repeated
-Ubuntu bootstraps. Locally, environment builds still require the explicit command
-shown above.
+distribution bootstraps. Locally, environment builds still require the explicit
+command shown above.
 
 Quality's Cargo home and build directory are under `target/quality-container`,
 separate from E2E and native builds. Its Actions cache is keyed by environment,
@@ -263,10 +267,12 @@ Auto mode chooses the smallest of:
   cgroup v1/v2 quotas, including visible ancestor limits;
 - one worker per 2 GiB of available memory after reserving 1 GiB, respecting
   host `MemAvailable` and remaining cgroup memory;
+- one worker per 256 available cgroup task slots after reserving 128 slots for
+  the controller, X servers, buses, and toolkit/media threads;
 - 16 workers.
 
-At least one worker runs, including when memory availability is unknown. The
-budget is detected **inside the container, after compilation**, and printed at
+At least one worker runs, including when memory or PID availability is unknown.
+The budget is detected **inside the container, after compilation**, and printed at
 startup. It is a conservative resource budget, not a promise of linear speedup.
 
 ```bash
@@ -441,12 +447,12 @@ to name it in the application, not to reach around the accessibility layer.
 Keyboard and pointer events go through XTEST (`harness/xtest.py`). AT-SPI's own
 `GenerateMouseEvent` never replies on a headless server, so the harness talks to
 the same X extension `at-spi2-registryd` would have used. Discovery and state
-inspection still go through AT-SPI. GTK 4.14 reports popup-relative rather than
-application-relative bounds; the harness resolves that native surface's origin
-through X11 using its accessible dimensions. Controls are still located only
-by accessibility semantics. AT-SPI's older `push button` spelling is normalized
-to `button`, and selection tests assert actual selected-state transitions
-rather than relying on GTK 4.14 to export `SELECTABLE` for unselected rows.
+inspection still go through AT-SPI. The harness can resolve a popup's native
+surface origin through X11 using its accessible dimensions; GTK 4.22 normally
+reports that native origin directly. Controls are still located only by
+accessibility semantics. AT-SPI's older `push button` spelling is normalized to
+`button`, and selection tests assert actual selected-state transitions instead
+of depending on optional `SELECTABLE` state exports for unselected rows.
 
 ## Failure artifacts
 
@@ -460,7 +466,7 @@ in the test output, and CI uploads the whole directory. Pass
 ## Visual baselines
 
 `tests/e2e/scenarios/test_visual_baselines.py` compares a small set of stable
-states with the images in `tests/e2e/baselines/gtk-4.14`: one canonical fixture
+states with the images in `tests/e2e/baselines/gtk-4.22`: one canonical fixture
 in each view, a hovered Icons tile, a selection with focus, an open context menu,
 and a confirmation dialog. Local and CI runs use this one rendering profile. Other host GTK
 versions do not have separate baselines; native baseline runs fail rather than
@@ -567,7 +573,7 @@ failures. The gate never mixes previous attempts into a fresh measurement.
 
 The prerequisite check reports whether bootstrap or shard execution failed, links
 unsuccessful jobs and steps, and inspects a bounded amount of their logs. Confirmed
-Ubuntu Snapshot HTTP errors, compiler diagnostics, and provenance failures are
+Arch Linux Archive HTTP errors, compiler diagnostics, and provenance failures are
 identified separately. When bootstrap fails, it explicitly says that no scenarios
 ran. Timing is reported separately and never changes the test result. If logs
 cannot be retrieved or classified, it says so rather than guessing the cause.
@@ -575,24 +581,19 @@ cannot be retrieved or classified, it says so rather than guessing the cause.
 ### Cache lifecycle and cold starts
 
 BuildKit's content-addressed cache invalidates on the actual Dockerfile, package
-installer, requirements, Rust manifest/lockfile, source, and resource inputs.
-`install-packages.sh` downloads from the official archive using byte-identical,
-signed snapshot indexes, then installs against the original snapshot sources.
-It never refreshes indexes from the moving archive: versions and APT checksum
-verification stay pinned. For superseded packages missing from the archive,
-Launchpad's primary archive is tried using the exact filename and mandatory SHA256
-from the signed snapshot metadata. Downloads use APT's sandboxed partial directory;
-APT verifies them again when installing against the original snapshot sources.
-The snapshot remains the final fallback; failed maintainer scripts are not retried. This avoids making every
-package download wait on the slower snapshot service during cold recovery.
+installer, GTK patch/probe, requirements, Rust manifest/lockfile, source, and
+resource inputs. `install-packages.sh` configures only the dated HTTPS Arch Linux
+Archive mirror and requires Pacman's package-signature policy. It refreshes the
+signed `core` and `extra` databases once, then performs a full snapshot upgrade
+and requested package installation as one transaction; moving repositories and
+partial upgrades are never mixed into the image.
 
-The `package-indexes` stage fetches and authenticates the dated APT indexes once.
-Runtime and toolchain installation reuse them through read-only build mounts;
-neither downloads a second copy, and the lists are removed before each install
-layer is committed. The warmer publishes the index-stage cache **before** package
-and compiler bootstrap, so a later failure does not discard a successful index
-fetch. Source builds attach the public input digest as an output image label, not
-an environment variable or secret-looking build argument.
+The `package-indexes` stage fetches the dated Pacman databases once. Runtime,
+patched-GTK, and toolchain stages inherit those exact indexes; none refreshes from
+a moving mirror. The warmer publishes the index-stage cache **before** package,
+GTK, and compiler bootstrap, so a later failure does not discard a successful
+index fetch. Source builds attach the public input digest as an output image label,
+not an environment variable or secret-looking build argument.
 
 A stub application
 warms dependencies only; its executable and all Strata fingerprints are removed
@@ -660,7 +661,7 @@ per-run artifacts.
 On a fast dependency-cache miss, CI resolves matching image tags to **OCI digests**,
 checks their platform and input labels, and uses them directly as application and
 runtime bases. Published labels are preserved, not overwritten to match a checkout. Those builds do not
-execute Ubuntu/Python/Rust bootstrap stages, even with an empty BuildKit cache.
+execute Arch/Python/Rust bootstrap stages, even with an empty BuildKit cache.
 The application still compiles for the tested revision, and the base's Cargo
 manifests must match the checkout. A fresh runner still transfers image layers;
 this avoids package-server requests and dependency compilation, not all network I/O.
@@ -792,10 +793,11 @@ semantics, and all six visual baselines also remain. The removed validation vect
 are covered by unconditional, display-independent Rust tests—not by tests that
 silently return when GTK cannot initialize.
 
-The existing quality job is unchanged. Enabling all its GTK fixtures on Ubuntu
-revealed a pre-existing offscreen new-entry failure tracked in #613; this CI overhaul
-does not delete that fixture, change application scrolling, or hide it behind a new
-skip. Continue running Rust GTK tests on a private display locally as described above.
+Before the shared environment moved to Arch, enabling all GTK fixtures in the
+former Ubuntu quality job revealed a pre-existing offscreen new-entry failure
+tracked in #613. This environment update does not delete that fixture, change
+application scrolling, or hide it behind a new skip. Continue running Rust GTK
+tests on a private display locally as described above.
 
 The existing copy-conflict/undo scenario also waits for dialog dismissal and the
 copied entry's keyboard focus before sending Ctrl+Z. A selected-state notification

@@ -17,6 +17,10 @@ extend-ignore-re = [
 ]
 
 [default.extend-words]
+# RTF control words, spelled as the format defines them.
+pard = "pard"
+headerr = "headerr"
+falt = "falt"
 Omarchy = "Omarchy"
 Hyprland = "Hyprland"
 JetBrains = "JetBrains"

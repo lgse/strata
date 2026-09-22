@@ -358,6 +358,8 @@ fn sidebar_toggle_preserves_split_constraints() {
                 .expect("preview paned");
             let content = preview_split
                 .start_child()
+                .expect("navigation wrapper")
+                .first_child()
                 .expect("sidebar/browser split")
                 .downcast::<gtk::Paned>()
                 .expect("sidebar/browser paned");

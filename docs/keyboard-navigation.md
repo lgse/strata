@@ -65,8 +65,15 @@ original item and report an error.
 
 ## Filename patterns while filtering
 
-Use **Ctrl+F** to filter a pane. Plain text keeps its existing matching behavior.
-Add `*` to match a whole filename, ignoring case:
+Use **Ctrl+F** to filter a pane. Plain text matches a substring of the filename,
+ignoring case. Queries of at least four letters or digits also allow one inserted,
+missing, substituted, or adjacent swapped character within a whole filename word.
+Words are separated by punctuation or spaces. For example, `trahs` finds
+`strata-trash.svg`, but `trash` does not find `strata-search.svg`. Shorter queries
+and queries containing punctuation remain literal. Indexed results rank literal
+matches ahead of typo matches; parent paths do not qualify a result.
+
+Add `*` for a whole-filename pattern without typo tolerance:
 
 - `*.MOV` matches `clip.MOV`, but not `clip.MOV.bak`.
 - `IMG*` matches names beginning with `IMG`.

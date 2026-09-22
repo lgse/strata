@@ -67,6 +67,30 @@ fn discrete_scroll_steps_respect_modifiers_and_text_size_limits() {
 }
 
 #[test]
+fn smooth_scroll_deltas_accumulate_into_wheel_steps() {
+    let surface = gtk::gdk::ScrollUnit::Surface;
+    let wheel = gtk::gdk::ScrollUnit::Wheel;
+
+    let zoom = keyboard::TextZoomScroll::default();
+    assert_eq!(zoom.accumulate(surface, 4.0), 0);
+    assert_eq!(zoom.accumulate(surface, 4.0), 0);
+    assert_eq!(zoom.accumulate(surface, 4.0), 1);
+    assert_eq!(
+        zoom.accumulate(surface, 4.0),
+        0,
+        "a completed step must not repeat on the next delta"
+    );
+
+    assert_eq!(zoom.accumulate(wheel, -1.0), -1);
+    assert_eq!(zoom.accumulate(wheel, -3.0), -3);
+
+    let reversed = keyboard::TextZoomScroll::default();
+    assert_eq!(reversed.accumulate(surface, 6.0), 0);
+    assert_eq!(reversed.accumulate(surface, -6.0), 0);
+    assert_eq!(reversed.accumulate(surface, -6.0), -1);
+}
+
+#[test]
 fn pdf_pages_and_scrollbars_keep_scroll_zoom_ownership() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::scroll_zoom::pdf_pages_and_scrollbars_keep_scroll_zoom_ownership",

@@ -466,7 +466,30 @@ impl NavigationState {
                     }
                 }
             }
-            DirectoryChange::Move { from, entry } => {
+            DirectoryChange::Move { from, mut entry } => {
+                if let Some(previous) = column
+                    .entries
+                    .iter()
+                    .find(|previous| previous.location == from)
+                    && previous.kind == entry.kind
+                    && matches!(entry.size, MetadataValue::Known(_))
+                    && previous.size == entry.size
+                    && matches!(entry.modified_unix_seconds, MetadataValue::Known(_))
+                    && previous.modified_unix_seconds == entry.modified_unix_seconds
+                    && std::path::Path::new(&previous.native_name).extension()
+                        == std::path::Path::new(&entry.native_name).extension()
+                {
+                    // Monitor entries contain stat data, not the details already loaded for this file.
+                    if entry.image_dimensions == MetadataValue::Unknown {
+                        entry.image_dimensions = previous.image_dimensions.clone();
+                    }
+                    if entry.child_count == MetadataValue::Unknown {
+                        entry.child_count = previous.child_count.clone();
+                    }
+                    if entry.duration_seconds == MetadataValue::Unknown {
+                        entry.duration_seconds = previous.duration_seconds.clone();
+                    }
+                }
                 if selected_location.as_ref() == Some(&from) {
                     selected_location = Some(entry.location.clone());
                 }
@@ -950,6 +973,12 @@ impl NavigationState {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();
         };
+        if column.selected_locations.is_empty() {
+            return Vec::new();
+        }
+        if let Some(position) = column.single_selected_position() {
+            return vec![position];
+        }
         column
             .entries
             .iter()
@@ -980,6 +1009,12 @@ impl NavigationState {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();
         };
+        if column.selected_locations.is_empty() {
+            return Vec::new();
+        }
+        if let Some(position) = column.single_selected_position() {
+            return vec![column.entries[position].clone()];
+        }
         column
             .entries
             .iter()
@@ -1256,6 +1291,15 @@ fn focus_only(column: &mut ColumnState, position: usize) {
 }
 
 impl ColumnState {
+    fn single_selected_position(&self) -> Option<usize> {
+        let position = self.selected?;
+        (self.selected_locations.len() == 1
+            && self
+                .selected_locations
+                .contains(&self.entries.get(position)?.location))
+        .then_some(position)
+    }
+
     fn restore_pending_selection(&mut self) {
         if self.pending_selection.is_empty() {
             return;

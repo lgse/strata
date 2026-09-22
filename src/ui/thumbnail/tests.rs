@@ -389,6 +389,61 @@ fn persist_queue_bounds_and_drains_oldest_first() {
     assert_eq!(drained, MAX_PERSIST_QUEUE);
 }
 
+#[test]
+fn renamed_thumbnail_rebind_reuses_texture_without_a_request() {
+    gtk_test(
+        "ui::thumbnail::tests::renamed_thumbnail_rebind_reuses_texture_without_a_request",
+        || {
+            for change in ["name", "size", "mtime", "unknown", "extension"] {
+                clear_thumbnail_runtime();
+                let from = Path::new("/rename/before.png");
+                let to = Path::new(if change == "extension" {
+                    "/rename/after.mp4"
+                } else {
+                    "/rename/after.png"
+                });
+                let pixels = glib::Bytes::from_owned(vec![255u8; 4]);
+                let texture: gdk::Texture =
+                    gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &pixels, 4).upcast();
+                let key = ThumbnailKey {
+                    path: from.to_path_buf(),
+                    modified: Some(1),
+                    file_size: Some(1),
+                    thumbnail_size: crate::ui::thumbnail_cache::CANONICAL_MAX_EDGE,
+                };
+                THUMBNAIL_CACHE.with_borrow_mut(|cache| cache.insert(key, texture.clone()));
+                let mut entry = sample_entry(to);
+                match change {
+                    "size" => entry.size = MetadataValue::Known(2),
+                    "mtime" => entry.modified_unix_seconds = MetadataValue::Known(2),
+                    "unknown" => entry.modified_unix_seconds = MetadataValue::Unknown,
+                    _ => {}
+                }
+                super::preserve_renamed_thumbnail(&Location::local(from), &entry);
+                let slot = super::ThumbnailSlot::new(64);
+                set_thumbnail_or_icon(&slot, &entry, crate::assets::icons::PICTURES, 32, 64);
+                if change != "name" {
+                    assert!(slot.texture().is_none());
+                    assert!(
+                        ACTIVE_REQUESTS.with_borrow(
+                            |requests| requests.contains_key(&(slot.as_ptr() as usize))
+                        )
+                    );
+                } else {
+                    assert_eq!(slot.texture(), Some(texture));
+                    assert!(
+                        !ACTIVE_REQUESTS.with_borrow(
+                            |requests| requests.contains_key(&(slot.as_ptr() as usize))
+                        )
+                    );
+                }
+                cancel_thumbnail(slot.as_ptr() as usize);
+            }
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
 fn sample_entry(path: &Path) -> FileEntry {
     FileEntry {
         location: Location::local(path),
@@ -511,8 +566,6 @@ fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
     );
 }
 
-/// Icon resolution reads folder color and custom icon from the manager, and
-/// already-shown slots refresh when those preferences change.
 #[test]
 fn path_customization_refreshes_rendered_icons() {
     gtk_test(
@@ -550,7 +603,7 @@ fn path_customization_refreshes_rendered_icons() {
             assert_eq!(fallback_pixels(&customized_slot), default_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
 
-            manager.set_folder_color(customized, Some(color));
+            manager.set_folder_color(customized, Some(color.clone()));
             assert_eq!(fallback_pixels(&customized_slot), colored_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
 
@@ -561,7 +614,57 @@ fn path_customization_refreshes_rendered_icons() {
             manager.clear_item_customization(customized);
             assert_eq!(fallback_pixels(&customized_slot), default_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
+
+            manager.set_folder_color(customized, Some(color.clone()));
+            show_customized_icon(&customized_slot, other, crate::assets::icons::FOLDER, 32);
+            assert_eq!(fallback_pixels(&customized_slot), default_pixels);
+            manager.clear_item_customization(customized);
+            manager.set_folder_color(other, Some(color));
+            assert_eq!(fallback_pixels(&customized_slot), colored_pixels);
+            assert_eq!(fallback_pixels(&other_slot), colored_pixels);
+
+            super::show_fallback_icon(&customized_slot, crate::assets::icons::PICTURES, 32);
+            let fallback = fallback_pixels(&customized_slot);
+            manager.clear_item_customization(other);
+            refresh_all_customized_icons();
+            assert_eq!(fallback_pixels(&customized_slot), fallback);
+            assert_eq!(fallback_pixels(&other_slot), default_pixels);
             clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn recycled_and_disposed_slots_release_thumbnail_tracking() {
+    gtk_test(
+        "ui::thumbnail::tests::recycled_and_disposed_slots_release_thumbnail_tracking",
+        || {
+            let path = Path::new("/fixture/old.png");
+            let replacement = Path::new("/fixture/new.png");
+            let slot = super::ThumbnailSlot::new(64);
+            let other = super::ThumbnailSlot::new(64);
+            let texture = sample_texture();
+            for image in [&slot, &other] {
+                show_customized_icon(image, path, crate::assets::icons::PICTURES, 64);
+                super::apply_thumbnail(image, &texture, path);
+            }
+            super::apply_thumbnail(&slot, &texture, replacement);
+            assert!(!super::displayed_thumbnail_matches(&slot, path));
+            assert!(super::displayed_thumbnail_matches(&slot, replacement));
+            assert!(super::displayed_thumbnail_matches(&other, path));
+
+            let id = slot.as_ptr() as usize;
+            let weak = slot.downgrade();
+            drop(slot);
+            assert!(weak.upgrade().is_none());
+            assert!(!super::TRACKED_THUMBNAILS.with_borrow(|tracked| tracked.contains_key(&id)));
+            assert!(
+                !super::TRACKED_CUSTOMIZED_ICONS.with_borrow(|tracked| tracked.contains_key(&id))
+            );
+            assert!(super::displayed_thumbnail_matches(&other, path));
+            super::show_fallback_icon(&other, crate::assets::icons::PICTURES, 64);
+            assert!(!super::displayed_thumbnail_matches(&other, path));
+            assert!(other.texture().is_none());
         },
     );
 }

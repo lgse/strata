@@ -21,6 +21,34 @@ fn settle() {
     }
 }
 
+fn mapped_popover(widget: &gtk::Widget) -> Option<gtk::Popover> {
+    if let Some(popover) = widget.downcast_ref::<gtk::Popover>()
+        && popover.is_mapped()
+    {
+        return Some(popover.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(popover) = mapped_popover(&widget) {
+            return Some(popover);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+fn wait_for_mapped_popover(root: &gtk::Widget) -> gtk::Popover {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(popover) = mapped_popover(root) {
+            return popover;
+        }
+        assert!(Instant::now() < deadline, "context menu did not open");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 #[test]
 fn background_splices_preserve_column_multiselection_and_pending_properties() {
     crate::test_support::gtk_test(
@@ -533,17 +561,7 @@ fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
                             .find(|gesture| gesture.button() == 3)
                             .expect("context gesture");
                         gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
-                        let popover = {
-                            let mut child = overlay.first_child();
-                            loop {
-                                let widget = child.unwrap_or_else(|| panic!("open context menu: chooser={chooser}, previous={previous}, item={item}"));
-                                child = widget.next_sibling();
-                                if let Ok(popover) = widget.downcast::<gtk::Popover>() {
-                                    break popover;
-                                }
-                            }
-                        };
-                        wait_until(|| popover.is_mapped());
+                        let popover = wait_for_mapped_popover(overlay.upcast_ref());
                         for hovered in [None, Some(previous)] {
                             view.state.hovered_column.set(hovered);
                             view.state.refresh_destination_style();
