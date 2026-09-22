@@ -200,51 +200,71 @@ fn selection_properties_aggregates_nested_counts_and_sizes_across_the_selection(
             )
             .expect("deep");
 
-            let view = crate::ui::browser::BrowserView::new(
-                Rc::new(crate::adapters::LocalFileSource),
-                crate::ui::browser::PeekBehavior::default(),
-            );
-            let overlay = gtk::Overlay::new();
-            overlay.set_child(Some(&view.widget()));
-            let window = gtk::Window::builder().child(&overlay).build();
-            window.present();
+            for (file_size, expected_size, expected_contains) in [
+                (
+                    crate::model::MetadataValue::Known(5),
+                    "10 B",
+                    "3 files, 1 folder",
+                ),
+                (
+                    crate::model::MetadataValue::Unknown,
+                    "≥ 5 B",
+                    "≥ 3 files, ≥ 1 folder",
+                ),
+            ] {
+                let view = crate::ui::browser::BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&view.widget()));
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
 
-            let entries = vec![
-                selection_entry(&root.path().join("selected_file.txt"), false, 5),
-                selection_entry(&root.path().join("selected_folder"), true, 0),
-            ];
-            view.state.show_selection_properties(entries);
+                let mut file = selection_entry(&root.path().join("selected_file.txt"), false, 5);
+                file.size = file_size.clone();
+                let entries = vec![
+                    file,
+                    selection_entry(&root.path().join("selected_folder"), true, 0),
+                ];
+                view.state.show_selection_properties(entries);
 
-            let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
-            let contains =
-                row_label(overlay.upcast_ref(), "CONTAINS").expect("Properties CONTAINS row");
-            let spinner = size
-                .next_sibling()
-                .and_downcast::<gtk::Spinner>()
-                .expect("size spinner");
-            assert!(spinner.is_spinning());
+                let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
+                let contains =
+                    row_label(overlay.upcast_ref(), "CONTAINS").expect("Properties CONTAINS row");
+                let spinner = size
+                    .next_sibling()
+                    .and_downcast::<gtk::Spinner>()
+                    .expect("size spinner");
+                assert!(spinner.is_spinning());
 
-            let deadline = Instant::now() + Duration::from_secs(5);
-            while spinner.is_spinning() {
-                assert!(Instant::now() < deadline, "SIZE stayed at {}", size.text());
-                glib::MainContext::default().iteration(false);
-                std::thread::sleep(Duration::from_millis(1));
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while spinner.is_spinning() {
+                    assert!(Instant::now() < deadline, "SIZE stayed at {}", size.text());
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                assert_eq!(size.text(), expected_size);
+                assert_eq!(contains.text(), expected_contains);
+                let warning = contains.next_sibling().expect("measurement warning");
+                assert_eq!(
+                    warning.is_visible(),
+                    file_size == crate::model::MetadataValue::Unknown
+                );
+
+                let layer = overlay
+                    .last_child()
+                    .and_downcast::<gtk::Box>()
+                    .expect("modal layer");
+                dismiss_modal_layer(&layer, &overlay, None);
+                while layer.parent().is_some() {
+                    assert!(Instant::now() < deadline, "Properties did not close");
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                window.destroy();
+                view.browser().clear_observer();
             }
-            assert_eq!(size.text(), "10 B");
-            assert_eq!(contains.text(), "3 files, 1 folder");
-
-            let layer = overlay
-                .last_child()
-                .and_downcast::<gtk::Box>()
-                .expect("modal layer");
-            dismiss_modal_layer(&layer, &overlay, None);
-            while layer.parent().is_some() {
-                assert!(Instant::now() < deadline, "Properties did not close");
-                glib::MainContext::default().iteration(false);
-                std::thread::sleep(Duration::from_millis(1));
-            }
-            window.destroy();
-            view.browser().clear_observer();
         },
     );
 }

@@ -69,6 +69,40 @@ def test_properties_explains_unreadable_folder_contents(sized_folder, strata):
         blocked.chmod(0o755)
 
 
+@pytest.mark.parametrize("route", ["keyboard", "context-menu"])
+@pytest.mark.parametrize("unreadable", [False, True])
+def test_selection_properties_routes_preserve_aggregate_warnings(
+    sized_folder, strata, route, unreadable
+):
+    blocked = sized_folder / ".hidden"
+    if unreadable:
+        blocked.chmod(0)
+    try:
+        strata.select_entry("sized-folder")
+        strata.pointer.click(strata.entry("readme.md"), modifiers=["ctrl"])
+        strata.wait_for_selection(["sized-folder", "readme.md"], sized_folder.parent.name)
+        if route == "keyboard":
+            strata.keyboard.press("alt+Return")
+        else:
+            strata.open_context_menu("readme.md", sized_folder.parent.name)
+            strata.choose_menu_item("Properties")
+        dialog = strata.wait_for_dialog()
+        expected = "≥ 25 B" if unreadable else "28 B"
+        strata.wait(
+            lambda: dialog.find(role="label", name=expected),
+            "the combined selection size",
+        )
+        counts = "≥ 5 files, ≥ 1 folder" if unreadable else "5 files, 1 folder"
+        assert dialog.find(role="label", name=counts)
+        if unreadable:
+            warning = dialog.find(
+                name="Totals are incomplete.\nSome folders or entries couldn't be read."
+            )
+            assert warning and warning.is_rendered()
+    finally:
+        blocked.chmod(0o755)
+
+
 @pytest.mark.parametrize("name, expected", [("archive", "0 B"), ("readme.md", "10 B")])
 def test_properties_shows_zero_for_empty_folders_and_preserves_file_sizes(
     strata, name, expected

@@ -800,9 +800,6 @@ impl ViewState {
 }
 
 impl ViewState {
-    /// Compact multi-item summary: nested item count and total size across
-    /// the whole selection. Permissions, rename, and media stay
-    /// single-item-only; a lone entry falls back to the full dialog.
     pub(super) fn show_selection_properties(self: &Rc<Self>, entries: Vec<FileEntry>) {
         if entries.len() < 2 {
             if let Some(entry) = entries.into_iter().next() {
@@ -907,6 +904,8 @@ impl ViewState {
                     total.visible_file_count = total.visible_file_count.saturating_add(1);
                     if let crate::model::MetadataValue::Known(size) = entry.size {
                         total.total_size = total.total_size.saturating_add(size);
+                    } else {
+                        total.issues.unreadable = true;
                     }
                 }
             }
