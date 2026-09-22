@@ -72,6 +72,35 @@ impl FileSource for MenuSource {
 }
 
 #[test]
+fn columns_navigation_releases_retired_item_menus() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::columns_navigation_releases_retired_item_menus",
+        || {
+            let first = tempfile::tempdir().expect("first folder");
+            let second = tempfile::tempdir().expect("second folder");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(650)
+                .build();
+            window.present();
+            browser.navigate(Location::local(first.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+            let menu = open_menu(&view, Some("notes.txt"));
+            let retired = menu.downgrade();
+            menu.popdown();
+            drop(menu);
+            browser.navigate(Location::local(second.path()));
+            wait_until(|| retired.upgrade().is_none());
+            browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn run_is_only_offered_for_one_regular_executable_file() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::run_is_only_offered_for_one_regular_executable_file",

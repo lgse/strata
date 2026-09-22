@@ -618,6 +618,8 @@ fn install_secondary_release_retarget(
         None::<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
     ));
     let installed_for_show = installed.clone();
+    // The trigger owns the menu; its show handler and root controller must not retain it.
+    let reopen = Rc::downgrade(&reopen);
     let weak_widget = widget.downgrade();
     let weak_popover = popover.downgrade();
     popover.connect_show(move |_| {
@@ -664,8 +666,9 @@ fn install_secondary_release_retarget(
             let target = root
                 .compute_point(&widget, &gtk::graphene::Point::new(x as f32, y as f32))
                 .map(|point| (f64::from(point.x()), f64::from(point.y())));
-            if let Some((x, y)) = target {
-                let reopen = reopen.clone();
+            if let Some((x, y)) = target
+                && let Some(reopen) = reopen.upgrade()
+            {
                 glib::idle_add_local_once(move || {
                     reopen(x, y, None);
                 });
