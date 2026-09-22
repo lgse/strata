@@ -301,9 +301,22 @@ impl Pane {
         else {
             return;
         };
+        // Reused Icons/List panes can already show this query without recursion.
+        // Arm the flag first, and re-emit when the text itself does not change.
+        let previous = entry.text().to_string();
+        let rescope = self.search.set_force_recursive(filter.force_recursive);
         super::browser::restore_filter_controls(button, entry, filter);
+        // A reused pane can already hold this text. Re-emit so a recursive `s`
+        // feed starts even when neither the flag nor the query string changed.
+        if previous == filter.query
+            && !filter.query.trim().is_empty()
+            && (rescope || filter.force_recursive)
+        {
+            super::browser::set_filter_entry_query(entry, &filter.query, true);
+        }
         super::browser::notify_filter_query(&self.filter, &self.filter_query, filter.query.clone());
         if filter.query.trim().is_empty() {
+            self.search.set_force_recursive(false);
             self.search.show_directory_listing();
         }
     }
@@ -994,6 +1007,7 @@ impl ModeViews {
                 .filter_button
                 .as_ref()
                 .is_some_and(|button| button.is_active()),
+            force_recursive: pane.search.force_recursive(),
         }
     }
 

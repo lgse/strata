@@ -298,7 +298,22 @@ fn apply_minimal_mode(
             footer.set_filter_mark("");
             view.set_find_prompt_active(false);
             view.set_find_highlight("");
+            // `reset` cancels an older restore. Snapshot the overlay fill first,
+            // then put those locations back on the ordinary listing after dismiss.
+            let keep = if !enabled {
+                minimal::kept_filter_fill(&view, &view.browser())
+            } else {
+                Vec::new()
+            };
             view.dismiss_hidden_filter();
+            if !keep.is_empty() {
+                minimal::restore_fill_after_hidden_filter(
+                    view.clone(),
+                    view.browser(),
+                    minimal.clone(),
+                    keep,
+                );
+            }
             preview.set_owns_keys_chrome(false);
             view.set_column_header_focus(true);
             if !enabled {

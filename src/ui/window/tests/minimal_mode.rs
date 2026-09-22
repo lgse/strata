@@ -5810,3 +5810,392 @@ fn minimal_columns_find_skips_hidden_entries() {
         },
     );
 }
+
+fn nested_unique_hit(fixture: &MinimalFixture) -> bool {
+    fixture.view.search_result_listing().is_some_and(|entries| {
+        entries.iter().any(|entry| {
+            entry.display_name == "unique-hit.txt"
+                && entry.location.native_path().is_some_and(|path| {
+                    path.parent()
+                        .is_some_and(|parent| parent.ends_with("innerdir"))
+                })
+        })
+    })
+}
+
+fn recursive_hit_kept(fixture: &MinimalFixture, query: &str) -> bool {
+    let mark = format!("search: {query}");
+    footer_has_label(fixture, &mark)
+        && footer_shows(fixture, &mark)
+        && !footer_has_label(fixture, &format!("filter: {query}"))
+        && fixture.view.force_recursive_search()
+        && nested_unique_hit(fixture)
+}
+
+fn wait_recursive_hit(fixture: &MinimalFixture, query: &str, mode: BrowserMode) {
+    wait_until_msg(
+        || fixture.view.view_mode() == mode && recursive_hit_kept(fixture, query),
+        &format!("{mode:?} keeps recursive {query}"),
+    );
+    pump_mainloop(Duration::from_millis(80));
+    assert!(
+        fixture.view.view_mode() == mode && recursive_hit_kept(fixture, query),
+        "{mode:?} view-change update must keep search: {query}"
+    );
+}
+
+#[test]
+fn minimal_recursive_search_keeps_search_mark_across_escape_view_and_filter() {
+    gtk_test(
+        "ui::window::tests::minimal_mode::minimal_recursive_search_keeps_search_mark_across_escape_view_and_filter",
+        || {
+            let fixture = MinimalFixture::new();
+            fixture.footer.observe_browser(&fixture.view);
+            add_nested_hit(&fixture);
+            PreferenceManager::shared().set_filter_include_subfolders(false);
+            let root = Location::local(fixture._directory.path());
+            let query = "unique-hit";
+
+            assert!(fixture.press(Key::s, ModifierType::empty()));
+            wait_until_msg(|| prompt_has_focus(&fixture), "s prompt before Esc");
+            fixture.footer.prompt_entry_widget().set_text(query);
+            wait_until_msg(
+                || {
+                    overlay_listing_names(&fixture) == ["unique-hit.txt"]
+                        && prompt_has_focus(&fixture)
+                        && fixture.view.force_recursive_search()
+                },
+                "typed s publishes the nested hit",
+            );
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            wait_until_msg(
+                || !prompt_has_focus(&fixture) && recursive_hit_kept(&fixture, query),
+                "prompt Esc keeps hits and the search: label",
+            );
+            assert!(fixture.press(Key::h, ModifierType::empty()));
+            wait_until_msg(
+                || !fixture.view.force_recursive_search() && !fixture.view.hidden_filter_active(),
+                "h dismisses the kept search before the submit path",
+            );
+
+            submit_prompt_with_results(&fixture, Key::s, query, &["unique-hit.txt"]);
+            wait_recursive_hit(&fixture, query, BrowserMode::Columns);
+
+            for (key, mode) in [
+                (Key::_2, BrowserMode::Icons),
+                (Key::_3, BrowserMode::List),
+                (Key::_1, BrowserMode::Columns),
+            ] {
+                assert!(fixture.press(key, ModifierType::CONTROL_MASK));
+                wait_recursive_hit(&fixture, query, mode);
+                assert_eq!(fixture.view.browser().active_location(), Some(root.clone()));
+            }
+
+            assert!(fixture.press(Key::_2, ModifierType::CONTROL_MASK));
+            wait_recursive_hit(&fixture, query, BrowserMode::Icons);
+            for key in [Key::h, Key::l, Key::Left, Key::Right, Key::Down] {
+                assert!(fixture.press(key, ModifierType::empty()));
+                pump_mainloop(Duration::from_millis(40));
+                assert!(
+                    recursive_hit_kept(&fixture, query),
+                    "Icons {key:?} must leave the nested hit in the result set"
+                );
+                assert_eq!(fixture.view.browser().active_location(), Some(root.clone()));
+                assert!(!fixture.preview.owns_keys_chrome());
+            }
+
+            assert!(fixture.press(Key::f, ModifierType::empty()));
+            wait_until_msg(|| prompt_has_focus(&fixture), "f opens over recursive hits");
+            pump_mainloop(Duration::from_millis(80));
+            assert!(
+                prompt_has_focus(&fixture)
+                    && footer_has_label(&fixture, &format!("search: {query}"))
+                    && !footer_has_label(&fixture, &format!("filter: {query}"))
+                    && fixture.view.force_recursive_search()
+                    && nested_unique_hit(&fixture),
+                "f must not drop nested hits or relabel search: before Enter"
+            );
+        },
+    );
+}
+
+#[test]
+fn minimal_icons_switch_releases_preview_keys() {
+    gtk_test(
+        "ui::window::tests::minimal_mode::minimal_icons_switch_releases_preview_keys",
+        || {
+            install_text_activation_handler();
+            for mode in [BrowserMode::List, BrowserMode::Columns] {
+                let fixture = find_highlight_fixture(mode);
+                populate_icons_grid(&fixture);
+                fixture.select_name("a.txt");
+                let location = fixture.view.browser().active_location();
+                assert!(fixture.press(Key::l, ModifierType::empty()));
+                wait_until_msg(
+                    || {
+                        fixture.preview.is_enabled()
+                            && fixture.preview.owns_keys_chrome()
+                            && !fixture.view.item_view_has_focus()
+                    },
+                    &format!("{mode:?} l gives the preview the keys"),
+                );
+                let adjustment = preview_scroll_adjustment(&fixture);
+                let start = adjustment.value();
+                assert!(fixture.press(Key::j, ModifierType::empty()));
+                wait_until_msg(
+                    || adjustment.value() > start,
+                    &format!("{mode:?} j scrolls the preview"),
+                );
+                let after_j = adjustment.value();
+                assert!(fixture.press(Key::k, ModifierType::empty()));
+                wait_until_msg(
+                    || adjustment.value() < after_j,
+                    &format!("{mode:?} k scrolls the preview"),
+                );
+                assert_eq!(fixture.view.browser().active_location(), location);
+                assert!(fixture.press(Key::l, ModifierType::empty()));
+                assert!(fixture.press(Key::Right, ModifierType::empty()));
+                assert!(fixture.preview.owns_keys_chrome());
+                assert!(fixture.preview.is_enabled());
+                assert_eq!(
+                    fixture.view.browser().active_location(),
+                    location,
+                    "{mode:?} l/Right stay in the preview pane"
+                );
+
+                let held = adjustment.value();
+                assert!(fixture.press(Key::_2, ModifierType::CONTROL_MASK));
+                wait_until_msg(
+                    || {
+                        fixture.view.view_mode() == BrowserMode::Icons
+                            && fixture.preview.is_enabled()
+                            && !fixture.preview.owns_keys_chrome()
+                    },
+                    &format!("{mode:?} Ctrl+2 releases preview keys and leaves the drawer open"),
+                );
+                assert_eq!(fixture.view.browser().active_location(), location);
+                pin_icons_grid(&fixture, 3);
+                fixture.select_name("a.txt");
+                wait_until_msg(
+                    || {
+                        fixture.cursor_name().as_deref() == Some("a.txt")
+                            && listing_cursor_has_focus(&fixture)
+                    },
+                    "Icons listing owns a.txt after the view switch",
+                );
+
+                assert!(fixture.press(Key::j, ModifierType::empty()));
+                wait_until_msg(
+                    || fixture.cursor_name().as_deref() == Some("d.txt"),
+                    "Icons j moves to the next row instead of scrolling the preview",
+                );
+                assert!((adjustment.value() - held).abs() < 0.5);
+                assert!(!fixture.preview.owns_keys_chrome());
+                assert!(fixture.preview.is_enabled());
+                assert_eq!(fixture.view.browser().active_location(), location);
+
+                assert!(fixture.press(Key::k, ModifierType::empty()));
+                wait_until_msg(
+                    || fixture.cursor_name().as_deref() == Some("a.txt"),
+                    "Icons k moves back up the grid",
+                );
+                assert!((adjustment.value() - held).abs() < 0.5);
+                assert!(!fixture.preview.owns_keys_chrome());
+
+                assert!(fixture.press(Key::l, ModifierType::empty()));
+                wait_until_msg(
+                    || fixture.cursor_name().as_deref() == Some("b.txt"),
+                    "Icons l moves to the next tile",
+                );
+                assert!(!fixture.preview.owns_keys_chrome());
+                assert_eq!(fixture.view.browser().active_location(), location);
+                assert!(fixture.press(Key::Right, ModifierType::empty()));
+                wait_until_msg(
+                    || {
+                        fixture.cursor_name().as_deref() != Some("b.txt")
+                            && !fixture.preview.owns_keys_chrome()
+                    },
+                    "Icons Right moves among tiles and does not take preview keys",
+                );
+                assert_eq!(fixture.view.browser().active_location(), location);
+
+                fixture.select_name("b.txt");
+                assert!(fixture.press(Key::h, ModifierType::empty()));
+                wait_until_msg(
+                    || fixture.cursor_name().as_deref() == Some("a.txt"),
+                    "Icons h moves to the previous tile",
+                );
+                assert_eq!(fixture.view.browser().active_location(), location);
+                assert!(fixture.preview.is_enabled());
+                assert!(!fixture.preview.owns_keys_chrome());
+            }
+        },
+    );
+}
+
+fn preview_owned_location(fixture: &MinimalFixture) -> Location {
+    fixture.select_name("a.txt");
+    let location = fixture
+        .view
+        .browser()
+        .active_location()
+        .expect("listing location");
+    assert!(fixture.press(Key::l, ModifierType::empty()));
+    wait_until_msg(
+        || fixture.preview.is_enabled() && fixture.preview.owns_keys_chrome(),
+        "l gives the preview the keys",
+    );
+    location
+}
+
+#[test]
+fn minimal_preview_backspace_and_alt_up_go_to_parent() {
+    gtk_test(
+        "ui::window::tests::minimal_mode::minimal_preview_backspace_and_alt_up_go_to_parent",
+        || {
+            for mode in [BrowserMode::List, BrowserMode::Columns] {
+                for (key, modifiers) in [
+                    (Key::BackSpace, ModifierType::empty()),
+                    (Key::Up, ModifierType::ALT_MASK),
+                ] {
+                    let fixture = find_highlight_fixture(mode);
+                    let current = preview_owned_location(&fixture);
+                    let parent = current.parent().expect("parent folder");
+                    assert!(fixture.press(key, modifiers));
+                    wait_until_msg(
+                        || fixture.view.browser().active_location() == Some(parent.clone()),
+                        &format!("{mode:?} {key:?} goes to the parent while preview owns keys"),
+                    );
+                }
+            }
+
+            for (mode, key) in [
+                (BrowserMode::Columns, Key::h),
+                (BrowserMode::List, Key::Left),
+            ] {
+                let fixture = find_highlight_fixture(mode);
+                let current = preview_owned_location(&fixture);
+                let parent = current.parent().expect("parent folder");
+                assert!(fixture.press(key, ModifierType::empty()));
+                wait_until_msg(
+                    || {
+                        !fixture.preview.owns_keys_chrome()
+                            && fixture.preview.is_enabled()
+                            && listing_cursor_has_focus(&fixture)
+                            && fixture.view.browser().active_location() == Some(current.clone())
+                    },
+                    &format!("{mode:?} {key:?} leaves preview keys without changing folder"),
+                );
+                assert!(fixture.press(Key::h, ModifierType::empty()));
+                wait_until_msg(
+                    || fixture.view.browser().active_location() == Some(parent.clone()),
+                    &format!("{mode:?} next h goes to the parent"),
+                );
+            }
+
+            for (key, modifiers) in [
+                (Key::BackSpace, ModifierType::empty()),
+                (Key::Up, ModifierType::ALT_MASK),
+            ] {
+                let fixture = find_highlight_fixture(BrowserMode::Icons);
+                fixture.select_name("a.txt");
+                let current = fixture
+                    .view
+                    .browser()
+                    .active_location()
+                    .expect("icons location");
+                let parent = current.parent().expect("parent folder");
+                assert!(fixture.press(Key::i, ModifierType::empty()));
+                wait_until_msg(
+                    || fixture.preview.is_enabled() && !fixture.preview.owns_keys_chrome(),
+                    "Icons i opens preview without taking keys",
+                );
+                assert!(fixture.press(key, modifiers));
+                wait_until_msg(
+                    || fixture.view.browser().active_location() == Some(parent.clone()),
+                    &format!("Icons {key:?} goes to the parent while preview is open"),
+                );
+            }
+        },
+    );
+}
+
+fn filter_overlay_names(fixture: &MinimalFixture) -> Vec<String> {
+    let mut names = fixture
+        .view
+        .selected_search_results()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|entry| entry.display_name)
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
+fn sorted_listing_fill(fixture: &MinimalFixture) -> Vec<String> {
+    let mut names = listing_selected_names(fixture);
+    names.sort();
+    names
+}
+
+fn select_visible_filter_rows(fixture: &MinimalFixture) -> Vec<String> {
+    submit_prompt_with_results(fixture, Key::f, "txt", &["a.txt", "b.txt", "c.txt"]);
+    assert!(fixture.press(Key::a, ModifierType::CONTROL_MASK));
+    wait_until_msg(
+        || filter_overlay_names(fixture) == ["a.txt", "b.txt", "c.txt"],
+        "Ctrl+A fills every visible filter row",
+    );
+    filter_overlay_names(fixture)
+}
+
+fn filter_fill_restored(fixture: &MinimalFixture, expected: &[String]) -> bool {
+    !fixture.view.hidden_filter_active()
+        && fixture.view.selected_search_results().is_none()
+        && sorted_listing_fill(fixture) == expected
+}
+
+#[test]
+fn minimal_filter_prompt_escape_and_mode_exit_keep_fill() {
+    gtk_test(
+        "ui::window::tests::minimal_mode::minimal_filter_prompt_escape_and_mode_exit_keep_fill",
+        || {
+            let listing = MinimalFixture::new();
+            let expected = select_visible_filter_rows(&listing);
+            assert!(listing.press(Key::Escape, ModifierType::empty()));
+            wait_until_msg(
+                || filter_fill_restored(&listing, &expected),
+                "listing Esc keeps the filter-row fill on the ordinary listing",
+            );
+
+            let prompt = MinimalFixture::new();
+            let expected = select_visible_filter_rows(&prompt);
+            assert!(prompt.press(Key::f, ModifierType::empty()));
+            wait_until_msg(
+                || prompt_has_focus(&prompt) && filter_overlay_names(&prompt) == expected,
+                "f reopens over the filled filter rows",
+            );
+            assert!(prompt.press(Key::Escape, ModifierType::empty()));
+            wait_until_msg(
+                || !prompt_has_focus(&prompt) && filter_fill_restored(&prompt, &expected),
+                "Esc inside the f prompt keeps the filter-row fill",
+            );
+
+            let leaving = MinimalFixture::new();
+            let expected = select_visible_filter_rows(&leaving);
+            assert!(leaving.press(Key::i, ModifierType::empty()));
+            wait_until_msg(
+                || leaving.preview.is_enabled(),
+                "i opens a preview over the filter fill",
+            );
+            assert!(leaving.press(Key::q, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    !PreferenceManager::shared().minimal_mode()
+                        && leaving.preview.is_enabled()
+                        && filter_fill_restored(&leaving, &expected)
+                },
+                "leaving minimal mode keeps the fill and the open preview",
+            );
+        },
+    );
+}

@@ -230,6 +230,8 @@ pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
 pub(crate) struct ActivePaneFilter {
     pub query: String,
     pub revealed: bool,
+    /// Minimal `s` forces recursion across a view change. Listing `f` stays false.
+    pub force_recursive: bool,
 }
 
 impl ActivePaneFilter {

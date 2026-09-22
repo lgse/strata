@@ -361,6 +361,7 @@ fn restore_filter_controls_keeps_a_hidden_query_collapsed() {
                 &ActivePaneFilter {
                     query: "needle".into(),
                     revealed: false,
+                    force_recursive: false,
                 },
             );
             assert!(
@@ -379,6 +380,7 @@ fn restore_filter_controls_keeps_a_hidden_query_collapsed() {
                 &ActivePaneFilter {
                     query: "needle".into(),
                     revealed: true,
+                    force_recursive: false,
                 },
             );
             assert!(button.is_active());

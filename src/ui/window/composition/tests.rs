@@ -26,6 +26,25 @@ fn settle_sidebar(millis: u64) {
     main_loop.run();
 }
 
+/// Drives the paned frame clock until `done` is true. A fixed sleep can expire
+/// while a 300 ms collapse is still at the expanded width.
+fn pump_sidebar_until(paned: &gtk::Paned, done: impl Fn() -> bool, what: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    while !done() {
+        if let Some(clock) = paned.frame_clock() {
+            clock.request_phase(gtk::gdk::FrameClockPhase::UPDATE);
+        }
+        paned.queue_draw();
+        let position = paned.position();
+        let visible = paned.start_child().is_some_and(|child| child.is_visible());
+        assert!(
+            std::time::Instant::now() < deadline,
+            "{what}; position={position} sidebar_visible={visible}",
+        );
+        glib::MainContext::default().iteration(false);
+    }
+}
+
 struct Fixture {
     window: gtk::ApplicationWindow,
     content: WindowContent,
@@ -527,17 +546,31 @@ fn sidebar_toggle_animated_expand_restores_visibility() {
                 .downcast::<gtk::Paned>()
                 .expect("sidebar/browser paned");
             fixture.content.header.sidebar_toggle.set_active(false);
-            settle_sidebar(600);
-            assert_eq!(content.position(), 0);
-            assert!(!fixture.content.sidebar.widget.is_visible());
+            pump_sidebar_until(
+                &content,
+                || content.position() == 0 && !fixture.content.sidebar.widget.is_visible(),
+                "animated collapse reaches position 0",
+            );
             fixture.content.header.sidebar_toggle.set_active(true);
-            settle_sidebar(600);
-            assert!(fixture.content.sidebar.widget.is_visible());
+            pump_sidebar_until(
+                &content,
+                || fixture.content.sidebar.widget.is_visible() && content.position() > 0,
+                "animated expand shows the sidebar",
+            );
             fixture.content.header.sidebar_toggle.set_active(false);
             settle_sidebar(50);
             fixture.content.header.sidebar_toggle.set_active(true);
-            settle_sidebar(600);
-            assert!(fixture.content.sidebar.widget.is_visible());
+            pump_sidebar_until(
+                &content,
+                || fixture.content.sidebar.widget.is_visible() && content.position() > 0,
+                "expand after an interrupted collapse shows the sidebar",
+            );
+            fixture.content.header.sidebar_toggle.set_active(false);
+            pump_sidebar_until(
+                &content,
+                || content.position() == 0 && !fixture.content.sidebar.widget.is_visible(),
+                "second animated collapse reaches position 0",
+            );
             fixture.close();
         },
     );

@@ -237,3 +237,272 @@ fn chooser_follows_minimal_mode_chrome_and_keys() {
         },
     );
 }
+
+fn save_chooser(token: &str) -> (Rc<ChooserState>, tempfile::TempDir) {
+    PreferenceManager::shared().set_minimal_mode(true);
+    PreferenceManager::shared().set_browser_mode(BrowserMode::List);
+    let directory = tempfile::tempdir().expect("chooser fixture");
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        std::fs::write(directory.path().join(name), b"chooser").expect("fixture file");
+    }
+    let mut request = super::acceptance::request(directory.path().to_path_buf());
+    request.token = token.into();
+    request.kind = ChooserKind::SaveFile {
+        current_name: Some("suggested.txt".into()),
+    };
+    let state =
+        build_chooser(request, Arc::new(AtomicBool::new(false)), |_| {}).expect("save chooser");
+    wait_for_listing(&state.view, BrowserMode::List);
+    (state, directory)
+}
+
+fn filename_has_focus(state: &ChooserState) -> bool {
+    let Some(filename) = state.filename.as_ref() else {
+        return false;
+    };
+    gtk::prelude::RootExt::focus(&state.window).is_some_and(|focus| {
+        let entry = filename.upcast_ref::<gtk::Widget>();
+        &focus == entry || focus.is_ancestor(entry)
+    })
+}
+
+fn focus_filename(state: &ChooserState) {
+    state.filename.as_ref().expect("filename").grab_focus();
+    super::acceptance::wait_until(|| filename_has_focus(state));
+}
+
+fn focus_listing(state: &ChooserState) {
+    state.view.browser().select(0, 0);
+    state.view.browser().focus_active();
+    state.view.restore_file_view_focus();
+    super::acceptance::wait_until(|| state.view.item_view_has_focus());
+}
+
+fn dialog_open(state: &ChooserState) -> bool {
+    state.completion.borrow().is_some() && state.window.is_visible()
+}
+
+fn selected_names(state: &ChooserState) -> Vec<String> {
+    let mut names = state
+        .view
+        .browser()
+        .selected_entries()
+        .into_iter()
+        .map(|entry| entry.display_name)
+        .collect::<Vec<_>>();
+    names.sort();
+    names
+}
+
+fn prompt_entry(window: &gtk::Window) -> gtk::Entry {
+    widget_with_class(window.upcast_ref(), "minimal-prompt-entry")
+        .and_downcast::<gtk::Entry>()
+        .expect("minimal prompt entry")
+}
+
+fn preview_open(window: &gtk::Window) -> bool {
+    widget_with_class(window.upcast_ref(), "preview-pane").is_some_and(|pane| pane.is_mapped())
+}
+
+#[test]
+fn chooser_filename_escape_dismisses_before_cancel() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::minimal_chrome::chooser_filename_escape_dismisses_before_cancel",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            crate::ui::prepare_portal_ui();
+            assert!(PreferenceManager::shared().minimal_mode());
+
+            let (state, _directory) = save_chooser("filename-esc-filter");
+            let keys = capture_keys(&state.window);
+            focus_listing(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::f,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                focused_has_class(&state.window, "minimal-prompt-entry")
+            });
+            prompt_entry(&state.window).set_text("a.txt");
+            super::acceptance::wait_until(|| state.view.hidden_filter_active());
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Return,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                state.view.hidden_filter_active()
+                    && !focused_has_class(&state.window, "minimal-prompt-entry")
+            });
+            focus_filename(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                !state.view.hidden_filter_active() && dialog_open(&state)
+            });
+            state.window.destroy();
+
+            let (state, _directory) = save_chooser("filename-esc-find");
+            let keys = capture_keys(&state.window);
+            focus_listing(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::slash,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                focused_has_class(&state.window, "minimal-prompt-entry")
+            });
+            prompt_entry(&state.window).set_text("txt");
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Return,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                state.view.find_highlights_active()
+                    && !focused_has_class(&state.window, "minimal-prompt-entry")
+            });
+            focus_filename(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                !state.view.find_highlights_active() && dialog_open(&state)
+            });
+            state.window.destroy();
+
+            let (state, _directory) = save_chooser("filename-esc-visual");
+            let keys = capture_keys(&state.window);
+            focus_listing(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::v,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::j,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| selected_names(&state).len() >= 2);
+            let filled = selected_names(&state);
+            focus_filename(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert!(
+                dialog_open(&state),
+                "visual Esc must not cancel the chooser"
+            );
+            assert_eq!(selected_names(&state), filled);
+            state.view.browser().focus_active();
+            state.view.restore_file_view_focus();
+            super::acceptance::wait_until(|| state.view.item_view_has_focus());
+            let before = state
+                .view
+                .browser()
+                .focused_item()
+                .map(|(_, position, _)| position);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::j,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                state
+                    .view
+                    .browser()
+                    .focused_item()
+                    .map(|(_, position, _)| position)
+                    != before
+            });
+            assert_eq!(
+                selected_names(&state),
+                filled,
+                "filename Esc must leave visual mode so the next j keeps the fill"
+            );
+            assert!(dialog_open(&state));
+            state.window.destroy();
+
+            let (state, _directory) = save_chooser("filename-esc-preview");
+            let keys = capture_keys(&state.window);
+            focus_listing(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::i,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| preview_open(&state.window));
+            focus_filename(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| !preview_open(&state.window) && dialog_open(&state));
+            state.window.destroy();
+
+            let (state, _directory) = save_chooser("filename-esc-location");
+            let keys = capture_keys(&state.window);
+            focus_listing(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::l,
+                gtk::gdk::ModifierType::CONTROL_MASK
+            ));
+            super::acceptance::wait_until(|| state.view.location_has_focus());
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                !state.view.location_has_focus() && dialog_open(&state)
+            });
+            state.window.destroy();
+
+            let (state, _directory) = save_chooser("filename-esc-prompt");
+            let keys = capture_keys(&state.window);
+            focus_listing(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::f,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                focused_has_class(&state.window, "minimal-prompt-entry")
+            });
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| {
+                !focused_has_class(&state.window, "minimal-prompt-entry")
+                    && !state.view.hidden_filter_active()
+                    && dialog_open(&state)
+            });
+            state.window.destroy();
+
+            let (state, _directory) = save_chooser("filename-esc-cancel");
+            let keys = capture_keys(&state.window);
+            focus_filename(&state);
+            assert!(press(
+                &keys,
+                gtk::gdk::Key::Escape,
+                gtk::gdk::ModifierType::empty()
+            ));
+            super::acceptance::wait_until(|| state.completion.borrow().is_none());
+            state.window.destroy();
+        },
+    );
+}

@@ -71,10 +71,11 @@ impl Dispatcher<'_> {
             {
                 if self.view.location_has_focus() {
                     self.view.cancel_location_edit();
-                } else {
-                    self.window.close();
+                    return Some(Propagation::Stop);
                 }
-                return Some(Propagation::Stop);
+                // The filename field is a gtk::Entry. Chooser Esc still dismisses
+                // one browsing step before cancelling. Inline editors return above.
+                return Some(self.minimal_escape(browser));
             }
             return Some(Propagation::Proceed);
         }
@@ -357,6 +358,12 @@ impl Dispatcher<'_> {
         });
     }
 
+    fn leave_preview_for_parent(&self) {
+        self.leave_directory();
+        self.leave_preview_keys();
+        self.view.navigate_up();
+    }
+
     pub(super) fn leave_preview_keys(&self) {
         if !self.minimal.borrow().preview_owns_keys() {
             return;
@@ -376,15 +383,20 @@ impl Dispatcher<'_> {
         self.view.restore_file_view_focus();
     }
 
-    /// While the preview owns keys, folder motion scrolls the mapped document
-    /// scroller and Left/`h`/Backspace return to the listing without
-    /// `navigate_up` or dismissing search. Right/`l` stay in the pane.
+    /// While the preview owns keys in List or Columns, folder motion scrolls
+    /// the mapped document. Left/`h` return to the listing without
+    /// `navigate_up`. Backspace and Alt+Up go to the parent on that same press.
+    /// Right/`l` stay in the pane. Icons motion never uses this map.
     fn minimal_preview_keys(&self, event: &KeyEvent) -> KeyResult {
         if self.minimal.borrow().preview_owns_keys() && !self.preview.is_enabled() {
             self.leave_preview_keys();
             return None;
         }
         if !self.preview_owns_keys() {
+            return None;
+        }
+        if self.view.view_mode() == BrowserMode::Icons {
+            self.leave_preview_keys();
             return None;
         }
         if event.control()
@@ -397,14 +409,18 @@ impl Dispatcher<'_> {
             && event.without(Modifiers::CONTROL_MASK | Modifiers::SUPER_MASK)
             && event.key == Key::Up
         {
-            self.leave_preview_keys();
+            self.leave_preview_for_parent();
             return Some(Propagation::Stop);
         }
         if !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK) {
             return None;
         }
         match event.key {
-            Key::h | Key::Left | Key::BackSpace => {
+            Key::BackSpace => {
+                self.leave_preview_for_parent();
+                Some(Propagation::Stop)
+            }
+            Key::h | Key::Left => {
                 self.leave_preview_keys();
                 Some(Propagation::Stop)
             }
@@ -963,6 +979,9 @@ impl Dispatcher<'_> {
                     &crate::ui::preferences::PreferenceManager::shared(),
                     mode,
                 );
+                if mode == BrowserMode::Icons {
+                    self.leave_preview_keys();
+                }
                 self.sync_filter_mark();
             }
             _ => return None,
@@ -1343,6 +1362,9 @@ impl Dispatcher<'_> {
                 let view = self.view.downgrade();
                 let footer = self.shortcuts.downgrade();
                 let lock = self.prompt_focus_lock.clone();
+                // Seeding `f` from a live recursive `s` must not rewrite that
+                // feed as a non-recursive filter before Enter.
+                let preserve_search = self.recursive_hits_showing();
                 self.shortcuts.show_prompt(
                     kind.prefix(),
                     kind.placeholder(),
@@ -1358,7 +1380,7 @@ impl Dispatcher<'_> {
                         lock.set(false);
                     })),
                 );
-                if !initial.is_empty() {
+                if !initial.is_empty() && !preserve_search {
                     self.view.set_filter_query_without_revealer(initial);
                     self.sync_filter_mark();
                 }
@@ -1378,6 +1400,10 @@ impl Dispatcher<'_> {
                         };
                         lock.set(true);
                         view.set_recursive_search_query(&text);
+                        footer.set_query_mark(
+                            &view.hidden_filter_query(),
+                            view.force_recursive_search(),
+                        );
                         footer.prompt_entry_widget().grab_focus_without_selecting();
                         lock.set(false);
                     })),
@@ -1652,6 +1678,7 @@ impl Dispatcher<'_> {
             }
             MinimalPrompt::Search => {
                 self.view.set_recursive_search_query(text);
+                self.sync_filter_mark();
                 tracing::debug!("minimal search submitted");
                 self.close_prompt_to_results(browser);
                 return Propagation::Stop;
@@ -1749,7 +1776,7 @@ impl Dispatcher<'_> {
         }
     }
 
-    fn cancel_prompt(&self, _browser: &Rc<Browser>) {
+    fn cancel_prompt(&self, browser: &Rc<Browser>) {
         // Escape in a filter prompt discards the query. Search with hits
         // keeps the result list; empty search cancels. Secrets always clear.
         let kind = self.minimal.borrow().prompt();
@@ -1766,12 +1793,20 @@ impl Dispatcher<'_> {
             self.view.set_find_highlight("");
         }
         if matches!(kind, Some(MinimalPrompt::Filter)) {
+            let keep = kept_filter_fill(self.view, browser);
             self.minimal.borrow_mut().clear_applied_filter();
             self.view.dismiss_hidden_filter();
             self.sync_filter_mark();
             self.view.restore_file_view_focus();
+            restore_fill_after_hidden_filter(
+                self.view.clone(),
+                browser.clone(),
+                self.minimal.clone(),
+                keep,
+            );
         } else if keep_search {
             self.focus_kept_search_results();
+            self.sync_filter_mark();
         } else if matches!(kind, Some(MinimalPrompt::Search)) {
             if self.view.force_recursive_search() || self.view.selected_search_results().is_some() {
                 self.restore_applied_filter();
@@ -1809,8 +1844,14 @@ impl Dispatcher<'_> {
     }
 
     fn sync_filter_mark(&self) {
-        self.shortcuts
-            .set_filter_mark(&self.view.hidden_filter_query());
+        self.shortcuts.set_query_mark(
+            &self.view.hidden_filter_query(),
+            self.view.force_recursive_search(),
+        );
+    }
+
+    fn recursive_hits_showing(&self) -> bool {
+        self.view.force_recursive_search() && self.view.selected_search_results().is_some()
     }
 
     fn restore_applied_filter(&self) {
@@ -2229,7 +2270,10 @@ fn history_candidates(kind: MinimalPrompt, query: &str) -> Vec<crate::services::
     }
 }
 
-fn kept_filter_fill(view: &crate::ui::browser::BrowserView, browser: &Browser) -> Vec<Location> {
+pub(super) fn kept_filter_fill(
+    view: &crate::ui::browser::BrowserView,
+    browser: &Browser,
+) -> Vec<Location> {
     view.selected_search_results()
         .filter(|entries| !entries.is_empty())
         .unwrap_or_else(|| browser.selected_entries())
@@ -2253,7 +2297,7 @@ fn apply_kept_listing_fill(
     }
 }
 
-fn restore_fill_after_hidden_filter(
+pub(super) fn restore_fill_after_hidden_filter(
     view: crate::ui::browser::BrowserView,
     browser: Rc<Browser>,
     minimal: Rc<RefCell<MinimalState>>,

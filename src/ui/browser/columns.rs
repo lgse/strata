@@ -9,6 +9,7 @@ use crate::ui::browser::collection::{
     apply_selection_plan, bind_filter_query, bitset_positions, cancel_source,
     deactivate_recursive_search, detach_collection_view, recursive_search_activation_key,
     restore_filter_controls, scroll_collection_when_allocated, search_result_navigation_position,
+    set_filter_entry_query,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
@@ -540,6 +541,7 @@ impl ViewState {
         ActivePaneFilter {
             query: column.filter_entry.text().to_string(),
             revealed: column.filter_button.is_active(),
+            force_recursive: column.force_recursive_search.get(),
         }
     }
 
@@ -551,7 +553,14 @@ impl ViewState {
         let Some(column) = columns.get(depth) else {
             return;
         };
+        // The rebuilt column starts non-recursive. Set the flag before the
+        // entry text so the query callback keeps a recursive `s` feed.
+        let previous = column.filter_entry.text().to_string();
+        column.force_recursive_search.set(filter.force_recursive);
         restore_filter_controls(&column.filter_button, &column.filter_entry, filter);
+        if filter.force_recursive && previous == filter.query && !filter.query.is_empty() {
+            set_filter_entry_query(&column.filter_entry, &filter.query, true);
+        }
     }
 
     pub(super) fn rebuild_columns_from(self: &Rc<Self>, from_depth: usize) {

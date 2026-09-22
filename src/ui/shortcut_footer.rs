@@ -440,7 +440,7 @@ impl ShortcutFooter {
 
     pub fn observe_browser(&self, view: &super::browser::BrowserView) {
         update_item_count(&self.count, view);
-        self.set_filter_mark(&view.hidden_filter_query());
+        self.set_query_mark(&view.hidden_filter_query(), view.force_recursive_search());
         let label = self.count.downgrade();
         let weak_view = view.downgrade();
         view.observe_visible_listing(move || {
@@ -468,7 +468,8 @@ impl ShortcutFooter {
                 if let Some(footer) = footer.upgrade()
                     && let Some(view) = view_for_mode.upgrade()
                 {
-                    footer.set_filter_mark(&view.hidden_filter_query());
+                    footer
+                        .set_query_mark(&view.hidden_filter_query(), view.force_recursive_search());
                     update_item_count(&footer.count, &view);
                 }
             });
@@ -851,12 +852,19 @@ impl ShortcutFooter {
 
     /// Shows `filter: <query>` while a hidden pane filter is active.
     pub fn set_filter_mark(&self, query: &str) {
+        self.set_query_mark(query, false);
+    }
+
+    /// Shows `search: <query>` or `filter: <query>` for the hidden pane query.
+    /// Recursive `s` keeps the search prefix until that search is dismissed.
+    pub fn set_query_mark(&self, query: &str, search: bool) {
         let trimmed = query.trim();
         if trimmed.is_empty() {
             self.filter_mark.set_visible(false);
             self.filter_mark.set_label("");
         } else {
-            self.filter_mark.set_label(&format!("filter: {trimmed}"));
+            let prefix = if search { "search" } else { "filter" };
+            self.filter_mark.set_label(&format!("{prefix}: {trimmed}"));
             self.filter_mark.set_visible(true);
             self.root.set_visible(true);
         }
