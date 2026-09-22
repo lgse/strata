@@ -500,6 +500,65 @@ fn newly_visible_rows_do_not_discard_late_dimensions_for_the_focused_file() {
 }
 
 #[test]
+fn visible_metadata_is_admitted_when_the_offscreen_backlog_is_full() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async lock");
+    let (browser, _, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["alpha", "beta", "gamma"],
+        vec![FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone())
+    };
+    let mut backlog = (0..MAX_PENDING_FILL_LOCATIONS - 1)
+        .map(|index| ViewportTarget {
+            position: index + 3,
+            location: Location::local(format!("/fixture/offscreen-{index}")),
+            include_icon_details: false,
+        })
+        .collect::<Vec<_>>();
+    let beta = Location::local("/fixture/beta");
+    let gamma = Location::local("/fixture/gamma");
+    backlog.push(ViewportTarget {
+        position: 1,
+        location: beta.clone(),
+        include_icon_details: false,
+    });
+    browser.metadata_pending.borrow_mut().insert(0, backlog);
+
+    browser.request_visible_metadata_fill(0, 1, beta.clone(), true);
+    browser.request_visible_metadata_fill(0, 2, gamma.clone(), false);
+    browser.prioritize_metadata_fills(0, &[beta.clone(), gamma.clone()]);
+    assert_eq!(
+        browser.metadata_pending.borrow()[&0].len(),
+        MAX_PENDING_FILL_LOCATIONS
+    );
+    pump_until(|| browser.metadata_idle.borrow().is_none());
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        1,
+        "active work is not restarted"
+    );
+    assert!(browser.fill_tokens.borrow().contains_key(&id));
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| source.fill_calls.borrow().len() == 2);
+    let calls = source.fill_calls.borrow();
+    assert_eq!(&calls[1].entries[..2], &[beta, gamma]);
+    assert!(
+        calls[1].include_icon_details,
+        "promoted entries retain richer requests"
+    );
+}
+
+#[test]
 fn viewport_metadata_reprioritizes_between_bounded_batches() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

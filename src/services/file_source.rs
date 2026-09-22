@@ -280,6 +280,12 @@ impl Drop for LoadHandle {
 }
 
 pub trait FileSource {
+    /// Applies source-specific visibility to entries found outside directory enumeration.
+    /// This runs on the caller's thread, including for indexed search results.
+    fn allows_entry(&self, _entry: &FileEntry) -> bool {
+        true
+    }
+
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;
 
     /// Validates a location without blocking the caller. Providers should override this when

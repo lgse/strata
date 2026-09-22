@@ -71,7 +71,7 @@ def test_dragging_a_filtered_result_to_a_sidebar_folder(strata, mode, recursive)
     strata.keyboard.press("ctrl+f")
     strata.keyboard.type_text(source_path.name)
     source = strata.wait(
-        lambda: strata.window.find(role="list item", name=source_path.name),
+        lambda: strata.search_result(source_path.name),
         "the filtered drag source",
     )
     strata.pointer.drag(source, strata.sidebar_button("Home"))
@@ -79,7 +79,7 @@ def test_dragging_a_filtered_result_to_a_sidebar_folder(strata, mode, recursive)
     strata.wait(lambda: not source_path.exists(), "the filtered source to be moved")
     assert destination.read_bytes() == contents
     strata.wait(
-        lambda: strata.window.find(role="list item", name=source_path.name) is None,
+        lambda: strata.search_result(source_path.name) is None,
         "the moved result to leave the filtered listing",
     )
 

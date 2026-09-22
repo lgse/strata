@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod compact;
+mod filtered;
 mod visibility;
 
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
@@ -14,7 +16,6 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
         start_minimum: 500,
         separator: 2,
         columns: true,
-        icons: false,
     };
     assert_eq!(geometry.position(None), geometry.occupied);
     let overflow = Geometry {
@@ -36,14 +37,14 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
     assert_eq!(narrow.position(Some(900)), narrow.start_minimum);
     assert!(
         !Geometry {
-            available: 800,
+            available: 0,
             ..geometry
         }
         .can_show_preview()
     );
     assert!(
         Geometry {
-            available: 802,
+            available: 1,
             ..geometry
         }
         .can_show_preview()
@@ -78,10 +79,17 @@ struct Fixture {
 
 impl Fixture {
     fn new(chooser: bool) -> Self {
+        Self::with_files(chooser, &[])
+    }
+
+    fn with_files(chooser: bool, files: &[&str]) -> Self {
         crate::ui::prepare_portal_ui();
         let root = tempfile::tempdir().expect("column fixture");
         std::fs::create_dir_all(root.path().join("child/grandchild/g3/g4/g5"))
             .expect("nested folders");
+        for name in files {
+            std::fs::write(root.path().join(name), name).expect("file");
+        }
         let browser = if chooser {
             BrowserView::new_chooser(Rc::new(crate::adapters::LocalFileSource), false)
         } else {

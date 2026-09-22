@@ -80,12 +80,8 @@ impl RecentAvailability {
     }
 }
 
-fn should_show_recent_place(
-    show_recent: bool,
-    local_only: bool,
-    availability: RecentAvailability,
-) -> bool {
-    show_recent && !local_only && availability.is_available()
+fn should_show_recent_place(show_recent: bool, availability: RecentAvailability) -> bool {
+    show_recent && availability.is_available()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -673,6 +669,8 @@ pub(super) fn build_appearance_menu(
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
+            let browser = view.browser();
+            glib::idle_add_local_once(move || browser.focus_active());
         });
     }
     {
@@ -975,7 +973,7 @@ struct TrashMenuVisibility {
 /// Destructive actions stay hidden until Trash is confirmed to hold something, and the
 /// separator goes with them so Properties is not left above an empty gap.
 fn trash_menu_visibility(contents: TrashContents) -> TrashMenuVisibility {
-    let visible = matches!(contents, TrashContents::NonEmpty);
+    let visible = contents == TrashContents::NonEmpty;
     TrashMenuVisibility {
         separator: visible,
         empty: visible,
@@ -990,8 +988,8 @@ fn sync_trash_menu_rows(rows: &TrashMenuRows, contents: TrashContents) {
 
 fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents {
     match probe {
-        Ok(true) => TrashContents::NonEmpty,
         Ok(false) => TrashContents::Empty,
+        Ok(true) => TrashContents::NonEmpty,
         Err(_) => TrashContents::Unknown,
     }
 }
@@ -1175,13 +1173,12 @@ impl SidebarState {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
             }
-            if should_show_recent_place(
-                self.preference_manager.sidebar_show_recent(),
-                self.local_only,
-                self.recent_availability.get(),
-            ) {
-                self.append_recent_place();
-            }
+        }
+        if should_show_recent_place(
+            self.preference_manager.sidebar_show_recent(),
+            self.recent_availability.get(),
+        ) {
+            self.append_recent_place();
         }
         if self.has_visible_standard_places() && self.widget.first_child().is_some() {
             self.append_separator();
@@ -1444,7 +1441,7 @@ impl SidebarState {
         self.trash_probe_running.set(true);
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let probe = trash_has_entries(&gio::File::for_uri("trash:///")).await;
+            let probe = trash_has_items(&gio::File::for_uri("trash:///")).await;
             if let Err(error) = &probe {
                 tracing::warn!(
                     error_domain = ?error.domain(),
@@ -2989,7 +2986,7 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
     }
 }
 
-async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
+async fn trash_has_items(root: &gio::File) -> Result<bool, glib::Error> {
     let enumerator = root
         .enumerate_children_future(
             gio::FILE_ATTRIBUTE_STANDARD_NAME,
@@ -2997,10 +2994,10 @@ async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
             glib::Priority::DEFAULT,
         )
         .await?;
-    let children = enumerator
+    Ok(!enumerator
         .next_files_future(1, glib::Priority::DEFAULT)
-        .await?;
-    Ok(!children.is_empty())
+        .await?
+        .is_empty())
 }
 
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {

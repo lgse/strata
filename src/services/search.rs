@@ -2,7 +2,7 @@
 
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+    collections::{BinaryHeap, HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, RwLock, Weak,
@@ -17,7 +17,7 @@ use unicode_normalization::UnicodeNormalization;
 
 use super::{is_hidden_name, native_hidden_names, native_kind};
 
-const RESULT_LIMIT: usize = 100;
+pub(crate) const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 
 // Keep tool configuration searchable while pruning generated subtrees.
@@ -208,11 +208,12 @@ pub enum SearchEvent {
         items: Vec<SearchItem>,
         indexing: bool,
         coverage: SearchCoverage,
+        has_more: bool,
     },
 }
 
 enum SearchCommand {
-    Query(String),
+    Query(String, usize),
     IndexChanged,
 }
 
@@ -221,6 +222,7 @@ struct WalkProgress {
     query: String,
     normalized_query: String,
     matches: Vec<(i64, SearchItem)>,
+    limit: usize,
 }
 
 struct IndexLifecycle {
@@ -229,6 +231,7 @@ struct IndexLifecycle {
 }
 
 struct IndexState {
+    revision: usize,
     items: Vec<SearchItem>,
     indexing: bool,
     coverage: SearchCoverage,
@@ -239,18 +242,39 @@ struct SharedIndex {
     subscribers: Mutex<Vec<(usize, Sender<SearchCommand>)>>,
     next_subscriber: AtomicUsize,
     lifecycle: Mutex<IndexLifecycle>,
+    cancel_initial_indexer: AtomicBool,
+    refresh_requested: AtomicUsize,
+    refresh: Mutex<RefreshState>,
+    refresh_owner: Option<(Weak<SharedIndex>, usize)>,
+}
+
+struct RefreshState {
+    running: bool,
+    roots: Vec<PathBuf>,
+    hidden: bool,
+    recursive: bool,
 }
 
 impl SharedIndex {
     fn new() -> Self {
         Self {
             state: RwLock::new(IndexState {
+                revision: 0,
                 items: Vec::new(),
                 indexing: true,
                 coverage: SearchCoverage::default(),
             }),
             subscribers: Mutex::new(Vec::new()),
             next_subscriber: AtomicUsize::new(1),
+            cancel_initial_indexer: AtomicBool::new(false),
+            refresh_requested: AtomicUsize::new(0),
+            refresh: Mutex::new(RefreshState {
+                running: false,
+                roots: Vec::new(),
+                hidden: false,
+                recursive: false,
+            }),
+            refresh_owner: None,
             lifecycle: Mutex::new(IndexLifecycle {
                 active_sessions: 1,
                 retired: false,
@@ -304,6 +328,20 @@ impl SharedIndex {
         }
     }
 
+    fn indexing_cancelled(&self) -> bool {
+        self.cancel_initial_indexer.load(Ordering::Acquire)
+            || self.is_retired()
+            || self
+                .refresh_owner
+                .as_ref()
+                .is_some_and(|(owner, generation)| {
+                    owner.upgrade().is_none_or(|owner| {
+                        owner.is_retired()
+                            || owner.refresh_requested.load(Ordering::Acquire) != *generation
+                    })
+                })
+    }
+
     fn is_retired(&self) -> bool {
         self.lifecycle
             .lock()
@@ -315,12 +353,13 @@ impl SharedIndex {
 mod directory;
 mod pattern;
 
-pub(crate) use pattern::filter_name_matches;
+pub(crate) use pattern::{filter_name_matches, filter_query_allows_typos};
 
 type SearchScorer = fn(&SearchItem, &str) -> Option<i64>;
 
-type IndexRegistry = HashMap<(Vec<PathBuf>, bool, bool), Weak<SharedIndex>>;
+type IndexRegistry = Vec<((Vec<PathBuf>, bool, bool), Weak<SharedIndex>)>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
+static REFRESH_TRAVERSAL: Mutex<()> = Mutex::new(());
 
 pub struct SearchHandle {
     cancelled: Arc<AtomicBool>,
@@ -331,9 +370,14 @@ pub struct SearchHandle {
 
 impl SearchHandle {
     pub fn query(&self, query: &str) {
-        let _sent = self
-            .commands
-            .send(SearchCommand::Query(query.trim().to_owned()));
+        self.query_candidates(query, RESULT_LIMIT);
+    }
+
+    pub(crate) fn query_candidates(&self, query: &str, limit: usize) {
+        let _sent = self.commands.send(SearchCommand::Query(
+            query.trim().to_owned(),
+            limit.clamp(1, MAX_INDEX_ENTRIES),
+        ));
     }
 }
 
@@ -384,20 +428,21 @@ fn index_scoped(
         .filter(|root| seen.insert(root.clone()))
         .collect();
     let key = (roots.clone(), show_hidden, recursive);
-    let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(HashMap::new()));
+    let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(Vec::new()));
     let mut registry = registry
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    registry.retain(|_, index| index.strong_count() > 0);
+    registry.retain(|(_, index)| index.strong_count() > 0);
     let shared = registry
-        .get(&key)
-        .and_then(Weak::upgrade)
-        .filter(|index| index.try_acquire());
+        .iter()
+        .filter(|(candidate, _)| candidate == &key)
+        .filter_map(|(_, index)| index.upgrade())
+        .find(|index| index.try_acquire());
     let index = if let Some(index) = shared {
         index
     } else {
         let index = Arc::new(SharedIndex::new());
-        registry.insert(key, Arc::downgrade(&index));
+        registry.push((key, Arc::downgrade(&index)));
         start_indexer(
             index.clone(),
             roots,
@@ -411,6 +456,158 @@ fn index_scoped(
     };
     drop(registry);
     start_search_session(index, scorer)
+}
+
+pub(crate) fn refresh_search_indexes_for_rename(from: &Path, to: &Path) {
+    let Some(registry) = SHARED_INDEXES.get() else {
+        return;
+    };
+    let mut registry = registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.retain(|(_, index)| index.strong_count() > 0);
+    for ((roots, hidden, recursive), index) in registry.iter_mut() {
+        if !roots.iter().any(|root| {
+            from.starts_with(root)
+                || to.starts_with(root)
+                || root.starts_with(from)
+                || root.starts_with(to)
+        }) {
+            continue;
+        }
+        for root in roots.iter_mut() {
+            if let Ok(suffix) = root.strip_prefix(from) {
+                *root = to.join(suffix);
+            }
+        }
+        let mut seen = HashSet::new();
+        roots.retain(|root| seen.insert(root.clone()));
+        if let Some(index) = index.upgrade() {
+            request_index_refresh(index, roots.clone(), *hidden, *recursive);
+        }
+    }
+}
+
+fn request_index_refresh(
+    index: Arc<SharedIndex>,
+    roots: Vec<PathBuf>,
+    hidden: bool,
+    recursive: bool,
+) {
+    let mut refresh = index
+        .refresh
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    index.refresh_requested.fetch_add(1, Ordering::AcqRel);
+    refresh.roots = roots;
+    refresh.hidden = hidden;
+    refresh.recursive = recursive;
+    if refresh.running {
+        return;
+    }
+    refresh.running = true;
+    drop(refresh);
+    for attempt in 0..2 {
+        let worker_index = index.clone();
+        match std::thread::Builder::new()
+            .name("strata-search-refresh".into())
+            .spawn(move || refresh_index(&worker_index))
+        {
+            Ok(_) => return,
+            Err(error) => tracing::error!(%error, attempt, "search refresh worker failed to start"),
+        }
+    }
+    let mut refresh = index
+        .refresh
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    refresh.running = false;
+    let mut state = index
+        .state
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.coverage.unreadable = true;
+    drop(state);
+    index.broadcast_change();
+}
+
+fn refresh_index(index: &Arc<SharedIndex>) {
+    loop {
+        // Bound replacement memory/traversal across overlapping scopes, not just per index.
+        let traversal = REFRESH_TRAVERSAL
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (generation, roots, hidden, recursive) = {
+            let mut refresh = index
+                .refresh
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if index.is_retired() {
+                refresh.running = false;
+                return;
+            }
+            (
+                index.refresh_requested.load(Ordering::Acquire),
+                refresh.roots.clone(),
+                refresh.hidden,
+                refresh.recursive,
+            )
+        };
+        index.cancel_initial_indexer.store(true, Ordering::Release);
+        let replacement = SharedIndex {
+            refresh_owner: Some((Arc::downgrade(index), generation)),
+            ..SharedIndex::new()
+        };
+        if recursive {
+            build_index(
+                &replacement,
+                roots,
+                hidden,
+                TraversalBudget {
+                    max_entries: MAX_INDEX_ENTRIES,
+                    max_depth: MAX_INDEX_DEPTH,
+                    time_budget: INDEX_TIME_BUDGET,
+                    initial_directory_batch: INITIAL_DIRECTORY_BATCH,
+                    max_pending_directories: MAX_PENDING_DIRECTORIES,
+                },
+            );
+        } else {
+            directory::build_index(
+                &replacement,
+                roots,
+                hidden,
+                MAX_INDEX_ENTRIES,
+                INDEX_TIME_BUDGET,
+            );
+        }
+        let mut refresh = index
+            .refresh
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if index.is_retired() {
+            refresh.running = false;
+            return;
+        }
+        if index.refresh_requested.load(Ordering::Acquire) == generation {
+            let fresh = replacement
+                .state
+                .into_inner()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut state = index
+                .state
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let revision = state.revision.wrapping_add(1);
+            *state = fresh;
+            state.revision = revision;
+            drop(state);
+            index.broadcast_change();
+            refresh.running = false;
+            return;
+        }
+        drop(refresh);
+        drop(traversal);
+    }
 }
 
 #[cfg(test)]
@@ -503,6 +700,7 @@ fn run_search_session(
 ) {
     let mut progress = WalkProgress::default();
     let mut indexed_items = 0;
+    let mut revision = 0;
     while !cancelled.load(Ordering::Acquire) {
         let first = match commands.recv_timeout(Duration::from_millis(50)) {
             Ok(command) => command,
@@ -513,7 +711,7 @@ fn run_search_session(
         let mut index_changed = false;
         for command in std::iter::once(first).chain(commands.try_iter()) {
             match command {
-                SearchCommand::Query(query) => next_query = Some(query),
+                SearchCommand::Query(query, limit) => next_query = Some((query, limit)),
                 SearchCommand::IndexChanged => index_changed = true,
             }
         }
@@ -522,21 +720,33 @@ fn run_search_session(
             .state
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some(query) = next_query {
+        if let Some((query, limit)) = next_query {
             progress.normalized_query = fold_for_search(&query);
             progress.query = query;
+            progress.limit = limit;
+        }
+        if query_changed
+            || revision != state.revision
+            || (index_changed && progress.limit > RESULT_LIMIT)
+        {
             progress.matches = if progress.normalized_query.is_empty() {
                 Vec::new()
             } else {
-                score_index(&state.items, &progress.normalized_query, scorer)
+                score_index_with_limit(
+                    &state.items,
+                    &progress.normalized_query,
+                    scorer,
+                    progress.limit,
+                )
             };
         } else if index_changed && !progress.normalized_query.is_empty() {
             for item in &state.items[indexed_items..] {
                 if let Some(score) = scorer(item, &progress.normalized_query) {
-                    insert_match(&mut progress.matches, score, item);
+                    insert_match_with_limit(&mut progress.matches, score, item, progress.limit);
                 }
             }
         }
+        revision = state.revision;
         indexed_items = state.items.len();
         // Completion must describe the same snapshot that was scored.
         let indexing = state.indexing;
@@ -747,7 +957,7 @@ fn build_index(
         pending_directory_count = pending_directory_count.saturating_sub(1);
         let mut directory = scheduled.task;
         let mut new_branches = Vec::new();
-        if index.is_retired() {
+        if index.indexing_cancelled() {
             return;
         }
         let mut walker = directory_walker(&directory, boundaries.clone(), show_hidden);
@@ -755,7 +965,7 @@ fn build_index(
         let mut processed_entries = 0;
         let mut slice_work = 0_usize;
         let exhausted = loop {
-            if index.is_retired() {
+            if index.indexing_cancelled() {
                 return;
             }
             if walk_start.elapsed() >= time_budget {
@@ -900,6 +1110,10 @@ fn append_index_items(
         .state
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if index.cancel_initial_indexer.load(Ordering::Acquire) {
+        items.clear();
+        return;
+    }
     state.items.append(items);
     state.indexing = indexing;
     state.coverage = coverage;
@@ -907,16 +1121,22 @@ fn append_index_items(
 
 type RankedPosition = Reverse<(i64, Reverse<usize>)>;
 
-fn score_index(
+#[cfg(test)]
+fn score_index(index: &[SearchItem], query: &str, scorer: SearchScorer) -> Vec<(i64, SearchItem)> {
+    score_index_with_limit(index, query, scorer, RESULT_LIMIT)
+}
+
+fn score_index_with_limit(
     index: &[SearchItem],
     normalized_query: &str,
     scorer: SearchScorer,
+    limit: usize,
 ) -> Vec<(i64, SearchItem)> {
     let worker_count = std::thread::available_parallelism()
         .map_or(1, usize::from)
         .min(4);
     let best = if index.len() < 50_000 || worker_count == 1 {
-        score_range(index, normalized_query, 0, scorer)
+        score_range(index, normalized_query, 0, scorer, limit)
     } else {
         let chunk_size = index.len().div_ceil(worker_count);
         std::thread::scope(|scope| {
@@ -925,18 +1145,18 @@ fn score_index(
                 .enumerate()
                 .map(|(chunk, items)| {
                     scope.spawn(move || {
-                        score_range(items, normalized_query, chunk * chunk_size, scorer)
+                        score_range(items, normalized_query, chunk * chunk_size, scorer, limit)
                     })
                 })
                 .collect::<Vec<_>>();
-            let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
+            let mut best = BinaryHeap::with_capacity(limit + 1);
             for worker in workers {
                 let candidates = match worker.join() {
                     Ok(candidates) => candidates,
                     Err(payload) => std::panic::resume_unwind(payload),
                 };
                 for Reverse(candidate) in candidates {
-                    retain_candidate(&mut best, candidate);
+                    retain_candidate(&mut best, candidate, limit);
                 }
             }
             best
@@ -958,19 +1178,28 @@ fn score_range(
     normalized_query: &str,
     position_offset: usize,
     scorer: SearchScorer,
+    limit: usize,
 ) -> BinaryHeap<RankedPosition> {
-    let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
+    let mut best = BinaryHeap::with_capacity(limit + 1);
     for (position, item) in index.iter().enumerate() {
         let Some(score) = scorer(item, normalized_query) else {
             continue;
         };
-        retain_candidate(&mut best, (score, Reverse(position_offset + position)));
+        retain_candidate(
+            &mut best,
+            (score, Reverse(position_offset + position)),
+            limit,
+        );
     }
     best
 }
 
-fn retain_candidate(best: &mut BinaryHeap<RankedPosition>, candidate: (i64, Reverse<usize>)) {
-    if best.len() < RESULT_LIMIT {
+fn retain_candidate(
+    best: &mut BinaryHeap<RankedPosition>,
+    candidate: (i64, Reverse<usize>),
+    limit: usize,
+) {
+    if best.len() < limit {
         best.push(Reverse(candidate));
     } else if best.peek().is_some_and(|Reverse(worst)| candidate > *worst) {
         best.pop();
@@ -978,11 +1207,21 @@ fn retain_candidate(best: &mut BinaryHeap<RankedPosition>, candidate: (i64, Reve
     }
 }
 
+#[cfg(test)]
 fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: &SearchItem) {
+    insert_match_with_limit(matches, score, item, RESULT_LIMIT);
+}
+
+fn insert_match_with_limit(
+    matches: &mut Vec<(i64, SearchItem)>,
+    score: i64,
+    item: &SearchItem,
+    limit: usize,
+) {
     let position = matches.partition_point(|candidate| candidate.0 >= score);
-    if position < RESULT_LIMIT {
+    if position < limit {
         matches.insert(position, (score, item.clone()));
-        matches.truncate(RESULT_LIMIT);
+        matches.truncate(limit);
     }
 }
 
@@ -1001,15 +1240,20 @@ fn publish(
             .collect(),
         indexing,
         coverage,
+        has_more: progress.limit > 0
+            && progress.matches.len() == progress.limit
+            && progress.limit < MAX_INDEX_ENTRIES,
     });
 }
 
 fn filter_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
-    if !query.contains('*') {
+    if !filter_name_matches(item.search_name(), query) {
+        return None;
+    }
+    if !query.contains('*') && item.search_name().contains(query) {
         return fuzzy_score_normalized(item, query);
     }
-    filter_name_matches(item.search_name(), query)
-        .then_some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
+    Some(i64::from(item.is_directory) * 20 - i64::from(item.depth) * 32)
 }
 
 fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {

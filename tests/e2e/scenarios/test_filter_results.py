@@ -6,7 +6,7 @@ import pytest
 from PIL import Image, ImageColor
 
 from harness.fixtures import FixtureTree
-from harness.modes import ALL_MODES, SINGLE_PANE_MODES
+from harness.modes import ALL_MODES
 
 
 @pytest.fixture
@@ -26,9 +26,22 @@ def fixture_tree():
         fixture.cleanup()
 
 
+def result_rows(strata):
+    container = strata.window.find(role="list", name="Search results")
+    role = "list item"
+    if container is None:
+        container = strata.window.find(role="table", name="Search results")
+        role = "table cell"
+    if container is None:
+        return strata.window.find_all(role="list item")
+    return container.find_all(role=role)
+
+
 def result(strata, path):
-    for row in strata.window.find_all(role="list item", name=Path(path).name):
-        if any(label.name.endswith(path) for label in row.find_all(role="label")):
+    for row in result_rows(strata):
+        if row.name == Path(path).name and any(
+            label.name.endswith(path) for label in row.find_all(role="label")
+        ):
             return row
     return None
 
@@ -51,8 +64,7 @@ def filter_results(strata, query="match-note", count=4, directory=None):
 def test_filtered_results_support_group_selection(strata, mode, route, recursive):
     count = 4 if recursive else 2
     filter_results(strata, count=count)
-    rows = strata.window.find_all(role="list item")
-    rows = [row for row in rows if "match-note" in row.name]
+    rows = [row for row in result_rows(strata) if "match-note" in row.name]
     assert len(rows) == count
     if route == "marquee":
         first = rows[0].screen_bounds()
@@ -69,8 +81,9 @@ def test_filtered_results_support_group_selection(strata, mode, route, recursive
             strata.keyboard.press("ctrl+f")
             strata.keyboard.press("Down")
             if route == "keyboard-range":
+                step = "shift+Right" if mode == "Icons" else "shift+Down"
                 for _ in range(count - 1):
-                    strata.keyboard.press("shift+Down")
+                    strata.keyboard.press(step)
             else:
                 strata.keyboard.press("ctrl+a")
     strata.wait(
@@ -209,10 +222,11 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     else:
         strata.keyboard.press("Down")
         strata.wait(lambda: not field.has_state("focused"), "Down to leave the filter input")
+        result_step = "Right" if mode == "Icons" else "Down"
         for _ in range(count):
             if row.has_state("focused"):
                 break
-            strata.keyboard.press("Down")
+            strata.keyboard.press(result_step)
         strata.wait(lambda: row.has_state("focused"), "keyboard focus on the actual result")
         strata.keyboard.press("ctrl+f")
         strata.wait(lambda: field.has_state("focused"), "Ctrl+F to refocus the query")
@@ -230,7 +244,7 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
         for _ in range(count):
             if row.has_state("focused"):
                 break
-            strata.keyboard.press("Down")
+            strata.keyboard.press(result_step)
         strata.wait(lambda: row.has_state("focused"), "keyboard result focus after the round trip")
         strata.keyboard.press("Menu")
         strata.wait(strata.context_menu, "the keyboard result menu")
@@ -241,6 +255,7 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     strata.wait(strata.context_menu, "the result menu")
     assert row.has_state("selected")
     assert "Quick preview" in strata.menu_items()
+    assert "Open file location" in strata.menu_items()
     assert "New Folder" not in strata.menu_items()
     if trigger == "keyboard":
         strata.keyboard.press("Home")
@@ -337,9 +352,13 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
         if focus_filter:
             strata.pointer.click(field)
         strata.keyboard.press(trigger)
-    strata.wait_for_dialog()
+    strata.editable_field()
+    assert strata.dialog() is None
     strata.keyboard.press("Escape")
-    strata.wait(lambda: strata.dialog() is None, "rename dialog to close")
+    strata.wait(
+        lambda: strata.window.find(role="text", name="Rename", states={"editable"}) is None,
+        "inline rename to close",
+    )
     strata.wait(
         lambda: result(strata, "beta/match-note.txt").has_state("focused"),
         "focus to return to the originating result",
@@ -349,7 +368,6 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
     assert strata.fixture.path("beta/match-note.txt").read_text() == "beta source\n"
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
     strata.keyboard.press("F2")
-    strata.wait_for_dialog()
     strata.editable_field()
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("renamed.txt")
@@ -369,12 +387,64 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+def test_matching_rename_stays_searchable_at_the_real_parent(strata, mode):
+    field = filter_results(strata)
+    row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
+    strata.pointer.click(row, modifiers=("ctrl",))
+    strata.keyboard.press("F2")
+    strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("match-note-renamed.txt")
+    strata.keyboard.press("Return")
+    renamed = strata.fixture.path("beta/match-note-renamed.txt")
+    strata.wait(lambda: renamed.exists(), "the nested rename")
+    assert renamed.read_text() == "beta source\n"
+    assert not strata.fixture.path("beta/match-note.txt").exists()
+    assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
+    assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
+    assert field.text == "match-note"
+    strata.wait(lambda: result(strata, "beta/match-note-renamed.txt"), "the matching renamed result")
+    strata.wait(lambda: result(strata, "beta/match-note.txt") is None, "the old result to leave")
+    strata.pointer.click(field)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("nothing-matches")
+    strata.wait(lambda: not strata.matches(), "the empty query result")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("renamed")
+    row = strata.wait(lambda: result(strata, "beta/match-note-renamed.txt"), "the fresh index result")
+    strata.pointer.right_click(row)
+    strata.choose_menu_item("Open file location")
+    strata.wait_for_directory("beta")
+    strata.wait_for_selection(["match-note-renamed.txt"], "beta")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_properties_rename_opens_the_result_inline(strata, mode):
+    field = filter_results(strata)
+    row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
+    strata.pointer.right_click(row)
+    strata.choose_menu_item("Properties")
+    dialog = strata.wait_for_dialog()
+    strata.pointer.click(dialog.find(role="button", name="Rename"))
+    strata.wait(lambda: strata.dialog() is None, "properties dialog to close")
+    rename = strata.editable_field()
+    assert rename.text == "match-note.txt"
+    assert field.text == "match-note"
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: strata.window.find(role="text", name="Rename", states={"editable"}) is None,
+        "inline rename to close",
+    )
+    assert strata.fixture.path("beta/match-note.txt").read_text() == "beta source\n"
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_delete_trashes_filtered_result_without_touching_hidden_selection(strata, mode):
     filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
     strata.pointer.click(row, modifiers=("ctrl",))
     strata.keyboard.press("F2")
-    strata.wait_for_dialog()
+    strata.editable_field()
     strata.keyboard.press("Escape")
     strata.wait(lambda: result(strata, "beta/match-note.txt").has_state("focused"), "result focus")
     strata.keyboard.press("Delete")
@@ -407,13 +477,13 @@ def test_filter_rename_shortcuts_do_not_target_the_hidden_directory_selection(st
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
 
 
-@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
-def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filtered_thumbnail_stays_rendered_across_updates_and_rename(strata, mode, tmp_path):
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("thumb")
     strata.wait(lambda: len(strata.matches()) == 2, "image and text results")
-    row = strata.window.find(role="list item", name="thumb.png")
+    row = result(strata, "beta/thumb.png")
     assert row is not None
     strata.pointer.click(row, modifiers=("ctrl",))
     strata.pointer.click(field)
@@ -421,11 +491,10 @@ def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path
     assert icon is not None
 
     def thumbnail_pixel():
-        row_bounds = strata.settle(row).screen_bounds()
-        bounds = icon.screen_bounds()
+        bounds = strata.settle(icon).screen_bounds()
         capture = strata.screenshot(tmp_path / "thumbnail.png")
         with Image.open(capture) as image:
-            return image.convert("RGB").getpixel((bounds.center[0], row_bounds.center[1]))
+            return image.convert("RGB").getpixel(bounds.center)
 
     strata.wait(lambda: thumbnail_pixel() == (230, 40, 60), "the generated red thumbnail")
     for query, count in [("thumb.p", 1), ("thumb", 2)]:
@@ -436,3 +505,20 @@ def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path
         # AT-SPI result updates can precede the corresponding rendered frame.
         strata.wait(lambda: thumbnail_pixel() == (230, 40, 60), "the updated red thumbnail")
         assert field.has_state("focused")
+
+    original = strata.fixture.path("beta/thumb.png").read_bytes()
+    strata.keyboard.press("Down")
+    strata.keyboard.press("F2")
+    strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("thumb-renamed.png")
+    strata.keyboard.press("Return")
+    renamed = strata.fixture.path("beta/thumb-renamed.png")
+    strata.wait(lambda: renamed.exists(), "the image rename")
+    assert renamed.read_bytes() == original
+    assert not strata.fixture.path("beta/thumb.png").exists()
+    assert field.text == "thumb"
+    row = strata.wait(lambda: result(strata, "beta/thumb-renamed.png"), "the renamed image result")
+    icon = row.find(role="image")
+    assert icon is not None
+    strata.wait(lambda: thumbnail_pixel() == (230, 40, 60), "the renamed red thumbnail")

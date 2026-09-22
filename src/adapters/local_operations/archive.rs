@@ -9,9 +9,20 @@ mod compression;
 mod decoders;
 mod destination;
 mod extraction;
+mod listing;
+
+#[cfg(test)]
+pub(crate) use listing::ArchiveListing;
+pub(crate) use listing::{
+    ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
+    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, archive_payload_valid,
+    decode_archive_listing, encode_archive_result, list_archive_entries_direct,
+};
 
 #[cfg(test)]
 mod fixtures;
+#[cfg(test)]
+pub(crate) use fixtures::write_compression_fixture;
 #[cfg(test)]
 mod tests;
 

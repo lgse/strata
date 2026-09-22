@@ -113,7 +113,8 @@ fn exercise_type_to_search() {
         assert!(!view.filter_has_focus());
         press(&keys, gtk::gdk::Key::space);
         assert!(!preview.is_open(), "Space closes preview: {mode:?}");
-        for name in ["folder", "archive.zip"] {
+        {
+            let name = "folder";
             select_entry(&browser, name);
             browser.focus_active();
             wait_until(|| view.item_view_has_focus());
@@ -123,7 +124,7 @@ fn exercise_type_to_search() {
                 "Space must not preview {name}: {mode:?}"
             );
             assert!(!view.filter_has_focus());
-            if name == "folder" && mode == BrowserMode::Columns {
+            if mode == BrowserMode::Columns {
                 wait_until(|| {
                     browser
                         .column_snapshot(1)
@@ -152,6 +153,14 @@ fn exercise_type_to_search() {
             }
             preview.close();
         }
+        select_entry(&browser, "archive.zip");
+        browser.focus_active();
+        wait_until(|| view.item_view_has_focus());
+        press(&keys, gtk::gdk::Key::space);
+        wait_until(|| preview.is_open());
+        assert!(!view.filter_has_focus());
+        press(&keys, gtk::gdk::Key::space);
+        assert!(!preview.is_open(), "Space closes archive preview: {mode:?}");
     }
 
     preferences.set_type_to_search(false);

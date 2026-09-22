@@ -67,7 +67,8 @@ pub(crate) fn gtk_test_with_env(
     std::fs::create_dir_all(&home).expect("isolated home");
     let mut command = std::process::Command::new(std::env::current_exe().expect("test executable"));
     command
-        .args(["--exact", name, "--nocapture"])
+        // The parent already selected this exact case, including explicit --ignored runs.
+        .args(["--exact", name, "--nocapture", "--include-ignored"])
         .env(CHILD, name)
         .env("HOME", home)
         .env("XDG_STATE_HOME", sandbox.path().join("state"))

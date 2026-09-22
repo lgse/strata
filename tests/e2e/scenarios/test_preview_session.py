@@ -10,7 +10,7 @@ from harness.modes import ALL_MODES
 def fixture_tree():
     tree = FixtureTree.create({
         "a.txt": "root preview\n",
-        "z.zip": "unsupported fixture\n",
+        "z.rar": "unsupported fixture\n",
         "Alpha": {"a.txt": "alpha preview\n", "Beta": {"Gamma": {"Delta": {"a.txt": "delta preview\n"}}}},
     })
     Image.new("RGB", (80, 40), "green").save(tree.path("image.png"))
@@ -31,7 +31,7 @@ def preview_option(strata):
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_preview_mode_survives_unsupported_selections_and_matches_appearance(strata, mode):
     strata.switch_view(mode)
-    strata.select_entry("z.zip")
+    strata.select_entry("z.rar")
     option = preview_option(strata)
     assert option.find(role="label", name="Space") is not None
     assert not option.has_state("pressed")
@@ -44,8 +44,8 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     assert option.has_state("pressed"), option.states
     strata.dismiss_menu()
     strata.select_entry("a.txt")
-    strata.wait(lambda: strata.preview_shows("root preview"), "automatic preview after ZIP")
-    strata.select_entry_with_keyboard("z.zip")
+    strata.wait(lambda: strata.preview_shows("root preview"), "automatic preview after unsupported selection")
+    strata.select_entry_with_keyboard("z.rar")
     if mode == "Icons":
         strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the empty preview slot")
     else:
@@ -83,7 +83,7 @@ def test_icons_keep_their_layout_until_preview_mode_is_explicitly_toggled(strata
     assert width < full_width
 
     def positions():
-        return {name: strata.entry(name).screen_bounds() for name in ["Alpha", "a.txt", "image.png", "z.zip"]}
+        return {name: strata.entry(name).screen_bounds() for name in ["Alpha", "a.txt", "image.png", "z.rar"]}
 
     layout = positions()
 
@@ -93,12 +93,12 @@ def test_icons_keep_their_layout_until_preview_mode_is_explicitly_toggled(strata
             assert abs(actual.x - expected.x) <= 1 and abs(actual.y - expected.y) <= 1, (name, expected, actual)
             assert actual.width == expected.width and actual.height == expected.height
 
-    for name, expected in [("z.zip", "No preview for this selection"), ("image.png", "image/png"), ("Alpha", "No preview for this selection"), ("a.txt", "root preview")]:
+    for name, expected in [("z.rar", "No preview for this selection"), ("image.png", "image/png"), ("Alpha", "No preview for this selection"), ("a.txt", "root preview")]:
         strata.select_entry_with_keyboard(name)
         strata.wait(lambda: strata.preview_shows(expected), f"the preview for {name}")
         assert strata.pane().screen_bounds().width == width
         assert_layout()
-        if name in ["z.zip", "Alpha"]:
+        if name in ["z.rar", "Alpha"]:
             assert not strata.preview_shows("root preview")
             assert strata.preview().find(role="label", name="a.txt") is None
             assert not strata.preview().find(role="button", name="Open in default application").has_state("sensitive")

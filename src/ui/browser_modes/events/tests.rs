@@ -167,6 +167,48 @@ fn assert_attached(pane: &Pane, attached: bool) {
 }
 
 #[test]
+fn page_targets_follow_visible_order_without_a_bound_cursor() {
+    gtk_test(
+        "ui::browser_modes::events::tests::page_targets_follow_visible_order_without_a_bound_cursor",
+        || {
+            for (mode, grouped) in presentations() {
+                let fixture = Fixture::new(mode, grouped);
+                let order = fixture.views.visual_order(0);
+                assert_eq!(order.len(), 3);
+                fixture.browser.select(0, order[1]);
+                fixture.browser.clear_active_selection();
+                assert_eq!(fixture.views.page_target(0, 1, 2), Some(order[2]));
+                assert_eq!(fixture.views.page_target(0, -1, 2), Some(order[0]));
+                fixture.browser.select(0, order[0]);
+                assert_eq!(fixture.views.page_target(0, 1, 1), Some(order[1]));
+                assert_eq!(fixture.views.page_target(0, -1, 10), Some(order[0]));
+                fixture
+                    .browser
+                    .set_selection(0, &order[..2], Some(order[1]));
+                assert_eq!(fixture.views.page_target(0, 1, 10), Some(order[2]));
+                assert_eq!(fixture.views.page_target(0, -1, 1), Some(order[0]));
+
+                let pane = fixture.pane();
+                pane.filter_query.replace(".png".to_owned());
+                pane.filter.changed(gtk::FilterChange::Different);
+                let image = fixture.views.visual_order(0)[0];
+                fixture.browser.select(0, image);
+                assert_eq!(fixture.views.page_target(0, 1, 10), Some(image));
+                assert_eq!(fixture.views.page_target(0, -1, 10), Some(image));
+                fixture.browser.select(
+                    0,
+                    order
+                        .into_iter()
+                        .find(|&source| source != image)
+                        .expect("hidden by filter"),
+                );
+                assert_eq!(fixture.views.page_target(0, 1, 1), None);
+            }
+        },
+    );
+}
+
+#[test]
 fn camera_device_order_does_not_enable_saved_type_grouping_at_completion() {
     gtk_test(
         "ui::browser_modes::events::tests::camera_device_order_does_not_enable_saved_type_grouping_at_completion",
