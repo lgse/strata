@@ -56,6 +56,19 @@ pub(in crate::ui) fn install(
     let apply_footer = bindings.shortcuts.clone();
     let apply_sidebar = sidebar.state.clone();
     let minimal = Rc::new(RefCell::new(MinimalState::new()));
+    let release_minimal = Rc::downgrade(&minimal);
+    let release_view = bindings.view.downgrade();
+    let release_preview = bindings.preview.downgrade();
+    bindings.preview.set_key_owner_released(Rc::new(move || {
+        let (Some(minimal), Some(view), Some(preview)) = (
+            release_minimal.upgrade(),
+            release_view.upgrade(),
+            release_preview.upgrade(),
+        ) else {
+            return;
+        };
+        minimal::release_preview_keys(&minimal, &preview, &view);
+    }));
     let prompt_focus_lock = Rc::new(Cell::new(false));
     let sidebar_focus = SidebarFocus {
         state: sidebar.state.clone(),
@@ -312,6 +325,7 @@ fn apply_minimal_mode(
                     view.browser(),
                     minimal.clone(),
                     keep,
+                    true,
                 );
             }
             preview.set_owns_keys_chrome(false);
@@ -367,18 +381,23 @@ fn dismiss_prompt_after_focus_loss(
     }
     // Click-away commits the query already applied to the rows. An empty query
     // is cancelled so a later search dismiss cannot bring that filter back.
+    // An `f` that is only showing a live recursive `s` commits neither.
     if kind == Some(MinimalPrompt::Filter) {
-        let query = view.hidden_filter_query();
-        let trimmed = query.trim();
-        if trimmed.is_empty() {
-            minimal.borrow_mut().clear_applied_filter();
-            view.dismiss_hidden_filter();
-            footer.set_filter_mark("");
+        if minimal::live_recursive_search(view) {
+            footer.set_query_mark(&view.hidden_filter_query(), true);
         } else {
-            minimal
-                .borrow_mut()
-                .remember_applied_filter(trimmed.to_owned());
-            footer.set_filter_mark(trimmed);
+            let query = view.hidden_filter_query();
+            let trimmed = query.trim();
+            if trimmed.is_empty() {
+                minimal.borrow_mut().clear_applied_filter();
+                view.dismiss_hidden_filter();
+                footer.set_filter_mark("");
+            } else {
+                minimal
+                    .borrow_mut()
+                    .remember_applied_filter(trimmed.to_owned());
+                footer.set_filter_mark(trimmed);
+            }
         }
     }
     if kind == Some(MinimalPrompt::Search) {

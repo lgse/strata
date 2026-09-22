@@ -675,8 +675,14 @@ pub(super) fn build_appearance_menu(
         let view = view.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
+        let preview = preview.clone();
         button.connect_clicked(move |_| {
             apply_browser_mode(&view, &preferences, mode);
+            // Icons has no preview-key map. Release at click time so the next
+            // key moves the grid. Columns and List keep document scrolling.
+            if mode == BrowserMode::Icons {
+                preview.release_owned_keys();
+            }
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }

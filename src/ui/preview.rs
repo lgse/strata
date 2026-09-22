@@ -189,6 +189,9 @@ struct PreviewState {
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
     keyboard_focusability: Cell<Option<(bool, bool)>>,
+    /// Clears minimal-mode preview key ownership when the appearance menu
+    /// switches to Icons. Unset until the keyboard dispatcher installs.
+    key_owner_released: RefCell<Option<Rc<dyn Fn()>>>,
 }
 
 pub(super) const PREVIEW_LABEL: &str = "Preview";
@@ -367,6 +370,7 @@ impl PreviewDrawer {
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
             keyboard_focusability: Cell::new(None),
+            key_owner_released: RefCell::new(None),
         });
         let weak = Rc::downgrade(&state);
         state.enabled_action.connect_activate(move |_, _| {
@@ -711,6 +715,23 @@ impl PreviewDrawer {
             self.state.pane.add_css_class("preview-owns-keys");
         } else {
             self.state.release_keyboard_focus();
+        }
+    }
+
+    /// Invoked when Icons should drop preview-key ownership. No-op until the
+    /// keyboard dispatcher installs a hook, and the hook itself no-ops when
+    /// the listing already owns the keys.
+    pub(crate) fn set_key_owner_released(&self, hook: Rc<dyn Fn()>) {
+        *self.state.key_owner_released.borrow_mut() = Some(hook);
+    }
+
+    /// Drops preview-key chrome and asks the dispatcher to release ownership.
+    /// Safe when nothing owns the keys: chrome removal and the hook are no-ops.
+    pub(crate) fn release_owned_keys(&self) {
+        let release = self.state.key_owner_released.borrow().clone();
+        self.set_owns_keys_chrome(false);
+        if let Some(release) = release {
+            release();
         }
     }
 

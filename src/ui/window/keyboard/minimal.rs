@@ -365,22 +365,7 @@ impl Dispatcher<'_> {
     }
 
     pub(super) fn leave_preview_keys(&self) {
-        if !self.minimal.borrow().preview_owns_keys() {
-            return;
-        }
-        self.minimal.borrow_mut().set_preview_owns_keys(false);
-        self.preview.set_owns_keys_chrome(false);
-        self.view.set_column_header_focus(true);
-        if self.view.selected_search_results().is_some() {
-            if let Some(index) = self.current_search_cursor() {
-                self.view.focus_search_hit(index, false);
-            } else {
-                let _ = self.view.focus_first_search_result();
-            }
-            return;
-        }
-        self.view.browser().focus_active();
-        self.view.restore_file_view_focus();
+        release_preview_keys(self.minimal, self.preview, self.view);
     }
 
     /// While the preview owns keys in List or Columns, folder motion scrolls
@@ -1293,6 +1278,7 @@ impl Dispatcher<'_> {
                 browser.clone(),
                 self.minimal.clone(),
                 keep,
+                true,
             );
             return Propagation::Stop;
         }
@@ -1793,17 +1779,33 @@ impl Dispatcher<'_> {
             self.view.set_find_highlight("");
         }
         if matches!(kind, Some(MinimalPrompt::Filter)) {
-            let keep = kept_filter_fill(self.view, browser);
-            self.minimal.borrow_mut().clear_applied_filter();
-            self.view.dismiss_hidden_filter();
-            self.sync_filter_mark();
-            self.view.restore_file_view_focus();
-            restore_fill_after_hidden_filter(
-                self.view.clone(),
-                browser.clone(),
-                self.minimal.clone(),
-                keep,
-            );
+            // Opening `f` over a live recursive `s` only displays that search.
+            // Esc must leave the hits and the search mark; it is not a filter cancel.
+            if live_recursive_search(self.view) {
+                self.sync_filter_mark();
+                self.view.restore_file_view_focus();
+            } else {
+                let keep = kept_filter_fill(self.view, browser);
+                {
+                    let mut minimal = self.minimal.borrow_mut();
+                    minimal.clear_applied_filter();
+                    // The walked hit cursor and explicit fill belong to this
+                    // prompt. Leaving them makes the next `s` advance an empty
+                    // selection instead of selecting the first hit.
+                    minimal.clear_search_nav();
+                    minimal.set_explicit_fill(false);
+                }
+                self.view.dismiss_hidden_filter();
+                self.sync_filter_mark();
+                self.view.restore_file_view_focus();
+                restore_fill_after_hidden_filter(
+                    self.view.clone(),
+                    browser.clone(),
+                    self.minimal.clone(),
+                    keep,
+                    false,
+                );
+            }
         } else if keep_search {
             self.focus_kept_search_results();
             self.sync_filter_mark();
@@ -1851,7 +1853,7 @@ impl Dispatcher<'_> {
     }
 
     fn recursive_hits_showing(&self) -> bool {
-        self.view.force_recursive_search() && self.view.selected_search_results().is_some()
+        live_recursive_search(self.view)
     }
 
     fn restore_applied_filter(&self) {
@@ -2287,12 +2289,13 @@ fn apply_kept_listing_fill(
     browser: &Browser,
     minimal: &Rc<RefCell<MinimalState>>,
     keep: &[Location],
+    mark_explicit: bool,
 ) {
     if keep.is_empty() || view.selected_search_results().is_some() {
         return;
     }
     browser.apply_filled_locations(keep);
-    if !browser.selected_entries().is_empty() {
+    if mark_explicit && !browser.selected_entries().is_empty() {
         minimal.borrow_mut().set_explicit_fill(true);
     }
 }
@@ -2302,13 +2305,14 @@ pub(super) fn restore_fill_after_hidden_filter(
     browser: Rc<Browser>,
     minimal: Rc<RefCell<MinimalState>>,
     keep: Vec<Location>,
+    mark_explicit: bool,
 ) {
     if keep.is_empty() {
         return;
     }
     let generation = minimal.borrow_mut().start_fill_restore();
     if view.selected_search_results().is_none() {
-        apply_kept_listing_fill(&view, &browser, &minimal, &keep);
+        apply_kept_listing_fill(&view, &browser, &minimal, &keep, mark_explicit);
         return;
     }
     glib::timeout_add_local_once(crate::ui::browser::FILTER_DEBOUNCE_DELAY, move || {
@@ -2319,9 +2323,42 @@ pub(super) fn restore_fill_after_hidden_filter(
             if !minimal.borrow().fill_restore_is(generation) {
                 return;
             }
-            apply_kept_listing_fill(&view, &browser, &minimal, &keep);
+            apply_kept_listing_fill(&view, &browser, &minimal, &keep, mark_explicit);
         });
     });
+}
+
+/// Drops List/Columns preview-key ownership. No-op when the listing already owns the keys.
+pub(super) fn release_preview_keys(
+    minimal: &RefCell<MinimalState>,
+    preview: &crate::ui::preview::PreviewDrawer,
+    view: &crate::ui::browser::BrowserView,
+) {
+    if !minimal.borrow().preview_owns_keys() {
+        return;
+    }
+    minimal.borrow_mut().set_preview_owns_keys(false);
+    preview.set_owns_keys_chrome(false);
+    view.set_column_header_focus(true);
+    if view.selected_search_results().is_some() {
+        let index = minimal
+            .borrow()
+            .search_cursor()
+            .or_else(|| view.search_hit_index());
+        if let Some(index) = index {
+            view.focus_search_hit(index, false);
+        } else {
+            let _ = view.focus_first_search_result();
+        }
+        return;
+    }
+    view.browser().focus_active();
+    view.restore_file_view_focus();
+}
+
+/// True while `f` is only displaying a live recursive `s`, not a pane filter.
+pub(super) fn live_recursive_search(view: &crate::ui::browser::BrowserView) -> bool {
+    view.force_recursive_search() && view.selected_search_results().is_some()
 }
 
 fn icons_spatial_arrow(key: Key) -> Option<Key> {
