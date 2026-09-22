@@ -4,9 +4,9 @@ use super::*;
 use crate::test_support::gtk_test;
 
 #[test]
-fn only_a_completed_plain_background_click_clears_selection() {
+fn plain_background_gestures_clear_once() {
     gtk_test(
-        "ui::marquee::tests::clicks::only_a_completed_plain_background_click_clears_selection",
+        "ui::marquee::tests::clicks::plain_background_gestures_clear_once",
         || {
             let view = gtk::Box::new(gtk::Orientation::Vertical, 0);
             let scroll = gtk::ScrolledWindow::builder().child(&view).build();
@@ -26,11 +26,7 @@ fn only_a_completed_plain_background_click_clears_selection() {
             });
             let state = &marquee.state;
             state.begin((0.0, 0.0), gtk::gdk::ModifierType::empty());
-            assert_eq!(
-                clears.get(),
-                0,
-                "press preserves the selection for dragging"
-            );
+            assert_eq!(clears.get(), 0, "begin only records gesture state");
             state.finish();
             assert_eq!(clears.get(), 1);
             state.finish();
@@ -63,43 +59,12 @@ fn only_a_completed_plain_background_click_clears_selection() {
             state.end();
             state.finish();
             assert_eq!(clears.get(), 1, "cancelled gesture");
-        },
-    );
-}
 
-#[test]
-fn single_selection_mode_allows_click_clear_without_marquee_drag() {
-    gtk_test(
-        "ui::marquee::tests::clicks::single_selection_mode_allows_click_clear_without_marquee_drag",
-        || {
-            let view = gtk::Box::new(gtk::Orientation::Vertical, 0);
-            let scroll = gtk::ScrolledWindow::builder().child(&view).build();
-            let overlay = gtk::Overlay::new();
-            overlay.set_child(Some(&scroll));
-            let clears = Rc::new(Cell::new(0));
-            let on_clear = clears.clone();
-            let marquee = install(MarqueeSetup {
-                view: view.clone().upcast(),
-                surface: scroll.clone().upcast(),
-                scroll: scroll.clone(),
-                overlay: overlay.clone(),
-                targets: Rc::new(RefCell::new(Vec::new())),
-                is_item: Rc::new(|_, _, _| false),
-                clear_selection: Rc::new(move || on_clear.set(on_clear.get() + 1)),
-                allow_drag: Rc::new(Cell::new(false)),
-            });
-            let state = &marquee.state;
             state.begin((0.0, 0.0), gtk::gdk::ModifierType::empty());
-            state.clear_on_click.set(true);
             state.clear_at_press();
-            assert_eq!(
-                clears.get(),
-                1,
-                "plain background press clears in single selection mode"
-            );
-
-            assert!(!state.allow_drag.get());
-            assert!(!state.dragging.get());
+            assert_eq!(clears.get(), 2, "press-time clear");
+            state.finish();
+            assert_eq!(clears.get(), 2, "release does not clear again");
         },
     );
 }

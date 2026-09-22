@@ -373,7 +373,12 @@ fn show_directory_listing(state: &State) {
     state.emit_selection_changed();
 }
 
-fn install_marquee(state: &Rc<State>, scroll: &gtk::ScrolledWindow, overlay: &gtk::Overlay) {
+fn install_marquee(
+    state: &Rc<State>,
+    scroll: &gtk::ScrolledWindow,
+    overlay: &gtk::Overlay,
+    allow_drag: Rc<Cell<bool>>,
+) {
     let weak = Rc::downgrade(state);
     let targets = Rc::new(RefCell::new(vec![super::marquee::MarqueeTarget {
         selection: state.collection.selection.clone(),
@@ -404,7 +409,7 @@ fn install_marquee(state: &Rc<State>, scroll: &gtk::ScrolledWindow, overlay: &gt
                 state.collection.selection.unselect_all();
             }
         }),
-        allow_drag: Rc::new(Cell::new(true)),
+        allow_drag,
     });
 }
 
@@ -442,7 +447,7 @@ pub(super) fn wrap(
         recursive.clone(),
         root.clone(),
         CollectionBehavior {
-            multiple_selection,
+            multiple_selection: multiple_selection.clone(),
             activate: activate.clone(),
             single_click,
             focus_items,
@@ -477,7 +482,7 @@ pub(super) fn wrap(
                 state.emit_selection_changed();
             }
         });
-    install_marquee(&state, &scroll, &overlay);
+    install_marquee(&state, &scroll, &overlay, multiple_selection);
 
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);

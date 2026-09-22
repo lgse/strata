@@ -182,42 +182,63 @@ fn find_descendant(
 
 /// The point must resolve to inert chrome: picking it inside `surface` reaches the
 /// surface without crossing an item or a control.
-fn inert_point(surface: &gtk::Widget, y: f64) -> Option<f64> {
-    let x = f64::from(surface.width()) / 2.0;
-    let picked = surface.pick(x, y, gtk::PickFlags::DEFAULT)?;
+fn is_inert_point(surface: &gtk::Widget, x: f64, y: f64) -> bool {
+    let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
+        return false;
+    };
     let mut current = Some(picked);
     while let Some(widget) = current {
         if widget == *surface {
-            return Some(y);
+            return true;
         }
         if widget.is::<gtk::Button>()
             || widget.is::<gtk::Editable>()
             || widget.is::<gtk::Range>()
             || widget.is::<gtk::Scrollbar>()
             || widget.is::<gtk::TextView>()
+            || widget.is::<gtk::Picture>()
+            || widget.is::<gtk::Image>()
+            || widget.is::<gtk::Label>()
             || widget.is::<gtk::ListView>()
             || widget.is::<gtk::GridView>()
             || widget.is::<gtk::ColumnView>()
             || widget.is::<gtk::ListBox>()
             || widget.is::<gtk::FlowBox>()
         {
-            return None;
+            return false;
         }
         current = widget.parent();
     }
-    None
+    false
+}
+
+fn marquee_click(surface: &gtk::Widget, x: f64, y: f64, mode: BrowserMode, area: &str) {
+    let drag = drag_on(surface)
+        .unwrap_or_else(|| panic!("{mode:?} {area}: surface exposes no marquee drag"));
+    drag.emit_by_name::<()>("drag-begin", &[&x, &y]);
+    drag.emit_by_name::<()>("drag-end", &[&0.0, &0.0]);
 }
 
 fn chrome_click(surface: &gtk::Widget, y_hint: f64, mode: BrowserMode, area: &str) {
-    let y = (y_hint.max(0.0) as i32..surface.height())
-        .map(f64::from)
-        .find_map(|y| inert_point(surface, y));
-    let y = y.unwrap_or_else(|| panic!("{mode:?} {area}: no inert point found"));
-    let drag = drag_on(surface)
-        .unwrap_or_else(|| panic!("{mode:?} {area}: surface exposes no marquee drag"));
-    let x = f64::from(surface.width()) / 2.0;
-    drag.emit_by_name::<()>("drag-begin", &[&x, &y]);
-    drag.emit_by_name::<()>("drag-end", &[&0.0, &0.0]);
+    let width = f64::from(surface.width());
+    let xs = [
+        width / 2.0,
+        1.0,
+        width - 2.0,
+        width / 4.0,
+        width * 3.0 / 4.0,
+    ];
+    let mut point = None;
+    'search: for y in (y_hint.max(0.0) as i32..surface.height()).map(f64::from) {
+        for x in xs {
+            if is_inert_point(surface, x, y) {
+                point = Some((x, y));
+                break 'search;
+            }
+        }
+    }
+    let (x, y) = point.unwrap_or_else(|| panic!("{mode:?} {area}: no inert point found"));
+    marquee_click(surface, x, y, mode, area);
 }
 
 fn background_click(scroll: &gtk::ScrolledWindow, mode: BrowserMode) {
@@ -341,8 +362,6 @@ fn clicking_blank_chrome_clears_the_selection() {
                     "{mode:?} sidebar blank click clears the selection"
                 );
 
-                // Blank body of the preview pane once it is open; the image fixture
-                // gives the pane an inert body in both modes.
                 let depth = browser.active_depth().expect("active depth");
                 let image = (0usize..)
                     .map_while(|position| {
@@ -391,14 +410,46 @@ fn clicking_blank_chrome_clears_the_selection() {
                 .expect("preview split");
                 let preview = split.end_child().expect("preview pane");
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while !preview.is_mapped() || preview.width() <= 0 {
+                let title = loop {
                     while context.pending() {
                         context.iteration(false);
                     }
+                    if preview.is_mapped()
+                        && let Some(title) = find_descendant(&preview, &|widget| {
+                            widget.has_css_class("preview-title") && widget.is_mapped()
+                        })
+                        && title.width() > 0
+                        && title.height() > 0
+                    {
+                        break title;
+                    }
                     assert!(Instant::now() < deadline, "{mode:?} preview did not open");
                     std::thread::sleep(Duration::from_millis(5));
+                };
+                let title_center = gtk::graphene::Point::new(
+                    title.width() as f32 / 2.0,
+                    title.height() as f32 / 2.0,
+                );
+                let preview_point = title
+                    .compute_point(&preview, &title_center)
+                    .expect("preview title coordinates");
+                marquee_click(
+                    &preview,
+                    f64::from(preview_point.x()),
+                    f64::from(preview_point.y()),
+                    mode,
+                    "preview title",
+                );
+                while context.pending() {
+                    context.iteration(false);
                 }
-                chrome_click(&preview, f64::from(preview.height()) / 2.0, mode, "preview");
+                assert_eq!(
+                    browser.selected_entries().len(),
+                    1,
+                    "{mode:?} preview content keeps the selection"
+                );
+
+                chrome_click(&preview, 0.0, mode, "preview blank chrome");
                 while context.pending() {
                     context.iteration(false);
                 }

@@ -306,6 +306,9 @@ fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
             || widget.is::<gtk::Range>()
             || widget.is::<gtk::Scrollbar>()
             || widget.is::<gtk::TextView>()
+            || widget.is::<gtk::Picture>()
+            || widget.is::<gtk::Image>()
+            || widget.is::<gtk::Label>()
             || widget.is::<gtk::ListView>()
             || widget.is::<gtk::GridView>()
             || widget.is::<gtk::ColumnView>()
@@ -370,16 +373,18 @@ pub(super) fn install_shared_origin_surface(
         };
         let state = target_for_update.borrow().clone();
         if let Some(state) = state {
-            if !state.dragging.get()
-                && !super::pointer::exceeds_drag_threshold(
-                    (0.0, 0.0),
-                    (offset_x, offset_y),
-                    surface_for_update.settings().gtk_dnd_drag_threshold(),
-                )
-            {
-                return;
+            if !state.dragging.get() {
+                if !state.allow_drag.get()
+                    || !super::pointer::exceeds_drag_threshold(
+                        (0.0, 0.0),
+                        (offset_x, offset_y),
+                        surface_for_update.settings().gtk_dnd_drag_threshold(),
+                    )
+                {
+                    return;
+                }
+                state.start_drag();
             }
-            state.start_drag();
             state.drag_to(
                 &surface_for_update,
                 (start_x + offset_x, start_y + offset_y),
@@ -566,7 +571,7 @@ impl MarqueeState {
     /// A plain press on clearable background deselects immediately; Ctrl/Shift presses
     /// keep the selection until release so marquee can still union or range from it.
     fn clear_at_press(&self) {
-        if self.clear_on_click.get() && self.modifiers.get() == (false, false) {
+        if self.modifiers.get() == (false, false) && self.clear_on_click.replace(false) {
             (self.clear_selection)();
         }
     }
