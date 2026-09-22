@@ -193,33 +193,11 @@ impl SourceIndexMap {
     }
 }
 
-pub(in crate::ui) struct ActiveModeRename {
-    entry: FileEntry,
-    field: gtk::Entry,
-    label: gtk::Widget,
-    viewport_tick: Option<gtk::TickCallbackId>,
-}
-
-impl ActiveModeRename {
-    pub(in crate::ui) fn new(
-        entry: FileEntry,
-        field: gtk::Entry,
-        label: gtk::Widget,
-        viewport_tick: Option<gtk::TickCallbackId>,
-    ) -> Self {
-        Self {
-            entry,
-            field,
-            label,
-            viewport_tick,
-        }
-    }
-}
-
 struct BoundModeItem {
     item: glib::WeakRef<gtk::ListItem>,
     widget: glib::WeakRef<gtk::Widget>,
     rename_label: glib::WeakRef<gtk::Widget>,
+    edit: super::collection_edit::EditWidgets,
 }
 
 /// One collection view inside a pane. Icons and List each keep a single section.
@@ -322,7 +300,7 @@ pub struct ModeViews {
     cut_locations: Rc<RefCell<HashSet<Location>>>,
     context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
     new_folder_state: RefCell<Option<Weak<super::browser::ViewState>>>,
-    active_rename: Rc<RefCell<Option<ActiveModeRename>>>,
+    active_rename: Rc<RefCell<Option<super::collection_edit::ActiveEdit>>>,
     search_selection_handlers: super::inline_search::SearchSelectionHandlers,
     mode: BrowserMode,
     density: BrowserDensity,
@@ -418,6 +396,7 @@ impl ModeViews {
         for pane in self.all_panes() {
             pane.show_hidden.set(show_hidden);
             pane.filter.changed(gtk::FilterChange::Different);
+            pane.search.set_show_hidden(show_hidden);
         }
     }
 
@@ -599,23 +578,11 @@ impl ModeViews {
     pub(in crate::ui) fn take_active_rename(
         &self,
         field: &gtk::Entry,
-    ) -> Option<(ActiveModeRename, FileEntry, String)> {
-        let active = self
-            .active_rename
-            .borrow()
-            .as_ref()
-            .filter(|active| active.field == *field && field.is_sensitive())
-            .is_some();
-        if !active {
-            return None;
-        }
-        let rename = self.active_rename.take()?;
-        let entry = rename.entry.clone();
-        let name = field.text().to_string();
-        Some((rename, entry, name))
+    ) -> Option<(FileEntry, String)> {
+        super::collection_edit::take_submission(&self.active_rename, field)
     }
 
-    pub(in crate::ui) fn take_rename(&self) -> Option<ActiveModeRename> {
+    pub(in crate::ui) fn take_rename(&self) -> Option<super::collection_edit::ActiveEdit> {
         self.active_rename.take()
     }
 
@@ -657,11 +624,23 @@ impl ModeViews {
     }
 
     pub fn cancel_rename(&self) -> bool {
-        let Some(rename) = self.active_rename.take() else {
-            return false;
-        };
-        finish_mode_rename(rename);
-        true
+        super::collection_edit::cancel(&self.active_rename)
+    }
+
+    fn rename_submit(&self) -> super::collection_edit::Submit {
+        let state = self.context_state.borrow().clone().unwrap_or_default();
+        let active = Rc::downgrade(&self.active_rename);
+        let browser = Rc::downgrade(&self.browser);
+        Rc::new(move |field| {
+            if let Some(state) = state.upgrade() {
+                state.submit_mode_rename(field);
+            } else if let Some(active) = active.upgrade()
+                && let Some((entry, name)) = super::collection_edit::take_submission(&active, field)
+                && let Some(browser) = browser.upgrade()
+            {
+                super::browser::queue_rename(&browser, entry, name);
+            }
+        })
     }
 
     pub(in crate::ui) fn clear_filter(&self, depth: usize) {
@@ -742,11 +721,14 @@ impl ModeViews {
             return false;
         };
         self.cancel_rename();
-        pane.search.begin_rename(
-            entry,
-            self.active_rename.clone(),
-            Rc::downgrade(&self.browser),
-            self.context_state.borrow().clone().unwrap_or_default(),
+        let Some(target) = pane.search.edit_target(entry) else {
+            return false;
+        };
+        super::collection_edit::begin(
+            &self.active_rename,
+            entry.clone(),
+            target,
+            self.rename_submit(),
         )
     }
 
@@ -760,71 +742,46 @@ impl ModeViews {
         let Some(pane) = pane else {
             return false;
         };
-        let widget = pane.item_sections().iter().find_map(|section| {
+        let target = pane.item_sections().iter().find_map(|section| {
             let position =
                 view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
             super::browser::prepare_collection_inline_edit(&section.view, position);
             section.bound_items.borrow().iter().find_map(|bound| {
-                let item = bound.item.upgrade()?;
-                (item.position() == position).then(|| {
-                    bound
-                        .widget
-                        .upgrade()
-                        .filter(|widget| widget.is_mapped() && widget.is_ancestor(&section.view))
-                        .map(|widget| (widget, section.view.clone(), position))
-                })?
+                if bound.item.upgrade()?.position() != position {
+                    return None;
+                }
+                let widget = bound.widget.upgrade()?;
+                if !widget.is_mapped()
+                    || widget.width() <= 0
+                    || !widget.is_ancestor(&section.view)
+                    || pane.stack.is_transition_running()
+                {
+                    return None;
+                }
+                Some((bound.edit.clone(), widget, section.view.clone()))
             })
         });
-        let Some((widget, collection, _)) = widget else {
+        let Some((widgets, row, collection)) = target else {
             return false;
         };
-        if !widget.is_mapped() || widget.width() <= 0 || pane.stack.is_transition_running() {
-            return false;
-        }
-        let Some(label) = descendant_with_class(&widget, "alternate-rename-label") else {
-            return false;
-        };
-        let field = widget
-            .clone()
-            .downcast::<gtk::Box>()
-            .ok()
-            .filter(|card| card.has_css_class("icons-card"))
-            .and_then(|card| super::icons_cell::ensure_rename_field(&card))
-            .or_else(|| {
-                descendant_with_class(&widget, "inline-rename").and_downcast::<gtk::Entry>()
-            });
-        let Some(field) = field else {
-            return false;
-        };
-        field.set_text(&entry.display_name);
-        field.set_visible(true);
-        label.set_visible(false);
-        install_mode_rename_handlers(
-            &field,
-            self.active_rename.clone(),
-            Rc::downgrade(&self.browser),
-            self.context_state.borrow().clone().unwrap_or_default(),
-        );
-        field.set_sensitive(true);
-        field.remove_css_class("error");
-        field.set_tooltip_text(None);
-        let viewport_tick = (self.mode == BrowserMode::List).then(|| {
+        let mut target = super::collection_edit::EditTarget::from(widgets);
+        if self.mode == BrowserMode::List {
             let state = self.context_state.borrow().clone().unwrap_or_default();
             let generation = state
                 .upgrade()
                 .map(|state| state.rename_reveal_generation());
-            let row = widget.downgrade();
+            let row = row.downgrade();
             let scroll = collection
                 .ancestor(gtk::ScrolledWindow::static_type())
                 .and_downcast::<gtk::ScrolledWindow>()
                 .map(|scroll| scroll.downgrade());
-            field.add_tick_callback(move |_, _| {
+            target.reveal = Some(Rc::new(move |_| {
                 if state
                     .upgrade()
                     .map(|state| state.rename_reveal_generation())
                     != generation
                 {
-                    return glib::ControlFlow::Continue;
+                    return;
                 }
                 if let (Some(row), Some(scroll)) = (
                     row.upgrade(),
@@ -832,25 +789,14 @@ impl ModeViews {
                 ) {
                     super::browser::reveal_rename_row(&row, &scroll, None);
                 }
-                glib::ControlFlow::Continue
-            })
-        });
-        self.active_rename.replace(Some(ActiveModeRename {
-            entry: entry.clone(),
-            field: field.clone(),
-            label,
-            viewport_tick,
-        }));
-        field.grab_focus();
-        field.select_region(
-            0,
-            if entry.is_directory() {
-                -1
-            } else {
-                super::browser::rename_stem_end(&entry.display_name)
-            },
-        );
-        true
+            }));
+        }
+        super::collection_edit::begin(
+            &self.active_rename,
+            entry.clone(),
+            target,
+            self.rename_submit(),
+        )
     }
 
     pub fn filter_has_focus(&self) -> bool {
@@ -1471,7 +1417,9 @@ impl ModeViews {
         let Some(location) = self.browser.location_at(pane.depth) else {
             return Rc::new(|_, _| {});
         };
-        pane.search.install_context_menu(&state, pane.depth);
+        pane.search.install_context_menu(|view, resolve| {
+            super::browser::install_resolved_item_context_menu(&state, view, resolve, pane.depth)
+        });
         let search = pane.search.clone();
         let sections = Rc::downgrade(&pane.sections);
         let entries = pane.model.downgrade();
@@ -1729,74 +1677,6 @@ fn search_collection_options(
         selection_changed,
         focus_items,
     }
-}
-
-pub(in crate::ui) fn finish_mode_rename(rename: ActiveModeRename) {
-    if let Some(tick) = rename.viewport_tick {
-        tick.remove();
-    }
-    rename.label.set_visible(true);
-    rename.field.set_visible(false);
-    rename.field.set_sensitive(true);
-    rename.field.remove_css_class("error");
-    rename.field.set_tooltip_text(None);
-}
-
-fn submit_mode_rename(
-    active: &RefCell<Option<ActiveModeRename>>,
-    browser: &Weak<Browser>,
-    field: &gtk::Entry,
-) {
-    let entry = active
-        .borrow()
-        .as_ref()
-        .filter(|active| active.field == *field && field.is_sensitive())
-        .map(|active| active.entry.clone());
-    let Some(entry) = entry else { return };
-    let name = field.text().to_string();
-    if let Some(rename) = active.take() {
-        finish_mode_rename(rename);
-    }
-    if let Some(browser) = browser.upgrade() {
-        super::browser::queue_rename(&browser, entry, name);
-    }
-}
-
-pub(in crate::ui) fn install_mode_rename_handlers(
-    field: &gtk::Entry,
-    active: Rc<RefCell<Option<ActiveModeRename>>>,
-    browser: Weak<Browser>,
-    state: Weak<super::browser::ViewState>,
-) {
-    if field.has_css_class("mode-rename-wired") {
-        return;
-    }
-    field.add_css_class("mode-rename-wired");
-    field.connect_changed(|field| {
-        super::browser::update_basename_validation(field);
-    });
-    let active = Rc::downgrade(&active);
-    let submit_active = active.clone();
-    let submit_browser = browser.clone();
-    let submit_state = state.clone();
-    field.connect_activate(move |field| {
-        if let Some(state) = submit_state.upgrade() {
-            state.submit_mode_rename(field);
-        } else if let Some(active) = submit_active.upgrade() {
-            submit_mode_rename(&active, &submit_browser, field);
-        }
-    });
-    let focus = gtk::EventControllerFocus::new();
-    focus.connect_leave(move |controller| {
-        if let Some(field) = controller.widget().and_downcast::<gtk::Entry>() {
-            if let Some(state) = state.upgrade() {
-                state.submit_mode_rename(&field);
-            } else if let Some(active) = active.upgrade() {
-                submit_mode_rename(&active, &browser, &field);
-            }
-        }
-    });
-    field.add_controller(focus);
 }
 
 struct IconsControls {
@@ -2285,7 +2165,9 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             parent.set_halign(gtk::Align::Center);
             parent.set_valign(gtk::Align::Start);
         }
-        register_bound_mode_item(&bound_items_for_setup, item, &card, &rename_label);
+        let field = super::icons_cell::ensure_rename_field(&card).expect("card editor");
+        let edit = super::collection_edit::EditWidgets::new(&field, &rename_label);
+        register_bound_mode_item(&bound_items_for_setup, item, &card, &rename_label, edit);
     });
     let browser_for_bind = Rc::downgrade(&context.browser);
     let source_index_for_bind = context.source_index.clone();
@@ -2293,6 +2175,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     let thumbnail_size_for_bind = context.thumbnail_size.clone();
     let scrolling_for_bind = context.scrolling.clone();
     let state_for_bind = context.state.clone();
+    let bound_for_bind = bound_items.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -2311,6 +2194,10 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
         let thumbnail_size = icons_card_icon_slot(thumbnail_size_for_bind.get());
         super::icons_cell::set_slot(&card, thumbnail_size);
         if let Some(entry) = entry {
+            let edit = bound_edit(&bound_for_bind, item);
+            if let Some(edit) = &edit {
+                edit.bind(&entry.location);
+            }
             apply_icons_entry(
                 Some(item),
                 &card,
@@ -2320,6 +2207,10 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 scrolling_for_bind.get(),
                 state.as_deref(),
             );
+            if let Some(edit) = &edit {
+                edit.display.set_visible(!edit.is_editing());
+                edit.field.set_visible(edit.is_editing());
+            }
             if let Some(position) = metadata_fill_position(source_position, &entry, false, true)
                 && let Some(browser) = browser.as_ref()
                 && let Some((icon, _)) = super::icons_cell::parts(&card)
@@ -2336,7 +2227,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             }
         }
     });
-    factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
+    install_edit_unbind(&factory, &bound_items);
     let view = gtk::GridView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("file-icons");
     view.set_vexpand(false);
@@ -3332,11 +3223,47 @@ fn pane_base(
     )
 }
 
+fn bound_edit(
+    items: &RefCell<Vec<BoundModeItem>>,
+    item: &gtk::ListItem,
+) -> Option<super::collection_edit::EditWidgets> {
+    items
+        .borrow()
+        .iter()
+        .find(|bound| bound.item.upgrade().as_ref() == Some(item))
+        .map(|bound| bound.edit.clone())
+}
+
+fn install_edit_unbind(
+    factory: &gtk::SignalListItemFactory,
+    items: &Rc<RefCell<Vec<BoundModeItem>>>,
+) {
+    let unbind = items.clone();
+    factory.connect_unbind(move |_, object| {
+        if let Some(item) = object.downcast_ref::<gtk::ListItem>()
+            && let Some(edit) = bound_edit(&unbind, item)
+        {
+            edit.unbind();
+        }
+        super::thumbnail::cancel_list_item_thumbnails(object);
+    });
+    let teardown = items.clone();
+    factory.connect_teardown(move |_, object| {
+        teardown.borrow_mut().retain(|bound| {
+            bound
+                .item
+                .upgrade()
+                .is_some_and(|item| item.upcast_ref::<glib::Object>() != object)
+        });
+    });
+}
+
 fn register_bound_mode_item(
     items: &Rc<RefCell<Vec<BoundModeItem>>>,
     item: &gtk::ListItem,
     widget: &impl IsA<gtk::Widget>,
     rename_label: &impl IsA<gtk::Widget>,
+    edit: super::collection_edit::EditWidgets,
 ) {
     let weak_item = glib::WeakRef::new();
     weak_item.set(Some(item));
@@ -3348,6 +3275,7 @@ fn register_bound_mode_item(
         item: weak_item,
         widget: weak_widget,
         rename_label: weak_rename_label,
+        edit,
     });
 }
 
@@ -3392,20 +3320,6 @@ fn collection_with_marquee(
         allow_drag: multiple_selection,
     });
     (overlay, marquee)
-}
-
-fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
-    if widget.has_css_class(class) {
-        return Some(widget.clone());
-    }
-    let mut child = widget.first_child();
-    while let Some(widget) = child {
-        if let Some(found) = descendant_with_class(&widget, class) {
-            return Some(found);
-        }
-        child = widget.next_sibling();
-    }
-    None
 }
 
 fn set_icons_content_hover(card: &gtk::Box, x: f64, y: f64) {
@@ -3764,10 +3678,8 @@ fn install_modified_selection_click(
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let modified_press = Rc::new(Cell::new(false));
-    let modified_press_for_pressed = modified_press.clone();
-    let modified_press_for_cancel = modified_press.clone();
-    let modified_press_for_release = modified_press.clone();
+    let sequence = super::collection_interaction::PointerSequence::default();
+    sequence.install(&click);
     let item = item.downgrade();
     let weak_state_for_pressed = weak_state.clone();
     click.connect_pressed(move |gesture, _, x, y| {
@@ -3787,37 +3699,28 @@ fn install_modified_selection_click(
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
-        modified_press_for_pressed.set(control || shift);
+        sequence.press(modifiers);
         let selected_before = selection.is_selected(position);
         let selected_count_before = selection.selection().size();
         slow_click.was_selected.set(selected_before);
         slow_click.selected_count_before.set(selected_count_before);
-        let preserve_group = !control
-            && !shift
-            && super::browser::should_preserve_drag_selection(
-                selected_before,
-                selected_count_before,
-            );
-        if shift {
-            let anchor = browser
+        let change = super::collection_interaction::pointer_selection(
+            &selection.selection(),
+            position,
+            browser
                 .selection_anchor_position(depth)
-                .and_then(|anchor| positions.view_position(anchor))
-                .unwrap_or(position);
-            let start = anchor.min(position);
-            let count = anchor.max(position).saturating_sub(start) + 1;
-            selection.select_range(start, count, true);
-        } else if control {
-            anchor_at(&browser, depth, &positions, position);
-            if selection.is_selected(position) {
-                selection.unselect_item(position);
-            } else {
-                selection.select_item(position, false);
-            }
-        } else {
-            anchor_at(&browser, depth, &positions, position);
-            if !preserve_group {
-                selection.select_item(position, true);
-            }
+                .and_then(|anchor| positions.view_position(anchor)),
+            true,
+            modifiers,
+        );
+        if !shift && let Some(anchor) = change.anchor {
+            anchor_at(&browser, depth, &positions, anchor);
+        }
+        selection.set_selection(
+            &change.selected,
+            &gtk::Bitset::new_range(0, selection.n_items()),
+        );
+        if !control && !shift {
             return;
         }
         if let Some(widget) = gesture.widget()
@@ -3829,15 +3732,8 @@ fn install_modified_selection_click(
     });
     let weak_state_for_cancel = weak_state.clone();
     click.connect_cancel(move |_, _| {
-        modified_press_for_cancel.set(false);
         if let Some(state) = weak_state_for_cancel.upgrade() {
             state.cancel_click_rename();
-        }
-    });
-    click.connect_released(move |gesture, _, _, _| {
-        // Leave the sequence available to a marquee until the click completes.
-        if modified_press_for_release.replace(false) {
-            gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });
     widget.add_controller(click.clone());
@@ -4300,6 +4196,7 @@ fn replace_entries(pane: &Pane, browser: &Browser, count: usize) {
 
 fn detach_pane_models(pane: &Pane) {
     pane.detached.set(true);
+    pane.search.detach();
     for section in pane.all_sections() {
         section.syncing.set(true);
         section.selection.set_model(None::<&gio::ListModel>);
@@ -4452,10 +4349,6 @@ fn apply_icons_entry(
         return;
     };
     set_icons_entry_details(card, entry);
-    label.set_visible(true);
-    if let Some(field) = super::icons_cell::rename_field(card) {
-        field.set_visible(false);
-    }
     let pending_name = state.and_then(|state| state.pending_rename_name(entry));
     let shown_name = pending_name.as_deref().unwrap_or(&entry.display_name);
     if label.text().as_deref() != Some(shown_name) {

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::ui::browser_modes::{
-    ActiveModeRename, install_mode_rename_handlers, view_position_for_source,
-};
+use crate::ui::browser_modes::view_position_for_source;
+use crate::ui::collection_edit::{self, EditWidgets};
 use std::{cell::RefCell, rc::Rc};
 
 #[test]
@@ -70,19 +69,16 @@ fn rename_handlers_do_not_keep_the_active_editor_alive_after_the_view_drops() {
                 child_count: MetadataValue::Unknown,
                 duration_seconds: MetadataValue::Unknown,
             };
-            let active = Rc::new(RefCell::new(Some(ActiveModeRename {
-                entry,
-                field: field.clone(),
-                label: gtk::Label::new(Some("folder")).upcast(),
-                viewport_tick: None,
-            })));
+            let active = Rc::new(RefCell::new(None));
             let weak = Rc::downgrade(&active);
-            install_mode_rename_handlers(
-                &field,
-                active.clone(),
-                std::rc::Weak::new(),
-                std::rc::Weak::new(),
-            );
+            let widgets = EditWidgets::new(&field, &gtk::Label::new(Some("folder")));
+            widgets.bind(&entry.location);
+            assert!(collection_edit::begin(
+                &active,
+                entry,
+                widgets.into(),
+                Rc::new(|_| {})
+            ));
             drop(active);
             assert!(weak.upgrade().is_none());
             field.emit_activate();

@@ -11,7 +11,7 @@ use crate::ui::browser::collection::cancel_source;
 pub(super) use crate::ui::browser::columns::COLUMN_WIDTH;
 use crate::ui::browser::columns::ColumnView;
 use crate::ui::browser::desktop::selected_terminal_location;
-use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
+use crate::ui::browser::inline_edit::{PendingEntryRename, PendingRename};
 use crate::ui::browser::location::{
     MountCredentials, UnlockProgressSlot, is_breadcrumb_button_target,
 };
@@ -62,24 +62,22 @@ pub(crate) use crate::ui::browser::clipboard::{
 };
 pub(super) use crate::ui::browser::clipboard::{file_drag_content, set_cut_result_style};
 pub(crate) use crate::ui::browser::collection::{
-    ActivePaneFilter, bind_filter_query, debounce_filter_entry, detach_collection_view,
+    ActivePaneFilter, debounce_filter_entry, detach_collection_view,
     focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
     prepare_collection_inline_edit, restore_filter_controls, reveal_collection_after_layout,
     scroll_collection_when_allocated, search_result_entry,
 };
-pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
+pub(in crate::ui) use crate::ui::browser::collection::{FilterQueryBinding, bind_filter_query};
 pub(super) use crate::ui::browser::context_menu::{
-    ContextMenuTarget, ContextMenuTrigger, install_folder_context_menu, install_item_context_menu,
-    install_resolved_item_context_menu,
+    ContextMenuTarget, ContextMenuTrigger, ContextResolver, install_folder_context_menu,
+    install_item_context_menu, install_resolved_item_context_menu,
 };
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location};
 pub(super) use crate::ui::browser::entry::{
     FOLDER_TYPE_GROUP, OTHER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value,
     format_file_size, icon_for_name, metadata_needs_fill, model_type_group, rounded_size_and_unit,
 };
-pub(super) use crate::ui::browser::inline_edit::{
-    queue_rename, rename_stem_end, reveal_rename_row, update_basename_validation,
-};
+pub(super) use crate::ui::browser::inline_edit::{queue_rename, reveal_rename_row};
 pub(super) use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
     pane_refresh_button, sync_column_sort_direction,
@@ -170,7 +168,7 @@ pub(super) struct ViewState {
     multiple_selection: Rc<Cell<bool>>,
     interactive: bool,
     columns_click_activation: Cell<ClickActivation>,
-    active_rename: RefCell<Option<ActiveRename>>,
+    active_rename: crate::ui::collection_edit::ActiveEdits,
     pending_rename: RefCell<Option<PendingRename>>,
     rename_generation: Cell<u64>,
     rename_reveal_generation: Cell<u64>,
@@ -507,7 +505,7 @@ impl BrowserView {
             multiple_selection,
             interactive,
             columns_click_activation: Cell::new(ClickActivation::default()),
-            active_rename: RefCell::new(None),
+            active_rename: Rc::new(RefCell::new(None)),
             pending_rename: RefCell::new(None),
             rename_generation: Cell::new(0),
             rename_reveal_generation: Cell::new(0),
@@ -787,8 +785,13 @@ impl BrowserView {
             }
         }
         self.state.refreshing_source_filter.set(false);
-        for column in self.state.columns.borrow().iter() {
-            columns::refresh_source_filter(column, &self.state.browser);
+        let columns = self.state.columns.borrow().clone();
+        let mut changed = false;
+        for column in &columns {
+            changed |= columns::refresh_source_filter(column, &self.state.browser);
+        }
+        if changed {
+            self.state.notify_search_selection_changed();
         }
         self.state.mode_views.borrow().refresh_source_filter();
     }
@@ -1591,7 +1594,7 @@ impl BrowserView {
                 {
                     return None;
                 }
-                if column.search_handle.borrow().is_some() {
+                if column.recursive_search_active.get() {
                     let selected = column.selection.selection();
                     if selected.is_empty() {
                         return None;
@@ -1633,13 +1636,13 @@ impl BrowserView {
         let depth = self.state.destination_depth();
         let (depth, column) = depth
             .and_then(|depth| columns.get(depth).map(|column| (depth, column)))
-            .filter(|(_, column)| column.search_handle.borrow().is_some() || column.map.has_query())
+            .filter(|(_, column)| column.recursive_search_active.get() || column.map.has_query())
             .or_else(|| {
                 columns.iter().enumerate().find(|(_, column)| {
-                    column.search_handle.borrow().is_some() || column.map.has_query()
+                    column.recursive_search_active.get() || column.map.has_query()
                 })
             })?;
-        if column.search_handle.borrow().is_some() {
+        if column.recursive_search_active.get() {
             let results = column.search_results.borrow();
             return Some(
                 collection::bitset_positions(&column.selection.selection())
