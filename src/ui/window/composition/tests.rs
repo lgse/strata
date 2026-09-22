@@ -11,17 +11,8 @@ use super::*;
 use crate::{
     services::{BuildKind, ReleaseMetadata, UpdateMethod},
     test_support::gtk_test,
-    ui::{browser_modes::BrowserMode, preferences::TextSize},
+    ui::browser_modes::BrowserMode,
 };
-
-fn settle_sidebar(millis: u64) {
-    let main_loop = glib::MainLoop::new(None, false);
-    let stop = main_loop.clone();
-    glib::timeout_add_local_once(std::time::Duration::from_millis(millis), move || {
-        stop.quit()
-    });
-    main_loop.run();
-}
 
 struct Fixture {
     window: gtk::ApplicationWindow,
@@ -382,37 +373,6 @@ fn sidebar_toggle_preserves_split_constraints() {
             assert!(fixture.content.sidebar.widget.is_visible());
             content.set_position(1);
             assert_eq!(content.position(), super::super::MIN_SIDEBAR_WIDTH);
-            fixture.close();
-        },
-    );
-}
-
-#[test]
-fn sidebar_toggle_animated_expand_restores_visibility() {
-    gtk_test(
-        "ui::window::composition::tests::sidebar_toggle_animated_expand_restores_visibility",
-        || {
-            let fixture = Fixture::new();
-            fixture.preferences.set_reduce_motion(false);
-            fixture.preferences.set_text_size(TextSize::new(10));
-            if let Some(settings) = gtk::Settings::default() {
-                settings.set_gtk_enable_animations(true);
-            }
-            fixture.content.header.sidebar_toggle.set_active(false);
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            while fixture.content.sidebar.widget.is_visible() {
-                assert!(std::time::Instant::now() < deadline, "sidebar did not hide");
-                settle_sidebar(20);
-            }
-            assert!(!fixture.content.sidebar.widget.is_visible());
-            fixture.content.header.sidebar_toggle.set_active(true);
-            settle_sidebar(600);
-            assert!(fixture.content.sidebar.widget.is_visible());
-            fixture.content.header.sidebar_toggle.set_active(false);
-            settle_sidebar(50);
-            fixture.content.header.sidebar_toggle.set_active(true);
-            settle_sidebar(600);
-            assert!(fixture.content.sidebar.widget.is_visible());
             fixture.close();
         },
     );

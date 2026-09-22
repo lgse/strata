@@ -78,7 +78,7 @@ def test_icons_rename_reuses_loaded_thumbnail_and_details(strata, test_environme
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mode, test_environment):
-    strata.switch_view(mode)
+    assert strata.view_mode() == mode
 
     def cached(folder):
         return _folder_cached(strata, test_environment, folder)
