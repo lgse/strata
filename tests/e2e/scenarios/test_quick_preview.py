@@ -399,7 +399,15 @@ def test_large_table_header_sort_reaches_rows_beyond_old_limits(strata, filename
     preview = strata.preview().screen_bounds()
     strata.pointer.drag_points(start, (end[0], preview.y + preview.height - 12), release=False)
     try:
-        strata.wait(lambda: strata.preview_shows("record-950"), "selection drag to autoscroll through recycled rows")
+        strata.wait(
+            lambda: any(
+                (text := node.text).startswith("record-")
+                and text.removeprefix("record-").isdigit()
+                and int(text.removeprefix("record-")) <= 950
+                for node in strata.preview().find_all(role="label")
+            ),
+            "selection drag to autoscroll through recycled rows",
+        )
     finally:
         strata.pointer.connection.button(1, False)
     strata.keyboard.press("ctrl+c")

@@ -137,6 +137,21 @@ class Node:
             return ""
 
     @property
+    def numeric_value(self) -> float | None:
+        """The current value when the node implements Value."""
+
+        try:
+            interface = Atspi.Accessible.get_value_iface(self._accessible)
+        except Exception:
+            interface = None
+        if interface is None:
+            return None
+        try:
+            return float(Atspi.Value.get_current_value(interface))
+        except Exception:
+            return None
+
+    @property
     def children(self) -> list["Node"]:
         try:
             count = self._accessible.get_child_count()
