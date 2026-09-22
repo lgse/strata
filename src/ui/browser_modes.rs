@@ -503,19 +503,6 @@ impl ModeViews {
             .is_some_and(|pane| pane.header.child_focus(direction))
     }
 
-    pub fn focus_active_view(&self) {
-        let Some(depth) = self.browser.active_depth() else {
-            return;
-        };
-        if let Some(pane) = self
-            .visible_panes()
-            .into_iter()
-            .find(|pane| pane.depth == depth)
-        {
-            pane.focus_view().grab_focus();
-        }
-    }
-
     pub fn focus_items_from_header(&self) -> bool {
         if self
             .focus_before_header

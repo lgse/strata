@@ -148,13 +148,18 @@ impl Dispatcher {
                 self.view.copy_path();
             }
             Key::p | Key::P => self.view.pin_focused(),
-            Key::space
-                if event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
-                    && self.view.activate_directory_column() => {}
-            Key::space => self.preview.toggle(
-                preview_target(browser.focused_entry()),
-                browser.active_depth(),
-            ),
+            Key::space => {
+                self.view.cancel_pending_click_rename();
+                let activated_directory = event
+                    .without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+                    && self.view.activate_directory_column();
+                if !activated_directory {
+                    self.preview.toggle(
+                        preview_target(browser.focused_entry()),
+                        browser.active_depth(),
+                    );
+                }
+            }
             Key::BackSpace => self.view.navigate_up(),
             _ => return None,
         }

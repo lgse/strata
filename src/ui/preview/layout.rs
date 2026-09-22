@@ -335,7 +335,7 @@ impl PreviewState {
                 list.set_visible(!compact);
             }
         }
-        if losing_focus {
+        if state_changed && losing_focus {
             if compact {
                 // Deferred: the hidden list's own relayout can queue a row
                 // grab that would otherwise steal the dismissal target back.

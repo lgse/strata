@@ -858,6 +858,10 @@ impl BrowserView {
             || self.state.mode_views.borrow().rename_is_active()
     }
 
+    pub(in crate::ui) fn cancel_pending_click_rename(&self) {
+        self.state.cancel_click_rename();
+    }
+
     pub fn active_rename_field(&self) -> Option<gtk::Entry> {
         self.state
             .active_rename
@@ -954,13 +958,13 @@ impl BrowserView {
         }
     }
 
-    // Grabs the collection view itself; item-level focus lands on editable
-    // cells that would swallow navigation keys.
+    // Columns grabs the collection view itself; item-level focus lands on
+    // editable cells that would swallow navigation keys.
     pub(in crate::ui) fn focus_file_view(&self) {
         if self.view_mode() == BrowserMode::Columns {
             self.state.focus_rebuilt_active_column();
         } else {
-            self.state.mode_views.borrow().focus_active_view();
+            self.state.browser.focus_active();
         }
     }
 
