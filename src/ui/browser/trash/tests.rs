@@ -364,25 +364,45 @@ fn delete_confirmation_totals_nested_folder_contents_into_the_subtitle() {
                 .default_height(650)
                 .build();
             window.present();
-            let mut file_entry = local_file_entry(&file_path);
-            file_entry.size = crate::model::MetadataValue::Known(5);
-            view.state
-                .show_delete_confirmation(vec![file_entry, local_folder_entry(&folder_path)]);
-            let root = window.clone().upcast::<gtk::Widget>();
-            let confirm = wait_for_widget(&root, |button: &gtk::Button| {
-                button.label().as_deref() == Some("Permanently delete 2 items")
-            });
-            wait_until(
-                || confirm.is_sensitive(),
-                "confirm should become sensitive once the total is calculated",
-            );
-            let subtitle = wait_for_widget(&root, |label: &gtk::Label| {
-                label.has_css_class("action-dialog-subtitle")
-            });
-            wait_until(
-                || subtitle.label() == "2 items · 8 B will be permanently deleted",
-                "subtitle should total the standalone file plus the nested folder's contents",
-            );
+            for (size, expected) in [
+                (
+                    crate::model::MetadataValue::Known(5),
+                    "2 items · 8 B will be permanently deleted",
+                ),
+                (
+                    crate::model::MetadataValue::Unknown,
+                    "At least 2 items · at least 3 B will be permanently deleted",
+                ),
+                (
+                    crate::model::MetadataValue::Unavailable,
+                    "At least 2 items · at least 3 B will be permanently deleted",
+                ),
+            ] {
+                let mut file_entry = local_file_entry(&file_path);
+                file_entry.size = size;
+                view.state
+                    .show_delete_confirmation(vec![file_entry, local_folder_entry(&folder_path)]);
+                let root = window.clone().upcast::<gtk::Widget>();
+                let confirm = wait_for_widget(&root, |button: &gtk::Button| {
+                    button.label().as_deref() == Some("Permanently delete 2 items")
+                });
+                wait_until(
+                    || confirm.is_sensitive(),
+                    "confirm should become sensitive once the total is calculated",
+                );
+                let subtitle = wait_for_widget(&root, |label: &gtk::Label| {
+                    label.has_css_class("action-dialog-subtitle")
+                });
+                wait_until(
+                    || subtitle.label() == expected,
+                    "subtitle should total the standalone file plus the nested folder's contents",
+                );
+                let cancel = wait_for_widget(&root, |button: &gtk::Button| {
+                    button.label().as_deref() == Some("Cancel")
+                });
+                cancel.emit_clicked();
+                wait_until(|| !confirm.is_mapped(), "dialog should close");
+            }
             window.destroy();
             view.browser().clear_observer();
         },

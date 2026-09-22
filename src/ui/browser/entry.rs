@@ -202,10 +202,6 @@ pub(super) fn entry_kind_summary(entries: &[FileEntry]) -> String {
     }
 }
 
-/// Recursive item count and total size across a mixed selection: each selected
-/// file counts once, each selected folder contributes its own bounded recursive
-/// walk. An unreadable folder is reported as truncated rather than failing the
-/// whole total, matching how a single folder's own measurement degrades.
 pub(super) async fn aggregate_directory_summary(entries: &[FileEntry]) -> DirectorySummary {
     let mut total = DirectorySummary::default();
     for entry in entries {
@@ -230,8 +226,13 @@ pub(super) async fn aggregate_directory_summary(entries: &[FileEntry]) -> Direct
         } else {
             total.item_count = total.item_count.saturating_add(1);
             total.visible_file_count = total.visible_file_count.saturating_add(1);
-            if let MetadataValue::Known(size) = entry.size {
-                total.total_size = total.total_size.saturating_add(size);
+            match entry.size {
+                MetadataValue::Known(size) => {
+                    total.total_size = total.total_size.saturating_add(size);
+                }
+                MetadataValue::Unknown | MetadataValue::Unavailable => {
+                    total.issues.unreadable = true;
+                }
             }
         }
     }

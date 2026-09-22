@@ -893,9 +893,6 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        // `confirm` starts insensitive while the total is calculated, so it can't
-        // hold initial focus; `cancel` also matches Empty Trash's own default for
-        // a destructive confirmation.
         glib::idle_add_local_once(move || {
             initial_focus.grab_focus();
             if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
@@ -906,7 +903,7 @@ impl ViewState {
         let weak_subtitle = subtitle.downgrade();
         let weak_confirm = confirm.downgrade();
         let weak_spinner = spinner.downgrade();
-        glib::MainContext::default().spawn_local(async move {
+        let task = glib::MainContext::default().spawn_local(async move {
             let summary = aggregate_directory_summary(&entries).await;
             let (Some(subtitle), Some(confirm), Some(spinner)) = (
                 weak_subtitle.upgrade(),
@@ -926,6 +923,14 @@ impl ViewState {
             spinner.stop();
             spinner.set_visible(false);
         });
+        let task = Rc::new(task);
+        let closing_task = task.clone();
+        layer.connect_sensitive_notify(move |layer| {
+            if !layer.is_sensitive() {
+                closing_task.abort();
+            }
+        });
+        layer.connect_unrealize(move |_| task.abort());
     }
 }
 
