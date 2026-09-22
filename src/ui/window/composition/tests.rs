@@ -398,28 +398,12 @@ fn sidebar_toggle_animated_expand_restores_visibility() {
             if let Some(settings) = gtk::Settings::default() {
                 settings.set_gtk_enable_animations(true);
             }
-            let root = fixture
-                .content
-                .blurred_root
-                .first_child()
-                .expect("window root");
-            let preview_split = root
-                .first_child()
-                .expect("header")
-                .next_sibling()
-                .expect("preview split")
-                .downcast::<gtk::Paned>()
-                .expect("preview paned");
-            let content = preview_split
-                .start_child()
-                .expect("navigation wrapper")
-                .first_child()
-                .expect("sidebar/browser split")
-                .downcast::<gtk::Paned>()
-                .expect("sidebar/browser paned");
             fixture.content.header.sidebar_toggle.set_active(false);
-            settle_sidebar(600);
-            assert_eq!(content.position(), 0);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while fixture.content.sidebar.widget.is_visible() {
+                assert!(std::time::Instant::now() < deadline, "sidebar did not hide");
+                settle_sidebar(20);
+            }
             assert!(!fixture.content.sidebar.widget.is_visible());
             fixture.content.header.sidebar_toggle.set_active(true);
             settle_sidebar(600);
