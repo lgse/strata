@@ -2,7 +2,7 @@
 
 use crate::app::Browser;
 use crate::model::Location;
-use crate::services::fold_for_search;
+use crate::services::{filter_query_allows_typos, fold_for_search};
 use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::prelude::*;
@@ -194,7 +194,11 @@ fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
     view.has_focus() || focused == *view || view.is_ancestor(&focused) || focused.is_ancestor(view)
 }
 
-fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListScrollFlags) {
+pub(super) fn apply_collection_scroll(
+    view: &gtk::Widget,
+    position: u32,
+    flags: gtk::ListScrollFlags,
+) {
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         if position < list.model().map_or(0, |model| model.n_items()) {
             list.scroll_to(position, flags, None);
@@ -278,11 +282,30 @@ pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(Stri
     });
 }
 
-/// Scope changes bypass typing's debounce and cancel queued old-scope queries.
-pub(crate) fn bind_filter_query(
+pub(in crate::ui) struct FilterQueryBinding {
+    entry: glib::WeakRef<gtk::Entry>,
+    changed: Option<glib::SignalHandlerId>,
+    pending: Rc<RefCell<Option<glib::SourceId>>>,
+}
+
+impl Drop for FilterQueryBinding {
+    fn drop(&mut self) {
+        cancel_source(&self.pending);
+        if let Some(entry) = self.entry.upgrade()
+            && let Some(changed) = self.changed.take()
+        {
+            entry.disconnect(changed);
+        }
+    }
+}
+
+/// Scope changes bypass typing's debounce. Intent changes reject old worker events immediately;
+/// dropping the binding disconnects the entry and cancels queued work before a view is detached.
+pub(in crate::ui) fn bind_filter_query(
     entry: &gtk::Entry,
+    session: &crate::ui::search_session::SearchSession,
     on_query: impl Fn(String, bool, bool) + 'static,
-) {
+) -> FilterQueryBinding {
     let pending = Rc::new(RefCell::new(None));
     let callback = Rc::new(on_query);
     let scope = Rc::new(Cell::new(true));
@@ -303,7 +326,10 @@ pub(crate) fn bind_filter_query(
             }
         },
     );
-    entry.connect_changed(move |entry| {
+    let pending_for_drop = pending.clone();
+    let session = session.clone();
+    let changed = entry.connect_changed(move |entry| {
+        session.expect_query(entry.text().as_str());
         cancel_source(&pending);
         let slot = pending.clone();
         let callback = callback.clone();
@@ -317,11 +343,20 @@ pub(crate) fn bind_filter_query(
             },
         ));
     });
+    FilterQueryBinding {
+        entry: entry.downgrade(),
+        changed: Some(changed),
+        pending: pending_for_drop,
+    }
 }
 
 pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterChange {
-    // Adding/removing a star can broaden or re-anchor the match, not just narrow it.
-    if previous.contains('*') || settled.contains('*') {
+    // Wildcard and typo edits can add and remove matches in the same update.
+    if previous.contains('*')
+        || settled.contains('*')
+        || filter_query_allows_typos(previous)
+        || filter_query_allows_typos(settled)
+    {
         gtk::FilterChange::Different
     } else if settled.starts_with(previous) && settled.len() > previous.len() {
         gtk::FilterChange::MoreStrict
@@ -602,10 +637,11 @@ pub(crate) fn apply_selection_plan(
             selection.select_range(position, count, true);
         }
         SelectionPlan::Items(items) => {
-            selection.unselect_all();
+            let selected = gtk::Bitset::new_empty();
             for position in items {
-                selection.select_item(*position, false);
+                selected.add(*position);
             }
+            selection.set_selection(&selected, &gtk::Bitset::new_range(0, n_items));
         }
     }
 }

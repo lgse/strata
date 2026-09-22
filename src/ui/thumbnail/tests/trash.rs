@@ -146,7 +146,7 @@ fn trash_thumbnails_and_fallback_icons_work_in_every_view() {
 
 fn has_visible_thumbnail(path: &Path) -> bool {
     thumbnail::TRACKED_THUMBNAILS.with(|tracked| {
-        tracked.borrow().iter().any(|tracked| {
+        tracked.borrow().values().any(|tracked| {
             tracked.path == path
                 && tracked
                     .image

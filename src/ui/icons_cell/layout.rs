@@ -72,7 +72,7 @@ fn caption_extent(label: &gtk::Inscription, width: i32) -> (i32, i32) {
     );
     layout.set_wrap(label.wrap_mode());
     layout.set_alignment(gtk::pango::Alignment::Center);
-    layout.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    layout.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     layout.set_height(-ICONS_CARD_LABEL_LINES);
     let (text_width, text_height) = layout.pixel_size();
     (text_width + horizontal, text_height + vertical)
@@ -184,12 +184,7 @@ mod imp {
                 return (0, 0, -1, -1);
             };
             if orientation == gtk::Orientation::Horizontal {
-                let mut width = preferred_caption_width(&label);
-                if let Some(details) =
-                    caption_details(widget).filter(|details| details.is_visible())
-                {
-                    width = width.max(details.measure(orientation, for_size).1);
-                }
+                let width = preferred_caption_width(&label);
                 return (width, width, -1, -1);
             }
             let width = if for_size < 0 {
@@ -197,9 +192,9 @@ mod imp {
             } else {
                 for_size
             };
-            let details_height = caption_details(widget)
-                .filter(|details| details.is_visible())
-                .map_or(0, |details| details.measure(orientation, width).1);
+            // The single-line label reserves its font height even before details arrive.
+            let details_height =
+                caption_details(widget).map_or(0, |details| details.measure(orientation, width).1);
             let content_height = reserved_caption_height(&label, width)
                 .max(caption_editor(widget).map_or(0, |field| field.measure(orientation, width).1));
             let height = content_height + details_height;
@@ -235,10 +230,7 @@ mod imp {
                 current_y = current_y.max(field_height);
             }
             if let Some(details) = caption_details(widget).filter(|details| details.is_visible()) {
-                let details_width = details
-                    .measure(gtk::Orientation::Horizontal, -1)
-                    .1
-                    .min(width);
+                let details_width = width;
                 let details_height = details
                     .measure(gtk::Orientation::Vertical, details_width)
                     .1

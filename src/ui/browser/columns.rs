@@ -71,6 +71,9 @@ pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
     pub(super) rename_label: glib::WeakRef<gtk::Label>,
+    pub(super) edit: crate::ui::collection_edit::EditWidgets,
+    pub(super) spacer: gtk::Box,
+    pub(super) size: gtk::Label,
 }
 
 #[derive(Clone, Copy)]
@@ -133,9 +136,10 @@ pub(super) struct ColumnView {
     pub(super) show_hidden: Rc<Cell<bool>>,
     pub(super) filter: gtk::CustomFilter,
     pub(super) search_results: Rc<RefCell<Vec<crate::services::SearchItem>>>,
-    pub(super) search_handle: Rc<RefCell<Option<crate::services::SearchHandle>>>,
-    pub(super) search_generation: Rc<Cell<u64>>,
+    pub(super) search_session: crate::ui::search_session::SearchSession,
+    query_binding: Rc<RefCell<Option<super::collection::FilterQueryBinding>>>,
     pub(super) search_model: gtk::StringList,
+    pub(super) recursive_search_active: Rc<Cell<bool>>,
 }
 
 impl ColumnView {
@@ -143,7 +147,7 @@ impl ColumnView {
         &self,
         position: Option<usize>,
     ) -> Option<crate::ui::browser::ContextMenuTarget> {
-        let position = if self.search_handle.borrow().is_some() {
+        let position = if self.recursive_search_active.get() {
             bitset_positions(&self.selection.selection())
                 .last()
                 .copied()
@@ -158,7 +162,7 @@ impl ColumnView {
             let bounds = row.compute_bounds(&self.list)?;
             return Some((
                 self.item_context_trigger.clone(),
-                f64::from(bounds.center().x()),
+                f64::from(bounds.x() + bounds.width()),
                 f64::from(bounds.center().y()),
             ));
         }
@@ -220,27 +224,51 @@ pub(super) fn set_column_busy(column: &ColumnView, busy: bool) {
         .update_state(&[gtk::accessible::State::Busy(busy)]);
 }
 
-pub(super) fn prune_missing_search_results(column: &ColumnView) {
-    if column.search_handle.borrow().is_none() {
-        return;
+pub(super) fn refresh_source_filter(column: &ColumnView, browser: &crate::app::Browser) -> bool {
+    if !column.search_session.is_active() {
+        return false;
     }
-    let mut results = column.search_results.borrow_mut();
-    let before = results.len();
-    results.retain(|item| crate::ui::inline_search::search_path_present(&item.path));
-    if results.len() == before {
-        return;
-    }
-    let labels: Vec<_> = results.iter().map(|item| item.name.clone()).collect();
-    drop(results);
-    let labels: Vec<_> = labels.iter().map(String::as_str).collect();
-    column
-        .search_model
-        .splice(0, column.search_model.n_items(), &labels);
-    column.filtered_model.items_changed(
-        0,
-        column.search_model.n_items(),
-        column.search_model.n_items(),
+    let items = column
+        .search_results
+        .borrow()
+        .iter()
+        .filter(|item| browser.allows_entry(&super::search_result_entry(item)))
+        .cloned()
+        .collect();
+    let changed = search::update_results(
+        &column.search_model,
+        &column.search_results,
+        &column.selection,
+        &column.syncing_selection,
+        items,
     );
+    column
+        .search_session
+        .query(column.filter_entry.text().trim());
+    changed
+}
+
+pub(super) fn prune_missing_search_results(column: &ColumnView) -> bool {
+    if !column.search_session.is_active() {
+        return false;
+    }
+    let items: Vec<_> = column
+        .search_results
+        .borrow()
+        .iter()
+        .filter(|item| crate::ui::inline_search::search_path_present(&item.path))
+        .cloned()
+        .collect();
+    if items.len() == column.search_results.borrow().len() {
+        return false;
+    }
+    search::update_results(
+        &column.search_model,
+        &column.search_results,
+        &column.selection,
+        &column.syncing_selection,
+        items,
+    )
 }
 
 pub(super) fn set_filter_placeholder(column: &ColumnView, count: usize) {
@@ -350,10 +378,6 @@ pub(super) fn is_column_background(surface: &gtk::Widget, picked: &gtk::Widget) 
         current = widget.parent();
     }
     false
-}
-
-pub(crate) fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -> bool {
-    clicked_selected && selected_count > 1
 }
 
 pub(super) fn update_empty_trash_sensitivity(column: &ColumnView, count: usize) {
@@ -649,7 +673,7 @@ impl ViewState {
         heading.set_yalign(0.5);
         heading.set_valign(gtk::Align::Center);
         heading.set_hexpand(true);
-        heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         heading.set_max_width_chars(1);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
@@ -761,7 +785,23 @@ impl ViewState {
         let filter_for_column = filter.clone();
         let search_active_for_selection = recursive_search_active.clone();
         selection.connect_selection_changed(move |selection, position, count| {
-            if syncing_selection_changed.get() || search_active_for_selection.get() {
+            if syncing_selection_changed.get() {
+                return;
+            }
+            if search_active_for_selection.get() {
+                if !multiple_selection.get() && selection.selection().size() > 1 {
+                    let focused = (position..position.saturating_add(count))
+                        .rev()
+                        .find(|position| selection.is_selected(*position));
+                    if let Some(focused) = focused {
+                        syncing_selection_changed.set(true);
+                        selection.select_item(focused, true);
+                        syncing_selection_changed.set(false);
+                    }
+                }
+                if let Some(state) = weak_selection_state.upgrade() {
+                    state.notify_search_selection_changed();
+                }
                 return;
             }
             let mut filtered_positions = bitset_positions(&selection.selection());
@@ -807,9 +847,7 @@ impl ViewState {
         });
         let search_results: Rc<RefCell<Vec<crate::services::SearchItem>>> =
             Rc::new(RefCell::new(Vec::new()));
-        let search_handle: Rc<RefCell<Option<crate::services::SearchHandle>>> =
-            Rc::new(RefCell::new(None));
-        let search_generation: Rc<Cell<u64>> = Rc::new(Cell::new(0));
+        let search_session = crate::ui::search_session::SearchSession::default();
         let search_model = gtk::StringList::new(&[]);
 
         let weak_state_for_search = Rc::downgrade(self);
@@ -818,136 +856,125 @@ impl ViewState {
         let model_for_search = model.clone();
         let search_model_for_changed = search_model.clone();
         let search_results_for_changed = search_results.clone();
-        let search_handle_for_changed = search_handle.clone();
-        let search_gen_for_changed = search_generation.clone();
+        let session_for_changed = search_session.clone();
         let search_active_for_changed = recursive_search_active.clone();
         let selection_for_search = selection.clone();
         let syncing_for_search = syncing_selection.clone();
         let filter_query_for_search = filter_query.clone();
-        let weak_filter_entry = filter_entry.downgrade();
-        bind_filter_query(&filter_entry, move |text, recursive, restart| {
-            if restart {
-                search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
-                search_handle_for_changed.borrow_mut().take();
-                search_results_for_changed.borrow_mut().clear();
-                search_model_for_changed.splice(0, search_model_for_changed.n_items(), &[]);
-            }
-            let query = text.trim().to_string();
-            if query.is_empty() {
-                search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
-                search_handle_for_changed.borrow_mut().take();
-                // Keep the hidden-file filter installed while swapping back to the directory
-                // model; GTK's synchronous model notifications otherwise leave a stale row.
-                apply_filter_query(
-                    &filtered_model_for_search,
-                    &filter,
-                    &filter_query_for_search,
-                    fold_for_search(&text),
-                );
-                deactivate_recursive_search(
-                    &search_active_for_changed,
-                    &search_results_for_changed,
-                    &search_model_for_changed,
-                    &filtered_model_for_search,
-                    &model_for_search,
-                );
-                return;
-            }
-            let Some(state) = weak_state_for_search.upgrade() else {
-                return;
-            };
-            let Some(path) = state
-                .browser
-                .location_at(depth_for_search)
-                .and_then(|loc| loc.native_path().map(Path::to_path_buf))
-            else {
-                search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
-                search_handle_for_changed.borrow_mut().take();
-                deactivate_recursive_search(
-                    &search_active_for_changed,
-                    &search_results_for_changed,
-                    &search_model_for_changed,
-                    &filtered_model_for_search,
-                    &model_for_search,
-                );
-                apply_filter_query(
-                    &filtered_model_for_search,
-                    &filter,
-                    &filter_query_for_search,
-                    fold_for_search(&text),
-                );
-                return;
-            };
-            *filter_query_for_search.borrow_mut() = fold_for_search(&text);
-            search_active_for_changed.set(true);
-            let weak_entry = weak_filter_entry.clone();
-            let filtered = filtered_model_for_search.clone();
-            let sm = search_model_for_changed.clone();
-            let results = search_results_for_changed.clone();
-            let handle = search_handle_for_changed.clone();
-            let search_gen = search_gen_for_changed.clone();
-            let selection_for_poll = selection_for_search.clone();
-            let syncing_for_poll = syncing_for_search.clone();
-            if handle.borrow().is_none() {
-                search_gen.set(search_gen.get().saturating_add(1));
-                let poll_gen = search_gen.get();
+        let query_binding = bind_filter_query(
+            &filter_entry,
+            &search_session,
+            move |text, recursive, restart| {
+                if restart {
+                    session_for_changed.cancel();
+                    let changed = search::update_results(
+                        &search_model_for_changed,
+                        &search_results_for_changed,
+                        &selection_for_search,
+                        &syncing_for_search,
+                        Vec::new(),
+                    );
+                    if changed && let Some(state) = weak_state_for_search.upgrade() {
+                        state.notify_search_selection_changed();
+                    }
+                }
+                let query = text.trim().to_string();
+                if query.is_empty() {
+                    session_for_changed.cancel();
+                    // Keep the hidden-file filter installed while swapping back to the directory
+                    // model; GTK's synchronous model notifications otherwise leave a stale row.
+                    apply_filter_query(
+                        &filtered_model_for_search,
+                        &filter,
+                        &filter_query_for_search,
+                        fold_for_search(&text),
+                    );
+                    deactivate_recursive_search(
+                        &search_active_for_changed,
+                        &search_results_for_changed,
+                        &search_model_for_changed,
+                        &filtered_model_for_search,
+                        &model_for_search,
+                    );
+                    return;
+                }
+                let Some(state) = weak_state_for_search.upgrade() else {
+                    return;
+                };
+                let Some(path) = state
+                    .browser
+                    .location_at(depth_for_search)
+                    .and_then(|loc| loc.native_path().map(Path::to_path_buf))
+                else {
+                    session_for_changed.cancel();
+                    deactivate_recursive_search(
+                        &search_active_for_changed,
+                        &search_results_for_changed,
+                        &search_model_for_changed,
+                        &filtered_model_for_search,
+                        &model_for_search,
+                    );
+                    apply_filter_query(
+                        &filtered_model_for_search,
+                        &filter,
+                        &filter_query_for_search,
+                        fold_for_search(&text),
+                    );
+                    return;
+                };
+                *filter_query_for_search.borrow_mut() = fold_for_search(&text);
+                search_active_for_changed.set(true);
+                if !session_for_changed.is_active() {
+                    filtered_model_for_search.set_filter(None::<&gtk::CustomFilter>);
+                    filtered_model_for_search.set_model(Some(&search_model_for_changed));
+                }
                 let show_hidden = state
                     .browser
                     .column_preferences(depth_for_search)
                     .unwrap_or_else(|| state.browser.preferences())
                     .show_hidden;
-                let (h, receiver) = crate::services::index_filter(path, show_hidden, recursive);
-                handle.replace(Some(h));
-                filtered.set_filter(None::<&gtk::CustomFilter>);
-                filtered.set_model(Some(&sm));
-                let weak_entry = weak_entry.clone();
-                let weak_sm = sm.downgrade();
-                let results = results.clone();
-                let gen_check = search_gen.clone();
-                let selection_for_poll = selection_for_poll.clone();
-                let syncing_for_poll = syncing_for_poll.clone();
-                let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
-                    if gen_check.get() != poll_gen {
-                        return glib::ControlFlow::Break;
-                    }
-                    let mut latest = None;
-                    for _ in 0..8 {
-                        match receiver.try_recv() {
-                            Ok(event) => latest = Some(event),
-                            Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                                return glib::ControlFlow::Break;
-                            }
-                        }
-                    }
-                    if let Some(crate::services::SearchEvent::Results {
-                        query, mut items, ..
-                    }) = latest
-                        && let Some(entry) = weak_entry.upgrade()
-                        && !query.is_empty()
-                        && query == entry.text().trim()
-                    {
-                        let Some(sm) = weak_sm.upgrade() else {
-                            return glib::ControlFlow::Break;
+                let sm = search_model_for_changed.clone();
+                let results = search_results_for_changed.clone();
+                let selection = selection_for_search.clone();
+                let syncing = syncing_for_search.clone();
+                let browser = Rc::downgrade(&state.browser);
+                let weak_state = weak_state_for_search.clone();
+                session_for_changed.update(
+                    crate::ui::search_session::SearchInput {
+                        root: path,
+                        show_hidden,
+                        recursive,
+                    },
+                    &query,
+                    restart,
+                    Rc::new(move |batch| {
+                        let (Some(browser), Some(state)) =
+                            (browser.upgrade(), weak_state.upgrade())
+                        else {
+                            return;
                         };
-                        items.retain(|item| {
-                            crate::ui::inline_search::search_path_present(&item.path)
-                        });
-                        search::update_results(
-                            &sm,
-                            &results,
-                            &selection_for_poll,
-                            &syncing_for_poll,
-                            items,
+                        let session = state
+                            .columns
+                            .borrow()
+                            .get(depth_for_search)
+                            .map(|column| column.search_session.clone());
+                        let Some(session) = session else {
+                            return;
+                        };
+                        let items = crate::ui::inline_search::eligible_results(
+                            &browser,
+                            &session,
+                            &batch.query,
+                            batch.items,
+                            batch.has_more,
                         );
-                    }
-                    glib::ControlFlow::Continue
-                });
-            }
-            if let Some(h) = handle.borrow().as_ref() {
-                h.query(&query);
-            }
-        });
+                        if search::update_results(&sm, &results, &selection, &syncing, items) {
+                            state.notify_search_selection_changed();
+                        }
+                    }),
+                );
+            },
+        );
 
         let rows::ColumnRows {
             factory,
@@ -1111,13 +1138,13 @@ impl ViewState {
         let weak_browser = Rc::downgrade(&self.browser);
         let weak_state_for_activate = Rc::downgrade(self);
         let map_for_activation = map.clone();
-        let search_handle_for_activate = search_handle.clone();
+        let search_active_for_activate = recursive_search_active.clone();
         let search_results_for_activate = search_results.clone();
         list.connect_activate(move |_, position| {
             if let Some(state) = weak_state_for_activate.upgrade() {
                 state.cancel_click_rename();
             }
-            if search_handle_for_activate.borrow().is_some() {
+            if search_active_for_activate.get() {
                 activate_recursive_search_result(
                     &weak_browser,
                     &search_results_for_activate,
@@ -1469,9 +1496,10 @@ impl ViewState {
             show_hidden,
             filter: filter_for_column,
             search_results,
-            search_handle,
-            search_generation,
+            search_session,
+            query_binding: Rc::new(RefCell::new(Some(query_binding))),
             search_model,
+            recursive_search_active,
         });
 
         if let Some(column) = self.columns.borrow().last() {
@@ -1616,6 +1644,8 @@ impl ViewState {
             column
                 .animation_generation
                 .set(column.animation_generation.get().saturating_add(1));
+            column.query_binding.take();
+            column.search_session.cancel();
             column.syncing_selection.set(true);
             column.selection.set_model(None::<&gio::ListModel>);
             column.filtered_model.set_model(None::<&gio::ListModel>);

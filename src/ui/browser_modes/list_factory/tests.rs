@@ -245,6 +245,7 @@ fn scrolling_defers_details_and_settling_preserves_rename_state() {
             let section = PaneSection {
                 view: fixture.view.clone().upcast(),
                 view_model: fixture.view.model().expect("selection").upcast(),
+                view_index: SourceIndexMap::watch(&fixture.view.model().expect("selection")),
                 selection: fixture
                     .view
                     .model()
