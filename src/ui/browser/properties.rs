@@ -856,9 +856,7 @@ impl ViewState {
         let layout = modal_layout(crate::assets::icons::INFO, &title, "Selection", "Close");
         layout.cancel.set_visible(false);
         layout.confirm.set_visible(false);
-        while let Some(child) = layout.actions.first_child() {
-            layout.actions.remove(&child);
-        }
+        layout.actions.set_visible(false);
 
         let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
         details.add_css_class("properties-details");

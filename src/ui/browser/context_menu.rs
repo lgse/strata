@@ -891,8 +891,9 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&multiple_transfer_separator);
     let multiple_archive_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     multiple.append(&compress_multiple);
-    multiple.append(&properties_multiple);
     multiple.append(&multiple_archive_separator);
+    multiple.append(&properties_multiple);
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
     multiple.append(&permanent_delete_multiple);
     multiple.set_visible(false);

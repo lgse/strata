@@ -1428,6 +1428,13 @@ impl BrowserView {
     }
 
     pub fn show_focused_properties(&self) -> bool {
+        if let Some(selected) = self.selected_search_results() {
+            if selected.is_empty() {
+                return false;
+            }
+            self.state.show_selection_properties(selected);
+            return true;
+        }
         self.state.sync_mode_selection();
         let selected = self.state.browser.selected_entries();
         if selected.len() > 1 {
