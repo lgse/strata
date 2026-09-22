@@ -12,8 +12,7 @@ pub(super) fn set_label(widget: &impl IsA<gtk::Accessible>, label: &str) {
     widget.update_property(&[gtk::accessible::Property::Label(label)]);
 }
 
-/// Spoken names for the location bar. GtkEntry does not use its tooltip as a
-/// name, and the confirm/cancel buttons are icon-only.
+// GTK does not derive accessible names from these tooltips.
 pub(super) const LOCATION_LABEL: &str = "Location (Ctrl+L)";
 pub(super) const LOCATION_CONFIRM_LABEL: &str = "Navigate (Enter)";
 pub(super) const LOCATION_CANCEL_LABEL: &str = "Cancel (Escape)";
