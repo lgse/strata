@@ -1,4 +1,15 @@
-# Archive creation
+# Archives
+
+## Extraction safety
+
+Parent components in archive member names are resolved without walking above
+the selected destination. Extraction continues with later members instead of
+stopping at a name such as `../report.txt`. Empty paths, absolute paths, and
+Windows drive prefixes remain invalid. All writes remain descriptor-relative
+and refuse symlink traversal; normal conflict renaming applies when sanitized
+names collide.
+
+## Archive creation
 
 Strata chooses compression according to the output container, not just the
 selected filename extension.
