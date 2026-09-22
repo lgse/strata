@@ -390,8 +390,13 @@ impl PreviewState {
 
     pub(super) fn hide_panel(&self) {
         self.release_sidebar_rail();
+        let restore_browser_focus = self
+            .pane
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focused| focused == self.pane || focused.is_ancestor(&self.pane));
+        let was_compact = self.sizing.is_compact();
         if let Some(split) = self.split.borrow().as_ref() {
-            let was_compact = self.sizing.is_compact();
             self.set_compact(split, false);
             // Hidden navigation has stale scroll metrics. Preserving them would
             // cancel breadcrumb reveal and retain blank space after navigation.
@@ -406,6 +411,20 @@ impl PreviewState {
             split.set_resize_start_child(true);
             split.set_resize_end_child(false);
             split.set_position(split.width());
+        }
+        if restore_browser_focus
+            && let Some(split) = self.split.borrow().as_ref()
+            && let Some(browser) = self
+                .sizing
+                .binding
+                .borrow()
+                .as_ref()
+                .and_then(|binding| binding.browser.upgrade())
+        {
+            split.add_tick_callback(move |_, _| {
+                browser.focus_file_view();
+                glib::ControlFlow::Break
+            });
         }
     }
 
