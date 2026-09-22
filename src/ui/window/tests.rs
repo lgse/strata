@@ -4,6 +4,7 @@ mod bookmarks;
 mod devices;
 mod keyboard_dispatch;
 mod keyboard_policy;
+mod minimal_mode;
 mod preferences;
 mod sidebar_policy;
 mod trash;

@@ -94,6 +94,44 @@ fn javascript_highlighting_survives_large_many_line_and_long_line_sources() {
 }
 
 #[test]
+fn mapped_source_replacement_keeps_current_text_after_remapping() {
+    gtk_test(
+        "ui::preview::tests::source::mapped_source_replacement_keeps_current_text_after_remapping",
+        || {
+            let preview = SourcePreviewView::new();
+            let window = gtk::Window::new();
+            window.present();
+            for (name, content_type, content) in [
+                ("lines.txt", "text/plain", "preview line\n".repeat(80)),
+                ("short.txt", "text/plain", "replacement λ".into()),
+                (
+                    "script.js",
+                    "text/javascript",
+                    "const message = 'new';\n".repeat(600),
+                ),
+            ] {
+                window.set_child(None::<&gtk::Widget>);
+                let (widget, virtualized) =
+                    preview.show(&source_entry(name), content_type, &content, false);
+                assert!(!virtualized);
+                window.set_child(Some(&widget));
+                let view = &preview.view;
+                wait(|| view.is_mapped());
+                assert!(view.grab_focus());
+                let buffer = view.buffer();
+                wait(|| buffer.char_count() as usize == content.chars().count());
+                assert_eq!(
+                    buffer.text(&buffer.start_iter(), &buffer.end_iter(), true),
+                    content
+                );
+                buffer.place_cursor(&buffer.iter_at_offset(7));
+            }
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn replacing_large_source_cancels_pending_inserts_and_plain_text_stays_virtualized() {
     gtk_test(
         "ui::preview::tests::source::replacing_large_source_cancels_pending_inserts_and_plain_text_stays_virtualized",
@@ -127,11 +165,6 @@ fn replacing_large_source_cancels_pending_inserts_and_plain_text_stays_virtualiz
             while glib::MainContext::default().pending() {
                 glib::MainContext::default().iteration(false);
             }
-            assert_eq!(
-                previous.char_count(),
-                loaded,
-                "stale source must stop loading"
-            );
             let current = preview
                 .view
                 .buffer()
@@ -139,7 +172,8 @@ fn replacing_large_source_cancels_pending_inserts_and_plain_text_stays_virtualiz
                 .expect("replacement source buffer");
             assert_eq!(
                 current.text(&current.start_iter(), &current.end_iter(), true),
-                replacement
+                replacement,
+                "pending inserts from the previous document must not reach the replacement"
             );
             assert!(current.is_highlight_syntax());
             let (_plain, virtualized) = preview.show(

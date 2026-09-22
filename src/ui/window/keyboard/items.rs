@@ -22,7 +22,7 @@ use crate::{
     },
 };
 
-impl Dispatcher {
+impl Dispatcher<'_> {
     pub(super) fn dismissal(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
         if event.key == Key::BackSpace
             && event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK)
@@ -117,7 +117,7 @@ impl Dispatcher {
         {
             Propagation::Stop
         } else if event.vim_navigation {
-            crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
+            crate::ui::focus_navigation::activate_native_arrow(self.window, event.key);
             Propagation::Stop
         } else {
             Propagation::Proceed

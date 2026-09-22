@@ -80,7 +80,7 @@ def test_paste_into_parent_uses_the_current_directory(strata, mode):
     strata.keyboard.press("alt+Up")
     strata.wait_for_directory(root)
     if mode != "Columns":
-        strata.wait_for_selection(["documents" if mode == "List" else "archive"])
+        strata.wait_for_selection(["documents"])
     strata.keyboard.press("ctrl+v")
 
     strata.wait(
@@ -105,15 +105,14 @@ def test_paste_into_explicit_selection_after_returning_to_parent(strata, mode, s
     strata.keyboard.press("ctrl+c")
     strata.keyboard.press("alt+Up")
     strata.wait_for_directory(fixture.root.name)
-    restored = "documents" if mode == "List" else "archive"
-    strata.wait_for_selection([restored])
+    strata.wait_for_selection(["documents"])
     if selection == "click":
-        strata.click_entry(restored)
+        strata.click_entry("documents")
     else:
         strata.keyboard.press(selection)
     destination = (
         "documents/notes (1).txt"
-        if mode == "List" and selection == "click"
+        if selection == "click"
         else "archive/notes.txt"
     )
     strata.keyboard.press("ctrl+v")

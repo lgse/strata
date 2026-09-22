@@ -98,10 +98,18 @@ def test_activation_without_selectable_application_shows_specific_empty_state(
     strata.wait_for_focused_entry("todo.txt")
 
 
-@pytest.mark.parametrize("target", ["todo.txt", "documents", "background"])
+@pytest.mark.parametrize("target", [
+    "todo.txt", "documents", "background",
+    pytest.param("minimal", marks=pytest.mark.preferences(minimal_mode=True)),
+])
 def test_open_with_launches_without_changing_default(open_with_app, strata, target):
     output, associations, contents = open_with_app
-    if target == "background":
+    if target == "minimal":
+        expected = strata.fixture.path("todo.txt")
+        strata.select_entry("todo.txt")
+        strata.wait_for_focused_entry("todo.txt")
+        strata.keyboard.press("shift+o")
+    elif target == "background":
         expected = strata.fixture.root
         strata.pointer.right_click(strata.pane(), at=strata.background_point())
         strata.wait(lambda: "Open With…" in strata.menu_items(), "folder menu")
@@ -109,7 +117,8 @@ def test_open_with_launches_without_changing_default(open_with_app, strata, targ
         expected = strata.fixture.path(target)
         strata.open_context_menu(target)
         strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
-    strata.choose_menu_item("Open With…")
+    if target != "minimal":
+        strata.choose_menu_item("Open With…")
     dialog = strata.wait_for_dialog()
     assert "Review Text Viewer" in dialog.dump()
     strata.keyboard.press("Return")

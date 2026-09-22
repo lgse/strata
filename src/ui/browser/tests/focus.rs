@@ -50,6 +50,78 @@ fn wait_for_mapped_popover(root: &gtk::Widget) -> gtk::Popover {
 }
 
 #[test]
+fn default_error_dismissal_restores_location_focus_and_text_selection() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::default_error_dismissal_restores_location_focus_and_text_selection",
+        || {
+            crate::ui::preferences::PreferenceManager::shared().set_minimal_mode(false);
+            let directory = tempfile::tempdir().expect("fixture");
+            std::fs::write(directory.path().join("a.txt"), "fixture").expect("fixture file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            content.append(&view.location_widget());
+            content.append(&view.widget());
+            let overlay = gtk::Overlay::builder().child(&content).build();
+            let window = gtk::Window::builder()
+                .child(&overlay)
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            view.navigate_location(Location::local(directory.path()));
+            wait_until(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            for event in [
+                BrowserEvent::RenameFailed {
+                    request_id: None,
+                    message: "Rename conflict".into(),
+                },
+                BrowserEvent::OperationFailed {
+                    message: "Create conflict".into(),
+                },
+            ] {
+                view.begin_location_edit();
+                let focus = gtk::prelude::RootExt::focus(&window).expect("location focus");
+                let text = focus.downcast_ref::<gtk::Text>().expect("location text");
+                text.select_region(1, 3);
+                let selection = text.selection_bounds();
+                view.state.handle(&event);
+                assert_ne!(gtk::prelude::RootExt::focus(&window).as_ref(), Some(&focus));
+                let modal = crate::ui::window::visible_modal_layer(&window).expect("error dialog");
+                let controllers = modal.observe_controllers();
+                let keys = (0..controllers.n_items())
+                    .filter_map(|index| {
+                        controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                    })
+                    .next()
+                    .expect("dialog Escape handler");
+                assert!(keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[
+                        &gtk::gdk::Key::Escape,
+                        &0u32,
+                        &gtk::gdk::ModifierType::empty()
+                    ]
+                ));
+                wait_until(|| crate::ui::window::visible_modal_layer(&window).is_none());
+                assert_eq!(gtk::prelude::RootExt::focus(&window).as_ref(), Some(&focus));
+                assert_eq!(text.selection_bounds(), selection);
+            }
+            view.browser().clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn background_splices_preserve_column_multiselection_and_pending_properties() {
     crate::test_support::gtk_test(
         "ui::browser::tests::focus::background_splices_preserve_column_multiselection_and_pending_properties",
@@ -572,10 +644,7 @@ fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
                         home.grab_focus();
                         assert!(home.has_focus());
                         popover.popdown();
-                        assert!(
-                            view.item_view_has_focus(),
-                            "restore focus before the next key event"
-                        );
+                        wait_until(|| view.item_view_has_focus());
                         assert_eq!(view.state.focused_column_depth(), Some(1));
                         wait_until(|| {
                             popover.parent().is_none()

@@ -10,7 +10,7 @@
 use std::{
     cell::{Cell, RefCell},
     path::{Path, PathBuf},
-    rc::Rc,
+    rc::{Rc, Weak},
 };
 
 use gtk::{glib, prelude::*};
@@ -50,6 +50,8 @@ pub(super) struct SearchCollectionOptions {
     pub(super) single_click: Rc<dyn Fn(FileEntry)>,
     pub(super) selection_changed: SearchSelectionChanged,
     pub(super) focus_items: Rc<dyn Fn()>,
+    /// Minimal mode listens for overlay swaps without owning the collection.
+    pub(super) listing_changed: Option<Weak<super::browser::ViewState>>,
 }
 
 enum Publication {
@@ -71,6 +73,8 @@ struct State {
     pending_update: RefCell<Option<Publication>>,
     detached: Cell<bool>,
     recursive: Cell<bool>,
+    force_recursive: Cell<bool>,
+    listing_changed: Option<Weak<super::browser::ViewState>>,
     context_menu_trigger: RefCell<Option<super::browser::ContextMenuTrigger>>,
     activate: Rc<dyn Fn(FileEntry)>,
     selection_callbacks: RefCell<Vec<SearchSelectionChanged>>,
@@ -358,9 +362,263 @@ impl InlineSearch {
             show_directory_listing(state);
         }
     }
+
+    /// Focuses the selected result, or the first row when none is selected.
+    pub fn focus_selected_or_first_row(&self) -> bool {
+        self.focus_at(None, true)
+    }
+
+    /// Moves the result highlight by one row without requiring list focus.
+    pub fn move_selection(&self, direction: i32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if !search_page_visible(state) {
+            return false;
+        }
+        let count = i32::try_from(state.collection.sorted.n_items()).unwrap_or(0);
+        if count == 0 {
+            return false;
+        }
+        let current = state
+            .collection
+            .current_position()
+            .map(|index| index as i32);
+        let next = match (current, direction < 0) {
+            (None, false) => 0,
+            (None, true) => count - 1,
+            (Some(index), false) => (index + 1).min(count - 1),
+            (Some(index), true) => index.saturating_sub(1),
+        };
+        state.collection.focus(next as u32, true)
+    }
+
+    /// Jumps to the first or last result row without requiring list focus.
+    pub fn jump_selection(&self, direction: i32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if !search_page_visible(state) {
+            return false;
+        }
+        let count = state.collection.sorted.n_items();
+        if count == 0 {
+            return false;
+        }
+        let next = if direction < 0 { 0 } else { count - 1 };
+        state.collection.focus(next, true)
+    }
+
+    pub fn current_index(&self) -> Option<u32> {
+        let state = self.state.as_ref()?;
+        search_page_visible(state).then(|| state.collection.current_position())?
+    }
+
+    pub fn hit_count(&self) -> u32 {
+        self.state
+            .as_ref()
+            .filter(|state| search_page_visible(state))
+            .map(|state| state.collection.sorted.n_items())
+            .unwrap_or(0)
+    }
+
+    pub fn selected_count(&self) -> u32 {
+        self.state
+            .as_ref()
+            .filter(|state| search_page_visible(state))
+            .map(|state| state.collection.selected_positions().len() as u32)
+            .unwrap_or(0)
+    }
+
+    pub fn index_is_selected(&self, index: u32) -> bool {
+        self.state
+            .as_ref()
+            .is_some_and(|state| state.collection.selection.is_selected(index))
+    }
+
+    pub fn focus_index(&self, index: u32, replace_selection: bool) -> bool {
+        self.focus_at(Some(index), replace_selection)
+    }
+
+    pub fn toggle_index(&self, index: u32) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if !search_page_visible(state) || index >= state.collection.selection.n_items() {
+            return false;
+        }
+        if state.collection.selection.is_selected(index) {
+            state.collection.selection.unselect_item(index);
+        } else {
+            state.collection.selection.select_item(index, false);
+        }
+        state
+            .collection
+            .gesture_selection
+            .replace(Some(state.collection.selection.selection().copy()));
+        true
+    }
+
+    pub fn select_index_range(&self, from: u32, to: u32) -> bool {
+        self.replace_range(from, to, true)
+    }
+
+    pub fn unselect_index_range(&self, from: u32, to: u32) -> bool {
+        self.replace_range(from, to, false)
+    }
+
+    pub fn invert_selection(&self) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if !search_page_visible(state) {
+            return false;
+        }
+        let count = state.collection.selection.n_items();
+        if count == 0 {
+            return false;
+        }
+        let selected = gtk::Bitset::new_empty();
+        for index in 0..count {
+            if !state.collection.selection.is_selected(index) {
+                selected.add(index);
+            }
+        }
+        apply_result_selection(state, &selected);
+        true
+    }
+
+    /// Hits on the search overlay, if that page is showing.
+    pub fn listing_entries(&self) -> Option<Vec<FileEntry>> {
+        let state = self.state.as_ref()?;
+        if !search_page_visible(state) {
+            return None;
+        }
+        Some(
+            state
+                .collection
+                .items()
+                .iter()
+                .map(super::browser::search_result_entry)
+                .collect(),
+        )
+    }
+
+    /// Whether a recursive search view is currently showing results.
+    pub fn has_results(&self) -> bool {
+        self.state.as_ref().is_some_and(|state| {
+            search_page_visible(state) && state.collection.sorted.n_items() > 0
+        })
+    }
+
+    /// Minimal `s` always recurses; listing `f` follows include-subfolders.
+    /// Changing the flag drops the current feed so the next query starts a new session.
+    pub fn set_force_recursive(&self, force: bool) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.force_recursive.replace(force) == force {
+            return false;
+        }
+        state.session.cancel();
+        true
+    }
+
+    pub fn force_recursive(&self) -> bool {
+        self.state
+            .as_ref()
+            .is_some_and(|state| state.force_recursive.get())
+    }
+
+    fn focus_at(&self, index: Option<u32>, replace_selection: bool) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if !search_page_visible(state) {
+            return false;
+        }
+        let index = index.unwrap_or_else(|| state.collection.current_position().unwrap_or(0));
+        state.collection.focus(index, replace_selection)
+    }
+
+    fn replace_range(&self, from: u32, to: u32, select: bool) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if !search_page_visible(state) {
+            return false;
+        }
+        let count = state.collection.selection.n_items();
+        if count == 0 {
+            return false;
+        }
+        let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
+        let selected = gtk::Bitset::new_empty();
+        for index in 0..count {
+            let in_range = index >= lo && index <= hi;
+            let keep = if select {
+                in_range
+            } else {
+                state.collection.selection.is_selected(index) && !in_range
+            };
+            if keep {
+                selected.add(index);
+            }
+        }
+        apply_result_selection(state, &selected);
+        true
+    }
+}
+
+fn search_page_visible(state: &State) -> bool {
+    state.stack.visible_child_name().as_deref() == Some("search")
+}
+
+fn apply_result_selection(state: &State, selected: &gtk::Bitset) {
+    state.collection.selection.set_selection(
+        selected,
+        &gtk::Bitset::new_range(0, state.collection.selection.n_items()),
+    );
+    state
+        .collection
+        .gesture_selection
+        .replace(Some(selected.copy()));
+}
+
+fn notify_listing_changed(state: &State) {
+    if let Some(view) = state.listing_changed.as_ref().and_then(Weak::upgrade) {
+        view.notify_visible_listing();
+    }
+}
+
+fn restore_displaced_focus(surface: &gtk::Widget, previous: Option<gtk::Widget>) {
+    let Some(previous) = previous.filter(|widget| widget.is_mapped()) else {
+        return;
+    };
+    let current = surface.root().and_then(|root| root.focus());
+    if current.as_ref() == Some(&previous)
+        || current
+            .as_ref()
+            .is_some_and(|focus| focus != surface && !focus.is_ancestor(surface))
+    {
+        return;
+    }
+    // A page swap may move focus into its new rows. Preserve text selection
+    // when returning it, and leave an intentional move outside the surface alone.
+    if let Some(text) = previous.downcast_ref::<gtk::Text>() {
+        text.grab_focus_without_selecting();
+    } else if let Some(entry) = previous.downcast_ref::<gtk::Entry>() {
+        entry.grab_focus_without_selecting();
+    } else {
+        previous.grab_focus();
+    }
 }
 
 fn show_directory_listing(state: &State) {
+    if !search_page_visible(state) {
+        state.session.cancel();
+        return;
+    }
     state.session.cancel();
     if state.updating.get() || state.publishing.get() {
         state.pending_update.replace(Some(Publication::Directory));
@@ -371,6 +629,7 @@ fn show_directory_listing(state: &State) {
     state.stack.set_visible_child_name("files");
     state.updating.set(false);
     state.emit_selection_changed();
+    notify_listing_changed(state);
 }
 
 fn install_marquee(state: &Rc<State>, scroll: &gtk::ScrolledWindow, overlay: &gtk::Overlay) {
@@ -428,10 +687,13 @@ pub(super) fn wrap(
         single_click,
         selection_changed,
         focus_items,
+        listing_changed,
     } = options;
     let stack = gtk::Stack::builder().hexpand(true).vexpand(true).build();
     stack.add_named(content, Some("files"));
     let results = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    results.set_hexpand(true);
+    results.set_vexpand(true);
     let status = gtk::Label::new(None);
     status.add_css_class("status-message");
     results.append(&status);
@@ -447,6 +709,8 @@ pub(super) fn wrap(
             focus_items,
         },
     );
+    overlay.set_hexpand(true);
+    overlay.set_vexpand(true);
     results.append(&overlay);
     stack.add_named(&results, Some("search"));
     let state = Rc::new(State {
@@ -463,6 +727,8 @@ pub(super) fn wrap(
         pending_update: RefCell::new(None),
         detached: Cell::new(false),
         recursive: Cell::new(false),
+        force_recursive: Cell::new(false),
+        listing_changed,
         context_menu_trigger: RefCell::new(None),
         activate,
         selection_callbacks: RefCell::new(vec![selection_changed]),
@@ -561,6 +827,7 @@ pub(super) fn wrap(
         &state.session,
         move |text, is_recursive, restart| {
             let state = &query_state;
+            let is_recursive = is_recursive || state.force_recursive.get();
             state.recursive.set(is_recursive);
             recursive.set(is_recursive);
             let query = text.trim();
@@ -568,7 +835,17 @@ pub(super) fn wrap(
                 show_directory_listing(state);
                 return;
             }
+            let restore = state
+                .stack
+                .root()
+                .and_then(|root| root.focus())
+                .filter(|focus| {
+                    focus != state.stack.upcast_ref::<gtk::Widget>()
+                        && !focus.is_ancestor(&state.stack)
+                });
             state.stack.set_visible_child_name("search");
+            restore_displaced_focus(state.stack.upcast_ref(), restore);
+            notify_listing_changed(state);
             if state.collection.sorted.n_items() == 0 {
                 state.status.set_text("Searching…");
                 state.status.set_visible(true);
@@ -630,6 +907,7 @@ fn update_results(state: &State, items: Vec<SearchItem>, recursive: bool) {
     state.collection.update(&items, recursive);
     state.updating.set(false);
     state.emit_selection_changed();
+    notify_listing_changed(state);
 }
 
 pub(super) fn eligible_results(

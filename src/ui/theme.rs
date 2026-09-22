@@ -900,7 +900,7 @@ fn source_style_scheme_xml(tokens: &ThemeTokens, palette: Option<&SourcePalette>
   <color name="type" value="{}"/>
   <color name="statement" value="{}"/>
   <color name="preprocessor" value="{}"/>
-  <style name="text" foreground="text" background="surface"/>
+  <style name="text" foreground="text" background="background"/>
   <style name="selection" foreground="background" background="accent"/>
   <style name="cursor" foreground="accent"/>
   <style name="current-line" background="background"/>
@@ -948,12 +948,14 @@ fn apply_interface_font(root_font_px: f64) {
 
 fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     let scale = root_font_px / 13.0;
-    let header = (40.0 * scale).round();
+    let header = (44.0 * scale).round();
     // Column headers add six pixels of padding and three extra border pixels.
     let column_header = header - 9.0;
+    // Preview headers reserve three extra pixels for the miller-style focus indicator.
+    let preview_header = header - 3.0;
     let control = (24.0 * scale).round();
     let sizing = format!(
-        "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n"
+        "headerbar, headerbar > windowhandle > box, .mode-pane-header {{ min-height: {header}px; }}\n.preview-header {{ min-height: {preview_header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n"
     );
     let colors = format!(
         "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",

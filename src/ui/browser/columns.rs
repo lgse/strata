@@ -139,10 +139,17 @@ pub(super) struct ColumnView {
     pub(super) search_session: crate::ui::search_session::SearchSession,
     query_binding: Rc<RefCell<Option<super::collection::FilterQueryBinding>>>,
     pub(super) search_model: gtk::StringList,
+    pub(super) force_recursive_search: Rc<Cell<bool>>,
     pub(super) recursive_search_active: Rc<Cell<bool>>,
 }
 
 impl ColumnView {
+    pub(super) fn settle_filter_query(&self) {
+        if let Some(binding) = self.query_binding.borrow().as_ref() {
+            binding.settle_now();
+        }
+    }
+
     pub(super) fn context_menu_target(
         &self,
         position: Option<usize>,
@@ -410,17 +417,24 @@ fn set_active_path_style(row: &gtk::Box, active: bool) {
     }
 }
 
-pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
+pub(super) fn set_clipboard_path_style(row: &gtk::Box, cut: bool, copied: bool) {
+    let copied = copied && !cut;
     if cut {
         row.add_css_class("cut");
     } else {
         row.remove_css_class("cut");
+    }
+    if copied {
+        row.add_css_class("copied");
+    } else {
+        row.remove_css_class("copied");
     }
     if let Some(icon) = row
         .first_child()
         .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
     {
         icon.set_cut(cut);
+        icon.set_copied(copied);
     }
 }
 
@@ -608,9 +622,17 @@ impl ViewState {
             scroll_column_to(column, position);
         }
         column.list.grab_focus();
+        let focus_after_rebuild = column
+            .list
+            .root()
+            .and_then(|root| root.focus())
+            .map(|focus| focus.downgrade());
         let list = column.list.downgrade();
         glib::idle_add_local_once(move || {
-            if let Some(list) = list.upgrade() {
+            if let Some(list) = list.upgrade()
+                && list.root().and_then(|root| root.focus())
+                    == focus_after_rebuild.and_then(|focus| focus.upgrade())
+            {
                 list.grab_focus();
             }
         });
@@ -699,10 +721,15 @@ impl ViewState {
         if !self.interactive {
             header_actions.append(&pane_new_folder_button(Rc::downgrade(self), depth));
         }
-        header_actions.append(&pane_refresh_button(&self.browser, depth));
+        let refresh = pane_refresh_button(&self.browser, depth);
+        header_actions.append(&refresh);
+        super::pane_header::bind_minimal_chrome(&refresh);
         let sort_direction_button = column_sort_direction_toggle(&self.browser, depth);
         header_actions.append(&sort_direction_button);
-        header_actions.append(&column_sort_menu(&self.browser, depth));
+        super::pane_header::bind_minimal_chrome(&sort_direction_button);
+        let sort_menu = column_sort_menu(&self.browser, depth);
+        header_actions.append(&sort_menu);
+        super::pane_header::bind_minimal_chrome(&sort_menu);
 
         let (filter_entry, filter_revealer, filter_button) =
             crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
@@ -720,12 +747,15 @@ impl ViewState {
             }
         });
         header_actions.append(&filter_button);
+        super::pane_header::bind_minimal_chrome(&filter_button);
+        super::pane_header::bind_minimal_chrome(&filter_revealer);
         if depth > 0 {
             let close = gtk::Button::builder()
                 .tooltip_text("Close this pane")
                 .build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
             crate::ui::controls::pane_header_action(&close);
+            super::pane_header::bind_minimal_chrome(&close);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
                 if let Some(browser) = weak_browser.upgrade() {
@@ -785,9 +815,6 @@ impl ViewState {
         let filter_for_column = filter.clone();
         let search_active_for_selection = recursive_search_active.clone();
         selection.connect_selection_changed(move |selection, position, count| {
-            if syncing_selection_changed.get() {
-                return;
-            }
             if search_active_for_selection.get() {
                 if !multiple_selection.get() && selection.selection().size() > 1 {
                     let focused = (position..position.saturating_add(count))
@@ -800,8 +827,14 @@ impl ViewState {
                     }
                 }
                 if let Some(state) = weak_selection_state.upgrade() {
-                    state.notify_search_selection_changed();
+                    if !syncing_selection_changed.get() {
+                        state.notify_search_selection_changed();
+                    }
+                    state.notify_visible_listing();
                 }
+                return;
+            }
+            if syncing_selection_changed.get() {
                 return;
             }
             let mut filtered_positions = bitset_positions(&selection.selection());
@@ -849,6 +882,7 @@ impl ViewState {
             Rc::new(RefCell::new(Vec::new()));
         let search_session = crate::ui::search_session::SearchSession::default();
         let search_model = gtk::StringList::new(&[]);
+        let force_recursive_search: Rc<Cell<bool>> = Rc::new(Cell::new(false));
 
         let weak_state_for_search = Rc::downgrade(self);
         let depth_for_search = depth;
@@ -861,10 +895,12 @@ impl ViewState {
         let selection_for_search = selection.clone();
         let syncing_for_search = syncing_selection.clone();
         let filter_query_for_search = filter_query.clone();
+        let force_recursive_for_search = force_recursive_search.clone();
         let query_binding = bind_filter_query(
             &filter_entry,
             &search_session,
             move |text, recursive, restart| {
+                let recursive = recursive || force_recursive_for_search.get();
                 if restart {
                     session_for_changed.cancel();
                     let changed = search::update_results(
@@ -874,8 +910,11 @@ impl ViewState {
                         &syncing_for_search,
                         Vec::new(),
                     );
-                    if changed && let Some(state) = weak_state_for_search.upgrade() {
-                        state.notify_search_selection_changed();
+                    if let Some(state) = weak_state_for_search.upgrade() {
+                        if changed {
+                            state.notify_search_selection_changed();
+                        }
+                        state.notify_visible_listing();
                     }
                 }
                 let query = text.trim().to_string();
@@ -896,6 +935,9 @@ impl ViewState {
                         &filtered_model_for_search,
                         &model_for_search,
                     );
+                    if let Some(state) = weak_state_for_search.upgrade() {
+                        state.notify_visible_listing();
+                    }
                     return;
                 }
                 let Some(state) = weak_state_for_search.upgrade() else {
@@ -914,6 +956,7 @@ impl ViewState {
                         &filtered_model_for_search,
                         &model_for_search,
                     );
+                    state.notify_visible_listing();
                     apply_filter_query(
                         &filtered_model_for_search,
                         &filter,
@@ -971,6 +1014,7 @@ impl ViewState {
                         if search::update_results(&sm, &results, &selection, &syncing, items) {
                             state.notify_search_selection_changed();
                         }
+                        state.notify_visible_listing();
                     }),
                 );
             },
@@ -985,8 +1029,10 @@ impl ViewState {
             &map,
             &selection,
             &modified_selection,
-            &recursive_search_active,
-            &search_results,
+            rows::ColumnSearchBind {
+                recursive_active: &recursive_search_active,
+                results: &search_results,
+            },
         );
 
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
@@ -1499,6 +1545,7 @@ impl ViewState {
             search_session,
             query_binding: Rc::new(RefCell::new(Some(query_binding))),
             search_model,
+            force_recursive_search,
             recursive_search_active,
         });
 

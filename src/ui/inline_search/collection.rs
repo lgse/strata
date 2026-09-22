@@ -126,21 +126,18 @@ impl ResultCollection {
         }
         if exclusive {
             self.gesture_selection.borrow_mut().take();
+            self.selection.select_item(position, true);
+            self.gesture_selection
+                .replace(Some(self.selection.selection().copy()));
         }
-        self.selection.select_item(position, exclusive);
-        self.gesture_selection
-            .replace(Some(self.selection.selection().copy()));
         self.restore_focus(position);
         true
     }
 
     fn restore_focus(&self, position: u32) {
         self.view.grab_focus();
-        if let Some(list) = self.view.downcast_ref::<gtk::ListView>() {
-            list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
-        } else if let Some(grid) = self.view.downcast_ref::<gtk::GridView>() {
-            grid.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
-        }
+        // FOCUS before the view has a real height collapses the widget pool.
+        crate::ui::browser::scroll_collection_when_allocated(&self.view, position);
     }
 
     pub(super) fn first_visual_row(&self, position: u32) -> bool {

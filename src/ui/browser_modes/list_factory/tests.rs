@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use super::*;
 use crate::{
-    model::{EntryKind, MetadataValue},
+    model::{EntryKind, Location, MetadataValue},
     services::{
         DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError,
         MetadataOutcome, MetadataRequest,
@@ -74,7 +74,7 @@ struct Fixture {
     browser: Option<Rc<Browser>>,
     source: Rc<Source>,
     index: SourceIndexMap,
-    cuts: Rc<RefCell<HashSet<Location>>>,
+    marks: Rc<RefCell<super::super::ClipboardMarks>>,
     scrolling: Rc<Cell<bool>>,
     items: Rc<RefCell<Vec<BoundModeItem>>>,
     factory: gtk::SignalListItemFactory,
@@ -104,7 +104,7 @@ impl Fixture {
         let sorted = gtk::SortListModel::new(Some(model), Some(sorter));
         let selection = gtk::MultiSelection::new(Some(sorted.clone()));
         let columns = ListColumnLayout::new();
-        let cuts = Rc::new(RefCell::new(HashSet::new()));
+        let marks = Rc::new(RefCell::new(super::super::ClipboardMarks::default()));
         let scrolling = Rc::new(Cell::new(false));
         let items = Rc::new(RefCell::new(Vec::new()));
         let factory = ListFactory {
@@ -120,7 +120,7 @@ impl Fixture {
                 super::super::BrowserMode::List,
             ))),
             transfers: Rc::new(RefCell::new(None)),
-            cuts: cuts.clone(),
+            marks: marks.clone(),
             columns: columns.clone(),
             scrolling: scrolling.clone(),
             bound_items: items.clone(),
@@ -139,7 +139,7 @@ impl Fixture {
             browser: Some(browser),
             source,
             index,
-            cuts,
+            marks,
             scrolling,
             items,
             factory,
@@ -262,7 +262,7 @@ fn scrolling_defers_details_and_settling_preserves_rename_state() {
                 0,
                 &fixture.index,
                 &section,
-                &fixture.cuts.borrow(),
+                &fixture.marks.borrow(),
             );
             assert!(!row.widget.has_css_class("cut"));
             assert_eq!(

@@ -5,7 +5,8 @@ use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
 use crate::ui::{
-    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+    preferences::PreferenceManager, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
+    top_bar_navigation::TopBarNavigation,
 };
 
 pub(super) struct TextPreview;
@@ -18,7 +19,10 @@ impl PreviewProvider for TextPreview {
                 entry: request.entry,
                 content_type: "text/plain".into(),
                 content: PreviewContent::Text {
-                    content: "Space opens quick preview.\n".into(),
+                    content: (0..80)
+                        .map(|index| format!("preview line {index}"))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                     truncated: false,
                 },
             }))
@@ -39,8 +43,11 @@ fn exercise_type_to_search() {
     PreferenceManager::seed_saved_preferences_for_test();
     load_styles();
     let preferences = PreferenceManager::shared();
+    // The saved fixture enables minimal mode; default-map scenarios opt out.
+    preferences.set_minimal_mode(false);
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("notes.txt"), b"preview fixture").expect("fixture file");
+    std::fs::write(fixture.path().join("notebook.txt"), b"second match").expect("fixture file");
     std::fs::create_dir(fixture.path().join("folder")).expect("fixture directory");
     std::fs::write(fixture.path().join("archive.zip"), b"unsupported fixture")
         .expect("unsupported file");
@@ -73,6 +80,7 @@ fn exercise_type_to_search() {
             preview: preview.clone(),
             type_to_search,
             shortcuts: ShortcutFooter::new(BrowserMode::Columns),
+            open_settings: std::rc::Rc::new(|| {}),
         },
     );
     let controllers = window.observe_controllers();
@@ -226,6 +234,64 @@ fn exercise_type_to_search() {
         assert!(press(&keys, gtk::gdk::Key::Escape));
     }
 
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_view_mode(mode);
+        for ctrl_f in [false, true] {
+            browser.focus_active();
+            wait_until(|| {
+                view.item_view_has_focus()
+                    && gtk::prelude::RootExt::focus(&window)
+                        .is_some_and(|focus| focus.is_mapped() && !focus.is::<gtk::Stack>())
+            });
+            if ctrl_f {
+                assert!(keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[
+                        &gtk::gdk::Key::f,
+                        &0u32,
+                        &gtk::gdk::ModifierType::CONTROL_MASK
+                    ],
+                ));
+            } else {
+                assert!(press(&keys, gtk::gdk::Key::n));
+            }
+            let focused = gtk::prelude::RootExt::focus(&window)
+                .expect("filter focus")
+                .downcast::<gtk::Text>()
+                .expect("entry text");
+            if ctrl_f {
+                focused.emit_by_name::<()>("insert-at-cursor", &[&"n"]);
+            }
+            wait_until(|| {
+                view.search_result_listing()
+                    .is_some_and(|entries| entries.len() == 2)
+            });
+            assert_eq!(focused.text(), "n", "{mode:?}, Ctrl+F={ctrl_f}");
+            assert_eq!(
+                focused.selection_bounds(),
+                None,
+                "typing must retain the caret"
+            );
+            assert_eq!(focused.position(), 1);
+            assert!(
+                view.filter_has_focus(),
+                "{mode:?}, Ctrl+F={ctrl_f}: focus after n is {:?}",
+                gtk::prelude::RootExt::focus(&window)
+            );
+            focused.emit_by_name::<()>("insert-at-cursor", &[&"otes"]);
+            wait_until(|| {
+                view.search_result_listing().is_some_and(|entries| {
+                    entries.len() == 1 && entries[0].display_name == "notes.txt"
+                })
+            });
+            assert_eq!(focused.text(), "notes", "{mode:?}, Ctrl+F={ctrl_f}");
+            assert_eq!(focused.selection_bounds(), None);
+            assert_eq!(focused.position(), 5);
+            assert!(view.filter_has_focus());
+            assert!(press(&keys, gtk::gdk::Key::Escape));
+            wait_until(|| view.search_result_listing().is_none());
+        }
+    }
     browser.focus_active();
     wait_until(|| view.item_view_has_focus());
     press(&keys, gtk::gdk::Key::n);

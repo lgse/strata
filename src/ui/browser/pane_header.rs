@@ -12,6 +12,15 @@ use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+/// Hides pane chrome while minimal mode is on, including chooser panes.
+pub(in crate::ui) fn bind_minimal_chrome(widget: &impl IsA<gtk::Widget>) {
+    crate::ui::preferences::PreferenceManager::shared().bind_preference(
+        widget,
+        crate::ui::preferences::PreferenceManager::minimal_mode,
+        |widget, minimal| widget.set_visible(!minimal),
+    );
+}
+
 pub(in crate::ui) fn pane_new_folder_button(
     state: std::rc::Weak<ViewState>,
     depth: usize,

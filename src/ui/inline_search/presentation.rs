@@ -111,6 +111,20 @@ impl ResultWidgets {
             ResultKind::Icons { thumbnail_size } => thumbnail_size.get(),
         };
         let path = relative_result_path(root, &result.path);
+        // GTK 4.14 rebinds an unchanged row when the result model grows.
+        // Keep a texture that already belongs to this path instead of
+        // flashing the fallback and dropping a loaded thumbnail.
+        let keep_loaded = !result.is_directory
+            && self.icon.texture().is_some()
+            && match &self.labels {
+                Labels::Rows { name, origin } => {
+                    name.text().as_str() == result.name && origin.text().as_str() == path
+                }
+                Labels::Icons { name, origin } => {
+                    name.text().as_deref() == Some(result.name.as_str())
+                        && origin.text().as_str() == path
+                }
+            };
         match &self.labels {
             Labels::Rows { name, origin } => {
                 name.set_text(&result.name);
@@ -134,7 +148,7 @@ impl ResultWidgets {
                 crate::assets::icons::FOLDER,
                 size,
             );
-        } else {
+        } else if !keep_loaded {
             thumbnail::set_thumbnail_or_icon_for_path(
                 &self.icon,
                 &result.path,

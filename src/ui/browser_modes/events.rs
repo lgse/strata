@@ -14,28 +14,31 @@ use crate::{
 impl ModeViews {
     #[cfg(test)]
     pub fn handle(&mut self, event: &BrowserEvent) {
-        self.handle_with_deferred_empty(event, false);
+        if let Some(restore) = self.handle_with_deferred_empty(event, false) {
+            restore.apply();
+        }
     }
 
-    pub(crate) fn handle_with_deferred_empty(&mut self, event: &BrowserEvent, defer_empty: bool) {
-        if self.handle_structure_event(event) {
-            return;
+    #[must_use = "apply navigation restoration after releasing the ModeViews borrow"]
+    pub(crate) fn handle_with_deferred_empty(
+        &mut self,
+        event: &BrowserEvent,
+        defer_empty: bool,
+    ) -> Option<super::navigation::NavigationRestore> {
+        if self.handle_structure_event(event) || self.handle_rows_event(event, defer_empty) {
+            return None;
         }
-        if self.handle_rows_event(event, defer_empty) {
-            return;
+        let mut restore = None;
+        if !self.handle_loading_event(event, defer_empty, &mut restore) {
+            self.handle_selection_event(event);
         }
-        if self.handle_loading_event(event, defer_empty) {
-            return;
-        }
-        self.handle_selection_event(event);
+        restore
     }
 
     fn handle_structure_event(&mut self, event: &BrowserEvent) -> bool {
         match event {
             BrowserEvent::NavigationStarting => {
-                if self.mode == BrowserMode::List
-                    && let Some(pane) = self.list_pane.as_ref()
-                {
+                if let Some(pane) = self.single_pane() {
                     self.list_navigation
                         .borrow_mut()
                         .capture(pane, &self.browser);
@@ -179,7 +182,12 @@ impl ModeViews {
         true
     }
 
-    fn handle_loading_event(&mut self, event: &BrowserEvent, defer_empty: bool) -> bool {
+    fn handle_loading_event(
+        &mut self,
+        event: &BrowserEvent,
+        defer_empty: bool,
+        restore: &mut Option<super::navigation::NavigationRestore>,
+    ) -> bool {
         if let BrowserEvent::SortingFinished { depth } | BrowserEvent::ColumnReloaded { depth } =
             event
         {
@@ -227,24 +235,19 @@ impl ModeViews {
                 self.update_panes(*depth, |pane| {
                     pane.finish_loading(*truncated, defer_empty, &positions)
                 });
-                if self.mode == BrowserMode::List
-                    && let Some(pane) = self.list_pane.as_ref().filter(|pane| pane.depth == *depth)
-                {
-                    self.list_navigation
+                if let Some(pane) = self.single_pane_at(*depth) {
+                    *restore = self
+                        .list_navigation
                         .borrow_mut()
-                        .restore(pane, &self.browser);
+                        .take_restore(pane, &self.browser);
                 }
-                if restore_cursor {
+                if restore_cursor && restore.is_none() {
                     self.focus_visible_pane(*depth);
                 }
             }
             BrowserEvent::LoadFailed { depth, message } => {
                 self.update_panes(*depth, |pane| pane.fail_loading(message));
-                if self
-                    .list_pane
-                    .as_ref()
-                    .is_some_and(|pane| pane.depth == *depth)
-                {
+                if self.single_pane_at(*depth).is_some() {
                     self.list_navigation.borrow_mut().cancel();
                 }
             }
@@ -284,7 +287,7 @@ impl ModeViews {
     }
 
     fn handle_selection_event(&self, event: &BrowserEvent) {
-        if self.mode == BrowserMode::List && self.list_navigation.borrow().is_restoring() {
+        if self.mode != BrowserMode::Columns && self.list_navigation.borrow().is_restoring() {
             return;
         }
         match event {

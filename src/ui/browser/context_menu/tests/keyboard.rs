@@ -145,7 +145,7 @@ fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
                         wait_until(|| !popup.is_mapped());
                         assert_eq!(selected_locations(), before);
                         assert_eq!(native_selection_count(&view), 2);
-                        assert_eq!(gtk::prelude::RootExt::focus(&window), origin);
+                        wait_until(|| gtk::prelude::RootExt::focus(&window) == origin);
 
                         let popup = open_menu(&view, Some("notes.txt"));
                         press(&popup, Key::Escape);

@@ -100,14 +100,10 @@ pub(super) fn start(
                         });
                         return;
                     }
-                    if unique_name {
-                        emit(OperationEvent::EntryCreated {
-                            request_id: id,
-                            location,
-                        });
-                    } else {
-                        emit(OperationEvent::Created { request_id: id });
-                    }
+                    emit(OperationEvent::EntryCreated {
+                        request_id: id,
+                        location,
+                    });
                 }
                 // Retry only a collision from atomic creation, never a preflight exists() check.
                 Err(error)

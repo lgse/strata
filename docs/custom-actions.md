@@ -1,6 +1,8 @@
 # Custom actions
 
-Custom actions add your own scripts to the file and folder context menus.
+Custom actions add your own scripts to the file and folder context menus. In
+[minimal mode](minimal-mode.md), **;** then **1**–**9** / **0** runs the first
+ten matching actions on the focused item or filled selection.
 
 They are ordinary programs running with your permissions. There is no sandbox and
 no install step beyond enabling an action. Strata validates the definition and the
@@ -88,7 +90,8 @@ asks you to **Replace script** or **Keep draft**, without opening another dialog
 Code replacement can be undone in the editor; drafts for the other runtimes are retained.
 Escape or clicking outside closes only the dropdown, leaving the editor open.
 Searching, browsing, or applying a template never saves or executes it. Review
-and save the action, then launch it from its file/folder context menu.
+and save the action, then launch it from its file/folder context menu or, in
+minimal mode, **;** then a digit.
 
 The documented Python starter and every Python recipe include the same maintained
 [`context()` reference](../data/actions/context-api.txt) as a module docstring.

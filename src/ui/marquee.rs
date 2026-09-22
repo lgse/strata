@@ -323,9 +323,11 @@ pub(super) fn install_shared_origin_surface(
     let gesture = gtk::GestureDrag::new();
     gesture.set_button(1);
     let target_for_begin = target.clone();
-    let surface_for_begin = surface.clone();
     gesture.connect_drag_begin(move |gesture, x, y| {
         target_for_begin.replace(None);
+        let Some(surface_for_begin) = gesture.widget() else {
+            return;
+        };
         let Some(picked) = surface_for_begin.pick(x, y, gtk::PickFlags::DEFAULT) else {
             return;
         };
@@ -353,8 +355,10 @@ pub(super) fn install_shared_origin_surface(
         target_for_begin.replace(Some(state));
     });
     let target_for_update = target.clone();
-    let surface_for_update = surface.clone();
     gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
+        let Some(surface_for_update) = gesture.widget() else {
+            return;
+        };
         let Some((start_x, start_y)) = gesture.start_point() else {
             return;
         };

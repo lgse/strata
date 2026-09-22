@@ -3,6 +3,10 @@
 use super::*;
 use std::time::Instant;
 
+fn application_icon(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::Image {
+    choice_icon(app.icon(), display)
+}
+
 fn desktop_app(name: &str, arguments: &str, extra: &str) -> gio::AppInfo {
     let key = glib::KeyFile::new();
     key.load_from_data(
@@ -15,6 +19,134 @@ fn desktop_app(name: &str, arguments: &str, extra: &str) -> gio::AppInfo {
     gio_unix::DesktopAppInfo::from_keyfile(&key)
         .expect("application")
         .upcast()
+}
+
+#[test]
+fn asynchronous_choices_use_every_type_and_preserve_launch_identity() {
+    crate::test_support::gtk_test(
+        "ui::open_with::tests::asynchronous_choices_use_every_type_and_preserve_launch_identity",
+        || {
+            let applications = glib::user_data_dir().join("applications");
+            std::fs::create_dir_all(&applications).expect("applications");
+            for (id, name, types) in [
+                (
+                    "a-common",
+                    "A common",
+                    "text/plain;image/png;inode/directory;",
+                ),
+                (
+                    "b-common",
+                    "A common",
+                    "text/plain;image/png;inode/directory;",
+                ),
+                (
+                    "z-common",
+                    "Z common",
+                    "text/plain;image/png;inode/directory;",
+                ),
+                ("text-only", "Text only", "text/plain;"),
+            ] {
+                std::fs::write(applications.join(format!("{id}.desktop")), format!(
+                    "[Desktop Entry]\nType=Application\nName={name}\nExec=/bin/true %U\nMimeType={types}\n"
+                )).expect("desktop file");
+            }
+            std::fs::create_dir_all(glib::user_config_dir()).expect("config");
+            std::fs::write(glib::user_config_dir().join("mimeapps.list"),
+                "[Default Applications]\ntext/plain=text-only.desktop;\nimage/png=z-common.desktop;\n[Added Associations]\ntext/plain=text-only.desktop;z-common.desktop;b-common.desktop;a-common.desktop;\nimage/png=z-common.desktop;a-common.desktop;b-common.desktop;\ninode/directory=z-common.desktop;b-common.desktop;a-common.desktop;\n"
+            ).expect("associations");
+            let root = tempfile::tempdir().expect("files");
+            let text = root.path().join("text.txt");
+            let image = root.path().join("image.png");
+            std::fs::write(&text, "text\n").expect("text file");
+            std::fs::write(&image, b"\x89PNG\r\n\x1a\n").expect("image file");
+            let text = gio::File::for_path(text);
+            let image = gio::File::for_path(image);
+            let folder = gio::File::for_path(root.path());
+            let context = glib::MainContext::default();
+            for files in [
+                vec![text.clone(), image.clone()],
+                vec![image, text.clone()],
+                vec![folder, text.clone()],
+            ] {
+                let choices = context
+                    .block_on(applications_for_files(&files))
+                    .expect("application choices");
+                let names = choices
+                    .recommended
+                    .iter()
+                    .map(|app| app.display_name.as_str())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    names,
+                    ["A common", "A common", "Z common"],
+                    "recommendations do not depend on selection order or its first type"
+                );
+                assert_eq!(
+                    choices
+                        .recommended
+                        .iter()
+                        .map(|app| app.id.as_deref())
+                        .collect::<Vec<_>>(),
+                    [
+                        Some("a-common.desktop"),
+                        Some("b-common.desktop"),
+                        Some("z-common.desktop")
+                    ],
+                    "same-name applications use stable desktop-ID order"
+                );
+                assert!(
+                    choices
+                        .other
+                        .iter()
+                        .any(|app| app.id.as_deref() == Some("text-only.desktop")),
+                    "non-common apps remain explicit alternatives"
+                );
+                for description in choices.recommended {
+                    let expected_id = description.id.clone();
+                    let app = ApplicationChoice {
+                        description,
+                        app: None,
+                    }
+                    .resolve()
+                    .expect("original installed application");
+                    assert_eq!(app.id().as_deref(), expected_id.as_deref());
+                    assert!(app.supports_uris());
+                }
+            }
+            let choices = context
+                .block_on(applications_for_files(&[text]))
+                .expect("single type");
+            let description = choices
+                .recommended
+                .into_iter()
+                .find(|app| app.id.as_deref() == Some("text-only.desktop"))
+                .expect("single-type default");
+            std::fs::remove_file(applications.join("text-only.desktop"))
+                .expect("remove application");
+            assert!(
+                ApplicationChoice {
+                    description,
+                    app: None
+                }
+                .resolve()
+                .is_err(),
+                "vanished application is not launched from a stale command snapshot"
+            );
+            let missing = gio::File::for_path(root.path().join("missing"));
+            assert!(
+                context
+                    .block_on(applications_for_files(&[missing]))
+                    .is_err()
+            );
+            let broken = root.path().join("broken");
+            std::os::unix::fs::symlink(root.path().join("missing"), &broken).expect("broken link");
+            assert!(
+                context
+                    .block_on(applications_for_files(&[gio::File::for_path(broken)]))
+                    .is_err()
+            );
+        },
+    );
 }
 
 fn path_only_app() -> gio::AppInfo {

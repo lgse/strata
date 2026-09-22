@@ -156,6 +156,7 @@ impl SidebarState {
             pending_scroll: Cell::new(None),
             rebuild_queued: Cell::new(false),
             scroll_restore_queued: Cell::new(false),
+            minimal_chord_teardown: RefCell::new(None),
         })
     }
 
@@ -220,14 +221,15 @@ impl SidebarState {
             .push((location.clone(), row.clone()));
         install_sidebar_file_drop(&self.view, row, location.clone());
         let browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
+        let sidebar = self.widget.downgrade();
         let keyboard_activation = Rc::new(Cell::new(false));
         let activating = keyboard_activation.clone();
         row.connect_activate(move |_| activating.set(true));
-        row.connect_clicked(move |_| {
+        row.connect_clicked(move |row| {
             let select_first = keyboard_activation.replace(false);
-            select_sidebar_row(&sidebar, &selected_row);
+            if let Some(sidebar) = sidebar.upgrade() {
+                select_sidebar_row(&sidebar, row);
+            }
             if let Some(browser) = browser.upgrade() {
                 match navigation {
                     PlaceNavigation::Direct => {
@@ -240,6 +242,115 @@ impl SidebarState {
             }
         });
     }
+
+    /// Visible PINNED locations in display order (1-based digits), after the
+    /// same filters as the sidebar itself.
+    pub(crate) fn visible_pinned_locations(&self) -> Vec<Location> {
+        self.pinned_places
+            .borrow()
+            .iter()
+            .filter(|(location, _)| !super::is_standard_place_location(location))
+            .filter(|(location, _)| !self.local_only || location.native_path().is_some())
+            .map(|(location, _)| location.clone())
+            .collect()
+    }
+
+    /// Shows `g`-chord keycaps on place rows, excluding device controls.
+    pub(crate) fn show_minimal_chord_hints(&self) {
+        use gtk::prelude::*;
+        let pinned = self.visible_pinned_locations();
+        for (location, row) in self.place_rows.borrow().iter() {
+            let hint = go_chord_keycap(location, &pinned);
+            let Some(hint) = hint else {
+                continue;
+            };
+            let Some(content) = row.child().and_downcast::<gtk::Box>() else {
+                continue;
+            };
+            let mut count = 0;
+            let mut has_hint = false;
+            let mut child = content.first_child();
+            while let Some(widget) = child {
+                count += 1;
+                if widget.has_css_class("minimal-chord-hint") {
+                    has_hint = true;
+                    break;
+                }
+                child = widget.next_sibling();
+            }
+            if has_hint || count != 2 {
+                continue;
+            }
+            let label = gtk::Label::new(Some(&hint));
+            label.add_css_class("minimal-chord-hint");
+            if row.has_css_class("active") {
+                label.add_css_class("active");
+            }
+            content.append(&label);
+        }
+    }
+
+    pub(crate) fn set_minimal_chord_teardown(&self, teardown: Rc<dyn Fn()>) {
+        self.minimal_chord_teardown.replace(Some(teardown));
+    }
+
+    pub(super) fn cancel_minimal_chord(&self) {
+        if let Some(teardown) = self.minimal_chord_teardown.borrow().clone() {
+            teardown();
+        }
+    }
+
+    /// Removes every `g`-chord keycap label.
+    pub(crate) fn clear_minimal_chord_hints(&self) {
+        use gtk::prelude::*;
+        for (_, row) in self.place_rows.borrow().iter() {
+            let Some(content) = row.child().and_downcast::<gtk::Box>() else {
+                continue;
+            };
+            let mut doomed = Vec::new();
+            let mut child = content.first_child();
+            while let Some(widget) = child {
+                child = widget.next_sibling();
+                if widget.has_css_class("minimal-chord-hint") {
+                    doomed.push(widget);
+                }
+            }
+            for widget in doomed {
+                content.remove(&widget);
+            }
+        }
+    }
+}
+
+fn go_chord_keycap(location: &Location, pinned: &[Location]) -> Option<String> {
+    if *location == Location::local(super::home_directory()) {
+        return Some("h".into());
+    }
+    if *location == Location::uri("trash:///") {
+        return Some("t".into());
+    }
+    if *location == Location::uri("network:///") {
+        return Some("n".into());
+    }
+    if *location == Location::uri("recent:///") {
+        return Some("r".into());
+    }
+    for (directory, key) in [
+        (glib::UserDirectory::Downloads, "d"),
+        (glib::UserDirectory::Documents, "k"),
+        (glib::UserDirectory::Pictures, "p"),
+        (glib::UserDirectory::Videos, "v"),
+    ] {
+        if glib::user_special_dir(directory).is_some_and(|path| Location::local(path) == *location)
+        {
+            return Some(key.into());
+        }
+    }
+    pinned
+        .iter()
+        .position(|pin| pin == location)
+        .filter(|&index| index < 9)
+        .map(|index| (index + 1).to_string())
 }
 
 // Trash and reorderable standard places already have a known destination;

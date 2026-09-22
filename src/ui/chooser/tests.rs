@@ -6,6 +6,7 @@ mod filename;
 mod filtered_preview;
 mod keyboard;
 mod layout;
+mod minimal_chrome;
 mod recent;
 mod selection;
 mod sizing;

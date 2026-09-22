@@ -12,7 +12,7 @@ use crate::{
     adapters::LocalActionStore,
     assets::icons,
     model::{ActionInput, FOLDER_CONTENT_TYPE, FileEntry, InputKind, Location},
-    services::{ActionHandle, ActionRegistry, InvocationSource, JobRequest},
+    services::{ActionHandle, ActionRegistry, InvocationSource, JobRequest, MatchedAction},
     ui::{
         controls::{ModalTone, message_dialog_description, message_dialog_layout},
         modal::{
@@ -123,6 +123,18 @@ pub(crate) fn native_paths(entries: &[FileEntry]) -> Option<Vec<PathBuf>> {
     entries
         .iter()
         .map(|entry| entry.location.native_path().map(PathBuf::from))
+        .collect()
+}
+
+/// Digit keycaps for the first ten catalog matches: `1`–`9`, then `0`.
+pub(crate) const ACTION_CHORD_KEYS: [char; 10] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+
+/// Maps catalog matches onto `;` chord slots in catalog order.
+pub(crate) fn chord_slots(matched: &[MatchedAction]) -> Vec<(char, Rc<ActionHandle>)> {
+    ACTION_CHORD_KEYS
+        .into_iter()
+        .zip(matched.iter().take(ACTION_CHORD_KEYS.len()))
+        .map(|(key, matched)| (key, matched.action.clone()))
         .collect()
 }
 
@@ -238,3 +250,6 @@ fn item_count_label(count: usize) -> String {
         count => format!("{count} selected items"),
     }
 }
+
+#[cfg(test)]
+mod tests;

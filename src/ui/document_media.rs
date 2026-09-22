@@ -289,7 +289,7 @@ mod imp {
         }
 
         fn snapshot(&self, snapshot: &gtk::Snapshot) {
-            let Some((text, surface)) = self.colors.get() else {
+            let Some((text, background)) = self.colors.get() else {
                 if let Some(child) = self.obj().first_child() {
                     self.obj().snapshot_child(&child, snapshot);
                 }
@@ -297,9 +297,9 @@ mod imp {
             };
             // Map the raster's luminance onto semantic colors without re-running untrusted input.
             let delta = [
-                surface.red() - text.red(),
-                surface.green() - text.green(),
-                surface.blue() - text.blue(),
+                background.red() - text.red(),
+                background.green() - text.green(),
+                background.blue() - text.blue(),
             ];
             let matrix = gtk::graphene::Matrix::from_float([
                 0.2126 * delta[0],
@@ -351,19 +351,19 @@ fn register_diagram(diagram: &MediaPicture) {
 }
 
 pub(super) fn apply_theme(tokens: &super::theme::ThemeTokens) {
-    let (Ok(text), Ok(surface)) = (
+    let (Ok(text), Ok(background)) = (
         gdk::RGBA::parse(&tokens.text),
-        gdk::RGBA::parse(&tokens.surface),
+        gdk::RGBA::parse(&tokens.background),
     ) else {
         return;
     };
-    COLORS.set(Some((text, surface)));
+    COLORS.set(Some((text, background)));
     DIAGRAMS.with_borrow_mut(|diagrams| {
         diagrams.retain(|diagram| {
             let Some(diagram) = diagram.upgrade() else {
                 return false;
             };
-            diagram.imp().colors.set(Some((text, surface)));
+            diagram.imp().colors.set(Some((text, background)));
             diagram.queue_draw();
             true
         })

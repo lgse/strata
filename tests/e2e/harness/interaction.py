@@ -30,6 +30,7 @@ KEYSYMS: dict[str, int] = {
     "Page_Up": 0xFF55,
     "Page_Down": 0xFF56,
     "End": 0xFF57,
+    "KP_Right": 0xFF98,
     "space": 0x0020,
     "F1": 0xFFBE,
     "F2": 0xFFBF,

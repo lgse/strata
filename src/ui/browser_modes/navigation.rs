@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use super::*;
 
@@ -99,12 +99,41 @@ impl ListNavigation {
         pane.shell.add_controller(input);
     }
 
-    pub(super) fn restore(&mut self, pane: &Pane, browser: &Browser) {
-        let Some(saved) = self.pending.take().filter(|_| self.is_restoring()) else {
-            return;
-        };
+    pub(super) fn take_restore(
+        &mut self,
+        pane: &Pane,
+        browser: &Rc<Browser>,
+    ) -> Option<NavigationRestore> {
+        let saved = self.pending.take().filter(|_| self.is_restoring())?;
+        Some(NavigationRestore {
+            saved,
+            restoring: self.restoring.clone(),
+            pane: pane.clone(),
+            browser: browser.clone(),
+        })
+    }
+}
+
+pub(crate) struct NavigationRestore {
+    saved: ListPosition,
+    restoring: Rc<Cell<bool>>,
+    pane: Pane,
+    browser: Rc<Browser>,
+}
+
+impl NavigationRestore {
+    // Selection publication invokes browser observers synchronously. Run only
+    // after releasing both ModeViews and ListNavigation borrows.
+    pub(crate) fn apply(self) {
+        let Self {
+            saved,
+            restoring,
+            pane,
+            browser,
+        } = self;
+        let pane = &pane;
         let Some((vertical, horizontal)) = adjustments(pane) else {
-            self.cancel();
+            restoring.set(false);
             return;
         };
         let selected: HashSet<_> = saved.selected.iter().collect();
@@ -155,7 +184,6 @@ impl ListNavigation {
         if let Some(cursor) = cursor {
             focus_collection_item(view, cursor);
         }
-        let restoring = self.restoring.clone();
         let items = pane.section.bound_items.clone();
         let frames = Cell::new(0u8);
         let settled = Cell::new(0u8);

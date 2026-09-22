@@ -6,6 +6,7 @@ use crate::services::{
     DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError,
 };
 use crate::ui::browser::{BrowserView, PeekBehavior};
+use crate::ui::preferences::PreferenceManager;
 use std::time::{Duration, Instant};
 
 pub(super) struct MenuSource;
@@ -296,10 +297,14 @@ fn menu_labels(popover: &gtk::Popover) -> Vec<String> {
             {
                 return None;
             }
-            descendants(widget).iter().find_map(|widget| {
-                widget
-                    .downcast_ref::<gtk::Label>()
-                    .map(|label| label.text().to_string())
+            descendants(widget).iter().find_map(|child| {
+                child.downcast_ref::<gtk::Label>().and_then(|label| {
+                    if is_shortcut_label(child) {
+                        None
+                    } else {
+                        Some(label.text().to_string())
+                    }
+                })
             })
         })
         .collect()
@@ -319,6 +324,87 @@ fn button_with_label(widget: &gtk::Widget, text: &str) -> gtk::Widget {
             })
         })
         .unwrap_or_else(|| panic!("missing {text} button"))
+}
+
+pub(super) fn is_shortcut_label(widget: &gtk::Widget) -> bool {
+    widget.has_css_class("item-context-shortcut")
+        || widget.has_css_class("folder-context-shortcut")
+        || widget.css_name() == "accelerator"
+}
+
+fn shortcut_text(widget: &gtk::Widget) -> Option<String> {
+    if !widget.is_visible() {
+        return Some(String::new());
+    }
+    if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
+        return Some(label.text().to_string());
+    }
+    if let Ok(shortcut) = widget.clone().downcast::<gtk::ShortcutLabel>() {
+        return Some(shortcut.accelerator()?.to_string());
+    }
+    None
+}
+
+fn shortcut_for(popover: &gtk::Popover, action: &str) -> String {
+    descendants(popover.upcast_ref())
+        .into_iter()
+        .find(|widget| {
+            widget.is_visible()
+                && (widget.is::<gtk::Button>()
+                    || widget.accessible_role() == gtk::AccessibleRole::MenuItem)
+                && descendants(widget).iter().any(|child| {
+                    child
+                        .downcast_ref::<gtk::Label>()
+                        .is_some_and(|label| label.text() == action && !is_shortcut_label(child))
+                })
+        })
+        .and_then(|row| {
+            descendants(&row).into_iter().find_map(|child| {
+                is_shortcut_label(&child)
+                    .then(|| shortcut_text(&child))
+                    .flatten()
+            })
+        })
+        .unwrap_or_default()
+}
+
+fn assert_shortcut_follows_title(popover: &gtk::Popover, action: &str, accelerator: &str) {
+    let item = button_with_label(popover.upcast_ref(), action);
+    let mut title_seen = false;
+    let mut shortcut_before_title = false;
+    walk_labels(&item, &mut |widget, text| {
+        if is_shortcut_label(widget) {
+            if text == accelerator && !title_seen {
+                shortcut_before_title = true;
+            }
+            return;
+        }
+        if text == action {
+            title_seen = true;
+        }
+    });
+    assert!(
+        title_seen,
+        "{action} should keep its title in the menu item"
+    );
+    assert!(
+        !shortcut_before_title,
+        "{action} shortcut {accelerator:?} should follow the title, not precede it"
+    );
+}
+
+fn walk_labels(widget: &gtk::Widget, visit: &mut impl FnMut(&gtk::Widget, &str)) {
+    if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+        let text = label.text();
+        if !text.is_empty() {
+            visit(widget, text.as_str());
+        }
+    }
+    let mut child = widget.first_child();
+    while let Some(node) = child {
+        walk_labels(&node, visit);
+        child = node.next_sibling();
+    }
 }
 
 fn assert_actions(popover: &gtk::Popover, present: &[&str], absent: &[&str]) {
@@ -823,6 +909,96 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
                 view.browser().clear_observer();
                 window.destroy();
             }
+        },
+    );
+}
+
+#[test]
+fn context_menu_shortcuts_follow_the_active_keymap() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::context_menu_shortcuts_follow_the_active_keymap",
+        || {
+            let fixture = tempfile::tempdir().expect("normal directory fixture");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(850)
+                .build();
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+
+            let menu = open_menu(&view, Some("notes.txt"));
+            wait_until(|| shortcut_for(&menu, "Quick preview") == "Space");
+            assert_eq!(shortcut_for(&menu, "Quick preview"), "Space");
+            assert_eq!(shortcut_for(&menu, "Cut"), "Ctrl+X");
+            assert_eq!(shortcut_for(&menu, "Copy"), "Ctrl+C");
+            assert_eq!(shortcut_for(&menu, "Duplicate"), "Ctrl+D");
+            assert_eq!(shortcut_for(&menu, "Copy path"), "Y");
+            assert_eq!(shortcut_for(&menu, "Rename"), "F2 / Ctrl+R");
+            assert_eq!(shortcut_for(&menu, "Properties"), "Alt+Enter");
+            assert_eq!(shortcut_for(&menu, "Move to Trash"), "Del");
+            assert_eq!(shortcut_for(&menu, "Permanently delete"), "Shift+Del");
+
+            PreferenceManager::shared().set_minimal_mode(true);
+            wait_until(|| shortcut_for(&menu, "Quick preview") == "i");
+            assert_eq!(shortcut_for(&menu, "Quick preview"), "i");
+            assert_eq!(shortcut_for(&menu, "Cut"), "x");
+            assert_eq!(shortcut_for(&menu, "Copy"), "y");
+            assert_eq!(shortcut_for(&menu, "Duplicate"), "");
+            assert_eq!(shortcut_for(&menu, "Copy path"), "");
+            assert_eq!(shortcut_for(&menu, "Rename"), "r");
+            assert_eq!(shortcut_for(&menu, "Properties"), "");
+            assert_eq!(shortcut_for(&menu, "Move to Trash"), "d");
+            assert_eq!(shortcut_for(&menu, "Permanently delete"), "D");
+
+            menu.popdown();
+            wait_until(|| menu.parent().is_none());
+
+            let folder = open_menu(&view, None);
+            wait_until(|| shortcut_for(&folder, "Paste") == "p");
+            assert_eq!(shortcut_for(&folder, "Paste"), "p");
+            assert_eq!(shortcut_for(&folder, "New Folder"), "");
+            assert_eq!(shortcut_for(&folder, "Refresh"), "");
+            assert_eq!(shortcut_for(&folder, "Select All"), "Ctrl+A");
+
+            PreferenceManager::shared().set_minimal_mode(false);
+            wait_until(|| shortcut_for(&folder, "Paste") == "Ctrl+V");
+            assert_eq!(shortcut_for(&folder, "Paste"), "Ctrl+V");
+            assert_eq!(shortcut_for(&folder, "New Folder"), "Ctrl+Shift+N");
+            assert_eq!(shortcut_for(&folder, "Refresh"), "F5");
+        },
+    );
+}
+
+#[test]
+fn context_menu_shortcuts_follow_action_titles() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::context_menu_shortcuts_follow_action_titles",
+        || {
+            let fixture = tempfile::tempdir().expect("normal directory fixture");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(850)
+                .build();
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+
+            let menu = open_menu(&view, Some("notes.txt"));
+            wait_until(|| shortcut_for(&menu, "Cut") == "Ctrl+X");
+            assert_shortcut_follows_title(&menu, "Cut", "Ctrl+X");
+            assert_shortcut_follows_title(&menu, "Rename", "F2 / Ctrl+R");
+            menu.popdown();
+            wait_until(|| menu.parent().is_none());
+
+            let folder = open_menu(&view, None);
+            wait_until(|| shortcut_for(&folder, "Refresh") == "F5");
+            assert_shortcut_follows_title(&folder, "Refresh", "F5");
+            assert_shortcut_follows_title(&folder, "New Folder", "Ctrl+Shift+N");
         },
     );
 }

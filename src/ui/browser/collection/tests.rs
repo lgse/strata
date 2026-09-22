@@ -347,3 +347,43 @@ fn waiting_to_scroll_does_not_pin_an_unallocated_view() {
             .expect("isolated GTK scroll pin test should start");
     assert!(status.success(), "isolated GTK scroll pin test failed");
 }
+
+#[test]
+fn restore_filter_controls_keeps_a_hidden_query_collapsed() {
+    crate::test_support::gtk_test(
+        "ui::browser::collection::tests::restore_filter_controls_keeps_a_hidden_query_collapsed",
+        || {
+            let (entry, revealer, button) =
+                crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
+            restore_filter_controls(
+                &button,
+                &entry,
+                &ActivePaneFilter {
+                    query: "needle".into(),
+                    revealed: false,
+                },
+            );
+            assert!(
+                !button.is_active(),
+                "hidden filters must not activate the funnel"
+            );
+            assert!(
+                !revealer.reveals_child(),
+                "hidden filters must keep the funnel collapsed"
+            );
+            assert_eq!(entry.text().as_str(), "needle");
+
+            restore_filter_controls(
+                &button,
+                &entry,
+                &ActivePaneFilter {
+                    query: "needle".into(),
+                    revealed: true,
+                },
+            );
+            assert!(button.is_active());
+            assert!(revealer.reveals_child());
+            assert_eq!(entry.text().as_str(), "needle");
+        },
+    );
+}

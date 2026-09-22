@@ -193,7 +193,7 @@ impl DeleteConfirmation {
             .build();
         window.present();
         view.state
-            .show_delete_confirmation(vec![local_file_entry(&path)]);
+            .show_delete_confirmation(vec![local_file_entry(&path)], true, false);
         let root = window.clone().upcast::<gtk::Widget>();
         wait_until(
             || {

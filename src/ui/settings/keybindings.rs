@@ -7,67 +7,11 @@ use crate::ui::preferences::PreferenceManager;
 use gtk::prelude::*;
 use std::rc::Rc;
 
-const SHORTCUTS: &[(&str, &str, &str, &str)] = &[
-    (
-        "Navigation",
-        "Move through items",
-        "← / → in Icons view",
-        "↑ / ↓",
-    ),
-    (
-        "Navigation",
-        "Jump to top / bottom",
-        "",
-        "Ctrl + ↑ / Ctrl + ↓",
-    ),
-    ("Navigation", "Open item", "", "Enter"),
-    ("Navigation", "Go to parent folder", "", "Alt + ↑"),
-    ("Navigation", "Back / forward", "", "Alt + ← / Alt + →"),
-    (
-        "Navigation",
-        "Move between column panes",
-        "Columns view",
-        "← / →",
-    ),
-    ("Navigation", "Focus pane header", "when at top", "↑"),
-    ("Navigation", "Focus sidebar", "when at left edge", "←"),
-    ("Selection", "Select all", "", "Ctrl + A"),
-    ("Selection", "Extend selection", "", "Shift + ↑ / Shift + ↓"),
-    ("Selection", "Toggle item in selection", "", "Ctrl + Space"),
-    ("Selection", "Clear selection", "", "Esc"),
-    ("Files", "Quick preview", "", "Space"),
-    ("Files", "Cut / copy / paste", "", "Ctrl + X / C / V"),
-    ("Files", "Duplicate", "", "Ctrl + D"),
-    ("Files", "Rename", "", "F2 / Ctrl + R"),
-    ("Files", "Create new folder", "", "Ctrl + Shift + N"),
-    ("Files", "Move to Trash", "", "Delete"),
-    ("Files", "Delete permanently", "", "Shift + Delete"),
-    ("Files", "Undo file operation", "", "Ctrl + Z"),
-    ("Files", "Item properties", "", "Alt + Enter"),
-    ("View", "Toggle hidden files", "", "Ctrl + H / Ctrl + ."),
-    (
-        "View",
-        "Switch view",
-        "Columns / Icons / List",
-        "Ctrl + 1 / 2 / 3",
-    ),
-    ("View", "Increase text size", "", "Ctrl + +"),
-    ("View", "Decrease text size", "", "Ctrl + −"),
-    ("View", "Reset text size", "", "Ctrl + 0"),
-    ("View", "Toggle sidebar", "", "Ctrl + B"),
-    ("Application", "Edit location", "", "Ctrl + L"),
-    ("Application", "Filter items", "", "Ctrl + F"),
-    ("Application", "Search", "", "Ctrl + K"),
-    ("Application", "Open terminal", "", "Ctrl + T"),
-    ("Application", "Refresh", "", "F5"),
-    ("Application", "Open settings", "", "Ctrl + ,"),
-    ("Application", "Shortcut reference", "", "F1"),
-    ("Application", "Toggle arrow-key scope", "", "Ctrl + \\"),
-];
+use crate::ui::shortcut_reference;
 
 pub(super) fn search_text() -> String {
-    SHORTCUTS
-        .iter()
+    shortcut_reference::shortcuts(false)
+        .chain(shortcut_reference::shortcuts(true))
         .map(|(category, label, note, keys)| format!("{category} {label} {note} {keys}"))
         .collect::<Vec<_>>()
         .join(" ")
@@ -95,7 +39,7 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     toolbar.add_css_class("settings-library-toolbar");
     append_heading(&toolbar, "SHORTCUT REFERENCE");
-    let count = gtk::Label::new(Some(&format!("{} bindings", SHORTCUTS.len())));
+    let count = gtk::Label::new(None);
     count.add_css_class("settings-option-description");
     count.add_css_class("settings-control-label");
     count.set_ellipsize(gtk::pango::EllipsizeMode::End);
@@ -108,49 +52,87 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     toolbar.append(&search_overlay);
     reference.append(&toolbar);
     let mut groups = Vec::new();
-    for category in ["Navigation", "Selection", "Files", "View", "Application"] {
-        let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        let title = gtk::Label::new(Some(category));
-        title.set_xalign(0.0);
-        title.add_css_class("shortcut-category");
-        section.append(&title);
-        let group = super::settings_group(&section, "");
-        let mut rows = Vec::new();
-        for &(_, label, note, keys) in SHORTCUTS
-            .iter()
-            .filter(|(group, _, _, _)| *group == category)
-        {
-            let row = append_keybinding(&group, label, note, keys);
-            rows.push((
-                row,
-                format!("{category} {label} {note} {keys}").to_lowercase(),
-            ));
+    for minimal in [false, true] {
+        for &category in shortcut_reference::categories(minimal) {
+            let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let title = gtk::Label::new(Some(category));
+            title.set_xalign(0.0);
+            title.set_wrap(true);
+            title.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+            title.add_css_class("shortcut-category");
+            section.append(&title);
+            let group = super::settings_group(&section, "");
+            let mut rows = Vec::new();
+            for &(_, label, note, keys) in
+                shortcut_reference::shortcuts(minimal).filter(|(group, _, _, _)| *group == category)
+            {
+                let row = append_keybinding(&group, label, note, keys);
+                rows.push((
+                    row,
+                    format!("{category} {label} {note} {keys}").to_lowercase(),
+                ));
+            }
+            reference.append(&section);
+            groups.push((minimal, section, rows));
         }
-        reference.append(&section);
-        groups.push((section, rows));
     }
     let empty = gtk::Label::new(Some("No shortcuts match your search."));
     empty.add_css_class("settings-option-description");
     empty.set_visible(false);
     reference.append(&empty);
+    let groups = Rc::new(groups);
+    let refresh = {
+        let groups = groups.clone();
+        let count = count.clone();
+        let empty = empty.clone();
+        let search = search.clone();
+        Rc::new(move |minimal: bool| {
+            refresh_visible_shortcuts(&groups, minimal, search.text().as_str(), &count, &empty);
+        })
+    };
+    let on_search = refresh.clone();
+    let manager_for_search = manager.clone();
     search.connect_changed(move |search| {
         clear.set_visible(!search.text().is_empty());
-        let query = search.text().trim().to_lowercase();
-        let mut matches = 0;
-        for (section, rows) in &groups {
-            let mut visible = false;
-            for (row, text) in rows {
-                let matched = text.contains(&query);
-                row.set_visible(matched);
-                visible |= matched;
-                matches += usize::from(matched);
-            }
-            section.set_visible(visible);
-        }
-        count.set_text(&format!("{matches} bindings"));
-        empty.set_visible(matches == 0);
+        on_search(manager_for_search.minimal_mode());
+    });
+    manager.bind_preference(&count, PreferenceManager::minimal_mode, {
+        let refresh = refresh.clone();
+        move |_, minimal| refresh(minimal)
     });
     scrollable_page(&content, Some("settings-keybindings-scroll"))
+}
+
+type ShortcutGroup = (bool, gtk::Box, Vec<(gtk::Box, String)>);
+
+fn refresh_visible_shortcuts(
+    groups: &[ShortcutGroup],
+    minimal: bool,
+    query: &str,
+    count: &gtk::Label,
+    empty: &gtk::Label,
+) {
+    let query = query.trim().to_lowercase();
+    let mut matches = 0;
+    for (is_minimal, section, rows) in groups {
+        if *is_minimal != minimal {
+            section.set_visible(false);
+            for (row, _) in rows {
+                row.set_visible(false);
+            }
+            continue;
+        }
+        let mut visible = false;
+        for (row, text) in rows {
+            let matched = text.contains(&query);
+            row.set_visible(matched);
+            visible |= matched;
+            matches += usize::from(matched);
+        }
+        section.set_visible(visible);
+    }
+    count.set_text(&format!("{matches} bindings"));
+    empty.set_visible(matches == 0);
 }
 
 fn append_keybinding(content: &gtk::Box, label: &str, note: &str, keys: &str) -> gtk::Box {
@@ -164,7 +146,8 @@ fn append_keybinding(content: &gtk::Box, label: &str, note: &str, keys: &str) ->
     let note = gtk::Label::new(Some(note));
     note.set_xalign(0.0);
     note.add_css_class("settings-option-description");
-    note.add_css_class("settings-nowrap");
+    note.set_wrap(true);
+    note.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     note.set_visible(!note.text().is_empty());
     row.append(&note);
     let caps = keycaps(keys);

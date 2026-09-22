@@ -31,7 +31,15 @@ enum Action {
 }
 
 fn menu(
-    options: &[(Action, &str, &str, &str, bool, bool)],
+    options: &[(
+        Action,
+        &'static str,
+        &'static str,
+        &'static str,
+        &'static str,
+        bool,
+        bool,
+    )],
     run: impl Fn(Action) + 'static,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
     let content = super::super::accessibility::menu_box();
@@ -40,12 +48,13 @@ fn menu(
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
     let pending = Rc::new(Cell::new(None));
-    for &(action, icon, label, shortcut, enabled, danger) in options {
+    for &(action, icon, label, default, minimal, enabled, danger) in options {
         let button = if danger {
-            context_menu_danger_option(icon, label, shortcut)
+            context_menu_danger_option(icon, label, default)
         } else {
-            context_menu_option(icon, label, shortcut)
+            context_menu_option(icon, label, default)
         };
+        super::context_menu::bind_keymap_shortcut(&button, default, minimal);
         button.set_sensitive(enabled);
         let pending = pending.clone();
         let weak = popover.downgrade();
@@ -94,6 +103,7 @@ pub(super) fn install_folder(
                     Action::NewFolder,
                     crate::assets::icons::FOLDER_PLUS,
                     "New Folder",
+                    "Ctrl+Shift+N",
                     "Ctrl+Shift+N",
                     true,
                     false,
@@ -172,6 +182,7 @@ pub(super) fn install_item(
             crate::assets::icons::PENCIL,
             "Rename",
             "F2 / Ctrl+R",
+            "r",
             single,
             false,
         )];
@@ -181,6 +192,7 @@ pub(super) fn install_item(
                 crate::assets::icons::EYE,
                 "Quick preview",
                 "Space",
+                "i",
                 true,
                 false,
             ));
@@ -189,6 +201,7 @@ pub(super) fn install_item(
             Action::Properties,
             crate::assets::icons::INFO,
             "Properties",
+            "Alt+Enter",
             "Alt+Enter",
             true,
             false,
@@ -203,6 +216,7 @@ pub(super) fn install_item(
                 crate::assets::icons::TRASH,
                 delete_label,
                 "Del",
+                "d",
                 true,
                 in_trash,
             ));
@@ -213,6 +227,7 @@ pub(super) fn install_item(
                 crate::assets::icons::TRASH,
                 "Permanently delete",
                 "Shift+Del",
+                "D",
                 true,
                 true,
             ));

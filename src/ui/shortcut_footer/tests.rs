@@ -50,7 +50,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         super::super::browser::PeekBehavior::default(),
     );
     let footer = ShortcutFooter::new(view.view_mode());
-    footer.observe_browser(&view.browser());
+    footer.observe_browser(&view);
     let directory = tempfile::tempdir().expect("count fixture");
     std::fs::write(directory.path().join("one.txt"), "one").expect("first file");
     std::fs::write(directory.path().join("two.txt"), "two").expect("second file");
@@ -80,6 +80,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let entry = gtk::Entry::new();
     root.append(&entry);
+    root.append(&view.widget());
     root.append(footer.widget());
     let window = gtk::Window::builder()
         .child(&root)
@@ -137,6 +138,50 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         assert_eq!(footer.count.text(), "1 file selected (3 B)");
         view.browser().set_selection(depth, &[], None);
         assert_eq!(footer.count.text(), "3 items");
+        view.browser().set_selection(depth, &[folder], Some(folder));
+        assert!(view.show_filter_with_query(".txt"));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while view.search_result_listing().as_ref().map(Vec::len) != Some(2) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{mode:?}: expected two .txt results"
+            );
+            settle();
+        }
+        assert_eq!(
+            footer.count.text(),
+            "2 items",
+            "{mode:?}: published .txt result count"
+        );
+        assert_eq!(
+            footer.count.tooltip_text().as_deref(),
+            Some("2 files, 0 folders")
+        );
+        assert!(view.focus_first_search_result());
+        view.select_all();
+        assert_eq!(
+            view.selected_search_results().expect("selected hits").len(),
+            2
+        );
+        assert_eq!(
+            footer.count.text(),
+            "2 items",
+            "result total is independent of hit selection"
+        );
+        assert!(view.show_filter_with_query("no-matching-name"));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while view.search_result_listing().as_ref().map(Vec::len) != Some(0) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{mode:?}: expected no matching results"
+            );
+            settle();
+        }
+        assert_eq!(footer.count.text(), "0 items");
+        view.dismiss_hidden_filter();
+        assert!(view.search_result_listing().is_none());
+        view.browser().set_selection(depth, &[], None);
+        assert_eq!(footer.count.text(), "3 items");
     }
     let mut files = (0..3)
         .filter_map(|position| view.browser().entry_at(0, position))
@@ -182,6 +227,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     ));
     settle();
     assert_eq!(footer.count.text(), "0 items");
+    entry.grab_focus();
     let none = gdk::ModifierType::empty();
     assert_eq!(footer.handle_key(gdk::Key::Delete, none), None);
     assert_eq!(
@@ -256,10 +302,17 @@ fn footer_tracks_modes_and_shields_files_while_open() {
 
 impl ShortcutFooter {
     pub(crate) fn assert_hints_visible(&self, visible: bool) {
-        assert_eq!(
-            self.widget().is_visible(),
-            visible || self.paste.is_visible() || self.count.is_visible()
-        );
+        // The footer stays visible for the minimal MIN tag, filter mark,
+        // chord label, flash hint, or open prompt even when hints are off.
+        let status = visible
+            || self.paste.is_visible()
+            || self.count.is_visible()
+            || self.min_tag.is_visible()
+            || self.filter_mark.is_visible()
+            || self.chord_label.is_visible()
+            || self.flash_label.is_visible()
+            || self.prompt_box.is_visible();
+        assert_eq!(self.widget().is_visible(), status);
         assert_eq!(self.more.is_visible(), visible);
     }
 }
@@ -342,6 +395,179 @@ fn paste_availability_tracks_file_clipboard() {
             clipboard
                 .set_content(None::<&gdk::ContentProvider>)
                 .expect("fixture cleanup");
+        },
+    );
+}
+
+#[test]
+fn chord_popups_leave_other_windows_animation_settings_untouched() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::chord_popups_leave_other_windows_animation_settings_untouched",
+        || {
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.set_minimal(true);
+            let first = gtk::Window::builder().child(footer.widget()).build();
+            let other = gtk::Window::new();
+            first.present();
+            other.present();
+            settle();
+            let settings = other.settings();
+            let previous = settings.is_gtk_enable_animations();
+            settings.set_gtk_enable_animations(true);
+            let notifications = Rc::new(Cell::new(0));
+            let observed = notifications.clone();
+            let handler = settings.connect_gtk_enable_animations_notify(move |_| {
+                observed.set(observed.get() + 1);
+            });
+            let preferences = super::super::preferences::PreferenceManager::shared();
+            for reduced in [true, false, true] {
+                preferences.set_reduce_motion(reduced);
+                for chord in [
+                    MinimalChord::Go,
+                    MinimalChord::Copy,
+                    MinimalChord::Sort,
+                    MinimalChord::Action,
+                ] {
+                    footer.set_chord_mark(chord);
+                    settle();
+                    assert!(footer.chord_hints_visible());
+                    footer.clear_chord_mark();
+                    settle();
+                    assert!(!footer.chord_hints_visible());
+                }
+                assert_eq!(
+                    notifications.get(),
+                    0,
+                    "popups must not mutate another window's GTK settings"
+                );
+                assert!(settings.is_gtk_enable_animations());
+                assert_eq!(preferences.reduce_motion(), reduced);
+            }
+            settings.disconnect(handler);
+            settings.set_gtk_enable_animations(previous);
+            first.destroy();
+            other.destroy();
+        },
+    );
+}
+
+#[test]
+fn prompt_reopens_after_hide() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::prompt_reopens_after_hide",
+        || {
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            let window = gtk::Window::builder()
+                .child(footer.widget())
+                .default_width(600)
+                .default_height(80)
+                .build();
+            window.present();
+            settle();
+            footer.show_prompt("/", "find", "", None);
+            settle();
+            assert_eq!(footer.stack.visible_child_name().as_deref(), Some("prompt"));
+            assert!(footer.prompt_box.is_visible());
+            footer.hide_prompt();
+            settle();
+            assert_eq!(footer.stack.visible_child_name().as_deref(), Some("status"));
+            footer.show_prompt("/", "find", "", None);
+            settle();
+            assert_eq!(footer.stack.visible_child_name().as_deref(), Some("prompt"));
+            assert!(footer.prompt_box.is_visible());
+            assert_eq!(footer.prompt_prefix.label().as_str(), "/");
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn minimal_mode_tag_and_reference_name_the_experimental_feature() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::minimal_mode_tag_and_reference_name_the_experimental_feature",
+        || {
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            let manager = super::super::preferences::PreferenceManager::shared();
+            footer.bind_minimal_mode(&manager);
+            let rows = || {
+                let mut rows = Vec::new();
+                let mut section = footer.reference.first_child();
+                while let Some(widget) = section {
+                    section = widget.next_sibling();
+                    let mut row = widget.first_child();
+                    while let Some(widget) = row {
+                        row = widget.next_sibling();
+                        if let Some(key) = widget.first_child().and_downcast::<gtk::Label>() {
+                            let action = key
+                                .next_sibling()
+                                .and_downcast::<gtk::Label>()
+                                .expect("rendered shortcut action");
+                            rows.push((key.text().to_string(), action.text().to_string()));
+                        }
+                    }
+                }
+                rows
+            };
+            for minimal in [false, true, false, true] {
+                manager.set_minimal_mode(minimal);
+                let rows = rows();
+                assert!(rows.iter().any(|(key, action)| key == "Ctrl+Shift+M"
+                    && action == "Toggle minimal mode (also while editing text)"));
+                assert_eq!(rows.iter().any(|(key, action)| key == "l / →"
+                    && action == "Open directory / enter preview (List and Columns; repetition keeps the preview open)"), minimal);
+                assert_eq!(
+                    rows.iter().any(|(key, action)| key
+                        == "h / j / k / l / ← / → / ↑ / ↓"
+                        && action
+                            == "Move among icon tiles (Icons; stays in the current folder, never previews)"),
+                    minimal
+                );
+                assert_eq!(
+                    rows.iter().any(|(key, action)| key == "i"
+                        && action
+                            == "Toggle the preview drawer (Icons keeps listing focus; no preview-focus hotkey)"),
+                    minimal
+                );
+                assert_eq!(
+                    rows.iter()
+                        .any(|(key, action)| key == "Ctrl+D" && action == "Duplicate"),
+                    !minimal
+                );
+            }
+            let tooltip = footer
+                .min_tag
+                .tooltip_text()
+                .expect("MIN tag tooltip")
+                .as_str()
+                .to_string();
+            assert!(
+                tooltip.contains("Minimal mode")
+                    && tooltip.contains(crate::ui::minimal_mode::EXPERIMENTAL_NOTE),
+                "MIN tooltip names the experimental feature, got {tooltip:?}"
+            );
+            let headings: Vec<String> = {
+                let mut labels = Vec::new();
+                let mut child = footer.reference.first_child();
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    let mut nested = widget.first_child();
+                    while let Some(inner) = nested {
+                        nested = inner.next_sibling();
+                        if let Ok(label) = inner.downcast::<gtk::Label>()
+                            && label.has_css_class("shortcut-reference-heading")
+                        {
+                            labels.push(label.text().to_string());
+                        }
+                    }
+                }
+                labels
+            };
+            assert!(
+                headings
+                    .iter()
+                    .any(|text| text == crate::ui::minimal_mode::LABELED_TITLE),
+                "F1 heading includes the experimental note, got {headings:?}"
+            );
         },
     );
 }

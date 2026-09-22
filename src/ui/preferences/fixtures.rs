@@ -16,6 +16,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         search_open_files_directly: true,
         type_to_search: false,
         arrow_navigation_scoped: true,
+        minimal_mode: true,
         filter_include_subfolders: false,
         show_keybinding_hints: false,
         reduce_motion: true,
@@ -94,6 +95,10 @@ pub(in crate::ui) fn seed_omarchy_for_test() {
 }
 
 impl PreferenceManager {
+    pub(in crate::ui) fn listener_count(&self) -> usize {
+        self.changes.listener_count()
+    }
+
     pub(in crate::ui) fn seed_saved_preferences_for_test() {
         seed_saved_preferences_for_test();
     }

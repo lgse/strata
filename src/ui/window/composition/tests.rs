@@ -11,7 +11,10 @@ use super::*;
 use crate::{
     services::{BuildKind, ReleaseMetadata, UpdateMethod},
     test_support::gtk_test,
-    ui::{browser_modes::BrowserMode, preferences::TextSize},
+    ui::{
+        browser_modes::BrowserMode,
+        preferences::{PreferenceManager, TextSize},
+    },
 };
 
 fn settle_sidebar(millis: u64) {
@@ -229,8 +232,114 @@ fn settings_button_and_shortcut_reuse_the_lazy_layer_without_saving() {
             layer.set_visible(false);
             fixture.content.header.settings.emit_clicked();
             assert!(layer.is_visible());
-            assert_eq!(fixture.layer("settings-backdrop"), Some(layer));
+            assert_eq!(fixture.layer("settings-backdrop"), Some(layer.clone()));
+            layer.set_visible(false);
+            let directory = tempfile::tempdir().expect("chord fixture");
+            std::fs::write(directory.path().join("item.txt"), "fixture")
+                .expect("chord fixture file");
+            fixture
+                .content
+                .browser
+                .navigate_location(crate::model::Location::local(directory.path()));
+            wait_until_loaded(&fixture.content.browser);
+            let footer = &fixture.content.footer.shortcuts;
+            for chord in [None, Some(Key::g), Some(Key::c), Some(Key::comma)] {
+                fixture.content.browser.browser().focus_active();
+                focus_first_list(&fixture.content.browser);
+                if let Some(chord) = chord {
+                    assert!(press_capture(&fixture.window, chord, ModifierType::empty()));
+                    assert!(footer.chord_hints_visible());
+                }
+                assert!(press_capture(
+                    &fixture.window,
+                    Key::comma,
+                    ModifierType::CONTROL_MASK
+                ));
+                assert!(
+                    layer.is_visible(),
+                    "Ctrl+, must open Settings with chord {chord:?}"
+                );
+                assert!(!footer.chord_hints_visible());
+                layer.set_visible(false);
+                fixture.content.browser.browser().focus_active();
+                focus_first_list(&fixture.content.browser);
+                assert!(press_capture(
+                    &fixture.window,
+                    Key::c,
+                    ModifierType::empty()
+                ));
+                assert!(
+                    footer.chord_hints_visible(),
+                    "Settings must not leave a stale chord"
+                );
+                assert!(press_capture(
+                    &fixture.window,
+                    Key::Escape,
+                    ModifierType::empty()
+                ));
+            }
             assert_eq!(std::fs::read(path).expect("unchanged preferences"), saved);
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn disabled_startup_and_settings_close_preserve_location_focus() {
+    gtk_test(
+        "ui::window::composition::tests::disabled_startup_and_settings_close_preserve_location_focus",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_minimal_mode(false);
+            let directory = tempfile::tempdir().expect("fixture");
+            std::fs::write(directory.path().join("a.txt"), "fixture").expect("focus fixture file");
+            let window = gtk::ApplicationWindow::builder()
+                .application(&application())
+                .default_width(1000)
+                .default_height(600)
+                .build();
+            let content = WindowContent::new(&window, &preferences);
+            window.set_child(Some(&content.overlay));
+            window.present();
+            content
+                .browser
+                .navigate_location(crate::model::Location::local(directory.path()));
+            wait_until_loaded(&content.browser);
+            content.browser.begin_location_edit();
+            let location_focus = gtk::prelude::RootExt::focus(&window).expect("location focus");
+            let text = location_focus
+                .downcast_ref::<gtk::Text>()
+                .expect("location text");
+            text.select_region(1, 3);
+            let selection = text.selection_bounds();
+            let notice = content.bind(&window, &preferences);
+            assert_eq!(
+                gtk::prelude::RootExt::focus(&window).as_ref(),
+                Some(&location_focus)
+            );
+            assert_eq!(text.selection_bounds(), selection);
+            assert!(!window.has_css_class("minimal-mode"));
+            assert!(content.header.search.is_visible());
+            let fixture = Fixture {
+                window,
+                content,
+                preferences,
+                notice,
+            };
+            for minimal in [false, true] {
+                fixture.preferences.set_minimal_mode(minimal);
+                fixture.content.browser.begin_location_edit();
+                text.select_region(1, 3);
+                fixture.content.header.settings.emit_clicked();
+                let layer = fixture.layer("settings-backdrop").expect("Settings layer");
+                assert!(layer.is_visible());
+                layer.set_visible(false);
+                assert_eq!(
+                    gtk::prelude::RootExt::focus(&fixture.window).as_ref(),
+                    Some(&location_focus)
+                );
+                assert_eq!(text.selection_bounds(), selection);
+            }
             fixture.close();
         },
     );
@@ -439,6 +548,13 @@ fn destroy_handler_releases_browser_observers_and_is_idempotent() {
     gtk_test(
         "ui::window::composition::tests::destroy_handler_releases_browser_observers_and_is_idempotent",
         || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let preferences = PreferenceManager::shared();
+            preferences.set_sidebar_show_home(true);
+            preferences.set_sidebar_show_trash(true);
+            let survivor = Fixture::new();
+            let preferences = survivor.preferences.clone();
+            let initial_listeners = preferences.listener_count();
             let fixture = Fixture::new();
             let retained = Rc::new(());
             let weak = Rc::downgrade(&retained);
@@ -446,11 +562,373 @@ fn destroy_handler_releases_browser_observers_and_is_idempotent() {
                 let _ = &retained;
             });
             assert!(weak.upgrade().is_some());
+            let window = fixture.window.downgrade();
+            let view = fixture.content.browser.downgrade();
+            let footer = fixture.content.footer.shortcuts.widget().downgrade();
             fixture.content.connect_cleanup(&fixture.window);
             fixture.window.emit_by_name::<()>("destroy", &[]);
             assert!(weak.upgrade().is_none());
             fixture.window.emit_by_name::<()>("destroy", &[]);
             fixture.window.destroy();
+            drop(fixture.window);
+            drop(fixture.notice);
+            wait_for(|| window.upgrade().is_none(), "destroy releases the window");
+            wait_for(
+                || view.upgrade().is_none(),
+                "destroy releases the browser view",
+            );
+            wait_for(|| footer.upgrade().is_none(), "destroy releases the footer");
+            wait_for(
+                || preferences.listener_count() == initial_listeners,
+                "destroy removes window preference callbacks",
+            );
+
+            for (prompt, mode) in [
+                (Key::slash, BrowserMode::Icons),
+                (Key::s, BrowserMode::List),
+                (Key::z, BrowserMode::Columns),
+            ] {
+                let closing = Fixture::new();
+                closing.content.browser.set_view_mode(mode);
+                assert!(press_capture(
+                    &closing.window,
+                    prompt,
+                    ModifierType::empty()
+                ));
+                wait_for(
+                    || {
+                        closing
+                            .content
+                            .footer
+                            .shortcuts
+                            .prompt_entry_widget()
+                            .is_mapped()
+                    },
+                    "closing fixture has an active prompt",
+                );
+                closing
+                    .content
+                    .footer
+                    .shortcuts
+                    .prompt_entry_widget()
+                    .set_text("fixture");
+                let window = closing.window.downgrade();
+                let view = closing.content.browser.downgrade();
+                let footer = closing.content.footer.shortcuts.widget().downgrade();
+                closing.close();
+                wait_for(
+                    || window.upgrade().is_none(),
+                    "prompt close releases the window",
+                );
+                wait_for(
+                    || view.upgrade().is_none(),
+                    "prompt close releases the view",
+                );
+                wait_for(
+                    || footer.upgrade().is_none(),
+                    "prompt close releases the footer",
+                );
+                wait_for(
+                    || preferences.listener_count() == initial_listeners,
+                    "prompt close removes preference callbacks",
+                );
+                assert!(
+                    survivor
+                        .window
+                        .application()
+                        .expect("surviving application")
+                        .accels_for_action("win.search")
+                        .is_empty()
+                );
+            }
+            preferences.set_minimal_mode(false);
+            preferences.set_show_keybinding_hints(true);
+            assert!(!survivor.window.has_css_class("minimal-mode"));
+            survivor.content.footer.shortcuts.assert_hints_visible(true);
+            preferences.set_minimal_mode(true);
+            assert!(survivor.window.has_css_class("minimal-mode"));
+            survivor.close();
+        },
+    );
+}
+
+fn press_capture(window: &gtk::ApplicationWindow, key: Key, modifiers: ModifierType) -> bool {
+    let controllers = window.observe_controllers();
+    let mut stopped = false;
+    let mut found = false;
+    for index in 0..controllers.n_items() {
+        if let Some(keys) = controllers
+            .item(index)
+            .and_downcast::<gtk::EventControllerKey>()
+            && keys.propagation_phase() == gtk::PropagationPhase::Capture
+        {
+            found = true;
+            if keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]) {
+                stopped = true;
+            }
+        }
+    }
+    assert!(found, "capture key controller");
+    stopped
+}
+
+fn wait_until_loaded(view: &BrowserView) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !view
+        .browser()
+        .column_snapshot(0)
+        .is_some_and(|column| !column.loading)
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "fixture directory loads"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    view.browser().select(0, 0);
+    view.browser().focus_active();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !view.item_view_has_focus() {
+        if focus_first_list(view) {
+            glib::MainContext::default().iteration(false);
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "fixture list takes focus"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+fn focus_first_list(view: &BrowserView) -> bool {
+    fn find(widget: &gtk::Widget) -> Option<gtk::Widget> {
+        if widget.is::<gtk::ListView>() || widget.is::<gtk::GridView>() {
+            return Some(widget.clone());
+        }
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            if let Some(found) = find(&widget) {
+                return Some(found);
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+    find(&view.widget()).is_some_and(|list| list.grab_focus())
+}
+
+fn wait_until(ready: impl Fn() -> bool) {
+    wait_for(ready, "minimal Icons/List rebuild did not settle");
+}
+
+fn wait_for(ready: impl Fn() -> bool, message: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !ready() {
+        assert!(std::time::Instant::now() < deadline, "{message}");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+fn wait_until_mode(view: &BrowserView, mode: BrowserMode) {
+    wait_until(|| view.view_mode() == mode);
+}
+
+fn listing_shows(view: &BrowserView, names: &[&str]) -> bool {
+    names
+        .iter()
+        .all(|name| listing_has_name(&view.widget(), name))
+}
+
+fn listing_has_name(widget: &gtk::Widget, name: &str) -> bool {
+    if widget
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.label() == *name)
+        || widget
+            .downcast_ref::<gtk::Inscription>()
+            .is_some_and(|label| label.text().as_deref() == Some(name))
+    {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if listing_has_name(&widget, name) {
+            return true;
+        }
+        child = widget.next_sibling();
+    }
+    false
+}
+
+fn footer_count_visible(fixture: &Fixture) -> bool {
+    fn find_count(widget: &gtk::Widget) -> Option<String> {
+        if widget.has_css_class("shortcut-footer-count") {
+            return widget
+                .downcast_ref::<gtk::Label>()
+                .map(|label| label.text().to_string());
+        }
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            if let Some(text) = find_count(&widget) {
+                return Some(text);
+            }
+            child = widget.next_sibling();
+        }
+        None
+    }
+    find_count(fixture.content.footer.shortcuts.widget().upcast_ref()).is_some_and(|text| {
+        !text.trim().is_empty() && (text.contains("item") || text.contains("selected"))
+    })
+}
+
+fn widget_with_tooltip(widget: &gtk::Widget, tooltip: &str) -> Option<gtk::Widget> {
+    if widget.tooltip_text().as_deref() == Some(tooltip) {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(found) = widget_with_tooltip(&widget, tooltip) {
+            return Some(found);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+#[test]
+fn minimal_mode_hides_chrome_and_follows_toggles_in_both_windows() {
+    gtk_test(
+        "ui::window::composition::tests::minimal_mode_hides_chrome_and_follows_toggles_in_both_windows",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let first = Fixture::new();
+            let second = Fixture::new();
+            let directory = tempfile::tempdir().expect("fixture");
+            for name in ["a.txt", "b.txt"] {
+                std::fs::write(directory.path().join(name), b"fixture").expect("fixture file");
+            }
+            let location = crate::model::Location::local(directory.path());
+            for fixture in [&first, &second] {
+                fixture.content.browser.navigate_location(location.clone());
+            }
+            for fixture in [&first, &second] {
+                wait_until_loaded(&fixture.content.browser);
+                fixture.content.browser.browser().focus_active();
+                focus_first_list(&fixture.content.browser);
+            }
+            // The saved fixture enables minimal mode before any window opens.
+            for fixture in [&first, &second] {
+                assert!(!fixture.content.header.search.is_visible());
+                assert!(fixture.content.header.close.is_visible());
+                assert!(fixture.window.has_css_class("minimal-mode"));
+                let refresh =
+                    widget_with_tooltip(&fixture.content.browser.widget(), "Refresh (F5)")
+                        .expect("pane refresh");
+                assert!(!refresh.is_visible());
+            }
+            // Keep-list Ctrl+K is handled in capture (accels stay cleared).
+            assert!(press_capture(
+                &first.window,
+                Key::k,
+                ModifierType::CONTROL_MASK
+            ));
+            let search = first.layer("search-backdrop").expect("search installed");
+            assert!(search.is_visible());
+            let application = first.window.application().expect("test application");
+            assert!(application.accels_for_action("win.search").is_empty());
+            search.set_visible(false);
+            gtk::prelude::GtkWindowExt::set_focus(&first.window, None::<&gtk::Widget>);
+            first.content.browser.browser().focus_active();
+            // Capture handles Ctrl+, itself (Stop) and opens Settings.
+            assert!(press_capture(
+                &first.window,
+                Key::comma,
+                ModifierType::CONTROL_MASK
+            ));
+            let settings = first.layer("settings-backdrop").expect("settings opens");
+            assert!(settings.is_visible());
+            settings.set_visible(false);
+            // Leaving from the second window restores the first, accels included.
+            second.preferences.set_minimal_mode(false);
+            for fixture in [&first, &second] {
+                assert!(fixture.content.header.search.is_visible());
+                assert!(fixture.content.header.close.is_visible());
+                assert!(!fixture.window.has_css_class("minimal-mode"));
+                let refresh =
+                    widget_with_tooltip(&fixture.content.browser.widget(), "Refresh (F5)")
+                        .expect("pane refresh");
+                assert!(refresh.is_visible());
+            }
+            // Hiding Settings strands focus; the restored accels are the
+            // assertion that matters here, not another shortcut press.
+            assert_eq!(
+                application.accels_for_action("win.search").as_slice(),
+                &["<Control>k"]
+            );
+            first.close();
+            second.close();
+        },
+    );
+}
+
+#[test]
+fn minimal_mode_icons_and_list_rebuild_while_footer_observes() {
+    gtk_test(
+        "ui::window::composition::tests::minimal_mode_icons_and_list_rebuild_while_footer_observes",
+        || {
+            PreferenceManager::seed_saved_preferences_for_test();
+            let preferences = PreferenceManager::shared();
+            assert!(preferences.minimal_mode());
+            assert_eq!(preferences.browser_mode(), BrowserMode::List);
+
+            let directory = tempfile::tempdir().expect("fixture");
+            for name in ["a.txt", "b.txt"] {
+                std::fs::write(directory.path().join(name), b"fixture").expect("fixture file");
+            }
+            let location = crate::model::Location::local(directory.path());
+
+            let list = Fixture::new();
+            list.content.browser.navigate_location(location.clone());
+            wait_until_loaded(&list.content.browser);
+            assert_eq!(list.content.browser.view_mode(), BrowserMode::List);
+            assert!(listing_shows(&list.content.browser, &["a.txt", "b.txt"]));
+            assert!(footer_count_visible(&list));
+
+            preferences.set_browser_mode(BrowserMode::Icons);
+            let icons = Fixture::new();
+            icons.content.browser.navigate_location(location.clone());
+            wait_until_mode(&icons.content.browser, BrowserMode::Icons);
+            wait_until_loaded(&icons.content.browser);
+            assert!(listing_shows(&icons.content.browser, &["a.txt", "b.txt"]));
+            assert!(footer_count_visible(&icons));
+
+            preferences.set_browser_mode(BrowserMode::Columns);
+            let columns = Fixture::new();
+            columns.content.browser.navigate_location(location);
+            wait_until_mode(&columns.content.browser, BrowserMode::Columns);
+            wait_until_loaded(&columns.content.browser);
+            assert!(press_capture(
+                &columns.window,
+                Key::_2,
+                ModifierType::CONTROL_MASK
+            ));
+            wait_until_mode(&columns.content.browser, BrowserMode::Icons);
+            wait_until(|| listing_shows(&columns.content.browser, &["a.txt", "b.txt"]));
+            assert!(footer_count_visible(&columns));
+            assert!(press_capture(
+                &columns.window,
+                Key::_3,
+                ModifierType::CONTROL_MASK
+            ));
+            wait_until_mode(&columns.content.browser, BrowserMode::List);
+            wait_until(|| listing_shows(&columns.content.browser, &["a.txt", "b.txt"]));
+            assert!(footer_count_visible(&columns));
+
+            list.close();
+            icons.close();
+            columns.close();
         },
     );
 }

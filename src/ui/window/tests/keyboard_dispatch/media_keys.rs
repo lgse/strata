@@ -60,7 +60,7 @@ fn media_modifiers_leave_plain_arrows_and_space_to_the_browser() {
                 let media = player(&fixture.preview.widget()).expect("preview player");
                 crate::ui::media::tests::use_test_decoder(&media, false, 20_000_000);
                 wait_until(|| media.is_prepared());
-                let manager = PreferenceManager::shared();
+                let manager = crate::ui::preferences::PreferenceManager::shared();
                 manager.set_preview_volume(0.5);
                 manager.set_preview_muted(false);
                 let modifiers = ModifierType::CONTROL_MASK | ModifierType::ALT_MASK;

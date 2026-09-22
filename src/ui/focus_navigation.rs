@@ -35,9 +35,30 @@ pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key
     let Some(focused) = scope.root().and_then(|root| root.focus()) else {
         return false;
     };
-    let Some((collection, _)) = super::scrolling::focused_collection(&focused) else {
+    let Some(collection) = focused_arrow_collection(&focused) else {
         return false;
     };
+    if activate_collection_arrow(&collection, key) {
+        return true;
+    }
+    arrow_direction(key).is_some_and(|direction| collection.child_focus(direction))
+}
+
+fn focused_arrow_collection(focused: &gtk::Widget) -> Option<gtk::Widget> {
+    if let Some((collection, _)) = super::scrolling::focused_collection(focused) {
+        return Some(collection);
+    }
+    let mut current = Some(focused.clone());
+    while let Some(widget) = current {
+        if widget.is::<gtk::ListBox>() {
+            return Some(widget);
+        }
+        current = widget.parent();
+    }
+    None
+}
+
+fn activate_collection_arrow(collection: &gtk::Widget, key: gdk::Key) -> bool {
     // Invoke GTK's own binding: returning Proceed would deliver the original letter.
     let controllers = collection.observe_controllers();
     for index in 0..controllers.n_items() {
@@ -60,7 +81,7 @@ pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key
             {
                 return action.activate(
                     gtk::ShortcutActionFlags::EXCLUSIVE,
-                    &collection,
+                    collection,
                     shortcut.arguments().as_ref(),
                 );
             }
@@ -88,6 +109,10 @@ pub(super) fn editable(widget: &gtk::Widget) -> bool {
 
 pub(super) fn in_popover(widget: &gtk::Widget) -> bool {
     widget.is::<gtk::Popover>() || widget.ancestor(gtk::Popover::static_type()).is_some()
+}
+
+pub(super) fn in_popover_menu(widget: &gtk::Widget) -> bool {
+    widget.is::<gtk::PopoverMenu>() || widget.ancestor(gtk::PopoverMenu::static_type()).is_some()
 }
 
 fn controls(scope: &gtk::Widget, result: &mut Vec<gtk::Widget>) {

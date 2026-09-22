@@ -76,6 +76,10 @@ struct Fixture {
 
 impl Fixture {
     fn new(grouped: bool) -> Self {
+        Self::with_mode(BrowserMode::List, grouped)
+    }
+
+    fn with_mode(mode: BrowserMode, grouped: bool) -> Self {
         let theme = crate::ui::preferences::PreferenceManager::shared();
         crate::ui::prepare_portal_ui();
         let source = Rc::new(Source::default());
@@ -86,14 +90,17 @@ impl Fixture {
             Rc::new(Cell::new(true)),
         )));
         views.borrow_mut().set_group_by_type(grouped);
-        views.borrow_mut().prepare_mode(BrowserMode::List);
-        views.borrow().show_mode(BrowserMode::List);
+        views.borrow_mut().prepare_mode(mode);
+        views.borrow().show_mode(mode);
         let weak = Rc::downgrade(&views);
         browser.observe(move |event| {
             if !matches!(event, BrowserEvent::SelectionSynced { .. })
                 && let Some(views) = weak.upgrade()
             {
-                views.borrow_mut().handle(event);
+                let restore = views.borrow_mut().handle_with_deferred_empty(event, false);
+                if let Some(restore) = restore {
+                    restore.apply();
+                }
             }
         });
         let window = gtk::Window::builder()
@@ -115,7 +122,11 @@ impl Fixture {
     }
 
     fn pane(&self) -> Pane {
-        self.views.borrow().list_pane.clone().expect("list pane")
+        self.views
+            .borrow()
+            .single_pane()
+            .cloned()
+            .expect("active pane")
     }
 
     fn finish(&self, omit: Option<usize>) {
@@ -168,6 +179,7 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         self.browser.clear_observer();
         self.views.borrow_mut().clear_list();
+        self.views.borrow_mut().clear_icons();
         self.window.close();
     }
 }
@@ -178,6 +190,20 @@ fn pump_until(done: impl Fn() -> bool) {
         assert!(Instant::now() < deadline, "GTK state did not settle");
         glib::MainContext::default().iteration(false);
     }
+}
+
+fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
+    if widget.has_css_class(class) {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(found) = descendant_with_class(&widget, class) {
+            return Some(found);
+        }
+        child = widget.next_sibling();
+    }
+    None
 }
 
 fn pump_frames(view: &gtk::Widget, count: u8) {
@@ -192,6 +218,149 @@ fn pump_frames(view: &gtk::Widget, count: u8) {
         }
     });
     pump_until(|| remaining.get() == 0);
+}
+
+#[test]
+fn restored_selection_reaches_footer_observers_before_loading_finishes() {
+    gtk_test(
+        "ui::browser_modes::navigation::tests::restored_selection_reaches_footer_observers_before_loading_finishes",
+        || {
+            crate::ui::preferences::PreferenceManager::shared().set_minimal_mode(false);
+            for mode in [BrowserMode::Icons, BrowserMode::List] {
+                let source = Rc::new(Source::default());
+                let view = crate::ui::browser::BrowserView::new(
+                    source.clone(),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                view.set_view_mode(mode);
+                let footer = crate::ui::shortcut_footer::ShortcutFooter::new(mode);
+                footer.observe_browser(&view);
+                let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                content.append(&view.widget());
+                content.append(footer.widget());
+                let window = gtk::Window::builder().child(&content).build();
+                window.present();
+                let browser = view.browser();
+                browser.navigate(Location::local("/fixture"));
+                source.finish(None);
+                pump_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                browser.set_selection(0, &[2, 3], Some(3));
+                browser.navigate(Location::local("/fixture/folder-003"));
+                source.finish(None);
+                pump_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                browser.back();
+                source.finish(Some(0));
+                pump_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                assert_eq!(browser.selected_positions(0), [1, 2]);
+                assert!(view.search_result_listing().is_none());
+                let count =
+                    descendant_with_class(footer.widget().upcast_ref(), "shortcut-footer-count")
+                        .and_downcast::<gtk::Label>()
+                        .expect("visible selection summary");
+                assert_eq!(count.text(), "2 folders selected");
+                assert_eq!(
+                    browser
+                        .focused_entry()
+                        .expect("restored cursor")
+                        .display_name,
+                    "folder-003"
+                );
+                assert_eq!(
+                    view.browser()
+                        .selected_entries()
+                        .iter()
+                        .map(|entry| entry.display_name.as_str())
+                        .collect::<Vec<_>>(),
+                    ["folder-002", "folder-003"]
+                );
+                browser.clear_observer();
+                window.destroy();
+            }
+        },
+    );
+}
+
+#[test]
+fn icons_return_restores_cursor_selection_and_anchor_by_location_after_rebuild() {
+    gtk_test(
+        "ui::browser_modes::navigation::tests::icons_return_restores_cursor_selection_and_anchor_by_location_after_rebuild",
+        || {
+            let fixture = Fixture::with_mode(BrowserMode::Icons, false);
+            fixture.browser.set_selection(0, &[2, 3], Some(3));
+            fixture.browser.set_selection_anchor(0, 2);
+            let original = fixture.pane().section.view;
+            fixture
+                .browser
+                .navigate(Location::local("/fixture/folder-003"));
+            fixture.finish(None);
+            fixture.browser.select(0, 5);
+            fixture.browser.back();
+            fixture.finish(Some(0));
+            assert_ne!(
+                fixture.pane().section.view,
+                original,
+                "navigation rebuilds the Icons view"
+            );
+            assert_eq!(fixture.browser.selected_positions(0), [1, 2]);
+            assert_eq!(
+                fixture.views.borrow().selected_positions(),
+                Some((0, vec![1, 2]))
+            );
+            assert_eq!(
+                fixture
+                    .browser
+                    .focused_entry()
+                    .expect("restored cursor")
+                    .display_name,
+                "folder-003"
+            );
+            assert_eq!(fixture.views.borrow().focused_position(), Some((0, 2)));
+            fixture
+                .pane()
+                .section
+                .view
+                .activate_action("list.select-item", Some(&(3u32, false, true).to_variant()))
+                .expect("native Icons range selection");
+            assert_eq!(fixture.browser.selected_positions(0), [1, 2, 3]);
+            fixture.browser.forward();
+            fixture.finish(None);
+            assert_eq!(
+                fixture
+                    .browser
+                    .focused_entry()
+                    .expect("child cursor")
+                    .display_name,
+                "folder-005"
+            );
+            fixture.browser.parent();
+            fixture.finish(Some(3));
+            assert_eq!(
+                fixture
+                    .browser
+                    .selected_entries()
+                    .iter()
+                    .map(|entry| entry.display_name.as_str())
+                    .collect::<Vec<_>>(),
+                ["folder-002", "folder-004"]
+            );
+            assert_eq!(
+                fixture.views.borrow().selected_positions(),
+                Some((0, vec![2, 3]))
+            );
+        },
+    );
 }
 
 #[test]

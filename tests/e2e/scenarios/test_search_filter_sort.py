@@ -58,6 +58,11 @@ def test_type_to_search_finds_matches_anywhere_in_the_tree(strata, mode, root):
         lambda: strata.matches(root) == ["photo.txt"],
         "the search to list the nested match",
     )
+    strata.keyboard.type_text(".txt")
+    strata.wait(
+        lambda: field.text == "photo.txt" and strata.matches(root) == ["photo.txt"],
+        "type-to-search to retain the query when typing after result delivery",
+    )
 
     strata.keyboard.press("Escape")
     strata.wait(
@@ -72,12 +77,18 @@ def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
 
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
-    strata.keyboard.type_text("spreadsheet")
-    strata.wait(lambda: field.text == "spreadsheet", "the filter query to be typed")
+    strata.keyboard.type_text("spread")
+    strata.wait(lambda: field.text == "spread", "the filter query to be typed")
 
     strata.wait(
         lambda: strata.matches(root) == ["spreadsheet.csv"],
         "the filter to list only matching entries",
+    )
+    strata.keyboard.type_text("sheet.csv")
+    strata.wait(
+        lambda: field.text == "spreadsheet.csv"
+        and strata.matches(root) == ["spreadsheet.csv"],
+        "Ctrl+F to retain the query when typing after result delivery",
     )
 
     strata.keyboard.press("Escape")

@@ -155,6 +155,12 @@ fn source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview() {
                 .style("def:statement")
                 .expect("def:statement should resolve");
             assert_eq!(statement.foreground().as_deref(), Some("#99c1f1"));
+            let text = scheme.style("text").expect("text style should resolve");
+            assert_eq!(
+                text.background().as_deref(),
+                Some("#ffffff"),
+                "source preview canvas must use the folder background token"
+            );
         },
     );
 }

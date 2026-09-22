@@ -13,19 +13,22 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
             let overlay = gtk::Overlay::new();
             overlay.set_child(Some(&blurred_root));
             let window = gtk::Window::builder().child(&overlay).build();
+            let button = gtk::Button::new();
             let launcher = SettingsLauncher {
                 layer: RefCell::new(None),
-                button: gtk::Button::new(),
-                blurred_root,
-                overlay: overlay.clone(),
+                button: button.downgrade(),
+                blurred_root: blurred_root.downgrade(),
+                overlay: overlay.downgrade(),
                 preferences: PreferenceManager::shared(),
                 notice: Rc::new(|_| {}),
                 guard: settings::install_guard(),
+                capture_focus: Rc::new(|| Rc::new(|| {})),
+                restore_focus: Rc::default(),
             };
             let action = crate::ui::modal::modal_layer(
                 &gtk::Button::with_label("Action"),
                 &overlay,
-                Some(launcher.blurred_root.clone()),
+                Some(blurred_root.clone()),
                 None,
             );
             overlay.add_overlay(&action);
@@ -35,23 +38,23 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
 
             launcher.show();
             assert!(launcher.layer.borrow().is_none());
-            assert!(!launcher.button.has_css_class("active"));
+            assert!(!button.has_css_class("active"));
             assert_eq!(gtk::prelude::RootExt::focus(&window), focus);
 
             overlay.remove_overlay(&action);
             launcher.show();
-            let settings = launcher.layer.borrow().clone().expect("Settings layer");
+            let settings = launcher.layer().expect("Settings layer");
             assert!(settings.is_visible());
-            assert!(launcher.button.has_css_class("active"));
+            assert!(button.has_css_class("active"));
             settings.set_visible(false);
-            launcher.button.remove_css_class("active");
+            button.remove_css_class("active");
             overlay.add_overlay(&action);
             action.grab_focus();
             let focus = gtk::prelude::RootExt::focus(&window);
 
             launcher.show();
             assert!(!settings.is_visible());
-            assert!(!launcher.button.has_css_class("active"));
+            assert!(!button.has_css_class("active"));
             assert_eq!(gtk::prelude::RootExt::focus(&window), focus);
             assert_eq!(overlay.last_child(), Some(action.clone().upcast()));
 
@@ -61,7 +64,7 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
                 settings.is_visible(),
                 "hidden modals must not block Settings"
             );
-            assert_eq!(launcher.layer.borrow().as_ref(), Some(&settings));
+            assert_eq!(launcher.layer(), Some(settings));
             window.destroy();
         },
     );

@@ -50,6 +50,8 @@ pub(in crate::ui) struct Preferences {
     type_to_search: bool,
     #[serde(default)]
     arrow_navigation_scoped: bool,
+    #[serde(default)]
+    minimal_mode: bool,
     #[serde(default = "default_enabled")]
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
@@ -151,6 +153,7 @@ impl Default for Preferences {
             search_open_files_directly: false,
             type_to_search: true,
             arrow_navigation_scoped: false,
+            minimal_mode: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             reduce_motion: false,
@@ -568,6 +571,15 @@ impl PreferenceManager {
 
     pub fn set_arrow_navigation_scoped(&self, scoped: bool) {
         self.preferences.borrow_mut().arrow_navigation_scoped = scoped;
+        self.save_preferences();
+    }
+
+    pub fn minimal_mode(&self) -> bool {
+        self.preferences.borrow().minimal_mode
+    }
+
+    pub fn set_minimal_mode(&self, enabled: bool) {
+        self.preferences.borrow_mut().minimal_mode = enabled;
         self.save_preferences();
     }
 

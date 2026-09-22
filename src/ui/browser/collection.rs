@@ -249,7 +249,9 @@ pub(crate) fn restore_filter_controls(
         entry.set_text("");
         return;
     }
-    button.set_active(true);
+    // Hidden minimal-mode filters keep the funnel collapsed; activating the
+    // button would reveal it and steal listing focus.
+    button.set_active(filter.revealed);
     entry.set_text(&filter.query);
 }
 
@@ -286,6 +288,15 @@ pub(in crate::ui) struct FilterQueryBinding {
     entry: glib::WeakRef<gtk::Entry>,
     changed: Option<glib::SignalHandlerId>,
     pending: Rc<RefCell<Option<glib::SourceId>>>,
+    settle: Rc<dyn Fn()>,
+}
+
+impl FilterQueryBinding {
+    /// Cancels the typing debounce and applies the entry's current text.
+    /// Hidden-filter dismissal uses this so the model swap finishes before focus returns.
+    pub(in crate::ui) fn settle_now(&self) {
+        (self.settle)();
+    }
 }
 
 impl Drop for FilterQueryBinding {
@@ -301,6 +312,7 @@ impl Drop for FilterQueryBinding {
 
 /// Scope changes bypass typing's debounce. Intent changes reject old worker events immediately;
 /// dropping the binding disconnects the entry and cancels queued work before a view is detached.
+/// [`FilterQueryBinding::settle_now`] applies the current text without waiting out the debounce.
 pub(in crate::ui) fn bind_filter_query(
     entry: &gtk::Entry,
     session: &crate::ui::search_session::SearchSession,
@@ -327,9 +339,11 @@ pub(in crate::ui) fn bind_filter_query(
         },
     );
     let pending_for_drop = pending.clone();
-    let session = session.clone();
+    let callback_for_settle = callback.clone();
+    let scope_for_settle = scope.clone();
+    let session_for_changed = session.clone();
     let changed = entry.connect_changed(move |entry| {
-        session.expect_query(entry.text().as_str());
+        session_for_changed.expect_query(entry.text().as_str());
         cancel_source(&pending);
         let slot = pending.clone();
         let callback = callback.clone();
@@ -343,10 +357,22 @@ pub(in crate::ui) fn bind_filter_query(
             },
         ));
     });
+    let pending_for_settle = pending_for_drop.clone();
+    let session_for_settle = session.clone();
+    let entry_for_settle = entry.downgrade();
+    let settle: Rc<dyn Fn()> = Rc::new(move || {
+        cancel_source(&pending_for_settle);
+        if let Some(entry) = entry_for_settle.upgrade() {
+            let text = entry.text().to_string();
+            session_for_settle.expect_query(text.as_str());
+            callback_for_settle(text, scope_for_settle.get(), false);
+        }
+    });
     FilterQueryBinding {
         entry: entry.downgrade(),
         changed: Some(changed),
         pending: pending_for_drop,
+        settle,
     }
 }
 
@@ -364,6 +390,16 @@ pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterCha
         gtk::FilterChange::LessStrict
     } else {
         gtk::FilterChange::Different
+    }
+}
+
+/// Writes a hidden-funnel query. `rescope` re-emits `changed` when the text
+/// is unchanged so a recursive/listing scope switch still starts a new feed.
+pub(crate) fn set_filter_entry_query(entry: &gtk::Entry, query: &str, rescope: bool) {
+    if entry.text().as_str() != query {
+        entry.set_text(query);
+    } else if rescope {
+        entry.emit_by_name::<()>("changed", &[]);
     }
 }
 

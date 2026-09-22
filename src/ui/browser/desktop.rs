@@ -91,6 +91,105 @@ async fn resolve_default_application(
     Ok((content_type, default))
 }
 
+#[derive(Default)]
+pub(super) struct OpenWithRequest(Option<glib::JoinHandle<()>>);
+
+impl OpenWithRequest {
+    pub(super) fn cancel(&mut self) {
+        if let Some(task) = self.0.take() {
+            task.abort();
+        }
+    }
+}
+
+impl Drop for OpenWithRequest {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+pub(super) fn show_open_with_for_entries(state: &Rc<super::ViewState>, entries: Vec<FileEntry>) {
+    let files: Vec<_> = entries
+        .iter()
+        .map(|entry| gio_file_for_location(&entry.location))
+        .collect();
+    show_open_with_when_ready(state, entries, async move {
+        crate::ui::open_with::applications_for_files(&files).await
+    });
+}
+
+fn show_open_with_when_ready(
+    state: &Rc<super::ViewState>,
+    entries: Vec<FileEntry>,
+    choices: impl std::future::Future<
+        Output = Result<crate::ui::open_with::ApplicationChoices, glib::Error>,
+    > + 'static,
+) {
+    state.open_with_request.borrow_mut().cancel();
+    if entries.is_empty() {
+        return;
+    }
+    let Some(window) = state.overlay.root().and_downcast::<gtk::Window>() else {
+        return;
+    };
+    let focus = gtk::prelude::GtkWindowExt::focus(&window).map(|focus| focus.downgrade());
+    let window = window.downgrade();
+    let navigation = state.browser.navigation_generation();
+    let weak = Rc::downgrade(state);
+    let task = glib::MainContext::default().spawn_local(async move {
+        let choices = choices.await;
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        state.open_with_request.borrow_mut().0.take();
+        let Some(window) = window.upgrade() else {
+            return;
+        };
+        let view = super::BrowserView {
+            state: state.clone(),
+        };
+        let current = view.open_with_entries();
+        if !window.is_mapped()
+            || !crate::ui::preferences::PreferenceManager::shared().minimal_mode()
+            || state.browser.navigation_generation() != navigation
+            || focus.and_then(|focus| focus.upgrade()) != gtk::prelude::GtkWindowExt::focus(&window)
+            || entries.len() != current.len()
+            || !entries.iter().all(|entry| {
+                current.iter().any(|candidate| {
+                    super::clipboard::locations_equal(&entry.location, &candidate.location)
+                })
+            })
+        {
+            return;
+        }
+        match choices {
+            Ok(choices) => {
+                let files = entries
+                    .iter()
+                    .map(|entry| gio_file_for_location(&entry.location))
+                    .collect();
+                let browser = Rc::downgrade(&state.browser);
+                crate::ui::open_with::show_prepared(
+                    &state.overlay,
+                    files,
+                    choices,
+                    Rc::new(move || {
+                        if let Some(browser) = browser.upgrade() {
+                            browser.focus_active();
+                        }
+                    }),
+                );
+            }
+            Err(error) => show_error_dialog(
+                &state.overlay,
+                "Unable to open with application",
+                error.message(),
+            ),
+        }
+    });
+    state.open_with_request.borrow_mut().0 = Some(task);
+}
+
 fn show_open_with_fallback(
     parent: &impl IsA<gtk::Widget>,
     file: gio::File,

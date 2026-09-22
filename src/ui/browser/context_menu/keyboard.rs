@@ -210,7 +210,11 @@ pub(super) fn install_submenu_return(
         // Focusing the owner alone leaves arrows routed to the hidden branch.
         submenu.set_visible(false);
         if let Some(owner) = weak_owner.upgrade() {
-            if let Some(parent) = owner.ancestor(gtk::PopoverMenu::static_type()) {
+            // GTK 4.22 needs Left to pull arrow keys back to the parent menu.
+            // On 4.14 that walk leaves the popover and dismisses it.
+            if gtk::minor_version() >= 22
+                && let Some(parent) = owner.ancestor(gtk::PopoverMenu::static_type())
+            {
                 parent.child_focus(gtk::DirectionType::Left);
             }
             owner.grab_focus();

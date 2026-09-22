@@ -7,7 +7,8 @@ use gtk::gdk::{Key, ModifierType};
 
 use super::super::*;
 use crate::ui::{
-    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+    preferences::PreferenceManager, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
+    top_bar_navigation::TopBarNavigation,
 };
 
 struct KeyboardFixture {
@@ -30,6 +31,8 @@ impl KeyboardFixture {
         let preferences = PreferenceManager::shared();
         // Keyboard focus-return scenarios need a place to focus; the saved fixture hides all places.
         preferences.set_sidebar_show_home(true);
+        // The saved fixture enables minimal mode; default-map scenarios opt out.
+        preferences.set_minimal_mode(false);
         let directory = tempfile::tempdir().expect("fixture");
         for name in ["a.txt", "b.txt", "c.txt"] {
             std::fs::write(directory.path().join(name), b"preview").expect("fixture file");
@@ -68,6 +71,7 @@ impl KeyboardFixture {
                     preferences,
                 },
                 shortcuts: ShortcutFooter::new(BrowserMode::Columns),
+                open_settings: std::rc::Rc::new(|| {}),
             },
         );
         let controllers = window.observe_controllers();

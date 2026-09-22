@@ -144,13 +144,12 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
     }
 
     let replaced = run_compression(request(TransferConflict::ReplaceExisting));
-    assert!(replaced.iter().any(|event| matches!(
-        event,
-        OperationEvent::Compressed {
-            original: Some(_),
-            ..
-        }
-    )));
+    assert!(
+        replaced
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Compressed { .. })),
+        "ReplaceExisting must publish even when Trash is unsupported: {replaced:?}"
+    );
     let extracted = destination.join("extracted");
     fs::create_dir(&extracted)?;
     assert_eq!(

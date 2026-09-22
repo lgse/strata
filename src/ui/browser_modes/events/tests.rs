@@ -435,7 +435,7 @@ fn deferred_empty_state_stays_hidden_until_delete_animation_finishes() {
                 let mut fixture = Fixture::new(mode, grouped);
                 let pane = fixture.pane();
 
-                fixture.views.handle_with_deferred_empty(
+                if let Some(restore) = fixture.views.handle_with_deferred_empty(
                     &BrowserEvent::EntriesSpliced {
                         depth: 0,
                         splices: vec![EntrySplice {
@@ -445,7 +445,9 @@ fn deferred_empty_state_stays_hidden_until_delete_animation_finishes() {
                         }],
                     },
                     true,
-                );
+                ) {
+                    restore.apply();
+                }
 
                 assert_eq!(pane.model.n_items(), 0);
                 assert_eq!(visible_page(&pane), "content");
@@ -469,13 +471,15 @@ fn deferred_empty_state_survives_a_reload_finishing_during_delete_animation() {
                 fixture
                     .views
                     .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
-                fixture.views.handle_with_deferred_empty(
+                if let Some(restore) = fixture.views.handle_with_deferred_empty(
                     &BrowserEvent::LoadFinished {
                         depth: 0,
                         truncated: false,
                     },
                     true,
-                );
+                ) {
+                    restore.apply();
+                }
 
                 assert_eq!(pane.model.n_items(), 0);
                 assert_ne!(visible_page(&pane), "status");

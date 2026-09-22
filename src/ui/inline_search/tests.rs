@@ -57,6 +57,7 @@ fn search_options(
         single_click: activate,
         selection_changed: Rc::new(|_| {}),
         focus_items: Rc::new(|| {}),
+        listing_changed: None,
     }
 }
 
@@ -196,6 +197,7 @@ fn search_collection_exposes_selection_events_and_consumer_selection_mode() {
                     changes_for_callback.set(changes_for_callback.get() + 1);
                 }),
                 focus_items: Rc::new(|| {}),
+                listing_changed: None,
             };
             let search = wrap(
                 &gtk::Label::new(None),
@@ -320,9 +322,15 @@ fn progressive_results_retain_identity_focus_and_thumbnail() {
             let _theme = super::super::preferences::PreferenceManager::shared();
             super::super::thumbnail::hold_thumbnail_workers();
             window.present();
-            entry.set_text("same");
             entry.grab_focus();
+            entry.set_text("same");
+            assert_eq!(
+                entry.selection_bounds(),
+                None,
+                "a focused filter query must not select the whole entry"
+            );
             wait_until(|| state.collection.items().len() == 3);
+            assert_eq!(entry.selection_bounds(), None);
             let mut items = state.collection.items();
             items.sort_by(|a, b| a.path.cmp(&b.path));
             state.session.cancel();

@@ -239,9 +239,6 @@ pub enum OperationEvent {
     Renamed {
         request_id: OperationRequestId,
     },
-    Created {
-        request_id: OperationRequestId,
-    },
     EntryCreated {
         request_id: OperationRequestId,
         location: Location,

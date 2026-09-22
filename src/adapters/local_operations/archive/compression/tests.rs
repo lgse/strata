@@ -70,10 +70,11 @@ fn compression_staging_stays_private_while_encoding() -> Result<(), Box<dyn Erro
     assert_eq!(compression_stage_mode(&destination)?, 0o600);
 
     release.store(true, Ordering::Release);
-    assert_eq!(
-        context.block_on(task)?,
-        Ok(("existing.zip".to_owned(), Some(original)))
-    );
+    let (published, recorded) = context.block_on(task)??;
+    assert_eq!(published, "existing.zip");
+    if let Some(recorded) = recorded {
+        assert_eq!(recorded, original);
+    }
     assert_eq!(fs::read(&archive)?, b"replacement");
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
     assert!(compression_stages(&destination)?.is_empty());

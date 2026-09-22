@@ -420,7 +420,6 @@ impl Browser {
                 }
                 self.refresh_unmonitored_operation_locations(context);
             }
-            OperationEvent::Created { .. } => self.refresh_unmonitored_operation_locations(context),
             OperationEvent::TransferProgress { .. }
             | OperationEvent::DeleteProgress { .. }
             | OperationEvent::RestoreProgress { .. }
@@ -517,7 +516,6 @@ impl Browser {
 fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
     match event {
         OperationEvent::Renamed { request_id }
-        | OperationEvent::Created { request_id }
         | OperationEvent::EntryCreated { request_id, .. }
         | OperationEvent::Pasted { request_id, .. }
         | OperationEvent::Merged { request_id, .. }

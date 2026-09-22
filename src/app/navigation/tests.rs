@@ -1900,3 +1900,155 @@ fn column_entry_counts_breakdown_and_hidden() {
         })
     );
 }
+
+fn three_item_state() -> NavigationState {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+            named_entry("/fixture/charlie", "charlie"),
+        ],
+    );
+    state
+}
+
+#[test]
+fn toggle_focused_selection_clears_a_cursor_only_fill_without_moving() {
+    let mut state = three_item_state();
+    assert!(state.select(0, 0));
+    assert_eq!(state.selected_positions(0), [0]);
+    assert!(state.toggle_focused_selection());
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(0)
+    );
+}
+
+#[test]
+fn toggle_focused_selection_adds_and_removes_around_the_cursor() {
+    let mut state = three_item_state();
+    assert!(state.select(0, 1));
+    assert!(state.toggle_focused_selection());
+    assert!(state.selected_positions(0).is_empty());
+    assert!(state.toggle_focused_selection());
+    assert_eq!(state.selected_positions(0), [1]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(1)
+    );
+    assert_eq!(state.selection_anchor_position(0), Some(1));
+}
+
+#[test]
+fn invert_selection_complements_visible_entries_only() {
+    let mut state = three_item_state();
+    assert!(state.select(0, 0));
+    state.invert_selection(0);
+    assert_eq!(state.selected_positions(0), [1, 2]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(0)
+    );
+    state.invert_selection(9);
+    assert_eq!(state.selected_positions(0), [1, 2]);
+}
+
+#[test]
+fn next_visible_index_matches_page_along_without_moving_focus() {
+    let mut state = three_item_state();
+    assert!(state.select(0, 0));
+    assert_eq!(state.next_visible_index(1, 1, None), Some(1));
+    assert_eq!(state.next_visible_index(1, usize::MAX, None), Some(2));
+    assert_eq!(state.next_visible_index(-1, usize::MAX, None), Some(0));
+    assert_eq!(state.next_visible_index(0, 1, None), None);
+    // The walk never moves the cursor or rewrites the fill.
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(0)
+    );
+    // A reversed display order walks that order.
+    assert!(state.select(0, 2));
+    assert_eq!(state.next_visible_index(1, 1, Some(&[2, 1, 0])), Some(1));
+    assert_eq!(state.next_visible_index(1, 2, Some(&[2, 1, 0])), Some(0));
+    assert_eq!(state.next_visible_index(-1, 1, Some(&[2, 1, 0])), Some(2));
+}
+
+#[test]
+fn focus_keeping_fill_moves_the_cursor_without_rewriting_selection() {
+    let mut state = three_item_state();
+    assert!(state.select(0, 0));
+    assert_eq!(state.focus_keeping_fill(2), Some((0, 2)));
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(2)
+    );
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.focus_keeping_fill(9), None);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(2)
+    );
+}
+
+#[test]
+fn extend_selection_to_ranges_from_the_anchor_without_stepping() {
+    let mut state = three_item_state();
+    assert!(state.select(0, 0));
+    assert_eq!(
+        state.extend_selection_to(0, 2, None),
+        Some((0, 2, vec![0, 1, 2]))
+    );
+    assert_eq!(state.selected_positions(0), [0, 1, 2]);
+    // A second visual pass from the cursor starts a new range from it.
+    assert!(state.set_selection_anchor(0, 2));
+    assert_eq!(
+        state.extend_selection_to(0, 0, None),
+        Some((0, 0, vec![0, 1, 2]))
+    );
+    assert_eq!(
+        state.extend_selection_to(0, 9, None),
+        None,
+        "out-of-range targets change nothing"
+    );
+    assert_eq!(state.selected_positions(0), [0, 1, 2]);
+    assert_eq!(
+        state.extend_selection_to(0, 0, Some(&[2, usize::MAX, 9, 0, 1])),
+        Some((0, 0, vec![2, 0])),
+        "stale display indices are excluded from the selected range"
+    );
+    assert_eq!(state.selected_positions(0), [0, 2]);
+    assert_eq!(state.focused_entry().map(|(_, index, _)| index), Some(0));
+}
+
+#[test]
+fn subtract_visual_selection_removes_the_walked_span_and_keeps_the_rest() {
+    let mut state = three_item_state();
+    assert!(state.select(0, 0));
+    assert_eq!(
+        state.extend_selection_to(0, 2, None),
+        Some((0, 2, vec![0, 1, 2]))
+    );
+    // Walk back one step in unset: only the 2..=1 span leaves the fill.
+    assert_eq!(
+        state.subtract_visual_selection(0, 2, 1, None),
+        Some(vec![0])
+    );
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(
+        state.focused_entry().map(|(_, position, _)| position),
+        Some(1),
+        "the cursor follows without re-adding itself"
+    );
+    // A jump subtracts the whole span, not a single row.
+    assert_eq!(
+        state.extend_selection_to(0, 2, None),
+        Some((0, 2, vec![0, 1, 2]))
+    );
+    assert_eq!(state.subtract_visual_selection(0, 0, 2, None), Some(vec![]));
+    assert!(state.selected_positions(0).is_empty());
+}

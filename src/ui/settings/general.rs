@@ -249,6 +249,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::arrow_navigation_scoped,
             write: PreferenceManager::set_arrow_navigation_scoped,
         },
+        PreferenceSwitch {
+            title: "Minimal mode",
+            description: "Hide pane chrome and use Yazi-style keys. Toggle with Ctrl+Shift+M.",
+            read: PreferenceManager::minimal_mode,
+            write: PreferenceManager::set_minimal_mode,
+        },
     ] {
         append_preference_switch(&browsing, manager, switch);
     }
@@ -287,7 +293,78 @@ fn append_preference_switch(
     if switch.title == "Include subfolders" {
         super::indent_row(&row);
     }
+    if matches!(switch.title, "Keep arrows in file list" | "Type to search") {
+        bind_unused_in_minimal_mode(manager, &row, &toggle, switch.title, switch.description);
+    }
+    if switch.title == "Minimal mode" {
+        attach_experimental_note(&row, &toggle, switch.title, switch.description);
+    }
     content.append(&row);
+}
+
+const UNUSED_IN_MINIMAL_MODE: &str = "Not used in minimal mode.";
+
+fn attach_experimental_note(
+    row: &gtk::Box,
+    toggle: &gtk::Switch,
+    title: &'static str,
+    description: &'static str,
+) {
+    let copy = row
+        .first_child()
+        .and_downcast::<gtk::Box>()
+        .expect("settings option copy");
+    let note = gtk::Label::new(Some(crate::ui::minimal_mode::EXPERIMENTAL_NOTE));
+    note.set_xalign(0.0);
+    note.set_wrap(true);
+    note.add_css_class("settings-option-description");
+    if let Some(title_label) = copy.first_child() {
+        copy.insert_child_after(&note, Some(&title_label));
+    }
+    let description = format!(
+        "{} {description}",
+        crate::ui::minimal_mode::EXPERIMENTAL_NOTE
+    );
+    toggle.update_property(&[
+        gtk::accessible::Property::Label(title),
+        gtk::accessible::Property::Description(&description),
+    ]);
+}
+
+fn bind_unused_in_minimal_mode(
+    manager: &Rc<PreferenceManager>,
+    row: &gtk::Box,
+    toggle: &gtk::Switch,
+    title: &'static str,
+    description: &'static str,
+) {
+    let copy = row
+        .first_child()
+        .and_downcast::<gtk::Box>()
+        .expect("settings option copy");
+    let note = gtk::Label::new(Some(UNUSED_IN_MINIMAL_MODE));
+    note.set_xalign(0.0);
+    note.set_wrap(true);
+    note.add_css_class("settings-option-description");
+    note.set_visible(false);
+    copy.append(&note);
+    let toggle = toggle.clone();
+    manager.bind_preference(
+        &note,
+        PreferenceManager::minimal_mode,
+        move |widget, minimal| {
+            widget.set_visible(minimal);
+            let description = if minimal {
+                format!("{description} {UNUSED_IN_MINIMAL_MODE}")
+            } else {
+                description.to_string()
+            };
+            toggle.update_property(&[
+                gtk::accessible::Property::Label(title),
+                gtk::accessible::Property::Description(&description),
+            ]);
+        },
+    );
 }
 
 fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {

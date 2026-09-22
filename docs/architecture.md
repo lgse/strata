@@ -69,7 +69,11 @@ filesystem, navigation, or operation code.
 Structural events rebuild the active presentation; row, loading, and selection handlers
 keep their effects separate. Only panes belonging to the active mode and event depth
 receive incremental updates. Shared browser effects in `ui/browser/events.rs` still run
-before alternate-mode dispatch.
+before alternate-mode dispatch. Browser notifications remain synchronous: pane/query
+updates must release `ModeViews` borrows before notifying observers. Load completion
+returns a selection-restoration action; the caller releases `ModeViews` before
+applying it, with the saved position already taken out of `ListNavigation`. Footer
+and selection observers therefore see restored state without dropped events.
 
 Pane helpers share string-model splicing, but authoritative entry borrows end before GTK
 notifications. Reload detaches selection/filter models without detaching the collection
@@ -349,7 +353,27 @@ focus traversal, transient dismissal, then item/directory navigation. The privat
 introducing another browser controller. A stage returning `None` continues through Strata's
 handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
 particular, editable controls and native single-pane selection must not fall through to
-browser commands. The file chooser retains its separate, restricted keyboard policy.
+browser commands. The file chooser retains its separate, restricted keyboard policy
+when minimal mode is off.
+
+When [minimal mode](minimal-mode.md) is on, that dispatcher skips the default
+`h`/`j`/`k`/`l` arrow remap and command pipeline and runs `keyboard/minimal.rs`
+instead. The chooser installs the same dispatcher alongside its default map and
+delegates to it while the preference is on: **Enter** / **o** still confirm a
+file, **Esc** cancels after dismissing prompts or preview, and global search /
+Open With stay unavailable. Window-local browse / visual / chord / prompt state
+lives in `ui/minimal_mode.rs`, not on `Browser`. Per-window preference bindings
+update the shared `gtk::Application` accelerators idempotently; window destruction
+does not restore them while other windows still use minimal mode.
+Chrome-visibility bindings hide pane Close/filter/refresh/sort in both
+interactive browsers and the chooser. The preference is
+`PreferenceManager::minimal_mode` in `ui/preferences.rs`, not a theme setting.
+
+Initial binding applies the saved mode without transition teardown. Real transitions
+clear hidden queries and forced recursion, prompts, chords, and preview key ownership.
+Footer preference/observer callbacks and prompt controllers use weak owners so a
+closed window can release its view and bindings. `ui/shortcut_reference.rs` supplies
+shared Settings/F1 presentation; default F1 navigation remains view-specific.
 
 ## Capability boundaries
 

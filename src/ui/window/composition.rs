@@ -60,18 +60,18 @@ impl WindowContent {
     ) -> UpdateNoticeHandler {
         search::install(window, self, preferences);
         install_browser_actions(window, &self.browser, preferences);
-        let notice = settings::install(window, self, preferences);
+        let (notice, open_settings) = settings::install(window, self, preferences);
         window.set_child(Some(&self.overlay));
-        let click_browser = self.browser.clone();
-        let click_window = window.clone();
+        let click_browser = self.browser.downgrade();
+        let click_window = window.downgrade();
         let click = gtk::GestureClick::new();
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         click.connect_pressed(move |_, _, x, y| {
-            click_browser.dismiss_filter_on_outside_click(
-                click_window.upcast_ref::<gtk::Widget>(),
-                x,
-                y,
-            );
+            if let Some(browser) = click_browser.upgrade()
+                && let Some(window) = click_window.upgrade()
+            {
+                browser.dismiss_filter_on_outside_click(window.upcast_ref(), x, y);
+            }
         });
         window.add_controller(click);
         input::install_edit_cancellation(window, &self.browser);
@@ -93,6 +93,7 @@ impl WindowContent {
                     preferences: preferences.clone(),
                 },
                 shortcuts: self.footer.shortcuts.clone(),
+                open_settings,
             },
         );
         notice
@@ -116,17 +117,21 @@ fn install_browser_actions(
     browser: &BrowserView,
     preferences: &Rc<PreferenceManager>,
 ) {
-    let terminal_view = browser.clone();
+    let terminal_view = browser.downgrade();
     let terminal_action = gio::SimpleAction::new("open-terminal", None);
     terminal_action.connect_activate(move |_, _| {
-        terminal_view.open_terminal();
+        if let Some(view) = terminal_view.upgrade() {
+            view.open_terminal();
+        }
     });
     window.add_action(&terminal_action);
 
-    let refresh_view = browser.clone();
+    let refresh_view = browser.downgrade();
     let refresh_action = gio::SimpleAction::new("refresh", None);
     refresh_action.connect_activate(move |_, _| {
-        refresh_view.refresh();
+        if let Some(view) = refresh_view.upgrade() {
+            view.refresh();
+        }
     });
     window.add_action(&refresh_action);
 
@@ -141,6 +146,25 @@ fn install_browser_actions(
         for (action, accels) in super::DEFAULT_ACCELS {
             application.set_accels_for_action(action, accels);
         }
+        // Accelerators are application-wide; closing one window must not change other windows' map.
+        let accels_application = application.clone();
+        preferences.bind_preference(
+            window,
+            PreferenceManager::minimal_mode,
+            move |_, enabled| {
+                if enabled {
+                    for (action, _) in super::DEFAULT_ACCELS {
+                        accels_application.set_accels_for_action(action, &[]);
+                    }
+                    tracing::debug!("minimal mode accels cleared");
+                } else {
+                    for (action, accels) in super::DEFAULT_ACCELS {
+                        accels_application.set_accels_for_action(action, accels);
+                    }
+                    tracing::debug!("minimal mode accels restored");
+                }
+            },
+        );
     }
 }
 

@@ -8,7 +8,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     path::Path,
     rc::{Rc, Weak},
 };
@@ -23,7 +23,7 @@ use crate::{
     app::{Browser, BrowserColumnSnapshot},
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
     services::DropCommit,
-    ui::browser::paths::is_trash_location,
+    ui::browser::{ClipboardMarks, paths::is_trash_location},
 };
 
 mod events;
@@ -224,7 +224,7 @@ impl PaneSection {
 type ListSorting = Rc<Cell<(SortKey, SortDirection)>>;
 
 #[derive(Clone)]
-struct Pane {
+pub(super) struct Pane {
     depth: usize,
     location: Option<Location>,
     group_by_type: bool,
@@ -260,6 +260,54 @@ struct Pane {
 }
 
 impl Pane {
+    pub(super) fn write_hidden_query(&self, query: &str, force_recursive: bool) -> bool {
+        let Some(entry) = self.filter_entry.as_ref() else {
+            return false;
+        };
+        if let Some(button) = self.filter_button.as_ref()
+            && button.is_active()
+        {
+            button.set_active(false);
+        }
+        let rescope = self.search.set_force_recursive(force_recursive);
+        super::browser::set_filter_entry_query(entry, query, rescope);
+        true
+    }
+
+    pub(super) fn clear_filter(&self) -> bool {
+        let focused = self.stack.root().and_then(|root| root.focus());
+        let mut cleared = self.search.selected_entries().is_some();
+        self.search.set_force_recursive(false);
+        if let Some(entry) = self.filter_entry.as_ref() {
+            cleared |= !entry.text().trim().is_empty();
+            if widget_has_focus(entry, focused.as_ref()) {
+                cleared = true;
+                self.focus_view().grab_focus();
+            }
+            entry.set_text("");
+        }
+        if let Some(button) = self.filter_button.as_ref()
+            && button.is_active()
+        {
+            cleared = true;
+            button.set_active(false);
+        }
+        self.search.show_directory_listing();
+        cleared
+    }
+
+    pub(super) fn restore_filter(&self, filter: &super::browser::ActivePaneFilter) {
+        let (Some(entry), Some(button)) = (self.filter_entry.as_ref(), self.filter_button.as_ref())
+        else {
+            return;
+        };
+        super::browser::restore_filter_controls(button, entry, filter);
+        super::browser::notify_filter_query(&self.filter, &self.filter_query, filter.query.clone());
+        if filter.query.trim().is_empty() {
+            self.search.show_directory_listing();
+        }
+    }
+
     /// The sections that render entries, in visual order.
     fn item_sections(&self) -> Vec<PaneSection> {
         self.sections.borrow().clone()
@@ -297,7 +345,7 @@ pub struct ModeViews {
     icons_click_activation: Rc<Cell<ClickActivation>>,
     list_click_activation: Rc<Cell<ClickActivation>>,
     transfer_handler: TransferHandlerSlot,
-    cut_locations: Rc<RefCell<HashSet<Location>>>,
+    clipboard_marks: Rc<RefCell<ClipboardMarks>>,
     context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
     new_folder_state: RefCell<Option<Weak<super::browser::ViewState>>>,
     active_rename: Rc<RefCell<Option<super::collection_edit::ActiveEdit>>>,
@@ -374,7 +422,7 @@ impl ModeViews {
                 BrowserMode::List,
             ))),
             transfer_handler: Rc::new(RefCell::new(None)),
-            cut_locations: Rc::new(RefCell::new(HashSet::new())),
+            clipboard_marks: Rc::new(RefCell::new(ClipboardMarks::default())),
             context_state: Rc::new(RefCell::new(None)),
             new_folder_state: RefCell::new(None),
             active_rename: Rc::new(RefCell::new(None)),
@@ -421,6 +469,10 @@ impl ModeViews {
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
         }
+    }
+
+    fn single_pane_at(&self, depth: usize) -> Option<&Pane> {
+        self.single_pane().filter(|pane| pane.depth == depth)
     }
 
     pub fn refresh_source_filter(&self) {
@@ -584,6 +636,19 @@ impl ModeViews {
 
     pub(in crate::ui) fn take_rename(&self) -> Option<super::collection_edit::ActiveEdit> {
         self.active_rename.take()
+    }
+
+    pub(in crate::ui) fn apply_find_highlights(&self, query: &str) {
+        for pane in self.all_panes() {
+            for section in pane.all_sections() {
+                for bound in section.bound_items.borrow().iter() {
+                    if let Some(label) = bound.rename_label.upgrade() {
+                        super::browser::find_highlight::apply_to_widget(&label, query);
+                    }
+                }
+                apply_find_highlights_in(&section.view, query);
+            }
+        }
     }
 
     pub(in crate::ui) fn rename_label_widgets(
@@ -827,6 +892,10 @@ impl ModeViews {
         self.single_pane()?.search.selected_entries()
     }
 
+    pub fn search_result_listing(&self) -> Option<Vec<FileEntry>> {
+        self.single_pane()?.search.listing_entries()
+    }
+
     pub(in crate::ui) fn filter_active(&self) -> bool {
         self.selected_search_results().is_some()
             || self
@@ -834,6 +903,37 @@ impl ModeViews {
                 .into_iter()
                 .filter_map(|pane| pane.filter_entry.as_ref())
                 .any(|entry| !entry.text().trim().is_empty())
+    }
+
+    /// Current filter query for the visible single pane, for the footer mark.
+    pub fn active_filter_query(&self) -> Option<String> {
+        self.single_pane()?
+            .filter_entry
+            .as_ref()
+            .map(|entry| entry.text().to_string())
+    }
+
+    pub(in crate::ui) fn force_recursive_search(&self) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.force_recursive())
+    }
+
+    /// Clone handles before changing queries: GTK notifications can synchronously
+    /// re-enter the browser and deliver events to ModeViews.
+    pub(super) fn active_filter_pane(&self) -> Option<Pane> {
+        self.single_pane().cloned()
+    }
+
+    pub(super) fn filter_panes(&self) -> Vec<Pane> {
+        self.icons_panes
+            .iter()
+            .chain(self.list_pane.iter())
+            .cloned()
+            .collect()
+    }
+
+    pub(in crate::ui) fn clone_inline_search(&self) -> Option<super::inline_search::InlineSearch> {
+        self.single_pane().map(|pane| pane.search.clone())
     }
 
     pub fn item_view_has_focus(&self) -> bool {
@@ -894,24 +994,6 @@ impl ModeViews {
                 .filter_button
                 .as_ref()
                 .is_some_and(|button| button.is_active()),
-        }
-    }
-
-    pub(crate) fn restore_active_filter(&self, filter: &super::browser::ActivePaneFilter) {
-        let Some(depth) = self.browser.active_depth() else {
-            return;
-        };
-        let Some(pane) = self.panes_at(depth).into_iter().next() else {
-            return;
-        };
-        let (Some(entry), Some(button)) = (pane.filter_entry.as_ref(), pane.filter_button.as_ref())
-        else {
-            return;
-        };
-        super::browser::restore_filter_controls(button, entry, filter);
-        super::browser::notify_filter_query(&pane.filter, &pane.filter_query, filter.query.clone());
-        if filter.query.trim().is_empty() {
-            pane.search.show_directory_listing();
         }
     }
 
@@ -1068,19 +1150,18 @@ impl ModeViews {
         self.context_state.replace(Some(state));
     }
 
+    pub fn set_clipboard_marks(&self, marks: &ClipboardMarks) {
+        self.clipboard_marks.replace(marks.clone());
+        for pane in self.icons_panes.iter().chain(self.list_pane.iter()) {
+            refresh_clipboard_pane(pane, &self.browser, &self.clipboard_marks.borrow());
+        }
+    }
+
     pub fn connect_search_selection_changed(
         &self,
         handler: super::inline_search::SearchSelectionChanged,
     ) {
         self.search_selection_handlers.borrow_mut().push(handler);
-    }
-
-    pub fn set_cut_locations(&self, locations: &[Location]) {
-        self.cut_locations
-            .replace(locations.iter().cloned().collect());
-        for pane in self.icons_panes.iter().chain(self.list_pane.iter()) {
-            refresh_cut_pane(pane, &self.browser, locations);
-        }
     }
 
     pub fn set_density(&mut self, density: BrowserDensity) {
@@ -1393,21 +1474,7 @@ impl ModeViews {
     }
 
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
-        match self.mode {
-            BrowserMode::Columns => Vec::new(),
-            BrowserMode::Icons => self
-                .icons_panes
-                .iter()
-                .find(|pane| pane.depth == depth)
-                .into_iter()
-                .collect(),
-            BrowserMode::List => self
-                .list_pane
-                .as_ref()
-                .filter(|pane| pane.depth == depth)
-                .into_iter()
-                .collect(),
-        }
+        self.single_pane_at(depth).into_iter().collect()
     }
 
     fn install_context_menu(&self, pane: &Pane) -> Rc<dyn Fn(f64, f64)> {
@@ -1495,6 +1562,7 @@ impl ModeViews {
     }
 
     fn clear_icons(&mut self) {
+        self.list_navigation.borrow_mut().cancel();
         for pane in &self.icons_panes {
             detach_pane_models(pane);
         }
@@ -1528,7 +1596,7 @@ impl ModeViews {
                 multiple_selection: self.multiple_selection.clone(),
             },
             self.transfer_handler.clone(),
-            self.cut_locations.clone(),
+            self.clipboard_marks.clone(),
             IconsOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
@@ -1545,6 +1613,7 @@ impl ModeViews {
         pane.folder_context_trigger = self.install_context_menu(&pane);
         self.icons_root.append(&pane.shell);
         apply_snapshot(&pane, &snapshot, &self.browser);
+        self.list_navigation.borrow_mut().prepare(&pane, &snapshot);
         self.icons_panes.push(pane);
     }
 
@@ -1565,7 +1634,7 @@ impl ModeViews {
                 multiple_selection: self.multiple_selection.clone(),
             },
             self.transfer_handler.clone(),
-            self.cut_locations.clone(),
+            self.clipboard_marks.clone(),
             ListOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
@@ -1632,6 +1701,7 @@ fn search_collection_options(
     multiple_selection: Rc<Cell<bool>>,
     selection_handlers: super::inline_search::SearchSelectionHandlers,
     context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
+    listing_changed: Option<Weak<super::browser::ViewState>>,
 ) -> super::inline_search::SearchCollectionOptions {
     let weak_browser = Rc::downgrade(browser);
     let activate = Rc::new(move |entry: FileEntry| {
@@ -1676,6 +1746,7 @@ fn search_collection_options(
         single_click,
         selection_changed,
         focus_items,
+        listing_changed,
     }
 }
 
@@ -1785,14 +1856,21 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
     empty_trash.set_visible(is_trash);
     empty_trash.set_sensitive(false);
     actions.append(&empty_trash);
-    actions.append(&super::browser::pane_refresh_button(browser, depth));
+    let refresh = super::browser::pane_refresh_button(browser, depth);
+    actions.append(&refresh);
+    super::browser::bind_minimal_chrome(&refresh);
     actions.append(&thumbnail_menu);
     let sort_direction_button = super::browser::column_sort_direction_toggle(browser, depth);
     actions.append(&sort_direction_button);
-    actions.append(&super::browser::column_sort_menu(browser, depth));
+    super::browser::bind_minimal_chrome(&sort_direction_button);
+    let sort_menu = super::browser::column_sort_menu(browser, depth);
+    actions.append(&sort_menu);
+    super::browser::bind_minimal_chrome(&sort_menu);
 
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter icons (Ctrl+F)");
     actions.append(&filter_button);
+    super::browser::bind_minimal_chrome(&filter_button);
+    super::browser::bind_minimal_chrome(&filter_revealer);
     IconsControls {
         sort_direction_button,
         leading,
@@ -1829,7 +1907,7 @@ struct IconsContext {
     depth: usize,
     click: ModeClickOptions,
     transfer: TransferHandlerSlot,
-    cuts: Rc<RefCell<HashSet<Location>>>,
+    marks: Rc<RefCell<ClipboardMarks>>,
     state: Option<Weak<super::browser::ViewState>>,
     thumbnail_size: Rc<Cell<i32>>,
     source_index: SourceIndexMap,
@@ -1843,7 +1921,7 @@ fn build_icons_pane(
     browser: Rc<Browser>,
     click_options: ModeClickOptions,
     transfer_handler: TransferHandlerSlot,
-    cut_locations: Rc<RefCell<HashSet<Location>>>,
+    marks: Rc<RefCell<ClipboardMarks>>,
     options: IconsOptions,
     depth: usize,
     title: &str,
@@ -1888,7 +1966,7 @@ fn build_icons_pane(
         depth,
         click: click_options,
         transfer: transfer_handler,
-        cuts: cut_locations,
+        marks,
         state: options.state,
         thumbnail_size: options.thumbnail_size.clone(),
         source_index: source_index.clone(),
@@ -1983,7 +2061,7 @@ fn build_icons_pane(
     let browser_for_settle = Rc::downgrade(&context.browser);
     let source_index_for_settle = context.source_index.clone();
     let sections_for_settle = context.sections.clone();
-    let cuts_for_settle = context.cuts.clone();
+    let marks_for_settle = context.marks.clone();
     let depth_for_settle = context.depth;
     install_scroll_refresh(&scroll, context.scrolling.clone(), None, move || {
         let Some(browser) = browser_for_settle.upgrade() else {
@@ -1992,14 +2070,14 @@ fn build_icons_pane(
         let Some(sections) = sections_for_settle.upgrade() else {
             return;
         };
-        let cuts = cuts_for_settle.borrow();
+        let marks = marks_for_settle.borrow();
         for section in sections.borrow().iter() {
             refresh_icons_section(
                 &browser,
                 depth_for_settle,
                 &source_index_for_settle,
                 section,
-                &cuts,
+                &marks,
             );
         }
     });
@@ -2030,6 +2108,7 @@ fn build_icons_pane(
             context.click.multiple_selection.clone(),
             search_selection_handlers,
             options.search_context_state.clone(),
+            context.state.clone(),
         ),
     );
     content.append(&search.widget);
@@ -2165,7 +2244,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     });
     let browser_for_bind = Rc::downgrade(&context.browser);
     let source_index_for_bind = context.source_index.clone();
-    let cuts_for_bind = context.cuts.clone();
+    let marks_for_bind = context.marks.clone();
     let thumbnail_size_for_bind = context.thumbnail_size.clone();
     let scrolling_for_bind = context.scrolling.clone();
     let state_for_bind = context.state.clone();
@@ -2196,7 +2275,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 Some(item),
                 &card,
                 &entry,
-                &cuts_for_bind.borrow(),
+                &marks_for_bind.borrow(),
                 thumbnail_size,
                 scrolling_for_bind.get(),
                 state.as_deref(),
@@ -2760,7 +2839,7 @@ fn build_list_pane(
     browser: Rc<Browser>,
     click_options: ModeClickOptions,
     transfer_handler: TransferHandlerSlot,
-    cut_locations: Rc<RefCell<HashSet<Location>>>,
+    marks: Rc<RefCell<ClipboardMarks>>,
     options: ListOptions,
     depth: usize,
     title: &str,
@@ -2783,7 +2862,9 @@ fn build_list_pane(
             depth,
         ));
     }
-    actions.append(&super::browser::pane_refresh_button(&browser, depth));
+    let refresh = super::browser::pane_refresh_button(&browser, depth);
+    actions.append(&refresh);
+    super::browser::bind_minimal_chrome(&refresh);
     let camera_photos = location
         .as_ref()
         .is_some_and(|location| location.is_camera_photo_root());
@@ -2791,15 +2872,19 @@ fn build_list_pane(
         .as_ref()
         .is_some_and(|location| location.is_recent_root());
     if recent {
-        actions.append(&super::browser::column_sort_direction_toggle(
-            &browser, depth,
-        ));
+        let sort_direction = super::browser::column_sort_direction_toggle(&browser, depth);
+        actions.append(&sort_direction);
+        super::browser::bind_minimal_chrome(&sort_direction);
     }
     if camera_photos || recent {
-        actions.append(&super::browser::column_sort_menu(&browser, depth));
+        let sort_menu = super::browser::column_sort_menu(&browser, depth);
+        actions.append(&sort_menu);
+        super::browser::bind_minimal_chrome(&sort_menu);
     }
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter list (Ctrl+F)");
     actions.append(&filter_button);
+    super::browser::bind_minimal_chrome(&filter_button);
+    super::browser::bind_minimal_chrome(&filter_revealer);
     let columns = ListColumnLayout::new();
     let (shell, header, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
@@ -2855,7 +2940,7 @@ fn build_list_pane(
         previews: click_options.previews,
         activation: click_options.activation,
         transfers: transfer_handler.clone(),
-        cuts: cut_locations.clone(),
+        marks: marks.clone(),
         columns,
         scrolling: scrolling.clone(),
         bound_items: bound_items.clone(),
@@ -2951,7 +3036,7 @@ fn build_list_pane(
     let browser_for_settle = Rc::downgrade(&browser);
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);
-    let cuts_for_settle = cut_locations.clone();
+    let marks_for_settle = marks.clone();
     install_scroll_refresh(&scroll, scrolling, Some("list-fast-scroll"), move || {
         let Some(browser) = browser_for_settle.upgrade() else {
             return;
@@ -2959,9 +3044,9 @@ fn build_list_pane(
         let Some(sections) = sections_for_settle.upgrade() else {
             return;
         };
-        let cuts = cuts_for_settle.borrow();
+        let marks = marks_for_settle.borrow();
         for section in sections.borrow().iter() {
-            refresh_list_section(&browser, depth, &source_index_for_settle, section, &cuts);
+            refresh_list_section(&browser, depth, &source_index_for_settle, section, &marks);
         }
     });
     let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -3000,6 +3085,7 @@ fn build_list_pane(
             click_options.multiple_selection.clone(),
             search_selection_handlers,
             options.search_context_state.clone(),
+            options.state.clone(),
         ),
     );
     content.append(&search.widget);
@@ -3266,6 +3352,15 @@ fn register_bound_mode_item(
         rename_label: weak_rename_label,
         edit,
     });
+}
+
+fn apply_find_highlights_in(widget: &gtk::Widget, query: &str) {
+    super::browser::find_highlight::apply_to_widget(widget, query);
+    let mut child = widget.first_child();
+    while let Some(node) = child {
+        child = node.next_sibling();
+        apply_find_highlights_in(&node, query);
+    }
 }
 
 fn collection_with_marquee(
@@ -4123,24 +4218,32 @@ fn focus_bound_cursor(items: &RefCell<Vec<BoundModeItem>>, position: u32) -> boo
         .unwrap_or_else(|| widget.grab_focus())
 }
 
-fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {
+fn set_mode_clipboard_style(widget: &impl IsA<gtk::Widget>, cut: bool, copied: bool) {
+    let copied = copied && !cut;
     if cut {
         widget.add_css_class("cut");
     } else {
         widget.remove_css_class("cut");
     }
+    if copied {
+        widget.add_css_class("copied");
+    } else {
+        widget.remove_css_class("copied");
+    }
     if let Some((icon, _)) = super::icons_cell::parts(widget) {
         icon.set_cut(cut);
+        icon.set_copied(copied);
     } else if let Some((icon, ..)) = widget
         .upcast_ref()
         .downcast_ref::<gtk::Box>()
         .and_then(list_row_parts)
     {
         icon.set_cut(cut);
+        icon.set_copied(copied);
     }
 }
 
-fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
+fn refresh_clipboard_pane(pane: &Pane, browser: &Browser, marks: &ClipboardMarks) {
     pane.search.refresh_cut_rows();
     for section in pane.item_sections() {
         section.bound_items.borrow_mut().retain(|bound| {
@@ -4150,10 +4253,14 @@ fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
             let source = item
                 .item()
                 .and_then(|value| pane.source_index.of_item(&value));
-            let cut = source
-                .and_then(|position| browser.entry_at(pane.depth, position))
-                .is_some_and(|entry| cuts.contains(&entry.location));
-            set_mode_cut_style(&widget, cut);
+            let entry = source.and_then(|position| browser.entry_at(pane.depth, position));
+            let cut = entry
+                .as_ref()
+                .is_some_and(|entry| marks.is_cut(&entry.location));
+            let copied = entry
+                .as_ref()
+                .is_some_and(|entry| marks.is_copied(&entry.location));
+            set_mode_clipboard_style(&widget, cut, copied);
             true
         });
     }
@@ -4317,7 +4424,7 @@ fn apply_icons_entry(
     item: Option<&gtk::ListItem>,
     card: &gtk::Box,
     entry: &FileEntry,
-    cuts: &HashSet<Location>,
+    marks: &ClipboardMarks,
     thumbnail_size: i32,
     scrolling: bool,
     state: Option<&super::browser::ViewState>,
@@ -4346,11 +4453,14 @@ fn apply_icons_entry(
             details.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
         }
     } else {
-        refresh_icons_card_chrome(item, card, &icon, &label, entry, cuts);
+        refresh_icons_card_chrome(item, card, &icon, &label, entry, marks);
     }
     if let Some(item) = item.filter(|_| pending_name.is_some()) {
         label.set_tooltip_text(Some(shown_name));
         super::accessibility::describe_entry(item, shown_name, Some(entry));
+    }
+    if let Some(state) = state {
+        super::browser::find_highlight::apply_to_inscription(&label, &state.find_highlight_query());
     }
 }
 
@@ -4360,14 +4470,17 @@ fn refresh_icons_card_chrome(
     icon: &super::thumbnail::ThumbnailSlot,
     label: &gtk::Inscription,
     entry: &FileEntry,
-    cuts: &HashSet<Location>,
+    marks: &ClipboardMarks,
 ) {
     label.set_tooltip_text(Some(&entry.display_name));
     if let Some(item) = item {
         super::accessibility::describe_entry(item, &entry.display_name, Some(entry));
     }
-    let is_cut = cuts.contains(&entry.location);
-    set_mode_cut_style(card, is_cut);
+    set_mode_clipboard_style(
+        card,
+        marks.is_cut(&entry.location),
+        marks.is_copied(&entry.location),
+    );
     icon.set_hidden(entry.is_hidden);
     icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
     label.set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });
@@ -4381,7 +4494,7 @@ fn refresh_icons_section(
     depth: usize,
     source_index: &SourceIndexMap,
     section: &PaneSection,
-    cuts: &HashSet<Location>,
+    marks: &ClipboardMarks,
 ) {
     section.bound_items.borrow().iter().for_each(|bound| {
         let Some(card) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
@@ -4400,7 +4513,10 @@ fn refresh_icons_section(
             return;
         };
         if super::thumbnail::near_viewport(&card) {
-            refresh_icons_card_chrome(Some(&item), &card, &icon, &label, &entry, cuts);
+            refresh_icons_card_chrome(Some(&item), &card, &icon, &label, &entry, marks);
+            if let Some(position) = metadata_fill_position(Some(position), &entry, false, true) {
+                browser.request_metadata_fill(depth, position, entry.location.clone(), true);
+            }
         }
     });
 }

@@ -541,6 +541,27 @@ impl ViewState {
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         let restore_focus = remember_properties_focus(&layer, &window_overlay);
+        // Menu key navigation can move the result cursor without the selection.
+        // Closing Properties puts the highlight back on the file the dialog showed.
+        // Rename clears `restore_focus` first so this does not steal the editor.
+        if let Some(path) = entry
+            .as_ref()
+            .and_then(|entry| entry.location.native_path().map(|path| path.to_path_buf()))
+        {
+            let state = Rc::downgrade(self);
+            let restore_search = restore_focus.clone();
+            layer.connect_parent_notify(move |layer| {
+                if layer.parent().is_some()
+                    || !layer.has_css_class("dismissing")
+                    || !restore_search.get()
+                {
+                    return;
+                }
+                if let Some(state) = state.upgrade() {
+                    state.mode_views.borrow().focus_search_result(&path);
+                }
+            });
+        }
         window_overlay.add_overlay(&layer);
         if !is_directory
             && let Some(path) = entry.as_ref().and_then(FileEntry::local_thumbnail_path)

@@ -49,7 +49,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Features
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
-- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
+- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md). Optional experimental [minimal mode](docs/minimal-mode.md) hides window and pane chrome and uses Yazi-style keys.
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application. File Properties shows available media resolution, duration, bitrate, codecs, and audio/video rates.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
@@ -254,9 +254,11 @@ strata --uninstall-udiskie-unlock # restore the previous udiskie configuration
 strata --version            # print the installed version
 ```
 
-Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest reversible file operation, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
+In the default map, useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest reversible file operation, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
 
-In narrow or highly scaled windows, the preview uses the full content area rather than disappearing. Close it with <kbd>Space</kbd> or its close button to return to browsing. Widening the window restores the side-by-side preview and its session width without reloading the file.
+Toggle experimental [minimal mode](docs/minimal-mode.md) with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> for Yazi-style navigation and footer prompts; <kbd>q</kbd> returns to the default map. In minimal mode, <kbd>l</kbd>/<kbd>→</kbd> enters preview, <kbd>h</kbd> returns to the listing without closing it, and <kbd>i</kbd> toggles it.
+
+In narrow or highly scaled windows, the preview uses the full content area rather than disappearing. Close it with <kbd>Space</kbd> (default map), <kbd>i</kbd> (minimal mode), or its close button to return to browsing. Widening the window restores the side-by-side preview and its session width without reloading the file.
 
 ### Desktop entry
 
@@ -705,6 +707,8 @@ mise run check            # format, compile, Clippy, tests, and policy checks
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
+- [Keyboard navigation](docs/keyboard-navigation.md)
+- [Minimal mode](docs/minimal-mode.md)
 - [Architecture principles](docs/architecture.md)
 - [Preview sandbox](docs/preview-sandbox.md)
 - [Performance baseline](docs/performance-baseline.md)

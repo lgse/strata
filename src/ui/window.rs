@@ -37,7 +37,7 @@ use super::{
 
 mod composition;
 mod devices;
-mod keyboard;
+pub(super) mod keyboard;
 mod open_argument;
 mod sidebar;
 mod unlock_argument;
@@ -91,9 +91,9 @@ enum MouseHistoryAction {
 }
 
 #[derive(Clone)]
-struct TypeToSearch {
-    view: BrowserView,
-    preferences: Rc<PreferenceManager>,
+pub(super) struct TypeToSearch {
+    pub(super) view: BrowserView,
+    pub(super) preferences: Rc<PreferenceManager>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -959,6 +959,7 @@ pub(super) struct SidebarState {
     pending_scroll: Cell<Option<f64>>,
     rebuild_queued: Cell<bool>,
     scroll_restore_queued: Cell<bool>,
+    minimal_chord_teardown: RefCell<Option<Rc<dyn Fn()>>>,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -1091,6 +1092,7 @@ impl SidebarView {
 
 impl SidebarState {
     fn queue_rebuild(self: &Rc<Self>) {
+        self.cancel_minimal_chord();
         self.capture_scroll();
         if self.rebuild_queued.replace(true) {
             return;
@@ -1105,6 +1107,7 @@ impl SidebarState {
     }
 
     fn rebuild(self: &Rc<Self>) {
+        self.cancel_minimal_chord();
         self.capture_scroll();
         while let Some(child) = self.widget.first_child() {
             self.widget.remove(&child);
@@ -1529,14 +1532,16 @@ impl SidebarState {
             .has_arrow(false)
             .build();
         popover.add_css_class("folder-context-popover");
-        popover.set_parent(&row);
+        parent_sidebar_popover(&popover, &row);
         let properties_popover = popover.downgrade();
-        let properties_view = self.view.clone();
+        let properties_view = self.view.downgrade();
         properties.connect_clicked(move |_| {
             if let Some(popover) = properties_popover.upgrade() {
                 popover.popdown();
             }
-            properties_view.show_location_properties(&Location::uri("trash:///"));
+            if let Some(view) = properties_view.upgrade() {
+                view.show_location_properties(&Location::uri("trash:///"));
+            }
         });
         let unpin_popover = popover.downgrade();
         let weak_state = Rc::downgrade(self);
@@ -1549,12 +1554,14 @@ impl SidebarState {
             }
         });
         let empty_popover = popover.downgrade();
-        let empty_view = self.view.clone();
+        let empty_view = self.view.downgrade();
         empty.connect_clicked(move |_| {
             if let Some(popover) = empty_popover.upgrade() {
                 popover.popdown();
             }
-            empty_view.confirm_empty_trash();
+            if let Some(view) = empty_view.upgrade() {
+                view.confirm_empty_trash();
+            }
         });
         let context = gtk::GestureClick::new();
         context.set_button(3);
@@ -1850,7 +1857,7 @@ impl SidebarState {
             .has_arrow(false)
             .build();
         popover.add_css_class("folder-context-popover");
-        popover.set_parent(&row);
+        parent_sidebar_popover(&popover, &row);
 
         let properties_popover = popover.downgrade();
         let properties_view = self.view.clone();
@@ -1928,7 +1935,7 @@ impl SidebarState {
             .has_arrow(false)
             .build();
         popover.add_css_class("folder-context-popover");
-        popover.set_parent(row);
+        parent_sidebar_popover(&popover, row);
 
         let weak_state = Rc::downgrade(self);
         let unpin_popover = popover.downgrade();
@@ -2079,8 +2086,11 @@ fn install_sidebar_file_drop(
     drop.connect_enter(move |target, _, _| file_drop_action(target, &state_for_enter));
     let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| file_drop_action(target, &state_for_motion));
-    let view = view.clone();
+    let view = view.downgrade();
     drop.connect_drop(move |target, value, _, _| {
+        let Some(view) = view.upgrade() else {
+            return false;
+        };
         let Some(sources) = locations_from_file_list_value(value) else {
             return false;
         };
@@ -2120,11 +2130,24 @@ fn install_sidebar_trash_drop(view: &BrowserView, row: &impl IsA<gtk::Widget>) {
             offered.status(target.actions(), trash_file_drop_action(target));
         }
     });
-    let view = view.clone();
+    let view = view.downgrade();
     drop.connect_drop(move |_, value, _, _| {
-        locations_from_file_list_value(value).is_some_and(|sources| view.trash_file_drop(sources))
+        view.upgrade().is_some_and(|view| {
+            locations_from_file_list_value(value)
+                .is_some_and(|sources| view.trash_file_drop(sources))
+        })
     });
     row.add_controller(drop);
+}
+
+fn parent_sidebar_popover(popover: &gtk::Popover, row: &gtk::Button) {
+    popover.set_parent(row);
+    let popover = popover.downgrade();
+    row.connect_destroy(move |_| {
+        if let Some(popover) = popover.upgrade() {
+            popover.unparent();
+        }
+    });
 }
 
 fn select_sidebar_row(sidebar: &gtk::Box, selected: &gtk::Button) {
@@ -3141,7 +3164,7 @@ fn attach_device_actions_menu(
         .has_arrow(false)
         .build();
     popover.add_css_class("folder-context-popover");
-    popover.set_parent(row);
+    parent_sidebar_popover(&popover, row);
     if let (Some(action), Some(on_crypto)) = (actions.encrypted, on_crypto) {
         let option = sidebar_context_option(action.icon(), action.label(), false);
         menu.append(&option);

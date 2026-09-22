@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-impl Dispatcher {
+impl Dispatcher<'_> {
     pub(super) fn focus_navigation(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
         self.popover_navigation(event)
             .or_else(|| self.top_bar_navigation(browser, event))

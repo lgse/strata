@@ -22,7 +22,7 @@ use crate::{
     },
 };
 
-impl Dispatcher {
+impl Dispatcher<'_> {
     pub(super) fn window_commands(&self, event: &KeyEvent) -> KeyResult {
         if event.control()
             && (!event.text_has_focus() || self.view.filter_has_focus())
@@ -30,7 +30,7 @@ impl Dispatcher {
             && let Some(mode) = browser_mode_for_digit(event.key)
         {
             apply_browser_mode(
-                &self.view,
+                self.view,
                 &crate::ui::preferences::PreferenceManager::shared(),
                 mode,
             );
@@ -48,7 +48,7 @@ impl Dispatcher {
             } else {
                 ("win.search", "global search")
             };
-            if let Err(error) = gtk::prelude::WidgetExt::activate_action(&self.window, action, None)
+            if let Err(error) = gtk::prelude::WidgetExt::activate_action(self.window, action, None)
             {
                 tracing::warn!(%error, "unable to activate {label} shortcut");
             }
@@ -225,7 +225,7 @@ impl Dispatcher {
         {
             return Some(Propagation::Proceed);
         }
-        action(&self.view).then_some(Propagation::Stop)
+        action(self.view).then_some(Propagation::Stop)
     }
 
     fn preview_has_focus(&self, event: &KeyEvent) -> bool {

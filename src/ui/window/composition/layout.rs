@@ -26,6 +26,7 @@ pub(super) struct Header {
     pub(super) content: gtk::Box,
     pub(super) sidebar_toggle: gtk::ToggleButton,
     pub(super) search: gtk::Button,
+    pub(super) close: gtk::Button,
     pub(super) settings: gtk::Button,
 }
 
@@ -52,8 +53,6 @@ impl Header {
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
         let close = header_action(icons::X, "Close window");
-        let closing_window = window.clone();
-        close.connect_clicked(move |_| closing_window.close());
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         actions.add_css_class("header-actions");
         actions.append(&search);
@@ -67,13 +66,29 @@ impl Header {
         content.append(&location);
         content.append(&actions);
         widget.set_title_widget(Some(&content));
-        Self {
+        let header = Self {
             widget,
             content,
             sidebar_toggle,
             search,
+            close,
             settings,
-        }
+        };
+        // Minimal mode hides Search.
+        preferences.bind_preference(
+            &header.search,
+            PreferenceManager::minimal_mode,
+            |widget, minimal| {
+                widget.set_visible(!minimal);
+            },
+        );
+        let closing_window = window.downgrade();
+        header.close.connect_clicked(move |_| {
+            if let Some(window) = closing_window.upgrade() {
+                window.close();
+            }
+        });
+        header
     }
 }
 
@@ -106,8 +121,12 @@ pub(super) fn browser_layout(
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header.widget);
     bind_pin_handlers(browser, sidebar);
-    let preview_for_print = preview.clone();
-    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
+    let preview_for_print = preview.downgrade();
+    browser.set_print_handler(Rc::new(move |entry| {
+        if let Some(preview) = preview_for_print.upgrade() {
+            preview.print_entry(entry);
+        }
+    }));
     let content = browser_split(browser, sidebar, &header.sidebar_toggle);
     let preview_split = gtk::Paned::new(gtk::Orientation::Horizontal);
     preview_split.add_css_class("preview-split");
@@ -169,19 +188,24 @@ fn browser_split(
 fn bind_sidebar_toggle(content: &gtk::Paned, sidebar: &gtk::Widget, toggle: &gtk::ToggleButton) {
     let generation = Rc::new(Cell::new(0));
     let animating = Rc::new(Cell::new(false));
-    let constrained_toggle = toggle.clone();
+    let constrained_toggle = toggle.downgrade();
     let constrained_animation = animating.clone();
     content.connect_position_notify(move |content| {
-        if constrained_toggle.is_active()
+        if constrained_toggle
+            .upgrade()
+            .is_some_and(|toggle| toggle.is_active())
             && !constrained_animation.get()
             && content.position() < MIN_SIDEBAR_WIDTH
         {
             content.set_position(MIN_SIDEBAR_WIDTH);
         }
     });
-    let content = content.clone();
-    let sidebar = sidebar.clone();
+    let content = content.downgrade();
+    let sidebar = sidebar.downgrade();
     toggle.connect_toggled(move |toggle| {
+        let (Some(content), Some(sidebar)) = (content.upgrade(), sidebar.upgrade()) else {
+            return;
+        };
         animate_sidebar(
             &content,
             &sidebar,
@@ -194,6 +218,7 @@ fn bind_sidebar_toggle(content: &gtk::Paned, sidebar: &gtk::Widget, toggle: &gtk
 
 pub(super) struct FooterBinding {
     pub(super) shortcuts: ShortcutFooter,
+    jobs: crate::ui::jobs::JobsIndicator,
     clipboard: gdk::Clipboard,
     clipboard_handler: RefCell<Option<glib::SignalHandlerId>>,
 }
@@ -207,17 +232,23 @@ impl FooterBinding {
     ) -> Self {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
-        shortcuts.observe_browser(&browser.browser());
+        shortcuts.bind_minimal_mode(preferences);
+        shortcuts.observe_browser(browser);
         let jobs = crate::ui::jobs::JobsIndicator::new();
         jobs.bind_window(window);
         shortcuts.set_activity(jobs.widget());
         let clipboard = window.clipboard();
         let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
         root.append(shortcuts.widget());
-        let updated_shortcuts = shortcuts.clone();
-        browser.connect_view_mode_changed(move |mode| updated_shortcuts.set_mode(mode));
+        let updated_shortcuts = shortcuts.downgrade();
+        browser.connect_view_mode_changed(move |mode| {
+            if let Some(shortcuts) = updated_shortcuts.upgrade() {
+                shortcuts.set_mode(mode);
+            }
+        });
         Self {
             shortcuts,
+            jobs,
             clipboard,
             clipboard_handler,
         }
@@ -226,6 +257,9 @@ impl FooterBinding {
     pub(super) fn disconnect_clipboard(&self) {
         if let Some(handler) = self.clipboard_handler.borrow_mut().take() {
             self.clipboard.disconnect(handler);
+        }
+        if let Some(popover) = self.jobs.widget().popover() {
+            popover.unparent();
         }
     }
 }

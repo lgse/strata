@@ -1544,6 +1544,12 @@ impl Browser {
         self.create_directory_with_naming(parent, "new folder".to_owned(), true);
     }
 
+    /// Minimal-mode `a` path: create with the typed name, erroring on
+    /// conflict instead of uniquifying (`new folder (1)`).
+    pub fn create_directory_named(self: &Rc<Self>, parent: Location, name: String) {
+        self.create_directory_with_naming(parent, name, false);
+    }
+
     fn create_directory_with_naming(
         self: &Rc<Self>,
         parent: Location,
@@ -1581,6 +1587,12 @@ impl Browser {
 
     pub fn create_new_file(self: &Rc<Self>, parent: Location) {
         self.create_file_with_naming(parent, "new file".to_owned(), true);
+    }
+
+    /// Minimal-mode `a` path: create with the typed name, erroring on
+    /// conflict instead of uniquifying.
+    pub fn create_file_named(self: &Rc<Self>, parent: Location, name: String) {
+        self.create_file_with_naming(parent, name, false);
     }
 
     fn create_file_with_naming(self: &Rc<Self>, parent: Location, name: String, unique_name: bool) {
@@ -2297,6 +2309,153 @@ impl Browser {
                 take_focus: true,
             });
         }
+    }
+
+    pub fn next_visible_index(
+        &self,
+        direction: i32,
+        steps: usize,
+        order: Option<&[usize]>,
+    ) -> Option<usize> {
+        self.state
+            .borrow()
+            .next_visible_index(direction, steps, order)
+    }
+
+    pub fn focus_keeping_fill(&self, position: usize) {
+        let moved = self.state.borrow_mut().focus_keeping_fill(position);
+        if let Some((depth, position)) = moved {
+            self.emit(BrowserEvent::FocusChanged {
+                depth,
+                position: Some(position),
+            });
+        }
+    }
+
+    pub fn toggle_focused_selection(&self) -> bool {
+        if !self.state.borrow_mut().toggle_focused_selection() {
+            return false;
+        }
+        let state = self.state.borrow();
+        let (depth, focused) = state
+            .focused_entry()
+            .map(|(depth, position, _)| (depth, position))
+            .or_else(|| state.active_depth().map(|depth| (depth, 0)))
+            .unwrap_or((0, 0));
+        let positions = state.selected_positions(depth);
+        drop(state);
+        self.emit(BrowserEvent::SelectionSetChanged {
+            depth,
+            positions,
+            focused,
+            take_focus: false,
+        });
+        true
+    }
+
+    pub fn invert_selection(&self, depth: usize) {
+        self.state.borrow_mut().invert_selection(depth);
+        let state = self.state.borrow();
+        let focused = state
+            .focused_entry()
+            .filter(|(focused_depth, _, _)| *focused_depth == depth)
+            .map(|(_, position, _)| position)
+            .unwrap_or(0);
+        let positions = state.selected_positions(depth);
+        drop(state);
+        self.emit(BrowserEvent::SelectionSetChanged {
+            depth,
+            positions,
+            focused,
+            take_focus: false,
+        });
+    }
+
+    pub fn apply_filled_locations(&self, locations: &[Location]) {
+        if locations.is_empty() {
+            return;
+        }
+        let Some(depth) = self.active_depth() else {
+            return;
+        };
+        let count = self
+            .column_snapshot(depth)
+            .map(|column| column.count)
+            .unwrap_or(0);
+        let positions: Vec<usize> = (0..count)
+            .filter(|position| {
+                self.entry_at(depth, *position)
+                    .is_some_and(|entry| locations.contains(&entry.location))
+            })
+            .collect();
+        if positions.is_empty() {
+            return;
+        }
+        let focused = self
+            .focused_item()
+            .filter(|(focused_depth, position, _)| {
+                *focused_depth == depth && positions.contains(position)
+            })
+            .map(|(_, position, _)| position)
+            .or_else(|| positions.last().copied())
+            .unwrap_or(0);
+        self.commit_selection();
+        if self
+            .state
+            .borrow_mut()
+            .set_selection(depth, &positions, Some(focused))
+        {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions,
+                focused,
+                take_focus: false,
+            });
+        }
+    }
+
+    pub fn extend_selection_to(
+        &self,
+        depth: usize,
+        position: usize,
+        order: Option<&[usize]>,
+    ) -> Option<Vec<usize>> {
+        let extended = self
+            .state
+            .borrow_mut()
+            .extend_selection_to(depth, position, order);
+        if let Some((depth, focused, positions)) = extended {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions: positions.clone(),
+                focused,
+                take_focus: true,
+            });
+            return Some(positions);
+        }
+        None
+    }
+
+    pub fn subtract_visual_selection(
+        &self,
+        depth: usize,
+        from: usize,
+        to: usize,
+        order: Option<&[usize]>,
+    ) -> Option<Vec<usize>> {
+        let remaining = self
+            .state
+            .borrow_mut()
+            .subtract_visual_selection(depth, from, to, order);
+        if let Some(ref positions) = remaining {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions: positions.clone(),
+                focused: to,
+                take_focus: true,
+            });
+        }
+        remaining
     }
 
     pub fn focus_parent(&self) {

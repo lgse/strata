@@ -24,6 +24,154 @@ pub(super) fn categorized_apps(
     (recommended, other)
 }
 
+pub(super) fn common_applications(
+    content_types: &[String],
+    requires_uris: bool,
+) -> (Vec<gio::AppInfo>, Vec<gio::AppInfo>, Option<gio::AppInfo>) {
+    let Some(first) = content_types.first() else {
+        return (vec![], vec![], None);
+    };
+    let mut default = gio::AppInfo::default_for_type(first, requires_uris);
+    let mut recommended = filter_apps(
+        gio::AppInfo::all_for_type(first),
+        default.clone(),
+        requires_uris,
+    );
+    for content_type in &content_types[1..] {
+        let next_default = gio::AppInfo::default_for_type(content_type, requires_uris);
+        let next = filter_apps(
+            gio::AppInfo::all_for_type(content_type),
+            next_default.clone(),
+            requires_uris,
+        );
+        recommended.retain(|app| next.iter().any(|candidate| candidate.equal(app)));
+        default = default.filter(|app| next_default.as_ref().is_some_and(|next| next.equal(app)));
+    }
+    let recommended = filter_apps(recommended, default.clone(), requires_uris);
+    let other = filter_other_apps(gio::AppInfo::all(), &recommended, requires_uris);
+    (recommended, other, default)
+}
+
+pub(super) async fn applications_for_files(
+    files: &[gio::File],
+) -> Result<ApplicationChoices, glib::Error> {
+    let mut content_types = Vec::<String>::new();
+    for file in files {
+        let info = file
+            .query_info_future(
+                "standard::type,standard::content-type",
+                gio::FileQueryInfoFlags::NONE,
+                glib::Priority::DEFAULT,
+            )
+            .await?;
+        if info.file_type() == gio::FileType::SymbolicLink {
+            return Err(glib::Error::new(
+                gio::IOErrorEnum::Failed,
+                "Broken symbolic links cannot be opened with an application",
+            ));
+        }
+        let content_type = info.content_type().ok_or_else(|| {
+            glib::Error::new(
+                gio::IOErrorEnum::Failed,
+                "Unable to determine the selected file type",
+            )
+        })?;
+        if !content_types
+            .iter()
+            .any(|kind| gio::content_type_equals(kind, &content_type))
+        {
+            content_types.push(content_type.to_string());
+        }
+    }
+    let requires_uris = requires_uri_handlers(files);
+    gio::spawn_blocking(move || {
+        let (recommended, other, _) = common_applications(&content_types, requires_uris);
+        ApplicationChoices {
+            recommended: recommended
+                .iter()
+                .map(ApplicationDescription::from_app)
+                .collect(),
+            other: other.iter().map(ApplicationDescription::from_app).collect(),
+        }
+    })
+    .await
+    .map_err(|_| glib::Error::new(gio::IOErrorEnum::Failed, "Application lookup failed"))
+}
+
+#[derive(Default)]
+pub(super) struct ApplicationChoices {
+    recommended: Vec<ApplicationDescription>,
+    other: Vec<ApplicationDescription>,
+}
+
+// GAppInfo is not Send. Only presentation data crosses the worker boundary;
+// the original desktop ID is resolved once, when the user chooses to launch.
+struct ApplicationDescription {
+    id: Option<String>,
+    display_name: String,
+    name: String,
+    description: String,
+    executable: std::path::PathBuf,
+    icon: Option<String>,
+}
+
+impl ApplicationDescription {
+    fn from_app(app: &gio::AppInfo) -> Self {
+        Self {
+            id: app.id().map(|id| id.to_string()),
+            display_name: app.display_name().to_string(),
+            name: app.name().to_string(),
+            description: app.description().unwrap_or_default().to_string(),
+            executable: app.executable(),
+            icon: app
+                .icon()
+                .and_then(|icon| icon.to_string())
+                .map(|icon| icon.to_string()),
+        }
+    }
+
+    fn haystack(&self) -> String {
+        format!(
+            "{} {} {} {} {}",
+            self.display_name,
+            self.name,
+            self.description,
+            self.executable.to_string_lossy(),
+            self.id.as_deref().unwrap_or_default(),
+        )
+        .to_lowercase()
+    }
+}
+
+struct ApplicationChoice {
+    description: ApplicationDescription,
+    app: Option<gio::AppInfo>,
+}
+
+impl ApplicationChoice {
+    fn from_app(app: gio::AppInfo) -> Self {
+        Self {
+            description: ApplicationDescription::from_app(&app),
+            app: Some(app),
+        }
+    }
+
+    fn resolve(&self) -> Result<gio::AppInfo, glib::Error> {
+        self.app
+            .clone()
+            .or_else(|| {
+                gio_unix::DesktopAppInfo::new(self.description.id.as_deref()?)
+                    .map(|app| app.upcast())
+            })
+            .ok_or_else(|| {
+                glib::Error::new(
+                    gio::IOErrorEnum::NotFound,
+                    "The selected application is no longer available",
+                )
+            })
+    }
+}
+
 // Non-native GVfs files can still provide FUSE paths for %f/%F handlers.
 pub(super) fn requires_uri_handlers(files: &[gio::File]) -> bool {
     files
@@ -44,7 +192,7 @@ fn filter_apps(
         .into_iter()
         .filter(|app| app.should_show() && (!requires_uris || app.supports_uris()))
         .collect::<Vec<_>>();
-    apps.sort_by_cached_key(|app| app.display_name().to_lowercase());
+    apps.sort_by_cached_key(|app| (app.display_name().to_lowercase(), app.id()));
     let mut unique = Vec::with_capacity(apps.len());
     if let Some(default) = default.filter(|app| !requires_uris || app.supports_uris()) {
         unique.push(default);
@@ -70,7 +218,7 @@ pub(super) fn filter_other_apps(
                 && !recommended.iter().any(|rec| rec.equal(app))
         })
         .collect::<Vec<_>>();
-    apps.sort_by_cached_key(|app| app.display_name().to_lowercase());
+    apps.sort_by_cached_key(|app| (app.display_name().to_lowercase(), app.id()));
     let mut unique: Vec<gio::AppInfo> = Vec::with_capacity(apps.len());
     for app in apps {
         if !unique.iter().any(|existing| existing.equal(&app)) {
@@ -143,8 +291,8 @@ fn register_recent_file(file: &gio::File) -> bool {
     added
 }
 
-fn application_icon(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::Image {
-    let icon = app.icon().and_then(|icon| {
+fn choice_icon(icon: Option<gio::Icon>, display: &gtk::gdk::Display) -> gtk::Image {
+    let icon = icon.and_then(|icon| {
         if let Some(file_icon) = icon.downcast_ref::<gio::FileIcon>() {
             return gtk::gdk::Texture::from_file(&file_icon.file())
                 .ok()
@@ -247,7 +395,7 @@ fn install_list_tab_navigation(
 }
 
 struct AppEntry {
-    app: gio::AppInfo,
+    app: ApplicationChoice,
     row: gtk::ListBoxRow,
     is_recommended: bool,
     haystack: String,
@@ -283,33 +431,32 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
     row
 }
 
-fn create_app_row(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::ListBoxRow {
+fn create_app_row(app: &ApplicationDescription, display: &gtk::gdk::Display) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("open-with-row");
-    row.update_property(&[gtk::accessible::Property::Label(&app.display_name())]);
-    if let Some(description) = app.description() {
-        row.update_property(&[gtk::accessible::Property::Description(&description)]);
-    }
+    row.update_property(&[gtk::accessible::Property::Label(&app.display_name)]);
+    row.update_property(&[gtk::accessible::Property::Description(&app.description)]);
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let icon = application_icon(app, display);
+    let icon = choice_icon(
+        app.icon
+            .as_deref()
+            .and_then(|icon| gio::Icon::for_string(icon).ok()),
+        display,
+    );
     icon.set_pixel_size(22);
     icon.add_css_class("open-with-icon");
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
     labels.set_valign(gtk::Align::Center);
-    let name = gtk::Label::new(Some(&app.display_name()));
+    let name = gtk::Label::new(Some(&app.display_name));
     name.add_css_class("open-with-name");
     name.set_xalign(0.0);
     name.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    let description_text = app.description().map(|value| value.to_string());
-    let description = gtk::Label::new(description_text.as_deref());
+    let description = gtk::Label::new(Some(&app.description));
     description.add_css_class("open-with-description");
     description.set_xalign(0.0);
     description.set_ellipsize(gtk::pango::EllipsizeMode::End);
     labels.append(&name);
-    if description_text
-        .as_deref()
-        .is_some_and(|value| !value.is_empty() && value != app.display_name())
-    {
+    if !app.description.is_empty() && app.description != app.display_name {
         labels.append(&description);
     }
     content.append(&icon);
@@ -323,6 +470,50 @@ pub(super) fn show(
     files: Vec<gio::File>,
     recommended_apps: Vec<gio::AppInfo>,
     other_apps: Vec<gio::AppInfo>,
+    context: OpenWithContext,
+    on_close: Rc<dyn Fn()>,
+) {
+    show_choices(
+        parent,
+        files,
+        recommended_apps
+            .into_iter()
+            .map(ApplicationChoice::from_app)
+            .collect(),
+        other_apps
+            .into_iter()
+            .map(ApplicationChoice::from_app)
+            .collect(),
+        context,
+        on_close,
+    );
+}
+
+pub(super) fn show_prepared(
+    parent: &impl IsA<gtk::Widget>,
+    files: Vec<gio::File>,
+    choices: ApplicationChoices,
+    on_close: Rc<dyn Fn()>,
+) {
+    let convert = |description| ApplicationChoice {
+        description,
+        app: None,
+    };
+    show_choices(
+        parent,
+        files,
+        choices.recommended.into_iter().map(convert).collect(),
+        choices.other.into_iter().map(convert).collect(),
+        OpenWithContext::Explicit,
+        on_close,
+    );
+}
+
+fn show_choices(
+    parent: &impl IsA<gtk::Widget>,
+    files: Vec<gio::File>,
+    recommended_apps: Vec<ApplicationChoice>,
+    other_apps: Vec<ApplicationChoice>,
     context: OpenWithContext,
     on_close: Rc<dyn Fn()>,
 ) {
@@ -380,20 +571,12 @@ pub(super) fn show(
         list.append(&heading);
         recommended_heading_row = Some(heading);
 
-        for app in &recommended_apps {
-            let row = create_app_row(app, &list.display());
-            let haystack = format!(
-                "{} {} {} {} {}",
-                app.display_name(),
-                app.name(),
-                app.description().unwrap_or_default(),
-                app.executable().to_string_lossy(),
-                app.id().unwrap_or_default(),
-            )
-            .to_lowercase();
+        for app in recommended_apps {
+            let row = create_app_row(&app.description, &list.display());
+            let haystack = app.description.haystack();
             list.append(&row);
             entries.push(AppEntry {
-                app: app.clone(),
+                app,
                 row,
                 is_recommended: true,
                 haystack,
@@ -407,20 +590,12 @@ pub(super) fn show(
         list.append(&heading);
         other_heading_row = Some(heading);
 
-        for app in &other_apps {
-            let row = create_app_row(app, &list.display());
-            let haystack = format!(
-                "{} {} {} {} {}",
-                app.display_name(),
-                app.name(),
-                app.description().unwrap_or_default(),
-                app.executable().to_string_lossy(),
-                app.id().unwrap_or_default(),
-            )
-            .to_lowercase();
+        for app in other_apps {
+            let row = create_app_row(&app.description, &list.display());
+            let haystack = app.description.haystack();
             list.append(&row);
             entries.push(AppEntry {
-                app: app.clone(),
+                app,
                 row,
                 is_recommended: false,
                 haystack,
@@ -694,7 +869,11 @@ pub(super) fn show(
             return;
         };
         let context = list.display().app_launch_context();
-        if let Err(error) = launch(&entry.app, &open_files, Some(&context)) {
+        if let Err(error) = entry
+            .app
+            .resolve()
+            .and_then(|app| launch(&app, &open_files, Some(&context)))
+        {
             let detail = error.to_string();
             open_dismiss();
             let open_parent = open_parent.clone();

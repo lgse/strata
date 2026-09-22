@@ -266,6 +266,7 @@ pub(super) fn refresh_presentation(
 struct ItemPresentation {
     label: String,
     description: String,
+    shortcut: String,
     tooltip: Option<String>,
     icon_size: i32,
     danger: bool,
@@ -283,6 +284,7 @@ fn collect_presentations(model: &gio::MenuModel, items: &mut Vec<ItemPresentatio
             items.push(ItemPresentation {
                 label: label.replace("__", "_"),
                 description: string("x-strata-description").unwrap_or_default(),
+                shortcut: string("x-strata-shortcut").unwrap_or_default(),
                 tooltip: string("x-strata-tooltip"),
                 icon_size: model
                     .item_attribute_value(index, "x-strata-icon-size", None)
@@ -340,6 +342,7 @@ fn present_native_items(
     navigation: &Rc<super::keyboard::NativeMenuNavigation>,
 ) {
     if widget.is::<gtk::Button>() {
+        present_menu_item(widget, items);
         return;
     }
     if let Some(menu) = widget.downcast_ref::<gtk::PopoverMenu>() {
@@ -406,51 +409,172 @@ fn present_native_items(
         next = child.next_sibling();
         children.push(child);
     }
-    if widget.accessible_role() == gtk::AccessibleRole::MenuItem
-        && let Some(label) = children
-            .iter()
-            .find_map(|child| child.downcast_ref::<gtk::Label>())
-        && let Some(item) = items
-            .iter()
-            .find(|item| item.label == label.text())
-            .cloned()
-    {
-        let initialized = widget.has_css_class("strata-native-menu-item");
-        widget.add_css_class("strata-native-menu-item");
-        label.set_hexpand(true);
-        if item.custom {
-            label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-            label.set_max_width_chars(24);
-        }
-        if item.danger {
-            widget.add_css_class("danger");
-        }
-        widget.set_tooltip_text(item.tooltip.as_deref());
-        label_menu_item(widget, &item);
-        if !initialized {
-            let mapped_item = item.clone();
-            widget.connect_map(move |widget| label_menu_item(widget, &mapped_item));
-        }
-        for image in children
-            .iter()
-            .filter_map(|child| child.downcast_ref::<gtk::Image>())
-        {
-            if let Some(icon) = image.gicon().and_downcast::<gio::ThemedIcon>()
-                && let Some(name) = icon.names().first()
-            {
-                bind_menu_icon(image, name);
-            } else {
-                image.set_pixel_size(item.icon_size);
-            }
-            image.set_halign(gtk::Align::Center);
-            image.set_valign(gtk::Align::Center);
-            image.set_margin_end(8);
-            // GTK's text-menu presentation hides icons by default.
-            image.set_visible(true);
-        }
-    }
+    present_menu_item(widget, items);
     for child in children {
         present_native_items(&child, root, items, navigation);
+    }
+}
+
+fn present_menu_item(widget: &gtk::Widget, items: &[ItemPresentation]) {
+    if widget.accessible_role() != gtk::AccessibleRole::MenuItem {
+        return;
+    }
+    let mut labels = Vec::new();
+    collect_labels(widget, &mut labels);
+    let Some(title) = labels.iter().find(|label| {
+        !label.has_css_class("item-context-shortcut")
+            && !label.has_css_class("folder-context-shortcut")
+            && label.css_name() != "accelerator"
+    }) else {
+        return;
+    };
+    let Some(item) = items
+        .iter()
+        .find(|item| item.label == title.text().as_str())
+        .cloned()
+    else {
+        return;
+    };
+    let initialized = widget.has_css_class("strata-native-menu-item");
+    widget.add_css_class("strata-native-menu-item");
+    title.set_hexpand(true);
+    if item.custom {
+        title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        title.set_max_width_chars(24);
+    }
+    if item.danger {
+        widget.add_css_class("danger");
+    }
+    widget.set_tooltip_text(item.tooltip.as_deref());
+    label_menu_item(widget, &item);
+    present_shortcut(widget, &item.shortcut);
+    if !initialized {
+        let mapped_item = item.clone();
+        widget.connect_map(move |widget| {
+            label_menu_item(widget, &mapped_item);
+            present_shortcut(widget, &mapped_item.shortcut);
+        });
+    }
+    let mut images = Vec::new();
+    collect_images(widget, &mut images);
+    for image in images {
+        if let Some(icon) = image.gicon().and_downcast::<gio::ThemedIcon>()
+            && let Some(name) = icon.names().first()
+        {
+            bind_menu_icon(&image, name);
+        } else {
+            image.set_pixel_size(item.icon_size);
+        }
+        image.set_halign(gtk::Align::Center);
+        image.set_valign(gtk::Align::Center);
+        image.set_margin_end(8);
+        image.set_visible(true);
+    }
+}
+
+fn collect_images(widget: &gtk::Widget, images: &mut Vec<gtk::Image>) {
+    if let Ok(image) = widget.clone().downcast::<gtk::Image>() {
+        images.push(image);
+    }
+    let mut child = widget.first_child();
+    while let Some(node) = child {
+        child = node.next_sibling();
+        collect_images(&node, images);
+    }
+}
+
+fn present_shortcut(widget: &gtk::Widget, shortcut: &str) {
+    let mut labels = Vec::new();
+    collect_labels(widget, &mut labels);
+    let native = labels
+        .iter()
+        .find(|label| label.css_name() == "accelerator")
+        .cloned();
+    let extras: Vec<gtk::Label> = labels
+        .iter()
+        .filter(|label| {
+            (label.has_css_class("item-context-shortcut")
+                || label.has_css_class("folder-context-shortcut"))
+                && native.as_ref().is_none_or(|native| *label != native)
+        })
+        .cloned()
+        .collect();
+    if shortcut.is_empty() {
+        if let Some(native) = native {
+            native.set_visible(false);
+        }
+        for extra in extras {
+            extra.unparent();
+        }
+        return;
+    }
+    let label = native.unwrap_or_else(|| {
+        extras.first().cloned().unwrap_or_else(|| {
+            let label = gtk::Label::new(None);
+            label.add_css_class("item-context-shortcut");
+            label
+        })
+    });
+    for extra in extras {
+        if extra != label {
+            extra.unparent();
+        }
+    }
+    label.add_css_class("item-context-shortcut");
+    attach_shortcut_label(widget, &label);
+    label.set_hexpand(true);
+    label.set_halign(gtk::Align::End);
+    label.set_text(shortcut);
+    label.set_visible(label.parent().is_some());
+}
+
+fn attach_shortcut_label(item: &gtk::Widget, shortcut: &gtk::Label) {
+    if let Some(row) = menu_item_content_row(item) {
+        if shortcut.parent().as_ref() != Some(row.upcast_ref()) {
+            if shortcut.parent().is_some() {
+                shortcut.unparent();
+            }
+            row.append(shortcut);
+        }
+        return;
+    }
+    if shortcut.parent().as_ref() == Some(item) {
+        return;
+    }
+    if shortcut.parent().is_some() {
+        shortcut.unparent();
+    }
+    let arrow = item
+        .last_child()
+        .filter(|child| child.css_name() == "arrow");
+    shortcut.insert_before(item, arrow.as_ref());
+}
+
+fn menu_item_content_row(item: &gtk::Widget) -> Option<gtk::Box> {
+    let row = item.first_child()?.downcast::<gtk::Box>().ok()?;
+    let mut labels = Vec::new();
+    collect_labels(row.upcast_ref(), &mut labels);
+    // GtkModelButton's first child is the leading indicator box. Only treat a
+    // box as the content row when it already hosts the action title.
+    labels
+        .iter()
+        .any(|label| {
+            !label.has_css_class("item-context-shortcut")
+                && !label.has_css_class("folder-context-shortcut")
+                && label.css_name() != "accelerator"
+                && !label.text().is_empty()
+        })
+        .then_some(row)
+}
+
+fn collect_labels(widget: &gtk::Widget, labels: &mut Vec<gtk::Label>) {
+    if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
+        labels.push(label);
+    }
+    let mut child = widget.first_child();
+    while let Some(node) = child {
+        child = node.next_sibling();
+        collect_labels(&node, labels);
     }
 }
 

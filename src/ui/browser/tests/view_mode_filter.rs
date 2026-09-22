@@ -208,6 +208,108 @@ fn reused_panes_drop_a_dismissed_filter() {
 }
 
 #[test]
+fn hidden_query_notifications_deliver_focus_creation_and_reload_to_alternate_views() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::view_mode_filter::hidden_query_notifications_deliver_focus_creation_and_reload_to_alternate_views",
+        || {
+            for mode in [BrowserMode::Icons, BrowserMode::List] {
+                let (view, window, fixture, browser) = present_filtered_view(mode);
+                view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+                assert!(view.show_filter());
+                let entry = gtk::prelude::RootExt::focus(&window)
+                    .and_then(|focus| focus.ancestor(gtk::Entry::static_type()))
+                    .and_downcast::<gtk::Entry>()
+                    .expect("focused filter entry");
+                let focus_pending = Rc::new(Cell::new(true));
+                let pending = focus_pending.clone();
+                let weak_browser = Rc::downgrade(&browser);
+                entry.connect_changed(move |_| {
+                    if pending.replace(false)
+                        && let Some(browser) = weak_browser.upgrade()
+                    {
+                        browser.select(0, 1);
+                        browser.focus_active();
+                    }
+                });
+                assert!(view.set_filter_query_without_revealer("needle"));
+                assert!(!focus_pending.get());
+                assert!(view.item_view_has_focus(), "{mode:?}: nested FocusChanged");
+                assert_eq!(
+                    view.state.mode_views.borrow().selected_positions(),
+                    Some((0, vec![1])),
+                    "{mode:?}: nested selection must reach the displayed model"
+                );
+                wait_until(
+                    || {
+                        view.search_result_listing().is_some_and(|entries| {
+                            entries.len() == 1 && entries[0].display_name == "needle.txt"
+                        })
+                    },
+                    &format!("{mode:?}: hidden needle query must reach its displayed result"),
+                );
+
+                browser.create_file_named(Location::local(fixture.path()), "created.txt".into());
+                wait_until(
+                    || {
+                        fixture.path().join("created.txt").exists()
+                            && browser
+                                .column_snapshot(0)
+                                .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 3)
+                            && browser
+                                .focused_entry()
+                                .is_some_and(|entry| entry.display_name == "created.txt")
+                    },
+                    &format!(
+                        "{mode:?}: EntryCreated must select created.txt during a hidden filter"
+                    ),
+                );
+                let reload_pending = Rc::new(Cell::new(true));
+                let pending = reload_pending.clone();
+                let weak_view = view.downgrade();
+                view.observe_visible_listing(move || {
+                    if let Some(view) = weak_view.upgrade()
+                        && view.hidden_filter_query().is_empty()
+                        && pending.replace(false)
+                    {
+                        view.browser().reload_active();
+                    }
+                });
+                assert!(view.dismiss_hidden_filter());
+                assert!(
+                    !reload_pending.get(),
+                    "{mode:?}: clear must publish synchronously"
+                );
+                wait_until(
+                    || {
+                        browser
+                            .column_snapshot(0)
+                            .is_some_and(|snapshot| !snapshot.loading)
+                            && view.search_result_listing().is_none()
+                            && ["created.txt", "needle.txt", "other.txt"]
+                                .iter()
+                                .all(|name| shows_name(&view.widget(), name))
+                    },
+                    &format!("{mode:?}: nested reload must restore all three displayed rows"),
+                );
+                browser.focus_active();
+                wait_until(
+                    || view.item_view_has_focus(),
+                    &format!("{mode:?}: restored listing must own the cursor"),
+                );
+                let focused = browser.focused_item().expect("created cursor");
+                assert_eq!(focused.2.display_name, "created.txt");
+                let views = view.state.mode_views.borrow();
+                assert_eq!(views.focused_position(), Some((focused.0, focused.1)));
+                assert_eq!(views.selected_positions(), Some((0, vec![focused.1])));
+                drop(views);
+                browser.clear_observer();
+                window.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn view_switch_copies_the_active_column_filter_not_the_hovered_parent() {
     crate::test_support::gtk_test(
         "ui::browser::tests::view_mode_filter::view_switch_copies_the_active_column_filter_not_the_hovered_parent",

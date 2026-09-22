@@ -17,6 +17,7 @@ mod imp {
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
         pub cut: Cell<bool>,
+        pub copied: Cell<bool>,
         pub hidden: Cell<bool>,
         pub base_opacity: Cell<f64>,
         #[cfg(test)]
@@ -57,10 +58,10 @@ mod imp {
             if width <= 0.0 || height <= 0.0 {
                 return;
             }
-            let is_cut = self.cut.get();
+            let overlay = super::clipboard_overlay_icon(self.cut.get(), self.copied.get());
 
-            let texture = if is_cut {
-                crate::assets::primary_icon_paintable(crate::assets::icons::SCISSORS)
+            let texture = if let Some(icon) = overlay {
+                crate::assets::primary_icon_paintable(icon)
                     .or_else(|| self.texture.borrow().clone())
                     .or_else(|| self.fallback.borrow().clone())
             } else {
@@ -74,7 +75,7 @@ mod imp {
                 return;
             };
 
-            let scale = if self.texture.borrow().is_some() || is_cut {
+            let scale = if self.texture.borrow().is_some() || overlay.is_some() {
                 1.0
             } else {
                 self.fallback_scale.get()
@@ -94,6 +95,16 @@ mod imp {
             snapshot_texture(snapshot, &texture, draw_width, draw_height);
             snapshot.restore();
         }
+    }
+}
+
+fn clipboard_overlay_icon(cut: bool, copied: bool) -> Option<&'static str> {
+    if cut {
+        Some(crate::assets::icons::SCISSORS)
+    } else if copied {
+        Some(crate::assets::icons::COPY)
+    } else {
+        None
     }
 }
 
@@ -233,6 +244,13 @@ impl ThumbnailSlot {
         }
     }
 
+    pub(crate) fn set_copied(&self, copied: bool) {
+        if self.imp().copied.replace(copied) != copied {
+            self.update_state_opacity();
+            self.queue_draw();
+        }
+    }
+
     pub(crate) fn set_hidden(&self, hidden: bool) {
         if self.imp().hidden.replace(hidden) != hidden {
             self.update_state_opacity();
@@ -251,7 +269,9 @@ impl ThumbnailSlot {
     fn update_state_opacity(&self) {
         let opacity = if self.imp().hidden.get() {
             0.65
-        } else if self.imp().cut.get() || self.imp().texture.borrow().is_some() {
+        } else if clipboard_overlay_icon(self.imp().cut.get(), self.imp().copied.get()).is_some()
+            || self.imp().texture.borrow().is_some()
+        {
             1.0
         } else {
             self.imp().base_opacity.get()

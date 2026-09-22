@@ -30,6 +30,11 @@ impl PreferenceChanges {
         }
     }
 
+    #[cfg(test)]
+    pub(super) fn listener_count(&self) -> usize {
+        self.listeners.borrow().len()
+    }
+
     pub(super) fn record(&self, preferences: &Preferences) -> bool {
         if *self.latest.borrow() == *preferences {
             return false;

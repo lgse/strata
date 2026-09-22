@@ -44,10 +44,12 @@ use super::{
     },
     preferences::PreferenceManager,
     preview::{PreviewDrawer, preview_target},
+    shortcut_footer::ShortcutFooter,
+    top_bar_navigation::TopBarNavigation,
     window::{
-        MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView, build_appearance_menu, build_sidebar,
-        home_directory, install_modal_focus_trap, is_sidebar_focus_shortcut, vim_focus_direction,
-        visible_modal_layer,
+        MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView, TypeToSearch, build_appearance_menu,
+        build_sidebar, home_directory, install_modal_focus_trap, is_sidebar_focus_shortcut,
+        keyboard, vim_focus_direction, visible_modal_layer,
     },
 };
 
@@ -960,7 +962,7 @@ fn build_chooser_with_source(
     header_content.append(&header_actions);
     header.set_title_widget(Some(&header_content));
 
-    let sidebar = build_sidebar(view.clone(), theme, true);
+    let sidebar = build_sidebar(view.clone(), theme.clone(), true);
     sidebar.schedule_after_first_paint(&window);
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
     content.set_wide_handle(false);
@@ -1108,10 +1110,22 @@ fn build_chooser_with_source(
             || matches!(&request.kind, ChooserKind::SaveFiles { .. }),
     );
 
+    let shortcuts = ShortcutFooter::new(view.view_mode());
+    shortcuts.bind_preferences(&theme);
+    shortcuts.bind_minimal_mode(&theme);
+    shortcuts.observe_browser(&view);
+    let updated_shortcuts = shortcuts.downgrade();
+    view.connect_view_mode_changed(move |mode| {
+        if let Some(shortcuts) = updated_shortcuts.upgrade() {
+            shortcuts.set_mode(mode);
+        }
+    });
+
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header);
     root.append(&preview_split);
     root.append(&details_scroll);
+    root.append(shortcuts.widget());
     root.append(&actions);
     let blurred_root = BlurBin::new(&root);
     let overlay = gtk::Overlay::new();
@@ -1191,9 +1205,30 @@ fn build_chooser_with_source(
         }
         glib::Propagation::Proceed
     });
+    let top_bar = TopBarNavigation::new(&header_content, &sidebar.widget, &sidebar_toggle);
+    keyboard::install(
+        &window,
+        &sidebar,
+        keyboard::Bindings {
+            view: view.clone(),
+            top_bar,
+            preview: preview.clone(),
+            type_to_search: TypeToSearch {
+                view: view.clone(),
+                preferences: theme.clone(),
+            },
+            shortcuts: shortcuts.clone(),
+            open_settings: Rc::new(|| {}),
+        },
+    );
+    let clipboard = window.clipboard();
+    let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
     install_shortcuts(&window, &state, &sidebar, &sidebar_toggle, &preview);
     let browser_for_destroy = browser.clone();
     window.connect_destroy(move |_| {
+        if let Some(handler) = clipboard_handler.borrow_mut().take() {
+            clipboard.disconnect(handler);
+        }
         browser_for_destroy.clear_observer();
         sidebar.disconnect();
     });
@@ -1228,6 +1263,9 @@ fn build_chooser_with_source(
     if let Some(filename) = state.filename.as_ref() {
         filename.grab_focus();
         filename.select_region(0, -1);
+    } else if PreferenceManager::shared().minimal_mode() {
+        view.browser().focus_active();
+        view.restore_file_view_focus();
     } else {
         sidebar_toggle.grab_focus();
     }
@@ -1427,6 +1465,35 @@ fn install_shortcuts(
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
             .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
         {
+            return glib::Propagation::Proceed;
+        }
+        if preferences.minimal_mode() {
+            if key == gtk::gdk::Key::Escape {
+                if let Some(popover) = focused
+                    .as_ref()
+                    .and_then(|widget| widget.ancestor(gtk::Popover::static_type()))
+                    .and_downcast::<gtk::Popover>()
+                {
+                    popover.popdown();
+                    return glib::Propagation::Stop;
+                }
+                if state.dismiss_dropdown() {
+                    return glib::Propagation::Stop;
+                }
+            }
+            if is_folder_accept_shortcut(key, modifiers)
+                && state.view.item_view_has_focus()
+                && matches!(
+                    &state.request.kind,
+                    ChooserKind::Open {
+                        directory: true,
+                        ..
+                    }
+                )
+            {
+                state.accept();
+                return glib::Propagation::Stop;
+            }
             return glib::Propagation::Proceed;
         }
         if super::window::is_context_menu_shortcut(key, modifiers)

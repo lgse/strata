@@ -132,7 +132,9 @@ class Context:
         self._emit({"event": "output", "path": path})
 
     def log(self, message: str) -> None:
-        print(message, flush=True)
+        # Paths may contain non-UTF-8 bytes, decoded with surrogateescape.
+        sys.stdout.buffer.write(os.fsencode(message) + b"\n")
+        sys.stdout.buffer.flush()
 
     def _emit(self, event: dict) -> None:
         if not self._progress_path:
