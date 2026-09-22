@@ -39,6 +39,95 @@ impl SizeProgressThrottle {
     }
 }
 
+struct PropertiesMeasurement {
+    size: glib::WeakRef<gtk::Label>,
+    spinner: glib::WeakRef<gtk::Spinner>,
+    items: Option<glib::WeakRef<gtk::Label>>,
+    warning: glib::WeakRef<gtk::Image>,
+    throttle: SizeProgressThrottle,
+}
+
+impl PropertiesMeasurement {
+    fn new(
+        size: &gtk::Label,
+        spinner: &gtk::Spinner,
+        items: Option<&gtk::Label>,
+        warning: &gtk::Image,
+    ) -> Rc<Self> {
+        Rc::new(Self {
+            size: size.downgrade(),
+            spinner: spinner.downgrade(),
+            items: items.map(|items| items.downgrade()),
+            warning: warning.downgrade(),
+            throttle: SizeProgressThrottle::default(),
+        })
+    }
+
+    fn update(&self, summary: DirectorySummary) {
+        if let Some(size) = self.size.upgrade() {
+            let prefix = if summary.truncated() { "≥ " } else { "" };
+            size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
+        }
+        if let Some(items) = self.items.as_ref().and_then(|items| items.upgrade()) {
+            items.set_text(&directory_counts_label(&summary));
+        }
+        if let Some(warning) = self.warning.upgrade() {
+            set_measurement_warning(&warning, measurement_warning_text(&summary).as_deref());
+        }
+    }
+
+    async fn measure(
+        self: &Rc<Self>,
+        directory: &gio::File,
+        completed: DirectorySummary,
+    ) -> Result<DirectorySummary, glib::Error> {
+        let measurement = self.clone();
+        summarize_directory_with_progress(directory, move |partial| {
+            if partial.item_count > 0 && measurement.throttle.should_update(Instant::now()) {
+                let mut total = completed;
+                total.include(partial);
+                measurement.update(total);
+            }
+        })
+        .await
+    }
+
+    fn finish(&self, result: Result<DirectorySummary, glib::Error>) {
+        if let Some(spinner) = self.spinner.upgrade() {
+            spinner.stop();
+            spinner.set_visible(false);
+        }
+        match result {
+            Ok(summary) => self.update(summary),
+            Err(_) => {
+                if let Some(size) = self.size.upgrade() {
+                    size.set_text("Unavailable");
+                }
+                if let Some(items) = self.items.as_ref().and_then(|items| items.upgrade()) {
+                    items.set_text("Unavailable");
+                }
+                if let Some(warning) = self.warning.upgrade() {
+                    set_measurement_warning(&warning, Some("Folder contents couldn't be read."));
+                }
+            }
+        }
+    }
+}
+
+fn spawn_properties_measurement(
+    layer: &gtk::Box,
+    future: impl std::future::Future<Output = ()> + 'static,
+) {
+    let task = Rc::new(glib::MainContext::default().spawn_local(future));
+    let closing_task = task.clone();
+    layer.connect_sensitive_notify(move |layer| {
+        if !layer.is_sensitive() {
+            closing_task.abort();
+        }
+    });
+    layer.connect_unrealize(move |_| task.abort());
+}
+
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
     properties_row_with_suffix(parent, label, value, None)
 }
@@ -686,69 +775,19 @@ impl ViewState {
         layer.grab_focus();
 
         if measuring_directory {
-            let weak_size = size.downgrade();
-            let weak_spinner = size_spinner.downgrade();
-            let weak_items = items.as_ref().map(|items| items.downgrade());
-            let weak_warning = measurement_warning.downgrade();
+            let measurement = PropertiesMeasurement::new(
+                &size,
+                &size_spinner,
+                items.as_ref(),
+                &measurement_warning,
+            );
             let directory = gio_file_for_location(&location);
-            let task = glib::MainContext::default().spawn_local(async move {
-                let progress_size = weak_size.clone();
-                let progress_items = weak_items.clone();
-                let progress_throttle = SizeProgressThrottle::default();
-                let summary = summarize_directory_with_progress(&directory, move |total| {
-                    if total.item_count > 0 && progress_throttle.should_update(Instant::now()) {
-                        if let Some(size) = progress_size.upgrade() {
-                            size.set_text(&format_file_size(total.total_size));
-                        }
-                        if let Some(items) = progress_items.as_ref().and_then(|w| w.upgrade()) {
-                            items.set_text(&directory_counts_label(&total));
-                        }
-                    }
-                })
-                .await;
-                if let Some(spinner) = weak_spinner.upgrade() {
-                    spinner.stop();
-                    spinner.set_visible(false);
-                }
-                let Some(size) = weak_size.upgrade() else {
-                    return;
-                };
-                match summary {
-                    Ok(summary) => {
-                        let prefix = if summary.truncated() { "≥ " } else { "" };
-                        if let Some(warning) = weak_warning.upgrade() {
-                            set_measurement_warning(
-                                &warning,
-                                measurement_warning_text(&summary).as_deref(),
-                            );
-                        }
-                        size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
-                        if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
-                            items.set_text(&directory_counts_label(&summary));
-                        }
-                    }
-                    Err(_) => {
-                        if let Some(warning) = weak_warning.upgrade() {
-                            set_measurement_warning(
-                                &warning,
-                                Some("Folder contents couldn't be read."),
-                            );
-                        }
-                        size.set_text("Unavailable");
-                        if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
-                            items.set_text("Unavailable");
-                        }
-                    }
-                }
+            spawn_properties_measurement(&layer, async move {
+                let summary = measurement
+                    .measure(&directory, DirectorySummary::default())
+                    .await;
+                measurement.finish(summary);
             });
-            let task = Rc::new(task);
-            let closing_task = task.clone();
-            layer.connect_sensitive_notify(move |layer| {
-                if !layer.is_sensitive() {
-                    closing_task.abort();
-                }
-            });
-            layer.connect_unrealize(move |_| task.abort());
         }
 
         let file = gio_file_for_location(&location);
@@ -871,23 +910,9 @@ impl ViewState {
         layer.add_controller(escape);
         layer.grab_focus();
 
-        let weak_size = size.downgrade();
-        let weak_spinner = size_spinner.downgrade();
-        let weak_items = items.downgrade();
-        let weak_warning = measurement_warning.downgrade();
-        let task = glib::MainContext::default().spawn_local(async move {
-            let update = Rc::new(move |total: DirectorySummary| {
-                if let Some(size) = weak_size.upgrade() {
-                    let prefix = if total.truncated() { "≥ " } else { "" };
-                    size.set_text(&format!("{prefix}{}", format_file_size(total.total_size)));
-                }
-                if let Some(items) = weak_items.upgrade() {
-                    items.set_text(&directory_counts_label(&total));
-                }
-                if let Some(warning) = weak_warning.upgrade() {
-                    set_measurement_warning(&warning, measurement_warning_text(&total).as_deref());
-                }
-            });
+        let measurement =
+            PropertiesMeasurement::new(&size, &size_spinner, Some(&items), &measurement_warning);
+        spawn_properties_measurement(&layer, async move {
             let mut total = DirectorySummary::default();
             for entry in entries.iter().filter(|entry| !entry.is_directory()) {
                 total.item_count = total.item_count.saturating_add(1);
@@ -898,40 +923,18 @@ impl ViewState {
                     total.issues.unreadable = true;
                 }
             }
-            update(total);
-            let throttle = Rc::new(SizeProgressThrottle::default());
+            measurement.update(total);
             for entry in entries.iter().filter(|entry| entry.is_directory()) {
                 let directory = gio_file_for_location(&entry.location);
-                let completed = total;
-                let progress_update = update.clone();
-                let progress_throttle = throttle.clone();
-                let summary = summarize_directory_with_progress(&directory, move |partial| {
-                    if partial.item_count > 0 && progress_throttle.should_update(Instant::now()) {
-                        let mut current = completed;
-                        current.include(partial);
-                        progress_update(current);
-                    }
-                })
-                .await;
+                let summary = measurement.measure(&directory, total).await;
                 match summary {
                     Ok(summary) => total.include(summary),
                     Err(_) => total.issues.unreadable = true,
                 }
-                update(total);
+                measurement.update(total);
             }
-            if let Some(spinner) = weak_spinner.upgrade() {
-                spinner.stop();
-                spinner.set_visible(false);
-            }
+            measurement.finish(Ok(total));
         });
-        let task = Rc::new(task);
-        let closing_task = task.clone();
-        layer.connect_sensitive_notify(move |layer| {
-            if !layer.is_sensitive() {
-                closing_task.abort();
-            }
-        });
-        layer.connect_unrealize(move |_| task.abort());
     }
 }
 
