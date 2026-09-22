@@ -252,6 +252,7 @@ impl Dispatcher {
             .or_else(|| self.video_controls(&event))
             .or_else(|| self.sidebar_commands(browser, &event))
             .or_else(|| self.context_menu_command(&event))
+            .or_else(|| self.properties_command(&event))
             .or_else(|| {
                 // Search rows own navigation; directory commands must not act on hidden selections.
                 if self.view.selected_search_results().is_some()

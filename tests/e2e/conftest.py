@@ -25,7 +25,7 @@ from harness.xtest import XTestConnection  # noqa: E402
 # Retry infrastructure startup only, never interaction assertions.
 DISPLAY_START_ATTEMPTS = 2
 
-pytest_plugins = ["harness.ci_plugin"]
+pytest_plugins = ["harness.ci_plugin", "harness.warnings_plugin"]
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
