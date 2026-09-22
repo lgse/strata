@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::directory_summary::{
-    DirectorySummary, summarize_directory, summarize_directory_with_progress,
-};
+use crate::adapters::directory_summary::{DirectorySummary, summarize_directory_with_progress};
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
@@ -878,52 +876,52 @@ impl ViewState {
         let weak_items = items.downgrade();
         let weak_warning = measurement_warning.downgrade();
         let task = glib::MainContext::default().spawn_local(async move {
+            let update = Rc::new(move |total: DirectorySummary| {
+                if let Some(size) = weak_size.upgrade() {
+                    let prefix = if total.truncated() { "≥ " } else { "" };
+                    size.set_text(&format!("{prefix}{}", format_file_size(total.total_size)));
+                }
+                if let Some(items) = weak_items.upgrade() {
+                    items.set_text(&directory_counts_label(&total));
+                }
+                if let Some(warning) = weak_warning.upgrade() {
+                    set_measurement_warning(&warning, measurement_warning_text(&total).as_deref());
+                }
+            });
             let mut total = DirectorySummary::default();
-            let mut unreadable = false;
-            for entry in &entries {
-                if entry.is_directory() {
-                    let directory = gio_file_for_location(&entry.location);
-                    match summarize_directory(&directory).await {
-                        Ok(summary) => {
-                            total.item_count = total.item_count.saturating_add(summary.item_count);
-                            total.total_size = total.total_size.saturating_add(summary.total_size);
-                            total.visible_file_count = total
-                                .visible_file_count
-                                .saturating_add(summary.visible_file_count);
-                            total.visible_folder_count = total
-                                .visible_folder_count
-                                .saturating_add(summary.visible_folder_count);
-                            total.issues.unreadable |= summary.issues.unreadable;
-                            total.issues.timed_out |= summary.issues.timed_out;
-                            total.issues.depth_limited |= summary.issues.depth_limited;
-                        }
-                        Err(_) => unreadable = true,
-                    }
+            for entry in entries.iter().filter(|entry| !entry.is_directory()) {
+                total.item_count = total.item_count.saturating_add(1);
+                total.visible_file_count = total.visible_file_count.saturating_add(1);
+                if let crate::model::MetadataValue::Known(size) = entry.size {
+                    total.total_size = total.total_size.saturating_add(size);
                 } else {
-                    total.item_count = total.item_count.saturating_add(1);
-                    total.visible_file_count = total.visible_file_count.saturating_add(1);
-                    if let crate::model::MetadataValue::Known(size) = entry.size {
-                        total.total_size = total.total_size.saturating_add(size);
-                    } else {
-                        total.issues.unreadable = true;
-                    }
+                    total.issues.unreadable = true;
                 }
             }
-            total.issues.unreadable |= unreadable;
+            update(total);
+            let throttle = Rc::new(SizeProgressThrottle::default());
+            for entry in entries.iter().filter(|entry| entry.is_directory()) {
+                let directory = gio_file_for_location(&entry.location);
+                let completed = total;
+                let progress_update = update.clone();
+                let progress_throttle = throttle.clone();
+                let summary = summarize_directory_with_progress(&directory, move |partial| {
+                    if partial.item_count > 0 && progress_throttle.should_update(Instant::now()) {
+                        let mut current = completed;
+                        current.include(partial);
+                        progress_update(current);
+                    }
+                })
+                .await;
+                match summary {
+                    Ok(summary) => total.include(summary),
+                    Err(_) => total.issues.unreadable = true,
+                }
+                update(total);
+            }
             if let Some(spinner) = weak_spinner.upgrade() {
                 spinner.stop();
                 spinner.set_visible(false);
-            }
-            let Some(size) = weak_size.upgrade() else {
-                return;
-            };
-            let prefix = if total.truncated() { "≥ " } else { "" };
-            size.set_text(&format!("{prefix}{}", format_file_size(total.total_size)));
-            if let Some(items) = weak_items.upgrade() {
-                items.set_text(&directory_counts_label(&total));
-            }
-            if let Some(warning) = weak_warning.upgrade() {
-                set_measurement_warning(&warning, measurement_warning_text(&total).as_deref());
             }
         });
         let task = Rc::new(task);
