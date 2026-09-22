@@ -255,14 +255,15 @@ pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
     PreferenceManager::shared().bind_interface_scale(paned, |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
         if paned.position() > 0 {
-            let is_rail = paned
-                .start_child()
-                .is_some_and(|child| child.has_css_class("sidebar-rail"));
-            if is_rail {
-                paned.set_position(SIDEBAR_RAIL_WIDTH);
+            let Some(sidebar) = paned.start_child() else {
+                return;
+            };
+            let target = if sidebar.has_css_class("sidebar-rail") {
+                SIDEBAR_RAIL_WIDTH
             } else {
-                paned.set_position(scaled_sidebar_width(paned, scale));
-            }
+                scaled_sidebar_width(paned, scale).max(sidebar_minimum_width(&sidebar))
+            };
+            paned.set_position(target);
         }
     });
 }
@@ -283,14 +284,26 @@ fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
     preferred.min(available).max(SIDEBAR_WIDTH)
 }
 
-fn sidebar_animation_target(paned: &gtk::Paned, state: &SidebarState, expanded: bool) -> i32 {
+fn sidebar_animation_target(
+    paned: &gtk::Paned,
+    sidebar: &gtk::Widget,
+    state: &SidebarState,
+    expanded: bool,
+) -> i32 {
     if !expanded {
         0
     } else if state.rail.get() {
         SIDEBAR_RAIL_WIDTH
     } else {
         scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
+            .max(sidebar_minimum_width(sidebar))
     }
+}
+
+// Below this minimum, GTK can allocate more width than the divider position allows.
+fn sidebar_minimum_width(sidebar: &gtk::Widget) -> i32 {
+    let (minimum, _, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
+    minimum
 }
 
 fn animate_sidebar(
@@ -305,11 +318,11 @@ fn animate_sidebar(
     generation.set(animation_id);
     animating.set(true);
     paned.set_shrink_start_child(true);
-    let target = sidebar_animation_target(paned, state, expanded);
-    let start = paned.position();
     if expanded {
         sidebar.set_visible(true);
     }
+    let target = sidebar_animation_target(paned, sidebar, state, expanded);
+    let start = paned.position();
 
     if !animations_enabled() || start == target {
         paned.set_position(target);
@@ -334,7 +347,7 @@ fn animate_sidebar(
         };
 
         // Preview layout may engage or release the rail while this animation is running.
-        let target = sidebar_animation_target(&paned, &state, expanded);
+        let target = sidebar_animation_target(&paned, &sidebar, &state, expanded);
         let progress =
             (started.elapsed().as_secs_f64() / SIDEBAR_TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
         let eased = emphasized_deceleration(progress);

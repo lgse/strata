@@ -856,7 +856,7 @@ impl ViewState {
                 let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
                     return false;
                 };
-                let entry = if column.search_handle.borrow().is_some() {
+                let entry = if column.recursive_search_active.get() {
                     column
                         .search_results
                         .borrow()
