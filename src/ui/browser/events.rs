@@ -633,6 +633,7 @@ impl ViewState {
             } => {
                 self.update_transfer_progress(*completed_items, *transferred_bytes, *total_bytes);
             }
+            BrowserEvent::FlushingToDevice => self.show_device_flush_status(),
             BrowserEvent::TransferFinished { moved_locations } => {
                 if !moved_locations.is_empty() {
                     self.complete_cut_transfer(moved_locations);

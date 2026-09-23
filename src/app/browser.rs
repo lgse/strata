@@ -182,6 +182,8 @@ pub enum BrowserEvent {
         transferred_bytes: u64,
         total_bytes: Option<u64>,
     },
+    /// The open copy/move dialog should show that removable bytes are flushing.
+    FlushingToDevice,
     TransferFinished {
         moved_locations: Vec<Location>,
     },

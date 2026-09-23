@@ -171,6 +171,7 @@ impl Browser {
                     total_bytes: *total_bytes,
                 }
             }
+            OperationEvent::FlushingToDevice { .. } => BrowserEvent::FlushingToDevice,
             OperationEvent::RestoreProgress {
                 completed,
                 total,
@@ -426,7 +427,8 @@ impl Browser {
             | OperationEvent::RestoreProgress { .. }
             | OperationEvent::Merged { .. }
             | OperationEvent::ArchiveStarted { .. }
-            | OperationEvent::ArchiveProgress { .. } => {}
+            | OperationEvent::ArchiveProgress { .. }
+            | OperationEvent::FlushingToDevice { .. } => {}
         }
     }
 
@@ -520,6 +522,7 @@ fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
         | OperationEvent::Created { request_id }
         | OperationEvent::EntryCreated { request_id, .. }
         | OperationEvent::Pasted { request_id, .. }
+        | OperationEvent::FlushingToDevice { request_id }
         | OperationEvent::Merged { request_id, .. }
         | OperationEvent::TransferFailed { request_id, .. }
         | OperationEvent::TransferProgress { request_id, .. }
