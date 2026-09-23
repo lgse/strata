@@ -25,7 +25,7 @@ use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
 use crate::ui::browser::paths::compact_display_path;
 use crate::ui::collection_edit::update_basename_validation;
 use crate::ui::controls::{
-    ModalTone, form_entry, form_error_label, form_label, form_password_entry,
+    ModalTone, focus_button, form_entry, form_error_label, form_label, form_password_entry,
     message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
     set_form_field_error,
 };
@@ -288,13 +288,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = replace.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
-            }
-        });
+        focus_button(&replace);
     }
 
     /// Opens the compress dialog for the selected `entries`.
