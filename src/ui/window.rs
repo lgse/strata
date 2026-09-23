@@ -1650,45 +1650,11 @@ impl SidebarState {
         row.add_css_class("reorderable");
         row.set_cursor_from_name(Some("pointer"));
 
-        let armed = Rc::new(Cell::new(false));
-        let hold = gtk::GestureLongPress::new();
-        hold.set_button(1);
-        hold.set_touch_only(false);
-        let held_row = row.clone();
-        let held = armed.clone();
-        hold.connect_pressed(move |_, _, _| {
-            held.set(true);
-            held_row.add_css_class("drag-armed");
-            held_row.set_cursor_from_name(Some("grab"));
-        });
-        let disarm = {
-            let row = row.clone();
-            let armed = armed.clone();
-            move || {
-                armed.set(false);
-                row.remove_css_class("drag-armed");
-                row.set_cursor_from_name(Some("pointer"));
-            }
-        };
-        let cancelled = disarm.clone();
-        hold.connect_cancelled(move |_| cancelled());
-        row.add_controller(hold);
-
-        // LongPress ends at the drag threshold, before DragSource prepares its payload.
-        // Disarm on button release instead so moving after the hold can start a drag.
-        let release = gtk::GestureClick::new();
-        release.set_button(1);
-        let released = disarm.clone();
-        release.connect_released(move |_, _, _, _| released());
-        row.add_controller(release);
-
         let drag = gtk::DragSource::builder()
             .actions(gtk::gdk::DragAction::MOVE)
             .build();
         drag.connect_prepare(move |_, _, _| {
-            armed
-                .get()
-                .then(|| gtk::gdk::ContentProvider::for_value(&payload().to_value()))
+            Some(gtk::gdk::ContentProvider::for_value(&payload().to_value()))
         });
         let dragged_row = row.clone();
         drag.connect_drag_begin(move |_, _| {
@@ -1698,7 +1664,7 @@ impl SidebarState {
         let dragged_row = row.clone();
         drag.connect_drag_end(move |_, _, _| {
             dragged_row.remove_css_class("dragging");
-            disarm();
+            dragged_row.set_cursor_from_name(Some("pointer"));
         });
         row.add_controller(drag);
 

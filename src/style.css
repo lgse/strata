@@ -2001,11 +2001,6 @@ scrollbar slider:active {
   opacity: 0.52;
 }
 
-.sidebar-row.reorderable.drag-armed {
-  background: alpha(@theme_highlight, 0.32);
-  transform: scale(1.02);
-}
-
 .sidebar-row.reorderable:drop(active),
 .sidebar-row:drop(active) {
   background: alpha(@theme_highlight, 0.46);
