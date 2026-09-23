@@ -3,7 +3,7 @@
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{format_file_size, item_count_label};
-use crate::ui::controls::modal_layout;
+use crate::ui::controls::{focus_button, modal_layout};
 use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
 use gtk::glib;
 use gtk::prelude::*;
@@ -174,7 +174,7 @@ impl ViewState {
         if let Some(progress) = self.file_progress_view.borrow().as_ref() {
             progress.layer.add_controller(escape);
         }
-        cancel.grab_focus();
+        focus_button(&cancel);
         if let Some(view) = self.file_progress_view.borrow().as_ref() {
             ensure_indeterminate_pulse(view);
         }
