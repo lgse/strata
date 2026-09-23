@@ -379,7 +379,7 @@ fn every_archive_format_sanitizes_parent_traversal_without_stopping() -> Result<
             )?,
             ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
-        let destination = tempfile::tempdir()?;
+        let destination = tempfile::tempdir_in(root.path())?;
         let progress = Arc::new(AtomicUsize::new(0));
 
         assert_eq!(

@@ -14,11 +14,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-/// Converts an archive member name into a relative path that cannot escape the destination.
-///
-/// Normalizes separators and resolves parent components without walking above
-/// the extraction root. Empty paths, absolute paths, and Windows drive prefixes
-/// remain invalid.
+/// Clamp parent traversal at the extraction root so one such member does not abort the archive.
 pub(super) fn sanitized_archive_path(name: &str) -> Result<PathBuf, String> {
     let normalized = name.replace('\\', "/");
     if normalized.is_empty() || normalized.starts_with('/') {

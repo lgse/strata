@@ -17,6 +17,9 @@ fn archive_paths_are_sanitized_to_confined_relative_paths() -> Result<(), Box<dy
         ".",
         "./",
         "././",
+        "..",
+        "safe/..",
+        "safe/../..",
         "/tmp/marker",
         "\\tmp\\marker",
         "C:\\tmp\\marker",
@@ -31,6 +34,7 @@ fn archive_paths_are_sanitized_to_confined_relative_paths() -> Result<(), Box<dy
         ("../marker", "marker"),
         ("safe/../marker", "marker"),
         ("safe/../../marker", "marker"),
+        ("safe\\..\\..\\marker", "marker"),
         ("folder/./nested//item.txt", "folder/nested/item.txt"),
     ] {
         assert_eq!(
