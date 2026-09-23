@@ -670,6 +670,7 @@ fn click_activation_option(
         label.set_width_chars(7);
         label.add_css_class("settings-option-description");
         control.set_hexpand(false);
+        control.set_width_request(180);
         control.set_valign(gtk::Align::Center);
         control.add_css_class("click-activation-control");
         // Include the view and item kind so assistive tools distinguish all twelve choices.

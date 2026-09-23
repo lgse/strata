@@ -332,14 +332,6 @@ pub(super) fn segmented_control(
         let button = gtk::ToggleButton::with_label(label);
         button.add_css_class("segmented-control-option");
         button.set_hexpand(true);
-        if index == 0 {
-            button.add_css_class("first");
-        } else {
-            button.add_css_class("not-first");
-        }
-        if index + 1 == labels.len() {
-            button.add_css_class("last");
-        }
         if let Some(first) = buttons.first() {
             button.set_group(Some(first));
         }

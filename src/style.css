@@ -987,7 +987,9 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 24px 12px;
 }
 
-.action-dialog-cancel {
+.action-dialog-cancel,
+.settings-action-button,
+.settings-action-library-button > button {
   background: transparent;
   border: 1px solid alpha(@theme_border, 0.54);
   border-radius: 5px;
@@ -998,19 +1000,26 @@ headerbar menubutton.header-action > button:focus-visible {
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
-.action-dialog-cancel:hover {
+.action-dialog-cancel:hover,
+.settings-action-button:hover,
+.settings-action-library-button > button:hover {
   background: alpha(@theme_accent, 0.15);
   border-color: @theme_text;
 }
 
-.action-dialog-cancel:active {
+.action-dialog-cancel:active,
+.settings-action-button:active,
+.settings-action-library-button > button:active,
+.settings-action-library-button > button:checked {
   background: alpha(@theme_accent, 0.22);
   border-color: @theme_accent;
   color: @theme_accent;
   transform: scale(0.97);
 }
 
-.action-dialog-cancel:focus-visible {
+.action-dialog-cancel:focus-visible,
+.settings-action-button:focus-visible,
+.settings-action-library-button > button:focus-visible {
   border-color: @theme_accent;
   outline: 2px solid alpha(@theme_accent, 0.5);
   outline-offset: 1px;
@@ -1061,6 +1070,8 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .action-dialog-cancel:disabled,
+.settings-action-button:disabled,
+.settings-action-library-button > button:disabled,
 .action-dialog-confirm:disabled,
 .action-dialog-close:disabled {
   background: alpha(@theme_muted, 0.3);
@@ -1532,11 +1543,6 @@ menubutton.form-control:disabled > button {
 .click-activation-row + .click-activation-row {
   border-top: 1px solid alpha(@theme_border, 0.18);
   padding-top: 4px;
-}
-
-.click-activation-control .segmented-control-option {
-  min-height: 28px;
-  padding: 2px 8px;
 }
 
 .release-notes-card {
@@ -3185,63 +3191,55 @@ menubutton.column-header-action > button:active {
 }
 
 .segmented-control {
-  border-radius: 5px;
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+  padding: 2px;
 }
 
 .segmented-control-option {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.54);
-  border-radius: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
   box-shadow: none;
   color: @theme_dim_text;
-  min-height: 32px;
-  padding: 3px 12px;
-  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
-}
-
-.segmented-control-option.first {
-  border-radius: 5px 0 0 5px;
-}
-
-.segmented-control-option.not-first {
-  border-left: none;
-}
-
-.segmented-control-option.last {
-  border-radius: 0 5px 5px 0;
+  min-height: 26px;
+  padding: 2px 10px;
 }
 
 .segmented-control-option:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@theme_highlight, 0.65);
   color: @theme_text;
 }
 
 .segmented-control-option:checked {
-  background: alpha(@theme_highlight, 0.82);
-  border-color: @theme_accent;
+  background: alpha(@theme_accent, 0.22);
   color: @theme_accent;
 }
 
-.segmented-control-option.not-first:checked {
-  border-left: 1px solid @theme_accent;
+.segmented-control-option:checked:hover {
+  background: alpha(@theme_accent, 0.28);
 }
 
 .segmented-control-option:active {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
-  transform: scale(0.97);
+  background: alpha(@theme_accent, 0.28);
 }
 
 .segmented-control-option:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-.authentication-fields .form-control:disabled,
-.segmented-control-option:disabled {
+.authentication-fields .form-control:disabled {
   background: alpha(@theme_muted, 0.3);
   border-color: alpha(@theme_border, 0.38);
   color: @theme_dim_text;
+}
+
+.segmented-control-option:disabled {
+  background: transparent;
+  color: @theme_dim_text;
+  opacity: 0.4;
 }
 
 
@@ -5523,24 +5521,6 @@ two-column presentation. */
   opacity: 1;
 }
 
-.settings-dialog .segmented-control-option {
-  min-height: 20px;
-  padding: 7px 12px;
-  background: @theme_muted;
-  color: @theme_dim_text;
-  border-color: alpha(@theme_border, 0.8);
-}
-
-.settings-dialog .segmented-control-option:checked {
-  background: @theme_highlight;
-  color: @theme_accent;
-}
-
-.settings-dialog .segmented-control-option:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
-}
-
 .settings-library-toolbar {
   margin-top: 36px;
   margin-bottom: 10px;
@@ -5778,23 +5758,12 @@ two-column presentation. */
   margin-right: 0;
 }
 
-.settings-dialog.compact .activation-option {
+.click-activation-row.compact .activation-option {
   margin-bottom: 8px;
 }
 
-.settings-dialog.compact .click-activation-row {
+.click-activation-row.compact {
   padding: 10px;
-}
-
-.settings-dialog .click-activation-control .segmented-control-option {
-  font-size: 0.9375em;
-  min-width: 56px;
-  min-height: 20px;
-  padding: 7px 12px;
-}
-
-.settings-dialog .click-activation-control .segmented-control-option label {
-  min-height: 0;
 }
 
 .settings-dialog .activation-header label {
@@ -5858,10 +5827,6 @@ two-column presentation. */
   border: 1px solid transparent;
 }
 
-.settings-dialog .segmented-control-option.not-first:checked {
-  border-left-color: alpha(@theme_border, 0.8);
-}
-
 .settings-release-expander {
   padding: 0;
 }
@@ -5908,10 +5873,6 @@ two-column presentation. */
 
 .settings-search-icon {
   -gtk-icon-filter: saturate(0) opacity(0.65);
-}
-
-.settings-dialog .segmented-control-option:checked {
-  font-weight: 600;
 }
 
 .settings-dialog .settings-library-toolbar .menu-heading {
@@ -6168,14 +6129,12 @@ popover.jobs-popover.background {
 
 .settings-action-button,
 .settings-action-library-button > button {
-  background: alpha(@theme_highlight, 0.35);
-  border: 1px solid alpha(@theme_border, 0.4);
-  border-radius: 4px;
-  box-shadow: none;
-  color: @theme_text;
-  min-height: 26px;
   min-width: 0;
   padding: 0 8px;
+}
+
+.settings-actions-create-button {
+  padding: 4px 10px;
 }
 
 .settings-action-button.settings-action-icon-button {
@@ -6183,32 +6142,16 @@ popover.jobs-popover.background {
   padding: 0;
 }
 
-.settings-action-button:hover,
-.settings-action-library-button > button:hover {
-  background: @theme_highlight;
-  border-color: @theme_accent;
-}
-
-.settings-action-button:active,
-.settings-action-library-button > button:active,
-.settings-action-library-button > button:checked {
-  background: alpha(@theme_accent, 0.22);
-}
-
-.settings-action-button:focus-visible,
-.settings-action-library-button > button:focus-visible {
-  outline: 2px solid @theme_accent;
-  outline-offset: -2px;
-}
-
 .settings-action-button.danger {
   color: @theme_danger;
   border-color: alpha(@theme_danger, 0.4);
 }
 
-.settings-action-button.danger:hover {
+.settings-action-button.danger:hover,
+.settings-action-button.danger:active {
   background: alpha(@theme_danger, 0.14);
   border-color: @theme_danger;
+  color: @theme_danger;
 }
 
 .settings-action-problem {
@@ -6438,40 +6381,6 @@ popover.settings-action-library > contents {
 
 .settings-action-dialog .settings-action-option:disabled {
   opacity: 0.4;
-}
-
-.settings-action-dialog .segmented-control {
-  background: alpha(@theme_bg, 0.25);
-  border: 1px solid alpha(@theme_border, 0.4);
-  border-radius: 6px;
-  padding: 2px;
-}
-
-.settings-action-dialog .segmented-control-option {
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  min-height: 26px;
-  padding: 2px 10px;
-  color: @theme_dim_text;
-}
-
-.settings-action-dialog .segmented-control-option.not-first:checked {
-  border-left: none;
-}
-
-.settings-action-dialog .segmented-control-option:hover {
-  background: alpha(@theme_highlight, 0.65);
-  color: @theme_text;
-}
-
-.settings-action-dialog .segmented-control-option:checked {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_text;
-}
-
-.settings-action-dialog .segmented-control-option:active {
-  background: alpha(@theme_accent, 0.3);
 }
 
 .settings-action-icon-popover > contents {
