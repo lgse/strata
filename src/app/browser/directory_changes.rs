@@ -44,32 +44,9 @@ impl Browser {
         if self.location_at(depth).as_ref() != Some(watched) {
             return;
         }
-        if let Some(removed) = removed_location(&change) {
-            // Recent entries resolve to targets outside the collection, so a
-            // removal anywhere can also retire an entry there. Only the
-            // removal side fans out: a moved target's new location is not a
-            // Recent member.
-            let fan_out: Vec<_> = {
-                let state = self.state.borrow();
-                (0..)
-                    .map_while(|open_depth| {
-                        state
-                            .location_at(open_depth)
-                            .map(|location| (open_depth, location))
-                    })
-                    .filter(|(open_depth, location)| {
-                        *open_depth != depth && location.is_recent_root()
-                    })
-                    .collect()
-            };
-            for (open_depth, recent) in fan_out {
-                self.handle_directory_change(
-                    open_depth,
-                    &recent,
-                    DirectoryChange::Remove(removed.clone()),
-                );
-            }
-        }
+        let removed = (!watched.is_recent_root())
+            .then(|| removed_location(&change).cloned())
+            .flatten();
         if self.deletion_operation.get() || self.restoration_operation.get() {
             self.deferred_file_operation_changes
                 .borrow_mut()
@@ -84,6 +61,27 @@ impl Browser {
         }
         if let Some(change) = self.queue_loading_change(depth, watched, change) {
             self.apply_live_directory_change(depth, watched, change);
+        }
+        if let Some(removed) = removed {
+            self.retire_recent_target(&removed);
+        }
+    }
+
+    pub(super) fn retire_recent_target(self: &Rc<Self>, removed: &Location) {
+        let recent = (0..)
+            .map_while(|depth| self.location_at(depth).map(|location| (depth, location)))
+            .filter(|(_, location)| location.is_recent_root())
+            .collect::<Vec<_>>();
+        for (depth, watched) in recent {
+            let change = DirectoryChange::Remove(removed.clone());
+            if let Some(change) = self.queue_loading_change(depth, &watched, change) {
+                self.drain_publish(depth);
+                let application = self
+                    .state
+                    .borrow_mut()
+                    .apply_directory_change(depth, &watched, change);
+                self.publish_live_change(depth, application, false);
+            }
         }
     }
 

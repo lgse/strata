@@ -2677,6 +2677,7 @@ impl Browser {
         if let (Some(from), Some(to)) = (old.native_path(), entry.location.native_path()) {
             crate::services::refresh_search_indexes_for_rename(from, to);
         }
+        self.retire_recent_target(old);
         if !(0..)
             .map_while(|depth| self.location_at(depth))
             .any(|location| location.is_within(old))
@@ -3225,6 +3226,7 @@ impl Browser {
             while let Some(open_location) = state.location_at(depth) {
                 if locations.iter().any(|location| {
                     &open_location == *location
+                        || (open_location.is_recent_root() && location.is_recent_root())
                         || open_location.contains_camera_photo_location(location)
                 }) {
                     depths.push(depth);
@@ -3266,8 +3268,7 @@ impl Browser {
 
     fn remove_deleted_locations(self: &Rc<Self>, locations: &[Location]) {
         if locations.len() > MAX_INCREMENTAL_OPERATION_UPDATES {
-            // Recent entries resolve to targets outside their parents, so an
-            // open Recent view reloads too: bulk deletes skip per-entry splices.
+            // Bulk deletes skip splices; Recent must reload even for targets outside open parents.
             let parents: HashSet<_> = locations
                 .iter()
                 .filter_map(deletion_parent_location)

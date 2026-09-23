@@ -387,6 +387,67 @@ fn moved_targets_retire_the_old_recent_location_without_inserting_the_new_one() 
 }
 
 #[test]
+fn directory_move_keeps_descendant_column_open_at_new_location() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, _, _) = load_recent(vec![recent_entry("project", EntryKind::Directory, 20, 1)]);
+    browser.descend(0, Location::local("/fixture"));
+    browser.descend(1, Location::local("/fixture/project"));
+
+    browser.handle_directory_change(
+        1,
+        &Location::local("/fixture"),
+        DirectoryChange::Move {
+            from: Location::local("/fixture/project"),
+            entry: recent_entry("project2", EntryKind::Directory, 20, 1),
+        },
+    );
+
+    assert_eq!(
+        browser.location_at(2),
+        Some(Location::local("/fixture/project2"))
+    );
+    assert!(column_names(&browser, 0).is_empty());
+}
+
+#[test]
+fn rename_without_open_parent_retires_recent_target() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, _, _) = load_recent(vec![recent_entry("stale", EntryKind::File, 20, 1)]);
+
+    browser.publish_rename(
+        &Location::local("/fixture/stale"),
+        recent_entry("renamed", EntryKind::File, 20, 1),
+    );
+
+    assert!(column_names(&browser, 0).is_empty());
+}
+
+#[test]
+fn completed_move_without_open_parent_retires_recent_target() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, _, _) = load_recent(vec![recent_entry("stale", EntryKind::File, 20, 1)]);
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/elsewhere")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![Location::local("/fixture/stale")],
+    });
+
+    assert!(column_names(&browser, 0).is_empty());
+}
+
+#[test]
 fn large_deletions_reload_an_open_recent_view() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
