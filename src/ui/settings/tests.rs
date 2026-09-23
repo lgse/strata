@@ -16,7 +16,7 @@ use super::{
     effective_update_channel, force_due_update_check,
     general::{video_preview_backend_label, video_preview_control_state},
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
-    managed_install_summary, offer_still_eligible, omarchy_update_command,
+    managed_install_summary, offer_still_eligible, omarchy_update_command, process_start_time,
     resolve_update_method_async, responsive_dialog_size, restart_waiter,
     shows_available_release_notes,
     theme::{theme_background_is_light, theme_name_matches},
@@ -538,6 +538,16 @@ fn update_method_resolves_and_caches() {
         *capture.borrow_mut() = Some(method);
     });
     assert_eq!(second.borrow().expect("the cache should answer"), resolved);
+}
+
+#[test]
+fn restart_waiter_records_process_identity_not_just_pid() {
+    let start = process_start_time(std::process::id()).expect("current process start time");
+    assert!(start.bytes().all(|byte| byte.is_ascii_digit()));
+    assert!(process_start_time(u32::MAX).is_none());
+    let command = restart_waiter(Path::new("/tmp/strata"), std::process::id())
+        .expect("trusted restart helpers");
+    assert!(command.get_args().any(|arg| arg == start.as_str()));
 }
 
 #[test]
