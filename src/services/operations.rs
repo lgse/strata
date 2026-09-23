@@ -223,6 +223,8 @@ pub struct ExtractRequest {
     pub id: OperationRequestId,
     pub entry: FileEntry,
     pub destination: Location,
+    /// Caller-reserved destinations are eligible for empty-folder cleanup.
+    pub created_destination: bool,
     pub password: Option<String>,
 }
 
