@@ -6,7 +6,7 @@ use super::super::fixtures::{
     write_7z, write_7z_entries, write_compression_fixture, write_tar, write_tar_entries, write_zip,
 };
 use super::{
-    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_rar, extract_tar,
+    ArchiveError, ArchiveOutcome, ExtractedRoots, extract_7z_from_reader, extract_rar, extract_tar,
     extract_zip_from_archive,
 };
 use crate::{model::Location, services::ArchiveFormat};
@@ -27,7 +27,7 @@ fn decode_fixture(
     format: ArchiveFormat,
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<ArchiveOutcome<Vec<PathBuf>>, ArchiveError> {
+) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
     let cancelled = never_cancelled();
     match format {
         ArchiveFormat::Zip => {
@@ -390,7 +390,7 @@ fn every_archive_format_sanitizes_parent_traversal_without_stopping() -> Result<
                 None,
                 &progress,
             )?)?,
-            Some("escaped.txt".to_owned()),
+            vec![PathBuf::from("escaped.txt"), PathBuf::from("after.txt")],
             "{format:?}"
         );
         assert_eq!(

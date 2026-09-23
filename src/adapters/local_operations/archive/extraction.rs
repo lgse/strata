@@ -6,6 +6,7 @@
 //! names only on cancellation. The session validates and maps destination reports
 //! without scanning ahead, probing the filesystem or reserving pending names.
 use std::{
+    collections::HashSet,
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -41,6 +42,20 @@ pub(super) enum ArchiveOutcome<T> {
     },
 }
 
+#[derive(Debug)]
+pub(super) struct ExtractedRoots {
+    pub(super) roots: Vec<PathBuf>,
+    directory: ExtractionDestination,
+}
+
+impl ExtractedRoots {
+    pub(super) fn bundle(self, archive_name: &str) -> Result<Option<String>, ArchiveError> {
+        self.directory
+            .bundle_roots(archive_name, &self.roots)
+            .map_err(archive_failed)
+    }
+}
+
 enum InterruptedMember {
     NotAttempted(Location),
     Failed(Location),
@@ -53,6 +68,7 @@ pub(super) struct ExtractionSession<'a> {
     progress: &'a AtomicUsize,
     cancelled: &'a AtomicBool,
     roots: Vec<PathBuf>,
+    seen_roots: HashSet<PathBuf>,
     completed: Vec<Location>,
     interrupted: Option<InterruptedMember>,
     written: u64,
@@ -90,6 +106,7 @@ impl<'a> ExtractionSession<'a> {
             progress,
             cancelled,
             roots: Vec::new(),
+            seen_roots: HashSet::new(),
             completed: Vec::new(),
             interrupted: None,
             written: 0,
@@ -163,12 +180,6 @@ impl<'a> ExtractionSession<'a> {
             self.ensure_member_fits(name, *declared)?;
         }
         let outpath = self.resolver.resolve(&self.directory, &path)?;
-        if let Some(root) = outpath.components().next() {
-            let root = PathBuf::from(root.as_os_str());
-            if !self.roots.contains(&root) {
-                self.roots.push(root);
-            }
-        }
         let created = match content {
             MemberContent::Directory => {
                 self.directory.create_directories(&outpath)?;
@@ -216,6 +227,12 @@ impl<'a> ExtractionSession<'a> {
                 }
             }
         };
+        if let Some(root) = created.components().next() {
+            let root = PathBuf::from(root.as_os_str());
+            if self.seen_roots.insert(root.clone()) {
+                self.roots.push(root);
+            }
+        }
         self.completed
             .push(extract_entry_location(self.destination, &created));
         self.progress.fetch_add(1, Ordering::Relaxed);
@@ -232,9 +249,12 @@ impl<'a> ExtractionSession<'a> {
         self,
         result: Result<(), ArchiveError>,
         remaining: impl FnOnce() -> Vec<String>,
-    ) -> Result<ArchiveOutcome<Vec<PathBuf>>, ArchiveError> {
+    ) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
         match result {
-            Ok(()) => Ok(ArchiveOutcome::Completed(self.roots)),
+            Ok(()) => Ok(ArchiveOutcome::Completed(ExtractedRoots {
+                roots: self.roots,
+                directory: self.directory,
+            })),
             Err(ArchiveError::Cancelled) => {
                 let mut failed = Vec::new();
                 let mut not_attempted = Vec::new();

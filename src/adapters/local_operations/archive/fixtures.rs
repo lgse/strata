@@ -3,7 +3,7 @@
 use super::{
     compression::{compress_7z, compress_tar, compress_zip, inspect_archive_sources},
     decoders::extract_zip_from_archive,
-    extraction::ArchiveOutcome,
+    extraction::{ArchiveOutcome, ExtractedRoots},
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -227,9 +227,11 @@ pub(super) fn always_cancelled() -> Arc<AtomicBool> {
     Arc::new(AtomicBool::new(true))
 }
 
-pub(super) fn completed_extract<T>(outcome: ArchiveOutcome<T>) -> Result<T, String> {
+pub(super) fn completed_extract(
+    outcome: ArchiveOutcome<ExtractedRoots>,
+) -> Result<Vec<PathBuf>, String> {
     match outcome {
-        ArchiveOutcome::Completed(value) => Ok(value),
+        ArchiveOutcome::Completed(value) => Ok(value.roots),
         ArchiveOutcome::Cancelled { .. } => Err("unexpected cancellation".to_owned()),
     }
 }

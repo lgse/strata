@@ -4,8 +4,8 @@ use super::{
     ArchiveError, copy_with_big_buf,
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
-        compression_stages, extract_zip, never_cancelled, test_file_entry, write_tar_entries,
-        write_zip_stored,
+        compression_stages, extract_zip, never_cancelled, test_file_entry, write_7z_entries,
+        write_tar_entries, write_zip_stored,
     },
 };
 use crate::{
@@ -548,15 +548,18 @@ fn extraction_provider_sanitizes_parent_paths_without_failure() -> Result<(), Bo
 
     assert!(events.iter().any(|event| matches!(
         event,
-        OperationEvent::Extracted { first_name: Some(name), .. } if name == "escaped.txt"
+        OperationEvent::Extracted { first_name: Some(name), .. } if name == "unsafe"
     )));
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, OperationEvent::Failed { .. }))
     );
-    assert_eq!(fs::read(destination.join("escaped.txt"))?, b"escaped");
-    assert_eq!(fs::read(destination.join("after.txt"))?, b"after");
+    assert_eq!(
+        fs::read(destination.join("unsafe/escaped.txt"))?,
+        b"escaped"
+    );
+    assert_eq!(fs::read(destination.join("unsafe/after.txt"))?, b"after");
     assert!(!root.path().join("escaped.txt").exists());
     Ok(())
 }
@@ -659,7 +662,9 @@ fn spilled_members_bundle_under_the_archive_stem() -> Result<(), Box<dyn Error>>
         root.path().join("bundle.zip"),
         root.path().join("bundle.tar"),
         root.path().join("bundle.tar.gz"),
+        root.path().join("bundle.7z"),
     ];
+    write_7z_entries(&archives[3], &[("a.txt", b"a"), ("dir/b.txt", b"b")])?;
     write_zip_stored(&archives[0], &[("a.txt", b"a"), ("dir/b.txt", b"b")])?;
     for (archive, gzip) in [(&archives[1], false), (&archives[2], true)] {
         write_tar_entries(
@@ -737,7 +742,6 @@ fn single_root_extraction_lands_verbatim() -> Result<(), Box<dyn Error>> {
     assert_eq!(fs::read(destination.join("readme.txt"))?, b"hi");
     assert!(!destination.join("note").exists());
 
-    // A single top-level folder is not wrapped a second time.
     let archive = root.path().join("foldered.zip");
     write_zip_stored(&archive, &[("folder/a.txt", b"a"), ("folder/b.txt", b"b")])?;
     let events = run_extraction(ExtractRequest {

@@ -7,13 +7,13 @@
 
 use super::super::{check_archive_cancelled, extraction::MemberSink};
 use super::{
-    ArchiveError, ArchiveOutcome, ExtractionSession, MemberContent, archive_failed,
+    ArchiveError, ArchiveOutcome, ExtractedRoots, ExtractionSession, MemberContent, archive_failed,
     unrar_decode_error,
 };
 use std::{
     ffi::CString,
     os::unix::ffi::OsStrExt,
-    path::{Path, PathBuf},
+    path::Path,
     ptr,
     sync::{
         Arc,
@@ -170,7 +170,7 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<Vec<PathBuf>>, ArchiveError> {
+) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
     let result = (|| {
         let path = CString::new(archive_path.as_os_str().as_bytes()).map_err(archive_failed)?;

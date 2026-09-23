@@ -59,6 +59,7 @@ fn suffixed_name(name: &OsStr, index: u64) -> OsString {
 ///
 /// All member creates go through this root with `NOFOLLOW`, so a symlink
 /// swapped into the destination tree cannot redirect writes outside it.
+#[derive(Debug)]
 pub(super) struct ExtractionDestination {
     root: OwnedFd,
 }
@@ -98,6 +99,63 @@ impl ExtractionDestination {
         )
         .map_err(|error| format!("Could not open extraction destination: {error}"))?;
         Ok(Self { root })
+    }
+
+    /// Bundles multiple roots without reopening the destination by pathname.
+    /// On failure, leave completed moves intact and report where the output remains.
+    pub(super) fn bundle_roots(
+        &self,
+        archive_name: &str,
+        roots: &[PathBuf],
+    ) -> Result<Option<String>, String> {
+        let first = || {
+            roots
+                .first()
+                .map(|root| root.to_string_lossy().into_owned())
+        };
+        if roots.len() <= 1 {
+            return Ok(first());
+        }
+        let lower = archive_name.to_ascii_lowercase();
+        let stem = [".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"]
+            .iter()
+            .find_map(|suffix| {
+                lower
+                    .ends_with(suffix)
+                    .then(|| &archive_name[..archive_name.len() - suffix.len()])
+            })
+            .unwrap_or(archive_name);
+        if stem.trim_matches('.').is_empty() || stem.contains('/') {
+            return Ok(first());
+        }
+        for suffix in 0_u64.. {
+            let name = if suffix == 0 {
+                stem.to_owned()
+            } else {
+                format!("{stem} ({suffix})")
+            };
+            match rustix::fs::mkdirat(&self.root, &name, rustix::fs::Mode::from_raw_mode(0o777)) {
+                Ok(()) => {}
+                Err(rustix::io::Errno::EXIST) => continue,
+                Err(error) => {
+                    return Err(format!(
+                        "Could not create extraction folder `{name}`: {error}. Extracted entries remain in the destination."
+                    ));
+                }
+            }
+            let wrapper = rustix::fs::openat(
+                &self.root,
+                &name,
+                rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            ).map_err(|error| format!("Could not open extraction folder `{name}`: {error}. Extracted entries remain in the destination."))?;
+            for root in roots {
+                rustix::fs::renameat_with(&self.root, root, &wrapper, root, rustix::fs::RenameFlags::NOREPLACE)
+                    .map_err(|error| format!("Could not bundle `{}` into `{name}`: {error}. Extracted entries remain in the destination or `{name}`.", root.display()))?;
+            }
+            return Ok(Some(name));
+        }
+        Err("No available extraction folder name".to_owned())
     }
 
     /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
