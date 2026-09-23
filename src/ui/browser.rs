@@ -281,11 +281,9 @@ impl BrowserView {
             .child(&columns_widget)
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vscrollbar_policy(gtk::PolicyType::Never)
-            .overlay_scrolling(false)
             .hexpand(true)
             .vexpand(true)
             .build();
-        scroller.add_css_class("fixed-scrollbar");
         scroller.add_css_class("mode-scroll");
         scroller.add_css_class("columns-scroll");
         if let Some(viewport) = scroller.child().and_downcast::<gtk::Viewport>() {
@@ -589,6 +587,9 @@ impl BrowserView {
         state.install_input_ownership();
         state.install_column_peek_targets();
         state.install_drag_autoscroll();
+        if interactive {
+            columns::install_resize_edges(&state);
+        }
 
         let weak_state = Rc::downgrade(&state);
         columns::install_horizontal_scroll(&state);

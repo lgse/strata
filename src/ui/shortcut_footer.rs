@@ -129,13 +129,11 @@ impl ShortcutFooter {
             .child(&reference)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .propagate_natural_height(true)
             .max_content_height(440)
             .width_request(420)
             .focusable(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         content.append(&scroll);
         popover.set_child(Some(&content));
         let weak_scroll = scroll.downgrade();

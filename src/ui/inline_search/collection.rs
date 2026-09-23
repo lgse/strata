@@ -668,7 +668,6 @@ pub(super) fn build_collection(
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
-    scroll.add_css_class("fixed-scrollbar");
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
     (
