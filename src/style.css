@@ -2052,6 +2052,10 @@ scrollbar slider:active {
   padding: 2px;
 }
 
+.sidebar-device-spinner {
+  color: @theme_accent;
+}
+
 .sidebar-eject:hover,
 .sidebar-device-action:hover {
   background: alpha(@theme_accent, 0.15);

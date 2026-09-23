@@ -246,6 +246,7 @@ pub(super) fn pending_device_shell(row: &gtk::Button) -> gtk::Box {
     row.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
     let spinner = gtk::Spinner::new();
     spinner.add_css_class("sidebar-device-action");
+    spinner.add_css_class("sidebar-device-spinner");
     spinner.set_tooltip_text(Some(RELEASE_ROW_TOOLTIP));
     spinner.update_property(&[gtk::accessible::Property::Label(RELEASE_ROW_TOOLTIP)]);
     spinner.set_hexpand(false);
