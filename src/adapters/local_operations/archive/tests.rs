@@ -540,6 +540,7 @@ fn extraction_provider_sanitizes_parent_paths_without_failure() -> Result<(), Bo
         id: OperationRequestId(435),
         entry: test_file_entry(&archive),
         destination: Location::local(&destination),
+        created_destination: false,
         password: None,
     });
 
@@ -618,14 +619,14 @@ fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dy
 }
 
 #[test]
-fn unsafe_extraction_removes_a_caller_created_destination() -> Result<(), Box<dyn Error>> {
+fn failed_extraction_removes_a_caller_created_destination() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
-    let archive = root.path().join("unsafe.zip");
-    write_zip_stored(&archive, &[("../outside", b"contents")])?;
-    let destination = root.path().join("unsafe");
+    let archive = root.path().join("broken.zip");
+    fs::write(&archive, b"not an archive")?;
+    let destination = root.path().join("broken");
     fs::create_dir(&destination)?;
     let events = run_extraction(ExtractRequest {
         id: OperationRequestId(910),
@@ -635,7 +636,7 @@ fn unsafe_extraction_removes_a_caller_created_destination() -> Result<(), Box<dy
         password: None,
     });
     assert!(
-        matches!(events.last(), Some(OperationEvent::Failed { message, .. }) if message.contains("unsafe")),
+        matches!(events.last(), Some(OperationEvent::Failed { .. })),
         "{:?}",
         events
     );
@@ -643,6 +644,5 @@ fn unsafe_extraction_removes_a_caller_created_destination() -> Result<(), Box<dy
         !destination.exists(),
         "caller-created destination was not cleaned up"
     );
-    assert!(!root.path().join("outside").exists());
     Ok(())
 }
