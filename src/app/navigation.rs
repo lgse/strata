@@ -1205,7 +1205,23 @@ impl NavigationState {
 
     pub fn focus_child(&mut self) -> Option<(usize, Option<usize>)> {
         let child_depth = self.active_column?.checked_add(1)?;
-        let position = self.columns.get(child_depth)?.selected;
+        let column = self.columns.get_mut(child_depth)?;
+        let position = column.selected.or_else(|| {
+            column
+                .entries
+                .iter()
+                .position(|entry| column.preferences.show_hidden || !entry.is_hidden)
+        });
+        if column.selected.is_none() {
+            if let Some(position) = position {
+                let location = column.entries[position].location.clone();
+                adopt_selected_locations(column, HashSet::from([location.clone()]), true);
+                column.selected = Some(position);
+                column.selection_anchor = Some(location);
+            } else if column.load_state == LoadState::Loading {
+                column.select_first_on_load = true;
+            }
+        }
         self.active_column = Some(child_depth);
         Some((child_depth, position))
     }

@@ -43,6 +43,7 @@ VALID_NAME_COMMIT_CASES = [
 ]
 
 
+@pytest.mark.preferences(single_click_previews=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_long_rename_keeps_caret_visible(strata, mode, request):
     name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"

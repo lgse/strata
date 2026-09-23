@@ -122,6 +122,7 @@ def test_airy_committed_rename_stays_visible(strata, mode):
     wait_for_visible_commit(strata, final_name, mode)
 
 
+@pytest.mark.preferences(single_click_previews=False)
 @pytest.mark.parametrize("mode", ("Columns", "List"))
 def test_already_visible_rename_preserves_scroll(strata, mode):
     begin_long_directory_rename(strata, "file", False, mode)
