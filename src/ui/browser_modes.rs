@@ -170,7 +170,33 @@ impl SourceIndexMap {
             }
             return;
         }
-        self.rebuild(source);
+        let mut by_item = self.by_item.borrow_mut();
+        let previous_count = source.n_items() - added + removed;
+        if by_item.len() != previous_count as usize || (position == 0 && removed == previous_count)
+        {
+            drop(by_item);
+            self.rebuild(source);
+            return;
+        }
+        let end = position.saturating_add(removed) as usize;
+        by_item.retain(|_, index| {
+            if *index < position as usize {
+                true
+            } else if *index < end {
+                false
+            } else {
+                *index = *index - removed as usize + added as usize;
+                true
+            }
+        });
+        for index in position..position.saturating_add(added) {
+            if let Some(item) = source.item(index) {
+                by_item
+                    .entry(item)
+                    .and_modify(|last| *last = (*last).max(index as usize))
+                    .or_insert(index as usize);
+            }
+        }
     }
 
     fn rebuild(&self, source: &gio::ListModel) {
@@ -962,7 +988,6 @@ impl ModeViews {
             && pane.depth == depth
             && pane.location.as_ref() == Some(&snapshot.location)
         {
-            reconnect_pane_model(pane);
             apply_snapshot(pane, &snapshot, &self.browser);
             return;
         }
@@ -1001,7 +1026,6 @@ impl ModeViews {
                     .column_preferences(depth)
                     .map(|preferences| (preferences.sort_key, preferences.sort_direction))
         {
-            reconnect_pane_model(pane);
             apply_snapshot(pane, &snapshot, &self.browser);
             return;
         }
@@ -4033,13 +4057,17 @@ fn connect_selection(
 
 fn set_selections(pane: &Pane, positions: &[usize]) {
     for section in pane.item_sections() {
-        section.syncing.set(true);
-        section.selection.unselect_all();
+        let selected = gtk::Bitset::new_empty();
         for position in positions {
             if let Some(position) = section.source_to_view(&pane.model, *position) {
-                section.selection.select_item(position, false);
+                selected.add(position);
             }
         }
+        section.syncing.set(true);
+        section.selection.set_selection(
+            &selected,
+            &gtk::Bitset::new_range(0, section.selection.n_items()),
+        );
         section.syncing.set(false);
     }
 }
@@ -4216,6 +4244,8 @@ fn deactivate_pane_models(pane: &Pane) {
     if let Some(filtered) = pane.filter_model.as_ref() {
         filtered.set_model(None::<&gio::ListModel>);
     }
+    // Keep the pane's controls, not a second directory snapshot and its identity map.
+    pane.model.splice(0, pane.model.n_items(), &[]);
 }
 
 fn reconnect_pane_model(pane: &Pane) {
@@ -4246,6 +4276,7 @@ fn show_count(pane: &Pane) {
 
 fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Browser) {
     replace_entries(pane, browser, snapshot.count);
+    reconnect_pane_model(pane);
     show_count(pane);
     set_selections(pane, &snapshot.selected_positions);
     if let Some(&focused) = snapshot.selected_positions.last() {

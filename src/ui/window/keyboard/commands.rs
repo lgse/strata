@@ -184,14 +184,19 @@ impl Dispatcher {
         None
     }
 
-    pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
-        if event.alt()
+    pub(super) fn properties_command(&self, event: &KeyEvent) -> KeyResult {
+        if !event.text_has_focus()
+            && event.alt()
             && event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
             && matches!(event.key, Key::Return | Key::KP_Enter)
             && self.view.show_focused_properties()
         {
             return Some(Propagation::Stop);
         }
+        None
+    }
+
+    pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
         if event.control() && event.shift() && matches!(event.key, Key::n | Key::N) {
             self.view.create_new_folder();
             return Some(Propagation::Stop);
