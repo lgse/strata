@@ -1357,8 +1357,6 @@ impl ViewState {
         shell.set_margin_bottom(12);
         shell.set_overflow(gtk::Overflow::Hidden);
         let column_overlay = gtk::Overlay::new();
-        // Separate the listing's overlay scrollbar from the resize hit target.
-        column.set_margin_end(10);
         column_overlay.set_child(Some(&column));
         column_overlay.set_hexpand(true);
         column_overlay.set_vexpand(true);
@@ -1371,7 +1369,7 @@ impl ViewState {
         shell.append(&column_overlay);
         let resize_handle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         resize_handle.add_css_class("column-resize-handle");
-        resize_handle.set_width_request(7);
+        resize_handle.set_width_request(10);
         resize_handle.set_cursor_from_name(Some("col-resize"));
         let resize = gtk::GestureDrag::new();
         resize.set_button(1);

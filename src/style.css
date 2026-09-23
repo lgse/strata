@@ -2929,6 +2929,11 @@ entry.preview-command-entry selection {
   background: @theme_bg;
 }
 
+/* Move only the overlay scrollbar away from the resize target; keep the column flush. */
+.directory-column scrollbar.vertical {
+  margin-right: 11px;
+}
+
 .column-resize-handle {
   background: transparent;
   border-right: 1px solid alpha(@theme_border, 0.6);
