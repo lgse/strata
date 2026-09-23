@@ -216,7 +216,7 @@ pub(crate) fn run() -> glib::ExitCode {
     let backend = FileChooserBackend::default();
     let requests = backend.requests.clone();
     let idle_loop = main_loop.clone();
-    glib::timeout_add_local(Duration::from_secs(1), move || {
+    glib::timeout_add_local(Duration::from_secs(10), move || {
         if requests.begin_shutdown_if_idle(Instant::now()) {
             idle_loop.quit();
             glib::ControlFlow::Break
