@@ -1066,7 +1066,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .action-dialog-confirm.danger:focus-visible {
-  outline-color: @theme_accent;
+  outline-color: @theme_danger;
 }
 
 .action-dialog-cancel:disabled,
@@ -4077,7 +4077,7 @@ textview > popover.menu button.model:focus-visible,
 
 .item-context-option.danger:focus-visible,
 .folder-context-option.danger:focus-visible {
-  outline-color: @theme_accent;
+  outline-color: @theme_danger;
 }
 
 .file-list {
@@ -6152,6 +6152,11 @@ popover.jobs-popover.background {
   background: alpha(@theme_danger, 0.14);
   border-color: @theme_danger;
   color: @theme_danger;
+}
+
+.settings-action-button.danger:focus-visible {
+  border-color: @theme_danger;
+  outline-color: @theme_danger;
 }
 
 .settings-action-problem {
