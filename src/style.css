@@ -93,7 +93,12 @@ headerbar {
   min-height: 40px;
 }
 
+headerbar > windowhandle {
+  padding: 0;
+}
+
 headerbar > windowhandle > box {
+  border-spacing: 0;
   min-height: 40px;
   padding: 0;
 }
@@ -116,6 +121,8 @@ headerbar menubutton {
 
 headerbar .sidebar-toggle {
   color: @theme_accent;
+  min-width: 36px;
+  padding: 4px 0;
 }
 
 headerbar .sidebar-toggle,
@@ -149,7 +156,7 @@ headerbar menubutton.header-action > button:checked {
 
 .header-actions {
   margin: 0;
-  padding: 0;
+  padding: 0 6px 0 0;
 }
 
 headerbar image {
@@ -2085,18 +2092,15 @@ scrollbar slider:active {
 
 /* Icon rail: labels are hidden in code; keep the remaining icons centered. */
 .sidebar-rail .sidebar {
-  padding: 8px 0;
+  padding: 8px 2px;
 }
 
 .sidebar-rail .sidebar-row {
-  border-radius: 5px;
-  min-height: 34px;
-  min-width: 36px;
-  padding: 4px;
+  min-width: 32px;
+  padding: 3px 2px;
 }
 
 .sidebar-rail .sidebar-device {
-  border-radius: 5px;
   padding-right: 0;
 }
 
@@ -2111,18 +2115,15 @@ scrollbar slider:active {
 }
 
 .sidebar-rail .sidebar-separator {
-  margin: 6px 12px;
+  margin: 6px 2px;
 }
 
 .sidebar-rail .sidebar-update-separator {
-  margin: 0 12px;
+  margin: 0;
 }
 
 .sidebar-rail .sidebar-update {
-  border-radius: 5px;
-  min-height: 34px;
-  min-width: 36px;
-  padding: 4px;
+  padding: 4px 2px;
 }
 
 .sidebar-heading {
