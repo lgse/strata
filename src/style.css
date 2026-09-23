@@ -798,8 +798,8 @@ headerbar menubutton.header-action > button:focus-visible {
   background: alpha(@theme_highlight, 0.64);
   border: 1px solid alpha(@theme_accent, 0.24);
   border-radius: 6px;
-  min-height: 40px;
-  min-width: 40px;
+  min-height: 3.076923rem;
+  min-width: 3.076923rem;
 }
 
 .action-dialog-symbol.danger {
@@ -3287,6 +3287,75 @@ menubutton.column-header-action > button:active {
   font-size: 0.85em;
 }
 
+.path-completion-popover contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.55);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.16), 0 8px 24px alpha(@theme_shadow, 0.32);
+  padding: 4px;
+}
+
+.path-completion-scroll,
+.path-completion-scroll viewport {
+  background: transparent;
+}
+
+.path-completion-list {
+  background: transparent;
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_text;
+  font-size: 0.9em;
+  margin: 1px 0;
+  min-height: 32px;
+  outline: none;
+  padding: 0;
+}
+
+.path-completion-row-content {
+  padding: 5px 9px;
+}
+
+.path-completion-list row.path-completion-row:hover:not(:selected) {
+  background: alpha(@theme_highlight, 0.72);
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row:selected {
+  background: alpha(@theme_accent, 0.22);
+  box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row:active {
+  background: alpha(@theme_accent, 0.28);
+  color: @theme_text;
+}
+
+.path-completion-parent {
+  color: @theme_dim_text;
+  font-size: 0.82em;
+}
+
+.path-completion-list row.path-completion-row:selected .path-completion-parent {
+  color: @theme_text;
+  opacity: 0.72;
+}
+
+.path-completion-shortcuts {
+  border-top: 1px solid alpha(@theme_border, 0.28);
+  color: @theme_dim_text;
+  font-size: 0.76em;
+  margin-top: 3px;
+  padding: 6px 9px 4px;
+}
+
 .properties-content {
   min-width: 382px;
 }
@@ -3966,9 +4035,11 @@ textview > popover.menu accelerator {
 text > popover.menu modelbutton:focus-visible,
 textview > popover.menu modelbutton:focus-visible,
 text > popover.menu button.model:focus-visible,
-textview > popover.menu button.model:focus-visible {
-  outline: 2px solid @theme_accent;
-  outline-offset: -2px;
+textview > popover.menu button.model:focus-visible,
+.item-context-option:focus-visible,
+.folder-context-option:focus-visible {
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
 }
 
 .actions-context-popover modelbutton.danger,
@@ -4368,8 +4439,8 @@ textview > popover.menu button.model:focus-visible {
 
 .keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
 .file-list row:focus-within .file-row.filter-result {
-  outline: 2px solid @theme_text;
-  outline-offset: -2px;
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
 }
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
@@ -4919,8 +4990,8 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .file-icons > child:focus-visible .icons-card-icon-frame {
-  outline: 2px solid @theme_accent;
-  outline-offset: -2px;
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
 }
 
 .icons-card {
@@ -5111,9 +5182,10 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   opacity: 0.52;
 }
 
+.file-list-mode row:focus-visible,
 .keyboard-navigation .file-list-mode row:focus-within {
-  outline: 2px solid @theme_text;
-  outline-offset: -2px;
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
 }
 
 .list-row {
@@ -6458,4 +6530,10 @@ popover.settings-action-library > contents {
 
 .settings-action-script scrollbar slider:active {
   background: @theme_accent;
+}
+
+.action-dialog.modal-constrained,
+.search-dialog.modal-constrained,
+.settings-dialog.modal-constrained {
+  min-width: 0;
 }

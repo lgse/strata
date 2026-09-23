@@ -121,9 +121,12 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
     if selection == "keyboard":
         strata.keyboard.press("Down")
     else:
-        result = strata.window.find(name="nested-notes.txt", role="list item")
+        result = strata.search_result("nested-notes.txt")
         assert result is not None
-        strata.pointer.click(result, modifiers=("ctrl",))
+        strata.pointer.right_click(result)
+        strata.wait(strata.context_menu, "the pointer-selected search result menu")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: result.has_state("selected"), "pointer-selected search result")
 
     strata.keyboard.press("space")
     strata.wait(

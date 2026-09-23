@@ -7,8 +7,10 @@ fn results(widget: &gtk::Widget) -> Option<gtk::Widget> {
     if !widget.is_mapped() {
         return None;
     }
-    if widget.has_css_class("file-list")
-        && (widget.is::<gtk::ListView>() || widget.is::<gtk::ListBox>())
+    if (widget.has_css_class("file-list") || widget.has_css_class("file-icons"))
+        && (widget.is::<gtk::ListView>()
+            || widget.is::<gtk::GridView>()
+            || widget.is::<gtk::ListBox>())
     {
         return Some(widget.clone());
     }
@@ -46,6 +48,11 @@ fn filtered_selection_follows_the_preview_in_browser_and_chooser_modes() {
                             let selection = list.model().expect("selection");
                             wait_until(|| selection.n_items() == 2);
                             list.grab_focus();
+                            selection.select_item(position, true);
+                        } else if let Some(grid) = list.downcast_ref::<gtk::GridView>() {
+                            let selection = grid.model().expect("selection");
+                            wait_until(|| selection.n_items() == 2);
+                            grid.grab_focus();
                             selection.select_item(position, true);
                         } else {
                             let list = list.downcast_ref::<gtk::ListBox>().expect("result list");

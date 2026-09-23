@@ -109,6 +109,7 @@ pub(super) fn ensure_rename_field(card: &impl IsA<gtk::Widget>) -> Option<gtk::E
     crate::ui::accessibility::set_label(&field, "Rename");
     field.set_width_chars(1);
     field.set_hexpand(true);
+    gtk::prelude::EntryExt::set_alignment(&field, 0.5);
     field.set_visible(false);
     labels.append(&field);
     Some(field)

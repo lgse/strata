@@ -80,9 +80,6 @@ pub mod icons {
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";
-    pub const TRASH_LOW: &str = "strata-trash-low";
-    pub const TRASH_HALF: &str = "strata-trash-half";
-    pub const TRASH_FULL: &str = "strata-trash-full";
     pub const TRIANGLE_ALERT: &str = "strata-triangle-alert";
     pub const UNDO_2: &str = "strata-undo-2";
     pub const UNPLUG: &str = "strata-unplug";
@@ -264,16 +261,6 @@ pub fn set_primary_icon(image: &gtk::Image, name: &str) {
 pub fn set_primary_icon_color(color: &str) {
     PRIMARY_ICON_COLOR.with(|current| current.replace(color.to_owned()));
     PRIMARY_ICONS.with(|icons| recolor_registered_icons(icons, color));
-}
-
-pub fn primary_icon_name(image: &gtk::Image) -> Option<String> {
-    PRIMARY_ICONS.with(|icons| {
-        icons
-            .borrow()
-            .iter()
-            .find(|icon| icon.image.upgrade().as_ref() == Some(image))
-            .map(|icon| icon.name.clone())
-    })
 }
 
 pub fn remove_primary_icon(image: &gtk::Image) {

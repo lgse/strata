@@ -124,6 +124,69 @@ overwrite cached geometry with stale allocations. The visible band stays clipped
 viewport, while earlier off-screen hits remain selected. Release completes pending
 layout-dependent selection before disconnecting the frame handler.
 
+### Collection behavior and lifetime boundaries
+
+The browser and open/save chooser use the same collection behavior, not a universal widget:
+
+| Owner | Responsibility and intentional differences |
+| --- | --- |
+| `ui/collection_interaction.rs` | Display-position pointer transitions (Ctrl toggle, Shift range, plain selection/drag-group preservation) and press/release/cancel ownership. Modified sequences are claimed only on release so marquee can participate. |
+| `ui/search_session.rs` | Root, hidden-file and recursive-scope inputs; worker/receiver, query intent, generation, bounded event draining, cancellation and status/coverage delivery. It knows neither widgets nor acceptance/navigation policy. |
+| `ui/inline_search.rs` | Single-pane search composition and transactional consumer selection publication. `inline_search/collection.rs` owns stable result objects and displayed-order lookup; `presentation.rs` builds and binds typed row/card parts. |
+| `ui/browser/columns/search.rs` | Native Columns result reconciliation. Its result vector is authoritative; the string model is only a label projection, updated in lockstep under selection suppression. Columns keeps its multi-depth navigation and native collection. |
+| `ui/collection_edit.rs` | A rename lease on an entry identity and typed editor/display handles: validation, submission signals, cancellation, focus, reveal tick and cleanup. It has no `ViewState` or `browser_modes` dependency. |
+| Browser/chooser adapters | Activation, single-click preview/navigation, selection cardinality, filename/preview updates, context commands and filesystem-operation coordination. `browser/inline_edit.rs` retains pending-operation identities, optimistic labels, refresh/error handling and operation safety. |
+
+Normal Columns resolves displayed positions through `ViewMap`; normal List/Icons use
+`SourceIndexMap` and the current view model (including List grouping). Filtered Columns
+resolves **all** result actions through its authoritative result vector. Single-pane results
+resolve activation, selection, drag, context and edit targets through the sorted GTK model;
+the path/rank map only supplies ordering to its sorter. Basenames are never identity.
+
+Single-pane publication captures selected/focused paths before reconciliation and restores
+selection by identity. Restoring focus never reselects an explicitly deselected entry.
+If the last selected result disappears, it retains the nearest previous
+selection slot; Columns intentionally leaves the selection empty when its selected result
+vanishes. Columns uses per-column hidden-file preferences and does not display a separate
+coverage/status row; single-pane search uses browser preferences and shows partial coverage or
+empty/indexing status. Nonlocal locations keep their native, nonrecursive filter fallback.
+The shared session preserves these adapter policies rather than normalizing them.
+
+During single-pane reconciliation, consumer selection callbacks are suppressed until model,
+selection, focus and bindings agree. Identity-preserving/no-op updates do not announce transient
+index changes. Callback lists and payloads are snapshots, with no callback-list borrow held
+across delivery. Reentrant result updates/query dismissal are queued (latest publication wins)
+until the current delivery completes. GTK's internal model notifications remain synchronous;
+consumers subscribe to the collection publication surface, not raw model signals.
+
+Presentations register `EditWidgets` at construction and bind their entry identity before
+handing out an `EditTarget`. Behavior never finds an editor by CSS class or sibling traversal.
+An unchanged binding preserves a draft; removing/rebinding/unbinding a row intentionally
+cancels the lease without submission. Commit, Escape, view teardown and owner destruction
+retire handlers and reveal ticks. Focus-leave handlers are disconnected immediately, but their
+controller is detached on a weak-widget idle callback: mutating GTK's controller list inside
+a Tab focus walk is unsafe. Deferred focus checks the active editor and does not reselect text.
+Presentation-specific reveal/cleanup hooks retain Columns' constrained editor and List's row
+reveal without putting those geometries in the edit controller.
+
+The view owns its filter binding and search session. Detaching a pane/column disconnects the
+entry, cancels a pending debounce, removes the poll source and drops the search handle/receiver.
+Query intent changes reject old results before debounce completes; root/scope/hidden-input
+changes or an explicit restart create a new generation. Polling holds a weak session reference,
+and delivers without borrowing session state so callbacks may cancel/restart safely. Filter
+scope preference bindings remain widget-anchored. Factory unbind cancels thumbnail requests
+and edits; teardown releases typed bound-widget records. Collection detachment retires deferred
+scroll work; presentation ticks are widget-owned and stop with their widget. These rules also
+apply when mode changes recreate a pane or a chooser closes.
+
+Native keyboard navigation and marquee geometry remain presentation adapters over the same
+selection models. They are deliberately not replaced with another navigation engine. Columns'
+source/depth anchor, slow-click rename and release activation, List metadata/grouping, Icons'
+content hit testing and chooser restrictions remain explicit policies. Tests retain distinct
+pointer, keyboard, lifecycle and filesystem-effect routes rather than replacing them with a
+cross-mode launch smoke test. See [GUI validation](e2e-testing.md) and
+[live preferences](preferences.md).
+
 ### Browser implementation map
 
 `ui/browser.rs` is the composition root and stable `BrowserView` command facade. Private feature

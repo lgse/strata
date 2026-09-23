@@ -254,7 +254,11 @@ pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
     PreferenceManager::shared().bind_interface_scale(paned, |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
         if paned.position() > 0 {
-            paned.set_position(scaled_sidebar_width(paned, scale));
+            let mut target = scaled_sidebar_width(paned, scale);
+            if let Some(sidebar) = paned.start_child() {
+                target = target.max(sidebar_minimum_width(&sidebar));
+            }
+            paned.set_position(target);
         }
     });
 }
@@ -269,6 +273,12 @@ fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
     preferred.min(available).max(MIN_SIDEBAR_WIDTH)
 }
 
+// Below this minimum, GTK can allocate more width than the divider position allows.
+fn sidebar_minimum_width(sidebar: &gtk::Widget) -> i32 {
+    let (minimum, _, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
+    minimum
+}
+
 fn animate_sidebar(
     paned: &gtk::Paned,
     sidebar: &gtk::Widget,
@@ -280,15 +290,16 @@ fn animate_sidebar(
     generation.set(animation_id);
     animating.set(true);
     paned.set_shrink_start_child(true);
+    if expanded {
+        sidebar.set_visible(true);
+    }
     let target = if expanded {
         scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
+            .max(sidebar_minimum_width(sidebar))
     } else {
         0
     };
     let start = paned.position();
-    if expanded {
-        sidebar.set_visible(true);
-    }
 
     if !animations_enabled() || start == target {
         paned.set_position(target);
@@ -669,6 +680,8 @@ pub(super) fn build_appearance_menu(
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
+            let browser = view.browser();
+            glib::idle_add_local_once(move || browser.focus_active());
         });
     }
     {
@@ -959,7 +972,7 @@ enum TrashContents {
     /// Not probed yet, or the probe failed.
     Unknown,
     Empty,
-    NonEmpty(u32),
+    NonEmpty,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -971,7 +984,7 @@ struct TrashMenuVisibility {
 /// Destructive actions stay hidden until Trash is confirmed to hold something, and the
 /// separator goes with them so Properties is not left above an empty gap.
 fn trash_menu_visibility(contents: TrashContents) -> TrashMenuVisibility {
-    let visible = matches!(contents, TrashContents::NonEmpty(_));
+    let visible = contents == TrashContents::NonEmpty;
     TrashMenuVisibility {
         separator: visible,
         empty: visible,
@@ -984,19 +997,10 @@ fn sync_trash_menu_rows(rows: &TrashMenuRows, contents: TrashContents) {
     rows.empty.set_visible(visibility.empty);
 }
 
-fn trash_icon(contents: TrashContents) -> &'static str {
-    match contents {
-        TrashContents::NonEmpty(1..=4) => crate::assets::icons::TRASH_LOW,
-        TrashContents::NonEmpty(5..=14) => crate::assets::icons::TRASH_HALF,
-        TrashContents::NonEmpty(_) => crate::assets::icons::TRASH_FULL,
-        _ => crate::assets::icons::TRASH,
-    }
-}
-
-fn trash_contents_from_probe(probe: Result<u32, glib::Error>) -> TrashContents {
+fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents {
     match probe {
-        Ok(0) => TrashContents::Empty,
-        Ok(count) => TrashContents::NonEmpty(count),
+        Ok(false) => TrashContents::Empty,
+        Ok(true) => TrashContents::NonEmpty,
         Err(_) => TrashContents::Unknown,
     }
 }
@@ -1425,20 +1429,6 @@ impl SidebarState {
         if let Some(rows) = self.trash_menu_rows.borrow().as_ref() {
             sync_trash_menu_rows(rows, self.trash_contents.get());
         }
-        let image = self
-            .place_rows
-            .borrow()
-            .iter()
-            .find(|(location, _)| crate::ui::browser::paths::is_trash_root(location))
-            .and_then(|(_, row)| row.child())
-            .and_then(|content| content.first_child())
-            .and_then(|widget| widget.downcast::<gtk::Image>().ok());
-        if let Some(image) = image {
-            crate::ui::browser::fly_to_trash::set_trash_icon(
-                &image,
-                trash_icon(self.trash_contents.get()),
-            );
-        }
     }
 
     fn set_trash_contents(&self, contents: TrashContents) {
@@ -1462,7 +1452,7 @@ impl SidebarState {
         self.trash_probe_running.set(true);
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let probe = trash_item_count(&gio::File::for_uri("trash:///")).await;
+            let probe = trash_has_items(&gio::File::for_uri("trash:///")).await;
             if let Err(error) = &probe {
                 tracing::warn!(
                     error_domain = ?error.domain(),
@@ -3007,8 +2997,7 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
     }
 }
 
-async fn trash_item_count(root: &gio::File) -> Result<u32, glib::Error> {
-    const CAP: u32 = 32;
+async fn trash_has_items(root: &gio::File) -> Result<bool, glib::Error> {
     let enumerator = root
         .enumerate_children_future(
             gio::FILE_ATTRIBUTE_STANDARD_NAME,
@@ -3016,17 +3005,10 @@ async fn trash_item_count(root: &gio::File) -> Result<u32, glib::Error> {
             glib::Priority::DEFAULT,
         )
         .await?;
-    let mut count = 0u32;
-    while count < CAP {
-        let children = enumerator
-            .next_files_future((CAP - count) as i32, glib::Priority::DEFAULT)
-            .await?;
-        if children.is_empty() {
-            break;
-        }
-        count += children.len() as u32;
-    }
-    Ok(count)
+    Ok(!enumerator
+        .next_files_future(1, glib::Priority::DEFAULT)
+        .await?
+        .is_empty())
 }
 
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {

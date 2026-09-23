@@ -22,8 +22,8 @@ use crate::ui::browser::destination::{
     folder_input_path, resolve_destination_path, setup_transfer_search,
 };
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
-use crate::ui::browser::inline_edit::update_basename_validation;
 use crate::ui::browser::paths::compact_display_path;
+use crate::ui::collection_edit::update_basename_validation;
 use crate::ui::controls::{
     ModalTone, form_entry, form_error_label, form_label, form_password_entry,
     message_dialog_description, message_dialog_layout, modal_layout, segmented_control,

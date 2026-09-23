@@ -29,7 +29,7 @@ pub(super) fn build_index(
         };
         let hidden_names = native_hidden_names(&root);
         for entry in entries {
-            if index.is_retired() {
+            if index.indexing_cancelled() {
                 return;
             }
             if start.elapsed() >= time_budget {

@@ -228,7 +228,7 @@ pub(super) fn install_item(
                     rename_context_entry(&state, depth, source, entry.clone());
                 }
                 Action::Preview => preview_context_entry(&state, depth, source, entry.clone()),
-                Action::Properties => state.show_entry_properties(entry.clone()),
+                Action::Properties => state.show_entry_properties_at(entry.clone(), depth),
                 Action::Trash | Action::PermanentDelete => {
                     let entries = super::context_menu::context_entries(&state, &target);
                     let permanent = matches!(action, Action::PermanentDelete);

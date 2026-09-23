@@ -64,6 +64,7 @@ fn recent_chooser_filters_remote_targets_and_returns_local_open_and_save_paths()
                         filtered.clone(),
                     ])),
                     filter: Rc::new(RefCell::new(None)),
+                    directory_only: Rc::new(Cell::new(false)),
                 });
                 let state = build_chooser_with_source(
                     request,
