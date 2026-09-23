@@ -197,8 +197,12 @@ fn bind_sidebar_layout(
         let needs_full = preferred_sidebar_width() + crate::ui::browser::COLUMN_WIDTH + 1;
         let is_railed = sidebar.rail.get();
         if is_railed && available >= needs_full {
+            let restore = sidebar
+                .saved_width
+                .get()
+                .unwrap_or_else(preferred_sidebar_width);
             sidebar.set_rail(false);
-            content.set_position(preferred_sidebar_width());
+            content.set_position(restore);
         } else if !is_railed && available < needs_full {
             sidebar.set_rail(true);
             content.set_position(SIDEBAR_RAIL_WIDTH);
@@ -226,13 +230,14 @@ fn bind_sidebar_toggle(
             return;
         };
         let railed = state.rail.get();
-        let minimum = if railed {
-            SIDEBAR_RAIL_WIDTH
+        if railed {
+            if content.position() != SIDEBAR_RAIL_WIDTH {
+                content.set_position(SIDEBAR_RAIL_WIDTH);
+            }
+        } else if content.position() < MIN_SIDEBAR_WIDTH {
+            content.set_position(MIN_SIDEBAR_WIDTH);
         } else {
-            MIN_SIDEBAR_WIDTH
-        };
-        if content.position() < minimum {
-            content.set_position(minimum);
+            state.saved_width.set(Some(content.position()));
         }
     });
     let content = content.clone();

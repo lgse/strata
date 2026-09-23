@@ -164,6 +164,7 @@ impl SidebarState {
             rebuild_queued: Cell::new(false),
             scroll_restore_queued: Cell::new(false),
             rail: Cell::new(false),
+            saved_width: Cell::new(None),
             update_label,
         })
     }

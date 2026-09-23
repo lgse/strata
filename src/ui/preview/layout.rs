@@ -6,7 +6,9 @@ use super::*;
 use crate::ui::{
     browser::{BrowserView, COLUMN_WIDTH, WeakBrowserView},
     browser_modes::BrowserMode,
-    window::{SIDEBAR_RAIL_WIDTH, SidebarState, SidebarView, preferred_sidebar_width},
+    window::{
+        MIN_SIDEBAR_WIDTH, SIDEBAR_RAIL_WIDTH, SidebarState, SidebarView, preferred_sidebar_width,
+    },
 };
 
 const MIN_COLUMN_MULTIPLIER: i32 = 2;
@@ -367,7 +369,8 @@ impl PreviewState {
                 .map_or_else(|| content.width(), |r| r.width());
             let needs_full = preferred_sidebar_width() + COLUMN_WIDTH + 1;
             let keep_railed = available > 0 && available < needs_full;
-            if let Some(sidebar) = binding.sidebar.as_ref().and_then(Weak::upgrade) {
+            let sidebar = binding.sidebar.as_ref().and_then(Weak::upgrade);
+            if let Some(sidebar) = sidebar.as_ref() {
                 sidebar.set_rail(keep_railed);
             }
             if content
@@ -377,11 +380,11 @@ impl PreviewState {
                 if keep_railed {
                     content.set_position(SIDEBAR_RAIL_WIDTH);
                 } else {
-                    let restore = self
-                        .sizing
-                        .sidebar_saved_width
-                        .get()
-                        .max(preferred_sidebar_width());
+                    let restore = sidebar
+                        .as_ref()
+                        .and_then(|s| s.saved_width.get())
+                        .unwrap_or_else(|| self.sizing.sidebar_saved_width.get())
+                        .max(MIN_SIDEBAR_WIDTH);
                     content.set_position(restore);
                 }
             }
@@ -471,17 +474,17 @@ impl PreviewState {
                 .start_child()
                 .is_some_and(|sidebar| sidebar.get_visible());
             let is_railed = sidebar.as_ref().is_some_and(|s| s.rail.get());
-            let saved_width = self
-                .sizing
-                .sidebar_saved_width
-                .get()
-                .max(preferred_sidebar_width());
+            let saved_width = sidebar
+                .as_ref()
+                .and_then(|s| s.saved_width.get())
+                .unwrap_or_else(|| self.sizing.sidebar_saved_width.get())
+                .max(MIN_SIDEBAR_WIDTH);
             let full = if sidebar.is_none() {
                 0
             } else if is_railed || !visible {
                 saved_width
             } else {
-                content.position().max(preferred_sidebar_width())
+                content.position().max(MIN_SIDEBAR_WIDTH)
             };
             let content_sep = separator_width(&content);
             let occupied = if let Some(browser) = binding.browser.upgrade() {
@@ -518,9 +521,11 @@ impl PreviewState {
                 geometry = self.geometry(split);
             } else if !is_railed && sidebar.is_some() && geometry.available < needs {
                 if visible {
-                    self.sizing
-                        .sidebar_saved_width
-                        .set(content.position().max(preferred_sidebar_width()));
+                    let width = content.position().max(MIN_SIDEBAR_WIDTH);
+                    self.sizing.sidebar_saved_width.set(width);
+                    if let Some(sidebar) = sidebar.as_ref() {
+                        sidebar.saved_width.set(Some(width));
+                    }
                 }
                 if let Some(sidebar) = sidebar.as_ref() {
                     sidebar.set_rail(true);

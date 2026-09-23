@@ -2088,7 +2088,7 @@ scrollbar slider:active {
   padding: 3px 4px;
 }
 
-.sidebar-rail .sidebar-row label,
+.sidebar-rail .sidebar-row > box > label,
 .sidebar-rail .sidebar-heading,
 .sidebar-rail .sidebar-device-actions,
 .sidebar-rail .sidebar-update-label {
@@ -2100,6 +2100,10 @@ scrollbar slider:active {
 
 .sidebar-rail .sidebar-separator {
   margin: 6px -6px;
+}
+
+.sidebar-rail .sidebar-update-separator {
+  margin: 0;
 }
 
 .sidebar-rail .sidebar-update {
@@ -3531,6 +3535,11 @@ textview > popover.menu > contents {
   box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
   color: @theme_text;
   padding: 0;
+}
+
+.folder-context-popover label {
+  opacity: 1;
+  font-size: 1em;
 }
 
 .context-menu-scroll,
