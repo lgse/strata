@@ -52,7 +52,9 @@ def _open_scrolling_directory(strata):
     folder.mkdir()
     for index in range(600):
         (folder / f"{index:03}.txt").write_text(f"{index}\n")
-    strata.open_directory("scrolling")
+    strata.select_entry_with_keyboard("scrolling")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("scrolling")
 
 
 @pytest.mark.preferences(browser_mode="list")
