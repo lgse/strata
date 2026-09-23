@@ -350,6 +350,48 @@ fn keyboard_opened_preview_closes_when_the_displayed_entry_is_spliced_out() {
 }
 
 #[test]
+fn archive_keys_route_into_the_preview_tree() {
+    const TEST: &str = "ui::preview::tests::archive_keys_route_into_the_preview_tree";
+    crate::test_support::gtk_test(TEST, || {
+        let drawer = PreviewDrawer::new(Rc::new(NoopPreviewProvider), false);
+        let tree = crate::services::archive_preview_tree(vec![
+            crate::services::ArchiveFileEntry {
+                name: "readme.md".to_owned(),
+                directory: false,
+                size: 2,
+            },
+            crate::services::ArchiveFileEntry {
+                name: "src/a.txt".to_owned(),
+                directory: false,
+                size: 1,
+            },
+        ]);
+        drawer.state.render_archive(tree);
+        let selected = |drawer: &PreviewDrawer| {
+            drawer
+                .state
+                .archive_browser
+                .borrow()
+                .as_ref()
+                .expect("archive browser")
+                .selected_index()
+        };
+        assert_eq!(selected(&drawer), Some(0));
+
+        assert!(drawer.archive_key(gtk::gdk::Key::Down));
+        assert_eq!(selected(&drawer), Some(1));
+        assert!(drawer.archive_key(gtk::gdk::Key::Up));
+        assert_eq!(selected(&drawer), Some(0));
+
+        assert!(drawer.archive_key(gtk::gdk::Key::Left));
+        assert_eq!(selected(&drawer), Some(0));
+        assert!(drawer.archive_key(gtk::gdk::Key::Right));
+
+        assert!(!drawer.archive_key(gtk::gdk::Key::space));
+    });
+}
+
+#[test]
 fn archive_password_prompt_submits_the_password_and_clears_it_when_closed() {
     const TEST: &str = "ui::preview::tests::archive_password_prompt_submits_the_password_and_clears_it_when_closed";
     crate::test_support::gtk_test(TEST, || {

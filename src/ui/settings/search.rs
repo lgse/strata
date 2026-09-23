@@ -183,7 +183,7 @@ const TARGETS: &[Target] = &[
         id: "shortcuts",
         page: "keybindings",
         title: "Shortcut reference",
-        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo terminal refresh",
+        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo redo terminal refresh",
     },
     Target {
         id: "check",

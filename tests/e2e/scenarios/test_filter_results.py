@@ -93,6 +93,48 @@ def test_filtered_results_support_group_selection(strata, mode, route, recursive
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("route", ["keyboard", "context-menu"])
+@pytest.mark.parametrize("recursive", [
+    pytest.param(False, marks=pytest.mark.preferences(filter_include_subfolders=False)),
+    pytest.param(True, marks=pytest.mark.preferences(filter_include_subfolders=True)),
+])
+@pytest.mark.preferences(list_file_clicks=2, grid_file_clicks=2, explorer_file_clicks=2)
+def test_filtered_properties_uses_visible_selection(strata, mode, route, recursive):
+    strata.select_entry("match-note.txt")
+    strata.pointer.click(strata.entry("match-note-other.md"), modifiers=("ctrl",))
+    strata.keyboard.press("ctrl+f")
+    strata.keyboard.type_text("match-note")
+    strata.wait(lambda: len(strata.matches()) == (4 if recursive else 2), "matching files")
+    rows = result_rows(strata)
+    first = result(strata, "alpha/match-note.txt") if recursive else next(row for row in rows if row.name == "match-note.txt")
+    second = next(row for row in rows if row.name == "match-note-other.md")
+    assert first is not None and second is not None
+    for row in rows:
+        if row.has_state("selected"):
+            strata.pointer.click(row, modifiers=("ctrl",))
+    strata.pointer.click(first, modifiers=("ctrl",))
+    strata.pointer.click(second, modifiers=("ctrl",))
+    strata.wait(lambda: first.has_state("selected") and second.has_state("selected"), "selected hits")
+    if route == "keyboard":
+        strata.keyboard.press("alt+Return")
+    else:
+        strata.pointer.right_click(first)
+        strata.wait(strata.context_menu, "selected results menu")
+        strata.choose_menu_item("Properties")
+    dialog = strata.wait_for_dialog()
+    strata.wait(lambda: dialog.find(role="label", name="≥ 2 files, ≥ 0 folders"), "selected search hits")
+    assert dialog.find(role="label", name="≥ 0 B")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: not dialog.is_rendered(), "Properties to close")
+    strata.pointer.click(second, modifiers=("ctrl",))
+    strata.wait(lambda: first.has_state("selected") and not second.has_state("selected"), "one selected hit")
+    strata.keyboard.press("alt+Return")
+    dialog = strata.wait_for_dialog()
+    strata.wait(lambda: dialog.find(role="label", name="13 B" if recursive else "11 B"), "single result size")
+    assert dialog.find(role="label", name="OPENS WITH")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("operation", ["drag", "copy"])
 def test_filtered_control_selection_operates_on_the_selected_group(strata, mode, operation):
     filter_results(strata, query="match", count=5)

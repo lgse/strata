@@ -243,6 +243,193 @@ fn navigating_republishes_the_model_and_summary() {
 }
 
 #[test]
+fn opens_at_the_root_with_the_first_child_highlighted() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::opens_at_the_root_with_the_first_child_highlighted",
+        || {
+            let browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            assert_eq!(browser.cursor_index(), 0);
+            assert_eq!(browser.selected_index(), Some(0));
+        },
+    );
+}
+
+#[test]
+fn moving_the_cursor_clamps_at_the_ends_and_tracks_the_highlight() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::moving_the_cursor_clamps_at_the_ends_and_tracks_the_highlight",
+        || {
+            let browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            assert!(!browser.move_cursor(-1));
+            assert_eq!(browser.selected_index(), Some(0));
+
+            assert!(browser.move_cursor(1));
+            assert_eq!(browser.selected_index(), Some(1));
+            assert!(!browser.move_cursor(1));
+            assert_eq!(browser.selected_index(), Some(1));
+
+            assert!(browser.move_cursor(-1));
+            assert_eq!(browser.selected_index(), Some(0));
+        },
+    );
+}
+
+#[test]
+fn pointer_selection_is_adopted_before_keyboard_moves() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::pointer_selection_is_adopted_before_keyboard_moves",
+        || {
+            let browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            browser.selection.set_selected(1);
+            assert_eq!(browser.selected_index(), Some(1));
+            assert_eq!(browser.cursor_index(), 0);
+            assert!(!browser.move_cursor(1));
+            assert_eq!(browser.selected_index(), Some(1));
+            assert_eq!(browser.cursor_index(), 1);
+            assert!(browser.move_cursor(-1));
+            assert_eq!(browser.selected_index(), Some(0));
+        },
+    );
+}
+
+#[test]
+fn enter_after_pointer_selection_opens_the_visible_row() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::enter_after_pointer_selection_opens_the_visible_row",
+        || {
+            let mut browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            browser.selection.set_selected(1);
+            assert!(!browser.open_cursor());
+            assert_eq!(browser.model.n_items(), 2);
+            assert_eq!(browser.selected_index(), Some(1));
+        },
+    );
+}
+
+#[test]
+fn activating_a_file_syncs_the_cursor() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::activating_a_file_syncs_the_cursor",
+        || {
+            let mut browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            browser.selection.set_selected(1);
+            browser.open_child(1);
+            assert_eq!(browser.cursor_index(), 1);
+            assert_eq!(browser.selected_index(), Some(1));
+            assert!(!browser.move_cursor(1));
+        },
+    );
+}
+
+#[test]
+fn opening_a_directory_enters_it_and_highlights_its_first_child() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::opening_a_directory_enters_it_and_highlights_its_first_child",
+        || {
+            let mut browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            assert!(browser.open_cursor());
+            assert_eq!(browser.model.n_items(), 2);
+            assert_eq!(browser.cursor_index(), 0);
+            assert_eq!(browser.selected_index(), Some(0));
+        },
+    );
+}
+
+#[test]
+fn opening_a_file_leaves_the_tree_unchanged() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::opening_a_file_leaves_the_tree_unchanged",
+        || {
+            let mut browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            browser.move_cursor(1);
+            assert!(!browser.open_cursor());
+            assert_eq!(browser.model.n_items(), 2);
+            assert_eq!(browser.cursor_index(), 1);
+        },
+    );
+}
+
+#[test]
+fn going_up_highlights_the_directory_that_was_left() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::going_up_highlights_the_directory_that_was_left",
+        || {
+            let mut browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            let src = src_index(&browser.tree.root);
+            browser.open_cursor();
+            assert!(browser.go_up());
+            assert_eq!(browser.model.n_items(), 2);
+            assert_eq!(browser.cursor_index(), src);
+            assert_eq!(browser.selected_index(), Some(src));
+        },
+    );
+}
+
+#[test]
+fn going_up_at_the_root_does_nothing() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::going_up_at_the_root_does_nothing",
+        || {
+            let mut browser = ArchiveBrowser::new(tree(), std::rc::Rc::new(|_| {}));
+            assert!(!browser.go_up());
+            assert_eq!(browser.model.n_items(), 2);
+            assert_eq!(browser.selected_index(), Some(0));
+        },
+    );
+}
+
+#[test]
+fn empty_directories_have_no_highlight_and_ignore_navigation() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::empty_directories_have_no_highlight_and_ignore_navigation",
+        || {
+            let tree = archive_preview_tree(vec![ArchiveFileEntry {
+                name: "empty".to_owned(),
+                directory: true,
+                size: 0,
+            }]);
+            let mut browser = ArchiveBrowser::new(tree, std::rc::Rc::new(|_| {}));
+            browser.open_cursor();
+            assert_eq!(browser.model.n_items(), 0);
+            assert_eq!(browser.selected_index(), None);
+            assert!(!browser.move_cursor(1));
+            assert!(!browser.open_cursor());
+            assert_eq!(browser.selected_index(), None);
+            assert!(browser.go_up());
+        },
+    );
+}
+
+#[test]
+fn breadcrumb_jumps_highlight_the_child_that_was_left() {
+    crate::test_support::gtk_test(
+        "ui::preview::archive::tests::breadcrumb_jumps_highlight_the_child_that_was_left",
+        || {
+            let tree = archive_preview_tree(vec![
+                ArchiveFileEntry {
+                    name: "alpha/a.txt".to_owned(),
+                    directory: false,
+                    size: 1,
+                },
+                ArchiveFileEntry {
+                    name: "src/mod/x.rs".to_owned(),
+                    directory: false,
+                    size: 1,
+                },
+            ]);
+            let mut browser = ArchiveBrowser::new(tree, std::rc::Rc::new(|_| {}));
+            let src = dir_index(&browser.tree.root, "src");
+            assert_ne!(src, 0);
+            browser.open_child(src);
+            browser.open_cursor();
+            browser.navigate_to(1);
+            assert_eq!(browser.cursor_index(), 0);
+            assert_eq!(browser.selected_index(), Some(0));
+        },
+    );
+}
+
+#[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
 fn mapped_window_binds_visible_archive_rows() {
     const CHILD: &str = "STRATA_ARCHIVE_MAPPED_ROWS_CHILD";

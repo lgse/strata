@@ -182,6 +182,7 @@ pub enum BrowserEvent {
         transferred_bytes: u64,
         total_bytes: Option<u64>,
     },
+    FlushingToDevice,
     TransferFinished {
         moved_locations: Vec<Location>,
     },
@@ -282,6 +283,83 @@ impl UndoEntry {
             Self::Rename(_) => false,
         }
     }
+
+    fn empty_like(&self) -> Self {
+        match self {
+            Self::Trash(_) => Self::Trash(Vec::new()),
+            Self::Move(_) => Self::Move(Vec::new()),
+            Self::Copy(_) => Self::Copy(Vec::new()),
+            Self::Merge { .. } => Self::Merge {
+                created: Vec::new(),
+                overwritten: Vec::new(),
+                originals: HashMap::new(),
+            },
+            Self::Rename(record) => Self::Rename(record.clone()),
+        }
+    }
+
+    fn locations_mut(&mut self) -> Option<&mut Vec<Location>> {
+        match self {
+            Self::Trash(locations) | Self::Copy(locations) => Some(locations),
+            _ => None,
+        }
+    }
+}
+
+fn complete_undo_item(
+    entry: &mut UndoEntry,
+    completed: &mut UndoEntry,
+    location: &Location,
+    move_source: bool,
+) {
+    match (entry, completed) {
+        (UndoEntry::Move(records), UndoEntry::Move(done)) => {
+            if let Some(index) = records.iter().position(|record| {
+                let endpoint = if move_source {
+                    &record.original
+                } else {
+                    &record.current
+                };
+                endpoint == location
+            }) {
+                done.push(records.remove(index));
+            }
+        }
+        (
+            UndoEntry::Trash(locations) | UndoEntry::Copy(locations),
+            UndoEntry::Trash(done) | UndoEntry::Copy(done),
+        ) => {
+            if let Some(index) = locations.iter().position(|candidate| candidate == location) {
+                done.push(locations.remove(index));
+            }
+        }
+        (
+            UndoEntry::Merge {
+                created,
+                overwritten,
+                originals,
+            },
+            UndoEntry::Merge {
+                created: done_created,
+                overwritten: done_overwritten,
+                originals: done_originals,
+            },
+        ) => {
+            if let Some(index) = created.iter().position(|candidate| candidate == location) {
+                done_created.push(created.remove(index));
+            }
+            if let Some(index) = overwritten
+                .iter()
+                .position(|candidate| candidate == location)
+            {
+                done_overwritten.push(overwritten.remove(index));
+            }
+            if let Some(original) = originals.remove(location) {
+                done_originals.insert(location.clone(), original);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Merge bookkeeping collected while a paste runs: which sources merged, and
@@ -297,6 +375,10 @@ struct MergeUndoState {
 struct PendingUndo {
     generation: u64,
     entry: UndoEntry,
+    /// Items already reversed, kept so a partial undo can offer a matching
+    /// redo. Stays `None` until an item completes so single-shot entries like
+    /// Rename only redo when they actually reverted.
+    completed: Option<UndoEntry>,
     claimed: bool,
 }
 
@@ -306,13 +388,41 @@ const MAX_UNDO_HISTORY: usize = 32;
 struct UndoState {
     next_generation: u64,
     history: Vec<PendingUndo>,
+    redo: Vec<PendingUndo>,
 }
 
 impl UndoState {
-    fn find_mut(&mut self, generation: u64) -> Option<&mut PendingUndo> {
-        self.history
+    fn stack(&self, redo: bool) -> &[PendingUndo] {
+        if redo { &self.redo } else { &self.history }
+    }
+
+    fn stack_mut(&mut self, redo: bool) -> &mut Vec<PendingUndo> {
+        if redo {
+            &mut self.redo
+        } else {
+            &mut self.history
+        }
+    }
+
+    fn find_in(stack: &mut [PendingUndo], generation: u64) -> Option<&mut PendingUndo> {
+        stack
             .iter_mut()
             .find(|pending| pending.generation == generation)
+    }
+
+    fn push_entry(&mut self, redo: bool, entry: UndoEntry) {
+        let generation = self.next_generation.saturating_add(1);
+        self.next_generation = generation;
+        let stack = self.stack_mut(redo);
+        stack.push(PendingUndo {
+            generation,
+            completed: None,
+            entry,
+            claimed: false,
+        });
+        if stack.len() > MAX_UNDO_HISTORY {
+            stack.remove(0);
+        }
     }
 }
 
@@ -327,87 +437,105 @@ fn push_pending_undo(entry: UndoEntry) {
     }
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        let generation = pending.next_generation.saturating_add(1);
-        pending.next_generation = generation;
-        pending.history.push(PendingUndo {
-            generation,
-            entry,
-            claimed: false,
-        });
-        if pending.history.len() > MAX_UNDO_HISTORY {
-            pending.history.remove(0);
-        }
+        pending.redo.clear();
+        pending.push_entry(false, entry);
     });
 }
 
-fn peek_pending_undo() -> Option<(u64, UndoEntry)> {
-    PENDING_UNDO.with(|pending| {
-        let pending = pending.borrow();
-        let latest = pending.history.last()?;
-        (!latest.claimed).then(|| (latest.generation, latest.entry.clone()))
-    })
+fn push_regenerated_undo(entry: UndoEntry) {
+    if entry.is_empty() {
+        return;
+    }
+    PENDING_UNDO.with(|pending| pending.borrow_mut().push_entry(false, entry));
+}
+
+fn push_pending_redo(entry: UndoEntry) {
+    if entry.is_empty() {
+        return;
+    }
+    PENDING_UNDO.with(|pending| pending.borrow_mut().push_entry(true, entry));
+}
+
+fn peek_stack(stack: &[PendingUndo]) -> Option<(u64, UndoEntry)> {
+    let latest = stack.last()?;
+    (!latest.claimed).then(|| (latest.generation, latest.entry.clone()))
+}
+
+fn claim_stack(stack: &mut [PendingUndo], expected: Option<u64>) -> Option<(u64, UndoEntry)> {
+    let latest = stack.last_mut()?;
+    if latest.claimed || expected.is_some_and(|generation| generation != latest.generation) {
+        return None;
+    }
+    latest.claimed = true;
+    Some((latest.generation, latest.entry.clone()))
+}
+
+fn finish_stack(stack: &mut Vec<PendingUndo>, generation: u64, completed: bool) {
+    let Some(entry) = UndoState::find_in(stack, generation) else {
+        return;
+    };
+    entry.claimed = false;
+    if completed || entry.entry.is_empty() {
+        stack.retain(|pending| pending.generation != generation);
+    }
+}
+
+fn peek_replay(redo: bool) -> Option<(u64, UndoEntry)> {
+    PENDING_UNDO.with(|pending| peek_stack(pending.borrow().stack(redo)))
+}
+
+fn claim_replay(redo: bool, expected: Option<u64>) -> Option<(u64, UndoEntry)> {
+    PENDING_UNDO.with(|pending| claim_stack(pending.borrow_mut().stack_mut(redo), expected))
 }
 
 fn claim_pending_undo(expected: Option<u64>) -> Option<(u64, UndoEntry)> {
+    claim_replay(false, expected)
+}
+
+/// A redone move travels from `original`, so its source is what matches events.
+fn mark_replay_item_completed(redo: bool, generation: u64, location: &Location) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        let latest = pending.history.last_mut()?;
-        if latest.claimed || expected.is_some_and(|generation| generation != latest.generation) {
-            return None;
-        }
-        latest.claimed = true;
-        Some((latest.generation, latest.entry.clone()))
+        let Some(pending) = UndoState::find_in(pending.stack_mut(redo), generation) else {
+            return;
+        };
+        let mut completed = pending
+            .completed
+            .take()
+            .unwrap_or_else(|| pending.entry.empty_like());
+        complete_undo_item(&mut pending.entry, &mut completed, location, redo);
+        pending.completed = Some(completed);
+    });
+}
+
+fn completed_replay_items(redo: bool, generation: u64) -> Option<UndoEntry> {
+    PENDING_UNDO.with(|pending| {
+        pending
+            .borrow()
+            .stack(redo)
+            .iter()
+            .find(|pending| pending.generation == generation)
+            .and_then(|pending| pending.completed.clone())
     })
 }
 
-/// Drops one still-pending item so a partial undo leaves only the remainder
-/// for the next attempt.
-fn mark_undo_item_completed(generation: u64, location: &Location) {
-    PENDING_UNDO.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        let Some(pending) = pending.find_mut(generation) else {
-            return;
-        };
-        match &mut pending.entry {
-            UndoEntry::Trash(locations) | UndoEntry::Copy(locations) => {
-                locations.retain(|candidate| candidate != location);
-            }
-            UndoEntry::Merge {
-                created,
-                overwritten,
-                originals,
-            } => {
-                created.retain(|candidate| candidate != location);
-                overwritten.retain(|candidate| candidate != location);
-                originals.remove(location);
-            }
-            UndoEntry::Move(records) => {
-                records.retain(|record| &record.current != location);
-            }
-            UndoEntry::Rename(_) => {}
-        }
-    });
+fn finish_replay(redo: bool, generation: u64, completed: bool) {
+    PENDING_UNDO
+        .with(|pending| finish_stack(pending.borrow_mut().stack_mut(redo), generation, completed));
 }
 
 fn finish_undo(generation: u64, completed: bool) {
-    PENDING_UNDO.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        let Some(entry) = pending.find_mut(generation) else {
-            return;
-        };
-        entry.claimed = false;
-        if completed || entry.entry.is_empty() {
-            pending
-                .history
-                .retain(|pending| pending.generation != generation);
-        }
-    });
+    finish_replay(false, generation, completed);
 }
 
-fn retain_pending_move_items(generation: u64, items: &[UndoMoveItem]) {
+fn finish_redo(generation: u64, completed: bool) {
+    finish_replay(true, generation, completed);
+}
+
+fn retain_replay_move_items(redo: bool, generation: u64, items: &[UndoMoveItem]) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        if let Some(pending) = pending.find_mut(generation)
+        if let Some(pending) = UndoState::find_in(pending.stack_mut(redo), generation)
             && let UndoEntry::Move(records) = &mut pending.entry
         {
             records.retain(|record| items.iter().any(|item| &item.record == record));
@@ -415,21 +543,26 @@ fn retain_pending_move_items(generation: u64, items: &[UndoMoveItem]) {
     });
 }
 
-fn retain_pending_copy_items(generation: u64, locations: &[Location]) {
+fn retain_replay_locations(redo: bool, generation: u64, locations: &[Location]) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        if let Some(pending) = pending.find_mut(generation)
-            && let UndoEntry::Copy(created) = &mut pending.entry
+        if let Some(pending) = UndoState::find_in(pending.stack_mut(redo), generation)
+            && let Some(recorded) = pending.entry.locations_mut()
         {
-            created.retain(|location| locations.contains(location));
+            recorded.retain(|location| locations.contains(location));
         }
     });
 }
 
-fn retain_pending_merge_items(generation: u64, created: &[Location], overwritten: &[Location]) {
+fn retain_replay_merge_items(
+    redo: bool,
+    generation: u64,
+    created: &[Location],
+    overwritten: &[Location],
+) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        if let Some(pending) = pending.find_mut(generation)
+        if let Some(pending) = UndoState::find_in(pending.stack_mut(redo), generation)
             && let UndoEntry::Merge {
                 created: kept_created,
                 overwritten: kept_overwritten,
@@ -472,6 +605,17 @@ fn pending_undo_entry() -> Option<UndoEntry> {
         pending
             .borrow()
             .history
+            .last()
+            .map(|pending| pending.entry.clone())
+    })
+}
+
+#[cfg(test)]
+fn pending_redo_entry() -> Option<UndoEntry> {
+    PENDING_UNDO.with(|pending| {
+        pending
+            .borrow()
+            .redo
             .last()
             .map(|pending| pending.entry.clone())
     })
@@ -586,6 +730,7 @@ pub struct Browser {
     created_locations: RefCell<Vec<Location>>,
     merged_undo: RefCell<MergeUndoState>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
+    redo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
     preferences: Cell<ViewPreferences>,
@@ -638,6 +783,7 @@ impl Browser {
             created_locations: RefCell::new(Vec::new()),
             merged_undo: RefCell::new(MergeUndoState::default()),
             undo_claim: RefCell::new(None),
+            redo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
             preferences: Cell::new(preferences),
@@ -1705,41 +1851,29 @@ impl Browser {
         self.install_operation_load(request_id, load);
     }
 
-    /// The pending move undo, if the latest reversible operation was a move.
-    pub fn pending_undo_move(&self) -> Option<(u64, Vec<MoveRecord>)> {
+    fn pending_replay_entry(&self, redo: bool) -> Option<(u64, UndoEntry)> {
         if self.current_operation.get().is_some() {
             return None;
         }
-        match peek_pending_undo()? {
+        peek_replay(redo)
+    }
+
+    pub fn pending_undo_move(&self) -> Option<(u64, Vec<MoveRecord>)> {
+        match self.pending_replay_entry(false)? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
-            (
-                _,
-                UndoEntry::Trash(_)
-                | UndoEntry::Copy(_)
-                | UndoEntry::Merge { .. }
-                | UndoEntry::Rename(_),
-            ) => None,
+            _ => None,
         }
     }
 
     pub fn pending_undo_copy(&self) -> Option<(u64, Vec<Location>)> {
-        if self.current_operation.get().is_some() {
-            return None;
-        }
-        match peek_pending_undo()? {
+        match self.pending_replay_entry(false)? {
             (generation, UndoEntry::Copy(locations)) => Some((generation, locations)),
-            (
-                _,
-                UndoEntry::Trash(_)
-                | UndoEntry::Move(_)
-                | UndoEntry::Merge { .. }
-                | UndoEntry::Rename(_),
-            ) => None,
+            _ => None,
         }
     }
 
     pub fn pending_undo_merge(&self) -> Option<(u64, Vec<Location>, Vec<Location>)> {
-        match peek_pending_undo()? {
+        match self.pending_replay_entry(false)? {
             (
                 generation,
                 UndoEntry::Merge {
@@ -1748,57 +1882,32 @@ impl Browser {
                     ..
                 },
             ) => Some((generation, created, overwritten)),
-            (
-                _,
-                UndoEntry::Trash(_)
-                | UndoEntry::Move(_)
-                | UndoEntry::Copy(_)
-                | UndoEntry::Rename(_),
-            ) => None,
+            _ => None,
         }
     }
 
     pub fn pending_undo_rename(&self) -> Option<(u64, Location, Location)> {
-        if self.current_operation.get().is_some() {
-            return None;
-        }
-        match peek_pending_undo()? {
+        match self.pending_replay_entry(false)? {
             (
                 generation,
                 UndoEntry::Rename(RenameRecord {
                     original, current, ..
                 }),
             ) => Some((generation, current, original)),
-            (
-                _,
-                UndoEntry::Trash(_)
-                | UndoEntry::Move(_)
-                | UndoEntry::Copy(_)
-                | UndoEntry::Merge { .. },
-            ) => None,
+            _ => None,
         }
     }
 
     pub fn pending_undo_trash(&self) -> Option<Vec<Location>> {
-        if self.current_operation.get().is_some() {
-            return None;
-        }
-        match peek_pending_undo()? {
+        match self.pending_replay_entry(false)? {
             (_, UndoEntry::Trash(locations)) => Some(locations),
-            (
-                _,
-                UndoEntry::Move(_)
-                | UndoEntry::Copy(_)
-                | UndoEntry::Rename(_)
-                | UndoEntry::Merge { .. },
-            ) => None,
+            _ => None,
         }
     }
 
-    /// Drops a pending undo whose items are no longer where it recorded them.
-    pub fn discard_pending_undo(&self, generation: u64) {
-        if claim_pending_undo(Some(generation)).is_some() {
-            finish_undo(generation, true);
+    pub fn discard_pending_replay(&self, redo: bool, generation: u64) {
+        if claim_replay(redo, Some(generation)).is_some() {
+            finish_replay(redo, generation, true);
         }
     }
 
@@ -1813,51 +1922,57 @@ impl Browser {
             finish_undo(generation, false);
             return false;
         };
-        let Some(provider) = self.operation_provider.borrow().clone() else {
-            finish_undo(generation, false);
-            return false;
-        };
-        let total = locations.len();
-        let request_id = self.begin_operation();
-        self.restoration_operation.set(true);
-        self.undo_claim
-            .replace(Some((generation, UndoEntry::Trash(locations.clone()))));
-        self.emit(BrowserEvent::RestorationStarted { total });
-        let load = provider.restore(
-            RestoreRequest {
-                id: request_id,
-                source: RestoreSource::OriginalLocations(locations),
-            },
-            self.operation_callback(request_id, false, HashSet::new()),
-        );
-        self.install_operation_load(request_id, load);
-        true
+        self.restore_original_locations(
+            false,
+            generation,
+            UndoEntry::Trash(locations.clone()),
+            locations,
+        )
     }
 
     /// Moves completed transfers back. `generation` pins the undo the caller
     /// inspected, so an operation started while conflicts were being confirmed
     /// wins instead of being reverted.
     pub fn undo_move(self: &Rc<Self>, generation: u64, items: Vec<UndoMoveItem>) -> bool {
+        self.replay_move(false, generation, items)
+    }
+
+    /// Copy undo uses Trash so it never permanently deletes data.
+    pub fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
+        self.replay_entry_locations(
+            false,
+            generation,
+            locations.clone(),
+            UndoEntry::Copy(locations),
+            false,
+        )
+    }
+
+    pub fn undo_rename(self: &Rc<Self>, generation: u64) -> bool {
+        self.replay_rename(false, generation)
+    }
+
+    fn replay_move(self: &Rc<Self>, redo: bool, generation: u64, items: Vec<UndoMoveItem>) -> bool {
         if items.is_empty() || self.current_operation.get().is_some() {
             return false;
         }
-        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+        let Some((generation, entry)) = claim_replay(redo, Some(generation)) else {
             return false;
         };
         let UndoEntry::Move(_) = entry else {
-            finish_undo(generation, false);
+            finish_replay(redo, generation, false);
             return false;
         };
         let Some(provider) = self.operation_provider.borrow().clone() else {
-            finish_undo(generation, false);
+            finish_replay(redo, generation, false);
             return false;
         };
-        retain_pending_move_items(generation, &items);
+        retain_replay_move_items(redo, generation, &items);
         let total = items.len();
         let refresh_locations = undo_move_parents(&items);
         let request_id = self.begin_operation();
         self.transfer_operation.set(Some(true));
-        self.undo_claim.replace(Some((
+        self.replay_claim(redo).replace(Some((
             generation,
             UndoEntry::Move(items.iter().map(|item| item.record.clone()).collect()),
         )));
@@ -1868,7 +1983,22 @@ impl Browser {
         let load = provider.undo_move(
             UndoMoveRequest {
                 id: request_id,
-                items,
+                items: items
+                    .into_iter()
+                    .map(|item| {
+                        if redo {
+                            UndoMoveItem {
+                                record: MoveRecord {
+                                    original: item.record.current,
+                                    current: item.record.original,
+                                },
+                                conflict: item.conflict,
+                            }
+                        } else {
+                            item
+                        }
+                    })
+                    .collect(),
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
@@ -1876,23 +2006,193 @@ impl Browser {
         true
     }
 
-    /// Copy undo uses Trash so it never permanently deletes data.
-    pub fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
-        if locations.is_empty() || self.current_operation.get().is_some() {
+    fn replay_rename(self: &Rc<Self>, redo: bool, generation: u64) -> bool {
+        if self.current_operation.get().is_some() {
             return false;
         }
-        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+        let Some((generation, entry)) = claim_replay(redo, Some(generation)) else {
             return false;
         };
-        let UndoEntry::Copy(_) = entry else {
-            finish_undo(generation, false);
+        let UndoEntry::Rename(RenameRecord {
+            original,
+            current,
+            native_name,
+            display_name,
+            is_hidden,
+        }) = entry
+        else {
+            finish_replay(redo, generation, false);
             return false;
         };
         let Some(provider) = self.operation_provider.borrow().clone() else {
-            finish_undo(generation, false);
+            finish_replay(redo, generation, false);
             return false;
         };
-        retain_pending_copy_items(generation, &locations);
+        let refresh_locations = [current.parent(), original.parent()]
+            .into_iter()
+            .flatten()
+            .collect();
+        let request_id = self.begin_operation();
+        self.replay_claim(redo).replace(Some((
+            generation,
+            UndoEntry::Rename(RenameRecord {
+                original: original.clone(),
+                current: current.clone(),
+                native_name: native_name.clone(),
+                display_name: display_name.clone(),
+                is_hidden,
+            }),
+        )));
+        let (source, target) = if redo {
+            (original, current)
+        } else {
+            (current, original)
+        };
+        let source_for_publish = source.clone();
+        let target_for_publish = target.clone();
+        let weak = Rc::downgrade(self);
+        let emit = self.operation_callback(request_id, true, refresh_locations);
+        let publish = Rc::new(move |event: OperationEvent| {
+            if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
+                && let Some(browser) = weak.upgrade()
+                && browser.is_current_operation(request_id)
+            {
+                if let Some(mut renamed) = browser.entry_at_location(&source_for_publish) {
+                    renamed.location = target_for_publish.clone();
+                    if redo {
+                        if let Some(name) = target_for_publish.file_name() {
+                            renamed.is_hidden = name.to_string_lossy().starts_with('.');
+                            renamed.native_name = name;
+                        }
+                        renamed.display_name = target_for_publish.display_name();
+                    } else {
+                        renamed.native_name = native_name.clone();
+                        renamed.display_name = display_name.clone();
+                        renamed.is_hidden = is_hidden;
+                    }
+                    browser.publish_rename(&source_for_publish, renamed);
+                } else {
+                    if let (Some(from), Some(to)) = (
+                        source_for_publish.native_path(),
+                        target_for_publish.native_path(),
+                    ) {
+                        crate::services::refresh_search_indexes_for_rename(from, to);
+                    }
+                    browser.relocate_open_columns(&source_for_publish, &target_for_publish);
+                }
+            }
+            emit(event);
+        });
+        let load = provider.undo_rename(
+            UndoRenameRequest {
+                id: request_id,
+                current: source,
+                original: target,
+            },
+            publish,
+        );
+        self.install_operation_load(request_id, load);
+        true
+    }
+
+    pub fn pending_redo_move(&self) -> Option<(u64, Vec<MoveRecord>)> {
+        match self.pending_replay_entry(true)? {
+            (generation, UndoEntry::Move(records)) => Some((generation, records)),
+            _ => None,
+        }
+    }
+
+    pub fn pending_redo_copy(&self) -> Option<(u64, Vec<Location>)> {
+        match self.pending_replay_entry(true)? {
+            (generation, UndoEntry::Copy(locations)) => Some((generation, locations)),
+            _ => None,
+        }
+    }
+
+    pub fn pending_redo_rename(&self) -> Option<(u64, Location, Location)> {
+        match self.pending_replay_entry(true)? {
+            (
+                generation,
+                UndoEntry::Rename(RenameRecord {
+                    original, current, ..
+                }),
+            ) => Some((generation, original, current)),
+            _ => None,
+        }
+    }
+
+    pub fn pending_redo_trash(&self) -> Option<(u64, Vec<Location>)> {
+        match self.pending_replay_entry(true)? {
+            (generation, UndoEntry::Trash(locations)) => Some((generation, locations)),
+            _ => None,
+        }
+    }
+
+    pub fn redo_trash(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
+        self.replay_entry_locations(
+            true,
+            generation,
+            locations.clone(),
+            UndoEntry::Trash(locations),
+            false,
+        )
+    }
+
+    pub fn redo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
+        self.replay_entry_locations(
+            true,
+            generation,
+            locations.clone(),
+            UndoEntry::Copy(locations),
+            true,
+        )
+    }
+
+    fn replay_entry_locations(
+        self: &Rc<Self>,
+        redo: bool,
+        generation: u64,
+        locations: Vec<Location>,
+        entry: UndoEntry,
+        restore: bool,
+    ) -> bool {
+        if locations.is_empty() || self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, claimed)) = claim_replay(redo, Some(generation)) else {
+            return false;
+        };
+        if std::mem::discriminant(&claimed) != std::mem::discriminant(&entry) {
+            finish_replay(redo, generation, false);
+            return false;
+        }
+        if restore {
+            self.restore_original_locations(redo, generation, entry, locations)
+        } else {
+            retain_replay_locations(redo, generation, &locations);
+            self.retrash_locations(redo, generation, entry, locations)
+        }
+    }
+
+    pub fn redo_move(self: &Rc<Self>, generation: u64, items: Vec<UndoMoveItem>) -> bool {
+        self.replay_move(true, generation, items)
+    }
+
+    pub fn redo_rename(self: &Rc<Self>, generation: u64) -> bool {
+        self.replay_rename(true, generation)
+    }
+
+    fn retrash_locations(
+        self: &Rc<Self>,
+        redo: bool,
+        generation: u64,
+        entry: UndoEntry,
+        locations: Vec<Location>,
+    ) -> bool {
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_replay(redo, generation, false);
+            return false;
+        };
         let total = locations.len();
         let refresh_locations = locations
             .iter()
@@ -1900,8 +2200,7 @@ impl Browser {
             .collect();
         let request_id = self.begin_operation();
         self.deletion_operation.set(true);
-        self.undo_claim
-            .replace(Some((generation, UndoEntry::Copy(locations.clone()))));
+        self.replay_claim(redo).replace(Some((generation, entry)));
         self.emit(BrowserEvent::DeletionStarted { total });
         let load = provider.undo_copy(
             UndoCopyRequest {
@@ -1936,7 +2235,7 @@ impl Browser {
             finish_undo(generation, false);
             return false;
         };
-        retain_pending_merge_items(generation, &created, &overwritten);
+        retain_replay_merge_items(false, generation, &created, &overwritten);
         originals.retain(|location, _| overwritten.contains(location));
         let total = created.len() + overwritten.len();
         let refresh_locations = created
@@ -1968,80 +2267,39 @@ impl Browser {
         true
     }
 
-    pub fn undo_rename(self: &Rc<Self>, generation: u64) -> bool {
-        if self.current_operation.get().is_some() {
-            return false;
-        }
-        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
-            return false;
-        };
-        let UndoEntry::Rename(RenameRecord {
-            original,
-            current,
-            native_name,
-            display_name,
-            is_hidden,
-        }) = entry
-        else {
-            finish_undo(generation, false);
-            return false;
-        };
+    fn restore_original_locations(
+        self: &Rc<Self>,
+        redo: bool,
+        generation: u64,
+        entry: UndoEntry,
+        locations: Vec<Location>,
+    ) -> bool {
         let Some(provider) = self.operation_provider.borrow().clone() else {
-            finish_undo(generation, false);
+            finish_replay(redo, generation, false);
             return false;
         };
-        let refresh_locations = [current.parent(), original.parent()]
-            .into_iter()
-            .flatten()
-            .collect();
+        let total = locations.len();
         let request_id = self.begin_operation();
-        self.undo_claim.replace(Some((
-            generation,
-            UndoEntry::Rename(RenameRecord {
-                original: original.clone(),
-                current: current.clone(),
-                native_name: native_name.clone(),
-                display_name: display_name.clone(),
-                is_hidden,
-            }),
-        )));
-        let current_for_publish = current.clone();
-        let original_for_publish = original.clone();
-        let weak = Rc::downgrade(self);
-        let emit = self.operation_callback(request_id, true, refresh_locations);
-        let publish = Rc::new(move |event: OperationEvent| {
-            if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
-                && let Some(browser) = weak.upgrade()
-                && browser.is_current_operation(request_id)
-            {
-                if let Some(mut restored) = browser.entry_at_location(&current_for_publish) {
-                    restored.location = original_for_publish.clone();
-                    restored.native_name = native_name.clone();
-                    restored.display_name = display_name.clone();
-                    restored.is_hidden = is_hidden;
-                    browser.publish_rename(&current_for_publish, restored);
-                } else {
-                    if let (Some(from), Some(to)) = (
-                        current_for_publish.native_path(),
-                        original_for_publish.native_path(),
-                    ) {
-                        crate::services::refresh_search_indexes_for_rename(from, to);
-                    }
-                    browser.relocate_open_columns(&current_for_publish, &original_for_publish);
-                }
-            }
-            emit(event);
-        });
-        let load = provider.undo_rename(
-            UndoRenameRequest {
+        self.restoration_operation.set(true);
+        self.replay_claim(redo).replace(Some((generation, entry)));
+        self.emit(BrowserEvent::RestorationStarted { total });
+        let load = provider.restore(
+            RestoreRequest {
                 id: request_id,
-                current,
-                original,
+                source: RestoreSource::OriginalLocations(locations),
             },
-            publish,
+            self.operation_callback(request_id, false, HashSet::new()),
         );
         self.install_operation_load(request_id, load);
         true
+    }
+
+    fn replay_claim(&self, redo: bool) -> &RefCell<Option<(u64, UndoEntry)>> {
+        if redo {
+            &self.redo_claim
+        } else {
+            &self.undo_claim
+        }
     }
 
     pub fn compress(
@@ -2083,6 +2341,7 @@ impl Browser {
         self: &Rc<Self>,
         entry: FileEntry,
         destination: Location,
+        created_destination: bool,
         password: Option<String>,
     ) {
         let Some(provider) = self.operation_provider.borrow().clone() else {
@@ -2098,6 +2357,7 @@ impl Browser {
                 id: request_id,
                 entry,
                 destination,
+                created_destination,
                 password,
             },
             self.operation_callback(request_id, false, HashSet::new()),
@@ -2132,6 +2392,9 @@ impl Browser {
         }
         if let Some((generation, _)) = self.undo_claim.take() {
             finish_undo(generation, false);
+        }
+        if let Some((generation, _)) = self.redo_claim.take() {
+            finish_redo(generation, false);
         }
         self.transfer_operation.set(None);
         self.transfer_destination.replace(None);
@@ -2683,6 +2946,7 @@ impl Browser {
         preferences.show_hidden = self.preferences.get().show_hidden;
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
+        self.state.borrow_mut().clear_metadata_positions(depth);
         let outcome = {
             let mut state = self.state.borrow_mut();
             if self.pending_sort.get() != Some((generation, depth)) {
@@ -2752,6 +3016,7 @@ impl Browser {
     fn abandon_awaited_sort(&self, depth: usize, generation: u64, outcome: MetadataOutcome) {
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
+        self.state.borrow_mut().clear_metadata_positions(depth);
         if self.pending_sort.get() != Some((generation, depth)) {
             return;
         }

@@ -38,6 +38,14 @@ pub(in crate::ui) fn build_sidebar(
     // Device discovery remains deferred to the window's first-paint callback.
     state.append_static_places();
     state.sync_active_place();
+    let release_watch = {
+        let weak = Rc::downgrade(&state);
+        super::device_release::watch_sidebars(move || {
+            if let Some(state) = weak.upgrade() {
+                state.rebuild();
+            }
+        })
+    };
     SidebarView {
         widget: shell.widget.upcast(),
         state,
@@ -47,6 +55,7 @@ pub(in crate::ui) fn build_sidebar(
         handlers: RefCell::new(handlers),
         mount_handler: RefCell::new(Some(mount_handler)),
         recent_setting_handler: RefCell::new(recent_setting_handler),
+        release_watch,
     }
 }
 

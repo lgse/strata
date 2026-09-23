@@ -989,6 +989,8 @@ fn build_chooser_with_source(
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
     preview.attach_split(&preview_split, &content, &view, Some(&sidebar));
+    view.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
+    view.add_marquee_origin(&preview.widget(), gtk::PackType::End);
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
     details.add_css_class("chooser-details");
@@ -1856,6 +1858,18 @@ fn install_shortcuts(
             && key == gtk::gdk::Key::Down
         {
             browser.extend_selection(1);
+            return glib::Propagation::Stop;
+        }
+        if state.view.item_view_has_focus()
+            && let Some(query) = super::window::type_to_search_query(key, modifiers)
+            && preferences.type_to_search()
+            && match query {
+                super::window::TypeToSearchQuery::Empty => state.view.show_filter(),
+                super::window::TypeToSearchQuery::Character(character) => {
+                    state.view.show_filter_with_query(&character.to_string())
+                }
+            }
+        {
             return glib::Propagation::Stop;
         }
         if !shift

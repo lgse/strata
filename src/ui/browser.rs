@@ -145,6 +145,7 @@ pub(super) struct ViewState {
     breadcrumbs: gtk::Box,
     breadcrumb_scroller: gtk::ScrolledWindow,
     location_entry: gtk::Entry,
+    path_completion: Rc<location::completion::PathCompletion>,
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
     mode_views: RefCell<ModeViews>,
@@ -180,6 +181,7 @@ pub(super) struct ViewState {
     pending_file_progress: RefCell<Option<glib::SourceId>>,
     file_operation_progress: Cell<(usize, usize)>,
     transfer_progress: Cell<Option<(usize, u64, Option<u64>)>>,
+    flushing_to_device: Cell<bool>,
     pin_handler: RefCell<Option<PinHandler>>,
     unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
@@ -291,13 +293,13 @@ impl BrowserView {
 
         let location_entry = gtk::Entry::builder()
             .hexpand(true)
-            .width_chars(48)
-            .placeholder_text("Enter an absolute path")
-            .tooltip_text("Location (Ctrl+L)")
+            .width_chars(36)
+            .placeholder_text("Enter a path or URI…")
+            .tooltip_text(super::accessibility::LOCATION_LABEL)
             .build();
         location_entry.add_css_class("location-entry");
         let confirm_location = gtk::Button::builder()
-            .tooltip_text("Navigate (Enter)")
+            .tooltip_text(super::accessibility::LOCATION_CONFIRM_LABEL)
             .build();
         confirm_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::CHECK,
@@ -305,18 +307,24 @@ impl BrowserView {
         )));
         confirm_location.add_css_class("location-action");
         let cancel_location = gtk::Button::builder()
-            .tooltip_text("Cancel (Escape)")
+            .tooltip_text(super::accessibility::LOCATION_CANCEL_LABEL)
             .build();
         cancel_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::X,
             16,
         )));
         cancel_location.add_css_class("location-action");
+        super::accessibility::describe_location_controls(
+            &location_entry,
+            &confirm_location,
+            &cancel_location,
+        );
         let entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         entry_row.append(&location_entry);
         entry_row.append(&confirm_location);
         entry_row.append(&cancel_location);
         let entry_control = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        entry_control.set_hexpand(true);
         entry_control.append(&entry_row);
 
         let breadcrumbs = gtk::Box::new(gtk::Orientation::Horizontal, 2);
@@ -474,6 +482,24 @@ impl BrowserView {
         let multiple_selection = Rc::new(Cell::new(multiple));
         let mode_views = ModeViews::new(&scroller, browser.clone(), multiple_selection.clone());
         overlay.set_child(Some(&mode_views.widget()));
+        let pending_submit = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
+        let pending_submit_cb = pending_submit.clone();
+        let location_stack_for_completion = location_stack.clone();
+        let path_completion = location::completion::PathCompletion::attach(
+            &location_entry,
+            browser.clone(),
+            move || {
+                location_stack_for_completion
+                    .visible_child_name()
+                    .as_deref()
+                    == Some("entry")
+            },
+            move || {
+                if let Some(submit) = pending_submit_cb.borrow().as_ref() {
+                    submit();
+                }
+            },
+        );
         let state = Rc::new(ViewState {
             overlay,
             location_control,
@@ -483,6 +509,7 @@ impl BrowserView {
             breadcrumbs,
             breadcrumb_scroller: breadcrumb_scroller.clone(),
             location_entry,
+            path_completion,
             columns_widget,
             scroller,
             mode: Cell::new(mode_views.mode()),
@@ -518,6 +545,7 @@ impl BrowserView {
             pending_file_progress: RefCell::new(None),
             file_operation_progress: Cell::new((0, 0)),
             transfer_progress: Cell::new(None),
+            flushing_to_device: Cell::new(false),
             pin_handler: RefCell::new(None),
             unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
@@ -543,6 +571,13 @@ impl BrowserView {
             suppress_scroll_after_drop: Cell::new(false),
             browser,
         });
+
+        let weak_state = Rc::downgrade(&state);
+        *pending_submit.borrow_mut() = Some(Rc::new(move || {
+            if let Some(state) = weak_state.upgrade() {
+                state.submit_location();
+            }
+        }));
 
         // Columns are laid out from the start edge, so the blank strip beside the last
         // one is the natural place to begin a marquee that runs into it.
@@ -875,10 +910,11 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
-    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
-    /// and run into whichever view the current mode shows. The pane nearest the start
-    /// edge is the target, since that is the one such a drag runs into.
-    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>) {
+    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar or
+    /// the preview pane — and run into whichever view the current mode shows. The pane
+    /// nearest the `edge` the surface sits on is the target, since that is the one such
+    /// a drag runs into.
+    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>, edge: gtk::PackType) {
         let weak_state = Rc::downgrade(&self.state);
         super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
             let state = weak_state.upgrade()?;
@@ -887,11 +923,12 @@ impl BrowserView {
             state.pointer_navigation();
             let mode = state.mode.get();
             if mode == BrowserMode::Columns {
-                return state
-                    .columns
-                    .borrow()
-                    .first()
-                    .map(|column| column.marquee.clone());
+                let columns = state.columns.borrow();
+                let column = match edge {
+                    gtk::PackType::End => columns.last(),
+                    _ => columns.first(),
+                };
+                return column.map(|column| column.marquee.clone());
             }
             state.mode_views.borrow().leading_marquee()
         });
@@ -1300,6 +1337,14 @@ impl BrowserView {
         }
     }
 
+    pub(in crate::ui) fn set_archive_preview_active(&self, active: bool) {
+        if active {
+            self.state.overlay.add_css_class("archive-preview");
+        } else {
+            self.state.overlay.remove_css_class("archive-preview");
+        }
+    }
+
     pub fn keyboard_navigation(&self) {
         self.state
             .input_ownership
@@ -1449,7 +1494,19 @@ impl BrowserView {
     }
 
     pub fn show_focused_properties(&self) -> bool {
+        if let Some(selected) = self.selected_search_results() {
+            if selected.is_empty() {
+                return false;
+            }
+            self.state.show_selection_properties(selected);
+            return true;
+        }
         self.state.sync_mode_selection();
+        let selected = self.state.browser.selected_entries();
+        if selected.len() > 1 {
+            self.state.show_selection_properties(selected);
+            return true;
+        }
         let Some(entry) = self.state.browser.focused_entry() else {
             return false;
         };
@@ -1552,6 +1609,22 @@ impl BrowserView {
             fly_to_trash::fly_from_trash(&source, &entries, &trash_button, || {});
         }
         undone
+    }
+
+    pub fn redo_last_operation(&self) -> bool {
+        if let Some((generation, _, _)) = self.state.browser.pending_redo_rename() {
+            return self.state.browser.redo_rename(generation);
+        }
+        if let Some((generation, records)) = self.state.browser.pending_redo_move() {
+            return self.state.redo_move(generation, records);
+        }
+        if let Some((generation, locations)) = self.state.browser.pending_redo_copy() {
+            return self.state.browser.redo_copy(generation, locations);
+        }
+        if let Some((generation, locations)) = self.state.browser.pending_redo_trash() {
+            return self.state.redo_trash(generation, locations);
+        }
+        false
     }
 
     pub fn show_filter(&self) -> bool {

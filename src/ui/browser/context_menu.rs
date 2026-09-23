@@ -873,6 +873,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     permanent_delete_multiple.add_css_class("danger");
     let compress_multiple =
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
+    let properties_multiple =
+        item_context_option(crate::assets::icons::INFO, "Properties", "Alt+Enter");
     multiple_open.append(&open_multiple);
     multiple_open.append(&open_with_multiple);
     multiple_open.append(&restore_multiple);
@@ -890,6 +892,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let multiple_archive_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     multiple.append(&compress_multiple);
     multiple.append(&multiple_archive_separator);
+    multiple.append(&properties_multiple);
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
     multiple.append(&permanent_delete_multiple);
     multiple.set_visible(false);
@@ -1248,6 +1252,15 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             state.show_entry_properties_at(entry, depth);
         }
     });
+    connect_selection_action(
+        &properties_multiple,
+        &popover,
+        state,
+        &target,
+        |state, entries| {
+            state.show_selection_properties(entries);
+        },
+    );
     let weak = Rc::downgrade(state);
     let paths_target = target.clone();
     let paths_popover = popover.downgrade();
