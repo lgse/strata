@@ -1720,7 +1720,7 @@ struct IconsControls {
 
 pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
-        .placeholder_text("Filter items…")
+        .placeholder_text(super::browser::filter_placeholder(0))
         .tooltip_text("Filter by name. Use * for any characters: *.png, IMG*, or IMG*.png.")
         .has_frame(false)
         .hexpand(true)
@@ -4264,6 +4264,9 @@ fn reconnect_pane_model(pane: &Pane) {
 
 fn show_count(pane: &Pane) {
     let count = pane.model.n_items();
+    if let Some(entry) = &pane.filter_entry {
+        entry.set_placeholder_text(Some(&super::browser::filter_placeholder(count as usize)));
+    }
     if count == 0 {
         pane.status.remove_css_class("error");
         pane.status.set_label("This directory is empty");

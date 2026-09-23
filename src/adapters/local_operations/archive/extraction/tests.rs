@@ -4,6 +4,7 @@ use std::{
     error::Error,
     fs,
     io::{self, Read},
+    path::PathBuf,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
@@ -47,7 +48,8 @@ fn members_share_conflict_names_and_count_only_completed_work() -> Result<(), Bo
     assert!(fs::read(root.path().join("report (2).txt"))?.is_empty());
     assert!(matches!(
         session.finish(Ok(()), || panic!("completion must not enumerate remaining members"))?,
-        ArchiveOutcome::Completed(Some(name)) if name == "folder (2)"
+        ArchiveOutcome::Completed(roots)
+            if roots.roots == [PathBuf::from("folder (2)"), PathBuf::from("report (2).txt")]
     ));
     Ok(())
 }
@@ -79,6 +81,20 @@ fn unsafe_member_paths_are_sanitized_without_stopping_extraction() -> Result<(),
     assert_eq!(fs::read(destination.join("after.txt"))?, b"after");
     assert!(!root.path().join("escaped.txt").exists());
     assert_eq!(progress.load(Ordering::Relaxed), 3);
+    let ArchiveOutcome::Completed(output) = session.finish(Ok(()), Vec::new)? else {
+        panic!("extraction was cancelled");
+    };
+    assert_eq!(output.bundle("bundle.zip")?, Some("bundle".to_owned()));
+    assert_eq!(
+        fs::read(destination.join("bundle/escaped.txt"))?,
+        b"escaped"
+    );
+    assert_eq!(
+        fs::read(destination.join("bundle/escaped (2).txt"))?,
+        b"duplicate"
+    );
+    assert_eq!(fs::read(destination.join("bundle/after.txt"))?, b"after");
+    assert_eq!(destination.read_dir()?.count(), 1);
     Ok(())
 }
 
@@ -270,7 +286,7 @@ fn completed_worker_is_not_reclassified_by_late_cancellation() -> Result<(), Box
     session.extract_member("empty.txt", MemberContent::File(&mut io::empty(), Some(0)))?;
     cancelled.store(true, Ordering::Relaxed);
     assert!(
-        matches!(session.finish(Ok(()), Vec::new)?, ArchiveOutcome::Completed(Some(name)) if name == "empty.txt")
+        matches!(session.finish(Ok(()), Vec::new)?, ArchiveOutcome::Completed(roots) if roots.roots == [PathBuf::from("empty.txt")])
     );
     assert_eq!(progress.load(Ordering::Relaxed), 1);
     Ok(())
@@ -373,7 +389,7 @@ fn empty_session_completes_without_a_first_name() -> Result<(), Box<dyn Error>> 
     let session = ExtractionSession::open(root.path(), &progress, &cancelled)?;
     assert!(matches!(
         session.finish(Ok(()), Vec::new)?,
-        ArchiveOutcome::Completed(None)
+        ArchiveOutcome::Completed(roots) if roots.roots.is_empty()
     ));
     assert_eq!(progress.load(Ordering::Relaxed), 0);
     Ok(())
@@ -529,7 +545,7 @@ fn matching_declared_size_completes_under_an_injected_quota() -> Result<(), Box<
     )?;
     assert!(matches!(
         session.finish(Ok(()), Vec::new)?,
-        ArchiveOutcome::Completed(Some(name)) if name == "ok.txt"
+        ArchiveOutcome::Completed(roots) if roots.roots == [PathBuf::from("ok.txt")]
     ));
     assert_eq!(fs::read(root.path().join("ok.txt"))?, b"contents");
     assert_eq!(progress.load(Ordering::Relaxed), 1);
@@ -556,7 +572,8 @@ fn unreported_free_space_skips_capacity_checks() -> Result<(), Box<dyn Error>> {
 
     assert!(matches!(
         session.finish(Ok(()), Vec::new)?,
-        ArchiveOutcome::Completed(Some(name)) if name == "declared.txt"
+        ArchiveOutcome::Completed(roots)
+            if roots.roots == [PathBuf::from("declared.txt"), PathBuf::from("undeclared.txt")]
     ));
     assert_eq!(fs::read(root.path().join("declared.txt"))?, b"12345678");
     assert_eq!(fs::read(root.path().join("undeclared.txt"))?, b"12345678");

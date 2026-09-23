@@ -285,6 +285,30 @@ fn cancellation_before_presentation_is_sticky_and_cleanup_is_race_safe() {
 }
 
 #[test]
+fn backend_idles_only_after_the_last_request_finishes() {
+    let tracker = Arc::new(RequestTracker::default());
+    let first = tracker.begin("first".into()).expect("first request");
+    let second = tracker.begin("second".into()).expect("second request");
+    let old = Instant::now() - IDLE_TIMEOUT - Duration::from_secs(1);
+    tracker.state.lock().expect("request state").last_activity = old;
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    drop(first);
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    drop(second);
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    tracker.state.lock().expect("request state").last_activity = old;
+    let third = tracker
+        .begin("third".into())
+        .expect("new request resets idle");
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    drop(third);
+    assert!(!tracker.begin_shutdown_if_idle(Instant::now()));
+    tracker.state.lock().expect("request state").last_activity = old;
+    assert!(tracker.begin_shutdown_if_idle(Instant::now()));
+    assert!(tracker.begin("too-late".into()).is_err());
+}
+
+#[test]
 fn untrusted_request_inputs_are_bounded() {
     let too_long = "x".repeat(MAX_STRING_BYTES + 1);
     assert!(

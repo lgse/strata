@@ -280,6 +280,8 @@ const DIALOG_MARGIN: i32 = 24;
 const COMPACT_NAVIGATION_BREAKPOINT: i32 = 900;
 // Reflow the content before collapsing navigation: desktop toolbars need more room.
 const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
+const MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH: i32 = 620;
+const STACK_ACTIVATION_OPTIONS_BREAKPOINT: i32 = 350;
 const STACK_TEXT_SIZE_BREAKPOINT: i32 = 600;
 
 mod responsive_bin {
@@ -379,31 +381,46 @@ mod responsive_bin {
                     });
                     row.set_spacing(if compact { 8 } else { 16 });
                 }
-                for responsive_row in self.responsive_activation_rows.borrow().iter() {
-                    responsive_row.row.set_orientation(if compact {
+            }
+            let available_activation_width = child_width - if compact { 100 } else { 330 };
+            let scaled_activation_width = MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH as f64
+                + (self.typography_scale.get() - 1.0).max(0.0) * 320.0;
+            let activation_compact =
+                f64::from(available_activation_width) < scaled_activation_width;
+            let stack_activation_options =
+                available_activation_width < STACK_ACTIVATION_OPTIONS_BREAKPOINT;
+            for responsive_row in self.responsive_activation_rows.borrow().iter() {
+                responsive_row.row.set_orientation(if activation_compact {
+                    gtk::Orientation::Vertical
+                } else {
+                    gtk::Orientation::Horizontal
+                });
+                responsive_row
+                    .row
+                    .set_spacing(if activation_compact { 4 } else { 24 });
+                for option in &responsive_row.options {
+                    option.set_orientation(if stack_activation_options {
                         gtk::Orientation::Vertical
                     } else {
                         gtk::Orientation::Horizontal
                     });
-                    responsive_row.row.set_spacing(if compact { 4 } else { 24 });
-                    for option in &responsive_row.options {
-                        option.set_orientation(if compact {
-                            gtk::Orientation::Vertical
-                        } else {
-                            gtk::Orientation::Horizontal
-                        });
-                        option.set_spacing(if compact { 2 } else { 6 });
-                    }
-                    if compact {
-                        responsive_row.row.add_css_class("compact");
+                    option.set_spacing(if stack_activation_options { 2 } else { 6 });
+                    option.set_halign(if activation_compact && !stack_activation_options {
+                        gtk::Align::End
                     } else {
-                        responsive_row.row.remove_css_class("compact");
-                    }
+                        gtk::Align::Fill
+                    });
+                }
+                if activation_compact {
+                    responsive_row.row.add_css_class("compact");
+                } else {
+                    responsive_row.row.remove_css_class("compact");
                 }
             }
             reflow_settings(
                 &child,
                 compact_content,
+                activation_compact,
                 logical_width < f64::from(STACK_TEXT_SIZE_BREAKPOINT),
             );
             let x = ((width - child_width) / 2) as f32;
@@ -484,7 +501,12 @@ impl ResponsiveBin {
     }
 }
 
-fn reflow_settings(widget: &gtk::Widget, compact: bool, stack_text_size: bool) {
+fn reflow_settings(
+    widget: &gtk::Widget,
+    compact: bool,
+    activation_compact: bool,
+    stack_text_size: bool,
+) {
     if widget.has_css_class("settings-dialog") {
         if compact {
             widget.add_css_class("compact");
@@ -579,15 +601,15 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool, stack_text_size: bool) {
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     }
     if widget.has_css_class("activation-header") {
-        widget.set_visible(!compact);
+        widget.set_visible(!activation_compact);
     }
     if widget.has_css_class("activation-inline-label") {
-        widget.set_visible(compact);
+        widget.set_visible(activation_compact);
     }
     let mut child = widget.first_child();
     while let Some(next) = child {
         child = next.next_sibling();
-        reflow_settings(&next, compact, stack_text_size);
+        reflow_settings(&next, compact, activation_compact, stack_text_size);
     }
 }
 
@@ -1772,6 +1794,7 @@ fn update_check_row(
                     button_for_installed.set_sensitive(true);
                     installed_for_installed.set(true);
                     checking_for_installed.set(false);
+                    restart_application(&button_for_installed);
                 },
                 move |message| {
                     match message {
@@ -1953,20 +1976,33 @@ fn restart_application(button: &gtk::Button) {
     restart(application.as_ref());
 }
 
+fn process_start_time(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // comm (field 2) may contain spaces or parentheses; the remaining fields
+    // begin after its final closing parenthesis. starttime is field 22.
+    stat.rsplit_once(") ")?
+        .1
+        .split_whitespace()
+        .nth(19)
+        .map(str::to_owned)
+}
+
 fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Command> {
     use std::{os::unix::process::CommandExt, process::Stdio};
 
     let mut command = crate::trusted_command::command("sh").ok()?;
     let sleep = crate::trusted_command::resolve("sleep").ok()?;
+    let start_time = process_start_time(parent_pid).unwrap_or_default();
     command
         .args([
             "-c",
-            "while kill -0 \"$1\" 2>/dev/null; do \"$3\" 0.1; done; \"$3\" 0.5; exec \"$2\"",
+            "pid=$1; binary=$2; sleeper=$3; born=$4; while kill -0 \"$pid\" 2>/dev/null && [ -r \"/proc/$pid/stat\" ]; do IFS= read -r stat < \"/proc/$pid/stat\" || break; rest=${stat##*) }; set -- $rest; shift 19; [ \"${1:-}\" = \"$born\" ] || break; \"$sleeper\" 0.1; done; \"$sleeper\" 0.5; exec \"$binary\"",
             "strata-restart",
         ])
         .arg(parent_pid.to_string())
         .arg(current_exe)
         .arg(sleep)
+        .arg(start_time)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -2301,6 +2337,7 @@ pub(super) fn show_update_dialog(
                 action_for_installed.add_css_class("suggested-action");
                 action_for_installed.set_sensitive(true);
                 installed_for_installed.set(true);
+                restart_application(&action_for_installed);
             },
             move |message| {
                 match message {

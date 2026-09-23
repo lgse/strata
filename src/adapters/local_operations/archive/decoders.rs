@@ -19,7 +19,7 @@ use std::{
 
 use super::{
     ARCHIVE_CANCELLED, ArchiveError, archive_failed,
-    extraction::{ArchiveOutcome, ExtractionSession, MemberContent},
+    extraction::{ArchiveOutcome, ExtractedRoots, ExtractionSession, MemberContent},
 };
 
 mod rar;
@@ -159,7 +159,7 @@ pub(super) fn extract_zip_from_archive(
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
     if let Some(claimed) = archive.decompressed_size() {
         session.preflight_claimed_size(claimed)?;
@@ -206,7 +206,7 @@ pub(super) fn extract_tar(
     gzip: bool,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
     let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
     let reader: Box<dyn std::io::Read> = if gzip {
@@ -270,7 +270,7 @@ pub(super) fn extract_7z_from_reader(
     password: sevenz_rust2::Password,
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
-) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
     let password_supplied = !password.is_empty();
     let mut archive =

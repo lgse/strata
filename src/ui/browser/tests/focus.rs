@@ -1070,3 +1070,132 @@ fn background_click_keeps_the_scrolled_column_in_place() {
         },
     );
 }
+
+#[test]
+fn entering_mirrored_column_selects_first_visible_entry() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::entering_mirrored_column_selects_first_visible_entry",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("folder")).expect("folder");
+            std::fs::create_dir(fixture.path().join("folder/.hidden")).expect("hidden directory");
+            std::fs::write(fixture.path().join("folder/visible.txt"), "visible")
+                .expect("visible file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            view.keyboard_navigation();
+            browser.select(0, 0);
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            assert_eq!(browser.active_depth(), Some(0));
+
+            browser.enter_focused_directory();
+            assert_eq!(browser.active_depth(), Some(1));
+            assert_eq!(
+                browser
+                    .focused_item()
+                    .map(|(_, _, entry)| entry.display_name),
+                Some("visible.txt".into())
+            );
+            assert_eq!(browser.selected_entries().len(), 1);
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
+fn column_keyboard_selection_mirrors_folder_and_closes_on_file() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::column_keyboard_selection_mirrors_folder_and_closes_on_file",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("AFolder")).expect("folder a");
+            std::fs::create_dir(fixture.path().join("BFolder")).expect("folder b");
+            std::fs::write(fixture.path().join("x.txt"), "x").expect("fixture file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let previews = Rc::new(RefCell::new(Vec::new()));
+            let added = Rc::new(RefCell::new(Vec::new()));
+            browser.observe({
+                let previews = previews.clone();
+                let added = added.clone();
+                move |event| match event {
+                    BrowserEvent::PreviewRequested { entry } => {
+                        previews.borrow_mut().push(entry.location.clone());
+                    }
+                    BrowserEvent::ColumnAdded { depth, location } => {
+                        added.borrow_mut().push((*depth, location.clone()));
+                    }
+                    _ => {}
+                }
+            });
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            view.keyboard_navigation();
+            let position = |name: &str| {
+                browser
+                    .with_entries(
+                        0,
+                        0..browser.column_snapshot(0).expect("root column").count,
+                        |entries| entries.iter().position(|entry| entry.display_name == name),
+                    )
+                    .flatten()
+                    .expect("fixture entry")
+            };
+
+            browser.select(0, position("AFolder"));
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            assert_eq!(
+                browser.location_at(1),
+                Some(Location::local(fixture.path().join("AFolder")))
+            );
+            assert_eq!(
+                browser.active_depth(),
+                Some(0),
+                "mirroring must keep the parent column active"
+            );
+
+            browser.select(0, position("BFolder"));
+            wait_until(|| {
+                browser.location_at(1) == Some(Location::local(fixture.path().join("BFolder")))
+            });
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+
+            browser.select(0, position("x.txt"));
+            wait_until(|| !previews.borrow().is_empty());
+            assert_eq!(
+                previews.borrow().as_slice(),
+                &[Location::local(fixture.path().join("x.txt"))],
+                "a focused file opens Quick Preview"
+            );
+            wait_until(|| browser.column_snapshot(1).is_none());
+
+            browser.select(0, position("AFolder"));
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            browser.close_column(1);
+            settle();
+            assert!(
+                browser.column_snapshot(1).is_none(),
+                "closing a pane must not reopen it through the mirror"
+            );
+
+            added.borrow_mut().clear();
+            browser.select(0, position("BFolder"));
+            browser.select(0, position("AFolder"));
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            assert_eq!(
+                added.borrow().as_slice(),
+                &[(1, Location::local(fixture.path().join("AFolder")))],
+                "fast selection changes must coalesce into the landing folder"
+            );
+            browser.clear_observer();
+        },
+    );
+}

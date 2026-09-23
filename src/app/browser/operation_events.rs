@@ -295,7 +295,11 @@ impl Browser {
         )
     }
 
-    fn finish_transfer(&self, completion: &mut OperationCompletion, event: &OperationEvent) {
+    fn finish_transfer(
+        self: &Rc<Self>,
+        completion: &mut OperationCompletion,
+        event: &OperationEvent,
+    ) {
         let Some(moving) = completion.moving else {
             return;
         };
@@ -316,6 +320,9 @@ impl Browser {
             Vec::new()
         };
         completion.record_transfer_undo(&moved, created, self.merged_undo.take());
+        for location in &moved {
+            self.retire_recent_target(location);
+        }
         self.emit(BrowserEvent::TransferFinished {
             moved_locations: if completion.undoing {
                 Vec::new()

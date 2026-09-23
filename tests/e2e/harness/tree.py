@@ -138,8 +138,6 @@ class Node:
 
     @property
     def numeric_value(self) -> float | None:
-        """The current value when the node implements Value."""
-
         try:
             interface = Atspi.Accessible.get_value_iface(self._accessible)
         except Exception:

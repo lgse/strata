@@ -326,6 +326,8 @@ fn archive_preview_keys_navigate_the_tree_without_moving_the_listing() {
 
             assert!(fixture.press(Key::space, ModifierType::empty()));
             wait_until(|| !fixture.preview.is_open());
+            // This fixture lacks the split binding that restores listing focus on close.
+            fixture.view.browser().focus_active();
             assert!(fixture.press(Key::space, ModifierType::empty()));
             wait_until(|| fixture.preview.is_open());
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
@@ -358,6 +360,36 @@ fn archive_keys_route_when_the_preview_list_has_focus() {
             wait_until(|| !fixture.preview.is_open());
             assert_eq!(fixture.selected(), [1]);
             wait_until(|| fixture.view.item_view_has_focus());
+        },
+    );
+}
+
+#[test]
+fn space_opening_archive_focuses_the_tree_first_entry() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::space_opening_archive_focuses_the_tree_first_entry",
+        || {
+            let fixture = KeyboardFixture::with_archive();
+            assert!(fixture.press(Key::space, ModifierType::empty()));
+            wait_until(|| {
+                widget_with_class(&fixture.preview.widget(), "preview-archive").is_some()
+            });
+            let list = widget_with_class(&fixture.preview.widget(), "preview-archive-list")
+                .expect("archive list");
+            wait_until(|| list.is_mapped());
+            let focused = gtk::prelude::RootExt::focus(&fixture.window).expect("window focus");
+            assert!(
+                focused == list || focused.is_ancestor(&list),
+                "archive tree must own keyboard focus, got {focused:?}"
+            );
+            assert_eq!(fixture.selected(), [1]);
+            assert!(fixture.press(Key::Down, ModifierType::empty()));
+            assert_eq!(fixture.selected(), [1]);
+            assert!(fixture.press(Key::Up, ModifierType::empty()));
+            assert_eq!(fixture.selected(), [1]);
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            wait_until(|| !fixture.preview.is_open());
+            assert_eq!(fixture.selected(), [1]);
         },
     );
 }
@@ -714,6 +746,38 @@ fn arrow_scope_preference_keeps_up_in_the_file_list() {
                         assert_eq!(fixture.view.item_view_has_focus(), scoped, "{mode:?}");
                     }
                 }
+            }
+        },
+    );
+}
+
+#[test]
+fn right_from_the_sidebar_returns_to_the_files_after_the_header() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::right_from_the_sidebar_returns_to_the_files_after_the_header",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_arrow_navigation_scoped(false);
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                fixture.view.set_view_mode(mode);
+                fixture.view.browser().select(0, 0);
+                fixture.view.browser().focus_active();
+                wait_until(|| fixture.view.item_view_has_focus());
+
+                fixture.press(Key::Up, ModifierType::empty());
+                wait_until(|| fixture.view.header_actions_have_focus());
+
+                fixture.press(Key::Left, ModifierType::empty());
+                wait_until(|| {
+                    gtk::prelude::RootExt::focus(&fixture.window)
+                        .is_some_and(|focus| focus.is_ancestor(&fixture.sidebar.widget))
+                });
+
+                assert!(fixture.press(Key::Right, ModifierType::empty()), "{mode:?}");
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?}: Right from the sidebar must re-enter the file view"
+                );
             }
         },
     );

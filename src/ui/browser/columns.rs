@@ -7,8 +7,9 @@ use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
     ActivePaneFilter, ViewMap, activate_recursive_search_result, apply_filter_query,
     apply_selection_plan, bind_filter_query, bitset_positions, cancel_source,
-    deactivate_recursive_search, detach_collection_view, recursive_search_activation_key,
-    restore_filter_controls, scroll_collection_when_allocated, search_result_navigation_position,
+    deactivate_recursive_search, detach_collection_view, filter_placeholder,
+    recursive_search_activation_key, restore_filter_controls, scroll_collection_when_allocated,
+    search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
@@ -272,10 +273,9 @@ pub(super) fn prune_missing_search_results(column: &ColumnView) -> bool {
 }
 
 pub(super) fn set_filter_placeholder(column: &ColumnView, count: usize) {
-    let noun = if count == 1 { "item" } else { "items" };
     column
         .filter_entry
-        .set_placeholder_text(Some(&format!("Filter {count} {noun}…")));
+        .set_placeholder_text(Some(&filter_placeholder(count)));
 }
 
 pub(super) fn touch_source_model(column: &ColumnView) {
@@ -706,7 +706,6 @@ impl ViewState {
 
         let (filter_entry, filter_revealer, filter_button) =
             crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
-        filter_entry.set_placeholder_text(Some("Filter 0 items…"));
         let weak_self = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
             if button.is_active()

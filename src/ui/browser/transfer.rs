@@ -16,7 +16,7 @@ use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, compact_native_path, is_trash_location,
 };
 use crate::ui::controls::{
-    ModalTone, form_check_button, form_entry, form_label, message_dialog_description,
+    ModalTone, focus_button, form_check_button, form_entry, form_label, message_dialog_description,
     message_dialog_layout, modal_layout,
 };
 use crate::ui::modal::{
@@ -662,13 +662,7 @@ impl ViewState {
             }
         });
         layer.add_controller(escape);
-        let initial_focus = replace.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
-            }
-        });
+        focus_button(&replace);
     }
 
     pub(super) fn show_transfer_dialog(

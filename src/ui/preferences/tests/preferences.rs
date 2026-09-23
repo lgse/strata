@@ -295,6 +295,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(themes.selected_id(), "nord");
             assert!(!manager.folder_peeking());
             assert!(!manager.single_click_previews());
+            assert!(!manager.columns_mirror_selection());
             assert!(!manager.hardware_accelerated_video_previews());
             assert_eq!(manager.video_preview_backend(), MediaPreviewBackend::Vulkan);
             assert_eq!(
@@ -465,6 +466,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
             let preference_setters: &[fn(&PreferenceManager)] = &[
                 |m| m.set_folder_peeking(true),
                 |m| m.set_single_click_previews(true),
+                |m| m.set_columns_mirror_selection(true),
                 |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),

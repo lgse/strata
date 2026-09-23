@@ -39,6 +39,8 @@ pub(in crate::ui) struct Preferences {
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
     #[serde(default = "default_enabled")]
+    columns_mirror_selection: bool,
+    #[serde(default = "default_enabled")]
     render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     hardware_accelerated_video_previews: Option<bool>,
@@ -145,6 +147,7 @@ impl Default for Preferences {
             theme: "tokyo-night".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            columns_mirror_selection: true,
             render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
@@ -248,6 +251,10 @@ fn default_double_clicks() -> u8 {
 
 fn default_sidebar_order() -> Vec<String> {
     vec![
+        "home".to_owned(),
+        "trash".to_owned(),
+        "network".to_owned(),
+        "recent".to_owned(),
         "desktop".to_owned(),
         "documents".to_owned(),
         "downloads".to_owned(),
@@ -486,6 +493,15 @@ impl PreferenceManager {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.preferences.borrow_mut().single_click_previews = enabled;
+        self.save_preferences();
+    }
+
+    pub fn columns_mirror_selection(&self) -> bool {
+        self.preferences.borrow().columns_mirror_selection
+    }
+
+    pub fn set_columns_mirror_selection(&self, enabled: bool) {
+        self.preferences.borrow_mut().columns_mirror_selection = enabled;
         self.save_preferences();
     }
 

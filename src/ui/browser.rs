@@ -62,7 +62,7 @@ pub(crate) use crate::ui::browser::clipboard::{
 };
 pub(super) use crate::ui::browser::clipboard::{file_drag_content, set_cut_result_style};
 pub(crate) use crate::ui::browser::collection::{
-    ActivePaneFilter, debounce_filter_entry, detach_collection_view,
+    ActivePaneFilter, debounce_filter_entry, detach_collection_view, filter_placeholder,
     focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
     prepare_collection_inline_edit, restore_filter_controls, reveal_collection_after_layout,
     scroll_collection_when_allocated, search_result_entry,
@@ -158,6 +158,7 @@ pub(super) struct ViewState {
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     suppress_focus_scroll: Cell<bool>,
+    pending_mirror: RefCell<Option<glib::SourceId>>,
     source_generation: Rc<Cell<u64>>,
     refreshing_source_filter: Cell<bool>,
     peek: RefCell<Option<PeekView>>,
@@ -167,6 +168,7 @@ pub(super) struct ViewState {
     peek_behavior: PeekBehavior,
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
+    columns_mirror_selection: Cell<bool>,
     multiple_selection: Rc<Cell<bool>>,
     interactive: bool,
     columns_click_activation: Cell<ClickActivation>,
@@ -522,6 +524,7 @@ impl BrowserView {
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             suppress_focus_scroll: Cell::new(false),
+            pending_mirror: RefCell::new(None),
             source_generation,
             refreshing_source_filter: Cell::new(false),
             peek: RefCell::new(None),
@@ -531,6 +534,7 @@ impl BrowserView {
             peek_behavior,
             peek_enabled: Cell::new(true),
             single_click_previews: Cell::new(true),
+            columns_mirror_selection: Cell::new(true),
             multiple_selection,
             interactive,
             columns_click_activation: Cell::new(ClickActivation::default()),
@@ -1303,6 +1307,15 @@ impl BrowserView {
                 .mode_views
                 .borrow()
                 .single_click_previews_enabled()
+    }
+
+    pub fn set_columns_mirror_selection(&self, enabled: bool) {
+        self.state.columns_mirror_selection.set(enabled);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn columns_mirror_selection_enabled(&self) -> bool {
+        self.state.columns_mirror_selection.get()
     }
 
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {

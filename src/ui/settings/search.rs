@@ -66,6 +66,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing keyboard navigation focus sidebar toolbar",
     },
     Target {
+        id: "columns-mirror",
+        page: "general",
+        title: "Mirror columns selection",
+        aliases: "browsing columns keyboard selection next pane folders",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",

@@ -329,6 +329,15 @@ impl Dispatcher {
     fn arrows_scoped_to_content(&self) -> bool {
         self.type_to_search.preferences.arrow_navigation_scoped()
     }
+
+    fn enter_sidebar(&self, event: &KeyEvent) {
+        let previous = self
+            .view
+            .item_view_has_focus()
+            .then(|| event.focused.clone())
+            .flatten();
+        self.sidebar.enter(&previous);
+    }
 }
 
 struct SidebarFocus {
