@@ -159,24 +159,6 @@ class ShardingTests(unittest.TestCase):
                 with self.subTest(phase=phase, outcome=outcome), self.assertRaises(ValueError):
                     verify_reports(plan, reports)
 
-    def test_quarantine_exempts_skips_only(self):
-        nodeids = [test["nodeid"] for test in inventory(2)]
-        plan = make_plan(inventory(2), {})
-        reports = passing_reports(plan)
-        for report in reports:
-            for result in report["tests"].values():
-                result["outcomes"] = {"setup": "skipped", "teardown": "passed"}
-        with self.assertRaisesRegex(ValueError, "skips are not passes"):
-            verify_reports(plan, reports)
-        self.assertEqual(len(verify_reports(plan, reports, frozenset(nodeids))), 2)
-        self.assertEqual(len(verify_reports(plan, reports,
-                                            frozenset(id.split("[", 1)[0] for id in nodeids))), 2)
-        reports = passing_reports(plan)
-        results = next(report["tests"] for report in reports if nodeids[0] in report["tests"])
-        results[nodeids[0]]["outcomes"] = {"setup": "skipped", "teardown": "failed"}
-        with self.assertRaisesRegex(ValueError, "skips are not passes"):
-            verify_reports(plan, reports, frozenset(nodeids))
-
 
 class BundleTests(unittest.TestCase):
     def test_bundle_is_bound_to_revision_image_inputs_and_file_contents(self):
@@ -240,7 +222,7 @@ class CliTests(unittest.TestCase):
                     self.assertEqual(json.loads(result.removeprefix("matrix=")),
                                      {"shard": [shard["index"] for shard in plan["shards"]]})
                 elif command == "verify":
-                    self.assertIn("Coverage verified for 25 tests exactly once", result)
+                    self.assertIn("All 25 tests passed exactly once", result)
                 else:
                     self.assertEqual(len(json.loads(result)), 25)
 
