@@ -1249,8 +1249,7 @@ impl ViewState {
 
     pub(super) fn cancel_location_edit(&self) {
         self.path_completion.dismiss();
-        // Switch away from the entry before resetting its text: the change
-        // signal re-opens the completion popover while it is still active.
+        // Resetting a visible entry emits changed and reopens its completion popover.
         self.location_stack.set_visible_child_name("breadcrumbs");
         self.restore_location_text();
         self.browser.focus_active();
@@ -1978,8 +1977,6 @@ impl ViewState {
             }
         }
         self.location_stack.set_visible_child_name("breadcrumbs");
-        // Set the entry text only after the stack hides the entry: the change
-        // signal re-opens the completion popover while it is still active.
         self.location_entry.set_text(&location.display_path());
         let Some(last) = self.breadcrumbs.last_child() else {
             return;

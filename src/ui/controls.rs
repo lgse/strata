@@ -163,8 +163,6 @@ pub(super) struct ModalLayout {
     pub icon: gtk::Image,
 }
 
-/// Focuses `button` once its dialog is on screen, without flashing a focus ring.
-/// Modals share this so Enter has one consistent keyboard target.
 pub(super) fn focus_button(button: &gtk::Button) {
     let weak = button.downgrade();
     glib::idle_add_local_once(move || {

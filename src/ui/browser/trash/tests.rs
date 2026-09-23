@@ -214,7 +214,10 @@ impl DeleteConfirmation {
             button.tooltip_text().as_deref() == Some("Close dialog")
         })
         .expect("close");
-        wait_until(|| cancel.has_focus(), "cancel should take initial focus");
+        wait_until(
+            || confirm.has_focus() && confirm.is_sensitive(),
+            "confirm should take initial focus once ready",
+        );
         let layer = find_widget(&root, &|widget: &gtk::Widget| {
             widget.has_css_class("app-modal-layer")
         })
@@ -287,10 +290,9 @@ fn enter_deletes_on_confirm() {
                 || dialog.confirm.is_sensitive(),
                 "confirm should become sensitive once the total is calculated",
             );
-            dialog.press(gtk::gdk::Key::Right);
-            wait_until(
-                || dialog.confirm.has_focus(),
-                "Right should move focus to Confirm",
+            assert!(
+                dialog.confirm.has_focus(),
+                "Confirm should have initial focus"
             );
             dialog.press(gtk::gdk::Key::Return);
             wait_until(

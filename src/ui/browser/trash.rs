@@ -326,7 +326,7 @@ impl ViewState {
         if let Some(view) = self.trash_loading.borrow().as_ref() {
             view.layer.add_controller(escape);
         }
-        focus_button(&cancel);
+        cancel.grab_focus();
         true
     }
 

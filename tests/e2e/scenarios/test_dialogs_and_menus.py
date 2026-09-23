@@ -260,8 +260,8 @@ def test_executable_without_handler_requires_confirmation(executable_file, strat
     dialog = strata.wait_for_dialog()
     assert "Run this program?" in dialog.dump()
     strata.wait(
-        lambda: "focused" in strata.dialog_button("Cancel").states,
-        "Cancel to receive initial focus",
+        lambda: "focused" in strata.dialog_button("Run").states,
+        "Run to receive initial focus",
     )
     assert strata.dialog_button("Close dialog").activate()
     strata.wait(lambda: strata.dialog() is None, "the close button to dismiss the dialog")
