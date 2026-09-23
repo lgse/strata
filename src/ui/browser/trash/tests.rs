@@ -214,7 +214,10 @@ impl DeleteConfirmation {
             button.tooltip_text().as_deref() == Some("Close dialog")
         })
         .expect("close");
-        wait_until(|| cancel.has_focus(), "cancel should take initial focus");
+        wait_until(
+            || confirm.has_focus(),
+            "confirm should take initial focus once armed",
+        );
         let layer = find_widget(&root, &|widget: &gtk::Widget| {
             widget.has_css_class("app-modal-layer")
         })

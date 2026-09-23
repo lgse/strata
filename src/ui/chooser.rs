@@ -40,7 +40,8 @@ use super::{
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::BrowserMode,
     controls::{
-        ModalTone, form_check_button, form_entry, form_label, menu_option, message_dialog_layout,
+        ModalTone, focus_button, form_check_button, form_entry, form_label, menu_option,
+        message_dialog_layout,
     },
     preferences::PreferenceManager,
     preview::{PreviewDrawer, preview_target},
@@ -738,7 +739,7 @@ impl ChooserState {
             }
         });
         layer.add_controller(escape);
-        layout.cancel.grab_focus();
+        focus_button(&layout.confirm);
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {

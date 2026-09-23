@@ -173,6 +173,7 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
                 state.update_empty_trash_progress(12);
                 assert_eq!(status.text(), "12 items deleted");
 
+                while glib::MainContext::default().iteration(false) {}
                 let cancel = gtk::prelude::GtkWindowExt::focus(&window)
                     .and_downcast::<gtk::Button>()
                     .expect("Cancel has focus");
