@@ -130,9 +130,17 @@ impl State {
 pub(super) struct InlineSearch {
     pub widget: gtk::Widget,
     state: Option<Rc<State>>,
+    marquee: Option<super::marquee::Marquee>,
 }
 
 impl InlineSearch {
+    pub(super) fn active_marquee(&self) -> Option<super::marquee::Marquee> {
+        let state = self.state.as_ref()?;
+        (state.stack.visible_child_name().as_deref() == Some("search"))
+            .then(|| self.marquee.clone())
+            .flatten()
+    }
+
     pub(in crate::ui) fn has_item_focus(&self, focused: Option<&gtk::Widget>) -> bool {
         self.state.as_ref().is_some_and(|state| {
             focused.is_some_and(|focused| {
@@ -378,7 +386,7 @@ fn install_marquee(
     scroll: &gtk::ScrolledWindow,
     overlay: &gtk::Overlay,
     allow_drag: Rc<Cell<bool>>,
-) {
+) -> super::marquee::Marquee {
     let weak = Rc::downgrade(state);
     let targets = Rc::new(RefCell::new(vec![super::marquee::MarqueeTarget {
         selection: state.collection.selection.clone(),
@@ -410,7 +418,7 @@ fn install_marquee(
             }
         }),
         allow_drag,
-    });
+    })
 }
 
 /// Keeps the view's normal presentation intact when the recursive query is dismissed.
@@ -425,6 +433,7 @@ pub(super) fn wrap(
         return InlineSearch {
             widget: content.clone().upcast(),
             state: None,
+            marquee: None,
         };
     };
     let SearchCollectionOptions {
@@ -482,7 +491,7 @@ pub(super) fn wrap(
                 state.emit_selection_changed();
             }
         });
-    install_marquee(&state, &scroll, &overlay, multiple_selection);
+    let marquee = install_marquee(&state, &scroll, &overlay, multiple_selection);
 
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -560,6 +569,7 @@ pub(super) fn wrap(
     let search = InlineSearch {
         widget: stack.clone().upcast(),
         state: Some(state.clone()),
+        marquee: Some(marquee),
     };
     let query_state = state.clone();
     let binding = super::browser::bind_filter_query(

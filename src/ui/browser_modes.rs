@@ -438,7 +438,9 @@ impl ModeViews {
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
         }?;
-        Some(pane.marquee.clone())
+        pane.search
+            .active_marquee()
+            .or_else(|| Some(pane.marquee.clone()))
     }
 
     fn single_pane(&self) -> Option<&Pane> {

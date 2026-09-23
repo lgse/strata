@@ -275,6 +275,7 @@ impl Marquee {
             };
             gesture.set_state(gtk::EventSequenceState::Claimed);
             state_for_begin.begin(anchor, gesture.current_event_state());
+            state_for_begin.clear_at_press();
         });
         connect_drag_progress(&gesture, &self.state);
         surface.add_controller(gesture.clone());
@@ -363,6 +364,7 @@ pub(super) fn install_shared_origin_surface(
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         state.begin(anchor, gesture.current_event_state());
+        state.clear_at_press();
         target_for_begin.replace(Some(state));
     });
     let target_for_update = target.clone();
@@ -373,21 +375,10 @@ pub(super) fn install_shared_origin_surface(
         };
         let state = target_for_update.borrow().clone();
         if let Some(state) = state {
-            if !state.dragging.get() {
-                if !state.allow_drag.get()
-                    || !super::pointer::exceeds_drag_threshold(
-                        (0.0, 0.0),
-                        (offset_x, offset_y),
-                        surface_for_update.settings().gtk_dnd_drag_threshold(),
-                    )
-                {
-                    return;
-                }
-                state.start_drag();
-            }
-            state.drag_to(
+            state.update_drag(
                 &surface_for_update,
-                (start_x + offset_x, start_y + offset_y),
+                (start_x, start_y),
+                (offset_x, offset_y),
             );
         }
     });
@@ -418,24 +409,9 @@ fn connect_drag_progress(gesture: &gtk::GestureDrag, state: &Rc<MarqueeState>) {
         let Some(origin) = gesture.widget() else {
             return;
         };
-        if !state_for_update.active.get() {
-            return;
-        }
-        if !state_for_update.dragging.get() {
-            if !state_for_update.allow_drag.get() {
-                return;
-            }
-            if !super::pointer::exceeds_drag_threshold(
-                (0.0, 0.0),
-                (offset_x, offset_y),
-                origin.settings().gtk_dnd_drag_threshold(),
-            ) {
-                return;
-            }
-            state_for_update.start_drag();
+        if state_for_update.update_drag(&origin, (start_x, start_y), (offset_x, offset_y)) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
-        state_for_update.drag_to(&origin, (start_x + offset_x, start_y + offset_y));
     });
     let state_for_end = state.clone();
     gesture.connect_drag_end(move |_, _, _| state_for_end.finish());
@@ -494,6 +470,31 @@ impl MarqueeState {
             modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
             modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
         ));
+    }
+
+    fn update_drag(
+        self: &Rc<Self>,
+        origin: &gtk::Widget,
+        start: (f64, f64),
+        offset: (f64, f64),
+    ) -> bool {
+        if !self.active.get() {
+            return false;
+        }
+        if !self.dragging.get() {
+            if !self.allow_drag.get()
+                || !super::pointer::exceeds_drag_threshold(
+                    (0.0, 0.0),
+                    offset,
+                    origin.settings().gtk_dnd_drag_threshold(),
+                )
+            {
+                return false;
+            }
+            self.start_drag();
+        }
+        self.drag_to(origin, (start.0 + offset.0, start.1 + offset.1));
+        true
     }
 
     fn start_drag(&self) {

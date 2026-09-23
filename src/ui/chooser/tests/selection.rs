@@ -212,14 +212,28 @@ fn is_inert_point(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     false
 }
 
-fn marquee_click(surface: &gtk::Widget, x: f64, y: f64, mode: BrowserMode, area: &str) {
+fn marquee_click(
+    surface: &gtk::Widget,
+    x: f64,
+    y: f64,
+    mode: BrowserMode,
+    area: &str,
+    after_press: impl FnOnce(),
+) {
     let drag = drag_on(surface)
         .unwrap_or_else(|| panic!("{mode:?} {area}: surface exposes no marquee drag"));
     drag.emit_by_name::<()>("drag-begin", &[&x, &y]);
+    after_press();
     drag.emit_by_name::<()>("drag-end", &[&0.0, &0.0]);
 }
 
-fn chrome_click(surface: &gtk::Widget, y_hint: f64, mode: BrowserMode, area: &str) {
+fn chrome_click(
+    surface: &gtk::Widget,
+    y_hint: f64,
+    mode: BrowserMode,
+    area: &str,
+    after_press: impl FnOnce(),
+) {
     let width = f64::from(surface.width());
     let xs = [
         width / 2.0,
@@ -238,10 +252,10 @@ fn chrome_click(surface: &gtk::Widget, y_hint: f64, mode: BrowserMode, area: &st
         }
     }
     let (x, y) = point.unwrap_or_else(|| panic!("{mode:?} {area}: no inert point found"));
-    marquee_click(surface, x, y, mode, area);
+    marquee_click(surface, x, y, mode, area, after_press);
 }
 
-fn background_click(scroll: &gtk::ScrolledWindow, mode: BrowserMode) {
+fn background_click(scroll: &gtk::ScrolledWindow, mode: BrowserMode, after_press: impl FnOnce()) {
     let x = f64::from(scroll.width()) / 2.0;
     let y = (0..scroll.height())
         .rev()
@@ -251,6 +265,7 @@ fn background_click(scroll: &gtk::ScrolledWindow, mode: BrowserMode) {
     let drag = drag_on(scroll.upcast_ref())
         .unwrap_or_else(|| panic!("{mode:?} file view: scroll exposes no marquee drag"));
     drag.emit_by_name::<()>("drag-begin", &[&x, &y]);
+    after_press();
     drag.emit_by_name::<()>("drag-end", &[&0.0, &0.0]);
 }
 
@@ -262,9 +277,11 @@ fn clicking_blank_chrome_clears_the_selection() {
             crate::ui::prepare_portal_ui();
             let context = glib::MainContext::default();
             let root = tempfile::tempdir().expect("fixture directory");
-            std::fs::write(root.path().join("notes.txt"), "notes").expect("text fixture");
+            let folder = root.path().join("nested");
+            std::fs::create_dir(&folder).expect("nested directory");
+            std::fs::write(folder.join("sample.txt"), "notes").expect("text fixture");
             std::fs::write(
-                root.path().join("sample.png"),
+                folder.join("sample.png"),
                 [
                     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49,
                     0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06,
@@ -275,7 +292,14 @@ fn clicking_blank_chrome_clears_the_selection() {
                 ],
             )
             .expect("image fixture");
-            for mode in [BrowserMode::Icons, BrowserMode::List] {
+            for (mode, recursive, multiple) in [BrowserMode::Icons, BrowserMode::List]
+                .into_iter()
+                .flat_map(|mode| {
+                    [false, true].into_iter().flat_map(move |recursive| {
+                        [false, true].map(|multiple| (mode, recursive, multiple))
+                    })
+                })
+            {
                 let request = ChooserRequest {
                     token: format!("empty-click-{mode:?}"),
                     title: "Empty click regression".into(),
@@ -283,10 +307,14 @@ fn clicking_blank_chrome_clears_the_selection() {
                     modal: false,
                     parent: None,
                     parent_size_hint: None,
-                    initial_directory: root.path().into(),
+                    initial_directory: if recursive {
+                        root.path().into()
+                    } else {
+                        folder.clone()
+                    },
                     kind: ChooserKind::Open {
                         directory: false,
-                        multiple: true,
+                        multiple,
                     },
                     filters: Vec::new(),
                     current_filter: None,
@@ -303,6 +331,25 @@ fn clicking_blank_chrome_clears_the_selection() {
                 while !initialized.get() {
                     context.iteration(true);
                 }
+                super::acceptance::wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                if recursive {
+                    assert!(view.show_filter_with_query("sample"));
+                    super::acceptance::wait_until(|| view.selected_search_results().is_some());
+                }
+                let selected_entries = || {
+                    view.selected_search_results()
+                        .unwrap_or_else(|| browser.selected_entries())
+                };
+                let cleared_on_press = || {
+                    assert!(
+                        selected_entries().is_empty(),
+                        "{mode:?} recursive={recursive} multiple={multiple}: clears on press"
+                    );
+                };
                 let deadline = Instant::now() + Duration::from_secs(10);
                 let item_view = loop {
                     while context.pending() {
@@ -324,13 +371,13 @@ fn clicking_blank_chrome_clears_the_selection() {
                 while context.pending() {
                     context.iteration(false);
                 }
-                assert_eq!(browser.selected_entries().len(), 1, "{mode:?} selection");
-                background_click(&scroll, mode);
+                assert_eq!(selected_entries().len(), 1, "{mode:?} selection");
+                background_click(&scroll, mode, cleared_on_press);
                 while context.pending() {
                     context.iteration(false);
                 }
                 assert!(
-                    browser.selected_entries().is_empty(),
+                    selected_entries().is_empty(),
                     "{mode:?} file view background click clears the selection"
                 );
 
@@ -340,7 +387,7 @@ fn clicking_blank_chrome_clears_the_selection() {
                     context.iteration(false);
                 }
                 assert_eq!(
-                    browser.selected_entries().len(),
+                    selected_entries().len(),
                     1,
                     "{mode:?} selection before sidebar click"
                 );
@@ -353,36 +400,31 @@ fn clicking_blank_chrome_clears_the_selection() {
                     f64::from(sidebar.height()) - 12.0,
                     mode,
                     "sidebar",
+                    cleared_on_press,
                 );
                 while context.pending() {
                     context.iteration(false);
                 }
                 assert!(
-                    browser.selected_entries().is_empty(),
+                    selected_entries().is_empty(),
                     "{mode:?} sidebar blank click clears the selection"
                 );
 
-                let depth = browser.active_depth().expect("active depth");
-                let image = (0usize..)
-                    .map_while(|position| {
-                        browser
-                            .entry_at(depth, position)
-                            .map(|entry| (position, entry))
+                let image = (0..model.n_items())
+                    .find(|&position| {
+                        model.select_item(position, true);
+                        selected_entries()
+                            .first()
+                            .is_some_and(|entry| entry.native_name == "sample.png")
                     })
-                    .find(|(_, entry)| entry.native_name == "sample.png")
-                    .map(|(position, _)| position)
                     .expect("image fixture position");
-                model.select_item(
-                    u32::try_from(image).expect("image position fits in u32"),
-                    true,
-                );
-                browser.set_selection(depth, &[image], Some(image));
-                view.focus_items_from_header();
+                assert!(item_view.grab_focus());
+                model.select_item(image, true);
                 while context.pending() {
                     context.iteration(false);
                 }
                 assert_eq!(
-                    browser.selected_entries().len(),
+                    selected_entries().len(),
                     1,
                     "{mode:?} selection before preview click"
                 );
@@ -439,22 +481,29 @@ fn clicking_blank_chrome_clears_the_selection() {
                     f64::from(preview_point.y()),
                     mode,
                     "preview title",
+                    || assert_eq!(selected_entries().len(), 1),
                 );
                 while context.pending() {
                     context.iteration(false);
                 }
                 assert_eq!(
-                    browser.selected_entries().len(),
+                    selected_entries().len(),
                     1,
                     "{mode:?} preview content keeps the selection"
                 );
 
-                chrome_click(&preview, 0.0, mode, "preview blank chrome");
+                chrome_click(
+                    &preview,
+                    0.0,
+                    mode,
+                    "preview blank chrome",
+                    cleared_on_press,
+                );
                 while context.pending() {
                     context.iteration(false);
                 }
                 assert!(
-                    browser.selected_entries().is_empty(),
+                    selected_entries().is_empty(),
                     "{mode:?} preview blank click clears the selection"
                 );
 
