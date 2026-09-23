@@ -4,7 +4,8 @@ mod cancellation;
 mod policy;
 
 use super::super::fixtures::{
-    compression_stage_mode, compression_stages, never_cancelled, write_compression_fixture,
+    compression_stage_mode, compression_stages, never_cancelled, trash_supported,
+    write_compression_fixture,
 };
 use super::{ArchiveError, inspect_archive_sources, process_umask, write_staged_archive};
 use crate::{
@@ -70,12 +71,16 @@ fn compression_staging_stays_private_while_encoding() -> Result<(), Box<dyn Erro
     assert_eq!(compression_stage_mode(&destination)?, 0o600);
 
     release.store(true, Ordering::Release);
-    let (published, recorded) = context.block_on(task)??;
-    assert_eq!(published, "existing.zip");
-    if let Some(recorded) = recorded {
-        assert_eq!(recorded, original);
+    let published = context.block_on(task)?;
+    if trash_supported(&destination)? {
+        let (published, recorded) = published?;
+        assert_eq!(published, "existing.zip");
+        assert_eq!(recorded, Some(original));
+        assert_eq!(fs::read(&archive)?, b"replacement");
+    } else {
+        assert!(matches!(published, Err(ArchiveError::Failed(_))));
+        assert_eq!(fs::read(&archive)?, b"original");
     }
-    assert_eq!(fs::read(&archive)?, b"replacement");
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
     assert!(compression_stages(&destination)?.is_empty());
     Ok(())

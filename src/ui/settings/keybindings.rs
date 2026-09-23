@@ -81,24 +81,30 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     empty.set_visible(false);
     reference.append(&empty);
     let groups = Rc::new(groups);
-    let refresh = {
-        let groups = groups.clone();
-        let count = count.clone();
-        let empty = empty.clone();
-        let search = search.clone();
-        Rc::new(move |minimal: bool| {
-            refresh_visible_shortcuts(&groups, minimal, search.text().as_str(), &count, &empty);
-        })
-    };
+    let search_widget = search.downgrade();
+    let empty_widget = empty.downgrade();
+    let count_widget = count.downgrade();
+    let refresh = Rc::new(move |count: &gtk::Widget, minimal: bool| {
+        let (Some(search), Some(empty)) = (search_widget.upgrade(), empty_widget.upgrade()) else {
+            return;
+        };
+        let Some(count) = count.downcast_ref::<gtk::Label>() else {
+            return;
+        };
+        refresh_visible_shortcuts(&groups, minimal, search.text().as_str(), count, &empty);
+    });
     let on_search = refresh.clone();
     let manager_for_search = manager.clone();
     search.connect_changed(move |search| {
         clear.set_visible(!search.text().is_empty());
-        on_search(manager_for_search.minimal_mode());
+        let Some(count) = count_widget.upgrade() else {
+            return;
+        };
+        on_search(count.upcast_ref(), manager_for_search.minimal_mode());
     });
     manager.bind_preference(&count, PreferenceManager::minimal_mode, {
         let refresh = refresh.clone();
-        move |_, minimal| refresh(minimal)
+        move |anchor, minimal| refresh(anchor, minimal)
     });
     scrollable_page(&content, Some("settings-keybindings-scroll"))
 }

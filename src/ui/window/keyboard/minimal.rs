@@ -278,8 +278,12 @@ impl Dispatcher<'_> {
     }
 
     fn rename_target_entry(&self, browser: &Rc<Browser>) -> Option<FileEntry> {
-        self.focused_search_result()
-            .or_else(|| browser.focused_entry())
+        // An empty overlay is still the active result list. Falling through to
+        // the directory cursor would rename a file the search is hiding.
+        if self.view.selected_search_results().is_some() {
+            return self.focused_search_result();
+        }
+        browser.focused_entry()
     }
 
     /// An empty `f` or `s` fill still has an independent search cursor. Select

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+use std::time::{Duration, Instant};
+
 use super::super::*;
 use crate::test_support::gtk_test;
 use crate::ui::preferences::PreferenceManager;
@@ -252,6 +254,81 @@ fn minimal_mode_labels_include_the_experimental_note() {
                     .any(|text| text == crate::ui::minimal_mode::LABELED_TITLE),
                 "keybindings heading includes the experimental note, got {categories:?}"
             );
+        },
+    );
+}
+
+#[test]
+fn destroying_the_keybindings_page_releases_shortcut_widgets_and_listeners() {
+    gtk_test(
+        "ui::settings::tests::reference::destroying_the_keybindings_page_releases_shortcut_widgets_and_listeners",
+        || {
+            let manager = PreferenceManager::shared();
+            manager.set_minimal_mode(false);
+            let baseline = manager.listener_count();
+            for _ in 0..2 {
+                let page = keybindings_page(manager.clone());
+                let window = gtk::Window::builder()
+                    .child(&page)
+                    .default_width(900)
+                    .default_height(700)
+                    .build();
+                window.present();
+                let search = descendants::<gtk::Entry>(&page)
+                    .into_iter()
+                    .find(|entry| entry.has_css_class("shortcut-search"))
+                    .expect("shortcut search");
+                let count = descendants::<gtk::Label>(&page)
+                    .into_iter()
+                    .find(|label| {
+                        label.has_css_class("settings-control-label")
+                            && label.text().ends_with("bindings")
+                    })
+                    .expect("binding count");
+                let row = descendants::<gtk::Box>(&page)
+                    .into_iter()
+                    .find(|row| row.has_css_class("keybinding-row"))
+                    .expect("shortcut row");
+                let before = visible_keybinding_actions(&page);
+                assert!(!before.is_empty());
+                assert_eq!(binding_count(&page), format!("{} bindings", before.len()));
+                search.set_text("F2");
+                assert_eq!(visible_keybinding_actions(&page), ["Rename"]);
+                assert_eq!(binding_count(&page), "1 bindings");
+                manager.set_minimal_mode(true);
+                search.set_text("");
+                let minimal = visible_keybinding_actions(&page);
+                assert!(minimal.contains(&"Parent / leave preview".to_owned()));
+                assert!(!minimal.contains(&"Move through items".to_owned()));
+                assert_ne!(minimal, before);
+                assert_eq!(binding_count(&page), format!("{} bindings", minimal.len()));
+                manager.set_minimal_mode(false);
+                let weak_search = search.downgrade();
+                let weak_count = count.downgrade();
+                let weak_row = row.downgrade();
+                drop(search);
+                drop(count);
+                drop(row);
+                let weak_window = window.downgrade();
+                window.emit_by_name::<()>("destroy", &[]);
+                window.destroy();
+                drop(window);
+                drop(page);
+                let deadline = Instant::now() + Duration::from_secs(2);
+                while weak_search.upgrade().is_some()
+                    || weak_count.upgrade().is_some()
+                    || weak_row.upgrade().is_some()
+                    || weak_window.upgrade().is_some()
+                    || manager.listener_count() != baseline
+                {
+                    assert!(
+                        Instant::now() < deadline,
+                        "keybindings page stayed alive; listeners {} baseline {baseline}",
+                        manager.listener_count()
+                    );
+                    glib::MainContext::default().iteration(false);
+                }
+            }
         },
     );
 }

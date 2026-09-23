@@ -5520,6 +5520,317 @@ fn minimal_r_renames_the_focused_search_result() {
 }
 
 #[test]
+fn minimal_r_on_an_empty_search_does_not_rename_the_hidden_file() {
+    gtk_test(
+        "ui::window::tests::minimal_mode::minimal_r_on_an_empty_search_does_not_rename_the_hidden_file",
+        || {
+            let fixture = find_highlight_fixture(BrowserMode::List);
+            fixture.select_name("a.txt");
+            assert_eq!(fixture.cursor_name().as_deref(), Some("a.txt"));
+            assert!(fixture.press(Key::s, ModifierType::empty()));
+            wait_until_msg(|| prompt_has_focus(&fixture), "search prompt opens");
+            fixture
+                .footer
+                .prompt_entry_widget()
+                .set_text("zz-no-such-file");
+            wait_until_msg(
+                || {
+                    fixture.view.force_recursive_search()
+                        && fixture.view.selected_search_results().is_some()
+                        && overlay_listing_names(&fixture).is_empty()
+                        && rendered_name(&fixture.view.widget(), "No matching files")
+                },
+                "empty search overlay stays up",
+            );
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    !prompt_has_focus(&fixture)
+                        && fixture.view.selected_search_results().is_some()
+                        && overlay_listing_names(&fixture).is_empty()
+                },
+                "Escape keeps the empty search results",
+            );
+
+            assert!(fixture.press(Key::r, ModifierType::empty()));
+            pump_mainloop(Duration::from_millis(80));
+            assert_ne!(
+                prompt_entry_text(&fixture),
+                "a.txt",
+                "empty search must not prefill rename with the hidden file"
+            );
+            if footer_shows(&fixture, "rename") && prompt_has_focus(&fixture) {
+                fixture
+                    .footer
+                    .prompt_entry_widget()
+                    .set_text("should-not-rename.txt");
+                assert!(fixture.press(Key::Return, ModifierType::empty()));
+                pump_mainloop(Duration::from_millis(150));
+            }
+            assert!(
+                fixture._directory.path().join("a.txt").exists(),
+                "submitting rename must not change the hidden file"
+            );
+            assert!(
+                !fixture
+                    ._directory
+                    .path()
+                    .join("should-not-rename.txt")
+                    .exists()
+            );
+
+            assert!(fixture.press(Key::h, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    !fixture.view.force_recursive_search()
+                        && fixture.view.selected_search_results().is_none()
+                },
+                "leaving search restores the directory listing",
+            );
+            fixture.select_name("b.txt");
+            assert!(fixture.press(Key::r, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    footer_shows(&fixture, "rename")
+                        && prompt_has_focus(&fixture)
+                        && prompt_entry_text(&fixture) == "b.txt"
+                },
+                "without a search overlay, rename uses the directory cursor",
+            );
+            fixture
+                .footer
+                .prompt_entry_widget()
+                .set_text("renamed-b.txt");
+            assert!(fixture.press(Key::Return, ModifierType::empty()));
+            wait_until_msg(
+                || fixture._directory.path().join("renamed-b.txt").exists(),
+                "directory-cursor rename submits",
+            );
+            assert!(!fixture._directory.path().join("b.txt").exists());
+            assert!(fixture._directory.path().join("a.txt").exists());
+        },
+    );
+}
+
+#[test]
+fn minimal_pointer_focus_retargets_search_commands_without_clearing_selection() {
+    gtk_test(
+        "ui::window::tests::minimal_mode::minimal_pointer_focus_retargets_search_commands_without_clearing_selection",
+        || {
+            install_text_activation_handler();
+            let fixture = find_highlight_fixture(BrowserMode::List);
+            let opened = Rc::new(RefCell::new(Vec::<Location>::new()));
+            let observed = opened.clone();
+            fixture.view.browser().observe(move |event| {
+                if let BrowserEvent::OpenRequested { location } = event {
+                    observed.borrow_mut().push(location.clone());
+                }
+            });
+            submit_prompt_with_results(&fixture, Key::s, "txt", &["a.txt", "b.txt", "c.txt"]);
+            let hits = overlay_listing_names(&fixture);
+            assert!(hits.len() >= 2, "txt hits: {hits:?}");
+            let selected = hits[0].clone();
+            let focused = hits[1].clone();
+            assert_eq!(yank_names(&fixture), [selected.as_str()]);
+            let row = search_result_widget(&fixture.view.widget(), &focused)
+                .unwrap_or_else(|| panic!("mapped search row for {focused}"));
+            ctrl_click_widget(&fixture.window, &row);
+            wait_until_msg(
+                || {
+                    focused_widget(&fixture).is_some_and(|focus| {
+                        rendered_name(&focus, &focused) && !rendered_name(&focus, &selected)
+                    })
+                },
+                "Ctrl-click moves focus onto the clicked search hit",
+            );
+            let mut selected_names = yank_names(&fixture);
+            selected_names.sort();
+            let mut expected = vec![selected.clone(), focused.clone()];
+            expected.sort();
+            assert_eq!(
+                selected_names, expected,
+                "Ctrl-click keeps the previous hit selected"
+            );
+            assert!(fixture.press(Key::y, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    let yanked = clipboard_file_names(&fixture);
+                    yanked.len() == 2
+                        && yanked.iter().any(|name| name == &selected)
+                        && yanked.iter().any(|name| name == &focused)
+                },
+                "yank still includes the Ctrl-click multi-selection",
+            );
+
+            assert!(fixture.press(Key::r, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    footer_shows(&fixture, "rename")
+                        && prompt_has_focus(&fixture)
+                        && prompt_entry_text(&fixture) == focused
+                },
+                "rename targets the pointer-focused hit",
+            );
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            wait_until_msg(|| !prompt_has_focus(&fixture), "rename prompt closes");
+
+            assert!(fixture.press(Key::i, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    fixture.preview.is_enabled()
+                        && rendered_name(&fixture.preview.widget(), &focused)
+                        && !rendered_name(&fixture.preview.widget(), &selected)
+                },
+                "preview targets the pointer-focused hit",
+            );
+            assert!(fixture.press(Key::i, ModifierType::empty()));
+            wait_until_msg(|| !fixture.preview.is_enabled(), "preview closes");
+
+            assert!(fixture.press(Key::Return, ModifierType::empty()));
+            wait_until_msg(
+                || {
+                    opened.borrow().last().is_some_and(|location| {
+                        location
+                            .native_path()
+                            .is_some_and(|path| path.ends_with(&focused))
+                    })
+                },
+                "activation targets the pointer-focused hit",
+            );
+            assert!(
+                opened.borrow().iter().all(|location| {
+                    location
+                        .native_path()
+                        .is_some_and(|path| !path.ends_with(&selected))
+                }),
+                "activation must not open the previously cached hit"
+            );
+        },
+    );
+}
+
+fn search_result_widget(root: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
+    use gtk::prelude::*;
+    if root.has_css_class("filter-result") && rendered_name(root, name) {
+        return Some(root.clone());
+    }
+    let mut child = root.first_child();
+    while let Some(widget) = child {
+        if let Some(found) = search_result_widget(&widget, name) {
+            return Some(found);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+const CTRL_CLICK: &str = r#"
+import ctypes, sys
+from ctypes import POINTER, byref, c_char_p, c_int, c_uint, c_ulong, c_void_p
+
+x11 = ctypes.CDLL("libX11.so.6")
+xtst = ctypes.CDLL("libXtst.so.6")
+x11.XOpenDisplay.argtypes = [c_char_p]
+x11.XOpenDisplay.restype = c_void_p
+x11.XDefaultRootWindow.argtypes = [c_void_p]
+x11.XDefaultRootWindow.restype = c_ulong
+x11.XQueryTree.argtypes = [
+    c_void_p, c_ulong, POINTER(c_ulong), POINTER(c_ulong), POINTER(POINTER(c_ulong)), POINTER(c_uint),
+]
+x11.XQueryTree.restype = c_int
+x11.XFree.argtypes = [c_void_p]
+x11.XFetchName.argtypes = [c_void_p, c_ulong, POINTER(c_char_p)]
+x11.XFetchName.restype = c_int
+x11.XFree.argtypes = [c_void_p]
+x11.XTranslateCoordinates.argtypes = [
+    c_void_p, c_ulong, c_ulong, c_int, c_int, POINTER(c_int), POINTER(c_int), POINTER(c_ulong),
+]
+x11.XTranslateCoordinates.restype = c_int
+x11.XWarpPointer.argtypes = [c_void_p, c_ulong, c_ulong, c_int, c_int, c_uint, c_uint, c_int, c_int]
+x11.XFlush.argtypes = [c_void_p]
+x11.XSync.argtypes = [c_void_p, c_int]
+x11.XKeysymToKeycode.argtypes = [c_void_p, c_ulong]
+x11.XKeysymToKeycode.restype = c_uint
+xtst.XTestFakeKeyEvent.argtypes = [c_void_p, c_uint, c_int, c_ulong]
+xtst.XTestFakeButtonEvent.argtypes = [c_void_p, c_uint, c_int, c_ulong]
+
+def window_name(dpy, win):
+    fetched = c_char_p()
+    if x11.XFetchName(dpy, win, byref(fetched)) and fetched.value:
+        name = fetched.value.decode(errors="replace")
+        x11.XFree(fetched)
+        return name
+    return ""
+
+def children(dpy, win):
+    root_ret = c_ulong()
+    parent = c_ulong()
+    kids = POINTER(c_ulong)()
+    count = c_uint()
+    if not x11.XQueryTree(dpy, win, byref(root_ret), byref(parent), byref(kids), byref(count)):
+        return []
+    found = [kids[index] for index in range(count.value)]
+    if kids:
+        x11.XFree(ctypes.cast(kids, c_void_p))
+    return found
+
+def find_named(dpy, win, title):
+    if window_name(dpy, win) == title:
+        return win
+    for child in children(dpy, win):
+        found = find_named(dpy, child, title)
+        if found:
+            return found
+    return None
+
+dpy = x11.XOpenDisplay(None)
+if not dpy:
+    raise SystemExit("no X display")
+root = x11.XDefaultRootWindow(dpy)
+window = find_named(dpy, root, "strata-minimal-pointer-target")
+if not window:
+    raise SystemExit("pointer target window was not found")
+root_x = c_int()
+root_y = c_int()
+child = c_ulong()
+rel_x = int(float(sys.argv[1]))
+rel_y = int(float(sys.argv[2]))
+if not x11.XTranslateCoordinates(dpy, window, root, rel_x, rel_y, byref(root_x), byref(root_y), byref(child)):
+    raise SystemExit("could not translate the click point")
+x11.XWarpPointer(dpy, 0, root, 0, 0, 0, 0, root_x, root_y)
+x11.XFlush(dpy)
+control = x11.XKeysymToKeycode(dpy, 0xFFE3)
+xtst.XTestFakeKeyEvent(dpy, control, 1, 0)
+xtst.XTestFakeButtonEvent(dpy, 1, 1, 0)
+xtst.XTestFakeButtonEvent(dpy, 1, 0, 0)
+xtst.XTestFakeKeyEvent(dpy, control, 0, 0)
+x11.XFlush(dpy)
+x11.XSync(dpy, 0)
+"#;
+
+fn ctrl_click_widget(window: &impl gtk::prelude::IsA<gtk::Window>, widget: &gtk::Widget) {
+    use gtk::prelude::*;
+    let window = window.as_ref();
+    window.set_title(Some("strata-minimal-pointer-target"));
+    window.present();
+    pump_mainloop(Duration::from_millis(50));
+    let bounds = widget
+        .compute_bounds(window.upcast_ref::<gtk::Widget>())
+        .expect("search row bounds");
+    let x = f64::from(bounds.x() + bounds.width() / 2.0);
+    let y = f64::from(bounds.y() + bounds.height() / 2.0);
+    let status = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(CTRL_CLICK)
+        .arg(x.to_string())
+        .arg(y.to_string())
+        .status()
+        .expect("ctrl-click helper");
+    assert!(status.success(), "ctrl-click helper failed");
+    pump_mainloop(Duration::from_millis(100));
+}
+
+#[test]
 fn minimal_empty_overlay_fill_uses_the_search_cursor() {
     gtk_test(
         "ui::window::tests::minimal_mode::minimal_empty_overlay_fill_uses_the_search_cursor",

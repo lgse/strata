@@ -417,6 +417,11 @@ pub(super) fn column_rows(
                 &change.selected,
                 &gtk::Bitset::new_range(0, selection_for_click.n_items()),
             );
+            if search_active_for_click.get()
+                && let Some(state) = weak_state_for_click.upgrade()
+            {
+                state.note_search_pointer_cursor(position);
+            }
             if (control || shift)
                 && let Some(widget) = gesture.widget()
                 && crate::ui::pointer::hits_item_content(&widget, x, y)

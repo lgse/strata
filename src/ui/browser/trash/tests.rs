@@ -214,7 +214,7 @@ impl DeleteConfirmation {
             button.tooltip_text().as_deref() == Some("Close dialog")
         })
         .expect("close");
-        wait_until(|| cancel.has_focus(), "cancel should take initial focus");
+        wait_until(|| confirm.has_focus(), "confirm should take initial focus");
         let layer = find_widget(&root, &|widget: &gtk::Widget| {
             widget.has_css_class("app-modal-layer")
         })
@@ -283,14 +283,9 @@ fn enter_deletes_on_confirm() {
         "ui::browser::trash::tests::enter_deletes_on_confirm",
         || {
             let (dir, dialog) = DeleteConfirmation::present();
-            wait_until(
-                || dialog.confirm.is_sensitive(),
-                "confirm should become sensitive once the total is calculated",
-            );
-            dialog.press(gtk::gdk::Key::Right);
-            wait_until(
-                || dialog.confirm.has_focus(),
-                "Right should move focus to Confirm",
+            assert!(
+                dialog.confirm.has_focus(),
+                "confirm should keep initial focus"
             );
             dialog.press(gtk::gdk::Key::Return);
             wait_until(
@@ -364,47 +359,68 @@ fn delete_confirmation_totals_nested_folder_contents_into_the_subtitle() {
                 .default_height(650)
                 .build();
             window.present();
-            for (size, expected) in [
-                (
-                    crate::model::MetadataValue::Known(5),
-                    "2 items · 8 B will be permanently deleted",
-                ),
-                (
-                    crate::model::MetadataValue::Unknown,
-                    "At least 2 items · at least 3 B will be permanently deleted",
-                ),
-                (
-                    crate::model::MetadataValue::Unavailable,
-                    "At least 2 items · at least 3 B will be permanently deleted",
-                ),
-            ] {
-                let mut file_entry = local_file_entry(&file_path);
-                file_entry.size = size;
-                view.state.show_delete_confirmation(
-                    vec![file_entry, local_folder_entry(&folder_path)],
-                    true,
-                    false,
-                );
-                let root = window.clone().upcast::<gtk::Widget>();
-                let confirm = wait_for_widget(&root, |button: &gtk::Button| {
-                    button.label().as_deref() == Some("Permanently delete 2 items")
-                });
-                wait_until(
-                    || confirm.is_sensitive(),
-                    "confirm should become sensitive once the total is calculated",
-                );
-                let subtitle = wait_for_widget(&root, |label: &gtk::Label| {
-                    label.has_css_class("action-dialog-subtitle")
-                });
-                wait_until(
-                    || subtitle.label() == expected,
-                    "subtitle should total the standalone file plus the nested folder's contents",
-                );
-                let cancel = wait_for_widget(&root, |button: &gtk::Button| {
-                    button.label().as_deref() == Some("Cancel")
-                });
-                cancel.emit_clicked();
-                wait_until(|| !confirm.is_mapped(), "dialog should close");
+            for permanent in [true, false] {
+                for (size, summary) in [
+                    (crate::model::MetadataValue::Known(5), "2 items · 8 B"),
+                    (
+                        crate::model::MetadataValue::Unknown,
+                        "At least 2 items · at least 3 B",
+                    ),
+                    (
+                        crate::model::MetadataValue::Unavailable,
+                        "At least 2 items · at least 3 B",
+                    ),
+                ] {
+                    let expected = if permanent {
+                        format!("{summary} will be permanently deleted")
+                    } else {
+                        summary.to_owned()
+                    };
+                    let confirm_label = if permanent {
+                        "Permanently delete 2 items"
+                    } else {
+                        "Move 2 items to Trash"
+                    };
+                    let mut file_entry = local_file_entry(&file_path);
+                    file_entry.size = size;
+                    view.state.show_delete_confirmation(
+                        vec![file_entry, local_folder_entry(&folder_path)],
+                        permanent,
+                        false,
+                    );
+                    let root = window.clone().upcast::<gtk::Widget>();
+                    let confirm = wait_for_widget(&root, |button: &gtk::Button| {
+                        button.label().as_deref() == Some(confirm_label)
+                    });
+                    let subtitle = wait_for_widget(&root, |label: &gtk::Label| {
+                        label.has_css_class("action-dialog-subtitle")
+                    });
+                    assert!(
+                        !confirm.is_sensitive(),
+                        "confirm stays insensitive until the size summary is shown"
+                    );
+                    assert!(
+                        !subtitle.label().contains('·'),
+                        "size summary is not shown before calculation finishes, got {}",
+                        subtitle.label()
+                    );
+                    wait_until(
+                        || confirm.is_sensitive(),
+                        "confirm should become sensitive once the total is calculated",
+                    );
+                    assert_eq!(subtitle.label().as_str(), expected);
+                    if !permanent {
+                        assert!(
+                            !subtitle.label().contains("permanently deleted"),
+                            "Trash confirmation must not say the items are permanently deleted"
+                        );
+                    }
+                    let cancel = wait_for_widget(&root, |button: &gtk::Button| {
+                        button.label().as_deref() == Some("Cancel")
+                    });
+                    cancel.emit_clicked();
+                    wait_until(|| !confirm.is_mapped(), "dialog should close");
+                }
             }
             window.destroy();
             view.browser().clear_observer();

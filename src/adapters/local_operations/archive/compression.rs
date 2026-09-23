@@ -33,10 +33,10 @@ use std::{
 /// and the identity of any original preserved in Trash for undo.
 /// [`FailIfExists`] refuses to replace an existing archive; [`KeepBoth`] tries numbered names atomically
 /// without encoding again; [`ReplaceExisting`] trashes the original so undo can
-/// restore it, or atomically exchanges with the staging file when Trash is
-/// unsupported, and copies the current destination file's mode when that path
-/// is already a regular file. Otherwise the published mode is `0o666` masked
-/// by the process umask.
+/// restore it. When Trash is unsupported, replacement fails and the existing
+/// archive is left unchanged. Publication copies the current destination file's
+/// mode when that path is already a regular file. Otherwise the published mode
+/// is `0o666` masked by the process umask.
 ///
 /// # Arguments
 ///
@@ -50,7 +50,7 @@ use std::{
 ///
 /// - [`Cancelled`] if `cancelled` is set after encoding finishes
 /// - [`Failed`] if staging, encoding, permission updates, or persist fail, including
-///   when the compression task panics
+///   when the compression task panics or Trash cannot preserve an existing archive
 ///
 /// [`Cancelled`]: ArchiveError::Cancelled
 /// [`Failed`]: ArchiveError::Failed
@@ -107,21 +107,13 @@ where
                 Ok(metadata) => {
                     match gio::File::for_path(archive_path).trash(None::<&gio::Cancellable>) {
                         Ok(()) => Some(TrashedOriginal::from_metadata(&metadata)),
-                        // Trash the original first so undo can restore it;
-                        // exchange and drop the staging path where Trash is
-                        // unsupported (tmpfs `/tmp`, other internal mounts).
+                        // Drop the staging file without publishing. Exchanging it
+                        // into place and then dropping that tempfile deletes the
+                        // original, and undo would only try to trash the replacement.
                         Err(error) if error.matches(gio::IOErrorEnum::NotSupported) => {
-                            let staged_path = staged.path().to_path_buf();
-                            let published = archive_path.to_path_buf();
-                            rustix::fs::renameat_with(
-                                rustix::fs::CWD,
-                                &staged_path,
-                                rustix::fs::CWD,
-                                &published,
-                                rustix::fs::RenameFlags::EXCHANGE,
-                            )
-                            .map_err(archive_failed)?;
-                            return Ok((requested_name.to_owned(), None));
+                            return Err(archive_failed(
+                                "This location does not support Trash, so the existing archive cannot be replaced",
+                            ));
                         }
                         Err(error) => return Err(archive_failed(error)),
                     }

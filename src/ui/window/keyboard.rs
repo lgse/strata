@@ -113,6 +113,14 @@ pub(in crate::ui) fn install(
         }) as Rc<dyn Fn()>
     };
     sidebar.state.set_minimal_chord_teardown(chord_teardown);
+    let cursor_minimal = Rc::downgrade(&minimal);
+    bindings
+        .view
+        .set_search_pointer_cursor_handler(Rc::new(move |index| {
+            if let Some(minimal) = cursor_minimal.upgrade() {
+                minimal.borrow_mut().set_search_cursor(Some(index));
+            }
+        }));
     apply_minimal_mode(
         window,
         &preferences,

@@ -9,6 +9,7 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::ArchiveFormat,
 };
+use gtk::{gio, prelude::*};
 use std::{
     error::Error,
     ffi::OsString,
@@ -39,6 +40,26 @@ pub(super) fn test_file_entry(path: &Path) -> FileEntry {
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
     }
+}
+
+/// Whether `gio::File::trash` accepts a probe file in `directory`.
+///
+/// A successful probe is moved to Trash. [`NotSupported`] leaves the probe in
+/// place and this helper removes it.
+///
+/// [`NotSupported`]: gio::IOErrorEnum::NotSupported
+pub(super) fn trash_supported(directory: &Path) -> Result<bool, Box<dyn Error>> {
+    let probe = directory.join(".strata-trash-probe");
+    fs::write(&probe, b"probe")?;
+    let supported = match gio::File::for_path(&probe).trash(gio::Cancellable::NONE) {
+        Ok(()) => true,
+        Err(error) if error.matches(gio::IOErrorEnum::NotSupported) => false,
+        Err(error) => return Err(error.into()),
+    };
+    if probe.exists() {
+        fs::remove_file(probe)?;
+    }
+    Ok(supported)
 }
 
 pub(super) fn compression_stages(destination: &Path) -> Result<Vec<OsString>, Box<dyn Error>> {

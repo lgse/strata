@@ -704,6 +704,12 @@ pub(super) fn wrap(
         focus_items,
         listing_changed,
     } = options;
+    let pointer_listing = listing_changed.clone();
+    let pointer_cursor: Rc<dyn Fn(u32)> = Rc::new(move |index| {
+        if let Some(state) = pointer_listing.as_ref().and_then(Weak::upgrade) {
+            state.note_search_pointer_cursor(index);
+        }
+    });
     let stack = gtk::Stack::builder().hexpand(true).vexpand(true).build();
     stack.add_named(content, Some("files"));
     let results = gtk::Box::new(gtk::Orientation::Vertical, 4);
@@ -722,6 +728,7 @@ pub(super) fn wrap(
             activate: activate.clone(),
             single_click,
             focus_items,
+            pointer_cursor,
         },
     );
     overlay.set_hexpand(true);

@@ -4,11 +4,13 @@ use super::{
     ArchiveError, copy_with_big_buf,
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
-        compression_stages, extract_zip, never_cancelled, test_file_entry, write_zip_stored,
+        compression_stages, extract_zip, never_cancelled, test_file_entry, trash_supported,
+        write_zip_stored,
     },
 };
 use crate::{
     adapters::local_operations::LocalOperationProvider,
+    app::{Browser, BrowserEvent},
     model::Location,
     services::{
         ArchiveFormat, CompressRequest, ExtractRequest, LoadHandle, OperationEvent,
@@ -143,21 +145,115 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
         assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
     }
 
+    let supports_trash = trash_supported(&destination)?;
     let replaced = run_compression(request(TransferConflict::ReplaceExisting));
-    assert!(
-        replaced
-            .iter()
-            .any(|event| matches!(event, OperationEvent::Compressed { .. })),
-        "ReplaceExisting must publish even when Trash is unsupported: {replaced:?}"
-    );
-    let extracted = destination.join("extracted");
-    fs::create_dir(&extracted)?;
-    assert_eq!(
-        extract_zip(&archive, &extracted)?,
-        Some("source.txt".to_owned())
-    );
+    if supports_trash {
+        assert!(
+            replaced.iter().any(|event| matches!(
+                event,
+                OperationEvent::Compressed {
+                    original: Some(_),
+                    ..
+                }
+            )),
+            "ReplaceExisting must publish and keep the trashed original: {replaced:?}"
+        );
+        let extracted = destination.join("extracted");
+        fs::create_dir(&extracted)?;
+        assert_eq!(
+            extract_zip(&archive, &extracted)?,
+            Some("source.txt".to_owned())
+        );
+    } else {
+        assert!(
+            replaced.iter().any(|event| matches!(
+                event,
+                OperationEvent::Failed { message, .. } if message.contains("does not support Trash")
+            )),
+            "ReplaceExisting must fail when Trash is unsupported: {replaced:?}"
+        );
+        assert!(
+            !replaced
+                .iter()
+                .any(|event| matches!(event, OperationEvent::Compressed { .. }))
+        );
+        assert_eq!(fs::read(&archive)?, b"original");
+    }
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
     assert!(compression_stages(&destination)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn replacing_an_archive_without_trash_keeps_the_original_and_records_no_undo()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir_in("/dev/shm")?;
+    let destination = root.path().join("destination");
+    let source = root.path().join("source.txt");
+    let archive = destination.join("existing.zip");
+    fs::create_dir(&destination)?;
+    fs::write(&source, b"replacement")?;
+    fs::write(&archive, b"original")?;
+    fs::set_permissions(&archive, fs::Permissions::from_mode(0o640))?;
+    assert!(
+        !trash_supported(&destination)?,
+        "/dev/shm must report Trash as unsupported for this regression"
+    );
+
+    let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+    browser.set_operation_provider(Rc::new(LocalOperationProvider));
+    let copy_before = browser.pending_undo_copy();
+    let merge_before = browser.pending_undo_merge();
+    let outcome: Rc<RefCell<Option<Result<(), String>>>> = Rc::new(RefCell::new(None));
+    let recorded = outcome.clone();
+    browser.observe(move |event| match event {
+        BrowserEvent::OperationFailed { message } => {
+            recorded.replace(Some(Err(message.clone())));
+        }
+        BrowserEvent::ArchiveCompleted { .. } => {
+            recorded.replace(Some(Ok(())));
+        }
+        _ => {}
+    });
+    browser.compress(
+        vec![test_file_entry(&source)],
+        Location::local(&destination),
+        "existing".to_owned(),
+        TransferConflict::ReplaceExisting,
+        ArchiveFormat::Zip,
+        None,
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while outcome.borrow().is_none() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "compression did not finish"
+        );
+        glib::MainContext::default().iteration(true);
+    }
+
+    let message = outcome
+        .borrow()
+        .clone()
+        .expect("compression finished")
+        .expect_err("replacement must fail when Trash is unsupported");
+    assert!(
+        message.contains("does not support Trash"),
+        "failure must be the Trash refusal, got {message}"
+    );
+    assert_eq!(fs::read(&archive)?, b"original");
+    assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
+    assert!(compression_stages(&destination)?.is_empty());
+    assert_eq!(browser.pending_undo_copy(), copy_before);
+    assert_eq!(browser.pending_undo_merge(), merge_before);
+    assert!(
+        browser
+            .pending_undo_copy()
+            .is_none_or(|(_, locations)| { locations != vec![Location::local(&archive)] })
+    );
     Ok(())
 }
 

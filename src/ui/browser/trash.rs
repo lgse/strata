@@ -979,13 +979,17 @@ impl ViewState {
             ) else {
                 return;
             };
-            subtitle.set_label(&format!(
-                "{}{} · {}{} will be permanently deleted",
+            let mut label = format!(
+                "{}{} · {}{}",
                 if summary.truncated() { "At least " } else { "" },
                 item_count_label(summary.item_count),
                 if summary.truncated() { "at least " } else { "" },
                 format_file_size(summary.total_size)
-            ));
+            );
+            if permanent {
+                label.push_str(" will be permanently deleted");
+            }
+            subtitle.set_label(&label);
             confirm.set_sensitive(true);
             spinner.stop();
             spinner.set_visible(false);

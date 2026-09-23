@@ -140,6 +140,8 @@ impl Drop for GlobalActivity {
     }
 }
 
+pub(super) type SearchPointerCursor = Rc<dyn Fn(u32)>;
+
 pub(super) struct ViewState {
     overlay: gtk::Overlay,
     location_control: gtk::Box,
@@ -225,6 +227,8 @@ pub(super) struct ViewState {
     /// When set, miller `.active-column` header chrome is withheld so an
     /// owned preview pane is the only focused header.
     suppress_column_header_focus: Cell<bool>,
+    /// Minimal mode reads this when a pointer press focuses a search hit.
+    search_pointer_cursor: RefCell<Option<SearchPointerCursor>>,
     browser: Rc<Browser>,
 }
 
@@ -254,6 +258,15 @@ pub struct BrowserView {
 
 #[derive(Clone)]
 pub(crate) struct WeakBrowserView(Weak<ViewState>);
+
+impl ViewState {
+    pub(super) fn note_search_pointer_cursor(&self, index: u32) {
+        let handler = self.search_pointer_cursor.borrow().clone();
+        if let Some(handler) = handler {
+            handler(index);
+        }
+    }
+}
 
 pub(in crate::ui) fn claim_keyboard_navigation(state: &Rc<ViewState>) {
     BrowserView {
@@ -589,6 +602,7 @@ impl BrowserView {
             drag_autoscroll: RefCell::new(None),
             suppress_scroll_after_drop: Cell::new(false),
             suppress_column_header_focus: Cell::new(false),
+            search_pointer_cursor: RefCell::new(None),
             browser,
         });
 
@@ -908,6 +922,11 @@ impl BrowserView {
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
         self.state.browser.set_operation_provider(provider);
+    }
+
+    /// Records the search hit a pointer press focused, without changing selection.
+    pub(in crate::ui) fn set_search_pointer_cursor_handler(&self, handler: SearchPointerCursor) {
+        self.state.search_pointer_cursor.replace(Some(handler));
     }
 
     pub fn set_trash_button(&self, button: gtk::Button) {

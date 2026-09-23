@@ -22,6 +22,7 @@ pub(super) struct CollectionBehavior {
     pub(super) activate: Rc<dyn Fn(FileEntry)>,
     pub(super) single_click: Rc<dyn Fn(FileEntry)>,
     pub(super) focus_items: Rc<dyn Fn()>,
+    pub(super) pointer_cursor: Rc<dyn Fn(u32)>,
 }
 
 #[derive(Clone)]
@@ -339,6 +340,7 @@ fn install_result_interactions(
     let gesture_selection = &interactions.gesture_selection;
     let pointer_activation = &interactions.pointer_activation;
     let focus_items = &interactions.behavior.focus_items;
+    let pointer_cursor = &interactions.behavior.pointer_cursor;
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -350,6 +352,7 @@ fn install_result_interactions(
     let gesture_selection_for_press = gesture_selection.clone();
     let pointer_for_press = pointer_activation.clone();
     let focus_items_for_press = focus_items.clone();
+    let pointer_cursor_for_press = pointer_cursor.clone();
     click.connect_pressed(move |gesture, _, _, _| {
         let Some(item) = weak_item.upgrade() else {
             return;
@@ -382,6 +385,35 @@ fn install_result_interactions(
             widget.grab_focus();
         }
         focus_items_for_press();
+        // Selection was already applied above. Only the command cursor moves.
+        pointer_cursor_for_press(position);
+    });
+    let model_for_release = model.clone();
+    let selection_for_release = selection.clone();
+    let single_click_for_release = interactions.behavior.single_click.clone();
+    let pointer_for_release = pointer_activation.clone();
+    let weak_item_for_release = item.downgrade();
+    click.connect_released(move |gesture, n_press, _, _| {
+        // Hover selection is disabled, so a plain click opens the hit itself.
+        // The second press of a double-click must not open it again.
+        if n_press != 1 || pointer_for_release.activation() != Some(true) {
+            return;
+        }
+        if selection_for_release.selection().size() > 1 {
+            return;
+        }
+        let Some(item) = weak_item_for_release.upgrade() else {
+            return;
+        };
+        let position = item.position();
+        if position == gtk::INVALID_LIST_POSITION {
+            return;
+        }
+        let Some(entry) = collection_entry(&model_for_release, position) else {
+            return;
+        };
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        single_click_for_release(entry);
     });
 
     let drag = gtk::DragSource::builder()
@@ -426,7 +458,6 @@ pub(super) fn build_collection(
 ) -> (ResultCollection, gtk::ScrolledWindow, gtk::Overlay) {
     let multiple_selection = behavior.multiple_selection.clone();
     let activate = behavior.activate.clone();
-    let single_click = behavior.single_click.clone();
     let (kind, max_columns) = match presentation {
         SearchPresentation::Rows => (ResultKind::Rows, None),
         SearchPresentation::Icons {
@@ -607,7 +638,9 @@ pub(super) fn build_collection(
             grid.set_min_columns(1);
             grid.set_max_columns(max_columns);
             grid.set_enable_rubberband(false);
-            grid.set_single_click_activate(true);
+            // Single-click activation also selects the hovered row, so a Ctrl-click
+            // toggles that row off before rename can target it.
+            grid.set_single_click_activate(false);
             grid.set_vexpand(false);
             grid.upcast()
         }
@@ -615,7 +648,9 @@ pub(super) fn build_collection(
             let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
             list.add_css_class("file-list");
             list.set_enable_rubberband(false);
-            list.set_single_click_activate(true);
+            // Single-click activation also selects the hovered row, so a Ctrl-click
+            // toggles that row off before rename can target it.
+            list.set_single_click_activate(false);
             list.set_vexpand(true);
             list.upcast()
         }
@@ -643,15 +678,14 @@ pub(super) fn build_collection(
         });
     }
     let sorted_for_activate = sorted.clone();
-    let selection_for_activate = selection.clone();
     let dispatch_activate: Rc<dyn Fn(u32)> = Rc::new(move |position| {
         let Some(entry) = collection_entry(&sorted_for_activate, position) else {
             return;
         };
-        match pointer_activation.activation() {
-            Some(true) if selection_for_activate.selection().size() <= 1 => single_click(entry),
-            Some(_) => {}
-            None => activate(entry),
+        // Pointer clicks open from the row gesture. This signal is keyboard
+        // activation, and a click still in progress must not open the file again.
+        if pointer_activation.activation().is_none() {
+            activate(entry);
         }
     });
     if let Some(list) = view.downcast_ref::<gtk::ListView>() {
