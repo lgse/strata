@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod animation;
+mod scroll;
 mod search;
 mod spinner;
 
@@ -113,14 +114,6 @@ fn deferred_pointer_activation_remembers_prior_drag_motion() {
     pending.update(10.0, 20.0, 8);
 
     assert!(!pending.can_activate(&location));
-}
-
-#[test]
-fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
-    assert!(should_preserve_drag_selection(true, 2));
-    assert!(should_preserve_drag_selection(true, 8));
-    assert!(!should_preserve_drag_selection(true, 1));
-    assert!(!should_preserve_drag_selection(false, 4));
 }
 
 #[test]

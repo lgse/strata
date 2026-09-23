@@ -26,6 +26,14 @@ use std::time::{Duration, Instant};
 
 const UNLOCK_PROGRESS_DELAY: Duration = Duration::from_millis(350);
 
+// Long crumbs middle-elide past this cap; the scroller handles deeper paths.
+const BREADCRUMB_LABEL_MAX_CHARS: i32 = 32;
+
+fn ellipsize_crumb_label(label: &gtk::Label) {
+    label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    label.set_max_width_chars(BREADCRUMB_LABEL_MAX_CHARS);
+}
+
 pub(super) struct UnlockProgressView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
@@ -39,6 +47,8 @@ pub(super) struct UnlockProgressSlot {
     dismissed: bool,
     in_flight: bool,
 }
+
+pub(super) mod completion;
 
 pub(super) fn is_breadcrumb_button_target(mut target: gtk::Widget) -> bool {
     loop {
@@ -1233,15 +1243,19 @@ impl ViewState {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
         self.location_entry.select_region(0, -1);
+        self.path_completion
+            .refresh(&self.location_entry, &self.browser);
     }
 
     pub(super) fn cancel_location_edit(&self) {
+        self.path_completion.dismiss();
         self.restore_location_text();
         self.location_stack.set_visible_child_name("breadcrumbs");
         self.browser.focus_active();
     }
 
     pub(super) fn submit_location(self: &Rc<Self>) {
+        self.path_completion.dismiss();
         let input = self.location_entry.text();
         let (input, credentials) = match credentials_from_location_input(input.as_str()) {
             Ok(parsed) => parsed,
@@ -1907,6 +1921,7 @@ impl ViewState {
                 let current_label = gtk::Label::new(Some(&label));
                 current_label.add_css_class("breadcrumb");
                 current_label.add_css_class("current");
+                ellipsize_crumb_label(&current_label);
                 current_label.set_tooltip_text(Some(&crumb.display_path()));
                 let copy = gtk::Button::builder().tooltip_text("Copy path").build();
                 let copy_icon = crate::assets::primary_icon(crate::assets::icons::COPY, 16);
@@ -1939,6 +1954,9 @@ impl ViewState {
                 self.breadcrumbs.append(&current);
             } else {
                 let button = gtk::Button::with_label(&label);
+                if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+                    ellipsize_crumb_label(&label);
+                }
                 button.add_css_class("breadcrumb");
                 if crumb
                     .native_path()
@@ -2038,8 +2056,7 @@ impl ViewState {
             let label = gtk::Label::new(Some(&display_name));
             label.set_xalign(0.0);
             label.set_hexpand(true);
-            label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-            label.set_max_width_chars(32);
+            ellipsize_crumb_label(&label);
 
             item_row.append(&icon);
             item_row.append(&label);

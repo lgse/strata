@@ -7,12 +7,14 @@ use crate::ui::{
 };
 
 const MIN_COLUMN_MULTIPLIER: i32 = 2;
+const MIN_SPLIT_PREVIEW_WIDTH: i32 = 240;
 
 #[derive(Default)]
 pub(super) struct SplitSizing {
     binding: RefCell<Option<BrowserBinding>>,
     manual_width: Cell<Option<i32>>,
     resizing: Cell<bool>,
+    compact: Cell<bool>,
     suspended: Cell<bool>,
     resume_media: Cell<bool>,
     reload_on_resume: Cell<bool>,
@@ -39,6 +41,10 @@ impl SplitSizing {
         }
     }
 
+    pub(super) fn is_compact(&self) -> bool {
+        self.compact.get()
+    }
+
     pub(super) fn is_suspended(&self) -> bool {
         self.suspended.get()
     }
@@ -56,13 +62,15 @@ struct Geometry {
     start_minimum: i32,
     separator: i32,
     columns: bool,
-    icons: bool,
 }
 
 impl Geometry {
     fn can_show_preview(self) -> bool {
         self.available > 0
-            && (!(self.columns || self.icons) || self.maximum_width() >= COLUMN_WIDTH)
+    }
+
+    fn is_compact(self) -> bool {
+        self.maximum_width() < MIN_SPLIT_PREVIEW_WIDTH
     }
 
     fn maximum_width(self) -> i32 {
@@ -115,9 +123,10 @@ fn separator_width(split: &gtk::Paned) -> i32 {
 }
 
 fn sidebar_width(content: &gtk::Paned) -> i32 {
+    // Compact mode hides an ancestor, not the user's sidebar choice.
     if content
         .start_child()
-        .is_some_and(|child| child.is_visible())
+        .is_some_and(|child| child.get_visible())
     {
         content.position() + separator_width(content)
     } else {
@@ -137,7 +146,34 @@ impl PreviewDrawer {
             content: content.downgrade(),
             browser: browser.downgrade(),
         }));
+        // Hide the wrapper in compact mode, keeping content measurable for re-expansion.
+        split.set_start_child(None::<&gtk::Widget>);
+        let navigation = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        navigation.append(content);
+        split.set_start_child(Some(&navigation));
         browser.bind_preview_scrolling(&self.state.revealer);
+        let weak = Rc::downgrade(&self.state);
+        let weak_browser = browser.downgrade();
+        browser.connect_search_selection_changed(Rc::new(move || {
+            let weak = weak.clone();
+            let weak_browser = weak_browser.clone();
+            glib::idle_add_local_once(move || {
+                let Some(state) = weak.upgrade().filter(|state| state.is_enabled()) else {
+                    return;
+                };
+                let Some(browser) = weak_browser.upgrade() else {
+                    return;
+                };
+                if browser.selected_search_results().is_none() {
+                    return;
+                }
+                if let Some(entry) = preview_target(browser.selected_search_result()) {
+                    state.show_after_focus_change(entry, browser.browser().active_depth());
+                } else {
+                    state.clear_target();
+                }
+            });
+        }));
         split.set_end_child(Some(&self.state.revealer));
         self.state.revealer.set_visible(self.state.is_enabled());
         let weak = Rc::downgrade(&self.state);
@@ -149,6 +185,14 @@ impl PreviewDrawer {
                 state.sync_split(split);
             }
             glib::ControlFlow::Continue
+        });
+        let weak = Rc::downgrade(&self.state);
+        split.connect_unmap(move |_| {
+            if let Some(state) = weak.upgrade()
+                && state.is_enabled()
+            {
+                state.suspend_panel();
+            }
         });
         let weak = Rc::downgrade(&self.state);
         split.connect_unrealize(move |_| {
@@ -204,24 +248,23 @@ impl PreviewState {
                 .map_or(0, |child| child.measure(gtk::Orientation::Horizontal, -1).0),
             separator: separator_width(split),
             columns: false,
-            icons: false,
         };
         if let Some(binding) = self.sizing.binding.borrow().as_ref()
             && let Some(content) = binding.content.upgrade()
             && let Some(browser) = binding.browser.upgrade()
         {
+            geometry.start_minimum = content.measure(gtk::Orientation::Horizontal, -1).0;
             let sidebar = sidebar_width(&content);
             geometry.columns = browser.view_mode() == BrowserMode::Columns;
-            geometry.icons = browser.view_mode() == BrowserMode::Icons;
             geometry.occupied =
                 sidebar + browser.preview_occupied_width((available - sidebar).max(0));
             if geometry.columns {
                 geometry.start_minimum = geometry.start_minimum.max(sidebar.saturating_add(
                     browser.preview_navigation_width(
-                        (available - sidebar - geometry.separator - COLUMN_WIDTH).max(0),
+                        (available - sidebar - geometry.separator - MIN_SPLIT_PREVIEW_WIDTH).max(0),
                     ),
                 ));
-            } else if geometry.icons {
+            } else {
                 geometry.start_minimum = geometry
                     .start_minimum
                     .max(sidebar.saturating_add(COLUMN_WIDTH));
@@ -231,7 +274,7 @@ impl PreviewState {
     }
 
     pub(super) fn can_show_in(&self, split: &gtk::Paned) -> bool {
-        self.geometry(split).can_show_preview()
+        split.is_mapped() && self.geometry(split).can_show_preview()
     }
 
     fn preserve_column_positions(&self, content_width: i32) {
@@ -250,11 +293,47 @@ impl PreviewState {
         self.revealer.set_reveal_child(true);
     }
 
+    fn set_compact(&self, split: &gtk::Paned, compact: bool) {
+        if self.sizing.compact.replace(compact) == compact {
+            return;
+        }
+        let Some(navigation) = split.start_child() else {
+            return;
+        };
+        let focused = split.root().and_then(|root| root.focus());
+        let losing_focus = focused.is_some_and(|focused| {
+            let hidden = if compact {
+                &navigation
+            } else {
+                self.pane.upcast_ref()
+            };
+            focused == *hidden || focused.is_ancestor(hidden)
+        });
+        navigation.set_visible(!compact);
+        if losing_focus {
+            if compact {
+                self.close_button.grab_focus();
+            } else if let Some(browser) = self
+                .sizing
+                .binding
+                .borrow()
+                .as_ref()
+                .and_then(|binding| binding.browser.upgrade())
+            {
+                browser.browser().focus_active();
+            }
+        }
+    }
+
     pub(super) fn hide_panel(&self) {
-        if self.revealer.is_visible()
-            && let Some(split) = self.split.borrow().as_ref()
-        {
-            self.preserve_column_positions(split.width());
+        if let Some(split) = self.split.borrow().as_ref() {
+            let was_compact = self.sizing.is_compact();
+            self.set_compact(split, false);
+            // Hidden navigation has stale scroll metrics. Preserving them would
+            // cancel breadcrumb reveal and retain blank space after navigation.
+            if self.revealer.is_visible() && !was_compact {
+                self.preserve_column_positions(split.width());
+            }
         }
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
@@ -296,8 +375,9 @@ impl PreviewState {
     }
 
     pub(super) fn sync_split(self: &Rc<Self>, split: &gtk::Paned) {
+        let geometry = self.geometry(split);
         if self.current.borrow().is_none() {
-            if !self.reserves_empty_preview() {
+            if !self.reserves_empty_preview() || geometry.is_compact() {
                 if self.revealer.reveals_child() {
                     self.hide_panel();
                 }
@@ -305,10 +385,15 @@ impl PreviewState {
             }
             self.show_placeholder();
         }
-        let geometry = self.geometry(split);
-        if !geometry.can_show_preview() {
+        if !split.is_mapped() || !geometry.can_show_preview() {
             self.suspend_panel();
             return;
+        }
+        if geometry.is_compact() != self.sizing.compact.get() {
+            self.animation_generation
+                .set(self.animation_generation.get().saturating_add(1));
+            self.animating.set(false);
+            self.sizing.resizing.set(false);
         }
         if self.animating.get() || self.sizing.resizing.get() {
             return;
@@ -319,9 +404,16 @@ impl PreviewState {
         if restored || !self.revealer.reveals_child() {
             self.show_panel();
         }
+        self.set_compact(split, geometry.is_compact());
         let manual = self.sizing.manual_width.get();
-        let minimum = geometry.minimum_width(manual.is_some());
-        let position = geometry.position(manual);
+        let (minimum, position) = if geometry.is_compact() {
+            (0, 0)
+        } else {
+            (
+                geometry.minimum_width(manual.is_some()),
+                geometry.position(manual),
+            )
+        };
         if self.pane.width_request() != minimum || split.position() != position {
             self.pane.set_width_request(minimum);
             split.set_position(position);
@@ -351,13 +443,21 @@ impl PreviewState {
             .borrow()
             .as_ref()
             .map_or(DEFAULT_WIDTH.min(available), |split| {
-                self.geometry(split)
-                    .preview_width(self.sizing.manual_width.get())
+                let geometry = self.geometry(split);
+                if geometry.is_compact() {
+                    geometry.available.max(1)
+                } else {
+                    geometry.preview_width(self.sizing.manual_width.get())
+                }
             })
     }
 
     pub(super) fn animate_open(self: &Rc<Self>, split: &gtk::Paned) {
         let geometry = self.geometry(split);
+        if geometry.is_compact() {
+            self.sync_split(split);
+            return;
+        }
         let target = geometry.position(self.sizing.manual_width.get());
         let start = split.width();
         // The animation owns the divider, including after a resize while the pane was hidden.
@@ -404,6 +504,9 @@ impl PreviewState {
 
     pub(super) fn resize_preview(self: &Rc<Self>, split: &gtk::Paned, position: i32) {
         let geometry = self.geometry(split);
+        if geometry.is_compact() {
+            return;
+        }
         let width = (geometry.available - geometry.separator - position)
             .clamp(geometry.minimum_width(true), geometry.maximum_width());
         self.sizing.manual_width.set(Some(width));
@@ -431,6 +534,7 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
                         .is_some_and(|e| e.button() == 1))
                     && state.is_enabled()
                     && !state.sizing.is_suspended()
+                    && !state.sizing.compact.get()
                     && on_separator(&split, event) =>
             {
                 state
@@ -471,6 +575,7 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
             if let Some(state) = weak.upgrade()
                 && state.is_enabled()
                 && !state.sizing.is_suspended()
+                && !state.sizing.compact.get()
             {
                 state
                     .pane
@@ -512,10 +617,9 @@ fn on_separator(split: &gtk::Paned, event: &gtk::gdk::Event) -> bool {
 }
 
 fn remember_keyboard_width(weak: std::rc::Weak<PreviewState>) {
-    let Some(state) = weak
-        .upgrade()
-        .filter(|state| state.is_enabled() && !state.sizing.is_suspended())
-    else {
+    let Some(state) = weak.upgrade().filter(|state| {
+        state.is_enabled() && !state.sizing.is_suspended() && !state.sizing.compact.get()
+    }) else {
         return;
     };
     let Some(split) = state.split.borrow().clone() else {

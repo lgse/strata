@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from e2e_bundle import create, image_key, verify
+from e2e_bundle import IMAGE_INPUTS, create, image_key, verify
 from e2e_ci import report_timing, critical_path, main as ci_main, workflow_jobs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests/e2e"))
@@ -168,10 +168,10 @@ class BundleTests(unittest.TestCase):
                 (root / name).write_text("source")
             suite = root / "tests/e2e"
             suite.mkdir(parents=True)
-            (suite / "Dockerfile").write_text("FROM pinned\n")
-            (suite / "install-packages.sh").write_text("pinned package installation\n")
-            requirements = suite / "requirements.txt"
-            requirements.write_text("pytest==9.1.1\n")
+            for name in IMAGE_INPUTS:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name + "\n")
             bundle = root / "bundle"
             bundle.mkdir()
             (bundle / "strata").write_bytes(b"binary")
@@ -190,7 +190,7 @@ class BundleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source differs"):
                 verify(bundle, "revision", root)
             (root / "build.rs").write_text("source")
-            for path in (requirements, suite / "Dockerfile", suite / "install-packages.sh"):
+            for path in (root / name for name in IMAGE_INPUTS):
                 with self.subTest(image_input=path.name):
                     original = path.read_bytes()
                     old_key = image_key(root)

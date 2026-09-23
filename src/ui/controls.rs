@@ -232,8 +232,8 @@ pub(super) fn modal_layout_with_tone(
     if tone == ModalTone::Danger {
         symbol.add_css_class("danger");
     }
-    symbol.set_size_request(40, 40);
     symbol.set_hexpand(false);
+    symbol.set_valign(gtk::Align::Fill);
     let icon = match tone {
         ModalTone::Accent => crate::assets::primary_icon(icon, 21),
         ModalTone::Danger => crate::assets::danger_icon(icon, 21),

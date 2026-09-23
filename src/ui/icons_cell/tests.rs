@@ -198,9 +198,8 @@ fn card_details_persist_with_rename_field() {
             label.set_visible(true);
 
             let details = details_label(&card).expect("details label");
-            assert!(!details.is_visible());
+            assert!(details.text().is_empty());
             details.set_text("1920×1080");
-            details.set_visible(true);
 
             let window = gtk::Window::builder().child(&card).build();
             window.present();

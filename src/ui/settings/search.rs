@@ -12,6 +12,24 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "custom-actions",
+        page: "actions",
+        title: "Custom actions",
+        aliases: "scripts context menu commands automation python bash plugin extension",
+    },
+    Target {
+        id: "new-action",
+        page: "actions",
+        title: "New custom action",
+        aliases: "create script context menu command",
+    },
+    Target {
+        id: "import-action",
+        page: "actions",
+        title: "Import custom action",
+        aliases: "share copy actions folder",
+    },
+    Target {
         id: "thumbnail-workers",
         page: "general",
         title: "Thumbnail workers",
@@ -136,6 +154,12 @@ const TARGETS: &[Target] = &[
         page: "theme",
         title: "Text size",
         aliases: "appearance font typography pixels zoom scaling",
+    },
+    Target {
+        id: "date-format",
+        page: "general",
+        title: "Modified date format",
+        aliases: "date time format relative iso 8601 long absolute modified timestamp clock appearance",
     },
     Target {
         id: "glow",

@@ -553,6 +553,70 @@ fn monitor_moves_follow_the_selected_entry() {
 }
 
 #[test]
+fn monitor_moves_preserve_loaded_details_only_for_unchanged_files() {
+    for change in [
+        "name",
+        "size",
+        "mtime",
+        "unknown",
+        "extension",
+        "fresh details",
+    ] {
+        let mut state = NavigationState::default();
+        let watched = location("/home");
+        state.navigate(watched.clone(), RequestId(1));
+        let mut old = named_entry("/home/old.png", "old.png");
+        old.size = MetadataValue::Known(100);
+        old.modified_unix_seconds = MetadataValue::Known(10);
+        old.image_dimensions = MetadataValue::Known((20, 30));
+        old.duration_seconds = MetadataValue::Unavailable;
+        old.child_count = MetadataValue::Unavailable;
+        state.apply_batch(RequestId(1), vec![old]);
+        let mut renamed = named_entry("/home/new.png", "new.png");
+        renamed.size = MetadataValue::Known(100);
+        renamed.modified_unix_seconds = MetadataValue::Known(10);
+        match change {
+            "size" => renamed.size = MetadataValue::Known(200),
+            "mtime" => renamed.modified_unix_seconds = MetadataValue::Known(11),
+            "unknown" => renamed.modified_unix_seconds = MetadataValue::Unknown,
+            "extension" => {
+                renamed.native_name = "new.mp4".into();
+                renamed.display_name = "new.mp4".into();
+                renamed.location = location("/home/new.mp4");
+            }
+            "fresh details" => renamed.image_dimensions = MetadataValue::Known((40, 50)),
+            _ => {}
+        }
+        let (splices, _) = state
+            .apply_directory_change(
+                0,
+                &watched,
+                DirectoryChange::Move {
+                    from: location("/home/old.png"),
+                    entry: renamed,
+                },
+            )
+            .expect("move");
+        let expected = match change {
+            "name" => MetadataValue::Known((20, 30)),
+            "fresh details" => MetadataValue::Known((40, 50)),
+            _ => MetadataValue::Unknown,
+        };
+        let entry = &state.columns[0].entries[0];
+        assert_eq!(entry.image_dimensions, expected, "{change}");
+        assert_eq!(
+            splices.last().expect("insertion").entries[0].image_dimensions,
+            expected,
+            "{change}"
+        );
+        if change == "name" {
+            assert_eq!(entry.duration_seconds, MetadataValue::Unavailable);
+            assert_eq!(entry.child_count, MetadataValue::Unavailable);
+        }
+    }
+}
+
+#[test]
 fn relocating_a_column_preserves_selection_preferences_and_active_depth() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));
@@ -773,10 +837,23 @@ fn reload_restores_a_multi_selection_after_snapshot() {
 
 #[test]
 fn reload_does_not_select_an_unselected_focus() {
-    for positions in [vec![], vec![0, 1]] {
+    for positions in [vec![], vec![0], vec![0, 1]] {
         let mut state = NavigationState::default();
         listing_without_a_load_cursor(&mut state);
         assert!(state.set_selection(0, &positions, Some(2)));
+        let expected = positions
+            .iter()
+            .map(|&position| state.columns[0].entries[position].location.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(state.selected_positions(0), positions);
+        assert_eq!(
+            state
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>(),
+            expected
+        );
         state.reload_column(0, RequestId(2));
         state.install_snapshot(
             RequestId(2),
@@ -788,6 +865,14 @@ fn reload_does_not_select_an_unselected_focus() {
         );
         assert_eq!(state.selected_positions(0), positions);
         assert_eq!(state.active_focus(), Some((0, Some(2))));
+        assert_eq!(
+            state
+                .selected_entries()
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect::<Vec<_>>(),
+            expected
+        );
     }
 }
 

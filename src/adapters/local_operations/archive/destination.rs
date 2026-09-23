@@ -14,17 +14,8 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-/// Converts an archive member name into a relative path that cannot escape the destination.
-///
-/// Normalizes backslashes to slashes, skips empty and `.` components, and
-/// rejects absolute paths, `..`, Windows drive prefixes (`C:`), and names
-/// that collapse to empty.
-///
-/// # Errors
-///
-/// Returns an error if `name` is empty, absolute, contains `..`, includes a
-/// drive prefix, or has no remaining components after normalization.
-pub(super) fn validated_archive_path(name: &str) -> Result<PathBuf, String> {
+/// Clamp parent traversal at the extraction root so one such member does not abort the archive.
+pub(super) fn sanitized_archive_path(name: &str) -> Result<PathBuf, String> {
     let normalized = name.replace('\\', "/");
     if normalized.is_empty() || normalized.starts_with('/') {
         return Err(format!("Refusing unsafe archive path: {name}"));
@@ -34,7 +25,9 @@ pub(super) fn validated_archive_path(name: &str) -> Result<PathBuf, String> {
     for component in normalized.split('/') {
         match component.as_bytes() {
             b"" | b"." => {}
-            b".." => return Err(format!("Refusing unsafe archive path: {name}")),
+            b".." => {
+                path.pop();
+            }
             bytes if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' => {
                 return Err(format!("Refusing unsafe archive path: {name}"));
             }

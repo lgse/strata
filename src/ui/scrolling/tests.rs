@@ -3,6 +3,52 @@
 use super::*;
 
 #[test]
+fn retiring_an_autoscroll_view_releases_its_widgets() {
+    crate::test_support::gtk_test(
+        "ui::scrolling::tests::retiring_an_autoscroll_view_releases_its_widgets",
+        || {
+            use gtk::prelude::*;
+            for active in [false, true] {
+                let overlay = gtk::Overlay::new();
+                let scroll = gtk::ScrolledWindow::new();
+                install_autoscroll(&scroll, &overlay);
+                if active {
+                    scroll.set_vadjustment(Some(&gtk::Adjustment::new(
+                        0.0, 0.0, 1000.0, 1.0, 100.0, 100.0,
+                    )));
+                    let controllers = scroll.observe_controllers();
+                    let press = (0..controllers.n_items())
+                        .find_map(|index| {
+                            controllers.item(index).and_downcast::<gtk::GestureClick>()
+                        })
+                        .expect("autoscroll press controller");
+                    press.emit_by_name::<()>("pressed", &[&1i32, &0.0f64, &0.0f64]);
+                    assert!(ACTIVE.with_borrow(|active| active.is_some()));
+                }
+                let retired_scroll = scroll.downgrade();
+                let marker = overlay
+                    .first_child()
+                    .expect("autoscroll marker")
+                    .downgrade();
+                drop(scroll);
+                assert!(
+                    retired_scroll.upgrade().is_none(),
+                    "autoscroll retains its view"
+                );
+                assert!(
+                    marker.upgrade().is_none(),
+                    "retired autoscroll marker remains owned"
+                );
+                assert!(!stop_autoscroll(), "retired view left autoscroll running");
+                let retired_overlay = overlay.downgrade();
+                drop(overlay);
+                assert!(retired_overlay.upgrade().is_none());
+            }
+        },
+    );
+}
+
+#[test]
 fn pointer_inside_the_dead_zone_does_not_scroll() {
     assert_eq!(autoscroll_step(0.0), 0.0);
     assert_eq!(autoscroll_step(DEAD_ZONE), 0.0);

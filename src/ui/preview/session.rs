@@ -58,7 +58,7 @@ impl PreviewState {
         self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
         self.clear_content();
-        if self.reserves_empty_preview() {
+        if self.reserves_empty_preview() && !self.sizing.is_compact() {
             self.show_placeholder();
         } else {
             self.hide_panel();

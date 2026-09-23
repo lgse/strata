@@ -942,6 +942,10 @@ impl Browser {
         self.state.borrow().can_delete_at(depth)
     }
 
+    pub fn allows_entry(&self, entry: &FileEntry) -> bool {
+        self.source.allows_entry(entry)
+    }
+
     /// Synchronizes widget focus without changing selection or reopening a directory.
     pub fn set_active_column(&self, depth: usize) {
         self.state.borrow_mut().focus_column(depth);
@@ -1556,6 +1560,17 @@ impl Browser {
         state.entry_at(parent_depth, position).into_iter().collect()
     }
 
+    pub fn entries_named(&self, names: &HashSet<String>) -> Vec<FileEntry> {
+        self.state
+            .borrow()
+            .columns
+            .iter()
+            .flat_map(|column| column.entries.iter())
+            .filter(|entry| names.contains(&entry.display_name))
+            .cloned()
+            .collect()
+    }
+
     pub fn set_selection(&self, depth: usize, positions: &[usize], focused: Option<usize>) {
         let mut state = self.state.borrow_mut();
         if state.set_selection(depth, positions, focused) {
@@ -1893,8 +1908,13 @@ impl Browser {
         }
     }
 
-    /// Drops a pending undo or redo whose items are no longer where it recorded
-    /// them.
+    pub fn pending_undo_trash(&self) -> Option<Vec<Location>> {
+        match self.pending_replay_entry(false)? {
+            (_, UndoEntry::Trash(locations)) => Some(locations),
+            _ => None,
+        }
+    }
+
     pub fn discard_pending_replay(&self, redo: bool, generation: u64) {
         if claim_replay(redo, Some(generation)).is_some() {
             finish_replay(redo, generation, true);
@@ -2067,6 +2087,12 @@ impl Browser {
                     }
                     browser.publish_rename(&source_for_publish, renamed);
                 } else {
+                    if let (Some(from), Some(to)) = (
+                        source_for_publish.native_path(),
+                        target_for_publish.native_path(),
+                    ) {
+                        crate::services::refresh_search_indexes_for_rename(from, to);
+                    }
                     browser.relocate_open_columns(&source_for_publish, &target_for_publish);
                 }
             }
@@ -2339,6 +2365,7 @@ impl Browser {
         self: &Rc<Self>,
         entry: FileEntry,
         destination: Location,
+        created_destination: bool,
         password: Option<String>,
     ) {
         let Some(provider) = self.operation_provider.borrow().clone() else {
@@ -2354,6 +2381,7 @@ impl Browser {
                 id: request_id,
                 entry,
                 destination,
+                created_destination,
                 password,
             },
             self.operation_callback(request_id, false, HashSet::new()),
@@ -2645,6 +2673,9 @@ impl Browser {
     }
 
     fn publish_rename(self: &Rc<Self>, old: &Location, entry: FileEntry) {
+        if let (Some(from), Some(to)) = (old.native_path(), entry.location.native_path()) {
+            crate::services::refresh_search_indexes_for_rename(from, to);
+        }
         if !(0..)
             .map_while(|depth| self.location_at(depth))
             .any(|location| location.is_within(old))
@@ -2797,6 +2828,27 @@ impl Browser {
         location: Location,
         include_icon_details: bool,
     ) {
+        self.queue_metadata_fill(depth, position, location, include_icon_details, false);
+    }
+
+    pub(crate) fn request_visible_metadata_fill(
+        self: &Rc<Self>,
+        depth: usize,
+        position: usize,
+        location: Location,
+        include_icon_details: bool,
+    ) {
+        self.queue_metadata_fill(depth, position, location, include_icon_details, true);
+    }
+
+    fn queue_metadata_fill(
+        self: &Rc<Self>,
+        depth: usize,
+        position: usize,
+        location: Location,
+        include_icon_details: bool,
+        visible: bool,
+    ) {
         // Defer to the provider instead of rejecting remote locations owner-side:
         // unsupported sources answer `Unsupported`.
         if !self.source.supports_metadata_fill(&location) {
@@ -2817,15 +2869,28 @@ impl Browser {
         {
             let mut pending = self.metadata_pending.borrow_mut();
             let queued = pending.entry(depth).or_default();
-            if let Some(target) = queued.iter_mut().find(|target| target.location == location) {
-                target.position = position;
-                target.include_icon_details |= include_icon_details;
-            } else if queued.len() < MAX_PENDING_FILL_LOCATIONS {
-                queued.push(ViewportTarget {
+            if let Some(index) = queued.iter().position(|target| target.location == location) {
+                queued[index].position = position;
+                queued[index].include_icon_details |= include_icon_details;
+                if visible {
+                    let target = queued.remove(index);
+                    queued.insert(0, target);
+                }
+            } else if visible || queued.len() < MAX_PENDING_FILL_LOCATIONS {
+                let target = ViewportTarget {
                     position,
                     location,
                     include_icon_details,
-                });
+                };
+                if visible {
+                    // A saturated offscreen backlog must not strand newly visible details.
+                    if queued.len() == MAX_PENDING_FILL_LOCATIONS {
+                        queued.pop();
+                    }
+                    queued.insert(0, target);
+                } else {
+                    queued.push(target);
+                }
             }
         }
         self.schedule_metadata_fill();
@@ -2905,6 +2970,7 @@ impl Browser {
         preferences.show_hidden = self.preferences.get().show_hidden;
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
+        self.state.borrow_mut().clear_metadata_positions(depth);
         let outcome = {
             let mut state = self.state.borrow_mut();
             if self.pending_sort.get() != Some((generation, depth)) {
@@ -2974,6 +3040,7 @@ impl Browser {
     fn abandon_awaited_sort(&self, depth: usize, generation: u64, outcome: MetadataOutcome) {
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
+        self.state.borrow_mut().clear_metadata_positions(depth);
         if self.pending_sort.get() != Some((generation, depth)) {
             return;
         }

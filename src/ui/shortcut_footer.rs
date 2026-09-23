@@ -67,6 +67,7 @@ pub(super) struct ShortcutFooter {
     popover: gtk::Popover,
     reference: gtk::Box,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
+    status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
 }
 
 impl ShortcutFooter {
@@ -190,24 +191,13 @@ impl ShortcutFooter {
                 more.set_visible(closed_hints.get());
             });
         });
-        let status_widgets = [
+        let status_widgets: Rc<RefCell<Vec<gtk::Widget>>> = Rc::new(RefCell::new(vec![
             paste.clone().upcast::<gtk::Widget>(),
             count.clone().upcast(),
             more.clone().upcast(),
-        ];
-        for widget in &status_widgets {
-            let root = root.downgrade();
-            let statuses = status_widgets.each_ref().map(gtk::Widget::downgrade);
-            widget.connect_visible_notify(move |_| {
-                if let Some(root) = root.upgrade() {
-                    // Ignore ancestor visibility so a hidden footer can reveal itself.
-                    root.set_visible(
-                        statuses.iter().any(|status| {
-                            status.upgrade().is_some_and(|status| status.get_visible())
-                        }),
-                    );
-                }
-            });
+        ]));
+        for widget in status_widgets.borrow().iter() {
+            watch_status_widget(widget, &status_widgets, &root);
         }
         let footer = Self {
             root,
@@ -219,6 +209,7 @@ impl ShortcutFooter {
             popover,
             reference,
             focus_before,
+            status_widgets,
         };
         footer.set_mode(mode);
         footer
@@ -226,6 +217,13 @@ impl ShortcutFooter {
 
     pub fn widget(&self) -> &gtk::Box {
         &self.root
+    }
+
+    pub fn set_activity(&self, widget: &impl IsA<gtk::Widget>) {
+        let widget = widget.as_ref().clone();
+        self.root.insert_child_after(&widget, Some(&self.count));
+        self.status_widgets.borrow_mut().push(widget.clone());
+        watch_status_widget(&widget, &self.status_widgets, &self.root);
     }
 
     pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
@@ -458,6 +456,26 @@ fn selection_details(entries: &[crate::model::FileEntry]) -> String {
         }
     }
     text
+}
+
+fn watch_status_widget(
+    widget: &gtk::Widget,
+    status_widgets: &Rc<RefCell<Vec<gtk::Widget>>>,
+    root: &gtk::Box,
+) {
+    let root = root.downgrade();
+    let statuses = status_widgets.clone();
+    widget.connect_visible_notify(move |_| {
+        // Ignore ancestor visibility so a hidden footer can reveal itself.
+        if let Some(root) = root.upgrade() {
+            root.set_visible(
+                statuses
+                    .borrow()
+                    .iter()
+                    .any(gtk::prelude::WidgetExt::get_visible),
+            );
+        }
+    });
 }
 
 fn refresh_paste_availability(

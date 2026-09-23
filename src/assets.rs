@@ -51,6 +51,7 @@ pub mod icons {
     pub const COLUMNS: &str = "strata-columns";
     pub const ICONS: &str = "strata-icons";
     pub const HOME: &str = "strata-house";
+    pub const LIBRARY: &str = "strata-library";
     pub const LIST: &str = "strata-list";
     pub const LIST_CHECKS: &str = "strata-list-checks";
     pub const LOCK: &str = "strata-lock";
@@ -80,6 +81,7 @@ pub mod icons {
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";
     pub const TRIANGLE_ALERT: &str = "strata-triangle-alert";
+    pub const UNDO_2: &str = "strata-undo-2";
     pub const UNPLUG: &str = "strata-unplug";
     pub const VIDEOS: &str = "strata-video";
     pub const VOLUME_2: &str = "strata-volume-2";

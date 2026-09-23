@@ -16,10 +16,19 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+IMAGE_INPUTS = (
+    "tests/e2e/Dockerfile",
+    "tests/e2e/requirements.txt",
+    "tests/e2e/install-packages.sh",
+    "tests/e2e/gtk/coordinate-probe.py",
+    "tests/e2e/gtk/gtk-4.22-accessible-bounds.patch",
+)
+
+
 def image_key(repository=REPOSITORY):
-    return hashlib.sha256("".join(digest(repository / path) for path in (
-        "tests/e2e/Dockerfile", "tests/e2e/requirements.txt", "tests/e2e/install-packages.sh",
-    )).encode()).hexdigest()
+    return hashlib.sha256(
+        "".join(digest(repository / path) for path in IMAGE_INPUTS).encode()
+    ).hexdigest()
 
 
 def dependency_key(repository=REPOSITORY):
