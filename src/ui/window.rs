@@ -52,7 +52,14 @@ pub(super) use sidebar::build_sidebar;
 
 pub(super) const SIDEBAR_WIDTH: i32 = 201;
 pub(super) const MIN_SIDEBAR_WIDTH: i32 = 169;
-pub(super) const SIDEBAR_RAIL_WIDTH: i32 = 36;
+pub(super) fn sidebar_rail_button_size() -> i32 {
+    // Match the header toggle's scaled content plus 4px padding on each side.
+    (24.0 * PreferenceManager::shared().interface_scale()).round() as i32 + 8
+}
+
+pub(super) fn sidebar_rail_width() -> i32 {
+    sidebar_rail_button_size() + 10
+}
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
 const STANDARD_PLACE_IDS: &[&str] = &[
@@ -262,17 +269,21 @@ fn schedule_after_first_paint(
     });
 }
 
-pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
-    PreferenceManager::shared().bind_interface_scale(paned, |widget, scale| {
+pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned, sidebar: &SidebarView) {
+    let sidebar = Rc::downgrade(&sidebar.state);
+    PreferenceManager::shared().bind_interface_scale(paned, move |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
         if paned.position() > 0 {
-            let Some(sidebar) = paned.start_child() else {
+            let Some(shell) = paned.start_child() else {
                 return;
             };
-            let target = if sidebar.has_css_class("sidebar-rail") {
-                SIDEBAR_RAIL_WIDTH
+            let target = if shell.has_css_class("sidebar-rail") {
+                if let Some(sidebar) = sidebar.upgrade() {
+                    sidebar.set_rail(true);
+                }
+                sidebar_rail_width()
             } else {
-                scaled_sidebar_width(paned, scale).max(sidebar_minimum_width(&sidebar))
+                scaled_sidebar_width(paned, scale).max(sidebar_minimum_width(&shell))
             };
             paned.set_position(target);
         }
@@ -292,7 +303,7 @@ fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
     } else {
         preferred
     };
-    preferred.min(available).max(SIDEBAR_WIDTH)
+    preferred.min(available).max(MIN_SIDEBAR_WIDTH)
 }
 
 fn sidebar_animation_target(
@@ -304,7 +315,7 @@ fn sidebar_animation_target(
     if !expanded {
         0
     } else if state.rail.get() {
-        SIDEBAR_RAIL_WIDTH
+        sidebar_rail_width()
     } else if let Some(saved) = state.saved_width.get() {
         saved.max(sidebar_minimum_width(sidebar))
     } else {
@@ -359,7 +370,6 @@ fn animate_sidebar(
             return glib::ControlFlow::Break;
         };
 
-        // Preview layout may engage or release the rail while this animation is running.
         let target = sidebar_animation_target(&paned, &sidebar, &state, expanded);
         let progress =
             (started.elapsed().as_secs_f64() / SIDEBAR_TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
@@ -1181,14 +1191,14 @@ impl SidebarState {
         self.sync_rail_rows();
     }
 
-    // Rail mode trades labels for width; names remain on the row tooltips.
     pub(in crate::ui) fn set_rail(&self, rail: bool) {
-        if self.rail.replace(rail) == rail {
+        if self.rail.replace(rail) == rail && !rail {
             return;
         }
         if let Some(scroller) = self.sidebar_scroller()
             && let Some(shell) = scroller.parent()
         {
+            scroller.set_overlay_scrolling(rail);
             if rail {
                 shell.add_css_class("sidebar-rail");
             } else {
@@ -1205,25 +1215,44 @@ impl SidebarState {
                 }
             }
             scroller.set_width_request(if rail {
-                SIDEBAR_RAIL_WIDTH
+                sidebar_rail_width()
             } else {
-                SIDEBAR_WIDTH
+                MIN_SIDEBAR_WIDTH
             });
             shell.set_size_request(
                 if rail {
-                    SIDEBAR_RAIL_WIDTH
+                    sidebar_rail_width()
                 } else {
-                    SIDEBAR_WIDTH
+                    MIN_SIDEBAR_WIDTH
                 },
                 -1,
             );
         }
         self.update_label.set_visible(!rail);
+        if let Some(content) = self.update_label.parent().and_downcast::<gtk::Box>() {
+            content.set_spacing(if rail { 0 } else { 8 });
+            content.set_halign(if rail {
+                gtk::Align::Center
+            } else {
+                gtk::Align::Fill
+            });
+            if let Some(dot) = content.first_child() {
+                dot.set_visible(!rail);
+            }
+        }
         self.sync_rail_rows();
     }
 
     fn sync_rail_rows(&self) {
         let rail = self.rail.get();
+        let size = if rail { sidebar_rail_button_size() } else { -1 };
+        if let Some(notice) = self
+            .update_label
+            .ancestor(gtk::Button::static_type())
+            .and_downcast::<gtk::Button>()
+        {
+            notice.set_size_request(size, size);
+        }
         let mut widget_child = self.widget.first_child();
         while let Some(child) = widget_child {
             widget_child = child.next_sibling();
@@ -1252,6 +1281,8 @@ impl SidebarState {
 }
 
 fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
+    let size = if rail { sidebar_rail_button_size() } else { -1 };
+    button.set_size_request(size, size);
     let is_pinned = button.has_css_class("sidebar-pinned-row");
     if let Some(content) = button.child() {
         let mut child = content.first_child();

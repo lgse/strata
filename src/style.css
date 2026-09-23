@@ -121,8 +121,8 @@ headerbar menubutton {
 
 headerbar .sidebar-toggle {
   color: @theme_accent;
+  margin-left: 5px;
   min-width: 36px;
-  padding: 4px 0;
 }
 
 headerbar .sidebar-toggle,
@@ -1905,7 +1905,7 @@ scrollbar slider:active {
 
 .sidebar {
   background: @theme_surface;
-  padding: 8px 7px;
+  padding: 5px;
 }
 
 .sidebar-update {
@@ -1944,25 +1944,6 @@ scrollbar slider:active {
   color: @theme_accent;
   font-size: 0.88em;
   font-weight: 650;
-}
-
-.sidebar-update.preview {
-  color: @theme_danger;
-}
-
-.sidebar-update.preview:hover {
-  background: alpha(@theme_danger, 0.16);
-  color: @theme_danger;
-}
-
-.sidebar-update.preview:active {
-  background: alpha(@theme_danger, 0.24);
-  color: @theme_danger;
-}
-
-.sidebar-update.preview .sidebar-update-dot,
-.sidebar-update.preview .sidebar-update-label {
-  color: @theme_danger;
 }
 
 .sidebar-row {
@@ -2096,14 +2077,14 @@ scrollbar slider:active {
   margin: 0;
 }
 
-/* Icon rail: labels are hidden in code; keep the remaining icons centered. */
 .sidebar-rail .sidebar {
-  padding: 8px 2px;
+  padding: 5px;
 }
 
 .sidebar-rail .sidebar-row {
-  min-width: 32px;
-  padding: 3px 2px;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 4px;
 }
 
 .sidebar-rail .sidebar-device {
@@ -2129,7 +2110,10 @@ scrollbar slider:active {
 }
 
 .sidebar-rail .sidebar-update {
-  padding: 4px 2px;
+  margin: 0 5px;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 4px;
 }
 
 .sidebar-heading {

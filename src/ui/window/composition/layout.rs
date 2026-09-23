@@ -17,8 +17,8 @@ use crate::{
 };
 
 use super::super::{
-    MIN_SIDEBAR_WIDTH, SIDEBAR_RAIL_WIDTH, SIDEBAR_WIDTH, SidebarView, animate_sidebar,
-    build_appearance_menu, pin_status, preferred_sidebar_width,
+    MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView, animate_sidebar, build_appearance_menu,
+    pin_status, preferred_sidebar_width, sidebar_rail_width,
 };
 
 pub(super) struct Header {
@@ -165,7 +165,7 @@ fn browser_split(
     content.set_end_child(Some(&browser.widget()));
     bind_sidebar_toggle(&content, sidebar, toggle, preview);
     bind_sidebar_layout(&content, sidebar, toggle, preview);
-    super::super::bind_sidebar_text_size(&content);
+    super::super::bind_sidebar_text_size(&content, sidebar);
     content
 }
 
@@ -185,7 +185,6 @@ fn bind_sidebar_layout(
         let Some(sidebar) = weak_sidebar.upgrade() else {
             return glib::ControlFlow::Break;
         };
-        // While the pane is visible, preview's sync_split manages the 3-pane rail state.
         if weak_preview.is_open() {
             return glib::ControlFlow::Continue;
         }
@@ -206,7 +205,7 @@ fn bind_sidebar_layout(
             content.set_position(restore);
         } else if !is_railed && available < needs_full {
             sidebar.set_rail(true);
-            content.set_position(SIDEBAR_RAIL_WIDTH);
+            content.set_position(sidebar_rail_width());
         }
         glib::ControlFlow::Continue
     });
@@ -232,8 +231,8 @@ fn bind_sidebar_toggle(
         };
         let railed = state.rail.get();
         if railed {
-            if content.position() != SIDEBAR_RAIL_WIDTH {
-                content.set_position(SIDEBAR_RAIL_WIDTH);
+            if content.position() != sidebar_rail_width() {
+                content.set_position(sidebar_rail_width());
             }
         } else if content.position() < MIN_SIDEBAR_WIDTH {
             content.set_position(MIN_SIDEBAR_WIDTH);

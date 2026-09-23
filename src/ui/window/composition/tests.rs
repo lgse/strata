@@ -389,7 +389,7 @@ fn sidebar_toggle_preserves_split_constraints() {
             fixture.content.header.sidebar_toggle.set_active(false);
             assert_eq!(content.position(), 0);
             fixture.content.header.sidebar_toggle.set_active(true);
-            assert_eq!(content.position(), super::super::SIDEBAR_RAIL_WIDTH);
+            assert_eq!(content.position(), super::super::sidebar_rail_width());
             assert!(fixture.content.sidebar.state.rail.get());
 
             fixture.close();

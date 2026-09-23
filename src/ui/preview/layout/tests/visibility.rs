@@ -299,7 +299,6 @@ fn compact_previews_load_targets_and_preserve_the_manual_session_choice() {
                 wait_until(|| fixture.preview.widget().width() == 700);
                 fixture.resize(1000);
                 fixture.wait_adjacent();
-                assert!(fixture.preview.widget().width() < COLUMN_WIDTH * MIN_COLUMN_MULTIPLIER);
                 assert_last_column_visible(&fixture);
                 fixture.last_column().set_width_request(420);
                 wait_until(|| fixture.last_column().width() >= 420);

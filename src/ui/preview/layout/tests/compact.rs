@@ -179,7 +179,7 @@ fn compact_archive_open_focuses_the_tree_instead_of_the_close_button() {
                 .expect("archive position");
             browser.select(0, position);
             browser.focus_active();
-            fixture.resize(640);
+            fixture.resize(400);
             fixture.settle();
             let selected = browser.focused_entry().expect("archive entry");
             fixture.preview.toggle(Some(selected.clone()), Some(0));

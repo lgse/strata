@@ -7,7 +7,7 @@ use crate::ui::{
     browser::{BrowserView, COLUMN_WIDTH, WeakBrowserView},
     browser_modes::BrowserMode,
     window::{
-        MIN_SIDEBAR_WIDTH, SIDEBAR_RAIL_WIDTH, SidebarState, SidebarView, preferred_sidebar_width,
+        MIN_SIDEBAR_WIDTH, SidebarState, SidebarView, preferred_sidebar_width, sidebar_rail_width,
     },
 };
 
@@ -385,12 +385,19 @@ impl PreviewState {
                 .is_some_and(|sidebar| sidebar.get_visible())
             {
                 if keep_railed {
-                    content.set_position(SIDEBAR_RAIL_WIDTH);
+                    content.set_position(sidebar_rail_width());
                 } else {
                     let restore = sidebar
                         .as_ref()
                         .and_then(|s| s.saved_width.get())
-                        .unwrap_or_else(|| self.sizing.sidebar_saved_width.get())
+                        .unwrap_or_else(|| {
+                            let saved = self.sizing.sidebar_saved_width.get();
+                            if saved > 0 {
+                                saved
+                            } else {
+                                preferred_sidebar_width()
+                            }
+                        })
                         .max(MIN_SIDEBAR_WIDTH);
                     content.set_position(restore);
                 }
@@ -453,25 +460,12 @@ impl PreviewState {
         if let Some(media) = media {
             media.pause();
         }
-        let had_focus = self
-            .pane
-            .root()
-            .and_then(|root| root.focus())
-            .is_some_and(|focused| focused == self.pane || focused.is_ancestor(&self.pane));
         self.hide_panel();
-        if had_focus
-            && let Some(binding) = self.sizing.binding.borrow().as_ref()
-            && let Some(browser) = binding.browser.upgrade()
-        {
-            browser.browser().focus_active();
-        }
     }
 
     pub(super) fn sync_split(self: &Rc<Self>, split: &gtk::Paned) {
         let mut geometry = self.geometry(split);
         let preview_present = self.current.borrow().is_some() || self.reserves_empty_preview();
-        // Trade sidebar labels for an icon rail when an open preview leaves
-        // no room for all three panes; names stay reachable via tooltips.
         if preview_present
             && let Some(binding) = self.sizing.binding.borrow().as_ref()
             && let Some(content) = binding.content.upgrade()
@@ -484,7 +478,14 @@ impl PreviewState {
             let saved_width = sidebar
                 .as_ref()
                 .and_then(|s| s.saved_width.get())
-                .unwrap_or_else(|| self.sizing.sidebar_saved_width.get())
+                .unwrap_or_else(|| {
+                    let saved = self.sizing.sidebar_saved_width.get();
+                    if saved > 0 {
+                        saved
+                    } else {
+                        preferred_sidebar_width()
+                    }
+                })
                 .max(MIN_SIDEBAR_WIDTH);
             let full = if sidebar.is_none() {
                 0
@@ -538,7 +539,7 @@ impl PreviewState {
                     sidebar.set_rail(true);
                 }
                 if visible {
-                    content.set_position(SIDEBAR_RAIL_WIDTH);
+                    content.set_position(sidebar_rail_width());
                 }
                 self.sizing.sidebar_railed.set(true);
                 geometry = self.geometry(split);
@@ -575,7 +576,6 @@ impl PreviewState {
         self.set_compact(split, geometry.is_compact());
         let manual = self.sizing.manual_width.get();
         let (minimum, position) = if geometry.is_compact() {
-            // A visible sidebar keeps its strip; only the file list yields.
             let position = self
                 .sizing
                 .binding

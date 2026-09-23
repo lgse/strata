@@ -967,7 +967,7 @@ fn build_chooser_with_source(
     content.set_wide_handle(false);
     content.set_position(SIDEBAR_WIDTH);
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
-    super::window::bind_sidebar_text_size(&content);
+    super::window::bind_sidebar_text_size(&content, &sidebar);
     content.set_shrink_start_child(false);
     content.set_resize_start_child(false);
     content.set_start_child(Some(&sidebar.widget));
