@@ -57,7 +57,7 @@ impl MountTable {
                 .any(|(mount_point, fs_type)| fs_type == "autofs" && path.starts_with(mount_point))
     }
 
-    pub(super) fn is_mount_point(&self, path: &Path) -> bool {
+    pub(crate) fn is_mount_point(&self, path: &Path) -> bool {
         self.entries
             .iter()
             .any(|(mount_point, _)| mount_point == path)

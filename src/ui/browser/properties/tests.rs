@@ -3,7 +3,10 @@
 mod progress;
 
 use super::*;
-use std::time::{Duration, Instant};
+use std::{
+    cell::RefCell,
+    time::{Duration, Instant},
+};
 
 fn row_label(widget: &gtk::Widget, title: &str) -> Option<gtk::Label> {
     if widget.has_css_class("properties-row")
@@ -152,6 +155,256 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                     std::thread::sleep(Duration::from_millis(1));
                 }
             }
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+fn selection_entry(path: &std::path::Path, is_directory: bool, size: u64) -> FileEntry {
+    FileEntry {
+        location: Location::local(path),
+        thumbnail_path: None,
+        native_name: path.file_name().unwrap_or_default().to_owned(),
+        display_name: path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        kind: if is_directory {
+            crate::model::EntryKind::Directory
+        } else {
+            crate::model::EntryKind::File
+        },
+        size: crate::model::MetadataValue::Known(size),
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    }
+}
+
+#[test]
+fn selection_properties_aggregates_nested_counts_and_sizes_across_the_selection() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::selection_properties_aggregates_nested_counts_and_sizes_across_the_selection",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("selected_file.txt"), b"aaaaa").expect("file");
+            std::fs::create_dir_all(root.path().join("selected_folder/nested_dir"))
+                .expect("folder");
+            std::fs::write(root.path().join("selected_folder/inner.txt"), b"bbb").expect("inner");
+            std::fs::write(
+                root.path().join("selected_folder/nested_dir/deep.txt"),
+                b"cc",
+            )
+            .expect("deep");
+
+            for (file_size, expected_size, expected_contains) in [
+                (
+                    crate::model::MetadataValue::Known(5),
+                    "10 B",
+                    "3 files, 1 folder",
+                ),
+                (
+                    crate::model::MetadataValue::Unknown,
+                    "≥ 5 B",
+                    "≥ 3 files, ≥ 1 folder",
+                ),
+            ] {
+                let view = crate::ui::browser::BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&view.widget()));
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
+
+                let mut file = selection_entry(&root.path().join("selected_file.txt"), false, 5);
+                file.size = file_size.clone();
+                let entries = vec![
+                    file,
+                    selection_entry(&root.path().join("selected_folder"), true, 0),
+                ];
+                view.state.show_selection_properties(entries);
+
+                let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
+                let contains =
+                    row_label(overlay.upcast_ref(), "CONTAINS").expect("Properties CONTAINS row");
+                let spinner = size
+                    .next_sibling()
+                    .and_downcast::<gtk::Spinner>()
+                    .expect("size spinner");
+                assert!(spinner.is_spinning());
+
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while spinner.is_spinning() {
+                    assert!(Instant::now() < deadline, "SIZE stayed at {}", size.text());
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                assert_eq!(size.text(), expected_size);
+                assert_eq!(contains.text(), expected_contains);
+                let warning = contains.next_sibling().expect("measurement warning");
+                assert_eq!(
+                    warning.is_visible(),
+                    file_size == crate::model::MetadataValue::Unknown
+                );
+
+                let layer = overlay
+                    .last_child()
+                    .and_downcast::<gtk::Box>()
+                    .expect("modal layer");
+                dismiss_modal_layer(&layer, &overlay, None);
+                while layer.parent().is_some() {
+                    assert!(Instant::now() < deadline, "Properties did not close");
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                window.destroy();
+                view.browser().clear_observer();
+            }
+        },
+    );
+}
+
+#[test]
+fn selection_properties_updates_during_byte_and_count_only_walks() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::selection_properties_updates_during_byte_and_count_only_walks",
+        || {
+            for contents in [b"x".as_slice(), b"".as_slice()] {
+                let root = tempfile::tempdir().expect("fixture");
+                for name in ["first", "second"] {
+                    let folder = root.path().join(name);
+                    std::fs::create_dir(&folder).expect("folder");
+                    for index in 0..200 {
+                        std::fs::write(folder.join(format!("file-{index}")), contents)
+                            .expect("file");
+                    }
+                }
+                std::fs::write(root.path().join("selected.txt"), b"12345").expect("selected file");
+                let view = crate::ui::browser::BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    crate::ui::browser::PeekBehavior::default(),
+                );
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&view.widget()));
+                let window = gtk::Window::builder().child(&overlay).build();
+                window.present();
+                view.state.show_selection_properties(vec![
+                    selection_entry(&root.path().join("first"), true, 0),
+                    selection_entry(&root.path().join("second"), true, 0),
+                    selection_entry(&root.path().join("selected.txt"), false, 5),
+                ]);
+                let size = size_label(overlay.upcast_ref()).expect("SIZE");
+                let contains = row_label(overlay.upcast_ref(), "CONTAINS").expect("CONTAINS");
+                let spinner = size
+                    .next_sibling()
+                    .and_downcast::<gtk::Spinner>()
+                    .expect("spinner");
+                let sizes = Rc::new(RefCell::new(Vec::new()));
+                let counts = Rc::new(RefCell::new(Vec::new()));
+                for (label, values) in [(&size, sizes.clone()), (&contains, counts.clone())] {
+                    let spinner = spinner.clone();
+                    label.connect_label_notify(move |label| {
+                        if spinner.is_spinning() {
+                            values.borrow_mut().push(label.text().to_string());
+                        }
+                    });
+                }
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while spinner.is_spinning() {
+                    assert!(
+                        Instant::now() < deadline,
+                        "selection measurement did not finish"
+                    );
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                assert_eq!(size.text(), format!("{} B", 5 + 400 * contents.len()));
+                assert_eq!(contains.text(), "401 files, 0 folders");
+                assert_eq!(sizes.borrow().first().map(String::as_str), Some("5 B"));
+                let counts: Vec<usize> = counts
+                    .borrow()
+                    .iter()
+                    .map(|value| {
+                        value
+                            .split_whitespace()
+                            .next()
+                            .expect("count token")
+                            .parse()
+                            .expect("numeric count")
+                    })
+                    .collect();
+                assert!(
+                    counts.iter().any(|&count| count > 1 && count < 201),
+                    "counts must advance within a folder"
+                );
+                assert!(
+                    counts.windows(2).all(|pair| pair[0] <= pair[1]),
+                    "completed folders must remain counted"
+                );
+                if !contents.is_empty() {
+                    let sizes: Vec<usize> = sizes
+                        .borrow()
+                        .iter()
+                        .map(|value| {
+                            value
+                                .split_whitespace()
+                                .next()
+                                .expect("size token")
+                                .parse()
+                                .expect("numeric bytes")
+                        })
+                        .collect();
+                    assert!(
+                        sizes.iter().any(|&size| size > 5 && size < 205),
+                        "bytes must advance within a folder"
+                    );
+                    assert!(sizes.windows(2).all(|pair| pair[0] <= pair[1]));
+                }
+                window.destroy();
+                view.browser().clear_observer();
+            }
+        },
+    );
+}
+
+#[test]
+fn a_single_item_selection_falls_back_to_the_full_properties_dialog() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::a_single_item_selection_falls_back_to_the_full_properties_dialog",
+        || {
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("lone.txt"), b"hi").expect("file");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.state.show_selection_properties(vec![selection_entry(
+                &root.path().join("lone.txt"),
+                false,
+                2,
+            )]);
+
+            let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
+            assert_eq!(size.text(), "2 B");
+            assert!(
+                row_label(overlay.upcast_ref(), "OPENS WITH").is_some(),
+                "a single-item selection must open the full single-item dialog, not the compact one"
+            );
+
             window.destroy();
             view.browser().clear_observer();
         },

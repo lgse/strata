@@ -45,6 +45,13 @@ impl SplitSizing {
         self.compact.get()
     }
 
+    pub(super) fn browser(&self) -> Option<BrowserView> {
+        self.binding
+            .borrow()
+            .as_ref()
+            .and_then(|binding| binding.browser.upgrade())
+    }
+
     pub(super) fn is_suspended(&self) -> bool {
         self.suspended.get()
     }

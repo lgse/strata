@@ -36,6 +36,7 @@ mod paths;
 mod progress;
 mod replacement;
 mod restore_safety;
+mod sync;
 mod trash_capabilities;
 mod undo;
 
@@ -67,8 +68,10 @@ use super::{
     is_trash_unsupported_failure, local_file_identity, merge_local, merge_local_with, move_local,
     move_local_with, open_local_parent_directory, operation_error_summary, parallel_delete_local,
     parse_copy_suffix, permanently_delete_local, permanently_delete_local_path_if_unchanged,
-    replace_local, replace_local_with, run_merge_undo, target_is_fat_family, transfer_is_noop,
-    trash_stage_overwrite, unique_fat_sibling_name, validated_child, was_cancelled,
+    replace_local, replace_local_with, run_merge_undo, set_force_cross_volume_for_test,
+    set_removable_roots_for_test, set_sync_observer, sync_probe_observations, target_is_fat_family,
+    transfer_is_noop, trash_stage_overwrite, unique_fat_sibling_name, validated_child,
+    was_cancelled,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -79,6 +82,65 @@ use crate::{
         UndoRenameRequest,
     },
 };
+
+struct RemovableFlushGuard;
+
+impl RemovableFlushGuard {
+    fn install(root: &Path, fail: Option<io::ErrorKind>, cross_volume: bool) -> Self {
+        set_removable_roots_for_test(Some(vec![root.to_path_buf()]));
+        set_force_cross_volume_for_test(cross_volume);
+        super::install_sync_probe(fail, false);
+        Self
+    }
+}
+
+impl Drop for RemovableFlushGuard {
+    fn drop(&mut self) {
+        super::release_sync_probe();
+        super::clear_sync_probe();
+        set_sync_observer(None);
+        set_removable_roots_for_test(None);
+        set_force_cross_volume_for_test(false);
+    }
+}
+
+fn terminal_transfer(events: &[OperationEvent]) -> Option<&OperationEvent> {
+    events.iter().rev().find(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    })
+}
+
+fn pump_until_transfer(events: &RefCell<Vec<OperationEvent>>) {
+    let start = Instant::now();
+    while terminal_transfer(&events.borrow()).is_none() {
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "timed out waiting for the transfer to finish: {:?}",
+            events.borrow()
+        );
+        // Own the default context for the whole wait. Releasing it between
+        // polls lets a GIO copy worker run a progress callback inline.
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+fn watch_source_during_sync(source: &Path) -> Arc<std::sync::Mutex<Vec<bool>>> {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let record = Arc::clone(&seen);
+    let source = source.to_path_buf();
+    set_sync_observer(Some(Arc::new(move |_| {
+        record
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(source.exists());
+    })));
+    seen
+}
 
 fn file_entry(path: &std::path::Path) -> FileEntry {
     FileEntry {

@@ -68,6 +68,12 @@ pub(super) const DEFAULT: &[Shortcut] = &[
     ("Files", "Move to Trash", "when supported", "Delete"),
     ("Files", "Delete permanently", "", "Shift + Delete"),
     ("Files", "Undo file operation", "", "Ctrl + Z"),
+    (
+        "Files",
+        "Redo file operation",
+        "",
+        "Ctrl + Shift + Z / Ctrl + Y",
+    ),
     ("Files", "Item properties", "", "Alt + Enter"),
     ("Files", "Open context menu", "", "Menu / Shift + F10"),
     (

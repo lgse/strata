@@ -140,6 +140,7 @@ pub(super) fn browser_layout(
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
     preview.attach_split(&preview_split, &content, browser);
+    browser.add_marquee_origin(&preview.widget(), gtk::PackType::End);
     root.append(&preview_split);
     root
 }
@@ -177,7 +178,7 @@ fn browser_split(
     content.set_position(SIDEBAR_WIDTH);
     content.set_vexpand(true);
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
-    browser.add_marquee_origin(&sidebar.widget);
+    browser.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
     bind_sidebar_toggle(&content, &sidebar.widget, toggle);

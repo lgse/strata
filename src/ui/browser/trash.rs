@@ -7,7 +7,7 @@ use crate::model::{FileEntry, Location};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::entry::{
-    entry_icon, entry_kind_summary, format_file_size, item_count_label,
+    aggregate_directory_summary, entry_icon, entry_kind_summary, format_file_size, item_count_label,
 };
 use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
@@ -799,6 +799,7 @@ impl ViewState {
                 ModalTone::Accent
             },
         );
+        layout.set_loading(true, Some("Calculating total size…"));
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         let (visible, hidden) = delete_confirmation_rows(&entries);
@@ -852,6 +853,9 @@ impl ViewState {
         let close = layout.close;
         let cancel = layout.cancel;
         let confirm = layout.confirm;
+        let subtitle = layout.subtitle;
+        let spinner = layout.loading;
+        confirm.set_sensitive(false);
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
@@ -962,6 +966,38 @@ impl ViewState {
                 window.set_focus_visible(false);
             }
         });
+
+        let weak_subtitle = subtitle.downgrade();
+        let weak_confirm = confirm.downgrade();
+        let weak_spinner = spinner.downgrade();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let summary = aggregate_directory_summary(&entries).await;
+            let (Some(subtitle), Some(confirm), Some(spinner)) = (
+                weak_subtitle.upgrade(),
+                weak_confirm.upgrade(),
+                weak_spinner.upgrade(),
+            ) else {
+                return;
+            };
+            subtitle.set_label(&format!(
+                "{}{} · {}{} will be permanently deleted",
+                if summary.truncated() { "At least " } else { "" },
+                item_count_label(summary.item_count),
+                if summary.truncated() { "at least " } else { "" },
+                format_file_size(summary.total_size)
+            ));
+            confirm.set_sensitive(true);
+            spinner.stop();
+            spinner.set_visible(false);
+        });
+        let task = Rc::new(task);
+        let closing_task = task.clone();
+        layer.connect_sensitive_notify(move |layer| {
+            if !layer.is_sensitive() {
+                closing_task.abort();
+            }
+        });
+        layer.connect_unrealize(move |_| task.abort());
     }
 }
 

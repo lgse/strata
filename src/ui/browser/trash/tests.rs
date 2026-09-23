@@ -214,7 +214,7 @@ impl DeleteConfirmation {
             button.tooltip_text().as_deref() == Some("Close dialog")
         })
         .expect("close");
-        wait_until(|| confirm.has_focus(), "confirm should take initial focus");
+        wait_until(|| cancel.has_focus(), "cancel should take initial focus");
         let layer = find_widget(&root, &|widget: &gtk::Widget| {
             widget.has_css_class("app-modal-layer")
         })
@@ -283,9 +283,14 @@ fn enter_deletes_on_confirm() {
         "ui::browser::trash::tests::enter_deletes_on_confirm",
         || {
             let (dir, dialog) = DeleteConfirmation::present();
-            assert!(
-                dialog.confirm.has_focus(),
-                "confirm should keep initial focus"
+            wait_until(
+                || dialog.confirm.is_sensitive(),
+                "confirm should become sensitive once the total is calculated",
+            );
+            dialog.press(gtk::gdk::Key::Right);
+            wait_until(
+                || dialog.confirm.has_focus(),
+                "Right should move focus to Confirm",
             );
             dialog.press(gtk::gdk::Key::Return);
             wait_until(
@@ -332,6 +337,116 @@ fn enter_keeps_file_on_close() {
             dialog.finish();
         },
     );
+}
+
+#[test]
+fn delete_confirmation_totals_nested_folder_contents_into_the_subtitle() {
+    crate::test_support::gtk_test(
+        "ui::browser::trash::tests::delete_confirmation_totals_nested_folder_contents_into_the_subtitle",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            let file_path = fixture.path().join("keep-me.txt");
+            std::fs::write(&file_path, b"aaaaa").expect("standalone file");
+            let folder_path = fixture.path().join("nested");
+            std::fs::create_dir(&folder_path).expect("nested folder");
+            std::fs::write(folder_path.join("inner.txt"), b"bbb").expect("nested file");
+
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder()
+                .child(&overlay)
+                .default_width(1000)
+                .default_height(650)
+                .build();
+            window.present();
+            for (size, expected) in [
+                (
+                    crate::model::MetadataValue::Known(5),
+                    "2 items · 8 B will be permanently deleted",
+                ),
+                (
+                    crate::model::MetadataValue::Unknown,
+                    "At least 2 items · at least 3 B will be permanently deleted",
+                ),
+                (
+                    crate::model::MetadataValue::Unavailable,
+                    "At least 2 items · at least 3 B will be permanently deleted",
+                ),
+            ] {
+                let mut file_entry = local_file_entry(&file_path);
+                file_entry.size = size;
+                view.state.show_delete_confirmation(
+                    vec![file_entry, local_folder_entry(&folder_path)],
+                    true,
+                    false,
+                );
+                let root = window.clone().upcast::<gtk::Widget>();
+                let confirm = wait_for_widget(&root, |button: &gtk::Button| {
+                    button.label().as_deref() == Some("Permanently delete 2 items")
+                });
+                wait_until(
+                    || confirm.is_sensitive(),
+                    "confirm should become sensitive once the total is calculated",
+                );
+                let subtitle = wait_for_widget(&root, |label: &gtk::Label| {
+                    label.has_css_class("action-dialog-subtitle")
+                });
+                wait_until(
+                    || subtitle.label() == expected,
+                    "subtitle should total the standalone file plus the nested folder's contents",
+                );
+                let cancel = wait_for_widget(&root, |button: &gtk::Button| {
+                    button.label().as_deref() == Some("Cancel")
+                });
+                cancel.emit_clicked();
+                wait_until(|| !confirm.is_mapped(), "dialog should close");
+            }
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+fn local_folder_entry(path: &Path) -> FileEntry {
+    let name = path
+        .file_name()
+        .expect("should have a file name")
+        .to_os_string();
+    FileEntry {
+        location: Location::local(path),
+        native_name: name.clone(),
+        thumbnail_path: None,
+        display_name: name.to_string_lossy().into_owned(),
+        kind: crate::model::EntryKind::Directory,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        recent_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
+        image_dimensions: crate::model::MetadataValue::Unknown,
+        child_count: crate::model::MetadataValue::Unknown,
+        duration_seconds: crate::model::MetadataValue::Unknown,
+    }
+}
+
+fn wait_for_widget<T: IsA<gtk::Widget> + glib::object::IsClass>(
+    root: &gtk::Widget,
+    predicate: impl Fn(&T) -> bool,
+) -> T {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(widget) = find_widget(root, &predicate) {
+            return widget;
+        }
+        assert!(Instant::now() < deadline, "widget did not appear in time");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(1));
+    }
 }
 
 fn local_file_entry(path: &Path) -> FileEntry {
