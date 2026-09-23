@@ -757,7 +757,7 @@ fn right_from_the_sidebar_returns_to_the_files_after_the_header() {
         "ui::window::tests::keyboard_dispatch::right_from_the_sidebar_returns_to_the_files_after_the_header",
         || {
             let fixture = KeyboardFixture::new();
-            ThemeManager::shared().set_arrow_navigation_scoped(false);
+            PreferenceManager::shared().set_arrow_navigation_scoped(false);
             for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
                 fixture.view.set_view_mode(mode);
                 fixture.view.browser().select(0, 0);

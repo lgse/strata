@@ -330,7 +330,6 @@ impl Dispatcher {
         self.type_to_search.preferences.arrow_navigation_scoped()
     }
 
-    /// Only a file-view widget is a return target; from header chrome Right re-enters the files.
     fn enter_sidebar(&self, event: &KeyEvent) {
         let previous = self
             .view
