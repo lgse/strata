@@ -295,7 +295,7 @@ def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
     pin = dialog.find(role="button", name="Pin")
     assert pin is not None, dialog.dump()
     assert "sensitive" in pin.states
-    strata.pointer.click(pin)
+    assert pin.activate()
     strata.wait(lambda: strata.dialog() is None, "the dialog to close after pinning")
     strata.wait(
         lambda: strata.window.find(role="button", name="documents"),
@@ -310,7 +310,7 @@ def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
     assert "sensitive" in unpin.states, "the Unpin control must stay readable"
     assert dialog.find(role="button", name="Pin") is None
 
-    strata.pointer.click(unpin)
+    assert unpin.activate()
     strata.wait(lambda: strata.dialog() is None, "the dialog to close after unpinning")
     strata.wait(
         lambda: strata.window.find(role="button", name="documents") is None,

@@ -57,8 +57,28 @@ fn saved_order_rebuilds_both_sidebars_without_losing_active_places() {
                 assert!(row(sidebar, &location).has_css_class("active"));
             }
             for order in [
-                vec!["downloads", "desktop", "pictures", "documents", "videos"],
-                vec!["videos", "pictures", "documents", "desktop", "downloads"],
+                vec![
+                    "downloads",
+                    "desktop",
+                    "pictures",
+                    "documents",
+                    "videos",
+                    "recent",
+                    "home",
+                    "trash",
+                    "network",
+                ],
+                vec![
+                    "recent",
+                    "videos",
+                    "pictures",
+                    "documents",
+                    "desktop",
+                    "downloads",
+                    "home",
+                    "trash",
+                    "network",
+                ],
             ] {
                 let before = sidebars.each_ref().map(|sidebar| row(sidebar, &location));
                 preferences.set_sidebar_order(order.iter().map(|id| (*id).to_owned()).collect());
@@ -74,6 +94,29 @@ fn saved_order_rebuilds_both_sidebars_without_losing_active_places() {
                 sidebar.disconnect();
                 sidebar.state.browser.clear_observer();
             }
+        },
+    );
+}
+
+#[test]
+fn special_places_reorder_and_persist_beside_the_standard_folders() {
+    gtk_test(
+        "ui::window::sidebar::tests::special_places_reorder_and_persist_beside_the_standard_folders",
+        || {
+            let preferences = PreferenceManager::shared();
+            let sidebar = build_sidebar(browser_for_window(), preferences.clone(), false);
+            let trash = Location::uri("trash:///");
+            assert!(row(&sidebar, &trash).has_css_class("reorderable"));
+
+            sidebar.state.reorder_place("trash", "home", false);
+
+            let order = sidebar.state.place_order.borrow().clone();
+            assert_eq!(order.first(), Some(&"trash"));
+            assert_eq!(order.get(1), Some(&"home"));
+            assert_eq!(preferences.sidebar_order(), order);
+            assert!(row(&sidebar, &trash).has_css_class("reorderable"));
+            sidebar.disconnect();
+            sidebar.state.browser.clear_observer();
         },
     );
 }

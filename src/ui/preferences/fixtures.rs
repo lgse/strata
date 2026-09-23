@@ -31,6 +31,10 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         list_file_clicks: 1,
         list_folder_clicks: 1,
         sidebar_order: vec![
+            "recent".into(),
+            "network".into(),
+            "trash".into(),
+            "home".into(),
             "videos".into(),
             "pictures".into(),
             "downloads".into(),

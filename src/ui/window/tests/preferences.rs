@@ -83,15 +83,29 @@ fn sidebar_order_and_update_notices_follow_preferences_without_settings() {
             let first = super::super::build_sidebar(browser_for_window(), manager.clone(), true);
             let second = super::super::build_sidebar(browser_for_window(), manager.clone(), true);
             manager.set_sidebar_order(vec![
+                "recent".into(),
                 "downloads".into(),
                 "videos".into(),
                 "documents".into(),
                 "pictures".into(),
                 "desktop".into(),
+                "home".into(),
+                "trash".into(),
+                "network".into(),
             ]);
             assert_eq!(
                 *first.state.place_order.borrow(),
-                ["downloads", "videos", "documents", "pictures", "desktop"]
+                [
+                    "recent",
+                    "downloads",
+                    "videos",
+                    "documents",
+                    "pictures",
+                    "desktop",
+                    "home",
+                    "trash",
+                    "network"
+                ]
             );
             assert_eq!(
                 *first.state.place_order.borrow(),

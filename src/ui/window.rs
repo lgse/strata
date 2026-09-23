@@ -54,7 +54,17 @@ pub(super) const SIDEBAR_WIDTH: i32 = 201;
 pub(super) const MIN_SIDEBAR_WIDTH: i32 = 169;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
-const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
+const STANDARD_PLACE_IDS: &[&str] = &[
+    "home",
+    "trash",
+    "network",
+    "recent",
+    "desktop",
+    "documents",
+    "downloads",
+    "pictures",
+    "videos",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RecentAvailability {
@@ -1180,70 +1190,72 @@ impl SidebarState {
     }
 
     fn append_static_places(self: &Rc<Self>) {
-        if self.preference_manager.sidebar_show_home() {
-            let location = Location::local(home_directory());
-            let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
-            if !self.local_only {
-                self.attach_place_context_menu(&row, location, |state| {
-                    state.preference_manager.set_sidebar_show_home(false);
-                });
-            }
+        for place in self.place_order.borrow().clone() {
+            self.append_ordered_place(place);
         }
-        if !self.local_only {
-            if self.preference_manager.sidebar_show_trash() {
-                self.append_trash_place();
+        self.append_pinned_places();
+    }
+
+    fn append_ordered_place(self: &Rc<Self>, place: &'static str) {
+        match place {
+            "home" => {
+                if !self.preference_manager.sidebar_show_home() {
+                    return;
+                }
+                let location = Location::local(home_directory());
+                let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
+                if !self.local_only {
+                    self.attach_place_context_menu(&row, location, |state| {
+                        state.preference_manager.set_sidebar_show_home(false);
+                    });
+                    self.make_place_reorderable(&row, place);
+                }
             }
-            if self.preference_manager.sidebar_show_network() {
+            "trash" => {
+                if !self.local_only && self.preference_manager.sidebar_show_trash() {
+                    self.append_trash_place();
+                }
+            }
+            "network" => {
+                if self.local_only || !self.preference_manager.sidebar_show_network() {
+                    return;
+                }
                 let location = Location::uri("network:///");
                 let row =
                     self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
+                self.make_place_reorderable(&row, place);
             }
+            "recent" => {
+                if should_show_recent_place(
+                    self.preference_manager.sidebar_show_recent(),
+                    self.recent_availability.get(),
+                ) {
+                    self.append_recent_place();
+                }
+            }
+            _ => self.append_standard_place(place),
         }
-        if should_show_recent_place(
-            self.preference_manager.sidebar_show_recent(),
-            self.recent_availability.get(),
-        ) {
-            self.append_recent_place();
-        }
-        if self.has_visible_standard_places() && self.widget.first_child().is_some() {
-            self.append_separator();
-        }
-        self.append_standard_places();
-        self.append_pinned_places();
-    }
-
-    fn has_visible_standard_places(&self) -> bool {
-        self.place_order.borrow().iter().copied().any(|place| {
-            self.standard_place_visible(place)
-                && standard_place(place).is_some_and(|(_, _, directory)| {
-                    glib::user_special_dir(directory).is_some_and(|path| {
-                        should_show_standard_place(place, &path, &home_directory())
-                    })
-                })
-        })
     }
 
     fn standard_place_visible(&self, id: &str) -> bool {
         sidebar_standard_place_visible(&self.preference_manager, id)
     }
 
-    fn append_standard_places(self: &Rc<Self>) {
-        for place in self.place_order.borrow().clone() {
-            if !self.standard_place_visible(place) {
-                continue;
-            }
-            if let Some((icon, name, directory)) = standard_place(place)
-                && let Some(path) = glib::user_special_dir(directory)
-                    .filter(|path| should_show_standard_place(place, path, &home_directory()))
-            {
-                if self.local_only {
-                    self.append_place(icon, name, Location::local(path));
-                } else {
-                    self.append_reorderable_place(place, icon, name, Location::local(path));
-                }
+    fn append_standard_place(self: &Rc<Self>, place: &'static str) {
+        if !self.standard_place_visible(place) {
+            return;
+        }
+        if let Some((icon, name, directory)) = standard_place(place)
+            && let Some(path) = glib::user_special_dir(directory)
+                .filter(|path| should_show_standard_place(place, path, &home_directory()))
+        {
+            if self.local_only {
+                self.append_place(icon, name, Location::local(path));
+            } else {
+                self.append_reorderable_place(place, icon, name, Location::local(path));
             }
         }
     }
@@ -1542,6 +1554,7 @@ impl SidebarState {
         let row = sidebar_button(crate::assets::icons::CLOCK, "Recent");
         row.set_tooltip_text(Some("recent:///"));
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
+        self.make_place_reorderable(&row, "recent");
         self.widget.append(&row);
     }
 
@@ -1624,6 +1637,7 @@ impl SidebarState {
             popover.popup();
         });
         row.add_controller(context);
+        self.make_place_reorderable(&row, "trash");
         self.widget.append(&row);
     }
 
@@ -1700,10 +1714,16 @@ impl SidebarState {
             }
         });
 
+        self.make_place_reorderable(&row, id);
+        self.widget.append(&row);
+    }
+
+    fn make_place_reorderable(self: &Rc<Self>, row: &gtk::Button, id: &'static str) {
+        if self.local_only {
+            return;
+        }
         self.make_reorderable(
-            &row,
-            // Standard rows drag their stable id, so a pinned row's numeric
-            // payload is rejected by the standard-place drop handler.
+            row,
             move || id.to_string(),
             move |state, source, after| {
                 if source.starts_with(PINNED_DRAG_PREFIX) {
@@ -1713,7 +1733,6 @@ impl SidebarState {
                 true
             },
         );
-        self.widget.append(&row);
     }
 
     fn reorder_place(self: &Rc<Self>, source: &str, target: &str, after: bool) {
@@ -3155,10 +3174,22 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
             order.push(*canonical);
         }
     }
-    for &id in STANDARD_PLACE_IDS {
-        if !order.contains(&id) {
-            order.push(id);
+    for (index, &id) in STANDARD_PLACE_IDS.iter().enumerate() {
+        if order.contains(&id) {
+            continue;
         }
+        // Preserve the old sidebar layout when upgrading orders without special places.
+        let position = STANDARD_PLACE_IDS[..index]
+            .iter()
+            .rev()
+            .find_map(|earlier| {
+                order
+                    .iter()
+                    .position(|place| place == earlier)
+                    .map(|position| position + 1)
+            })
+            .unwrap_or(0);
+        order.insert(position, id);
     }
     order
 }

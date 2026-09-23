@@ -26,7 +26,7 @@ def request_archive_collision(strata, format="ZIP"):
     strata.keyboard.type_text("archive")
     strata.wait(lambda: field.text == "archive", "archive name input")
     strata.pointer.click(dialog.find(role="toggle button", name=format))
-    strata.pointer.click(strata.dialog_button("Compress"))
+    assert strata.dialog_button("Compress").activate()
     strata.wait(
         lambda: (dialog := strata.dialog()) is not None and dialog.name == "File already exists",
         "archive collision prompt",
