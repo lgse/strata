@@ -1650,10 +1650,9 @@ impl SidebarState {
         row.add_css_class("reorderable");
         row.set_cursor_from_name(Some("pointer"));
 
-        // A press only arms the drag after a hold, so an ordinary click still
-        // navigates instead of dragging the row away.
         let armed = Rc::new(Cell::new(false));
         let hold = gtk::GestureLongPress::new();
+        hold.set_button(1);
         hold.set_touch_only(false);
         let held_row = row.clone();
         let held = armed.clone();
@@ -1673,9 +1672,15 @@ impl SidebarState {
         };
         let cancelled = disarm.clone();
         hold.connect_cancelled(move |_| cancelled());
-        let ended = disarm.clone();
-        hold.connect_end(move |_, _| ended());
         row.add_controller(hold);
+
+        // LongPress ends at the drag threshold, before DragSource prepares its payload.
+        // Disarm on button release instead so moving after the hold can start a drag.
+        let release = gtk::GestureClick::new();
+        release.set_button(1);
+        let released = disarm.clone();
+        release.connect_released(move |_, _, _, _| released());
+        row.add_controller(release);
 
         let drag = gtk::DragSource::builder()
             .actions(gtk::gdk::DragAction::MOVE)
@@ -1753,8 +1758,6 @@ impl SidebarState {
         }
         self.make_reorderable(
             row,
-            // Ordered rows drag their stable id, so a pinned row's numeric
-            // payload is rejected by the standard-place drop handler.
             move || id.to_string(),
             move |state, source, after| {
                 if source.starts_with(PINNED_DRAG_PREFIX) {
@@ -3209,8 +3212,7 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
         if order.contains(&id) {
             continue;
         }
-        // Slot an unsaved id next to its default neighbour so an order saved
-        // before the special places were reorderable does not sink them.
+        // Preserve the old sidebar layout when upgrading orders without special places.
         let position = STANDARD_PLACE_IDS[..index]
             .iter()
             .rev()

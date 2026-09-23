@@ -119,8 +119,6 @@ fn unknown_persisted_place_ids_are_dropped() {
 
 #[test]
 fn missing_places_keep_their_default_neighbours() {
-    // Orders saved before the special destinations were reorderable list only
-    // the XDG ids; Home, Trash, Network and Recent must still lead the sidebar.
     let order = resolve_place_order(&persisted_order(&[
         "desktop",
         "documents",
