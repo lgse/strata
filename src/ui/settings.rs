@@ -383,7 +383,10 @@ mod responsive_bin {
                 }
             }
             let available_activation_width = child_width - if compact { 100 } else { 330 };
-            let activation_compact = available_activation_width < MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH;
+            let scaled_activation_width = MIN_SIDE_BY_SIDE_ACTIVATION_WIDTH as f64
+                + (self.typography_scale.get() - 1.0).max(0.0) * 320.0;
+            let activation_compact =
+                f64::from(available_activation_width) < scaled_activation_width;
             let stack_activation_options =
                 available_activation_width < STACK_ACTIVATION_OPTIONS_BREAKPOINT;
             for responsive_row in self.responsive_activation_rows.borrow().iter() {
