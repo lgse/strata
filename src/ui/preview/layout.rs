@@ -152,6 +152,28 @@ impl PreviewDrawer {
         navigation.append(content);
         split.set_start_child(Some(&navigation));
         browser.bind_preview_scrolling(&self.state.revealer);
+        let weak = Rc::downgrade(&self.state);
+        let weak_browser = browser.downgrade();
+        browser.connect_search_selection_changed(Rc::new(move || {
+            let weak = weak.clone();
+            let weak_browser = weak_browser.clone();
+            glib::idle_add_local_once(move || {
+                let Some(state) = weak.upgrade().filter(|state| state.is_enabled()) else {
+                    return;
+                };
+                let Some(browser) = weak_browser.upgrade() else {
+                    return;
+                };
+                if browser.selected_search_results().is_none() {
+                    return;
+                }
+                if let Some(entry) = preview_target(browser.selected_search_result()) {
+                    state.show_after_focus_change(entry, browser.browser().active_depth());
+                } else {
+                    state.clear_target();
+                }
+            });
+        }));
         split.set_end_child(Some(&self.state.revealer));
         self.state.revealer.set_visible(self.state.is_enabled());
         let weak = Rc::downgrade(&self.state);
@@ -305,8 +327,11 @@ impl PreviewState {
 
     pub(super) fn hide_panel(&self) {
         if let Some(split) = self.split.borrow().as_ref() {
+            let was_compact = self.sizing.is_compact();
             self.set_compact(split, false);
-            if self.revealer.is_visible() {
+            // Hidden navigation has stale scroll metrics. Preserving them would
+            // cancel breadcrumb reveal and retain blank space after navigation.
+            if self.revealer.is_visible() && !was_compact {
                 self.preserve_column_positions(split.width());
             }
         }

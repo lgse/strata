@@ -19,7 +19,7 @@ fn scroll_before_creation_refresh_revokes_only_edit_authority() {
     gtk_test(
         "ui::browser::inline_edit::tests::visibility::scroll_before_creation_refresh_revokes_only_edit_authority",
         || {
-            for mode in [BrowserMode::Columns, BrowserMode::List] {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 let fixture = tempfile::tempdir().expect("fixture");
                 std::fs::write(fixture.path().join("anchor"), b"body").expect("anchor");
                 let view = BrowserView::new(
@@ -79,7 +79,7 @@ fn accepting_an_unchanged_name_preserves_the_visible_viewport() {
     gtk_test(
         "ui::browser::inline_edit::tests::visibility::accepting_an_unchanged_name_preserves_the_visible_viewport",
         || {
-            for mode in [BrowserMode::Columns, BrowserMode::List] {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 let fixture = tempfile::tempdir().expect("fixture");
                 for index in 0..100 {
                     std::fs::write(fixture.path().join(format!("item-{index:03}.txt")), b"")
@@ -103,15 +103,10 @@ fn accepting_an_unchanged_name_preserves_the_visible_viewport() {
                         .column_snapshot(0)
                         .is_some_and(|s| !s.loading && s.count == 100)
                 });
-                let list = if mode == BrowserMode::Columns {
-                    view.state.columns.borrow()[0].list.clone()
-                } else {
-                    view.state
-                        .mode_views
-                        .borrow()
-                        .list_rename_view(0)
-                        .expect("List view")
-                };
+                let list = view
+                    .state
+                    .rename_collection_view(0, mode)
+                    .expect("collection");
                 let scroll = list
                     .ancestor(gtk::ScrolledWindow::static_type())
                     .and_downcast::<gtk::ScrolledWindow>()
@@ -161,7 +156,7 @@ fn active_editor_yields_reveal_after_deliberate_scroll() {
     gtk_test(
         "ui::browser::inline_edit::tests::visibility::active_editor_yields_reveal_after_deliberate_scroll",
         || {
-            for mode in [BrowserMode::Columns, BrowserMode::List] {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 let fixture = tempfile::tempdir().expect("fixture");
                 for index in 0..100 {
                     std::fs::write(fixture.path().join(format!("item-{index:03}.txt")), b"")
@@ -185,15 +180,10 @@ fn active_editor_yields_reveal_after_deliberate_scroll() {
                         .column_snapshot(0)
                         .is_some_and(|s| !s.loading && s.count == 100)
                 });
-                let list = if mode == BrowserMode::Columns {
-                    view.state.columns.borrow()[0].list.clone()
-                } else {
-                    view.state
-                        .mode_views
-                        .borrow()
-                        .list_rename_view(0)
-                        .expect("List view")
-                };
+                let list = view
+                    .state
+                    .rename_collection_view(0, mode)
+                    .expect("collection");
                 let scroll = list
                     .ancestor(gtk::ScrolledWindow::static_type())
                     .and_downcast::<gtk::ScrolledWindow>()
@@ -210,6 +200,95 @@ fn active_editor_yields_reveal_after_deliberate_scroll() {
                 settle_frames();
                 assert!(view.rename_is_active(), "{mode:?}");
                 assert_eq!(adjustment.value(), requested, "{mode:?}");
+                browser.clear_observer();
+                window.destroy();
+            }
+        },
+    );
+}
+
+#[test]
+fn icons_rename_completion_focuses_the_renamed_item() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::visibility::icons_rename_completion_focuses_the_renamed_item",
+        || {
+            for directory in [false, true] {
+                let fixture = tempfile::tempdir().expect("fixture");
+                for index in 0..100 {
+                    let path = fixture.path().join(format!("item-{index:03}"));
+                    if directory {
+                        std::fs::create_dir(path).expect("folder");
+                    } else {
+                        std::fs::write(path, b"keep").expect("file");
+                    }
+                }
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    PeekBehavior::default(),
+                );
+                view.set_view_mode(BrowserMode::Icons);
+                view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(800)
+                    .default_height(400)
+                    .build();
+                window.present();
+                let browser = view.browser();
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|s| !s.loading && s.count == 100)
+                });
+                settle_frames();
+                browser.select(0, 2);
+                let collection = view
+                    .state
+                    .rename_collection_view(0, BrowserMode::Icons)
+                    .expect("collection");
+                let scroll = collection
+                    .ancestor(gtk::ScrolledWindow::static_type())
+                    .and_downcast::<gtk::ScrolledWindow>()
+                    .expect("scroller");
+                for name in ["item-002-renamed", "zzz-renamed"] {
+                    wait_until(|| view.state.begin_rename());
+                    let field = view
+                        .state
+                        .mode_views
+                        .borrow()
+                        .active_rename_field()
+                        .expect("editor");
+                    settle_frames();
+                    let before = scroll.vadjustment().value();
+                    field.set_text(name);
+                    field.emit_activate();
+                    wait_until(|| fixture.path().join(name).exists());
+                    settle_frames();
+                    wait_until(|| {
+                        let selected = browser.selected_entries();
+                        if selected.len() != 1 || selected[0].display_name != name {
+                            return false;
+                        }
+                        let position = browser.selected_positions(0)[0];
+                        let Some((_, _, Some(row))) =
+                            view.state.mode_views.borrow().icons_rename_row(0, position)
+                        else {
+                            return false;
+                        };
+                        let Some(cursor) = row.parent() else {
+                            return false;
+                        };
+                        gtk::prelude::RootExt::focus(&window)
+                            .is_some_and(|focus| focus == cursor || focus.is_ancestor(&cursor))
+                    });
+                    settle_frames();
+                    if name == "item-002-renamed" {
+                        assert_eq!(scroll.vadjustment().value(), before);
+                    } else {
+                        assert!(scroll.vadjustment().value() > before);
+                    }
+                }
                 browser.clear_observer();
                 window.destroy();
             }

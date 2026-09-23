@@ -80,12 +80,8 @@ impl RecentAvailability {
     }
 }
 
-fn should_show_recent_place(
-    show_recent: bool,
-    local_only: bool,
-    availability: RecentAvailability,
-) -> bool {
-    show_recent && !local_only && availability.is_available()
+fn should_show_recent_place(show_recent: bool, availability: RecentAvailability) -> bool {
+    show_recent && availability.is_available()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -101,7 +97,7 @@ struct TypeToSearch {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TypeToSearchQuery {
+pub(super) enum TypeToSearchQuery {
     Empty,
     Character(char),
 }
@@ -258,7 +254,11 @@ pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
     PreferenceManager::shared().bind_interface_scale(paned, |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
         if paned.position() > 0 {
-            paned.set_position(scaled_sidebar_width(paned, scale));
+            let mut target = scaled_sidebar_width(paned, scale);
+            if let Some(sidebar) = paned.start_child() {
+                target = target.max(sidebar_minimum_width(&sidebar));
+            }
+            paned.set_position(target);
         }
     });
 }
@@ -273,6 +273,12 @@ fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
     preferred.min(available).max(MIN_SIDEBAR_WIDTH)
 }
 
+// Below this minimum, GTK can allocate more width than the divider position allows.
+fn sidebar_minimum_width(sidebar: &gtk::Widget) -> i32 {
+    let (minimum, _, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
+    minimum
+}
+
 fn animate_sidebar(
     paned: &gtk::Paned,
     sidebar: &gtk::Widget,
@@ -284,15 +290,16 @@ fn animate_sidebar(
     generation.set(animation_id);
     animating.set(true);
     paned.set_shrink_start_child(true);
+    if expanded {
+        sidebar.set_visible(true);
+    }
     let target = if expanded {
         scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
+            .max(sidebar_minimum_width(sidebar))
     } else {
         0
     };
     let start = paned.position();
-    if expanded {
-        sidebar.set_visible(true);
-    }
 
     if !animations_enabled() || start == target {
         paned.set_position(target);
@@ -435,7 +442,7 @@ fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierT
         )
 }
 
-fn type_to_search_query(
+pub(super) fn type_to_search_query(
     key: gtk::gdk::Key,
     modifiers: gtk::gdk::ModifierType,
 ) -> Option<TypeToSearchQuery> {
@@ -673,6 +680,8 @@ pub(super) fn build_appearance_menu(
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
+            let browser = view.browser();
+            glib::idle_add_local_once(move || browser.focus_active());
         });
     }
     {
@@ -975,7 +984,7 @@ struct TrashMenuVisibility {
 /// Destructive actions stay hidden until Trash is confirmed to hold something, and the
 /// separator goes with them so Properties is not left above an empty gap.
 fn trash_menu_visibility(contents: TrashContents) -> TrashMenuVisibility {
-    let visible = matches!(contents, TrashContents::NonEmpty);
+    let visible = contents == TrashContents::NonEmpty;
     TrashMenuVisibility {
         separator: visible,
         empty: visible,
@@ -990,8 +999,8 @@ fn sync_trash_menu_rows(rows: &TrashMenuRows, contents: TrashContents) {
 
 fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents {
     match probe {
-        Ok(true) => TrashContents::NonEmpty,
         Ok(false) => TrashContents::Empty,
+        Ok(true) => TrashContents::NonEmpty,
         Err(_) => TrashContents::Unknown,
     }
 }
@@ -1175,13 +1184,12 @@ impl SidebarState {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
             }
-            if should_show_recent_place(
-                self.preference_manager.sidebar_show_recent(),
-                self.local_only,
-                self.recent_availability.get(),
-            ) {
-                self.append_recent_place();
-            }
+        }
+        if should_show_recent_place(
+            self.preference_manager.sidebar_show_recent(),
+            self.recent_availability.get(),
+        ) {
+            self.append_recent_place();
         }
         if self.has_visible_standard_places() && self.widget.first_child().is_some() {
             self.append_separator();
@@ -1444,7 +1452,7 @@ impl SidebarState {
         self.trash_probe_running.set(true);
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let probe = trash_has_entries(&gio::File::for_uri("trash:///")).await;
+            let probe = trash_has_items(&gio::File::for_uri("trash:///")).await;
             if let Err(error) = &probe {
                 tracing::warn!(
                     error_domain = ?error.domain(),
@@ -2989,7 +2997,7 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
     }
 }
 
-async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
+async fn trash_has_items(root: &gio::File) -> Result<bool, glib::Error> {
     let enumerator = root
         .enumerate_children_future(
             gio::FILE_ATTRIBUTE_STANDARD_NAME,
@@ -2997,10 +3005,10 @@ async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
             glib::Priority::DEFAULT,
         )
         .await?;
-    let children = enumerator
+    Ok(!enumerator
         .next_files_future(1, glib::Priority::DEFAULT)
-        .await?;
-    Ok(!children.is_empty())
+        .await?
+        .is_empty())
 }
 
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {

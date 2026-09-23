@@ -15,7 +15,7 @@ use std::{
 
 use rustix::process::{Pid, Signal, kill_process_group};
 
-use crate::services::MediaPreviewSize;
+use crate::services::{ArchiveFormat, MediaPreviewSize, SecretString};
 
 pub(crate) mod browser;
 pub(crate) mod media;
@@ -92,7 +92,7 @@ impl PdfRenderSize {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
     ThumbnailImage,
     ThumbnailRaw,
@@ -102,15 +102,22 @@ pub(crate) enum ParseOperation {
     PreviewImage,
     DocumentImage,
     DocumentMermaid,
-    DocumentMath { display: bool },
+    DocumentMath {
+        display: bool,
+    },
     MediaMetadata,
     PreviewWorkbook,
+    PreviewDocument,
     PreviewPdf(PdfRenderSize),
     PreviewMedia(MediaPreviewSize),
+    ArchiveList {
+        format: ArchiveFormat,
+        password: Option<SecretString>,
+    },
 }
 
 impl ParseOperation {
-    fn argument(self) -> &'static str {
+    fn argument(&self) -> &'static str {
         match self {
             Self::ThumbnailImage => "thumbnail-image",
             Self::ThumbnailRaw => "thumbnail-raw",
@@ -124,26 +131,33 @@ impl ParseOperation {
             Self::DocumentMath { display: false } => "document-inline-math",
             Self::MediaMetadata => "media-metadata",
             Self::PreviewWorkbook => "preview-workbook",
+            Self::PreviewDocument => "preview-document",
             Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewMedia(_) => "preview-media",
+            Self::ArchiveList { .. } => "archive-list",
         }
     }
 
-    fn is_media(self) -> bool {
+    fn is_media(&self) -> bool {
         matches!(self, Self::PreviewMedia(_))
     }
 
-    fn output_name(self) -> &'static str {
-        if matches!(self, Self::MediaMetadata | Self::PreviewWorkbook) {
+    fn output_name(&self) -> &'static str {
+        if matches!(
+            self,
+            Self::MediaMetadata | Self::PreviewWorkbook | Self::PreviewDocument
+        ) {
             "result.json"
         } else if self.is_media() {
             "result.media"
+        } else if matches!(self, Self::ArchiveList { .. }) {
+            "result.archive.json"
         } else {
             "result.png"
         }
     }
 
-    fn image_limits(self) -> Option<(u32, u32, u64)> {
+    fn image_limits(&self) -> Option<(u32, u32, u64)> {
         match self {
             Self::ThumbnailImage
             | Self::ThumbnailRaw
@@ -155,11 +169,15 @@ impl ParseOperation {
             | Self::DocumentMermaid
             | Self::DocumentMath { .. } => Some((800, 800, 800 * 800)),
             Self::PreviewPdf(size) => Some(size.image_limits()),
-            Self::PreviewMedia(_) | Self::MediaMetadata | Self::PreviewWorkbook => None,
+            Self::PreviewMedia(_)
+            | Self::MediaMetadata
+            | Self::PreviewWorkbook
+            | Self::PreviewDocument
+            | Self::ArchiveList { .. } => None,
         }
     }
 
-    fn input_size_limit(self) -> Option<u64> {
+    fn input_size_limit(&self) -> Option<u64> {
         match self {
             Self::ThumbnailImage
             | Self::ThumbnailRaw
@@ -167,6 +185,7 @@ impl ParseOperation {
             | Self::PreviewImage
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
             Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
+            Self::PreviewDocument => Some(crate::services::docx::DOCX_BYTE_LIMIT),
             Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
             Self::DocumentMermaid => {
                 Some(crate::services::document_media::DIAGRAM_INPUT_LIMIT as u64)
@@ -177,7 +196,8 @@ impl ParseOperation {
             Self::ThumbnailVideo
             | Self::ThumbnailAppImage
             | Self::PreviewMedia(_)
-            | Self::MediaMetadata => None,
+            | Self::MediaMetadata
+            | Self::ArchiveList { .. } => None,
         }
     }
 }
@@ -208,6 +228,31 @@ pub(crate) fn parse(
     media_backend: MediaPreviewBackend,
     cancellation: &Cancellation,
 ) -> Result<ParseOutput, String> {
+    let archive = matches!(operation, ParseOperation::ArchiveList { .. });
+    let result = parse_sandboxed(input, operation, value, media_backend, cancellation);
+    match result {
+        Err(error)
+            if archive && !cancellation.is_cancelled() && !is_archive_contract_message(&error) =>
+        {
+            Err(crate::adapters::ARCHIVE_PREVIEW_FAILED_MESSAGE.to_owned())
+        }
+        result => result,
+    }
+}
+
+fn is_archive_contract_message(message: &str) -> bool {
+    message == crate::adapters::INVALID_ARCHIVE
+        || message == crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE
+        || message == "Preview cancelled"
+}
+
+fn parse_sandboxed(
+    input: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    cancellation: &Cancellation,
+) -> Result<ParseOutput, String> {
     if cancellation.is_cancelled() {
         return Err("Preview cancelled".to_owned());
     }
@@ -230,6 +275,15 @@ pub(crate) fn parse(
     }
 
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
+    let secret = if let ParseOperation::ArchiveList {
+        password: Some(password),
+        ..
+    } = &operation
+    {
+        Some(stage_secret_anon(password.expose().as_bytes())?)
+    } else {
+        None
+    };
     let current_executable = std::env::current_exe()
         .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
     let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
@@ -243,15 +297,21 @@ pub(crate) fn parse(
         &executable,
         &input,
         output.path(),
-        operation,
+        operation.clone(),
         value,
         media_backend,
         &devices,
     );
+    if let Some(secret) = secret {
+        // Command duplicates only this child's stdin; concurrent spawns cannot inherit the secret.
+        command.stdin(Stdio::from(fs::File::from(secret)));
+        command.arg("0");
+    }
     command.stderr(Stdio::null());
     command.stdout(Stdio::null());
     let mut child = spawn_renderer(&mut command)
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    drop(command);
     let timeout = if matches!(
         operation,
         ParseOperation::DocumentImage
@@ -273,12 +333,40 @@ pub(crate) fn parse(
     } else {
         MAX_OUTPUT_BYTES
     };
-    let data = read_private_output(&result_path, limit)?;
-    if !valid_output(operation, &data) {
-        return Err("The preview renderer produced invalid image data".to_owned());
+    let data = read_private_output(&result_path, limit).map_err(|error| {
+        if matches!(operation, ParseOperation::ArchiveList { .. }) {
+            archive_output_error(&error)
+        } else {
+            error.message()
+        }
+    })?;
+    if !valid_output(operation.clone(), &data) {
+        return Err(if matches!(operation, ParseOperation::ArchiveList { .. }) {
+            crate::adapters::INVALID_ARCHIVE.to_owned()
+        } else {
+            "The preview renderer produced invalid image data".to_owned()
+        });
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
     Ok(ParseOutput { data, page, pages })
+}
+
+// A memfd avoids named-file residue and dependence on TMPDIR's O_TMPFILE support.
+// CLOEXEC prevents unrelated children from inheriting it before the renderer spawns.
+pub(crate) fn stage_secret_anon(secret: &[u8]) -> Result<rustix::fd::OwnedFd, String> {
+    use rustix::fs::{MemfdFlags, Mode, fchmod, memfd_create};
+    use std::io::{Seek, Write};
+
+    let fd = memfd_create(c"strata-preview-password", MemfdFlags::CLOEXEC)
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    fchmod(&fd, Mode::from_bits_truncate(0o600))
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    let mut file = std::fs::File::from(fd);
+    file.write_all(secret)
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    file.seek(std::io::SeekFrom::Start(0))
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    Ok(file.into())
 }
 
 fn resolve_renderer_executable(
@@ -438,7 +526,7 @@ fn sandbox_command(
     media_backend: MediaPreviewBackend,
     devices: &[PathBuf],
 ) -> Command {
-    let mut command = runtime_command(bwrap, operation);
+    let mut command = runtime_command(bwrap, operation.clone());
     let sandbox_input = sandbox_input_path(input);
     command.arg("--ro-bind").arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
@@ -464,7 +552,7 @@ fn sandbox_command(
             .arg("--cpu=10")
             .arg(format!(
                 "--fsize={}",
-                if operation == ParseOperation::ThumbnailVideo {
+                if matches!(operation, ParseOperation::ThumbnailVideo) {
                     MAX_OUTPUT_BYTES
                 } else {
                     FILE_SIZE_LIMIT_BYTES
@@ -489,6 +577,7 @@ fn sandbox_command(
                 let size = PdfRenderSize::new(size.width, size.height);
                 format!("{value}:{}x{}", size.width, size.height)
             }
+            ParseOperation::ArchiveList { format, .. } => format.extension().to_owned(),
             _ => value.to_string(),
         };
         command.arg(value);
@@ -575,12 +664,17 @@ pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
 }
 
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
-    if operation == ParseOperation::PreviewWorkbook {
+    if matches!(operation, ParseOperation::PreviewWorkbook) {
         return crate::services::table::TableData::from_json(data).is_ok();
     }
-    if operation == ParseOperation::MediaMetadata {
+    if matches!(operation, ParseOperation::PreviewDocument) {
+        return crate::services::docx::RichTextData::from_json(data).is_ok();
+    }
+    if matches!(operation, ParseOperation::MediaMetadata) {
         data.len() as u64 <= metadata::MAX_METADATA_BYTES
             && serde_json::from_slice::<serde_json::Value>(data).is_ok()
+    } else if matches!(operation, ParseOperation::ArchiveList { .. }) {
+        crate::adapters::archive_payload_valid(data)
     } else if operation.is_media() {
         false
     } else {
@@ -622,7 +716,7 @@ fn terminate(child: &mut Child) {
     let _waited = child.wait();
 }
 
-fn read_private_output(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
+fn read_private_output(path: &Path, max_bytes: u64) -> Result<Vec<u8>, OutputError> {
     use rustix::fs::{FileType, Mode, OFlags, fstat, open};
 
     // The renderer controls the final entry, but not the host directory ancestors.
@@ -632,24 +726,59 @@ fn read_private_output(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
         OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
         Mode::empty(),
     )
-    .map_err(|_| "The preview renderer produced no output".to_owned())?;
-    let stat = fstat(&fd).map_err(|error| error.to_string())?;
+    .map_err(|_| OutputError::Missing)?;
+    let stat = fstat(&fd).map_err(|error| OutputError::Io(error.to_string()))?;
     if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
-        return Err("The preview renderer produced a non-regular output".to_owned());
+        return Err(OutputError::NonRegular);
     }
     let len = u64::try_from(stat.st_size).unwrap_or(0);
-    if len == 0 || len > max_bytes {
-        return Err("The preview renderer produced an invalid output size".to_owned());
+    if len == 0 {
+        return Err(OutputError::Empty);
+    }
+    if len > max_bytes {
+        return Err(OutputError::Oversize);
     }
     let mut data = Vec::new();
     fs::File::from(fd)
         .take(max_bytes.saturating_add(1))
         .read_to_end(&mut data)
-        .map_err(|error| error.to_string())?;
-    if data.is_empty() || data.len() as u64 > max_bytes {
-        return Err("The preview renderer produced an invalid output size".to_owned());
+        .map_err(|error| OutputError::Io(error.to_string()))?;
+    if data.is_empty() {
+        return Err(OutputError::Empty);
+    }
+    if data.len() as u64 > max_bytes {
+        return Err(OutputError::Oversize);
     }
     Ok(data)
+}
+
+#[derive(Debug, PartialEq)]
+enum OutputError {
+    Missing,
+    NonRegular,
+    Empty,
+    Oversize,
+    Io(String),
+}
+
+impl OutputError {
+    fn message(&self) -> String {
+        match self {
+            Self::Missing => "The preview renderer produced no output".to_owned(),
+            Self::NonRegular => "The preview renderer produced a non-regular output".to_owned(),
+            Self::Empty | Self::Oversize => {
+                "The preview renderer produced an invalid output size".to_owned()
+            }
+            Self::Io(message) => message.clone(),
+        }
+    }
+}
+
+fn archive_output_error(error: &OutputError) -> String {
+    match error {
+        OutputError::Oversize => crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE.to_owned(),
+        _ => crate::adapters::INVALID_ARCHIVE.to_owned(),
+    }
 }
 
 fn read_metadata(path: &Path) -> (i32, i32) {

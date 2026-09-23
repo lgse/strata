@@ -26,6 +26,7 @@ pub const DOCUMENT_UNIT_LINE_TARGET: usize = 2 * 1024;
 pub enum DocumentKind {
     Markdown,
     Html,
+    Rtf,
     Csv,
     Tsv,
 }
@@ -321,6 +322,7 @@ pub fn document_kind(content_type: &str, name: &OsStr, is_native: bool) -> Optio
     {
         "text/markdown" | "text/x-markdown" => return Some(DocumentKind::Markdown),
         "text/html" | "application/xhtml+xml" => return Some(DocumentKind::Html),
+        "application/rtf" | "text/rtf" => return Some(DocumentKind::Rtf),
         "text/csv" => return Some(DocumentKind::Csv),
         "text/tab-separated-values" => return Some(DocumentKind::Tsv),
         _ => {}
@@ -333,6 +335,7 @@ pub fn document_kind(content_type: &str, name: &OsStr, is_native: bool) -> Optio
     {
         Some("md" | "markdown" | "mdown" | "mkd" | "mkdn" | "mdwn") => Some(DocumentKind::Markdown),
         Some("html" | "htm" | "xhtml") => Some(DocumentKind::Html),
+        Some("rtf") => Some(DocumentKind::Rtf),
         Some("csv") => Some(DocumentKind::Csv),
         Some("tsv") => Some(DocumentKind::Tsv),
         _ => None,
@@ -367,6 +370,11 @@ fn parse_document_with_limits(
     let parsed = match kind {
         DocumentKind::Markdown => parse_markdown_bounded(source, cancellation, limits, true),
         DocumentKind::Html => parse_html_bounded(source, cancellation, limits),
+        DocumentKind::Rtf => parse_html_bounded(
+            &super::rtf::to_html(source, cancellation)?,
+            cancellation,
+            limits,
+        ),
         DocumentKind::Csv => super::table::parse_delimited(source, b',', cancellation),
         DocumentKind::Tsv => super::table::parse_delimited(source, b'\t', cancellation),
     }?;
@@ -983,6 +991,7 @@ impl HtmlState {
             "em" | "i" => self.start_inline("<i>"),
             "strong" | "b" => self.start_inline("<b>"),
             "s" | "del" => self.start_inline("<s>"),
+            "u" | "ins" => self.start_inline("<u>"),
             "a" => {
                 self.ensure_text_target();
                 self.flush_pending_space();
@@ -1126,6 +1135,7 @@ impl HtmlState {
             "em" | "i" => self.append_markup("</i>"),
             "strong" | "b" => self.append_markup("</b>"),
             "s" | "del" => self.append_markup("</s>"),
+            "u" | "ins" => self.append_markup("</u>"),
             "a" => {
                 if let Some(link) = self.links.pop() {
                     self.append_link_close(&link);

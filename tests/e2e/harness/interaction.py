@@ -271,11 +271,13 @@ class Pointer:
         held = [MODIFIER_KEYSYMS[modifier.lower()] for modifier in modifiers]
         for modifier in held:
             self.connection.key(modifier, True)
+            time.sleep(EVENT_GAP)
         try:
             self._drag(start, end, steps=steps, release=release, after_press=after_press)
         finally:
             for modifier in reversed(held):
                 self.connection.key(modifier, False)
+                time.sleep(EVENT_GAP)
 
     def drag_to_point(
         self, source: Node, end: tuple[int, int], *, steps: int = DRAG_STEPS

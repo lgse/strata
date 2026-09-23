@@ -121,9 +121,12 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
     if selection == "keyboard":
         strata.keyboard.press("Down")
     else:
-        result = strata.window.find(name="nested-notes.txt", role="list item")
+        result = strata.search_result("nested-notes.txt")
         assert result is not None
-        strata.pointer.click(result, modifiers=("ctrl",))
+        strata.pointer.right_click(result)
+        strata.wait(strata.context_menu, "the pointer-selected search result menu")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: result.has_state("selected"), "pointer-selected search result")
 
     strata.keyboard.press("space")
     strata.wait(
@@ -438,14 +441,17 @@ def table_clipboard_text(strata, *, before_read=None):
         display.close()
 
 
-@pytest.mark.parametrize("fixture_tree,filename", [
-    ({f"book.{extension}": (Path(__file__).resolve().parents[2] / "fixtures" / "spreadsheets" / f"any_sheets.{extension}")}, f"book.{extension}")
-    for extension in ("xls", "xlsx", "ods")
+@pytest.mark.parametrize("fixture_tree,filename,shown", [
+    *[
+        ({f"book.{extension}": (Path(__file__).resolve().parents[2] / "fixtures" / "spreadsheets" / f"any_sheets.{extension}")}, f"book.{extension}", "3")
+        for extension in ("xls", "xlsx", "ods")
+    ],
+    ({"report.docx": (Path(__file__).resolve().parents[2] / "fixtures" / "documents" / "report.docx")}, "report.docx", "Quarterly Report"),
 ], indirect=["fixture_tree"])
-def test_workbook_uses_sandboxed_shared_table_preview(strata, filename):
+def test_sandboxed_office_files_use_the_shared_rendered_preview(strata, filename, shown):
     strata.select_entry_with_keyboard(filename)
     strata.keyboard.press("space")
-    strata.wait(lambda: strata.preview_shows("3"), "the sandboxed workbook cells")
+    strata.wait(lambda: strata.preview_shows(shown), "the sandboxed document content")
     assert strata.preview().find(role="button", name="Copy table") is None
     assert strata.preview().find(role="button", name="View source") is None
 

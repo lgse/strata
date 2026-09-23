@@ -372,6 +372,7 @@ impl SearchDialog {
                 items,
                 indexing,
                 coverage,
+                ..
             }) = latest
             {
                 if indexing {

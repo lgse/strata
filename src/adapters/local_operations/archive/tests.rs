@@ -456,7 +456,6 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a directory"),
-        ("unsafe.zip", "Refusing unsafe ZIP path"),
         ("unknown.iso", "Unsupported archive format"),
     ] {
         let archive = root.path().join(name);
@@ -468,9 +467,6 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         }
         if name == "destination.zip" {
             write_zip_stored(&archive, &[("file.txt", b"contents")])?;
-        }
-        if name == "unsafe.zip" {
-            write_zip_stored(&archive, &[("../outside", b"contents")])?;
         }
         let events = Rc::new(RefCell::new(Vec::new()));
         let emitted = events.clone();
@@ -523,6 +519,42 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         assert!(destination.read_dir()?.next().is_none());
         assert!(!root.path().join("outside").exists());
     }
+    Ok(())
+}
+
+#[test]
+fn extraction_provider_sanitizes_parent_paths_without_failure() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let archive = root.path().join("unsafe.zip");
+    write_zip_stored(
+        &archive,
+        &[("../escaped.txt", b"escaped"), ("after.txt", b"after")],
+    )?;
+
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(435),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        password: None,
+    });
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        OperationEvent::Extracted { first_name: Some(name), .. } if name == "escaped.txt"
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Failed { .. }))
+    );
+    assert_eq!(fs::read(destination.join("escaped.txt"))?, b"escaped");
+    assert_eq!(fs::read(destination.join("after.txt"))?, b"after");
+    assert!(!root.path().join("escaped.txt").exists());
     Ok(())
 }
 
