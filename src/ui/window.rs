@@ -1251,7 +1251,7 @@ impl SidebarState {
             .ancestor(gtk::Button::static_type())
             .and_downcast::<gtk::Button>()
         {
-            notice.set_size_request(size, size);
+            notice.set_size_request(if rail { sidebar_rail_width() } else { -1 }, size);
         }
         let mut widget_child = self.widget.first_child();
         while let Some(child) = widget_child {
