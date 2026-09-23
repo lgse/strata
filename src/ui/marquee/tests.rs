@@ -90,6 +90,7 @@ fn assert_marquee_releases_the_collection_view() {
         targets: Rc::new(RefCell::new(Vec::new())),
         is_item: Rc::new(|_, _, _| false),
         clear_selection: Rc::new(|| {}),
+        allow_drag: Rc::new(Cell::new(true)),
     });
     marquee.add_origin_surface(&overlay);
     drop(list);

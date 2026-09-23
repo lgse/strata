@@ -45,6 +45,13 @@ impl SplitSizing {
         self.compact.get()
     }
 
+    pub(super) fn browser(&self) -> Option<BrowserView> {
+        self.binding
+            .borrow()
+            .as_ref()
+            .and_then(|binding| binding.browser.upgrade())
+    }
+
     pub(super) fn is_suspended(&self) -> bool {
         self.suspended.get()
     }
@@ -327,8 +334,11 @@ impl PreviewState {
 
     pub(super) fn hide_panel(&self) {
         if let Some(split) = self.split.borrow().as_ref() {
+            let was_compact = self.sizing.is_compact();
             self.set_compact(split, false);
-            if self.revealer.is_visible() {
+            // Hidden navigation has stale scroll metrics. Preserving them would
+            // cancel breadcrumb reveal and retain blank space after navigation.
+            if self.revealer.is_visible() && !was_compact {
                 self.preserve_column_positions(split.width());
             }
         }

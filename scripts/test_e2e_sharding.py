@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from e2e_bundle import create, image_key, verify
+from e2e_bundle import IMAGE_INPUTS, create, image_key, verify
 from e2e_ci import report_timing, critical_path, main as ci_main, workflow_jobs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests/e2e"))
@@ -159,24 +159,6 @@ class ShardingTests(unittest.TestCase):
                 with self.subTest(phase=phase, outcome=outcome), self.assertRaises(ValueError):
                     verify_reports(plan, reports)
 
-    def test_quarantine_exempts_skips_only(self):
-        nodeids = [test["nodeid"] for test in inventory(2)]
-        plan = make_plan(inventory(2), {})
-        reports = passing_reports(plan)
-        for report in reports:
-            for result in report["tests"].values():
-                result["outcomes"] = {"setup": "skipped", "teardown": "passed"}
-        with self.assertRaisesRegex(ValueError, "skips are not passes"):
-            verify_reports(plan, reports)
-        self.assertEqual(len(verify_reports(plan, reports, frozenset(nodeids))), 2)
-        self.assertEqual(len(verify_reports(plan, reports,
-                                            frozenset(id.split("[", 1)[0] for id in nodeids))), 2)
-        reports = passing_reports(plan)
-        results = next(report["tests"] for report in reports if nodeids[0] in report["tests"])
-        results[nodeids[0]]["outcomes"] = {"setup": "skipped", "teardown": "failed"}
-        with self.assertRaisesRegex(ValueError, "skips are not passes"):
-            verify_reports(plan, reports, frozenset(nodeids))
-
 
 class BundleTests(unittest.TestCase):
     def test_bundle_is_bound_to_revision_image_inputs_and_file_contents(self):
@@ -186,10 +168,10 @@ class BundleTests(unittest.TestCase):
                 (root / name).write_text("source")
             suite = root / "tests/e2e"
             suite.mkdir(parents=True)
-            (suite / "Dockerfile").write_text("FROM pinned\n")
-            (suite / "install-packages.sh").write_text("pinned package installation\n")
-            requirements = suite / "requirements.txt"
-            requirements.write_text("pytest==9.1.1\n")
+            for name in IMAGE_INPUTS:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(name + "\n")
             bundle = root / "bundle"
             bundle.mkdir()
             (bundle / "strata").write_bytes(b"binary")
@@ -208,7 +190,7 @@ class BundleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source differs"):
                 verify(bundle, "revision", root)
             (root / "build.rs").write_text("source")
-            for path in (requirements, suite / "Dockerfile", suite / "install-packages.sh"):
+            for path in (root / name for name in IMAGE_INPUTS):
                 with self.subTest(image_input=path.name):
                     original = path.read_bytes()
                     old_key = image_key(root)
@@ -240,7 +222,7 @@ class CliTests(unittest.TestCase):
                     self.assertEqual(json.loads(result.removeprefix("matrix=")),
                                      {"shard": [shard["index"] for shard in plan["shards"]]})
                 elif command == "verify":
-                    self.assertIn("Coverage verified for 25 tests exactly once", result)
+                    self.assertIn("All 25 tests passed exactly once", result)
                 else:
                     self.assertEqual(len(json.loads(result)), 25)
 

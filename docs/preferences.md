@@ -54,7 +54,7 @@ control that might be midway through synchronization.
 | Stored preferences | Consumer / application point |
 | --- | --- |
 | Default directory | New windows without an explicit target read the current choice before navigating, without opening Settings. Existing windows and explicit targets are unchanged. Missing directories fall back to home and clear the saved choice; Reset also restores home. |
-| Folder peeking, single-click previews, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. The chooser explicitly disallows folder peeking regardless of the saved value. |
+| Folder peeking, single-click previews, columns selection mirror, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. The chooser explicitly disallows folder peeking and the columns selection mirror regardless of the saved values. |
 | Hidden files | Shared across existing browsers and new columns. |
 | Open folder after dropping files | Drop dispatch reads the saved choice (off by default), including confirmation of cross-device drops. Successful drops reveal the destination only when enabled and the user is still at the transfer origin. Paste and Move/Copy to remain unchanged. |
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |

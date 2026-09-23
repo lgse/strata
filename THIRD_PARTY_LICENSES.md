@@ -34,7 +34,7 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 - Included assets: curated and namespaced SVG icons under `data/icons/scalable/actions/`
 - Full license: [`data/licenses/Lucide-ISC.txt`](data/licenses/Lucide-ISC.txt)
 
-The SVGs retain Lucide geometry except for the trash fill-level and open-lid variants, which use modified paths. The table sort caret uses the Lucide triangle with a filled foreground, rotated by GTK for descending order. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
+The SVGs retain Lucide geometry. The table sort caret uses the Lucide triangle with a filled foreground, rotated by GTK for descending order. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
 
 ## Tinted Theming schemes
 

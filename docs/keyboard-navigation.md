@@ -96,6 +96,19 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Folders and unsupported files do not open a preview.
 
+## Navigating an archive preview
+
+Quick Look on a local ZIP, 7z, TAR, or TAR.GZ opens the archive's member tree
+instead of extracting it. The preview starts at the archive root with its first
+member highlighted. The listing keeps its selection, but drops the
+keyboard-cursor outline so only one cursor is visible.
+
+Inside the preview, **Up/Down** (or **k/j**) move the highlight, **Right/l/Enter**
+opens the highlighted folder, and **Left/h** returns to the parent. Left at the
+archive root and Right/Enter on a member file do nothing. Navigating never
+extracts anything or touches the filesystem; **Space** and **Escape** still
+close the preview.
+
 ## Shortcut footer
 
 Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open.
@@ -119,11 +132,13 @@ In Icons and List, plain arrows move interface focus rather than changing direct
 
 Up from the first Icons row or first List item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
-From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
+From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it, or if you entered the sidebar from the header rather than from a file). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
 
 **Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
+
+In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents without moving focus, onto a previewable file opens Quick Preview, and onto any other file closes the child pane. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring.
 
 ## Opening and navigating the context menu
 

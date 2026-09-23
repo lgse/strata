@@ -107,16 +107,21 @@ fn callback_cancellation_removes_partial_member() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
-fn decoded_members_validate_paths_and_space_before_callback() -> Result<(), Box<dyn Error>> {
+fn decoded_members_sanitize_parent_paths_and_validate_before_callback() -> Result<(), Box<dyn Error>>
+{
     let destination = tempfile::tempdir()?;
     let progress = Arc::new(AtomicUsize::new(0));
     let cancelled = AtomicBool::new(false);
-    for (name, size) in [
-        ("../escape", 0),
-        ("/absolute", 0),
-        ("C:\\escape", 0),
-        ("oversized", 2),
-    ] {
+    let mut session = ExtractionSession::open_with_available_bytes(
+        destination.path(),
+        &progress,
+        &cancelled,
+        Some(1),
+    )?;
+    let mut decode = |_: &mut MemberSink<'_>| Ok(());
+    session.extract_member("../escape", MemberContent::Decoded(&mut decode, 0))?;
+
+    for (name, size) in [("/absolute", 0), ("C:\\escape", 0), ("oversized", 2)] {
         let mut session = ExtractionSession::open_with_available_bytes(
             destination.path(),
             &progress,
@@ -132,7 +137,9 @@ fn decoded_members_validate_paths_and_space_before_callback() -> Result<(), Box<
                 .is_err()
         );
     }
-    assert_eq!(std::fs::read_dir(destination.path())?.count(), 0);
+    assert!(destination.path().join("escape").is_file());
+    assert_eq!(std::fs::read_dir(destination.path())?.count(), 1);
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
     Ok(())
 }
 

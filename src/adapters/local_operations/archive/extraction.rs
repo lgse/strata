@@ -15,7 +15,7 @@ use crate::model::Location;
 
 use super::{
     ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled,
-    destination::{ExtractNameResolver, ExtractionDestination, validated_archive_path},
+    destination::{ExtractNameResolver, ExtractionDestination, sanitized_archive_path},
 };
 
 #[cfg(test)]
@@ -149,7 +149,7 @@ impl<'a> ExtractionSession<'a> {
         name: &str,
         content: MemberContent<'_>,
     ) -> Result<(), ArchiveError> {
-        let path = validated_archive_path(name)?;
+        let path = sanitized_archive_path(name)?;
         if let Err(error) = self.check_cancelled() {
             self.interrupted = Some(InterruptedMember::NotAttempted(extract_entry_location(
                 self.destination,
@@ -244,7 +244,7 @@ impl<'a> ExtractionSession<'a> {
                     None => {}
                 }
                 not_attempted.extend(remaining().into_iter().filter_map(|name| {
-                    let path = validated_archive_path(&name).ok()?;
+                    let path = sanitized_archive_path(&name).ok()?;
                     Some(extract_entry_location(
                         self.destination,
                         &self.resolver.apply_known_rename(&path),

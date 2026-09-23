@@ -43,7 +43,7 @@ fn close_is_idempotent_and_completion_removes_each_request_once()
         let client = zbus::connection::Builder::address(address.trim())?
             .build()
             .await?;
-        let service = FileChooserInterface::new();
+        let service = FileChooserInterface::new(FileChooserBackend::default());
         let first =
             OwnedObjectPath::try_from("/org/freedesktop/portal/desktop/request/client_a/shared")?;
         let second =
@@ -96,9 +96,10 @@ fn close_is_idempotent_and_completion_removes_each_request_once()
             service
                 .backend
                 .requests
-                .active
+                .state
                 .lock()
                 .expect("request tracker lock")
+                .active
                 .is_empty()
         );
         Ok::<(), Box<dyn std::error::Error>>(())

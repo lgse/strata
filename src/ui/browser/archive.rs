@@ -22,10 +22,10 @@ use crate::ui::browser::destination::{
     folder_input_path, resolve_destination_path, setup_transfer_search,
 };
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
-use crate::ui::browser::inline_edit::update_basename_validation;
 use crate::ui::browser::paths::compact_display_path;
+use crate::ui::collection_edit::update_basename_validation;
 use crate::ui::controls::{
-    ModalTone, form_entry, form_error_label, form_label, form_password_entry,
+    ModalTone, focus_button, form_entry, form_error_label, form_label, form_password_entry,
     message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
     set_form_field_error,
 };
@@ -259,13 +259,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = replace.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
-            }
-        });
+        focus_button(&replace);
     }
 
     /// Opens the compress dialog for the selected `entries`.
@@ -471,7 +465,7 @@ impl ViewState {
             self.pending_extract_retry
                 .replace(Some((entry.clone(), parent.clone())));
         }
-        self.browser.extract(entry, parent, None);
+        self.browser.extract(entry, parent, false, None);
     }
 
     /// Opens the "Extract to" folder picker for `entry`.
@@ -567,7 +561,7 @@ impl ViewState {
             extract_state.pending_navigate.replace(Some(dest.clone()));
             extract_state
                 .browser
-                .extract(extract_entry.clone(), dest, None);
+                .extract(extract_entry.clone(), dest, false, None);
             dismiss_for_confirm();
         });
 
@@ -637,7 +631,7 @@ impl ViewState {
                 .pending_navigate
                 .replace(navigate_after_extract.clone());
             dismiss_for_confirm();
-            browser.extract(entry.clone(), destination.clone(), Some(pw));
+            browser.extract(entry.clone(), destination.clone(), false, Some(pw));
         });
         submit_on_enter(&body, &confirm);
         password_entry.grab_focus();

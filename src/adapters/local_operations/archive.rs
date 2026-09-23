@@ -233,7 +233,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
-        let created_dest = !dest_dir.exists();
+        let created_dest = request.created_destination || !dest_dir.exists();
         if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
             emit(OperationEvent::Failed {
                 request_id: request.id,

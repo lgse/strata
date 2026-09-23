@@ -7,11 +7,11 @@ use crate::model::{FileEntry, Location};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::entry::{
-    entry_icon, entry_kind_summary, format_file_size, item_count_label,
+    aggregate_directory_summary, entry_icon, entry_kind_summary, format_file_size, item_count_label,
 };
 use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
-    ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
+    ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
@@ -485,13 +485,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&empty);
     }
 
     pub(super) fn request_restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
@@ -692,13 +686,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&confirm);
     }
 
     pub(super) fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -742,6 +730,7 @@ impl ViewState {
             &confirm_label,
             ModalTone::Danger,
         );
+        layout.set_loading(true, Some("Calculating total size…"));
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         let (visible, hidden) = delete_confirmation_rows(&entries);
@@ -797,6 +786,9 @@ impl ViewState {
         let close = layout.close;
         let cancel = layout.cancel;
         let confirm = layout.confirm;
+        let subtitle = layout.subtitle;
+        let spinner = layout.loading;
+        confirm.set_sensitive(false);
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
@@ -888,13 +880,40 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = confirm.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
+        focus_button(&confirm);
+
+        let weak_subtitle = subtitle.downgrade();
+        let weak_confirm = confirm.downgrade();
+        let weak_spinner = spinner.downgrade();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let summary = aggregate_directory_summary(&entries).await;
+            let (Some(subtitle), Some(confirm), Some(spinner)) = (
+                weak_subtitle.upgrade(),
+                weak_confirm.upgrade(),
+                weak_spinner.upgrade(),
+            ) else {
+                return;
+            };
+            subtitle.set_label(&format!(
+                "{}{} · {}{} will be permanently deleted",
+                if summary.truncated() { "At least " } else { "" },
+                item_count_label(summary.item_count),
+                if summary.truncated() { "at least " } else { "" },
+                format_file_size(summary.total_size)
+            ));
+            confirm.set_sensitive(true);
+            spinner.stop();
+            spinner.set_visible(false);
+            confirm.grab_focus();
+        });
+        let task = Rc::new(task);
+        let closing_task = task.clone();
+        layer.connect_sensitive_notify(move |layer| {
+            if !layer.is_sensitive() {
+                closing_task.abort();
             }
         });
+        layer.connect_unrealize(move |_| task.abort());
     }
 }
 

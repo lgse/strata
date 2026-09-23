@@ -39,6 +39,15 @@ def test_archive_password_retry_crosses_the_real_sandbox(strata, fixture_tree):
         lambda: strata.preview().find(states={"editable", "focused"}),
         "the password entry to take focus",
     )
+    strata.keyboard.type_text("dismiss-this-password")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.preview() is None, "Escape to close the password prompt")
+    strata.wait_for_focused_entry(filename)
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: strata.preview() and strata.preview().find(states={"editable", "focused"}),
+        "the reopened password entry to take focus",
+    )
     strata.keyboard.type_text("incorrect-password")
     strata.keyboard.press("Return")
     strata.wait(lambda: strata.preview_shows("The password is incorrect."), "a rejected password")

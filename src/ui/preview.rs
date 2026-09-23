@@ -34,7 +34,7 @@ const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;
 const SOURCE_INSERT_CHUNK_LINES: usize = 64;
-const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
+pub(crate) const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
@@ -160,6 +160,9 @@ struct PreviewState {
     print_request: Cell<Option<PreviewRequestId>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
+    // Only explicit opens claim keyboard focus; implicit preview updates must not steal it.
+    focus_archive_on_ready: Cell<bool>,
+    focus_archive_request: Cell<Option<PreviewRequestId>>,
     enabled_action: gio::SimpleAction,
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
@@ -320,6 +323,8 @@ impl PreviewDrawer {
             print_request: Cell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
+            focus_archive_on_ready: Cell::new(false),
+            focus_archive_request: Cell::new(None),
             enabled_action: gio::SimpleAction::new_stateful(
                 "preview-panel",
                 None,
@@ -575,6 +580,30 @@ impl PreviewDrawer {
         self.state.close();
     }
 
+    pub(in crate::ui) fn password_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
+        self.state
+            .password_entry
+            .borrow()
+            .as_ref()
+            .is_some_and(|entry| {
+                focused.is_some_and(|focus| {
+                    focus == entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(entry)
+                })
+            })
+    }
+
+    pub fn archive_key(&self, key: gtk::gdk::Key) -> bool {
+        self.state.archive_key(key)
+    }
+
+    pub fn close_archive(&self) -> bool {
+        self.state.close_archive()
+    }
+
+    pub fn archive_list_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
+        self.state.archive_list_has_focus(focused)
+    }
+
     pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         self.state.toggle(entry, depth);
     }
@@ -606,6 +635,7 @@ impl PreviewState {
             self.show(entry, depth);
             return;
         }
+        self.focus_archive_on_ready.set(false);
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
@@ -667,8 +697,28 @@ impl PreviewState {
     }
 
     fn close(self: &Rc<Self>) {
+        let tree_focused = self
+            .archive_browser
+            .borrow()
+            .as_ref()
+            .is_some_and(|browser| {
+                self.pane
+                    .root()
+                    .and_then(|root| root.focus())
+                    .is_some_and(|focused| {
+                        browser.root().upcast_ref::<gtk::Widget>() == &focused
+                            || focused.is_ancestor(browser.root())
+                    })
+            });
         self.stop();
         self.pane.set_size_request(MIN_WIDTH, -1);
+        if tree_focused {
+            if self.sizing.is_compact() {
+                self.close_button.grab_focus();
+            } else if let Some(browser) = self.sizing.browser() {
+                browser.browser().focus_active();
+            }
+        }
     }
 
     fn print(self: &Rc<Self>) {
@@ -997,6 +1047,9 @@ impl PreviewState {
         self.next_request
             .set(self.next_request.get().saturating_add(1));
         self.current_request.set(Some(request_id));
+        if self.focus_archive_on_ready.replace(false) {
+            self.focus_archive_request.set(Some(request_id));
+        }
         self.show_loading(request_id);
         let weak = Rc::downgrade(self);
         let emit = Rc::new(move |event| {
@@ -1106,6 +1159,7 @@ impl PreviewState {
                         .map(|entry| entry.text().to_string())
                         .unwrap_or_default(),
                 );
+                state.focus_archive_on_ready.set(true);
                 state.load_with_password(unlock_entry.clone(), 0, Some(password));
             }
         });
@@ -1114,6 +1168,7 @@ impl PreviewState {
         password.connect_activate(move |entry| {
             if let Some(state) = weak.upgrade() {
                 let password = SecretString::new(entry.text().to_string());
+                state.focus_archive_on_ready.set(true);
                 state.load_with_password(activate_entry.clone(), 0, Some(password));
             }
         });
@@ -1261,7 +1316,9 @@ impl PreviewState {
                 self.render_pdf_viewer(preview.entry, png, page, pages);
             }
             PreviewContent::Archive { tree } => {
-                self.render_archive(tree);
+                let focus = self.focus_archive_request.get() == Some(preview.request_id);
+                self.focus_archive_request.set(None);
+                self.render_archive(tree, focus);
             }
             PreviewContent::Unsupported => {
                 self.show_message(
@@ -1272,7 +1329,8 @@ impl PreviewState {
         }
     }
 
-    fn render_archive(self: &Rc<Self>, tree: ArchivePreviewTree) {
+    fn render_archive(self: &Rc<Self>, tree: ArchivePreviewTree, focus_tree: bool) {
+        self.set_archive_preview_active(true);
         let weak = Rc::downgrade(self);
         let navigate = Rc::new(move |depth: usize| {
             if let Some(state) = weak.upgrade() {
@@ -1289,11 +1347,64 @@ impl PreviewState {
             }
         });
         self.archive_browser.replace(Some(browser));
+        if focus_tree {
+            list.grab_focus();
+        }
     }
 
     fn navigate_archive(self: &Rc<Self>, depth: usize) {
         if let Some(browser) = self.archive_browser.borrow_mut().as_mut() {
             browser.navigate_to(depth);
+        }
+    }
+
+    fn archive_key(&self, key: gtk::gdk::Key) -> bool {
+        let mut browsers = self.archive_browser.borrow_mut();
+        let Some(browser) = browsers.as_mut() else {
+            return false;
+        };
+        match key {
+            gtk::gdk::Key::Up => {
+                browser.move_cursor(-1);
+            }
+            gtk::gdk::Key::Down => {
+                browser.move_cursor(1);
+            }
+            gtk::gdk::Key::Left => {
+                browser.go_up();
+            }
+            gtk::gdk::Key::Right | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
+                browser.open_cursor();
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn set_archive_preview_active(&self, active: bool) {
+        if let Some(browser) = self.sizing.browser() {
+            browser.set_archive_preview_active(active);
+        }
+    }
+
+    fn archive_list_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
+        self.archive_browser
+            .borrow()
+            .as_ref()
+            .is_some_and(|browser| {
+                focused.is_some_and(|focused| {
+                    focused == browser.list().upcast_ref::<gtk::Widget>()
+                        || focused.is_ancestor(browser.list())
+                })
+            })
+    }
+
+    fn close_archive(self: &Rc<Self>) -> bool {
+        if self.archive_browser.borrow().is_some() {
+            self.close();
+            true
+        } else {
+            false
         }
     }
 
@@ -1978,6 +2089,7 @@ impl PreviewState {
         self.text_view.take();
         self.text_scroll.take();
         self.archive_browser.take();
+        self.set_archive_preview_active(false);
         self.clear_password_entry();
         clear_box(&self.content);
     }
