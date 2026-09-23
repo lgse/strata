@@ -67,11 +67,9 @@ pub(in crate::ui) fn fly_to_trash(
     }
 
     trash_button.add_css_class("trash-receiving");
-    let lid = open_trash_lid(trash_button);
     let button = trash_button.clone();
     animate_flyers(&overlay, source, flyers, Flight::Inbound, move || {
         button.remove_css_class("trash-receiving");
-        close_trash_lid(lid);
         impact_trash(&button);
         on_done();
     });
@@ -114,11 +112,7 @@ pub(in crate::ui) fn fly_from_trash(
     } else {
         release_trash(trash_button);
     }
-    let lid = open_trash_lid(trash_button);
-    animate_flyers(&overlay, source, flyers, mode, move || {
-        close_trash_lid(lid);
-        on_done();
-    });
+    animate_flyers(&overlay, source, flyers, mode, on_done);
 }
 
 fn restore_flight(entries: &[FileEntry]) -> Flight {
@@ -479,51 +473,6 @@ fn launch_curve(progress: f64) -> f64 {
 
 fn ease_out_cubic(progress: f64) -> f64 {
     1.0 - (1.0 - progress).powi(3)
-}
-
-thread_local! {
-    static TRASH_FLIGHTS: std::cell::RefCell<std::collections::HashMap<gtk::Image, usize>> =
-        std::cell::RefCell::new(std::collections::HashMap::new());
-}
-
-pub(in crate::ui) fn set_trash_icon(image: &gtk::Image, name: &str) {
-    let closed = name.strip_suffix("-open").unwrap_or(name);
-    let open = TRASH_FLIGHTS.with(|flights| flights.borrow().contains_key(image));
-    if open {
-        crate::assets::set_primary_icon(image, &format!("{closed}-open"));
-    } else {
-        crate::assets::set_primary_icon(image, closed);
-    }
-}
-
-fn open_trash_lid(trash_button: &gtk::Button) -> Option<gtk::Image> {
-    let image = trash_button
-        .child()
-        .and_then(|content| content.first_child())
-        .and_then(|widget| widget.downcast::<gtk::Image>().ok())?;
-    let name = crate::assets::primary_icon_name(&image)?;
-    TRASH_FLIGHTS.with(|flights| {
-        *flights.borrow_mut().entry(image.clone()).or_default() += 1;
-    });
-    set_trash_icon(&image, &name);
-    Some(image)
-}
-
-fn close_trash_lid(state: Option<gtk::Image>) {
-    if let Some(image) = state {
-        TRASH_FLIGHTS.with(|flights| {
-            let mut flights = flights.borrow_mut();
-            if let Some(count) = flights.get_mut(&image) {
-                *count -= 1;
-                if *count == 0 {
-                    flights.remove(&image);
-                }
-            }
-        });
-        if let Some(name) = crate::assets::primary_icon_name(&image) {
-            set_trash_icon(&image, &name);
-        }
-    }
 }
 
 fn widget_center_in_overlay(widget: &gtk::Widget, overlay: &gtk::Overlay) -> Option<(f64, f64)> {

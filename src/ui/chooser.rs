@@ -40,7 +40,8 @@ use super::{
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::BrowserMode,
     controls::{
-        ModalTone, form_check_button, form_entry, form_label, menu_option, message_dialog_layout,
+        ModalTone, focus_button, form_check_button, form_entry, form_label, menu_option,
+        message_dialog_layout,
     },
     preferences::PreferenceManager,
     preview::{PreviewDrawer, preview_target},
@@ -60,6 +61,7 @@ thread_local! {
 struct ChooserFileSource {
     source: Rc<dyn FileSource>,
     filter: Rc<RefCell<Option<gtk::FileFilter>>>,
+    directory_only: Rc<Cell<bool>>,
 }
 
 impl ChooserFileSource {
@@ -67,6 +69,7 @@ impl ChooserFileSource {
         Rc::new(Self {
             source: Rc::new(LocalFileSource),
             filter: Rc::new(RefCell::new(None)),
+            directory_only: Rc::new(Cell::new(false)),
         })
     }
 
@@ -76,6 +79,14 @@ impl ChooserFileSource {
 }
 
 impl FileSource for ChooserFileSource {
+    fn allows_entry(&self, entry: &FileEntry) -> bool {
+        chooser_entry_allowed(
+            self.filter.borrow().as_ref(),
+            self.directory_only.get(),
+            entry,
+        )
+    }
+
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
         if location.native_path().is_none() && !location.is_recent_root() {
             return Err(LocationValidationError::UnsupportedScheme(
@@ -112,6 +123,7 @@ impl FileSource for ChooserFileSource {
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
         let filter = self.filter.clone();
+        let directory_only = self.directory_only.clone();
         self.source.enumerate(
             request,
             Rc::new(move |event| {
@@ -121,11 +133,11 @@ impl FileSource for ChooserFileSource {
                         mut entries,
                     } => {
                         entries.retain(|entry| {
-                            entry.location.native_path().is_some()
-                                && filter
-                                    .borrow()
-                                    .as_ref()
-                                    .is_none_or(|filter| file_filter_matches(filter, entry))
+                            chooser_entry_allowed(
+                                filter.borrow().as_ref(),
+                                directory_only.get(),
+                                entry,
+                            )
                         });
                         DirectoryEvent::Batch {
                             request_id,
@@ -146,11 +158,16 @@ impl FileSource for ChooserFileSource {
         notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
         let filter = self.filter.clone();
+        let directory_only = self.directory_only.clone();
         self.source.watch(
             location,
             include_hidden,
             Rc::new(move |change| {
-                notify(filter_directory_change(filter.borrow().as_ref(), change));
+                notify(filter_directory_change(
+                    filter.borrow().as_ref(),
+                    directory_only.get(),
+                    change,
+                ));
             }),
         )
     }
@@ -170,18 +187,29 @@ fn file_filter_matches(filter: &gtk::FileFilter, entry: &FileEntry) -> bool {
     filter.match_(&info)
 }
 
+fn chooser_entry_allowed(
+    filter: Option<&gtk::FileFilter>,
+    directory_only: bool,
+    entry: &FileEntry,
+) -> bool {
+    entry.location.native_path().is_some()
+        && (!directory_only || entry.is_directory())
+        && filter.is_none_or(|filter| file_filter_matches(filter, entry))
+}
+
 fn filter_directory_change(
     filter: Option<&gtk::FileFilter>,
+    directory_only: bool,
     change: DirectoryChange,
 ) -> DirectoryChange {
     match change {
         DirectoryChange::Upsert(entry)
-            if filter.is_some_and(|filter| !file_filter_matches(filter, &entry)) =>
+            if !chooser_entry_allowed(filter, directory_only, &entry) =>
         {
             DirectoryChange::Remove(entry.location)
         }
         DirectoryChange::Move { from, entry }
-            if filter.is_some_and(|filter| !file_filter_matches(filter, &entry)) =>
+            if !chooser_entry_allowed(filter, directory_only, &entry) =>
         {
             DirectoryChange::Remove(from)
         }
@@ -303,7 +331,6 @@ impl ChooserDropdown {
             {
                 label_widget.set_max_width_chars(48);
                 label_widget.set_ellipsize(gtk::pango::EllipsizeMode::End);
-                label_widget.set_tooltip_text(Some(label));
             }
             checks.borrow_mut().push(check);
             let selected = selected.clone();
@@ -561,7 +588,10 @@ impl ChooserState {
                         browser.selected_entries()
                     }
                 });
-                let entries = eligible_open_entries(entries, *directory);
+                let entries = eligible_open_entries(entries, *directory)
+                    .into_iter()
+                    .filter(|entry| browser.allows_entry(entry))
+                    .collect::<Vec<_>>();
                 match open_selection(&entries, &current, *directory, *multiple) {
                     Ok(paths) => self.complete_paths(
                         paths,
@@ -595,7 +625,6 @@ impl ChooserState {
             filename.add_css_class("error");
             filename.set_tooltip_text(Some(message));
             filename.grab_focus();
-            self.show_error(message);
             return;
         }
         filename.remove_css_class("error");
@@ -710,7 +739,7 @@ impl ChooserState {
             }
         });
         layer.add_controller(escape);
-        layout.cancel.grab_focus();
+        focus_button(&layout.confirm);
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {
@@ -863,6 +892,13 @@ fn build_chooser_with_source(
             .and_then(|index| filters.get(index))
             .map(|filter| filter.native.clone()),
     );
+    source.directory_only.set(matches!(
+        &request.kind,
+        ChooserKind::Open {
+            directory: true,
+            ..
+        }
+    ));
     let multiple = matches!(&request.kind, ChooserKind::Open { multiple: true, .. });
     let view = BrowserView::new_chooser(source.clone(), multiple);
     let theme = PreferenceManager::shared();
@@ -954,6 +990,8 @@ fn build_chooser_with_source(
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
     preview.attach_split(&preview_split, &content, &view);
+    view.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
+    view.add_marquee_origin(&preview.widget(), gtk::PackType::End);
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
     details.add_css_class("chooser-details");
@@ -1003,18 +1041,14 @@ fn build_chooser_with_source(
         append_option(&options, &row);
         let filters_for_change = filters.clone();
         let source_for_change = source.clone();
-        let browser_for_change = browser.clone();
+        let view_for_change = view.clone();
         dropdown.connect_selected(move |selected| {
             source_for_change.set_filter(
                 filters_for_change
                     .get(selected)
                     .map(|filter| filter.native.clone()),
             );
-            if let Some(last) = browser_for_change.active_depth() {
-                for depth in 0..=last {
-                    browser_for_change.retry_column(depth);
-                }
-            }
+            view_for_change.refresh_source_filter();
         });
         Some(dropdown)
     };
@@ -1825,6 +1859,18 @@ fn install_shortcuts(
             && key == gtk::gdk::Key::Down
         {
             browser.extend_selection(1);
+            return glib::Propagation::Stop;
+        }
+        if state.view.item_view_has_focus()
+            && let Some(query) = super::window::type_to_search_query(key, modifiers)
+            && preferences.type_to_search()
+            && match query {
+                super::window::TypeToSearchQuery::Empty => state.view.show_filter(),
+                super::window::TypeToSearchQuery::Character(character) => {
+                    state.view.show_filter_with_query(&character.to_string())
+                }
+            }
+        {
             return glib::Propagation::Stop;
         }
         if !shift

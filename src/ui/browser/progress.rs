@@ -141,22 +141,6 @@ impl ViewState {
 
         let indeterminate = Rc::new(Cell::new(false));
         let pulse_source = Rc::new(RefCell::new(None));
-        let weak_progress = progress.downgrade();
-        let indeterminate_for_pulse = indeterminate.clone();
-        let source_for_pulse = pulse_source.clone();
-        let source = glib::timeout_add_local(INDETERMINATE_PROGRESS_INTERVAL, move || {
-            if !indeterminate_for_pulse.get() {
-                source_for_pulse.borrow_mut().take();
-                return glib::ControlFlow::Break;
-            }
-            let Some(progress) = weak_progress.upgrade() else {
-                source_for_pulse.borrow_mut().take();
-                return glib::ControlFlow::Break;
-            };
-            progress.pulse();
-            glib::ControlFlow::Continue
-        });
-        pulse_source.replace(Some(source));
 
         let layer = modal_layer(
             &content,
@@ -191,10 +175,15 @@ impl ViewState {
             progress.layer.add_controller(escape);
         }
         cancel.grab_focus();
+        if let Some(view) = self.file_progress_view.borrow().as_ref() {
+            ensure_indeterminate_pulse(view);
+        }
         if let Some((completed_items, transferred_bytes, total_bytes)) =
             self.transfer_progress.get()
         {
             self.update_transfer_progress(completed_items, transferred_bytes, total_bytes);
+        } else if self.flushing_to_device.get() {
+            self.apply_device_flush_status();
         } else {
             let (completed, total) = self.file_operation_progress.get();
             self.update_item_progress(completed, total);
@@ -209,6 +198,10 @@ impl ViewState {
     ) {
         self.transfer_progress
             .set(Some((completed_items, transferred_bytes, total_bytes)));
+        if self.flushing_to_device.get() {
+            self.apply_device_flush_status();
+            return;
+        }
         let progress_view = self.file_progress_view.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
@@ -221,6 +214,22 @@ impl ViewState {
         if let Some(fraction) = fraction {
             view.progress.set_fraction(fraction);
         }
+    }
+
+    pub(super) fn show_device_flush_status(&self) {
+        self.flushing_to_device.set(true);
+        self.apply_device_flush_status();
+    }
+
+    fn apply_device_flush_status(&self) {
+        let progress_view = self.file_progress_view.borrow();
+        let Some(view) = progress_view.as_ref() else {
+            return;
+        };
+        view.status.set_text("Writing to device…");
+        view.indeterminate.set(true);
+        view.progress.pulse();
+        ensure_indeterminate_pulse(view);
     }
 
     pub(super) fn update_item_progress(&self, completed: usize, total: usize) {
@@ -274,6 +283,7 @@ impl ViewState {
         }
         self.file_operation_progress.set((0, 0));
         self.transfer_progress.set(None);
+        self.flushing_to_device.set(false);
         if let Some(view) = self.file_progress_view.take() {
             view.indeterminate.set(false);
             view.archive_activity.stop();
@@ -317,6 +327,28 @@ impl ViewState {
             .set_text(&format!("{} deleted", item_count_label(processed)));
         view.indeterminate.set(true);
     }
+}
+
+fn ensure_indeterminate_pulse(view: &FileProgressView) {
+    if view.pulse_source.borrow().is_some() {
+        return;
+    }
+    let weak_progress = view.progress.downgrade();
+    let indeterminate = view.indeterminate.clone();
+    let pulse_source = view.pulse_source.clone();
+    let source = glib::timeout_add_local(INDETERMINATE_PROGRESS_INTERVAL, move || {
+        if !indeterminate.get() {
+            pulse_source.borrow_mut().take();
+            return glib::ControlFlow::Break;
+        }
+        let Some(progress) = weak_progress.upgrade() else {
+            pulse_source.borrow_mut().take();
+            return glib::ControlFlow::Break;
+        };
+        progress.pulse();
+        glib::ControlFlow::Continue
+    });
+    view.pulse_source.replace(Some(source));
 }
 
 #[cfg(test)]

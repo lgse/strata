@@ -72,6 +72,35 @@ impl FileSource for MenuSource {
 }
 
 #[test]
+fn columns_navigation_releases_retired_item_menus() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::columns_navigation_releases_retired_item_menus",
+        || {
+            let first = tempfile::tempdir().expect("first folder");
+            let second = tempfile::tempdir().expect("second folder");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(650)
+                .build();
+            window.present();
+            browser.navigate(Location::local(first.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+            let menu = open_menu(&view, Some("notes.txt"));
+            let retired = menu.downgrade();
+            menu.popdown();
+            drop(menu);
+            browser.navigate(Location::local(second.path()));
+            wait_until(|| retired.upgrade().is_none());
+            browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn run_is_only_offered_for_one_regular_executable_file() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::run_is_only_offered_for_one_regular_executable_file",
@@ -359,7 +388,6 @@ fn capture_menu(menu: &gtk::Popover, name: &str) {
 }
 
 #[test]
-#[ignore = "Native-menu lifecycle regression: https://github.com/lgse/strata/issues/1154"]
 fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::menus_and_keyboard_actions_follow_supported_operations_in_every_mode",
@@ -452,7 +480,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     capture_menu(&menu, &format!("{mode:?}-{place}-multiple"));
                     assert_actions(
                         &menu,
-                        &["Copy", "Duplicate", "Copy paths", "Copy to…"],
+                        &["Copy", "Duplicate", "Copy paths", "Copy to…", "Properties"],
                         &["Rename", "Print", "Open file location"],
                     );
                     if in_trash {
@@ -556,7 +584,6 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
 }
 
 #[test]
-#[ignore = "Native-menu lifecycle regression: https://github.com/lgse/strata/issues/1154"]
 fn recent_background_menu_rejects_physical_directory_actions() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::recent_background_menu_rejects_physical_directory_actions",
@@ -708,7 +735,6 @@ fn vertical_offset(menu: &gtk::Popover, widget: &gtk::Widget) -> f32 {
 }
 
 #[test]
-#[ignore = "Native-menu dispatch regression: https://github.com/lgse/strata/issues/1154"]
 fn open_file_location_navigates_to_parent_folder_and_selects_file() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::open_file_location_navigates_to_parent_folder_and_selects_file",
@@ -762,6 +788,19 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
                         .is_some_and(|(_, _, entry)| entry.display_name == "direct.txt")
                 });
 
+                wait_until(|| match mode {
+                    BrowserMode::Columns => view.state.columns.borrow()[0]
+                        .filter_entry
+                        .text()
+                        .is_empty(),
+                    BrowserMode::Icons | BrowserMode::List => view
+                        .state
+                        .mode_views
+                        .borrow()
+                        .capture_active_filter()
+                        .query
+                        .is_empty(),
+                });
                 assert!(view.show_filter_with_query("target.pdf"));
                 wait_until(|| label(&view.widget(), "target.pdf").is_some());
 

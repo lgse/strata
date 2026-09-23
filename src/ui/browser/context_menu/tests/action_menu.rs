@@ -175,6 +175,13 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
             wait_until(|| !menu.is_mapped());
 
             let menu = open_menu(&view, Some("picture.png"));
+            let painted = Rc::new(Cell::new(false));
+            let ready = painted.clone();
+            let clock = menu.frame_clock().expect("menu frame clock");
+            let handler = clock.connect_after_paint(move |_| ready.set(true));
+            clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
+            wait_until(|| painted.get());
+            clock.disconnect(handler);
             assert!(
                 action_buttons(menu.upcast_ref())
                     .iter()
@@ -182,7 +189,8 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                 "top-level actions stay in the menu body"
             );
             let actions_button = button(menu.upcast_ref(), "Actions").expect("actions submenu");
-            actions_button.activate();
+            assert!(actions_button.grab_focus());
+            assert!(actions_button.child_focus(gtk::DirectionType::Right));
             let submenu = descendants(menu.upcast_ref())
                 .into_iter()
                 .filter_map(|widget| widget.downcast::<gtk::Popover>().ok())
@@ -194,9 +202,30 @@ fn custom_actions_appear_for_matching_items_and_run_through_the_job_service() {
                             .any(|label| label == "PNG only")
                 })
                 .expect("the submenu lists the matching action");
+            let submenu_item =
+                button(submenu.upcast_ref(), "PNG only").expect("native submenu item");
+            assert!(submenu_item.grab_focus());
+            submenu.emit_by_name::<()>("move-focus", &[&gtk::DirectionType::Left]);
+            wait_until(|| !submenu.is_visible());
+            assert!(menu.is_mapped(), "Left returns to the root menu");
+            wait_until(|| actions_button.has_focus());
+            menu.emit_by_name::<()>("move-focus", &[&gtk::DirectionType::Down]);
+            assert_eq!(
+                gtk::prelude::RootExt::focus(&window)
+                    .as_ref()
+                    .and_then(button_text)
+                    .as_deref(),
+                Some("Cut"),
+                "Down must navigate the parent after Left"
+            );
+            menu.emit_by_name::<()>("move-focus", &[&gtk::DirectionType::Up]);
+            wait_until(|| actions_button.has_focus());
+
+            assert!(actions_button.child_focus(gtk::DirectionType::Right));
+            wait_until(|| submenu.is_visible());
             let before = jobs.snapshot().len();
             button(submenu.upcast_ref(), "PNG only")
-                .expect("native submenu item")
+                .expect("reopened native submenu item")
                 .activate();
             wait_until(|| jobs.snapshot().len() > before);
             assert!(

@@ -1,6 +1,59 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::services::{ArchiveFileEntry, archive_preview_tree};
+
+#[test]
+fn breadcrumb_navigation_restores_scrolling_after_compact_preview() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::compact::breadcrumb_navigation_restores_scrolling_after_compact_preview",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            for reduced_motion in [true, false] {
+                preferences.set_reduce_motion(reduced_motion);
+                let fixture = Fixture::new(false);
+                fixture.preview.observe_browser(&fixture.browser.browser());
+                fixture.resize(640);
+                fixture.enter_descendants(4);
+                wait_until(|| fixture.adjustment().value() > 0.0);
+                fixture.preview.show(entry("preview.png"), Some(4));
+                fixture.settle();
+                assert!(fixture.preview.state.sizing.is_compact());
+
+                let breadcrumbs =
+                    find(&fixture.browser.location_widget(), "breadcrumbs").expect("breadcrumbs");
+                let mut child = breadcrumbs.first_child();
+                let mut ancestor = None;
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    if let Ok(button) = widget.downcast::<gtk::Button>()
+                        && button.label().as_deref() == Some("child")
+                    {
+                        ancestor = Some(button);
+                        break;
+                    }
+                }
+                ancestor.expect("ancestor breadcrumb").emit_clicked();
+                wait_until(|| !fixture.preview.is_open());
+                wait_until(|| {
+                    fixture
+                        .browser
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                assert_eq!(
+                    fixture.browser.browser().location_at(0),
+                    Some(Location::local(fixture.root.path().join("child")))
+                );
+                // Breadcrumb navigation starts a new column chain, so its old offset must reset.
+                wait_until(|| fixture.adjustment().value() == 0.0);
+                fixture.close();
+            }
+        },
+    );
+}
 
 fn assert_dismissal_focus_stays_put(fixture: &Fixture) {
     let close = fixture.preview.state.close_button.clone();
@@ -103,6 +156,81 @@ fn compact_preview_loads_and_returns_keyboard_focus_without_losing_selection() {
                     fixture.close();
                 }
             }
+        },
+    );
+}
+
+#[test]
+fn compact_archive_open_focuses_the_tree_instead_of_the_close_button() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::compact::compact_archive_open_focuses_the_tree_instead_of_the_close_button",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            preferences.set_reduce_motion(true);
+            let fixture = Fixture::with_files(false, &["archive.zip"]);
+            let browser = fixture.browser.browser();
+            let position = (0..)
+                .map_while(|position| browser.entry_at(0, position).map(|entry| (position, entry)))
+                .find(|(_, entry)| entry.display_name == "archive.zip")
+                .map(|(position, _)| position)
+                .expect("archive position");
+            browser.select(0, position);
+            browser.focus_active();
+            fixture.resize(640);
+            fixture.settle();
+            let selected = browser.focused_entry().expect("archive entry");
+            fixture.preview.toggle(Some(selected.clone()), Some(0));
+            fixture.settle();
+            assert!(fixture.preview.is_open());
+            assert!(fixture.preview.state.sizing.is_compact());
+            wait_until(|| fixture.preview.state.close_button.has_focus());
+            let request = fixture
+                .requests
+                .borrow()
+                .last()
+                .expect("compact archive request")
+                .clone();
+            fixture.preview.state.handle_event(
+                request.id,
+                PreviewEvent::Ready(Preview {
+                    request_id: request.id,
+                    entry: request.entry,
+                    content_type: "application/zip".into(),
+                    content: PreviewContent::Archive {
+                        tree: archive_preview_tree(vec![
+                            ArchiveFileEntry {
+                                name: "docs/readme.md".to_owned(),
+                                directory: false,
+                                size: 1,
+                            },
+                            ArchiveFileEntry {
+                                name: "top.txt".to_owned(),
+                                directory: false,
+                                size: 2,
+                            },
+                        ]),
+                    },
+                }),
+            );
+            fixture.settle();
+            let tree =
+                find(&fixture.preview.widget(), "preview-archive-list").expect("archive tree");
+            let focused = RootExt::focus(&fixture.window).expect("window focus");
+            assert!(
+                focused == tree || focused.is_ancestor(&tree),
+                "archive tree must own keyboard focus, got {focused:?}"
+            );
+            {
+                let archive = fixture.preview.state.archive_browser.borrow();
+                let tree_browser = archive.as_ref().expect("archive browser");
+                assert_eq!(tree_browser.selected_index(), Some(0));
+            }
+            assert_eq!(
+                browser.focused_entry().expect("listing selection").location,
+                selected.location
+            );
+            fixture.close();
         },
     );
 }

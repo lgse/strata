@@ -39,6 +39,95 @@ impl SizeProgressThrottle {
     }
 }
 
+struct PropertiesMeasurement {
+    size: glib::WeakRef<gtk::Label>,
+    spinner: glib::WeakRef<gtk::Spinner>,
+    items: Option<glib::WeakRef<gtk::Label>>,
+    warning: glib::WeakRef<gtk::Image>,
+    throttle: SizeProgressThrottle,
+}
+
+impl PropertiesMeasurement {
+    fn new(
+        size: &gtk::Label,
+        spinner: &gtk::Spinner,
+        items: Option<&gtk::Label>,
+        warning: &gtk::Image,
+    ) -> Rc<Self> {
+        Rc::new(Self {
+            size: size.downgrade(),
+            spinner: spinner.downgrade(),
+            items: items.map(|items| items.downgrade()),
+            warning: warning.downgrade(),
+            throttle: SizeProgressThrottle::default(),
+        })
+    }
+
+    fn update(&self, summary: DirectorySummary) {
+        if let Some(size) = self.size.upgrade() {
+            let prefix = if summary.truncated() { "≥ " } else { "" };
+            size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
+        }
+        if let Some(items) = self.items.as_ref().and_then(|items| items.upgrade()) {
+            items.set_text(&directory_counts_label(&summary));
+        }
+        if let Some(warning) = self.warning.upgrade() {
+            set_measurement_warning(&warning, measurement_warning_text(&summary).as_deref());
+        }
+    }
+
+    async fn measure(
+        self: &Rc<Self>,
+        directory: &gio::File,
+        completed: DirectorySummary,
+    ) -> Result<DirectorySummary, glib::Error> {
+        let measurement = self.clone();
+        summarize_directory_with_progress(directory, move |partial| {
+            if partial.item_count > 0 && measurement.throttle.should_update(Instant::now()) {
+                let mut total = completed;
+                total.include(partial);
+                measurement.update(total);
+            }
+        })
+        .await
+    }
+
+    fn finish(&self, result: Result<DirectorySummary, glib::Error>) {
+        if let Some(spinner) = self.spinner.upgrade() {
+            spinner.stop();
+            spinner.set_visible(false);
+        }
+        match result {
+            Ok(summary) => self.update(summary),
+            Err(_) => {
+                if let Some(size) = self.size.upgrade() {
+                    size.set_text("Unavailable");
+                }
+                if let Some(items) = self.items.as_ref().and_then(|items| items.upgrade()) {
+                    items.set_text("Unavailable");
+                }
+                if let Some(warning) = self.warning.upgrade() {
+                    set_measurement_warning(&warning, Some("Folder contents couldn't be read."));
+                }
+            }
+        }
+    }
+}
+
+fn spawn_properties_measurement(
+    layer: &gtk::Box,
+    future: impl std::future::Future<Output = ()> + 'static,
+) {
+    let task = Rc::new(glib::MainContext::default().spawn_local(future));
+    let closing_task = task.clone();
+    layer.connect_sensitive_notify(move |layer| {
+        if !layer.is_sensitive() {
+            closing_task.abort();
+        }
+    });
+    layer.connect_unrealize(move |_| task.abort());
+}
+
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
     properties_row_with_suffix(parent, label, value, None)
 }
@@ -310,14 +399,23 @@ impl ViewState {
         if location.is_recent_location() {
             return;
         }
-        self.show_properties(location.clone(), None);
+        self.show_properties(location.clone(), None, None);
     }
 
     pub(super) fn show_entry_properties(self: &Rc<Self>, entry: FileEntry) {
-        self.show_properties(entry.location.clone(), Some(entry));
+        self.show_properties(entry.location.clone(), Some(entry), None);
     }
 
-    fn show_properties(self: &Rc<Self>, location: Location, entry: Option<FileEntry>) {
+    pub(super) fn show_entry_properties_at(self: &Rc<Self>, entry: FileEntry, depth: usize) {
+        self.show_properties(entry.location.clone(), Some(entry), Some(depth));
+    }
+
+    fn show_properties(
+        self: &Rc<Self>,
+        location: Location,
+        entry: Option<FileEntry>,
+        rename_depth: Option<usize>,
+    ) {
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -438,7 +536,6 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .propagate_natural_height(true)
-            .propagate_natural_width(true)
             .max_content_height(400)
             .child(&layout.body)
             .build();
@@ -474,8 +571,34 @@ impl ViewState {
         let owner = permission_row(&permissions, "Owner");
         let group = permission_row(&permissions, "Group");
         let others = permission_row(&permissions, "Others");
-        let executable = form_check_button("Allow executing file as a program (+x)");
+        let executable_label = "Allow executing file as a program (+x)";
+        let executable = form_check_button(executable_label);
         executable.add_css_class("properties-executable");
+        executable.set_tooltip_text(Some(executable_label));
+        let responsive_actions = layout.actions.clone();
+        let responsive_executable = executable.clone();
+        layout.content.add_tick_callback(move |content, _| {
+            let compact = content.has_css_class("modal-constrained");
+            let orientation = if compact {
+                gtk::Orientation::Vertical
+            } else {
+                gtk::Orientation::Horizontal
+            };
+            if responsive_actions.orientation() != orientation {
+                responsive_actions.set_orientation(orientation);
+                responsive_actions.set_homogeneous(!compact);
+            }
+            let visible_label = if compact {
+                "Executable (+x)"
+            } else {
+                executable_label
+            };
+            if responsive_executable.label().as_deref() != Some(visible_label) {
+                responsive_executable.set_label(Some(visible_label));
+                crate::ui::accessibility::set_label(&responsive_executable, executable_label);
+            }
+            glib::ControlFlow::Continue
+        });
         executable.set_sensitive(false);
         executable.set_visible(!is_directory);
         permissions.append(&executable);
@@ -590,14 +713,19 @@ impl ViewState {
         let renamed_layer = layer.clone();
         let renamed_overlay = window_overlay.clone();
         let renamed_root = blurred_root.clone();
+        let renamed_entry = entry.clone();
+        let renamed_depth = rename_depth
+            .or_else(|| self.destination_depth())
+            .unwrap_or(0);
         let weak = Rc::downgrade(self);
         rename.connect_clicked(move |_| {
             restore_focus.set(false);
             dismiss_modal_layer(&renamed_layer, &renamed_overlay, renamed_root.as_ref());
             let weak = weak.clone();
+            let renamed_entry = renamed_entry.clone();
             glib::idle_add_local_once(move || {
-                if let Some(state) = weak.upgrade() {
-                    state.begin_rename();
+                if let (Some(state), Some(entry)) = (weak.upgrade(), renamed_entry) {
+                    state.begin_entry_rename(renamed_depth, &entry);
                 }
             });
         });
@@ -647,69 +775,19 @@ impl ViewState {
         layer.grab_focus();
 
         if measuring_directory {
-            let weak_size = size.downgrade();
-            let weak_spinner = size_spinner.downgrade();
-            let weak_items = items.as_ref().map(|items| items.downgrade());
-            let weak_warning = measurement_warning.downgrade();
+            let measurement = PropertiesMeasurement::new(
+                &size,
+                &size_spinner,
+                items.as_ref(),
+                &measurement_warning,
+            );
             let directory = gio_file_for_location(&location);
-            let task = glib::MainContext::default().spawn_local(async move {
-                let progress_size = weak_size.clone();
-                let progress_items = weak_items.clone();
-                let progress_throttle = SizeProgressThrottle::default();
-                let summary = summarize_directory_with_progress(&directory, move |total| {
-                    if total.item_count > 0 && progress_throttle.should_update(Instant::now()) {
-                        if let Some(size) = progress_size.upgrade() {
-                            size.set_text(&format_file_size(total.total_size));
-                        }
-                        if let Some(items) = progress_items.as_ref().and_then(|w| w.upgrade()) {
-                            items.set_text(&directory_counts_label(&total));
-                        }
-                    }
-                })
-                .await;
-                if let Some(spinner) = weak_spinner.upgrade() {
-                    spinner.stop();
-                    spinner.set_visible(false);
-                }
-                let Some(size) = weak_size.upgrade() else {
-                    return;
-                };
-                match summary {
-                    Ok(summary) => {
-                        let prefix = if summary.truncated() { "≥ " } else { "" };
-                        if let Some(warning) = weak_warning.upgrade() {
-                            set_measurement_warning(
-                                &warning,
-                                measurement_warning_text(&summary).as_deref(),
-                            );
-                        }
-                        size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
-                        if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
-                            items.set_text(&directory_counts_label(&summary));
-                        }
-                    }
-                    Err(_) => {
-                        if let Some(warning) = weak_warning.upgrade() {
-                            set_measurement_warning(
-                                &warning,
-                                Some("Folder contents couldn't be read."),
-                            );
-                        }
-                        size.set_text("Unavailable");
-                        if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
-                            items.set_text("Unavailable");
-                        }
-                    }
-                }
+            spawn_properties_measurement(&layer, async move {
+                let summary = measurement
+                    .measure(&directory, DirectorySummary::default())
+                    .await;
+                measurement.finish(summary);
             });
-            let task = Rc::new(task);
-            let closing_task = task.clone();
-            layer.connect_sensitive_notify(move |layer| {
-                if !layer.is_sensitive() {
-                    closing_task.abort();
-                }
-            });
-            layer.connect_unrealize(move |_| task.abort());
         }
 
         let file = gio_file_for_location(&location);
@@ -754,6 +832,106 @@ impl ViewState {
             group
                 .identity
                 .set_text(info.attribute_string("owner::group").as_deref().unwrap_or("—"));
+        });
+    }
+}
+
+impl ViewState {
+    pub(super) fn show_selection_properties(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        if entries.len() < 2 {
+            if let Some(entry) = entries.into_iter().next() {
+                self.show_entry_properties(entry);
+            }
+            return;
+        }
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
+        else {
+            return;
+        };
+
+        let title = format!("{} items selected", entries.len());
+        let layout = modal_layout(crate::assets::icons::INFO, &title, "Selection", "Close");
+        layout.cancel.set_visible(false);
+        layout.confirm.set_visible(false);
+        layout.actions.set_visible(false);
+
+        let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        details.add_css_class("properties-details");
+        let size_spinner = gtk::Spinner::new();
+        size_spinner.add_css_class("properties-size-spinner");
+        size_spinner.set_valign(gtk::Align::Center);
+        size_spinner.set_tooltip_text(Some("Calculating selection size…"));
+        crate::ui::accessibility::set_label(&size_spinner, "Calculating selection size");
+        size_spinner.set_spinning(true);
+        let size = properties_size_row(&details, &format_file_size(0), &size_spinner);
+        let measurement_warning =
+            crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
+        measurement_warning.set_halign(gtk::Align::End);
+        measurement_warning.set_valign(gtk::Align::Center);
+        measurement_warning.set_focusable(true);
+        measurement_warning.set_visible(false);
+        let items = properties_row_with_suffix(
+            &details,
+            "CONTAINS",
+            "Calculating…",
+            Some(measurement_warning.upcast_ref()),
+        );
+        layout.body.append(&details);
+        let content = layout.content;
+
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        remember_properties_focus(&layer, &window_overlay);
+        window_overlay.add_overlay(&layer);
+
+        let close = layout.close.clone();
+        let closing_layer = layer.clone();
+        let closing_overlay = window_overlay.clone();
+        let closing_root = blurred_root.clone();
+        close.connect_clicked(move |_| {
+            dismiss_modal_layer(&closing_layer, &closing_overlay, closing_root.as_ref());
+        });
+        let escape = gtk::EventControllerKey::new();
+        let escaped_layer = layer.clone();
+        let escaped_overlay = window_overlay.clone();
+        let escaped_root = blurred_root.clone();
+        escape.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk::gdk::Key::Escape {
+                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        layer.add_controller(escape);
+        layer.grab_focus();
+
+        let measurement =
+            PropertiesMeasurement::new(&size, &size_spinner, Some(&items), &measurement_warning);
+        spawn_properties_measurement(&layer, async move {
+            let mut total = DirectorySummary::default();
+            for entry in entries.iter().filter(|entry| !entry.is_directory()) {
+                total.item_count = total.item_count.saturating_add(1);
+                total.visible_file_count = total.visible_file_count.saturating_add(1);
+                if let crate::model::MetadataValue::Known(size) = entry.size {
+                    total.total_size = total.total_size.saturating_add(size);
+                } else {
+                    total.issues.unreadable = true;
+                }
+            }
+            measurement.update(total);
+            for entry in entries.iter().filter(|entry| entry.is_directory()) {
+                let directory = gio_file_for_location(&entry.location);
+                let summary = measurement.measure(&directory, total).await;
+                match summary {
+                    Ok(summary) => total.include(summary),
+                    Err(_) => total.issues.unreadable = true,
+                }
+                measurement.update(total);
+            }
+            measurement.finish(Ok(total));
         });
     }
 }

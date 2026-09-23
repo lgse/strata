@@ -175,9 +175,6 @@ pub(super) fn extract_zip_from_archive(
                 .by_index_with_options(index, options)
                 .map_err(zip_error)?;
             let name = entry.name().to_owned();
-            entry
-                .enclosed_name()
-                .ok_or_else(|| format!("Refusing unsafe ZIP path: {name}"))?;
             let declared_size = entry.size();
             let directory = entry.is_dir();
             let mut reader = ArchiveReader {

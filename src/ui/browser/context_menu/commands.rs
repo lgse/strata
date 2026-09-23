@@ -27,6 +27,7 @@ impl CommandMenus {
         after: &gtk::Widget,
         popover: &gtk::PopoverMenu,
         dispatch: &MenuDispatch,
+        navigation: &Rc<super::keyboard::NativeMenuNavigation>,
     ) -> Self {
         let group = gio::SimpleActionGroup::new();
         let mut actions = Vec::new();
@@ -38,8 +39,17 @@ impl CommandMenus {
             popover,
             &mut refresh,
             dispatch,
+            navigation,
         );
-        let after_models = sections(after, &group, &mut actions, popover, &mut refresh, dispatch);
+        let after_models = sections(
+            after,
+            &group,
+            &mut actions,
+            popover,
+            &mut refresh,
+            dispatch,
+            navigation,
+        );
         Self {
             before: before_models,
             after: after_models,
@@ -64,6 +74,7 @@ fn sections(
     popover: &gtk::PopoverMenu,
     updates: &mut Vec<Rc<dyn Fn(bool)>>,
     dispatch: &MenuDispatch,
+    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
 ) -> Vec<gio::Menu> {
     let mut rows = Vec::new();
     collect(source, &mut rows);
@@ -97,6 +108,7 @@ fn sections(
         let weak_button = button.downgrade();
         let weak_section = section.downgrade();
         let weak_popover = popover.downgrade();
+        let navigation_for_refresh = navigation.clone();
         let refresh: Rc<dyn Fn(bool)> = Rc::new(move |force| {
             if !force
                 && !weak_popover
@@ -110,7 +122,8 @@ fn sections(
                 section.remove(index);
                 section.insert_item(index, &item);
                 if let Some(popover) = weak_popover.upgrade() {
-                    super::actions::refresh_presentation(&popover);
+                    super::actions::refresh_presentation(&popover, &navigation_for_refresh);
+                    navigation_for_refresh.model_changed();
                 }
             }
         });
@@ -135,6 +148,7 @@ fn sections(
         let weak_group = group.downgrade();
         let weak_action = action.downgrade();
         let weak_popover = popover.downgrade();
+        let navigation = navigation.clone();
         updates.push(refresh);
         let visibility: Rc<dyn Fn(bool)> = Rc::new(move |force| {
             if !force
@@ -161,7 +175,8 @@ fn sections(
                     group.remove_action(action.name().as_str());
                 }
                 if let Some(popover) = weak_popover.upgrade() {
-                    super::actions::refresh_presentation(&popover);
+                    super::actions::refresh_presentation(&popover, &navigation);
+                    navigation.model_changed();
                 }
             }
         });

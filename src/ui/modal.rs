@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 use crate::ui::blur::BlurBin;
-use crate::ui::controls::{ModalTone, message_dialog_description, message_dialog_layout};
+use crate::ui::controls::{
+    ModalTone, focus_button, message_dialog_description, message_dialog_layout,
+};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::Cell;
@@ -364,5 +366,5 @@ pub(super) fn show_delete_error_dialog(
         }
     });
     layer.add_controller(escape);
-    cancel.grab_focus();
+    focus_button(&confirm);
 }

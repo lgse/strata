@@ -10,6 +10,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         theme: "nord".into(),
         folder_peeking: false,
         single_click_previews: false,
+        columns_mirror_selection: false,
         render_documents_by_default: false,
         hardware_accelerated_video_previews: Some(false),
         video_preview_backend: "vulkan".into(),

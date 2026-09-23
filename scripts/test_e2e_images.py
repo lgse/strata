@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from e2e_bundle import dependency_key
+from e2e_bundle import IMAGE_INPUTS, dependency_key
 from e2e_images import check_image_labels, discover_bases, main, references, resolve
 
 
@@ -33,8 +33,7 @@ class ImageIdentityTests(unittest.TestCase):
     def test_dependency_identity_changes_only_with_environment_or_dependency_inputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            files = ("tests/e2e/Dockerfile", "tests/e2e/requirements.txt", "tests/e2e/install-packages.sh",
-                     "Cargo.toml", "Cargo.lock", ".dockerignore")
+            files = (*IMAGE_INPUTS, "Cargo.toml", "Cargo.lock", ".dockerignore")
             for name in files:
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)

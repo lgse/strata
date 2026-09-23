@@ -25,7 +25,7 @@ fn menu(window: &gtk::Window) -> gtk::Popover {
     popup
 }
 
-fn press(popover: &gtk::Popover, key: Key) {
+pub(super) fn press(popover: &gtk::Popover, key: Key) {
     if popover.is::<gtk::PopoverMenu>() && key == Key::Escape {
         popover.popdown();
         return;
@@ -74,7 +74,6 @@ fn native_selection_count(view: &BrowserView) -> u64 {
 }
 
 #[test]
-#[ignore = "Native-menu focus regression: https://github.com/lgse/strata/issues/1154"]
 fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::keyboard::context_menus_preserve_filtered_grouped_and_chooser_selections",
@@ -167,7 +166,10 @@ fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
                         assert!(label(popup.upcast_ref(), "New Folder").is_some());
                         press(&popup, Key::Escape);
                         wait_until(|| !popup.is_mapped());
-                        assert!(view.browser().selected_entries().is_empty());
+                        assert!(
+                            view.browser().selected_entries().is_empty(),
+                            "{mode:?} chooser={chooser} grouped={grouped}"
+                        );
                         assert_eq!(native_selection_count(&view), 0);
                         view.browser().clear_observer();
                         window.destroy();

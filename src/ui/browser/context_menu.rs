@@ -94,9 +94,16 @@ pub(super) fn bind_column_context_owner(
             && state.context_menu_column.get() == Some(depth)
         {
             if popover.is::<gtk::PopoverMenu>() {
+                if gtk::minor_version() >= 22 {
+                    restore_context_focus(&state, depth);
+                    state.context_menu_column.set(None);
+                    state.context_menu_focus.borrow_mut().take();
+                    state.refresh_destination_style();
+                    return;
+                }
                 let generation = state.context_menu_generation.get();
                 let weak = Rc::downgrade(&state);
-                // Native menu dismissal finishes its grab before restoring browser focus.
+                // Older GTK finishes the native menu grab after emitting closed.
                 glib::idle_add_local_once(move || {
                     if let Some(state) = weak.upgrade()
                         && state.context_menu_generation.get() == generation
@@ -174,7 +181,7 @@ fn context_search_active(state: &ViewState, depth: usize) -> bool {
         .columns
         .borrow()
         .get(depth)
-        .is_some_and(|column| column.search_handle.borrow().is_some())
+        .is_some_and(|column| column.recursive_search_active.get())
 }
 
 fn context_filter_or_search_active(state: &ViewState, depth: usize) -> bool {
@@ -182,7 +189,7 @@ fn context_filter_or_search_active(state: &ViewState, depth: usize) -> bool {
         return state.mode_views.borrow().filter_active();
     }
     state.columns.borrow().get(depth).is_some_and(|column| {
-        column.search_handle.borrow().is_some()
+        column.recursive_search_active.get()
             || column.map.has_query()
             || !column.filter_entry.text().trim().is_empty()
     })
@@ -260,9 +267,10 @@ fn position_model_context_popover(popover: &gtk::Popover, anchor: &gtk::Widget, 
     ) else {
         return;
     };
-    let click = anchor
-        .compute_point(&window, &gtk::graphene::Point::new(x as f32, y as f32))
-        .unwrap_or(gtk::graphene::Point::new(x as f32, y as f32));
+    let Some(click) = anchor.compute_point(&window, &gtk::graphene::Point::new(x as f32, y as f32))
+    else {
+        return;
+    };
     let (position, available) = context_menu_placement(window.height(), f64::from(click.y()));
     popover.set_position(position);
     if let Some(scroll) = popover.child().and_downcast::<gtk::ScrolledWindow>() {
@@ -274,9 +282,18 @@ fn position_model_context_popover(popover: &gtk::Popover, anchor: &gtk::Widget, 
         .map_or(1, |child| child.measure(gtk::Orientation::Vertical, -1).1)
         .saturating_add(CONTEXT_MENU_EDGE_MARGIN);
     let y = shifted_anchor_y(position, window.height(), click.y().round() as i32, height);
-    let point = window
-        .compute_point(&parent, &gtk::graphene::Point::new(click.x(), y as f32))
-        .unwrap_or(click);
+    let width = popover
+        .child()
+        .map_or(1, |child| child.measure(gtk::Orientation::Horizontal, -1).1);
+    let inset = (width / 2 + CONTEXT_MENU_EDGE_MARGIN)
+        .min(window.width() / 2)
+        .max(0);
+    let x = click
+        .x()
+        .clamp(inset as f32, (window.width() - inset).max(inset) as f32);
+    let Some(point) = window.compute_point(&parent, &gtk::graphene::Point::new(x, y as f32)) else {
+        return;
+    };
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
         point.x().round() as i32,
         point.y().round() as i32,
@@ -391,29 +408,13 @@ pub(in crate::ui) fn install_folder_context_menu(
     let popover = action_section.popover();
     bind_column_context_owner(state, &popover, depth);
 
-    let pending_new_entry = Rc::new(Cell::new(None));
-    let pending_for_click = pending_new_entry.clone();
-    let new_folder_popover = popover.downgrade();
-    new_folder.connect_clicked(move |_| {
-        pending_for_click.set(Some(true));
-        if let Some(popover) = new_folder_popover.upgrade() {
-            popover.popdown();
-        }
-    });
-    let pending_for_click = pending_new_entry.clone();
-    let new_file_popover = popover.downgrade();
-    new_file.connect_clicked(move |_| {
-        pending_for_click.set(Some(false));
-        if let Some(popover) = new_file_popover.upgrade() {
-            popover.popdown();
-        }
-    });
     let weak = Rc::downgrade(state);
     let folder = location.clone();
-    popover.connect_closed(move |_| {
-        let Some(is_directory) = pending_new_entry.take() else {
-            return;
-        };
+    let new_entry_popover = popover.downgrade();
+    let schedule_new_entry = Rc::new(move |is_directory| {
+        if let Some(popover) = new_entry_popover.upgrade() {
+            popover.popdown();
+        }
         let weak = weak.clone();
         let folder = folder.clone();
         glib::idle_add_local_once(move || {
@@ -422,6 +423,9 @@ pub(in crate::ui) fn install_folder_context_menu(
             }
         });
     });
+    let schedule_new_folder = schedule_new_entry.clone();
+    new_folder.connect_clicked(move |_| schedule_new_folder(true));
+    new_file.connect_clicked(move |_| schedule_new_entry(false));
     let weak = Rc::downgrade(state);
     let folder = location.clone();
     let paste_popover = popover.downgrade();
@@ -603,6 +607,86 @@ pub(in crate::ui) type ContextResolver = Rc<dyn Fn(&gtk::Widget) -> Option<Conte
 
 const ITEM_CONTEXT_SUMMARY_MAX_CHARS: i32 = 30;
 
+/// GTK consumes the outside press while autohiding a popover, but the release
+/// reaches the window. Re-resolve that release so one secondary click retargets.
+fn install_secondary_release_retarget(
+    popover: &gtk::Popover,
+    widget: &gtk::Widget,
+    reopen: ResolvedContextTrigger,
+) {
+    let installed = Rc::new(RefCell::new(
+        None::<(glib::WeakRef<gtk::Widget>, gtk::EventControllerLegacy)>,
+    ));
+    let installed_for_show = installed.clone();
+    // The trigger owns the menu; its show handler and root controller must not retain it.
+    let reopen = Rc::downgrade(&reopen);
+    let weak_widget = widget.downgrade();
+    let weak_popover = popover.downgrade();
+    popover.connect_show(move |_| {
+        if installed_for_show.borrow().is_some() {
+            return;
+        }
+        let (Some(widget), Some(popover)) = (weak_widget.upgrade(), weak_popover.upgrade()) else {
+            return;
+        };
+        let Some(root) = widget
+            .root()
+            .and_then(|root| root.dynamic_cast::<gtk::Widget>().ok())
+        else {
+            return;
+        };
+        let input = gtk::EventControllerLegacy::new();
+        input.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak_popover = popover.downgrade();
+        let weak_widget = widget.downgrade();
+        let weak_root = root.downgrade();
+        let reopen = reopen.clone();
+        input.connect_event(move |_, event| {
+            let Some(button) = event
+                .downcast_ref::<gtk::gdk::ButtonEvent>()
+                .filter(|button| {
+                    event.event_type() == gtk::gdk::EventType::ButtonRelease && button.button() == 3
+                })
+            else {
+                return glib::Propagation::Proceed;
+            };
+            let (Some(popover), Some(widget), Some(root)) = (
+                weak_popover.upgrade(),
+                weak_widget.upgrade(),
+                weak_root.upgrade(),
+            ) else {
+                return glib::Propagation::Proceed;
+            };
+            if popover.is_visible() {
+                return glib::Propagation::Proceed;
+            }
+            let Some((x, y)) = button.position() else {
+                return glib::Propagation::Proceed;
+            };
+            let target = root
+                .compute_point(&widget, &gtk::graphene::Point::new(x as f32, y as f32))
+                .map(|point| (f64::from(point.x()), f64::from(point.y())));
+            if let Some((x, y)) = target
+                && let Some(reopen) = reopen.upgrade()
+            {
+                glib::idle_add_local_once(move || {
+                    reopen(x, y, None);
+                });
+            }
+            glib::Propagation::Proceed
+        });
+        root.add_controller(input.clone());
+        installed_for_show.replace(Some((root.downgrade(), input)));
+    });
+    widget.connect_unmap(move |_| {
+        if let Some((root, input)) = installed.borrow_mut().take()
+            && let Some(root) = root.upgrade()
+        {
+            root.remove_controller(&input);
+        }
+    });
+}
+
 pub(in crate::ui) fn install_item_context_menu(
     state: &Rc<ViewState>,
     widget: &gtk::Widget,
@@ -620,7 +704,7 @@ pub(in crate::ui) fn install_item_context_menu(
         let columns = state.columns.borrow();
         let search = columns.get(depth).filter(|column| {
             state.mode_views.borrow().mode() == BrowserMode::Columns
-                && column.search_handle.borrow().is_some()
+                && column.recursive_search_active.get()
         });
         let target = if let Some(column) = search {
             (
@@ -789,6 +873,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     permanent_delete_multiple.add_css_class("danger");
     let compress_multiple =
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
+    let properties_multiple =
+        item_context_option(crate::assets::icons::INFO, "Properties", "Alt+Enter");
     multiple_open.append(&open_multiple);
     multiple_open.append(&open_with_multiple);
     multiple_open.append(&restore_multiple);
@@ -806,6 +892,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let multiple_archive_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     multiple.append(&compress_multiple);
     multiple.append(&multiple_archive_separator);
+    multiple.append(&properties_multiple);
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
     multiple.append(&permanent_delete_multiple);
     multiple.set_visible(false);
@@ -1161,9 +1249,18 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             return;
         };
         if let Some(state) = weak.upgrade() {
-            state.show_entry_properties(entry);
+            state.show_entry_properties_at(entry, depth);
         }
     });
+    connect_selection_action(
+        &properties_multiple,
+        &popover,
+        state,
+        &target,
+        |state, entries| {
+            state.show_selection_properties(entries);
+        },
+    );
     let weak = Rc::downgrade(state);
     let paths_target = target.clone();
     let paths_popover = popover.downgrade();
@@ -1351,6 +1448,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             true
         });
 
+    install_secondary_release_retarget(&popover, widget, open_at_resolved.clone());
+
     let open_for_trigger = open_at_resolved.clone();
     let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x, y| {
         open_for_trigger(x, y, None);
@@ -1405,7 +1504,7 @@ fn focus_search_result(state: &ViewState, depth: usize, entry: &FileEntry) {
     let Some(column) = state.columns.borrow().get(depth).cloned() else {
         return;
     };
-    if column.search_handle.borrow().is_none() {
+    if !column.recursive_search_active.get() {
         return;
     }
     let position = column
@@ -1449,90 +1548,7 @@ pub(super) fn rename_context_entry(
         });
         return;
     }
-    use crate::ui::{
-        controls::{form_entry, modal_layout},
-        modal::{ModalHost, dismiss_modal_layer, modal_layer, submit_on_enter},
-    };
-    let Some(host) = ModalHost::blurred_for(&state.overlay) else {
-        return;
-    };
-    let layout = modal_layout(
-        crate::assets::icons::PENCIL,
-        "Rename",
-        &compact_display_path(&entry.location),
-        "Rename",
-    );
-    let field = form_entry();
-    field.set_text(&entry.display_name);
-    super::super::accessibility::set_label(&field, "Name");
-    layout.body.append(&field);
-    let confirm = layout.confirm.downgrade();
-    field.connect_changed(move |field| {
-        if let Some(confirm) = confirm.upgrade() {
-            confirm.set_sensitive(super::update_basename_validation(field));
-        }
-    });
-    let layer = modal_layer(
-        &layout.content,
-        &host.overlay,
-        host.blurred_root.clone(),
-        None,
-    );
-    let submitted = Rc::new(Cell::new(false));
-    let submitted_on_unmap = submitted.clone();
-    let weak_state = Rc::downgrade(state);
-    let origin = entry.clone();
-    layer.connect_unmap(move |layer| {
-        if submitted_on_unmap.get() || !layer.has_css_class("dismissing") {
-            return;
-        }
-        let weak_state = weak_state.clone();
-        let origin = origin.clone();
-        glib::idle_add_local_once(move || {
-            if let Some(state) = weak_state.upgrade() {
-                focus_search_result(&state, depth, &origin);
-            }
-        });
-    });
-    let weak_layer = layer.downgrade();
-    let dismiss = Rc::new(move || {
-        if let Some(layer) = weak_layer.upgrade() {
-            dismiss_modal_layer(&layer, &host.overlay, host.blurred_root.as_ref());
-        }
-    });
-    for button in [&layout.cancel, &layout.close] {
-        let dismiss = dismiss.clone();
-        button.connect_clicked(move |_| dismiss());
-    }
-    let escape = gtk::EventControllerKey::new();
-    let dismiss_for_escape = dismiss.clone();
-    escape.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Escape {
-            dismiss_for_escape();
-            glib::Propagation::Stop
-        } else {
-            glib::Propagation::Proceed
-        }
-    });
-    layer.add_controller(escape);
-    submit_on_enter(&layout.body, &layout.confirm);
-    let weak = Rc::downgrade(state);
-    let field_for_submit = field.clone();
-    layout.confirm.connect_clicked(move |_| {
-        if super::update_basename_validation(&field_for_submit) {
-            let name = field_for_submit.text().to_string();
-            submitted.set(true);
-            dismiss();
-            if let Some(state) = weak.upgrade() {
-                super::queue_rename(&state.browser, entry.clone(), name);
-            }
-        }
-    });
-    if let Some(overlay) = crate::ui::modal::window_overlay(&state.overlay) {
-        overlay.add_overlay(&layer);
-    }
-    field.grab_focus();
-    field.select_region(0, -1);
+    state.begin_search_result_rename(depth, &entry);
 }
 
 fn selected_items_summary(entries: &[FileEntry]) -> String {

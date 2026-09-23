@@ -205,14 +205,28 @@ class Strata:
     def matches(self, directory: str | None = None) -> list[str]:
         """What a recursive query currently lists.
 
-        Columns replaces the pane's own listing with the matches; the
-        single-pane views show them in a separate results list.
+        Columns replaces the pane's own listing with the matches; each
+        single-pane view shows them in a mode-consistent results collection.
         """
 
         results = self.window.find(role="list", name=SEARCH_RESULTS_LABEL)
+        result_role = "list item"
+        if results is None:
+            results = self.window.find(role="table", name=SEARCH_RESULTS_LABEL)
+            result_role = "table cell"
         if results is not None:
-            return [row.name for row in results.find_all(role="list item") if row.name]
+            return [row.name for row in results.find_all(role=result_role) if row.name]
         return self.entry_names(directory)
+
+    def search_result(self, name: str) -> Node | None:
+        results = self.window.find(role="list", name=SEARCH_RESULTS_LABEL)
+        role = "list item"
+        if results is None:
+            results = self.window.find(role="table", name=SEARCH_RESULTS_LABEL)
+            role = "table cell"
+        if results is not None:
+            return results.find(role=role, name=name)
+        return self.window.find(role="list item", name=name)
 
     def entry_names(self, directory: str | None = None) -> list[str]:
         return [node.name for node in self.entries(directory)]

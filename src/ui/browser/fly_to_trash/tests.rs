@@ -84,33 +84,6 @@ fn outbound_flights_leave_restored_rows_visible() {
 }
 
 #[test]
-fn overlapping_flights_preserve_the_latest_trash_probe() {
-    crate::test_support::gtk_test(
-        "ui::browser::fly_to_trash::tests::overlapping_flights_preserve_the_latest_trash_probe",
-        || {
-            let image = crate::assets::primary_icon(crate::assets::icons::TRASH, 18);
-            let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-            content.append(&image);
-            let button = gtk::Button::builder().child(&content).build();
-            let first = open_trash_lid(&button);
-            let second = open_trash_lid(&button);
-            set_trash_icon(&image, crate::assets::icons::TRASH_FULL);
-            close_trash_lid(first);
-            assert_eq!(
-                crate::assets::primary_icon_name(&image).as_deref(),
-                Some("strata-trash-full-open")
-            );
-            close_trash_lid(second);
-            assert_eq!(
-                crate::assets::primary_icon_name(&image).as_deref(),
-                Some(crate::assets::icons::TRASH_FULL)
-            );
-            assert!(TRASH_FLIGHTS.with(|flights| flights.borrow().is_empty()));
-        },
-    );
-}
-
-#[test]
 fn release_end_rises_above_the_row_and_fans_out() {
     let row = (300.0, 400.0);
     let single = release_end(row, 0, 1);

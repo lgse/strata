@@ -39,12 +39,13 @@ pub(super) struct ListFactory {
 
 impl ListFactory {
     pub(super) fn build(self) -> gtk::SignalListItemFactory {
+        let setup_items = self.bound_items.clone();
         let context = Rc::new(self);
         let factory = gtk::SignalListItemFactory::new();
         let setup = context.clone();
         factory.connect_setup(move |_, item| setup.setup(item));
         factory.connect_bind(move |_, item| context.bind(item));
-        factory.connect_unbind(|_, item| thumbnail::cancel_list_item_thumbnails(item));
+        super::install_edit_unbind(&factory, &setup_items);
         factory
     }
 
@@ -59,7 +60,8 @@ impl ListFactory {
         row.register_columns(&self.columns);
         self.install_interactions(item, &row);
         item.set_child(Some(&row.widget));
-        register_bound_mode_item(&self.bound_items, item, &row.widget, &row.name);
+        let edit = crate::ui::collection_edit::EditWidgets::new(&row.field, &row.name);
+        register_bound_mode_item(&self.bound_items, item, &row.widget, &row.name, edit);
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
@@ -137,7 +139,15 @@ impl ListFactory {
             .as_ref()
             .and_then(Weak::upgrade)
             .and_then(|state| state.pending_rename_name(&binding.entry));
+        let edit = super::bound_edit(&self.bound_items, item);
+        if let Some(edit) = &edit {
+            edit.bind(&binding.entry.location);
+        }
         row.bind_labels(item, &binding.entry, pending_name.as_deref());
+        if let Some(edit) = &edit {
+            edit.display.set_visible(!edit.is_editing());
+            edit.field.set_visible(edit.is_editing());
+        }
         if self.scrolling.get() {
             binding.request_thumbnail_and_metadata(&row);
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
@@ -196,8 +206,6 @@ impl ListRow {
     }
 
     fn bind_labels(&self, item: &gtk::ListItem, entry: &FileEntry, pending_name: Option<&str>) {
-        self.name.set_visible(true);
-        self.field.set_visible(false);
         set_label_if_changed(&self.name, pending_name.unwrap_or(&entry.display_name));
         self.name
             .set_opacity(if entry.is_hidden { 0.65 } else { 1.0 });

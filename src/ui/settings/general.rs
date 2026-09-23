@@ -249,6 +249,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::arrow_navigation_scoped,
             write: PreferenceManager::set_arrow_navigation_scoped,
         },
+        PreferenceSwitch {
+            title: "Mirror columns selection",
+            description: "Show the selected folder's contents in the next pane as you move with the keyboard.",
+            read: PreferenceManager::columns_mirror_selection,
+            write: PreferenceManager::set_columns_mirror_selection,
+        },
     ] {
         append_preference_switch(&browsing, manager, switch);
     }
