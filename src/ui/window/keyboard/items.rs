@@ -73,6 +73,7 @@ impl Dispatcher {
                 .preview
                 .archive_key(event.key)
                 .then_some(Propagation::Stop),
+            Key::space => self.preview.close_archive().then_some(Propagation::Stop),
             _ => None,
         }
     }

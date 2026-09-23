@@ -282,6 +282,8 @@ impl ArchiveBrowser {
     }
 
     fn refresh(&self) {
+        // Replacing rows can leave focus on a detached widget.
+        let had_focus = self.tree_has_focus();
         self.rebuild_crumbs();
         let directory = directory_at(&self.tree.root, &self.path.borrow());
         let count = directory.children.len();
@@ -301,6 +303,9 @@ impl ArchiveBrowser {
             _ => format!("{files} files, {folders} folders"),
         };
         self.count.set_text(&summary);
+        if had_focus {
+            self.list.grab_focus();
+        }
     }
 
     fn rebuild_crumbs(&self) {
@@ -377,6 +382,15 @@ impl ArchiveBrowser {
         if count > 0 {
             self.cursor.set((selected as usize).min(count - 1));
         }
+    }
+
+    fn tree_has_focus(&self) -> bool {
+        self.list
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focused| {
+                self.list.upcast_ref::<gtk::Widget>() == &focused || focused.is_ancestor(&self.list)
+            })
     }
 }
 

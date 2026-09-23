@@ -326,6 +326,8 @@ fn archive_preview_keys_navigate_the_tree_without_moving_the_listing() {
 
             assert!(fixture.press(Key::space, ModifierType::empty()));
             wait_until(|| !fixture.preview.is_open());
+            // This fixture lacks the split binding that restores listing focus on close.
+            fixture.view.browser().focus_active();
             assert!(fixture.press(Key::space, ModifierType::empty()));
             wait_until(|| fixture.preview.is_open());
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
@@ -358,6 +360,36 @@ fn archive_keys_route_when_the_preview_list_has_focus() {
             wait_until(|| !fixture.preview.is_open());
             assert_eq!(fixture.selected(), [1]);
             wait_until(|| fixture.view.item_view_has_focus());
+        },
+    );
+}
+
+#[test]
+fn space_opening_archive_focuses_the_tree_first_entry() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::space_opening_archive_focuses_the_tree_first_entry",
+        || {
+            let fixture = KeyboardFixture::with_archive();
+            assert!(fixture.press(Key::space, ModifierType::empty()));
+            wait_until(|| {
+                widget_with_class(&fixture.preview.widget(), "preview-archive").is_some()
+            });
+            let list = widget_with_class(&fixture.preview.widget(), "preview-archive-list")
+                .expect("archive list");
+            wait_until(|| list.is_mapped());
+            let focused = gtk::prelude::RootExt::focus(&fixture.window).expect("window focus");
+            assert!(
+                focused == list || focused.is_ancestor(&list),
+                "archive tree must own keyboard focus, got {focused:?}"
+            );
+            assert_eq!(fixture.selected(), [1]);
+            assert!(fixture.press(Key::Down, ModifierType::empty()));
+            assert_eq!(fixture.selected(), [1]);
+            assert!(fixture.press(Key::Up, ModifierType::empty()));
+            assert_eq!(fixture.selected(), [1]);
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            wait_until(|| !fixture.preview.is_open());
+            assert_eq!(fixture.selected(), [1]);
         },
     );
 }
