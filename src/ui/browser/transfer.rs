@@ -402,19 +402,14 @@ impl ViewState {
         self.replay_move(false, generation, records)
     }
 
-    /// Re-trashes items an undone Trash put back.
     pub(super) fn redo_trash(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
         self.replay_existing_locations(true, generation, locations, Browser::redo_trash)
     }
 
-    /// Re-applies an undone move, confirming any destination a new item
-    /// claimed since the move was reverted.
     pub(super) fn redo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
         self.replay_move(true, generation, records)
     }
 
-    /// Filters the recorded locations to items still there, then dispatches
-    /// the replay; an all-gone set drops the pending entry.
     fn replay_existing_locations(
         self: &Rc<Self>,
         redo: bool,
@@ -433,14 +428,10 @@ impl ViewState {
         dispatch(&self.browser, generation, existing)
     }
 
-    /// Splits recorded moves into items that can replay cleanly and ones whose
-    /// destination a new item claimed since the move was reverted.
     fn replay_move(self: &Rc<Self>, redo: bool, generation: u64, records: Vec<MoveRecord>) -> bool {
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
         for record in records {
-            // An undo finds the moved item at `current` and its destination at
-            // `original`; a redo finds them swapped.
             let (item_at, destination) = if redo {
                 (&record.original, &record.current)
             } else {

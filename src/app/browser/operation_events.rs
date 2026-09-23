@@ -33,8 +33,6 @@ struct OperationCompletion {
     destination: Option<Location>,
     reveal: bool,
     file_operation_refreshed: bool,
-    /// An undo or redo replay is in flight; either suppresses fresh undo
-    /// recording so a replay doesn't record itself as a new operation.
     undoing: bool,
     reveal_locations: Vec<Location>,
 }
@@ -591,9 +589,6 @@ fn deleted_locations(event: &OperationEvent) -> Vec<Location> {
     }
 }
 
-/// Settles a claimed replay against the finishing event, then pushes the
-/// applied portion to the opposite stack: a completed undo becomes redoable,
-/// a completed redo regenerates the undo it replayed.
 fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: &OperationEvent) {
     // A restore replay marks each landed item from progress events; a delete
     // or move replay marks from the locations the finish event reports. A
@@ -622,14 +617,14 @@ fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: 
         UndoEntry::Rename(_) => matches!(event, OperationEvent::Renamed { .. }),
         _ => matches!(event, OperationEvent::Deleted { .. }),
     };
-    finish_replay(redo, generation, succeeded);
     let applied = if succeeded {
-        entry.clone()
+        Some(entry.clone())
     } else {
-        match completed_replay_items(redo, generation) {
-            Some(completed) if !completed.is_empty() => completed,
-            _ => return,
-        }
+        completed_replay_items(redo, generation).filter(|completed| !completed.is_empty())
+    };
+    finish_replay(redo, generation, succeeded);
+    let Some(applied) = applied else {
+        return;
     };
     if redo {
         push_regenerated_undo(applied);

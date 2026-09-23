@@ -1218,8 +1218,6 @@ fn an_undone_move_can_be_redone() {
         pending_undo_entry(),
         Some(UndoEntry::Move(vec![record.clone()]))
     );
-    // The redo replays the forward move original -> current through the
-    // undo_move request with swapped endpoints.
     UNDO_MOVE_REQUESTS.with(|requests| {
         assert_eq!(
             &*requests.borrow(),
@@ -1441,6 +1439,29 @@ fn a_partial_undo_only_redoes_the_completed_items() {
         pending_undo_entry(),
         Some(UndoEntry::Copy(vec![second.clone()]))
     );
+}
+
+#[test]
+fn a_non_successful_replay_with_all_items_applied_remains_redoable() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    push_pending_undo(UndoEntry::Copy(vec![location.clone()]));
+    let (generation, claimed) = claim_pending_undo(None).expect("undo claim");
+    let request_id = browser.begin_operation();
+    browser.undo_claim.replace(Some((generation, claimed)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::CompletedWithErrors {
+        request_id,
+        deleted_locations: vec![location.clone()],
+        retryable_locations: Vec::new(),
+        has_non_retryable_failures: true,
+        message: "failure after deletion".into(),
+    });
+
+    assert_eq!(pending_undo_entry(), None);
+    assert_eq!(pending_redo_entry(), Some(UndoEntry::Copy(vec![location])));
 }
 
 #[test]
