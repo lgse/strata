@@ -1357,6 +1357,8 @@ impl ViewState {
         shell.set_margin_bottom(12);
         shell.set_overflow(gtk::Overflow::Hidden);
         let column_overlay = gtk::Overlay::new();
+        // Separate the listing's overlay scrollbar from the resize hit target.
+        column.set_margin_end(10);
         column_overlay.set_child(Some(&column));
         column_overlay.set_hexpand(true);
         column_overlay.set_vexpand(true);
