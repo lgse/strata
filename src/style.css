@@ -1800,13 +1800,24 @@ scrollbar.horizontal > range > trough > slider {
   min-width: 32px;
 }
 
-/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
-.mode-scroll scrollbar.horizontal > range > trough,
+/* The mode scrollers need an opaque base to conceal the sidebar paned handle.
+   Layer the path bar's faint track over it instead of losing the bezel. */
+.mode-scroll scrollbar.horizontal {
+  background: @theme_bg;
+}
+
+.mode-scroll scrollbar.horizontal > range > trough {
+  margin-top: 3px;
+  margin-bottom: 3px;
+  background-color: @theme_bg;
+  background-image: linear-gradient(alpha(@theme_border, 0.25), alpha(@theme_border, 0.25));
+  box-shadow: inset 0 0 0 1px alpha(@theme_border, 0.45);
+}
+
 .mode-scroll scrollbar.horizontal:hover > range > trough,
 .mode-scroll scrollbar.horizontal.hovering > range > trough,
 .mode-scroll scrollbar.horizontal.dragging > range > trough {
-  background: @theme_bg;
-  border: none;
+  background-image: linear-gradient(alpha(@theme_border, 0.45), alpha(@theme_border, 0.45));
 }
 
 .autoscroll-anchor {
@@ -2929,9 +2940,10 @@ entry.preview-command-entry selection {
   background: @theme_bg;
 }
 
-/* Move only the overlay scrollbar away from the resize target; keep the column flush. */
+/* Keep the column flush; inset only its scrollbar from the resize target and header. */
 .directory-column scrollbar.vertical {
-  margin-right: 11px;
+  margin-right: 6px;
+  margin-top: 5px;
 }
 
 .column-resize-handle {
