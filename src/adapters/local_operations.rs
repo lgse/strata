@@ -67,7 +67,6 @@ pub(crate) struct MountFlushHint {
 #[derive(Clone, Copy)]
 pub(crate) enum SyncDestination<'a> {
     Local(&'a Path),
-    /// A destination with no local path. The copy helper tests this directly.
     #[cfg_attr(
         not(test),
         expect(
@@ -101,9 +100,6 @@ pub(crate) fn sync_filesystem(root: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Durability flush used by transfers and device release. Tests can record or
-/// fail the call; production still runs [`sync_filesystem`] on the caller,
-/// which is the blocking worker.
 pub(crate) fn flush_filesystem(root: &Path) -> io::Result<()> {
     #[cfg(test)]
     if let Some(kind) = sync_probe_before(root) {
@@ -208,7 +204,6 @@ mod sync_probe {
             .unwrap_or_default()
     }
 
-    /// `Some` fails the flush. `None` means call the real `syncfs`.
     pub(super) fn sync_probe_before(root: &Path) -> Option<io::ErrorKind> {
         let (fail, gate) = {
             let mut slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
@@ -287,7 +282,6 @@ fn removable_hints_for_test() -> Option<Vec<MountFlushHint>> {
     })
 }
 
-/// Unique removable mount roots that cover `destinations`. The innermost hint wins.
 pub(crate) fn removable_sync_roots(
     destinations: &[SyncDestination<'_>],
     hints: &[MountFlushHint],
@@ -362,13 +356,8 @@ async fn flush_removable_writes(
     affected_locations: HashSet<Location>,
 ) -> bool {
     let roots = removable_roots_for_paths(&paths);
-    // Sampled before the loop so a cancel that arrives only after flushing
-    // has started can still finish syncfs and report success. A cancel that
-    // is already set still flushes bytes that were written, then reports
-    // cancellation instead of success.
-    let cancelled_before = cancellable.is_cancelled();
     if roots.is_empty() {
-        if cancelled_before {
+        if cancellable.is_cancelled() {
             emit(cancelled_event(
                 request_id,
                 completed.to_vec(),
@@ -395,7 +384,7 @@ async fn flush_removable_writes(
         });
         return false;
     }
-    if cancelled_before {
+    if cancellable.is_cancelled() {
         emit(cancelled_event(
             request_id,
             completed.to_vec(),

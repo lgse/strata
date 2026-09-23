@@ -130,7 +130,6 @@ struct PendingRelease {
     dismissed: bool,
     progress_message: Option<String>,
     error_count: usize,
-    /// Success may say the drive can be unplugged only when it is removable or ejectable.
     unplug: bool,
     parent: Option<gtk::Widget>,
     overlay: Option<ReleaseOverlay>,
@@ -872,31 +871,41 @@ where
         refresh_sidebars();
         schedule_present(parent.clone(), key.clone());
         glib::MainContext::default().spawn_local(async move {
-            // Drop directory monitors before syncfs. Restore only when GIO
-            // fails and the volume is still mounted.
+            // Leave before flushing to drop directory monitors.
             let previous = browser
                 .as_ref()
                 .and_then(|browser| browser.active_location());
             if let (Some(browser), Some(root)) = (browser.as_ref(), away_root.as_ref()) {
                 navigate_home_if_within(browser, root);
             }
+            let left_at = browser
+                .as_ref()
+                .and_then(|browser| browser.active_location());
             #[cfg(test)]
             note_release_before_flush(browser.as_ref());
             let flush_root = sync_root.clone();
             let flush = flush_mount(sync_root).await;
             let decision = match flush {
-                Err(error) => decide_flush(kind, Err(error)),
+                Err(error) => {
+                    restore_previous_if_mounted(
+                        browser.as_ref(),
+                        previous.as_ref(),
+                        left_at.as_ref(),
+                        flush_root.as_deref(),
+                    );
+                    decide_flush(kind, Err(error))
+                }
                 Ok(()) => {
                     enter_releasing(&key);
                     let operation = mount_operation(&parent, &key);
                     let result = run_gio(operation).await;
-                    if result.is_err()
-                        && flush_root.as_deref().is_some_and(volume_still_mounted)
-                        && let Some(browser) = browser.as_ref()
-                        && let Some(previous) = previous.as_ref()
-                        && browser.active_location().as_ref() != Some(previous)
-                    {
-                        browser.navigate(previous.clone());
+                    if result.is_err() {
+                        restore_previous_if_mounted(
+                            browser.as_ref(),
+                            previous.as_ref(),
+                            left_at.as_ref(),
+                            flush_root.as_deref(),
+                        );
                     }
                     let (progress, unplug) = RELEASES.with(|releases| {
                         let releases = releases.borrow();
@@ -914,6 +923,21 @@ where
         });
     });
     true
+}
+
+fn restore_previous_if_mounted(
+    browser: Option<&Rc<Browser>>,
+    previous: Option<&crate::model::Location>,
+    left_at: Option<&crate::model::Location>,
+    root: Option<&Path>,
+) {
+    if root.is_some_and(volume_still_mounted)
+        && let (Some(browser), Some(previous)) = (browser, previous)
+        && browser.active_location().as_ref() == left_at
+        && left_at != Some(previous)
+    {
+        browser.navigate(previous.clone());
+    }
 }
 
 fn blocking_join_message(error: Box<dyn std::any::Any + Send>) -> String {
@@ -942,8 +966,7 @@ async fn flush_mount(root: Option<PathBuf>) -> Result<(), io::Error> {
     let Some(root) = root else {
         return Ok(());
     };
-    // Open and syncfs stay on the blocking worker. Statting here would freeze
-    // the UI, and a failed stat must not be reported as "not a directory".
+    // Even opening a stalled mount must not block the UI thread.
     match gio::spawn_blocking(move || crate::adapters::flush_filesystem(&root)).await {
         Ok(result) => result,
         Err(error) => Err(io::Error::other(blocking_join_message(error))),

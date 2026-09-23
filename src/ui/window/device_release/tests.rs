@@ -601,6 +601,65 @@ fn start_release_leaves_before_flush_and_restores_when_gio_fails_while_mounted()
             crate::adapters::clear_sync_probe();
             reset_releases();
 
+            set_mounted_roots_for_test(Some(vec![mount.clone()]));
+            crate::adapters::install_sync_probe(Some(std::io::ErrorKind::Other), false);
+            let (overlay, window) = host();
+            let calls = Rc::new(Cell::new(0u32));
+            let settled = Rc::new(Cell::new(false));
+            let calls_for_gio = Rc::clone(&calls);
+            let settled_for_release = Rc::clone(&settled);
+            assert!(start_release(
+                overlay.upcast_ref(),
+                Some(Rc::clone(&browser)),
+                None,
+                release_key("USB Backup", mount.clone()),
+                ReleaseKind::Unmount,
+                true,
+                Some(mount.clone()),
+                Some(gio::File::for_path(&mount)),
+                move || settled_for_release.set(true),
+                move |_| {
+                    calls_for_gio.set(calls_for_gio.get() + 1);
+                    async { Ok(()) }
+                },
+            ));
+            wait_until(|| settled.get());
+            assert_eq!(calls.get(), 0);
+            assert_eq!(browser.active_location(), Some(Location::local(&mount)));
+            window.destroy();
+            crate::adapters::clear_sync_probe();
+            reset_releases();
+
+            dropped.store(false, Ordering::SeqCst);
+            browser.navigate(Location::local(&mount));
+            set_mounted_roots_for_test(Some(vec![mount.clone()]));
+            crate::adapters::install_sync_probe(None, true);
+            let (overlay, window) = host();
+            let settled = Rc::new(Cell::new(false));
+            let settled_for_release = Rc::clone(&settled);
+            assert!(start_release(
+                overlay.upcast_ref(),
+                Some(Rc::clone(&browser)),
+                None,
+                release_key("USB Backup", mount.clone()),
+                ReleaseKind::Unmount,
+                true,
+                Some(mount.clone()),
+                Some(gio::File::for_path(&mount)),
+                move || settled_for_release.set(true),
+                |_| async { Err(glib::Error::new(gio::IOErrorEnum::Failed, "device busy")) },
+            ));
+            wait_until(crate::adapters::sync_probe_is_blocked);
+            let other = root.path().join("elsewhere");
+            std::fs::create_dir(&other).expect("other directory");
+            browser.navigate(Location::local(&other));
+            crate::adapters::release_sync_probe();
+            wait_until(|| settled.get());
+            assert_eq!(browser.active_location(), Some(Location::local(&other)));
+            window.destroy();
+            crate::adapters::clear_sync_probe();
+            reset_releases();
+
             dropped.store(false, Ordering::SeqCst);
             browser.navigate(Location::local(&mount));
             set_mounted_roots_for_test(Some(Vec::new()));

@@ -114,17 +114,11 @@ fn bytes_already_written_are_flushed_before_cancellation_and_cancel_is_not_paste
         !sync_probe_observations().is_empty(),
         "written bytes are synced before cancellation is reported"
     );
-    let synced_before_cancel = events
-        .borrow()
-        .iter()
-        .position(|event| matches!(event, OperationEvent::Cancelled { .. }));
-    assert!(synced_before_cancel.is_some());
-    assert!(!sync_probe_observations().is_empty());
     Ok(())
 }
 
 #[test]
-fn a_cancel_after_the_flush_starts_can_still_report_the_transfer() -> Result<(), Box<dyn Error>> {
+fn a_cancel_after_the_flush_starts_does_not_report_success() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -161,13 +155,13 @@ fn a_cancel_after_the_flush_starts_can_still_report_the_transfer() -> Result<(),
 
     assert!(matches!(
         terminal_transfer(&events.borrow()),
-        Some(OperationEvent::Pasted { .. })
+        Some(OperationEvent::Cancelled { .. })
     ));
     assert!(
         !events
             .borrow()
             .iter()
-            .any(|event| matches!(event, OperationEvent::Cancelled { .. }))
+            .any(|event| matches!(event, OperationEvent::Pasted { .. }))
     );
     assert_eq!(fs::read(destination.join("photo.bin"))?, b"pixels");
     assert!(!sync_probe_observations().is_empty());

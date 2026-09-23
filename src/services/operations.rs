@@ -252,7 +252,6 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         locations: Vec<Location>,
     },
-    /// Removable destination bytes are being flushed before the transfer can succeed.
     FlushingToDevice {
         request_id: OperationRequestId,
     },
