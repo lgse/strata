@@ -750,3 +750,35 @@ fn arrow_scope_preference_keeps_up_in_the_file_list() {
         },
     );
 }
+
+#[test]
+fn right_from_the_sidebar_returns_to_the_files_after_the_header() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::right_from_the_sidebar_returns_to_the_files_after_the_header",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_arrow_navigation_scoped(false);
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                fixture.view.set_view_mode(mode);
+                fixture.view.browser().select(0, 0);
+                fixture.view.browser().focus_active();
+                wait_until(|| fixture.view.item_view_has_focus());
+
+                fixture.press(Key::Up, ModifierType::empty());
+                wait_until(|| fixture.view.header_actions_have_focus());
+
+                fixture.press(Key::Left, ModifierType::empty());
+                wait_until(|| {
+                    gtk::prelude::RootExt::focus(&fixture.window)
+                        .is_some_and(|focus| focus.is_ancestor(&fixture.sidebar.widget))
+                });
+
+                assert!(fixture.press(Key::Right, ModifierType::empty()), "{mode:?}");
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?}: Right from the sidebar must re-enter the file view"
+                );
+            }
+        },
+    );
+}
