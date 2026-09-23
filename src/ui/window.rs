@@ -1007,6 +1007,7 @@ pub(super) struct SidebarState {
     pub(in crate::ui) rail: Cell<bool>,
     pub(in crate::ui) saved_width: Cell<Option<i32>>,
     update_label: gtk::Label,
+    update_notice: gtk::Button,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -1209,6 +1210,13 @@ impl SidebarState {
             );
         }
         self.update_label.set_visible(!rail);
+        self.update_notice.set_halign(if rail {
+            gtk::Align::Start
+        } else {
+            gtk::Align::Fill
+        });
+        self.update_notice
+            .set_margin_start(if rail { 12 } else { 0 });
         self.sync_rail_rows();
     }
 
@@ -1222,6 +1230,12 @@ impl SidebarState {
             } else if let Ok(button) = child.clone().downcast::<gtk::Button>() {
                 sync_sidebar_button(&button, rail);
             } else if child.has_css_class("sidebar-device") {
+                child.set_halign(if rail {
+                    gtk::Align::Start
+                } else {
+                    gtk::Align::Fill
+                });
+                child.set_margin_start(if rail { 12 } else { 0 });
                 let mut dev_child = child.first_child();
                 while let Some(w) = dev_child {
                     dev_child = w.next_sibling();
@@ -1243,6 +1257,15 @@ impl SidebarState {
 
 fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
     let is_pinned = button.has_css_class("sidebar-pinned-row");
+    let is_device_row = button
+        .parent()
+        .is_some_and(|p| p.has_css_class("sidebar-device"));
+    button.set_halign(if rail {
+        gtk::Align::Start
+    } else {
+        gtk::Align::Fill
+    });
+    button.set_margin_start(if rail && !is_device_row { 12 } else { 0 });
     if let Some(content) = button.child() {
         let mut child = content.first_child();
         while let Some(widget) = child {

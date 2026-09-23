@@ -30,6 +30,7 @@ pub(in crate::ui) fn build_sidebar(
         preferences,
         local_only,
         shell.update_label.clone(),
+        shell.update_notice.clone(),
     );
     state.bind_order();
     state.observe_navigation_and_trash();
@@ -147,6 +148,7 @@ impl SidebarState {
         preference_manager: Rc<PreferenceManager>,
         local_only: bool,
         update_label: gtk::Label,
+        update_notice: gtk::Button,
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
         let place_order = resolve_place_order(&preference_manager.sidebar_order());
@@ -175,6 +177,7 @@ impl SidebarState {
             rail: Cell::new(false),
             saved_width: Cell::new(None),
             update_label,
+            update_notice,
         })
     }
 

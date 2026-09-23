@@ -2085,11 +2085,19 @@ scrollbar slider:active {
 
 /* Icon rail: labels are hidden in code; keep the remaining icons centered. */
 .sidebar-rail .sidebar {
-  padding: 8px 6px;
+  padding: 8px 0;
 }
 
 .sidebar-rail .sidebar-row {
-  padding: 3px 4px;
+  border-radius: 5px;
+  min-height: 34px;
+  min-width: 36px;
+  padding: 4px;
+}
+
+.sidebar-rail .sidebar-device {
+  border-radius: 5px;
+  padding-right: 0;
 }
 
 .sidebar-rail .sidebar-row > box > label,
@@ -2103,15 +2111,18 @@ scrollbar slider:active {
 }
 
 .sidebar-rail .sidebar-separator {
-  margin: 6px -6px;
+  margin: 6px 12px;
 }
 
 .sidebar-rail .sidebar-update-separator {
-  margin: 0;
+  margin: 0 12px;
 }
 
 .sidebar-rail .sidebar-update {
-  padding: 4px 6px;
+  border-radius: 5px;
+  min-height: 34px;
+  min-width: 36px;
+  padding: 4px;
 }
 
 .sidebar-heading {
