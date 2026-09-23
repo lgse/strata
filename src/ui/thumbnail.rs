@@ -1423,9 +1423,7 @@ fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
             Some(ThumbnailKind::Video)
         }
-        // Audio containers FFmpeg exposes embedded cover art from. Ogg, Opus and WAV are
-        // omitted: their artwork lives in tags FFmpeg reports no stream for, so every song
-        // would pay for a decoder that can never produce a thumbnail.
+        // FFmpeg exposes no art stream for tag-only Ogg, Opus or WAV covers.
         "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => {
             Some(ThumbnailKind::Video)
         }

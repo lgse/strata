@@ -193,8 +193,6 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
     );
     let info = probe(&attached, MediaPreviewSize::new(520, 800), 0).expect("cover metadata");
     assert!(info.cover);
-    // MP3 keeps its cover in an ID3 frame that an input seek discards, so it decodes
-    // nothing unless the attached picture is read from the start of the file.
     let mp3 = directory.path().join("cover.mp3");
     success(
         Command::new("ffmpeg")
@@ -221,6 +219,11 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
         assert!(header.audio);
         assert_eq!((header.width, header.height), (64, 48));
         assert_eq!(frames.len(), 30);
+        let pixel = &frames[0].pixels[..4];
+        assert!(
+            pixel[2] > pixel[0] && pixel[2] > pixel[1],
+            "cover frame: {pixel:?}"
+        );
     }
 }
 

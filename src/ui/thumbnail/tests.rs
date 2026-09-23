@@ -119,7 +119,6 @@ fn recognizes_mainstream_image_video_and_cover_art_audio_formats() {
             "{name}"
         );
     }
-    // Tag-only artwork: no decoder can produce a thumbnail, so no job is scheduled.
     for name in ["song.ogg", "song.oga", "song.opus", "song.wav"] {
         assert_eq!(thumbnail_kind(Path::new(name)), None, "{name}");
     }
