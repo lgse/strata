@@ -902,10 +902,11 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
-    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
-    /// and run into whichever view the current mode shows. The pane nearest the start
-    /// edge is the target, since that is the one such a drag runs into.
-    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>) {
+    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar or
+    /// the preview pane — and run into whichever view the current mode shows. The pane
+    /// nearest the `edge` the surface sits on is the target, since that is the one such
+    /// a drag runs into.
+    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>, edge: gtk::PackType) {
         let weak_state = Rc::downgrade(&self.state);
         super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
             let state = weak_state.upgrade()?;
@@ -914,11 +915,12 @@ impl BrowserView {
             state.pointer_navigation();
             let mode = state.mode_views.borrow().mode();
             if mode == BrowserMode::Columns {
-                return state
-                    .columns
-                    .borrow()
-                    .first()
-                    .map(|column| column.marquee.clone());
+                let columns = state.columns.borrow();
+                let column = match edge {
+                    gtk::PackType::End => columns.last(),
+                    _ => columns.first(),
+                };
+                return column.map(|column| column.marquee.clone());
             }
             state.mode_views.borrow().leading_marquee()
         });

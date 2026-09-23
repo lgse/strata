@@ -1217,8 +1217,23 @@ impl ViewState {
                     }
                 }
             }),
+            allow_drag: self.multiple_selection.clone(),
         });
         marquee.add_origin_surface(&header);
+        // GTK prepends controllers. Install these last so their capture-phase
+        // press marks returning_to_column before the marquee clears selection.
+        let background_clicks: Vec<_> = [
+            presentation.stack.upcast_ref::<gtk::Widget>(),
+            header.upcast_ref(),
+        ]
+        .into_iter()
+        .map(|surface| {
+            self.install_column_background_focus(surface, depth, returning_to_column.clone())
+        })
+        .collect();
+        for click in &background_clicks {
+            marquee.group_background_click(click);
+        }
 
         presentation.stack.set_focusable(true);
         let focus = gtk::EventControllerFocus::new();
@@ -1235,14 +1250,6 @@ impl ViewState {
             }
         });
         column.add_controller(focus);
-        for surface in [
-            presentation.stack.upcast_ref::<gtk::Widget>(),
-            header.upcast_ref(),
-        ] {
-            let click =
-                self.install_column_background_focus(surface, depth, returning_to_column.clone());
-            marquee.group_background_click(&click);
-        }
         if self.interactive {
             install_directory_drop_target(self, &column, location.clone());
             install_directory_drop_target(self, &presentation.stack, location.clone());
