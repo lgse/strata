@@ -1164,7 +1164,6 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         scroll.add_css_class("browser-listing-scroll");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
         let retry = gtk::Button::with_label("Retry");
@@ -1354,11 +1353,19 @@ impl ViewState {
             },
         );
         shell.set_vexpand(true);
+        // Keep the destination hint clear of the horizontal overlay indicator.
+        shell.set_margin_bottom(12);
         shell.set_overflow(gtk::Overflow::Hidden);
         let column_overlay = gtk::Overlay::new();
         column_overlay.set_child(Some(&column));
         column_overlay.set_hexpand(true);
         column_overlay.set_vexpand(true);
+        // The column paints an opaque background, so a drop highlight needs an
+        // overlay on top of it; picking falls through to the column's targets.
+        let drop_veil = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        drop_veil.add_css_class("column-drop-veil");
+        drop_veil.set_can_target(false);
+        column_overlay.add_overlay(&drop_veil);
         shell.append(&column_overlay);
         let resize_handle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         resize_handle.add_css_class("column-resize-handle");

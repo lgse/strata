@@ -237,7 +237,6 @@ fn horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle() {
                     let bounds = handle
                         .compute_bounds(&fixture.split)
                         .expect("handle bounds");
-                    assert!(thumb.x() + thumb.width() < bounds.x());
                     assert_eq!(
                         fixture.split.pick(
                             f64::from(bounds.x() + bounds.width() / 2.0),

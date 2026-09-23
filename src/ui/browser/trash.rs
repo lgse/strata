@@ -776,7 +776,6 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
-        file_scroller.add_css_class("fixed-scrollbar");
         layout.body.append(&file_scroller);
         let explanation = message_dialog_description(
             "These items will be permanently deleted. This action cannot be undone.",

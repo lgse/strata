@@ -74,11 +74,9 @@ impl ArchiveBrowser {
         let crumb_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vscrollbar_policy(gtk::PolicyType::Never)
-            .overlay_scrolling(false)
             .child(&crumbs)
             .build();
         crumb_scroll.add_css_class("preview-archive-crumbs-scroll");
-        crumb_scroll.add_css_class("fixed-scrollbar");
         root.append(&crumb_scroll);
 
         let count = gtk::Label::new(None);
@@ -165,11 +163,9 @@ impl ArchiveBrowser {
         let list_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .child(&list)
             .vexpand(true)
             .build();
-        list_scroll.add_css_class("fixed-scrollbar");
         root.append(&list_scroll);
 
         let empty = gtk::Label::new(Some("This folder is empty"));
