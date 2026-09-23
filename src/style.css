@@ -2951,7 +2951,8 @@ entry.preview-command-entry selection {
   border-right: 1px solid alpha(@theme_border, 0.6);
 }
 
-.column-resize-handle:hover {
+.column-resize-handle:hover,
+.column-resize-handle.resize-hover {
   border-right-color: @theme_accent;
 }
 
