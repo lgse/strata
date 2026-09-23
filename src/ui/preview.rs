@@ -21,9 +21,7 @@ use crate::{
     },
 };
 
-use super::{
-    blur::BlurBin, controls::focus_button, controls::form_password_entry, controls::modal_layout,
-};
+use super::{blur::BlurBin, controls::form_password_entry, controls::modal_layout};
 
 mod archive;
 mod layout;
@@ -788,7 +786,7 @@ impl PreviewState {
             }
         });
         layer.add_controller(escape);
-        focus_button(&cancel);
+        cancel.grab_focus();
     }
 
     fn update_print_progress(self: &Rc<Self>, completed: i32, total: i32) {
