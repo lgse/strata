@@ -9,9 +9,20 @@ mod compression;
 mod decoders;
 mod destination;
 mod extraction;
+mod listing;
+
+#[cfg(test)]
+pub(crate) use listing::ArchiveListing;
+pub(crate) use listing::{
+    ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
+    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, archive_payload_valid,
+    decode_archive_listing, encode_archive_result, list_archive_entries_direct,
+};
 
 #[cfg(test)]
 mod fixtures;
+#[cfg(test)]
+pub(crate) use fixtures::write_compression_fixture;
 #[cfg(test)]
 mod tests;
 
@@ -152,8 +163,12 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
         .await;
         timer_id.remove();
         match result {
-            Ok(archive_name) => emit(OperationEvent::Compressed {
+            Ok((archive_name, original)) => emit(OperationEvent::Compressed {
                 request_id: request.id,
+                original,
+                // Keep Both may publish under a renamed name, so rebuild the
+                // location from the returned name rather than `archive_path`.
+                archive: Location::local(dest_dir.join(&archive_name)),
                 archive_name,
             }),
             Err(ArchiveError::Cancelled) => emit(cancelled_archive_event(
@@ -216,7 +231,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
-        let created_dest = !dest_dir.exists();
+        let created_dest = request.created_destination || !dest_dir.exists();
         if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
             emit(OperationEvent::Failed {
                 request_id: request.id,

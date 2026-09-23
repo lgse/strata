@@ -41,6 +41,7 @@ fn check_scrolling(presentation: Presentation) {
         }])),
         is_item: Rc::new(|_, _, _| false),
         clear_selection: Rc::new(|| {}),
+        allow_drag: Rc::new(Cell::new(true)),
     });
     let window = gtk::Window::builder()
         .child(&overlay)

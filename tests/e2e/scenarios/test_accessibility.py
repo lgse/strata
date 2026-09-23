@@ -32,7 +32,7 @@ def test_listing_names_descriptions_and_selection_semantics(strata, mode):
         )
         assert "focusable" in node.states, f"{node.name} should be focusable"
 
-    # GTK 4.14 omits SELECTABLE on unselected rows; exercise SELECTED transitions.
+    # Exercise observable selection transitions instead of optional SELECTABLE state exports.
     strata.select_entry("todo.txt", directory=root)
     assert "selected" in strata.entry("todo.txt", directory=root).states
     others = [node for node in strata.entries(root) if node.name != "todo.txt"]

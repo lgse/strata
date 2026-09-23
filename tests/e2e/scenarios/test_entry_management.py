@@ -111,6 +111,34 @@ def test_new_items_can_be_created_in_an_initially_empty_directory(strata, kind):
     assert "Gtk-CRITICAL" not in strata.application.log()
 
 
+def test_undoing_a_created_folder_trashes_it(strata):
+    fixture = strata.fixture
+    trashed = strata.environment.trash_files
+
+    strata.keyboard.press("ctrl+shift+n")
+    strata.editable_field()
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: fixture.path("new folder").is_dir(),
+        "the folder to be created",
+    )
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable"}) is None,
+        "the name prompt to close",
+    )
+
+    strata.keyboard.press("ctrl+z")
+
+    strata.wait(
+        lambda: not fixture.path("new folder").exists(),
+        "create undo to trash the folder",
+    )
+    strata.wait(
+        lambda: any(trashed.iterdir()),
+        "the folder to land in Trash",
+    )
+
+
 @pytest.mark.parametrize("shortcut", ["F2", "ctrl+r"])
 def test_rename_shortcuts(strata, shortcut):
     fixture = strata.fixture

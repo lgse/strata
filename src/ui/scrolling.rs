@@ -27,8 +27,8 @@ thread_local! {
 }
 
 struct AutoScroll {
-    scroll: gtk::ScrolledWindow,
-    overlay: gtk::Overlay,
+    scroll: glib::WeakRef<gtk::ScrolledWindow>,
+    overlay: glib::WeakRef<gtk::Overlay>,
     marker: gtk::Box,
     /// Anchor and pointer in the scrolled window's coordinates, which do not move
     /// while the content scrolls underneath.
@@ -49,8 +49,8 @@ pub(super) fn install_autoscroll(scroll: &gtk::ScrolledWindow, overlay: &gtk::Ov
     overlay.add_overlay(&marker);
 
     let state = Rc::new(AutoScroll {
-        scroll: scroll.clone(),
-        overlay: overlay.clone(),
+        scroll: scroll.downgrade(),
+        overlay: overlay.downgrade(),
         marker,
         anchor: Cell::new((0.0, 0.0)),
         pointer: Cell::new((0.0, 0.0)),
@@ -89,6 +89,11 @@ pub(super) fn install_autoscroll(scroll: &gtk::ScrolledWindow, overlay: &gtk::Ov
             stop_autoscroll();
         }
     });
+    scroll.connect_destroy(move |_| {
+        if state.is_active() {
+            stop_autoscroll();
+        }
+    });
 }
 
 /// Lets any press anywhere under `root` end a running autoscroll, without
@@ -114,6 +119,17 @@ pub(super) fn stop_autoscroll() -> bool {
     true
 }
 
+impl Drop for AutoScroll {
+    fn drop(&mut self) {
+        self.stop();
+        if let Some(overlay) = self.overlay.upgrade()
+            && self.marker.parent().as_ref() == Some(overlay.upcast_ref())
+        {
+            overlay.remove_overlay(&self.marker);
+        }
+    }
+}
+
 impl AutoScroll {
     fn is_active(self: &Rc<Self>) -> bool {
         ACTIVE.with_borrow(|active| {
@@ -126,13 +142,16 @@ impl AutoScroll {
     /// Begins autoscrolling from `anchor`, reporting whether the view can scroll at
     /// all — a view that fits its viewport keeps the press for other handlers.
     fn start(self: &Rc<Self>, anchor: (f64, f64)) -> bool {
-        if !scrollable(&self.scroll.hadjustment()) && !scrollable(&self.scroll.vadjustment()) {
+        let Some(scroll) = self.scroll.upgrade() else {
+            return false;
+        };
+        if !scrollable(&scroll.hadjustment()) && !scrollable(&scroll.vadjustment()) {
             return false;
         }
         self.anchor.set(anchor);
         self.pointer.set(anchor);
         self.place_marker();
-        self.scroll.set_cursor_from_name(Some("all-scroll"));
+        scroll.set_cursor_from_name(Some("all-scroll"));
         let state = self.clone();
         let source = glib::timeout_add_local(FRAME_INTERVAL, move || {
             state.frame();
@@ -148,7 +167,9 @@ impl AutoScroll {
             source.remove();
         }
         self.marker.set_visible(false);
-        self.scroll.set_cursor(None);
+        if let Some(scroll) = self.scroll.upgrade() {
+            scroll.set_cursor(None);
+        }
     }
 
     fn track(self: &Rc<Self>, pointer: (f64, f64)) {
@@ -158,20 +179,20 @@ impl AutoScroll {
     }
 
     fn frame(&self) {
+        let Some(scroll) = self.scroll.upgrade() else {
+            return;
+        };
         let (anchor_x, anchor_y) = self.anchor.get();
         let (pointer_x, pointer_y) = self.pointer.get();
-        advance(
-            &self.scroll.hadjustment(),
-            autoscroll_step(pointer_x - anchor_x),
-        );
-        advance(
-            &self.scroll.vadjustment(),
-            autoscroll_step(pointer_y - anchor_y),
-        );
+        advance(&scroll.hadjustment(), autoscroll_step(pointer_x - anchor_x));
+        advance(&scroll.vadjustment(), autoscroll_step(pointer_y - anchor_y));
     }
 
     fn place_marker(&self) {
-        let Some(bounds) = self.scroll.compute_bounds(&self.overlay) else {
+        let (Some(scroll), Some(overlay)) = (self.scroll.upgrade(), self.overlay.upgrade()) else {
+            return;
+        };
+        let Some(bounds) = scroll.compute_bounds(&overlay) else {
             return;
         };
         let (x, y) = self.anchor.get();
@@ -201,7 +222,7 @@ fn scrollable(adjustment: &gtk::Adjustment) -> bool {
     adjustment.upper() - adjustment.lower() > adjustment.page_size()
 }
 
-fn advance(adjustment: &gtk::Adjustment, step: f64) {
+pub(super) fn advance(adjustment: &gtk::Adjustment, step: f64) {
     if step == 0.0 {
         return;
     }

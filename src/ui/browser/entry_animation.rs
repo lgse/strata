@@ -66,36 +66,40 @@ pub(super) fn collect_entry_targets(
             && is_entry_row(widget)
             && entries
                 .iter()
-                .any(|entry| contains_entry_name(widget, &entry.display_name))
+                .any(|entry| row_matches_name(widget, &entry.display_name))
         {
             candidates.push(widget.clone());
         }
     });
 
     let mut used = HashSet::new();
-    entries
-        .iter()
-        .filter_map(|entry| {
-            let display_path = entry.location.display_path();
-            let matching_path = candidates.iter().position(|row| {
-                !used.contains(row)
-                    && row
-                        .tooltip_text()
-                        .is_some_and(|tooltip| tooltip == display_path)
-            });
-            let index = matching_path.or_else(|| {
-                candidates.iter().position(|row| {
-                    !used.contains(row) && contains_entry_name(row, &entry.display_name)
-                })
-            })?;
+    let mut targets = Vec::new();
+    for entry in entries {
+        if used.len() == candidates.len() {
+            break;
+        }
+        let display_path = entry.location.display_path();
+        let matching_path = candidates.iter().position(|row| {
+            !used.contains(row)
+                && row
+                    .tooltip_text()
+                    .is_some_and(|tooltip| tooltip == display_path)
+        });
+        let index = matching_path.or_else(|| {
+            candidates
+                .iter()
+                .position(|row| !used.contains(row) && row_matches_name(row, &entry.display_name))
+        });
+        if let Some(index) = index {
             let row = candidates[index].clone();
             used.insert(row.clone());
-            Some(EntryAnimationTarget {
+            targets.push(EntryAnimationTarget {
                 entry: entry.clone(),
                 row,
-            })
-        })
-        .collect()
+            });
+        }
+    }
+    targets
 }
 
 pub(super) fn bounds_in_overlay(
@@ -109,42 +113,99 @@ pub(super) fn icon_center_in_overlay(
     row: &gtk::Widget,
     overlay: &gtk::Overlay,
 ) -> Option<(f64, f64)> {
-    let icon = find_thumbnail(row)?;
-    let bounds = bounds_in_overlay(icon.upcast_ref(), overlay)?;
-    Some((
-        f64::from(bounds.x() + bounds.width() / 2.0),
-        f64::from(bounds.y() + bounds.height() / 2.0),
-    ))
+    if let Some(icon) = find_thumbnail(row)
+        && let Some(bounds) = bounds_in_overlay(icon.upcast_ref(), overlay)
+        && bounds.width() > 0.0
+        && bounds.height() > 0.0
+    {
+        return Some((
+            f64::from(bounds.x() + bounds.width() / 2.0),
+            f64::from(bounds.y() + bounds.height() / 2.0),
+        ));
+    }
+    let bounds = bounds_in_overlay(row, overlay)?;
+    if bounds.width() > 0.0 && bounds.height() > 0.0 {
+        Some((
+            f64::from(bounds.x()) + 13.0,
+            f64::from(bounds.y() + bounds.height() / 2.0),
+        ))
+    } else {
+        None
+    }
 }
 
-fn is_entry_row(widget: &gtk::Widget) -> bool {
+pub(super) fn is_entry_row(widget: &gtk::Widget) -> bool {
     ["file-row", "list-row", "icons-card"]
         .iter()
         .any(|class| widget.has_css_class(class))
         && !widget.has_css_class("new-entry-row")
 }
 
-fn contains_entry_name(widget: &gtk::Widget, name: &str) -> bool {
-    if widget
-        .clone()
-        .downcast::<gtk::Label>()
-        .is_ok_and(|label| label.text() == name)
-        || widget
-            .clone()
-            .downcast::<gtk::Inscription>()
-            .is_ok_and(|inscription| inscription.text().as_deref() == Some(name))
-    {
-        return true;
+fn file_row_name(row: &gtk::Widget) -> Option<String> {
+    if !row.has_css_class("file-row") {
+        return None;
     }
+    let middle = row.first_child()?.next_sibling()?;
+    let overlay = middle.downcast_ref::<gtk::Overlay>()?;
+    let content = overlay.child()?.downcast::<gtk::Box>().ok()?;
+    let editor = content.first_child()?.downcast::<gtk::Box>().ok()?;
+    let label = editor.first_child()?.downcast::<gtk::Label>().ok()?;
+    Some(label.text().to_string())
+}
 
-    let mut child = widget.first_child();
-    while let Some(widget) = child {
-        if contains_entry_name(&widget, name) {
-            return true;
-        }
-        child = widget.next_sibling();
+fn list_row_name(row: &gtk::Widget) -> Option<String> {
+    if !row.has_css_class("list-row") {
+        return None;
     }
-    false
+    let name_cell = row.first_child()?;
+    let mut child = name_cell.first_child();
+    while let Some(w) = child {
+        if let Some(label) = w.downcast_ref::<gtk::Label>() {
+            return Some(label.text().to_string());
+        }
+        child = w.next_sibling();
+    }
+    None
+}
+
+fn icons_card_name(row: &gtk::Widget) -> Option<String> {
+    if !row.has_css_class("icons-card") {
+        return None;
+    }
+    let (_, label) = crate::ui::icons_cell::parts(row)?;
+    label.text().map(|s| s.to_string())
+}
+
+pub(super) fn row_name(widget: &gtk::Widget) -> Option<String> {
+    if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
+        return Some(label.text().to_string());
+    }
+    if let Ok(ins) = widget.clone().downcast::<gtk::Inscription>() {
+        return ins.text().map(|s| s.to_string());
+    }
+    file_row_name(widget)
+        .or_else(|| list_row_name(widget))
+        .or_else(|| icons_card_name(widget))
+}
+
+pub(super) fn row_matches_name(widget: &gtk::Widget, name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    row_name(widget).as_deref() == Some(name)
+}
+
+pub(super) fn find_row_by_name(source: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
+    if name.is_empty() {
+        return None;
+    }
+    let mut found = None;
+    walk_widgets(source, &mut |widget| {
+        if widget.is_mapped() && is_entry_row(widget) && row_matches_name(widget, name) {
+            found = Some(widget.clone());
+        }
+    });
+    found
 }
 
 fn find_thumbnail(widget: &gtk::Widget) -> Option<crate::ui::thumbnail::ThumbnailSlot> {

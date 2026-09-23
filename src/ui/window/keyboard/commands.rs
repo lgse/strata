@@ -16,7 +16,7 @@ use crate::{
         window::{
             apply_browser_mode, browser_mode_for_digit, is_browser_navigation_key,
             is_context_menu_shortcut, is_native_editing_shortcut, is_open_terminal_shortcut,
-            is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
+            is_redo_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
             is_toggle_hidden_shortcut, is_undo_shortcut, type_to_search_query,
         },
     },
@@ -29,7 +29,11 @@ impl Dispatcher {
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && let Some(mode) = browser_mode_for_digit(event.key)
         {
-            apply_browser_mode(&self.view, &crate::ui::theme::ThemeManager::shared(), mode);
+            apply_browser_mode(
+                &self.view,
+                &crate::ui::preferences::PreferenceManager::shared(),
+                mode,
+            );
             return Some(Propagation::Stop);
         }
         if event.text_has_focus() {
@@ -168,6 +172,12 @@ impl Dispatcher {
         {
             return Some(Propagation::Stop);
         }
+        if !event.text_has_focus()
+            && is_redo_shortcut(event.key, event.modifiers)
+            && self.view.redo_last_operation()
+        {
+            return Some(Propagation::Stop);
+        }
         if self.view.item_view_has_focus()
             && let Some(query) = type_to_search_query(event.key, event.modifiers)
             && self.type_to_search.show(query)
@@ -180,14 +190,19 @@ impl Dispatcher {
         None
     }
 
-    pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
-        if event.alt()
+    pub(super) fn properties_command(&self, event: &KeyEvent) -> KeyResult {
+        if !event.text_has_focus()
+            && event.alt()
             && event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
             && matches!(event.key, Key::Return | Key::KP_Enter)
             && self.view.show_focused_properties()
         {
             return Some(Propagation::Stop);
         }
+        None
+    }
+
+    pub(super) fn file_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
         if event.control() && event.shift() && matches!(event.key, Key::n | Key::N) {
             self.view.create_new_folder();
             return Some(Propagation::Stop);

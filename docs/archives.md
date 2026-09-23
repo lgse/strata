@@ -1,4 +1,24 @@
-# Archive creation
+# Archives
+
+## Extraction safety
+
+Archive member paths are untrusted metadata. If an extractor joined a selected
+folder with `../report.txt` unchanged, the filesystem would resolve the result
+beside that folder instead of inside it. This archive path-traversal pattern is
+also known as Zip Slip.
+
+Strata resolves parent components without allowing them to walk above the
+selected destination. For example, both `../report.txt` and
+`folder/../report.txt` become `report.txt`. Extraction then continues with later
+members instead of aborting the entire operation. Empty paths, absolute paths,
+and Windows drive prefixes remain invalid.
+
+The sanitized path still passes through the descriptor-relative destination
+writer, which refuses symlink traversal. Normal conflict renaming also applies,
+so two members that sanitize to `report.txt` become `report.txt` and
+`report (2).txt` rather than overwriting one another.
+
+## Archive creation
 
 Strata chooses compression according to the output container, not just the
 selected filename extension.

@@ -1,0 +1,34 @@
+Strata supplies context() when this script runs as an action; no pip install.
+Scripts run with your permissions. Review code before enabling an action.
+
+Inputs and locations:
+  ctx.paths          Absolute input paths (list[str]); one in per-item mode.
+  ctx.paths_bytes()  The same paths as bytes, preserving unusual file names.
+  ctx.count          Number of paths in this invocation, not the whole job.
+  ctx.single         The path if exactly one was supplied; otherwise None.
+  ctx.parent         Invoking folder (str or None), not necessarily the cwd.
+  ctx.directory      This action's directory (str or None).
+  ctx.run_directory  Private scratch directory, removed after this invocation.
+
+Invocation details:
+  ctx.action_id      Saved action id (str).
+  ctx.version        Action protocol version (int).
+  ctx.mode           "whole-selection" or "per-item".
+  ctx.source         "selection" or "background" (folder context menu).
+  ctx.position       1-based per-item position in the job, or None.
+  ctx.total          Total per-item invocations in the job, or None.
+  ctx.metadata       Raw JSON invocation metadata (dict).
+
+Reporting (these methods do not modify your files):
+  ctx.log(message)   Write a line to the job's captured output.
+  ctx.progress(processed, total=None, message=None)
+                    Report work within this invocation (0..1,000,000 units).
+  ctx.output(path)   Report a created file's absolute path (str).
+                    Relative paths are ignored; this does not create a file.
+                    Non-UTF8 output names cannot be reported in JSON.
+
+Paths use Python's surrogateescape encoding so native names round-trip.
+Exit 0 for success; raise an exception or exit nonzero for failure.
+Strata captures stdout/stderr. Cancellation does not undo filesystem changes.
+Other imports: find_tool(name) returns an executable path or None;
+require_tool(name) returns it or raises ContextError if it is missing.

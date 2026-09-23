@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::adapters::gio_file_for_location;
+use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::services::{
     DropCommit, MoveRecord, PasteItem, TransferConflict, UndoMoveItem, VolumeRelation,
@@ -15,7 +16,7 @@ use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, compact_native_path, is_trash_location,
 };
 use crate::ui::controls::{
-    ModalTone, form_check_button, form_entry, form_label, message_dialog_description,
+    ModalTone, focus_button, form_check_button, form_entry, form_label, message_dialog_description,
     message_dialog_layout, modal_layout,
 };
 use crate::ui::modal::{
@@ -33,8 +34,23 @@ mod tests;
 #[derive(Clone, Copy)]
 enum ConflictChoice {
     Replace,
+    Merge,
     Skip,
     KeepBoth,
+}
+
+#[derive(Clone)]
+struct TransferCollision {
+    source: Location,
+    /// Both colliding items are directories, so their contents can be merged.
+    mergeable: bool,
+}
+
+/// Which non-destructive resolutions a conflict prompt offers.
+#[derive(Clone, Copy, Default)]
+struct ConflictActions {
+    keep_both: bool,
+    merge: bool,
 }
 
 fn location_exists(location: &Location) -> bool {
@@ -52,17 +68,28 @@ fn transfer_is_noop(source: &Location, destination: &Location, move_sources: boo
                 .is_some_and(|parent| parent.equal(&destination)))
 }
 
-fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
-    let source = gio_file_for_location(source);
-    let destination = gio_file_for_location(destination);
-    let Some(name) = source.basename() else {
-        return false;
-    };
-    let target = destination.child(name);
-    if source.equal(&target) || source.equal(&destination) || destination.has_prefix(&source) {
-        return false;
+fn transfer_collision(source: &Location, destination: &Location) -> Option<TransferCollision> {
+    let source_file = gio_file_for_location(source);
+    let destination_file = gio_file_for_location(destination);
+    let name = source_file.basename()?;
+    let target = destination_file.child(name);
+    if source_file.equal(&target)
+        || source_file.equal(&destination_file)
+        || destination_file.has_prefix(&source_file)
+        || !target.query_exists(None::<&gio::Cancellable>)
+    {
+        return None;
     }
-    target.query_exists(None::<&gio::Cancellable>)
+    let is_directory = |file: &gio::File| {
+        file.query_file_type(
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            None::<&gio::Cancellable>,
+        ) == gio::FileType::Directory
+    };
+    Some(TransferCollision {
+        source: source.clone(),
+        mergeable: is_directory(&source_file) && is_directory(&target),
+    })
 }
 
 fn cross_volume_drop_description(volume: VolumeRelation) -> &'static str {
@@ -94,8 +121,12 @@ impl ViewState {
         sources: Vec<Location>,
         commit: DropCommit,
     ) {
+        self.stop_drag_autoscroll();
+        self.horizontal_scroll_generation
+            .set(self.horizontal_scroll_generation.get().saturating_add(1));
         let sources = transferable_drop_sources(&destination, &sources);
         if sources.is_empty() {
+            self.suppress_scroll_after_drop.set(false);
             return;
         }
         match commit {
@@ -104,7 +135,9 @@ impl ViewState {
             DropCommit::Ask { volume, .. } => {
                 self.confirm_cross_volume_drop(destination, sources, volume);
             }
-            DropCommit::Forbidden => {}
+            DropCommit::Forbidden => {
+                self.suppress_scroll_after_drop.set(false);
+            }
         }
     }
 
@@ -218,7 +251,7 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
-        let reveal = crate::ui::theme::ThemeManager::shared().open_folder_after_drop();
+        let reveal = crate::ui::preferences::PreferenceManager::shared().open_folder_after_drop();
         self.start_transfer_with_reveal(destination, sources, move_sources, reveal);
     }
 
@@ -247,13 +280,12 @@ impl ViewState {
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
         for source in sources {
-            if transfer_has_collision(&source, &destination) {
-                collisions.push(source);
-            } else {
-                accepted.push(PasteItem {
+            match transfer_collision(&source, &destination) {
+                Some(collision) => collisions.push(collision),
+                None => accepted.push(PasteItem {
                     source,
                     conflict: TransferConflict::FailIfExists,
-                });
+                }),
             }
         }
         self.resolve_transfer_collisions(destination, collisions, accepted, move_sources, reveal);
@@ -262,22 +294,36 @@ impl ViewState {
     fn resolve_transfer_collisions(
         self: &Rc<Self>,
         destination: Location,
-        mut collisions: Vec<Location>,
+        mut collisions: Vec<TransferCollision>,
         accepted: Vec<PasteItem>,
         move_sources: bool,
         reveal: bool,
     ) {
         if collisions.is_empty() {
+            if !accepted.is_empty() {
+                self.suppress_scroll_after_drop.set(!reveal);
+            }
             self.browser
                 .transfer(destination, accepted, move_sources, reveal);
             return;
         }
-        let source = collisions.remove(0);
+        let collision = collisions.remove(0);
+        let source = collision.source.clone();
         let name = source.display_name();
-        let explanation = format!(
-            "An item named \u{201c}{name}\u{201d} already exists in {}. Replacing it will overwrite its contents.",
-            compact_display_path(&destination)
-        );
+        // Merge stays copy-only: undoing a merged move cannot tell which
+        // destination contents the source actually owned.
+        let allow_merge = collision.mergeable && !move_sources;
+        let explanation = if allow_merge {
+            format!(
+                "A folder named \u{201c}{name}\u{201d} already exists in {}. Merging combines the contents of both folders; incoming items overwrite items with the same name.",
+                compact_display_path(&destination)
+            )
+        } else {
+            format!(
+                "An item named \u{201c}{name}\u{201d} already exists in {}. Replacing it will overwrite its contents.",
+                compact_display_path(&destination)
+            )
+        };
         let state = self.clone();
         // Move undo/reveal assumes an unrenamed `transfer_target`.
         let apply_to_all_visible = !collisions.is_empty();
@@ -287,7 +333,10 @@ impl ViewState {
             &explanation,
             apply_to_all_visible,
             skip_visible,
-            !move_sources,
+            ConflictActions {
+                keep_both: !move_sources,
+                merge: allow_merge,
+            },
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -298,10 +347,27 @@ impl ViewState {
                             conflict: TransferConflict::ReplaceExisting,
                         });
                         if apply_to_all {
-                            accepted.extend(remaining.drain(..).map(|source| PasteItem {
-                                source,
+                            accepted.extend(remaining.drain(..).map(|collision| PasteItem {
+                                source: collision.source,
                                 conflict: TransferConflict::ReplaceExisting,
                             }));
+                        }
+                    }
+                    ConflictChoice::Merge => {
+                        accepted.push(PasteItem {
+                            source: source.clone(),
+                            conflict: TransferConflict::Merge,
+                        });
+                        if apply_to_all {
+                            // File collisions still need their own prompt.
+                            let (mergeable, rest): (Vec<_>, Vec<_>) = remaining
+                                .into_iter()
+                                .partition(|collision| collision.mergeable);
+                            accepted.extend(mergeable.into_iter().map(|collision| PasteItem {
+                                source: collision.source,
+                                conflict: TransferConflict::Merge,
+                            }));
+                            remaining = rest;
                         }
                     }
                     ConflictChoice::KeepBoth => {
@@ -310,8 +376,8 @@ impl ViewState {
                             conflict: TransferConflict::KeepBoth,
                         });
                         if apply_to_all {
-                            accepted.extend(remaining.drain(..).map(|source| PasteItem {
-                                source,
+                            accepted.extend(remaining.drain(..).map(|collision| PasteItem {
+                                source: collision.source,
                                 conflict: TransferConflict::KeepBoth,
                             }));
                         }
@@ -333,13 +399,48 @@ impl ViewState {
     /// Moves the latest completed transfer back, confirming any item that would
     /// overwrite something created since the move.
     pub(super) fn undo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
+        self.replay_move(false, generation, records)
+    }
+
+    pub(super) fn redo_trash(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
+        self.replay_existing_locations(true, generation, locations, Browser::redo_trash)
+    }
+
+    pub(super) fn redo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
+        self.replay_move(true, generation, records)
+    }
+
+    fn replay_existing_locations(
+        self: &Rc<Self>,
+        redo: bool,
+        generation: u64,
+        locations: Vec<Location>,
+        dispatch: fn(&Rc<Browser>, u64, Vec<Location>) -> bool,
+    ) -> bool {
+        let existing = locations
+            .into_iter()
+            .filter(location_exists)
+            .collect::<Vec<_>>();
+        if existing.is_empty() {
+            self.browser.discard_pending_replay(redo, generation);
+            return false;
+        }
+        dispatch(&self.browser, generation, existing)
+    }
+
+    fn replay_move(self: &Rc<Self>, redo: bool, generation: u64, records: Vec<MoveRecord>) -> bool {
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
         for record in records {
-            if !location_exists(&record.current) {
+            let (item_at, destination) = if redo {
+                (&record.original, &record.current)
+            } else {
+                (&record.current, &record.original)
+            };
+            if !location_exists(item_at) {
                 continue;
             }
-            if location_exists(&record.original) {
+            if location_exists(destination) {
                 collisions.push(record);
             } else {
                 accepted.push(UndoMoveItem {
@@ -349,47 +450,64 @@ impl ViewState {
             }
         }
         if accepted.is_empty() && collisions.is_empty() {
-            self.browser.discard_pending_undo(generation);
+            self.browser.discard_pending_replay(redo, generation);
             return false;
         }
-        self.resolve_undo_collisions(generation, collisions, accepted);
+        self.resolve_replay_collisions(redo, generation, collisions, accepted);
         true
     }
 
     pub(super) fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
-        let existing = locations
+        self.replay_existing_locations(false, generation, locations, Browser::undo_copy)
+    }
+
+    pub(super) fn undo_merge(
+        self: &Rc<Self>,
+        generation: u64,
+        created: Vec<Location>,
+        overwritten: Vec<Location>,
+    ) -> bool {
+        let created = created
             .into_iter()
             .filter(location_exists)
             .collect::<Vec<_>>();
-        if existing.is_empty() {
-            self.browser.discard_pending_undo(generation);
+        // Overwritten entries stay even when the incoming copy is gone: the
+        // staged original may still be sitting in Trash waiting to restore.
+        if created.is_empty() && overwritten.is_empty() {
+            self.browser.discard_pending_replay(false, generation);
             return false;
         }
-        self.browser.undo_copy(generation, existing)
+        self.browser.undo_merge(generation, created, overwritten)
     }
 
-    fn resolve_undo_collisions(
+    fn resolve_replay_collisions(
         self: &Rc<Self>,
+        redo: bool,
         generation: u64,
         mut collisions: Vec<MoveRecord>,
         accepted: Vec<UndoMoveItem>,
     ) {
         if collisions.is_empty() {
             if accepted.is_empty() {
-                self.browser.discard_pending_undo(generation);
+                self.browser.discard_pending_replay(redo, generation);
+            } else if redo {
+                self.browser.redo_move(generation, accepted);
             } else {
                 self.browser.undo_move(generation, accepted);
             }
             return;
         }
         let record = collisions.remove(0);
-        let name = record.original.display_name();
-        let parent = record
-            .original
-            .parent()
-            .unwrap_or_else(|| record.original.clone());
+        let destination = if redo {
+            &record.current
+        } else {
+            &record.original
+        };
+        let name = destination.display_name();
+        let parent = destination.parent().unwrap_or_else(|| destination.clone());
+        let action = if redo { "Redoing" } else { "Undoing" };
         let explanation = format!(
-            "An item named \u{201c}{name}\u{201d} already exists in {}. Undoing the move will overwrite its contents.",
+            "An item named \u{201c}{name}\u{201d} already exists in {}. {action} the move will overwrite its contents.",
             compact_display_path(&parent)
         );
         let state = self.clone();
@@ -400,7 +518,7 @@ impl ViewState {
             &explanation,
             apply_to_all_visible,
             skip_visible,
-            false,
+            ConflictActions::default(),
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -417,13 +535,13 @@ impl ViewState {
                             }));
                         }
                     }
-                    ConflictChoice::KeepBoth => {
-                        unreachable!("keep-both is not offered for undo conflicts")
+                    ConflictChoice::Merge | ConflictChoice::KeepBoth => {
+                        unreachable!("merge and keep-both are not offered for replay conflicts")
                     }
                     ConflictChoice::Skip if apply_to_all => remaining.clear(),
                     ConflictChoice::Skip => {}
                 }
-                state.resolve_undo_collisions(generation, remaining, accepted);
+                state.resolve_replay_collisions(redo, generation, remaining, accepted);
             }),
         );
     }
@@ -435,7 +553,7 @@ impl ViewState {
         explanation: &str,
         apply_to_all_visible: bool,
         skip_visible: bool,
-        allow_keep_both: bool,
+        actions: ConflictActions,
         on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
     ) {
         let Some(ModalHost {
@@ -465,8 +583,12 @@ impl ViewState {
             .insert_child_after(&skip, Some(&layout.cancel));
         let keep_both = gtk::Button::with_label("Keep Both");
         keep_both.add_css_class("action-dialog-cancel");
-        keep_both.set_visible(allow_keep_both);
+        keep_both.set_visible(actions.keep_both);
         layout.actions.insert_child_after(&keep_both, Some(&skip));
+        let merge = gtk::Button::with_label("Merge");
+        merge.add_css_class("action-dialog-cancel");
+        merge.set_visible(actions.merge);
+        layout.actions.insert_child_after(&merge, Some(&keep_both));
         let content = layout.content;
         let cancel = layout.cancel;
         let replace = layout.confirm;
@@ -497,6 +619,7 @@ impl ViewState {
         for (button, choice) in [
             (skip.clone(), ConflictChoice::Skip),
             (keep_both.clone(), ConflictChoice::KeepBoth),
+            (merge.clone(), ConflictChoice::Merge),
             (replace.clone(), ConflictChoice::Replace),
         ] {
             let chosen_layer = layer.clone();
@@ -515,7 +638,14 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let enter_buttons = [skip, keep_both, replace.clone(), cancel, layout.close];
+        let enter_buttons = [
+            skip,
+            keep_both,
+            merge,
+            replace.clone(),
+            cancel,
+            layout.close,
+        ];
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
@@ -532,7 +662,7 @@ impl ViewState {
             }
         });
         layer.add_controller(escape);
-        replace.grab_focus();
+        focus_button(&replace);
     }
 
     pub(super) fn show_transfer_dialog(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::*;
-use crate::ui::theme::{TextSize, ThemeManager};
+use crate::ui::preferences::{PreferenceManager, TextSize};
 
 fn settle() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(100);
@@ -74,15 +74,77 @@ fn resizing_starts_at_the_visible_header_not_the_loading_placeholder() {
 }
 
 #[test]
+fn double_click_on_the_resize_handle_fits_the_column_to_its_contents() {
+    crate::test_support::gtk_test(
+        "ui::browser_modes::tests::column_widths::double_click_on_the_resize_handle_fits_the_column_to_its_contents",
+        || {
+            crate::ui::prepare_portal_ui();
+            let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+            let columns = ListColumnLayout::new();
+            let (headings, _) = list_headings(&browser, 0, columns.clone());
+            let row = assemble_list_row();
+            let mut child = row.first_child();
+            for index in 0..5 {
+                let cell = child.expect("row cell");
+                register_list_column_cell(&columns, index, &cell);
+                child = cell.next_sibling();
+            }
+            let (_, name, _, mode, _, _, _) = list_row_parts(&row).expect("row parts");
+            name.set_label("a much longer file name than the default column fits.txt");
+            mode.set_label("-rw-r--r--r--r--r--r--r--r--");
+            let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            table.add_css_class("mode-list");
+            table.append(&headings);
+            table.append(&row);
+            let scroll = gtk::ScrolledWindow::builder().child(&table).build();
+            let window = gtk::Window::builder()
+                .default_width(480)
+                .default_height(120)
+                .child(&scroll)
+                .build();
+            window.present();
+            settle();
+            assert!(name.layout().is_ellipsized());
+            assert!(mode.layout().is_ellipsized());
+
+            let mut heading = headings.first_child();
+            for _ in [0, 1] {
+                let cell = heading.expect("heading cell");
+                heading = cell.next_sibling();
+                let overlay = cell.first_child().expect("heading overlay");
+                let handle = overlay.last_child().expect("resize handle");
+                let controllers = handle.observe_controllers();
+                let drag = (0..controllers.n_items())
+                    .find_map(|position| {
+                        controllers
+                            .item(position)?
+                            .downcast::<gtk::GestureDrag>()
+                            .ok()
+                    })
+                    .expect("resize gesture");
+                drag.emit_by_name::<()>("drag-begin", &[&0.0f64, &0.0f64]);
+                drag.emit_by_name::<()>("drag-end", &[&0.0f64, &0.0f64]);
+                drag.emit_by_name::<()>("drag-begin", &[&0.0f64, &0.0f64]);
+                drag.emit_by_name::<()>("drag-end", &[&0.0f64, &0.0f64]);
+            }
+            settle();
+            assert!(!name.layout().is_ellipsized());
+            assert!(!mode.layout().is_ellipsized());
+            window.close();
+        },
+    );
+}
+
+#[test]
 fn mode_fits_default_width_and_remains_resizable() {
     crate::test_support::gtk_test(
         "ui::browser_modes::tests::column_widths::mode_fits_default_width_and_remains_resizable",
         || {
-            let themes = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             crate::ui::prepare_portal_ui();
             let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
             for size in [11, 48].map(TextSize::new) {
-                themes.set_text_size(size);
+                preferences.set_text_size(size);
                 for density in ["density-compact", "density-airy"] {
                     for width in [480, 1000] {
                         let columns = ListColumnLayout::new();
@@ -127,7 +189,7 @@ fn mode_fits_default_width_and_remains_resizable() {
                                 scroll.hadjustment().upper() > scroll.hadjustment().page_size()
                             );
                         }
-                        for resized in [80, (220.0 * themes.interface_scale()).ceil() as i32] {
+                        for resized in [80, (220.0 * preferences.interface_scale()).ceil() as i32] {
                             set_list_column_width(&columns, 1, resized);
                             settle();
                             assert_eq!(mode.width_request(), resized);

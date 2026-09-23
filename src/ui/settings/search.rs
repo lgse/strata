@@ -12,6 +12,30 @@ struct Target {
 
 const TARGETS: &[Target] = &[
     Target {
+        id: "custom-actions",
+        page: "actions",
+        title: "Custom actions",
+        aliases: "scripts context menu commands automation python bash plugin extension",
+    },
+    Target {
+        id: "new-action",
+        page: "actions",
+        title: "New custom action",
+        aliases: "create script context menu command",
+    },
+    Target {
+        id: "import-action",
+        page: "actions",
+        title: "Import custom action",
+        aliases: "share copy actions folder",
+    },
+    Target {
+        id: "thumbnail-workers",
+        page: "general",
+        title: "Thumbnail workers",
+        aliases: "performance parallel concurrency cpu memory sandbox decoder pool",
+    },
+    Target {
         id: "default-directory",
         page: "general",
         title: "Default directory",
@@ -28,6 +52,12 @@ const TARGETS: &[Target] = &[
         page: "general",
         title: "Single-click file previews",
         aliases: "browsing quick preview selecting supported files",
+    },
+    Target {
+        id: "preview-autoplay",
+        page: "general",
+        title: "Autoplay media previews",
+        aliases: "browsing video audio gif playback paused sound",
     },
     Target {
         id: "arrow-scope",
@@ -126,6 +156,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance font typography pixels zoom scaling",
     },
     Target {
+        id: "date-format",
+        page: "general",
+        title: "Modified date format",
+        aliases: "date time format relative iso 8601 long absolute modified timestamp clock appearance",
+    },
+    Target {
         id: "glow",
         page: "theme",
         title: "Element glow",
@@ -147,7 +183,7 @@ const TARGETS: &[Target] = &[
         id: "shortcuts",
         page: "keybindings",
         title: "Shortcut reference",
-        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo terminal refresh",
+        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo redo terminal refresh",
     },
     Target {
         id: "check",

@@ -5,12 +5,13 @@ use std::rc::Rc;
 use gtk::prelude::*;
 
 use crate::{
+    assets::icons,
     sandbox::MediaPreviewBackend,
     services::CrossVolumeDropStrategy,
     ui::{
         browser_modes::{BrowserMode, ClickActivation, ClickCount},
         controls::{menu_option, segmented_control},
-        theme::ThemeManager,
+        preferences::PreferenceManager,
     },
 };
 
@@ -21,7 +22,7 @@ use super::{
 };
 
 pub(super) fn general_page(
-    manager: Rc<ThemeManager>,
+    manager: Rc<PreferenceManager>,
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
 
@@ -43,13 +44,17 @@ pub(super) fn general_page(
         PreferenceSwitch {
             title: "Open folder after dropping files",
             description: "Show the destination folder after a successful drag and drop.",
-            read: ThemeManager::open_folder_after_drop,
-            write: ThemeManager::set_open_folder_after_drop,
+            read: PreferenceManager::open_folder_after_drop,
+            write: PreferenceManager::set_open_folder_after_drop,
         },
     );
 
+    let date_time = super::settings_group(&preferences, "DATE & TIME");
+    append_date_format_option(&date_time, &manager);
+
     let performance = super::settings_group(&preferences, "PERFORMANCE");
     append_auto_refresh_option(&performance, &manager);
+    append_thumbnail_workers_option(&performance, &manager);
     append_video_preview_option(&performance, &manager);
 
     let desktop = super::settings_group(&preferences, "DESKTOP INTEGRATION");
@@ -70,40 +75,179 @@ pub(super) fn general_page(
     )
 }
 
+fn append_date_format_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    const CHOICES: [(&str, crate::util::DateFormat); 3] = [
+        ("Relative", crate::util::DateFormat::Relative),
+        ("ISO 8601", crate::util::DateFormat::Iso8601),
+        ("Long", crate::util::DateFormat::Long),
+    ];
+    let menu = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    menu.add_css_class("column-menu");
+    let popover = gtk::Popover::builder()
+        .child(&menu)
+        .has_arrow(false)
+        .build();
+    popover.add_css_class("column-popover");
+    let button = gtk::MenuButton::builder()
+        .popover(&popover)
+        .always_show_arrow(true)
+        .valign(gtk::Align::Center)
+        .build();
+    button.add_css_class("form-control");
+    button.add_css_class("settings-choice");
+    button.set_tooltip_text(Some("Modified date format"));
+    crate::ui::accessibility::set_label(&button, "Modified date format");
+    manager.bind_preference(&button, PreferenceManager::date_format, |widget, format| {
+        if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
+            button.set_label(match format {
+                crate::util::DateFormat::Relative => "Relative",
+                crate::util::DateFormat::Iso8601 => "ISO 8601",
+                crate::util::DateFormat::Long => "Long",
+            });
+        }
+    });
+    let mut examples = Vec::new();
+    for (name, format) in CHOICES {
+        let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        copy.set_hexpand(true);
+        let title = gtk::Label::new(Some(name));
+        title.set_xalign(0.0);
+        let example = gtk::Label::new(None);
+        example.set_xalign(0.0);
+        example.add_css_class("settings-option-description");
+        copy.append(&title);
+        copy.append(&example);
+        let check = crate::assets::primary_icon(icons::CHECK, 16);
+        check.set_visible(manager.date_format() == format);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        row.append(&copy);
+        row.append(&check);
+        let option = gtk::Button::builder().child(&row).build();
+        option.add_css_class("column-menu-option");
+        option.set_has_frame(false);
+        manager.bind_preference(
+            &check,
+            PreferenceManager::date_format,
+            move |widget, selected| widget.set_visible(selected == format),
+        );
+        let weak_button = button.downgrade();
+        let manager = manager.clone();
+        option.connect_clicked(move |_| {
+            manager.set_date_format(format);
+            if let Some(button) = weak_button.upgrade() {
+                button.popdown();
+            }
+        });
+        menu.append(&option);
+        examples.push((example, format));
+    }
+    let examples = Rc::new(examples);
+    let refresh = {
+        let examples = examples.clone();
+        move || {
+            for (label, format) in examples.iter() {
+                label.set_text(&crate::util::modified_date_example(*format));
+            }
+        }
+    };
+    refresh();
+    popover.connect_show(move |_| refresh());
+    content.append(&super::control_row(
+        "Modified date format",
+        "How file modified times appear in lists and details.",
+        &button,
+    ));
+}
+
+fn append_thumbnail_workers_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let (control, [decrease, reset, increase]) = crate::ui::controls::stepper([
+        "Decrease thumbnail workers",
+        "Reset thumbnail workers",
+        "Increase thumbnail workers",
+    ]);
+    for (button, increase) in [(decrease, false), (increase, true)] {
+        manager.bind_preference(
+            &button,
+            PreferenceManager::thumbnail_workers,
+            move |widget, workers| {
+                widget.set_sensitive(if increase {
+                    workers < crate::sandbox::browser::MAX_WORKERS
+                } else {
+                    workers > 1
+                });
+            },
+        );
+        let manager = manager.clone();
+        button.connect_clicked(move |_| {
+            let workers = manager.thumbnail_workers();
+            manager.set_thumbnail_workers(if increase {
+                workers.saturating_add(1)
+            } else {
+                workers.saturating_sub(1)
+            });
+        });
+    }
+    manager.bind_preference(
+        &reset,
+        PreferenceManager::thumbnail_workers,
+        |widget, workers| {
+            widget
+                .downcast_ref::<gtk::Button>()
+                .expect("worker count")
+                .set_label(&workers.to_string());
+        },
+    );
+    let manager = manager.clone();
+    reset.connect_clicked(move |_| {
+        manager.set_thumbnail_workers(crate::sandbox::browser::default_worker_limit())
+    });
+    content.append(&super::control_row(
+        "Thumbnail workers",
+        "Parallel thumbnail decoders across all windows. More workers use more CPU and memory. Click the number to reset to the recommended default.",
+        &control,
+    ));
+}
+
 #[derive(Clone, Copy)]
 struct PreferenceSwitch {
     title: &'static str,
     description: &'static str,
-    read: fn(&ThemeManager) -> bool,
-    write: fn(&ThemeManager, bool),
+    read: fn(&PreferenceManager) -> bool,
+    write: fn(&PreferenceManager, bool),
 }
 
-fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
     let browsing = super::settings_group(content, "BROWSING");
     for switch in [
         PreferenceSwitch {
             title: "Folder peeking",
             description: "Preview folders automatically while moving through a pane.",
-            read: ThemeManager::folder_peeking,
-            write: ThemeManager::set_folder_peeking,
+            read: PreferenceManager::folder_peeking,
+            write: PreferenceManager::set_folder_peeking,
         },
         PreferenceSwitch {
             title: "Single-click file previews",
             description: "Show a quick preview when selecting a supported file.",
-            read: ThemeManager::single_click_previews,
-            write: ThemeManager::set_single_click_previews,
+            read: PreferenceManager::single_click_previews,
+            write: PreferenceManager::set_single_click_previews,
+        },
+        PreferenceSwitch {
+            title: "Autoplay media previews",
+            description: "Start playing video, audio, and GIF previews as soon as they open.",
+            read: PreferenceManager::preview_autoplay,
+            write: PreferenceManager::set_preview_autoplay,
         },
         PreferenceSwitch {
             title: "Render documents by default",
             description: "Open Markdown and HTML previews in the rendered view instead of source.",
-            read: ThemeManager::render_documents_by_default,
-            write: ThemeManager::set_render_documents_by_default,
+            read: PreferenceManager::render_documents_by_default,
+            write: PreferenceManager::set_render_documents_by_default,
         },
         PreferenceSwitch {
             title: "Keep arrows in file list",
             description: "Stop arrow keys from leaving the file list. Use Ctrl + Shift + B to focus the sidebar, or use the mouse.",
-            read: ThemeManager::arrow_navigation_scoped,
-            write: ThemeManager::set_arrow_navigation_scoped,
+            read: PreferenceManager::arrow_navigation_scoped,
+            write: PreferenceManager::set_arrow_navigation_scoped,
         },
     ] {
         append_preference_switch(&browsing, manager, switch);
@@ -113,20 +257,20 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         PreferenceSwitch {
             title: "Type to search",
             description: "Start filtering the active pane as soon as you type.",
-            read: ThemeManager::type_to_search,
-            write: ThemeManager::set_type_to_search,
+            read: PreferenceManager::type_to_search,
+            write: PreferenceManager::set_type_to_search,
         },
         PreferenceSwitch {
             title: "Include subfolders",
             description: "Also match items inside nested folders.",
-            read: ThemeManager::filter_include_subfolders,
-            write: ThemeManager::set_filter_include_subfolders,
+            read: PreferenceManager::filter_include_subfolders,
+            write: PreferenceManager::set_filter_include_subfolders,
         },
         PreferenceSwitch {
             title: "Open search results directly",
             description: "Launch files from search instead of showing the quick preview.",
-            read: ThemeManager::search_open_files_directly,
-            write: ThemeManager::set_search_open_files_directly,
+            read: PreferenceManager::search_open_files_directly,
+            write: PreferenceManager::set_search_open_files_directly,
         },
     ] {
         append_preference_switch(&search, manager, switch);
@@ -135,7 +279,7 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
 
 fn append_preference_switch(
     content: &gtk::Box,
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     switch: PreferenceSwitch,
 ) {
     let (row, toggle) = settings_option(switch.title, switch.description, (switch.read)(manager));
@@ -146,7 +290,7 @@ fn append_preference_switch(
     content.append(&row);
 }
 
-fn append_default_directory_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
     let choose = gtk::Button::with_label(&default_directory_text(manager.default_directory()));
     choose.set_valign(gtk::Align::Center);
     choose.add_css_class("form-control");
@@ -173,7 +317,7 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<ThemeManager
 
     manager.bind_preference(
         &choose,
-        ThemeManager::default_directory,
+        PreferenceManager::default_directory,
         move |widget, value| {
             if let Some(button) = widget.downcast_ref::<gtk::Button>() {
                 button.set_label(&default_directory_text(value));
@@ -186,7 +330,7 @@ fn append_default_directory_option(content: &gtk::Box, manager: &Rc<ThemeManager
     });
     manager.bind_preference(
         &reset,
-        ThemeManager::default_directory,
+        PreferenceManager::default_directory,
         move |widget, value| {
             if let Some(button) = widget.downcast_ref::<gtk::Button>() {
                 button.set_sensitive(value.is_some());
@@ -233,7 +377,7 @@ fn abbreviate_home(path: &std::path::Path) -> String {
     }
 }
 
-fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_sidebar_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
     let sidebar = super::settings_group(content, "SIDEBAR");
     let chips = super::wrap::WrapRow::new(8);
     let row = super::control_row(
@@ -261,56 +405,56 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         PreferenceSwitch {
             title: "Show Home in sidebar",
             description: "Show the Home folder in the sidebar.",
-            read: ThemeManager::sidebar_show_home,
-            write: ThemeManager::set_sidebar_show_home,
+            read: PreferenceManager::sidebar_show_home,
+            write: PreferenceManager::set_sidebar_show_home,
         },
         PreferenceSwitch {
             title: "Show Trash in sidebar",
             description: "Show Trash in the sidebar.",
-            read: ThemeManager::sidebar_show_trash,
-            write: ThemeManager::set_sidebar_show_trash,
+            read: PreferenceManager::sidebar_show_trash,
+            write: PreferenceManager::set_sidebar_show_trash,
         },
         PreferenceSwitch {
             title: "Show Network in sidebar",
             description: "Show Network in the sidebar.",
-            read: ThemeManager::sidebar_show_network,
-            write: ThemeManager::set_sidebar_show_network,
+            read: PreferenceManager::sidebar_show_network,
+            write: PreferenceManager::set_sidebar_show_network,
         },
         PreferenceSwitch {
             title: "Show Recent in sidebar",
             description: "Show Recent files in the sidebar.",
-            read: ThemeManager::sidebar_show_recent,
-            write: ThemeManager::set_sidebar_show_recent,
+            read: PreferenceManager::sidebar_show_recent,
+            write: PreferenceManager::set_sidebar_show_recent,
         },
         PreferenceSwitch {
             title: "Show Desktop in sidebar",
             description: "Show the Desktop folder in the sidebar.",
-            read: ThemeManager::sidebar_show_desktop,
-            write: ThemeManager::set_sidebar_show_desktop,
+            read: PreferenceManager::sidebar_show_desktop,
+            write: PreferenceManager::set_sidebar_show_desktop,
         },
         PreferenceSwitch {
             title: "Show Documents in sidebar",
             description: "Show the Documents folder in the sidebar.",
-            read: ThemeManager::sidebar_show_documents,
-            write: ThemeManager::set_sidebar_show_documents,
+            read: PreferenceManager::sidebar_show_documents,
+            write: PreferenceManager::set_sidebar_show_documents,
         },
         PreferenceSwitch {
             title: "Show Downloads in sidebar",
             description: "Show the Downloads folder in the sidebar.",
-            read: ThemeManager::sidebar_show_downloads,
-            write: ThemeManager::set_sidebar_show_downloads,
+            read: PreferenceManager::sidebar_show_downloads,
+            write: PreferenceManager::set_sidebar_show_downloads,
         },
         PreferenceSwitch {
             title: "Show Pictures in sidebar",
             description: "Show the Pictures folder in the sidebar.",
-            read: ThemeManager::sidebar_show_pictures,
-            write: ThemeManager::set_sidebar_show_pictures,
+            read: PreferenceManager::sidebar_show_pictures,
+            write: PreferenceManager::set_sidebar_show_pictures,
         },
         PreferenceSwitch {
             title: "Show Videos in sidebar",
             description: "Show the Videos folder in the sidebar.",
-            read: ThemeManager::sidebar_show_videos,
-            write: ThemeManager::set_sidebar_show_videos,
+            read: PreferenceManager::sidebar_show_videos,
+            write: PreferenceManager::set_sidebar_show_videos,
         },
     ]
     .into_iter()
@@ -335,7 +479,7 @@ fn append_sidebar_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     }
 }
 
-fn append_cross_volume_drop_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_cross_volume_drop_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
     let control = super::bindings::choice_menu(
         manager,
         "Drag & drop to another device",
@@ -353,8 +497,8 @@ fn append_cross_volume_drop_option(content: &gtk::Box, manager: &Rc<ThemeManager
                 CrossVolumeDropStrategy::Ask,
             ),
         ],
-        ThemeManager::cross_volume_drop_strategy,
-        ThemeManager::set_cross_volume_drop_strategy,
+        PreferenceManager::cross_volume_drop_strategy,
+        PreferenceManager::set_cross_volume_drop_strategy,
     );
     content.append(&super::control_row(
         "Drag & drop to another device",
@@ -371,29 +515,29 @@ pub(super) fn cross_volume_drop_strategy_label(strategy: CrossVolumeDropStrategy
     }
 }
 
-fn append_auto_refresh_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+fn append_auto_refresh_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
     let control = super::bindings::choice_menu(
         manager,
         "Auto-refresh folder",
         &[("Off", 0), ("1 min", 60), ("5 min", 300), ("10 min", 600)],
-        ThemeManager::auto_refresh_interval,
-        ThemeManager::set_auto_refresh_interval,
+        PreferenceManager::auto_refresh_interval,
+        PreferenceManager::set_auto_refresh_interval,
     );
     content.append(&super::control_row("Auto-refresh folder", "Reload the current folder on a timer. Useful for network shares where file monitors miss changes.", &control));
 }
 
-fn append_video_preview_option(content: &gtk::Box, manager: &Rc<ThemeManager>) -> gtk::Box {
+fn append_video_preview_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) -> gtk::Box {
     let description = "Decode video thumbnails on the GPU.";
     let (video_row, acceleration, backend) = video_preview_option(manager, description);
     bind_switch(
         manager,
         &acceleration,
-        ThemeManager::hardware_accelerated_video_previews,
-        ThemeManager::set_hardware_accelerated_video_previews,
+        PreferenceManager::hardware_accelerated_video_previews,
+        PreferenceManager::set_hardware_accelerated_video_previews,
     );
     manager.bind_preference(
         &backend,
-        ThemeManager::hardware_accelerated_video_previews,
+        PreferenceManager::hardware_accelerated_video_previews,
         |widget, enabled| widget.set_sensitive(video_preview_control_state(enabled).2),
     );
     content.append(&video_row);
@@ -402,7 +546,7 @@ fn append_video_preview_option(content: &gtk::Box, manager: &Rc<ThemeManager>) -
 
 fn append_click_activation(
     content: &gtk::Box,
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
 ) -> Vec<ResponsiveActivationRow> {
     let activation_options = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let mut responsive_activation_rows = Vec::new();
@@ -434,7 +578,7 @@ fn append_click_activation(
 }
 
 fn bind_click_activation_row(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     label: &str,
     mode: BrowserMode,
 ) -> (gtk::Box, Vec<gtk::Box>) {
@@ -455,7 +599,7 @@ struct ClickCountBinding {
 }
 
 fn bind_click_count(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     button: &gtk::ToggleButton,
     binding: ClickCountBinding,
 ) {
@@ -541,7 +685,7 @@ fn click_activation_option(
 }
 
 fn video_preview_option(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     description: &str,
 ) -> (gtk::Box, gtk::Switch, gtk::MenuButton) {
     let (active, toggle_sensitive, backend_sensitive) =
@@ -561,7 +705,7 @@ fn video_preview_option(
 }
 
 fn video_preview_backend_control(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     description: &str,
     backend_sensitive: bool,
 ) -> gtk::MenuButton {
@@ -602,13 +746,13 @@ fn video_preview_backend_control(
 }
 
 fn bind_video_preview_backend_menu(
-    manager: &Rc<ThemeManager>,
+    manager: &Rc<PreferenceManager>,
     backend: &gtk::MenuButton,
     options: [(MediaPreviewBackend, gtk::Button, gtk::Image); 3],
 ) {
     manager.bind_preference(
         backend,
-        ThemeManager::video_preview_backend,
+        PreferenceManager::video_preview_backend,
         |widget, selected| {
             if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
                 button.set_label(video_preview_backend_label(selected));
@@ -618,7 +762,7 @@ fn bind_video_preview_backend_menu(
     for (value, option, check) in options {
         manager.bind_preference(
             &check,
-            ThemeManager::video_preview_backend,
+            PreferenceManager::video_preview_backend,
             move |widget, selected| widget.set_visible(selected == value),
         );
         let backend = backend.downgrade();

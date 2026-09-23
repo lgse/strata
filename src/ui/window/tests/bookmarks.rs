@@ -204,12 +204,12 @@ fn pinned_place_changes_merge_with_the_shared_bookmarks_file() {
     gtk_test(
         "ui::window::tests::bookmarks::pinned_place_changes_merge_with_the_shared_bookmarks_file",
         || {
-            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let first = build_sidebar(browser_for_window(), PreferenceManager::shared(), true);
             let existing = Location::local("/tmp/existing");
             first
                 .state
                 .pin_location(existing.clone(), "Existing".into());
-            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let second = build_sidebar(browser_for_window(), PreferenceManager::shared(), true);
             let pinned = Location::local("/tmp/pinned");
             first.state.pin_location(pinned.clone(), "Pinned".into());
             second.state.unpin_location(&existing);
@@ -256,8 +256,8 @@ fn pinning_with_a_non_utf8_label_preserves_shared_bookmarks() {
             )
             .expect("seed non-UTF-8 bookmark label");
 
-            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
-            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let first = build_sidebar(browser_for_window(), PreferenceManager::shared(), true);
+            let second = build_sidebar(browser_for_window(), PreferenceManager::shared(), true);
             let initial = vec![
                 (Location::local("/fixtures/existing"), "Existing".into()),
                 (Location::local("/fixtures/lossy"), "\u{FFFD}".into()),
@@ -292,7 +292,7 @@ fn failed_bookmark_reads_and_saves_preserve_disk_and_window_state() {
     gtk_test(
         "ui::window::tests::bookmarks::failed_bookmark_reads_and_saves_preserve_disk_and_window_state",
         || {
-            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let sidebar = build_sidebar(browser_for_window(), PreferenceManager::shared(), true);
             let existing = Location::local("/tmp/existing");
             sidebar
                 .state

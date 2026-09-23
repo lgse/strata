@@ -66,8 +66,8 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
         window = strata.window.window_bounds()
         pane = strata.pane().window_bounds()
         assert bounds.height > 0 and pane.x <= bounds.x < window.width
-        # GTK 4.14 exports a padded origin with the border-box width. The Rust
-        # fixture checks exact GtkText/caret bounds; here reject oversized editors.
+        # The Rust fixture checks exact GtkText/caret bounds; here reject
+        # oversized bounds from the external accessibility interface.
         assert 0 < bounds.width <= window.width - pane.x
 
     assert field.window_bounds().width > 0
@@ -251,6 +251,7 @@ def test_rename_and_undo_restores_the_original_item(strata, kind):
     strata.wait(renamed_path.exists, "the renamed item")
     # The filesystem changes before the UI callback publishes rename undo.
     strata.wait_for_selection(["undo-target"])
+    strata.wait(lambda: strata.focused_name() == "undo-target", "the committed rename cursor")
 
     strata.keyboard.press("ctrl+z")
     strata.wait(

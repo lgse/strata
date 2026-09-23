@@ -480,7 +480,7 @@ fn classify_file_drop(
 }
 
 fn current_cross_volume_drop_strategy() -> CrossVolumeDropStrategy {
-    crate::ui::theme::ThemeManager::shared().cross_volume_drop_strategy()
+    crate::ui::preferences::PreferenceManager::shared().cross_volume_drop_strategy()
 }
 
 /// A compositor's source-side MOVE offer must not prevent Strata's cross-volume copy.
@@ -856,7 +856,7 @@ impl ViewState {
                 let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
                     return false;
                 };
-                let entry = if column.search_handle.borrow().is_some() {
+                let entry = if column.recursive_search_active.get() {
                     column
                         .search_results
                         .borrow()

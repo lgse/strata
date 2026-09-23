@@ -85,10 +85,16 @@ controls, source-position mapping, and weak browser ownership. A typed row view 
 widget parts without changing their layout. An owned binding snapshot resolves the
 source entry before updating GTK or requesting metadata.
 
-Fast-scroll binds update labels/accessibility while deferring cut styling, thumbnails,
-and metadata work. Ordinary binds and scroll settling share detail refresh; settling
-never resets the name label or an active rename editor. Missing bindings retain the
-existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
+Fast-scroll binds update labels/accessibility and admit viewport-prioritized thumbnails
+and metadata without waiting for scrolling to stop. Each viewport coalesces a follow-up
+admission pass after a frame, outside layout, so a final scroll cannot strand work
+classified against old allocations. Icons reserves a font-sized details line even when
+empty; metadata truncates within the caption width instead of resizing the grid.
+Cut styling, tooltips and date
+bindings refresh once per GTK frame, outside layout, for visible/overscan items.
+These presentation refreshes never resubmit file work or reset a name label or active
+rename editor. Identical active thumbnail/metadata requests are reused. Missing
+bindings retain the existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
 remain in the composition module rather than changing alongside this lifecycle boundary.
 
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
@@ -117,6 +123,69 @@ refresh selection after layout/paint, even without pointer motion; unmapped rows
 overwrite cached geometry with stale allocations. The visible band stays clipped to the
 viewport, while earlier off-screen hits remain selected. Release completes pending
 layout-dependent selection before disconnecting the frame handler.
+
+### Collection behavior and lifetime boundaries
+
+The browser and open/save chooser use the same collection behavior, not a universal widget:
+
+| Owner | Responsibility and intentional differences |
+| --- | --- |
+| `ui/collection_interaction.rs` | Display-position pointer transitions (Ctrl toggle, Shift range, plain selection/drag-group preservation) and press/release/cancel ownership. Modified sequences are claimed only on release so marquee can participate. |
+| `ui/search_session.rs` | Root, hidden-file and recursive-scope inputs; worker/receiver, query intent, generation, bounded event draining, cancellation and status/coverage delivery. It knows neither widgets nor acceptance/navigation policy. |
+| `ui/inline_search.rs` | Single-pane search composition and transactional consumer selection publication. `inline_search/collection.rs` owns stable result objects and displayed-order lookup; `presentation.rs` builds and binds typed row/card parts. |
+| `ui/browser/columns/search.rs` | Native Columns result reconciliation. Its result vector is authoritative; the string model is only a label projection, updated in lockstep under selection suppression. Columns keeps its multi-depth navigation and native collection. |
+| `ui/collection_edit.rs` | A rename lease on an entry identity and typed editor/display handles: validation, submission signals, cancellation, focus, reveal tick and cleanup. It has no `ViewState` or `browser_modes` dependency. |
+| Browser/chooser adapters | Activation, single-click preview/navigation, selection cardinality, filename/preview updates, context commands and filesystem-operation coordination. `browser/inline_edit.rs` retains pending-operation identities, optimistic labels, refresh/error handling and operation safety. |
+
+Normal Columns resolves displayed positions through `ViewMap`; normal List/Icons use
+`SourceIndexMap` and the current view model (including List grouping). Filtered Columns
+resolves **all** result actions through its authoritative result vector. Single-pane results
+resolve activation, selection, drag, context and edit targets through the sorted GTK model;
+the path/rank map only supplies ordering to its sorter. Basenames are never identity.
+
+Single-pane publication captures selected/focused paths before reconciliation and restores
+selection by identity. Restoring focus never reselects an explicitly deselected entry.
+If the last selected result disappears, it retains the nearest previous
+selection slot; Columns intentionally leaves the selection empty when its selected result
+vanishes. Columns uses per-column hidden-file preferences and does not display a separate
+coverage/status row; single-pane search uses browser preferences and shows partial coverage or
+empty/indexing status. Nonlocal locations keep their native, nonrecursive filter fallback.
+The shared session preserves these adapter policies rather than normalizing them.
+
+During single-pane reconciliation, consumer selection callbacks are suppressed until model,
+selection, focus and bindings agree. Identity-preserving/no-op updates do not announce transient
+index changes. Callback lists and payloads are snapshots, with no callback-list borrow held
+across delivery. Reentrant result updates/query dismissal are queued (latest publication wins)
+until the current delivery completes. GTK's internal model notifications remain synchronous;
+consumers subscribe to the collection publication surface, not raw model signals.
+
+Presentations register `EditWidgets` at construction and bind their entry identity before
+handing out an `EditTarget`. Behavior never finds an editor by CSS class or sibling traversal.
+An unchanged binding preserves a draft; removing/rebinding/unbinding a row intentionally
+cancels the lease without submission. Commit, Escape, view teardown and owner destruction
+retire handlers and reveal ticks. Focus-leave handlers are disconnected immediately, but their
+controller is detached on a weak-widget idle callback: mutating GTK's controller list inside
+a Tab focus walk is unsafe. Deferred focus checks the active editor and does not reselect text.
+Presentation-specific reveal/cleanup hooks retain Columns' constrained editor and List's row
+reveal without putting those geometries in the edit controller.
+
+The view owns its filter binding and search session. Detaching a pane/column disconnects the
+entry, cancels a pending debounce, removes the poll source and drops the search handle/receiver.
+Query intent changes reject old results before debounce completes; root/scope/hidden-input
+changes or an explicit restart create a new generation. Polling holds a weak session reference,
+and delivers without borrowing session state so callbacks may cancel/restart safely. Filter
+scope preference bindings remain widget-anchored. Factory unbind cancels thumbnail requests
+and edits; teardown releases typed bound-widget records. Collection detachment retires deferred
+scroll work; presentation ticks are widget-owned and stop with their widget. These rules also
+apply when mode changes recreate a pane or a chooser closes.
+
+Native keyboard navigation and marquee geometry remain presentation adapters over the same
+selection models. They are deliberately not replaced with another navigation engine. Columns'
+source/depth anchor, slow-click rename and release activation, List metadata/grouping, Icons'
+content hit testing and chooser restrictions remain explicit policies. Tests retain distinct
+pointer, keyboard, lifecycle and filesystem-effect routes rather than replacing them with a
+cross-mode launch smoke test. See [GUI validation](e2e-testing.md) and
+[live preferences](preferences.md).
 
 ### Browser implementation map
 
@@ -324,6 +393,23 @@ Start with stable data-driven customization:
 Internally, search, preview, and theme implementations should be registries so built-in providers remain modular. This does **not** require exposing an unsafe public plugin ABI in the first release.
 
 When third-party extensions are justified, prefer a versioned message protocol with explicit capabilities and permissions. This permits extensions written in multiple languages and allows isolation from the main process.
+
+### Custom actions
+
+User-authored context-menu actions follow that direction without an ABI:
+`model::action` parses and validates the portable `action.toml` contract,
+`services::actions` owns the cached catalog and matching, `adapters::local_actions`
+reads, validates, writes, imports, and exports action directories, and
+`adapters::local_jobs` starts one invocation as a child process. `services::jobs`
+owns the queue, per-item iteration, progress, cancellation bookkeeping, bounded
+logs, and history, with the presentation in `ui/jobs.rs` observing it.
+
+Definitions are data, not code, until an action is invoked: opening a menu only
+matches declarative rules. Invocations receive their inputs through files and the
+environment rather than through a shell or an interpolated command line, and the
+registry, job service, and runner keep filesystem, process, and widget
+responsibilities apart. Actions are trusted local programs; this boundary is
+organizational, not a security sandbox. See [Custom actions](custom-actions.md).
 
 ## Suggested source organization
 

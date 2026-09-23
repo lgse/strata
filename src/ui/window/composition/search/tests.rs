@@ -17,7 +17,7 @@ struct SearchFixture {
 }
 
 impl SearchFixture {
-    fn new(preferences: &Rc<ThemeManager>) -> Self {
+    fn new(preferences: &Rc<PreferenceManager>) -> Self {
         let browser = Browser::new(Rc::new(LocalFileSource));
         let preferences = preferences.clone();
         let preview = PreviewDrawer::new(
@@ -137,7 +137,7 @@ fn same_folder_search_preview_follows_focus_after_deletion() {
             std::fs::write(&path, "preview fixture").expect("fixture file");
             std::fs::write(root.path().join("remaining.txt"), "remaining").expect("remaining file");
             let file = indexed_items(root.path()).remove(0);
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             preferences.set_search_open_files_directly(false);
             let fixture = SearchFixture::new(&preferences);
             fixture.browser.navigate(Location::local(root.path()));
@@ -183,7 +183,7 @@ fn result_activation_reads_live_preferences_and_preserves_navigation_order() {
                 .iter()
                 .find(|item| item.is_directory)
                 .expect("directory result");
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             let fixtures = [
                 SearchFixture::new(&preferences),
                 SearchFixture::new(&preferences),

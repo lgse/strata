@@ -1537,7 +1537,7 @@ fn fill_image_file_extracts_dimensions() -> Result<(), Box<dyn Error>> {
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
-    let dimensions = events.iter().find_map(|event| match event {
+    let dimensions = events.iter().rev().find_map(|event| match event {
         DirectoryEvent::MetadataFilled { updates, .. } => updates
             .first()
             .map(|update| update.image_dimensions.clone()),
@@ -1580,7 +1580,7 @@ fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> 
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
-    let duration = events.iter().find_map(|event| match event {
+    let duration = events.iter().rev().find_map(|event| match event {
         DirectoryEvent::MetadataFilled { updates, .. } => updates
             .first()
             .map(|update| update.duration_seconds.clone()),
@@ -1611,7 +1611,7 @@ fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> 
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&revisit), Some(MetadataOutcome::Complete));
-    let revisited_duration = revisit.iter().find_map(|event| match event {
+    let revisited_duration = revisit.iter().rev().find_map(|event| match event {
         DirectoryEvent::MetadataFilled { updates, .. } => updates
             .first()
             .map(|update| update.duration_seconds.clone()),
@@ -1646,7 +1646,7 @@ fn fill_media_file_caches_duration_for_revisits() -> Result<(), Box<dyn Error>> 
         include_icon_details: true,
         time_budget: Duration::from_secs(10),
     });
-    let changed_duration = changed.iter().find_map(|event| match event {
+    let changed_duration = changed.iter().rev().find_map(|event| match event {
         DirectoryEvent::MetadataFilled { updates, .. } => updates
             .first()
             .map(|update| update.duration_seconds.clone()),
@@ -1674,7 +1674,7 @@ fn fill_directory_child_count_extracts_item_count() -> Result<(), Box<dyn Error>
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
-    let child_count = events.iter().find_map(|event| match event {
+    let child_count = events.iter().rev().find_map(|event| match event {
         DirectoryEvent::MetadataFilled { updates, .. } => {
             updates.first().map(|update| update.child_count.clone())
         }
@@ -1804,4 +1804,112 @@ fn parallel_fill_cancellation_reports_cancelled_without_chunks() {
         .await;
         ticker.remove();
     });
+}
+
+#[test]
+fn cheap_metadata_is_published_while_details_are_waiting() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main-context lock");
+    let root = tempfile::tempdir().expect("fixture directory");
+    let path = root.path().join("photo.jpg");
+    fs::write(&path, b"content").expect("first fixture");
+    let second = root.path().join("second.jpg");
+    fs::write(&second, b"content").expect("second fixture");
+    let (release, wait) = std::sync::mpsc::channel();
+    let wait = Mutex::new(wait);
+    glib::MainContext::default().block_on(async move {
+        let (finished, done) = futures_channel::oneshot::channel();
+        let finished = RefCell::new(Some(finished));
+        let saw_cheap = Rc::new(Cell::new(0));
+        let saw_details = Rc::new(Cell::new(0));
+        let cheap = saw_cheap.clone();
+        let details = saw_details.clone();
+        let emit = Rc::new(move |event| match event {
+            DirectoryEvent::MetadataFilled { updates, .. } => {
+                for update in updates {
+                    assert_eq!(update.size, MetadataValue::Known(7));
+                    assert!(matches!(
+                        update.modified_unix_seconds,
+                        MetadataValue::Known(_)
+                    ));
+                    assert!(matches!(update.mode, MetadataValue::Known(_)));
+                    if update.image_dimensions == MetadataValue::Unknown {
+                        cheap.set(cheap.get() + 1);
+                        if cheap.get() == 2 {
+                            release.send(()).expect("release first probe");
+                        }
+                    } else {
+                        assert_eq!(cheap.get(), 2);
+                        assert_eq!(update.image_dimensions, MetadataValue::Known((20, 30)));
+                        details.set(details.get() + 1);
+                        if details.get() == 1 {
+                            release.send(()).expect("release second probe");
+                        }
+                    }
+                }
+            }
+            DirectoryEvent::MetadataFinished { outcome, .. } => {
+                assert_eq!(outcome, MetadataOutcome::Complete);
+                finished
+                    .borrow_mut()
+                    .take()
+                    .expect("one completion")
+                    .send(())
+                    .expect("completion receiver");
+            }
+            _ => {}
+        });
+        let handle = fill_parallel_with_details(
+            1,
+            RequestId(1),
+            vec![Location::local(path), Location::local(second)],
+            true,
+            Duration::from_secs(10),
+            emit,
+            move |update, _, _, _, _| {
+                wait.lock()
+                    .expect("probe receiver")
+                    .recv_timeout(Duration::from_secs(5))
+                    .expect("preceding metadata published before probe finishes");
+                update.image_dimensions = MetadataValue::Known((20, 30));
+                true
+            },
+        );
+        done.await.expect("metadata completion");
+        assert_eq!(saw_cheap.get(), 2);
+        assert_eq!(saw_details.get(), 2);
+        drop(handle);
+    });
+}
+
+#[test]
+fn cancelled_media_details_are_not_cached_as_unavailable() {
+    let root = tempfile::tempdir().expect("fixture directory");
+    let path = root.path().join("photo.jpg");
+    fs::write(&path, b"content").expect("fixture file");
+    let location = Location::local(&path);
+    let info = gio::File::for_path(&path)
+        .query_info(
+            METADATA_ATTRIBUTES,
+            gio::FileQueryInfoFlags::NONE,
+            None::<&gio::Cancellable>,
+        )
+        .expect("source metadata");
+    let cancellable = gio::Cancellable::new();
+    let (mut update, _) = update_from_info(&info, &location);
+    assert!(!fill_icon_details_with_probe(
+        &mut update,
+        &info,
+        &location,
+        &cancellable,
+        Instant::now() + Duration::from_secs(10),
+        |_, _, cancellation| {
+            cancellation.cancel();
+            Err("cancelled".to_owned())
+        },
+    ));
+    assert_eq!(update.image_dimensions, MetadataValue::Unknown);
+    assert_eq!(update.duration_seconds, MetadataValue::Unknown);
+    assert!(cached_icon_details_for_revisit(&path).is_none());
 }

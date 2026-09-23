@@ -334,6 +334,11 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -2px;
 }
 
+.column-peek-target.file-drop-zone:drop(active) {
+  background: alpha(@theme_accent, 0.18);
+  box-shadow: inset 0 0 0 2px @theme_accent;
+}
+
 .location-entry,
 .location-entry:focus,
 .location-entry:focus-visible,
@@ -793,8 +798,8 @@ headerbar menubutton.header-action > button:focus-visible {
   background: alpha(@theme_highlight, 0.64);
   border: 1px solid alpha(@theme_accent, 0.24);
   border-radius: 6px;
-  min-height: 40px;
-  min-width: 40px;
+  min-height: 3.076923rem;
+  min-width: 3.076923rem;
 }
 
 .action-dialog-symbol.danger {
@@ -2047,6 +2052,10 @@ scrollbar slider:active {
   padding: 2px;
 }
 
+.sidebar-device-spinner {
+  color: @theme_accent;
+}
+
 .sidebar-eject:hover,
 .sidebar-device-action:hover {
   background: alpha(@theme_accent, 0.15);
@@ -2199,6 +2208,17 @@ paned > separator {
   background: @theme_surface;
   color: @theme_text;
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+}
+
+.preview-text border.left {
+  background: @theme_surface;
+  border-right: 1px solid mix(@theme_bg, @theme_border, 0.6);
+  box-shadow: none;
+}
+
+.preview-text border.left gutter {
+  border-right: none;
+  box-shadow: none;
 }
 
 .preview-text selection,
@@ -2386,6 +2406,85 @@ paned > separator {
   color: @theme_dim_text;
   font-size: 0.8em;
   padding: 6px 10px;
+}
+
+.preview-archive {
+  background: @theme_surface;
+}
+
+.preview-archive-crumbs-scroll {
+  border-bottom: 1px solid alpha(@theme_border, 0.24);
+}
+
+.preview-archive-crumbs {
+  padding: 6px 10px;
+}
+
+.preview-archive-crumb {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_accent;
+  font-size: 0.85em;
+  min-height: 20px;
+  padding: 0 7px;
+}
+
+.preview-archive-crumb:hover {
+  background: alpha(@theme_muted, 0.55);
+  border-color: alpha(@theme_border, 0.42);
+}
+
+.preview-archive-crumb:active {
+  background: alpha(@theme_muted, 0.82);
+}
+
+.preview-archive-crumb:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 1px;
+}
+
+.preview-archive-crumb-current {
+  color: @theme_dim_text;
+}
+
+.preview-archive-count {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+  padding: 6px 12px;
+}
+
+.preview-archive-list {
+  background: transparent;
+}
+
+.preview-archive-row {
+  background: transparent;
+  border: none;
+  padding: 3px 10px;
+}
+
+.preview-archive-row:hover {
+  background: alpha(@theme_muted, 0.35);
+}
+
+/* The shared selected-row fill stays visible when the pointer rests on it. */
+.preview-archive-list row:selected .preview-archive-row:hover {
+  background: transparent;
+}
+
+.preview-archive-name {
+  color: @theme_text;
+}
+
+.preview-archive-size {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.preview-archive-empty {
+  color: @theme_dim_text;
 }
 
 .preview-document-table > header,
@@ -2652,6 +2751,42 @@ paned > separator {
 
 .preview-feedback-detail {
   color: @theme_dim_text;
+}
+
+.preview-archive-password {
+  padding: 24px;
+}
+
+.preview-archive-password-row {
+  margin-top: 6px;
+}
+
+.preview-archive-password-error {
+  color: @theme_danger;
+  margin-top: 6px;
+}
+
+.preview-archive-password-row button.suggested-action {
+  background-color: @theme_accent;
+  background-image: none;
+  color: @theme_bg;
+}
+
+.preview-archive-password-row button.suggested-action:hover {
+  background-color: shade(@theme_accent, 1.07);
+  background-image: none;
+}
+
+.preview-archive-password-row button.suggested-action:active,
+.preview-archive-password-row button.suggested-action:checked {
+  background-color: shade(@theme_accent, 0.92);
+  background-image: none;
+}
+
+.preview-archive-password-row button.suggested-action:disabled {
+  background-color: alpha(@theme_accent, 0.5);
+  background-image: none;
+  color: alpha(@theme_bg, 0.7);
 }
 
 .preview-command {
@@ -3157,6 +3292,75 @@ menubutton.column-header-action > button:active {
   font-size: 0.85em;
 }
 
+.path-completion-popover contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.55);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.16), 0 8px 24px alpha(@theme_shadow, 0.32);
+  padding: 4px;
+}
+
+.path-completion-scroll,
+.path-completion-scroll viewport {
+  background: transparent;
+}
+
+.path-completion-list {
+  background: transparent;
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_text;
+  font-size: 0.9em;
+  margin: 1px 0;
+  min-height: 32px;
+  outline: none;
+  padding: 0;
+}
+
+.path-completion-row-content {
+  padding: 5px 9px;
+}
+
+.path-completion-list row.path-completion-row:hover:not(:selected) {
+  background: alpha(@theme_highlight, 0.72);
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row:selected {
+  background: alpha(@theme_accent, 0.22);
+  box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row:active {
+  background: alpha(@theme_accent, 0.28);
+  color: @theme_text;
+}
+
+.path-completion-parent {
+  color: @theme_dim_text;
+  font-size: 0.82em;
+}
+
+.path-completion-list row.path-completion-row:selected .path-completion-parent {
+  color: @theme_text;
+  opacity: 0.72;
+}
+
+.path-completion-shortcuts {
+  border-top: 1px solid alpha(@theme_border, 0.28);
+  color: @theme_dim_text;
+  font-size: 0.76em;
+  margin-top: 3px;
+  padding: 6px 9px 4px;
+}
+
 .properties-content {
   min-width: 382px;
 }
@@ -3356,14 +3560,18 @@ menubutton.column-header-action > button:active {
   opacity: 0.46;
 }
 
-popover.folder-context-popover.background {
+popover.folder-context-popover.background,
+text > popover.menu.background,
+textview > popover.menu.background {
   background: transparent;
   border: none;
   box-shadow: none;
   padding: 0;
 }
 
-.folder-context-popover contents {
+.folder-context-popover contents,
+text > popover.menu > contents,
+textview > popover.menu > contents {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
@@ -3375,7 +3583,15 @@ popover.folder-context-popover.background {
 .context-menu-scroll,
 .context-menu-scroll > viewport,
 .context-menu-scroll overshoot,
-.context-menu-scroll undershoot {
+.context-menu-scroll undershoot,
+text > popover.menu scrolledwindow,
+text > popover.menu viewport,
+text > popover.menu overshoot,
+text > popover.menu undershoot,
+textview > popover.menu scrolledwindow,
+textview > popover.menu viewport,
+textview > popover.menu overshoot,
+textview > popover.menu undershoot {
   background: transparent;
   border: none;
   box-shadow: none;
@@ -3401,8 +3617,11 @@ popover.folder-context-popover.background {
   min-width: 6px;
 }
 
+.actions-context-popover,
 .folder-context-menu,
-.item-context-menu {
+.item-context-menu,
+text > popover.menu > contents > scrolledwindow > viewport > stack,
+textview > popover.menu > contents > scrolledwindow > viewport > stack {
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
   padding: 8px;
 }
@@ -3429,8 +3648,11 @@ popover.folder-context-popover.background {
   font-size: 0.82em;
 }
 
+.actions-context-popover separator,
 .folder-context-menu separator,
-.item-context-menu separator {
+.item-context-menu separator,
+text > popover.menu separator,
+textview > popover.menu separator {
   background: alpha(@theme_border, 0.2);
   margin: 5px 0;
   min-height: 1px;
@@ -3688,8 +3910,55 @@ colorchooser colorswatch overlay {
   border-radius: 9999px;
 }
 
+.actions-context-popover > contents {
+  padding-bottom: 8px;
+}
+
+.actions-context-popover.folder-menu-body > contents {
+  padding-top: 8px;
+}
+
+.actions-submenu > contents {
+  padding: 4px;
+}
+
+.actions-context-popover modelbutton,
+.actions-context-popover button.model {
+  margin-left: 8px;
+  margin-right: 8px;
+}
+
+.actions-submenu modelbutton,
+.actions-submenu button.model {
+  margin: 0;
+}
+
+.actions-context-popover modelbutton arrow,
+.actions-context-popover button.model arrow {
+  min-width: 10px;
+  min-height: 10px;
+  -gtk-icon-size: 10px;
+}
+
+.actions-submenu scrolledwindow,
+.actions-submenu viewport,
+.actions-submenu stack,
+.actions-submenu box {
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+/* Native menu items use modelbutton on older GTK and button.model on newer GTK. */
+.actions-context-popover modelbutton,
+.actions-context-popover button.model,
 .item-context-option,
-.folder-context-option {
+.folder-context-option,
+text > popover.menu modelbutton,
+textview > popover.menu modelbutton,
+text > popover.menu button.model,
+textview > popover.menu button.model {
   background: transparent;
   border: none;
   border-radius: 5px;
@@ -3703,43 +3972,94 @@ colorchooser colorswatch overlay {
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
+.actions-context-popover modelbutton:hover,
+.actions-context-popover modelbutton:selected,
+.actions-context-popover modelbutton:focus-visible,
+.actions-context-popover button.model:hover,
+.actions-context-popover button.model:selected,
+.actions-context-popover button.model:focus-visible,
 .item-context-option:hover,
 .item-context-option:focus-visible,
 .folder-context-option:hover,
-.folder-context-option:focus-visible {
+.folder-context-option:focus-visible,
+text > popover.menu modelbutton:hover,
+text > popover.menu modelbutton:focus-visible,
+textview > popover.menu modelbutton:hover,
+textview > popover.menu modelbutton:focus-visible,
+text > popover.menu button.model:hover,
+text > popover.menu button.model:focus-visible,
+textview > popover.menu button.model:hover,
+textview > popover.menu button.model:focus-visible {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
 
+.actions-context-popover modelbutton:active,
+.actions-context-popover button.model:active,
 .item-context-option:active,
-.folder-context-option:active {
+.folder-context-option:active,
+text > popover.menu modelbutton:active,
+textview > popover.menu modelbutton:active,
+text > popover.menu button.model:active,
+textview > popover.menu button.model:active {
   background: alpha(@theme_accent, 0.22);
   transform: scale(0.97);
 }
 
+.actions-context-popover modelbutton:disabled,
+.actions-context-popover button.model:disabled,
 .item-context-option:disabled,
-.folder-context-option:disabled {
+.folder-context-option:disabled,
+text > popover.menu modelbutton:disabled,
+textview > popover.menu modelbutton:disabled,
+text > popover.menu button.model:disabled,
+textview > popover.menu button.model:disabled {
   background: transparent;
   color: @theme_dim_text;
   opacity: 0.42;
 }
 
+.actions-context-popover modelbutton image,
+.actions-context-popover button.model image,
 .item-context-icon,
 .folder-context-icon {
   opacity: 0.72;
 }
 
+.actions-context-popover accelerator,
 .item-context-shortcut,
-.folder-context-shortcut {
+.folder-context-shortcut,
+text > popover.menu accelerator,
+textview > popover.menu accelerator {
   color: @theme_dim_text;
   font-size: 0.88em;
 }
 
+.actions-context-popover modelbutton:focus-visible,
+.actions-context-popover button.model:focus-visible,
+text > popover.menu modelbutton:focus-visible,
+textview > popover.menu modelbutton:focus-visible,
+text > popover.menu button.model:focus-visible,
+textview > popover.menu button.model:focus-visible,
+.item-context-option:focus-visible,
+.folder-context-option:focus-visible {
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
+}
+
+.actions-context-popover modelbutton.danger,
+.actions-context-popover button.model.danger,
 .item-context-option.danger,
 .folder-context-option.danger {
   color: @theme_danger;
 }
 
+.actions-context-popover modelbutton.danger:hover,
+.actions-context-popover modelbutton.danger:selected,
+.actions-context-popover modelbutton.danger:focus-visible,
+.actions-context-popover button.model.danger:hover,
+.actions-context-popover button.model.danger:selected,
+.actions-context-popover button.model.danger:focus-visible,
 .item-context-option.danger:hover,
 .item-context-option.danger:focus-visible,
 .folder-context-option.danger:hover,
@@ -3748,6 +4068,8 @@ colorchooser colorswatch overlay {
   color: @theme_danger;
 }
 
+.actions-context-popover modelbutton.danger:active,
+.actions-context-popover button.model.danger:active,
 .item-context-option.danger:active,
 .folder-context-option.danger:active {
   background: alpha(@theme_danger, 0.24);
@@ -3773,13 +4095,18 @@ colorchooser colorswatch overlay {
 }
 
 .file-list row,
-.file-list-mode row {
+.file-list-mode row,
+.preview-archive-list row {
   background: transparent;
   color: @theme_text;
   border-radius: 6px;
+  transition: color 160ms ease-out;
+}
+
+.file-list row,
+.file-list-mode row {
   margin: 1px 8px;
   padding: 0;
-  transition: background 160ms ease-out, color 160ms ease-out;
 }
 
 .file-list row {
@@ -3788,10 +4115,11 @@ colorchooser colorswatch overlay {
 }
 
 .file-row,
-.list-row {
+.list-row,
+.preview-archive-row {
   outline: 1px solid transparent;
   outline-offset: -1px;
-  transition: background 220ms ease-out, color 180ms ease-out, outline-color 220ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
+  transition: color 180ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
 }
 
 .icons-card {
@@ -3799,8 +4127,12 @@ colorchooser colorswatch overlay {
   outline-offset: -1px;
 }
 
-.file-row {
+.file-row,
+.preview-archive-row {
   border-radius: 6px;
+}
+
+.file-row {
   color: @theme_text;
   min-height: 26px;
   padding: 0 4px;
@@ -3832,11 +4164,10 @@ colorchooser colorswatch overlay {
 }
 
 .fly-to-trash {
-  background: alpha(@theme_surface, 0.92);
-  border: 1px solid alpha(@theme_accent, 0.38);
-  border-radius: 999px;
-  box-shadow: 0 4px 12px alpha(@theme_text, 0.18), 0 0 10px alpha(@theme_glow, 0.12);
-  padding: 3px;
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
   transform: scale(1);
   transition: transform 180ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
@@ -3849,17 +4180,114 @@ colorchooser colorswatch overlay {
   padding: 1px;
 }
 
-.fly-to-trash-count {
+.fly-to-trash-release {
+  transform: scale(0.85);
+  transition: transform 160ms cubic-bezier(0.18, 0.9, 0.25, 1.35);
+}
+
+.fly-to-trash-release.fly-launch-left {
+  transform: rotate(-13deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-launch-right {
+  transform: rotate(13deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-launch-straight {
+  transform: rotate(3deg) scale(1.25);
+}
+
+.fly-to-trash-release.fly-insurrection-dispersal {
+  transform: scale(1.35);
+}
+
+@keyframes trash-insurrection-blast {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-shockwave {
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 50%;
+  border: 2px solid @theme_accent;
+  animation: trash-insurrection-blast 220ms cubic-bezier(0.1, 1, 0.2, 1) forwards;
+}
+
+@keyframes trash-insurrection-plume {
+  0% {
+    transform: translate(0, 0) scale(1.2, 0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, -38px) scale(0.6, 2.0);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-beam {
+  min-width: 3px;
+  min-height: 38px;
+  border-radius: 2px;
+  background: linear-gradient(to top, @theme_accent, transparent);
+  animation: trash-insurrection-plume 240ms cubic-bezier(0.15, 1, 0.25, 1) forwards;
+}
+
+@keyframes trash-insurrection-spark-left {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-20px, -28px) scale(0.2);
+    opacity: 0;
+  }
+}
+
+@keyframes trash-insurrection-spark-right {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(20px, -24px) scale(0.2);
+    opacity: 0;
+  }
+}
+
+.trash-resurrect-spark {
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 50%;
   background: @theme_accent;
-  border: 1px solid alpha(@theme_bg, 0.72);
-  border-radius: 999px;
-  color: @theme_bg;
-  font-size: 9px;
-  font-weight: 700;
-  min-height: 14px;
-  min-width: 14px;
-  padding: 0 3px;
-  transform: translate(7px, -7px);
+  animation: trash-insurrection-spark-left 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+}
+
+.trash-resurrect-spark-alt {
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 50%;
+  background: @theme_accent;
+  animation: trash-insurrection-spark-right 220ms cubic-bezier(0.15, 0.8, 0.35, 1) forwards;
+}
+
+@keyframes trash-rebel-shudder {
+  0% { transform: scale(1) rotate(0deg); }
+  18% { transform: scale(0.92) rotate(-8deg); }
+  38% { transform: scale(1.14) rotate(8deg); }
+  58% { transform: scale(0.95) rotate(-5deg); }
+  78% { transform: scale(1.05) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.trash-rebel-shudder {
+  animation: trash-rebel-shudder 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 @keyframes trash-receiving {
@@ -4009,7 +4437,8 @@ colorchooser colorswatch overlay {
 }
 
 .file-list row:selected,
-.file-list-mode row:selected {
+.file-list-mode row:selected,
+.preview-archive-list row:selected {
   background: alpha(@theme_accent, 0.22);
   color: @theme_text;
   outline: none;
@@ -4020,14 +4449,24 @@ colorchooser colorswatch overlay {
   color: @theme_text;
 }
 
-.file-list row:focus-visible {
+/* Archive selection already draws a cursor; suppress GTK's second focus ring. */
+.file-list row:focus-visible,
+.file-list-mode row:focus-visible,
+.preview-archive-list row:focus-visible {
   outline: none;
 }
 
 .keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
-.file-list row:focus-within .file-row.filter-result {
-  outline: 2px solid @theme_text;
-  outline-offset: -2px;
+.file-list row:focus-within .file-row.filter-result,
+.preview-archive-list row:selected .preview-archive-row {
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
+}
+
+/* The archive preview shows its own cursor; the listing keeps only the selection fill. */
+.keyboard-navigation.archive-preview .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
+.keyboard-navigation.archive-preview .file-list row:focus-within .file-row.filter-result {
+  outline: none;
 }
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
@@ -4577,6 +5016,10 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .file-icons > child:focus-visible .icons-card-icon-frame {
+  outline: none;
+}
+
+.keyboard-navigation .file-icons > child:focus-visible .icons-card-icon-frame {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
@@ -4769,9 +5212,10 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   opacity: 0.52;
 }
 
+.file-list-mode row:focus-visible,
 .keyboard-navigation .file-list-mode row:focus-within {
-  outline: 2px solid @theme_text;
-  outline-offset: -2px;
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
 }
 
 .list-row {
@@ -5456,7 +5900,8 @@ two-column presentation. */
   background: shade(@theme_bg, 0.85);
 }
 
-.settings-dialog entry.settings-search {
+.settings-dialog entry.settings-search,
+.settings-action-library entry.settings-search {
   padding-left: calc(1em + 24px);
   padding-right: calc(1em + 22px);
 }
@@ -5537,4 +5982,588 @@ popover.settings-search-popover.background {
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
+}
+
+.context-menu-actions {
+  min-width: 0;
+}
+
+.jobs-indicator {
+  margin: 0;
+}
+
+.jobs-indicator > button,
+.jobs-indicator > button:hover,
+.jobs-indicator > button:active,
+.jobs-indicator > button:checked {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.jobs-indicator-label {
+  color: @theme_accent;
+  font-weight: bold;
+}
+
+.jobs-indicator:hover .jobs-indicator-label {
+  color: @theme_text;
+}
+
+popover.jobs-popover.background {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.jobs-popover > contents {
+  background: @theme_surface;
+  color: @theme_text;
+  border: 1px solid alpha(@theme_border, 0.5);
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 6px 24px alpha(@theme_bg, 0.4);
+}
+
+.jobs-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid alpha(@theme_border, 0.24);
+}
+
+.jobs-title,
+.job-name {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.jobs-running-summary,
+.job-status {
+  color: @theme_accent;
+  font-size: 0.85em;
+}
+
+.jobs-finished-summary {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.jobs-popover .jobs-list {
+  min-width: 0;
+}
+
+.job-row {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid alpha(@theme_border, 0.2);
+  border-radius: 0;
+  margin: 0;
+  padding: 14px 16px;
+}
+
+.job-row:last-child {
+  border-bottom: none;
+}
+
+.job-row.job-active {
+  background: alpha(@theme_highlight, 0.18);
+}
+
+.job-icon-bezel {
+  background: alpha(@theme_accent, 0.08);
+  border: 1px solid alpha(@theme_accent, 0.3);
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.job-meta {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.job-progress {
+  min-height: 4px;
+  margin-top: 4px;
+}
+
+.job-progress trough {
+  background: alpha(@theme_bg, 0.65);
+  border: none;
+  border-radius: 4px;
+  min-height: 4px;
+}
+
+.job-progress progress {
+  background: @theme_accent;
+  border: none;
+  border-radius: 4px;
+  min-height: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.job-detail {
+  margin-top: 6px;
+}
+
+.job-log {
+  background: alpha(@theme_bg, 0.55);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 4px;
+  color: @theme_text;
+  font-family: monospace;
+  font-size: 0.85em;
+  padding: 8px;
+}
+
+.jobs-empty {
+  color: @theme_dim_text;
+  padding: 16px;
+}
+
+.job-action {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_accent;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0;
+}
+
+.job-action:hover {
+  background: @theme_highlight;
+  color: @theme_text;
+}
+
+.job-action:active {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.job-action:disabled {
+  color: @theme_dim_text;
+  opacity: 0.45;
+}
+
+.job-action:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.job-action.jobs-clear {
+  color: @theme_dim_text;
+  padding: 0 4px;
+  font-size: 0.85em;
+}
+
+.job-action.jobs-clear label {
+  transform: translateY(1px);
+}
+
+.settings-actions-page .settings-action-row {
+  min-height: 64px;
+}
+
+.settings-action-button,
+.settings-action-library-button > button {
+  background: alpha(@theme_highlight, 0.35);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 26px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.settings-action-button.settings-action-icon-button {
+  min-width: 26px;
+  padding: 0;
+}
+
+.settings-action-button:hover,
+.settings-action-library-button > button:hover {
+  background: @theme_highlight;
+  border-color: @theme_accent;
+}
+
+.settings-action-button:active,
+.settings-action-library-button > button:active,
+.settings-action-library-button > button:checked {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.settings-action-button:focus-visible,
+.settings-action-library-button > button:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-action-button.danger {
+  color: @theme_danger;
+  border-color: alpha(@theme_danger, 0.4);
+}
+
+.settings-action-button.danger:hover {
+  background: alpha(@theme_danger, 0.14);
+  border-color: @theme_danger;
+}
+
+.settings-action-problem {
+  color: @theme_danger;
+}
+
+.settings-actions-empty {
+  padding: 14px 18px;
+}
+
+popover.settings-action-library {
+  background: @theme_surface;
+}
+
+popover.settings-action-library > contents {
+  min-width: 440px;
+  background: @theme_surface;
+  color: @theme_text;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  padding: 0;
+  box-shadow: none;
+}
+
+.action-library-search {
+  padding: 6px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+.action-library-search entry {
+  background: transparent;
+  border-color: transparent;
+}
+
+.action-library-filters {
+  padding: 10px 12px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+.action-library-category {
+  background: transparent;
+  color: @theme_dim_text;
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 14px;
+  box-shadow: none;
+  min-height: 22px;
+  padding: 0 9px;
+}
+
+.action-library-category:hover {
+  background: @theme_highlight;
+  color: @theme_text;
+}
+
+.action-library-category:checked,
+.action-library-category:active {
+  background: alpha(@theme_accent, 0.2);
+  color: @theme_text;
+  border-color: @theme_accent;
+}
+
+.action-library-list {
+  padding: 6px;
+}
+
+.action-library-template {
+  padding: 10px 8px;
+}
+
+.action-library-template:active {
+  transform: none;
+}
+
+.action-library-title {
+  color: @theme_text;
+}
+
+.settings-action-library .action-library-language {
+  color: @theme_dim_text;
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 4px;
+  font-size: 0.75em;
+  padding: 0 5px;
+}
+
+.action-library-requirements {
+  font-size: 0.8em;
+}
+
+.action-library-footer {
+  padding: 10px 12px;
+  border-top: 1px solid alpha(@theme_border, 0.35);
+}
+
+.settings-action-dialog {
+  min-width: 760px;
+  box-shadow: 0 12px 28px alpha(@theme_bg, 0.4);
+}
+
+.settings-action-dialog .action-dialog-header {
+  border-bottom: none;
+  padding: 18px 22px 8px;
+}
+
+.settings-action-dialog .action-dialog-body {
+  padding: 0;
+}
+
+.settings-action-dialog .action-dialog-actions {
+  background: alpha(@theme_highlight, 0.12);
+  padding: 14px 22px;
+}
+
+.settings-action-dialog .action-dialog-cancel {
+  border-color: transparent;
+}
+
+.settings-action-dialog .action-dialog-confirm {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.settings-action-dialog .action-dialog-confirm:hover {
+  background: mix(@theme_accent, @theme_text, 0.12);
+}
+
+.settings-action-dialog .action-dialog-confirm:active {
+  background: mix(@theme_accent, @theme_bg, 0.15);
+}
+
+.settings-action-tabs,
+.settings-action-tabs > stack,
+.settings-action-tabs > header {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.settings-action-tabs > header {
+  padding: 0 22px;
+  border-bottom: 1px solid alpha(@theme_border, 0.35);
+}
+
+/* GTK's negative tab-strip margins otherwise put the indicator below the divider. */
+.settings-action-tabs > header > tabs {
+  margin: 0;
+}
+
+.settings-action-tabs > header > tabs > tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: @theme_dim_text;
+  margin: 0 20px 0 0;
+  min-height: 36px;
+  padding: 0;
+  outline-offset: -4px;
+}
+
+.settings-action-tabs > header > tabs > tab label {
+  font-size: 0.85em;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.settings-action-tabs > header > tabs > tab:hover {
+  color: @theme_text;
+  background: alpha(@theme_highlight, 0.25);
+}
+
+.settings-action-tabs > header > tabs > tab:checked {
+  color: @theme_text;
+  border-bottom-color: @theme_accent;
+}
+
+.settings-action-tabs > header > tabs > tab:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+}
+
+.settings-action-page {
+  padding: 22px;
+}
+
+.settings-action-dialog .settings-option-title {
+  font-weight: 400;
+}
+
+.settings-action-dialog .settings-option-description {
+  font-size: 0.88em;
+}
+
+.settings-action-dialog .action-runtime-status {
+  color: @theme_dim_text;
+}
+
+.settings-action-dialog .action-runtime-status.available > label {
+  color: @theme_accent;
+}
+
+.settings-action-dialog .action-runtime-status.unavailable > label {
+  color: @theme_danger;
+}
+
+.settings-action-dialog .settings-action-option {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid alpha(@theme_border, 0.3);
+  border-radius: 0;
+  min-height: 36px;
+  padding: 8px 0;
+}
+
+.settings-action-dialog .settings-action-option:first-child {
+  padding-top: 0;
+}
+
+.settings-action-dialog .settings-action-option:last-child {
+  border-bottom: none;
+}
+
+.settings-action-dialog .settings-action-enabled {
+  border-top: 1px solid alpha(@theme_border, 0.3);
+}
+
+.settings-action-dialog .settings-action-option:disabled {
+  opacity: 0.4;
+}
+
+.settings-action-dialog .segmented-control {
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.settings-action-dialog .segmented-control-option {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  min-height: 26px;
+  padding: 2px 10px;
+  color: @theme_dim_text;
+}
+
+.settings-action-dialog .segmented-control-option.not-first:checked {
+  border-left: none;
+}
+
+.settings-action-dialog .segmented-control-option:hover {
+  background: alpha(@theme_highlight, 0.65);
+  color: @theme_text;
+}
+
+.settings-action-dialog .segmented-control-option:checked {
+  background: alpha(@theme_accent, 0.22);
+  color: @theme_text;
+}
+
+.settings-action-dialog .segmented-control-option:active {
+  background: alpha(@theme_accent, 0.3);
+}
+
+.settings-action-icon-popover > contents {
+  padding: 8px;
+}
+
+.settings-action-icon-choice,
+.settings-action-more-icons > button {
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
+.settings-action-icon-choice:hover,
+.settings-action-more-icons > button:hover {
+  background: @theme_highlight;
+  border-color: alpha(@theme_accent, 0.6);
+}
+
+.settings-action-icon-choice:checked,
+.settings-action-more-icons.selected > button {
+  background: alpha(@theme_accent, 0.22);
+  border-color: alpha(@theme_accent, 0.7);
+}
+
+.settings-action-icon-choice:active,
+.settings-action-more-icons > button:active {
+  background: alpha(@theme_accent, 0.3);
+}
+
+.settings-action-icon-choice:focus-visible,
+.settings-action-more-icons > button:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.settings-action-script {
+  background: alpha(@theme_bg, 0.3);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+}
+
+.settings-action-script:focus-within {
+  border-color: @theme_accent;
+}
+
+.settings-action-script textview,
+.settings-action-script textview text {
+  background: transparent;
+  color: @theme_text;
+  caret-color: @theme_accent;
+}
+
+.settings-action-script textview border {
+  background: transparent;
+  color: @theme_dim_text;
+  border-right: 1px solid alpha(@theme_border, 0.3);
+}
+
+.settings-action-script textview text selection {
+  background: alpha(@theme_accent, 0.3);
+  color: @theme_text;
+}
+
+.settings-action-script scrollbar,
+.settings-action-script scrollbar trough {
+  background: transparent;
+}
+
+.settings-action-script scrollbar slider {
+  min-width: 6px;
+  min-height: 6px;
+  background: alpha(@theme_dim_text, 0.5);
+  border: none;
+  border-radius: 6px;
+}
+
+.settings-action-script scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.settings-action-script scrollbar slider:active {
+  background: @theme_accent;
+}
+
+.action-dialog.modal-constrained,
+.search-dialog.modal-constrained,
+.settings-dialog.modal-constrained {
+  min-width: 0;
 }

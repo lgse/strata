@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::ui::{blur::BlurBin, theme::ThemeManager};
+use crate::ui::{blur::BlurBin, preferences::PreferenceManager};
 
 #[test]
 fn ranks_exact_labels_aliases_and_small_typing_errors() {
     for (query, page, id) in [
         ("Folder peeking", "general", "peeking"),
+        ("Autoplay media previews", "general", "preview-autoplay"),
+        ("paused", "general", "preview-autoplay"),
         ("Items shown in sidebar", "general", "sidebar-places"),
         ("sidebar downloads", "general", "sidebar-places"),
         ("show network", "general", "sidebar-places"),
@@ -72,7 +74,7 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
         "ui::settings::search::tests::global_search_navigates_filters_lazy_pages_and_restores_without_editing_preferences",
         || {
             crate::ui::prepare_portal_ui();
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             let original = manager.folder_peeking();
             let button = gtk::Button::with_label("Settings");
             let root = BlurBin::new(&button);
@@ -98,6 +100,10 @@ fn global_search_navigates_filters_lazy_pages_and_restores_without_editing_prefe
             assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
             assert!(item(layer.upcast_ref(), "peeking").is_visible());
             assert!(!item(layer.upcast_ref(), "previews").is_visible());
+            entry.set_text("autoplay");
+            assert_eq!(stack.visible_child_name().as_deref(), Some("general"));
+            assert!(item(layer.upcast_ref(), "preview-autoplay").is_visible());
+            assert!(!item(layer.upcast_ref(), "peeking").is_visible());
             entry.set_text("tezt size");
             assert_eq!(stack.visible_child_name().as_deref(), Some("theme"));
             assert!(item(layer.upcast_ref(), "text").is_visible());
@@ -130,7 +136,7 @@ fn late_page_filter_uses_the_current_query_and_recovers_its_sections() {
             ] {
                 let state = Rc::new(RefCell::new(Some(find_matches("nightly"))));
                 let (page, _) = super::super::updates_page(
-                    ThemeManager::shared(),
+                    PreferenceManager::shared(),
                     Rc::new(|_| {}),
                     super::super::install_guard(),
                     method,

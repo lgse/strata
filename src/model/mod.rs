@@ -8,6 +8,15 @@ use std::{
 
 use gio::prelude::*;
 
+pub mod action;
+
+pub use action::{
+    ACTION_SCHEMA_VERSION, ActionConditions, ActionDefinition, ActionError, ActionInput,
+    ActionRuntime, ArgumentToken, ErrorPolicy, ExecutionMode, FOLDER_CONTENT_TYPE, InputKind,
+    InterpreterFamily, MAX_ACTION_ID_CHARS, MAX_ACTION_NAME_CHARS, MenuPlacement, RunSpec,
+    WorkingDirectory, expand_arguments, interpreter_family, suggest_id, valid_action_id,
+};
+
 /// A browsable destination. Native paths remain byte-safe and URI locations remain explicit.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum LocationKind {
@@ -24,6 +33,10 @@ pub(crate) fn uri_contains_credentials(uri: &gio::glib::Uri) -> bool {
     uri.password().is_some()
         || uri.auth_params().is_some()
         || uri.user().is_some_and(|user| user.contains([':', ';']))
+}
+
+fn uri_scheme_eq(uri: &str, scheme: &str) -> bool {
+    gio::glib::Uri::parse_scheme(uri).is_some_and(|parsed| parsed.eq_ignore_ascii_case(scheme))
 }
 
 impl Location {
@@ -56,13 +69,17 @@ impl Location {
     /// Directory operations must reject virtual children as well as the root.
     pub fn is_recent_location(&self) -> bool {
         self.uri_value()
-            .is_some_and(|uri| gio::File::for_uri(uri).has_uri_scheme("recent"))
+            .is_some_and(|uri| uri_scheme_eq(uri, "recent"))
     }
 
     pub fn is_recent_root(&self) -> bool {
+        // Avoid GFile here: GVfs backends can SIGSEGV when tests call File APIs concurrently.
         self.uri_value().is_some_and(|uri| {
-            let file = gio::File::for_uri(uri);
-            file.has_uri_scheme("recent") && file.parent().is_none()
+            if !uri_scheme_eq(uri, "recent") {
+                return false;
+            }
+            uri.split_once(':')
+                .is_some_and(|(_, rest)| rest.trim_start_matches('/').is_empty())
         })
     }
 

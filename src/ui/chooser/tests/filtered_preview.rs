@@ -58,7 +58,7 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
             std::fs::write(root.path().join("folder/nested.txt"), "Nested preview")
                 .expect("nested file");
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-                ThemeManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_browser_mode(mode);
                 for save in [false, true] {
                     let request = ChooserRequest {
                         token: format!("preview-{mode:?}-{save}"),
@@ -107,21 +107,29 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                     wait_until(|| {
                         find(state.window.upcast_ref(), &|widget| {
                             widget.is_mapped()
-                                && widget
+                                && (widget
                                     .downcast_ref::<gtk::Label>()
                                     .is_some_and(|label| label.text() == "nested.txt")
+                                    || widget.downcast_ref::<gtk::Inscription>().is_some_and(
+                                        |label| label.text().as_deref() == Some("nested.txt"),
+                                    ))
                         })
                         .is_some()
                     });
                     field.grab_focus_without_selecting();
                     let results = find(state.window.upcast_ref(), &|widget| {
                         widget.is_mapped()
-                            && widget.has_css_class("file-list")
-                            && (widget.is::<gtk::ListView>() || widget.is::<gtk::ListBox>())
+                            && (widget.has_css_class("file-list")
+                                || widget.has_css_class("file-icons"))
+                            && (widget.is::<gtk::ListView>()
+                                || widget.is::<gtk::GridView>()
+                                || widget.is::<gtk::ListBox>())
                     })
                     .expect("search listing");
                     if let Some(list) = results.downcast_ref::<gtk::ListView>() {
                         list.model().expect("selection model").unselect_all();
+                    } else if let Some(grid) = results.downcast_ref::<gtk::GridView>() {
+                        grid.model().expect("selection model").unselect_all();
                     } else {
                         results
                             .downcast_ref::<gtk::ListBox>()
@@ -256,9 +264,14 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                             wait_until(|| {
                                 find(state.window.upcast_ref(), &|widget| {
                                     widget.is_mapped()
-                                        && widget
+                                        && (widget
                                             .downcast_ref::<gtk::Label>()
                                             .is_some_and(|label| label.text() == "matched")
+                                            || widget
+                                                .downcast_ref::<gtk::Inscription>()
+                                                .is_some_and(|label| {
+                                                    label.text().as_deref() == Some("matched")
+                                                }))
                                 })
                                 .is_some()
                             });
@@ -314,6 +327,109 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                     }
                     state.cancel();
                 }
+            }
+        },
+    );
+}
+
+#[test]
+fn typing_a_character_opens_the_filter_with_that_query() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::filtered_preview::typing_a_character_opens_the_filter_with_that_query",
+        || {
+            crate::ui::prepare_portal_ui();
+            let root = tempfile::tempdir().expect("fixture");
+            std::fs::write(root.path().join("notes.txt"), "text").expect("file");
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                PreferenceManager::shared().set_type_to_search(true);
+                let state = build_chooser(
+                    ChooserRequest {
+                        token: format!("type-to-search-{mode:?}"),
+                        title: "Chooser".into(),
+                        accept_label: "Open".into(),
+                        modal: false,
+                        parent: None,
+                        parent_size_hint: None,
+                        initial_directory: root.path().into(),
+                        kind: ChooserKind::Open {
+                            directory: false,
+                            multiple: false,
+                        },
+                        filters: Vec::new(),
+                        current_filter: None,
+                        choices: Vec::new(),
+                    },
+                    Arc::new(AtomicBool::new(false)),
+                    |_| {},
+                )
+                .expect("chooser");
+                // Finish deferred startup focus before simulating user input.
+                let initialized = Rc::new(Cell::new(false));
+                let notify = initialized.clone();
+                glib::idle_add_local_once(move || notify.set(true));
+                wait_until(|| initialized.get());
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                browser.select(0, 0);
+                browser.focus_active();
+                wait_until(|| state.view.item_view_has_focus());
+                let window_keys = keys(&state.window);
+                assert!(
+                    press(
+                        &window_keys,
+                        gtk::gdk::Key::n,
+                        gtk::gdk::ModifierType::empty()
+                    ),
+                    "{mode:?}: typing 'n' opens the filter"
+                );
+                wait_until(|| state.view.filter_has_focus());
+                let entry = gtk::prelude::RootExt::focus(&state.window)
+                    .and_then(|focused| focused.ancestor(gtk::Entry::static_type()))
+                    .and_downcast::<gtk::Entry>()
+                    .expect("focused filter entry");
+                assert_eq!(entry.text(), "n", "{mode:?}: the key seeds the query");
+                if let Some(output) = std::env::var_os("STRATA_FILTER_PREVIEW_SCREENSHOTS") {
+                    super::sizing::capture(
+                        &state.window,
+                        Path::new(&output),
+                        &format!("type-to-search-{mode:?}"),
+                    );
+                }
+                assert!(press(
+                    &window_keys,
+                    gtk::gdk::Key::Escape,
+                    gtk::gdk::ModifierType::empty()
+                ));
+                wait_until(|| state.view.item_view_has_focus());
+                assert!(
+                    press(
+                        &window_keys,
+                        gtk::gdk::Key::slash,
+                        gtk::gdk::ModifierType::empty()
+                    ),
+                    "{mode:?}: '/' opens the filter"
+                );
+                wait_until(|| state.view.filter_has_focus());
+                assert!(press(
+                    &window_keys,
+                    gtk::gdk::Key::Escape,
+                    gtk::gdk::ModifierType::empty()
+                ));
+                wait_until(|| state.view.item_view_has_focus());
+                PreferenceManager::shared().set_type_to_search(false);
+                assert!(
+                    !press(
+                        &window_keys,
+                        gtk::gdk::Key::n,
+                        gtk::gdk::ModifierType::empty()
+                    ) && !state.view.filter_has_focus(),
+                    "{mode:?}: the preference disables typing-to-search"
+                );
             }
         },
     );

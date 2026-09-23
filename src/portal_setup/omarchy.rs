@@ -126,7 +126,8 @@ pub(crate) fn omarchy_is_present() -> bool {
 }
 
 fn detected_major() -> Option<u8> {
-    if let Ok(output) = Command::new("omarchy").arg("version").output()
+    if let Ok(mut command) = crate::trusted_command::command("omarchy")
+        && let Ok(output) = command.arg("version").output()
         && output.status.success()
         && let Some(major) = major_version(&String::from_utf8_lossy(&output.stdout))
     {
@@ -251,7 +252,8 @@ fn reload() -> Result<(), String> {
         return Ok(());
     }
     for argument in ["reload", "configerrors"] {
-        let output = Command::new("hyprctl")
+        let output = crate::trusted_command::command("hyprctl")
+            .map_err(|error| format!("Could not {argument} Hyprland: {error}"))?
             .arg(argument)
             .output()
             .map_err(|error| format!("Could not {argument} Hyprland: {error}"))?;

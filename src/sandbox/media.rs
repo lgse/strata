@@ -146,8 +146,11 @@ fn render(
     let current = std::env::current_exe().map_err(|error| error.to_string())?;
     let running = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
     let executable = resolve_renderer_executable(&current, &running, output.path())?;
+    let bwrap = crate::trusted_command::resolve("bwrap")
+        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
     let devices = gpu_devices(Path::new("/dev"), source.backend);
     let mut command = sandbox_command(
+        &bwrap,
         &executable,
         &input,
         output.path(),

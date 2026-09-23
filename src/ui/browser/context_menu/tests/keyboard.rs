@@ -15,14 +15,21 @@ fn menu(window: &gtk::Window) -> gtk::Popover {
         .find(|popover| popover.is_mapped())
         .expect("mapped context menu");
     wait_until(|| {
-        descendants(popup.upcast_ref())
-            .iter()
-            .any(|widget| widget.is::<gtk::Button>() && widget.is_mapped() && widget.width() > 0)
+        descendants(popup.upcast_ref()).iter().any(|widget| {
+            (widget.is::<gtk::Button>()
+                || widget.accessible_role() == gtk::AccessibleRole::MenuItem)
+                && widget.is_mapped()
+                && widget.width() > 0
+        })
     });
     popup
 }
 
-fn press(popover: &gtk::Popover, key: Key) {
+pub(super) fn press(popover: &gtk::Popover, key: Key) {
+    if popover.is::<gtk::PopoverMenu>() && key == Key::Escape {
+        popover.popdown();
+        return;
+    }
     let controllers = popover.observe_controllers();
     let keys = (0..controllers.n_items())
         .filter_map(|index| {
@@ -135,14 +142,14 @@ fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
                             assert!(label(popup.upcast_ref(), "2 items selected").is_some());
                         }
                         press(&popup, Key::Escape);
-                        wait_until(|| popup.parent().is_none());
+                        wait_until(|| !popup.is_mapped());
                         assert_eq!(selected_locations(), before);
                         assert_eq!(native_selection_count(&view), 2);
                         assert_eq!(gtk::prelude::RootExt::focus(&window), origin);
 
                         let popup = open_menu(&view, Some("notes.txt"));
                         press(&popup, Key::Escape);
-                        wait_until(|| popup.parent().is_none());
+                        wait_until(|| !popup.is_mapped());
                         assert_eq!(selected_locations(), before);
                         assert_eq!(native_selection_count(&view), 2);
                         assert_eq!(view.browser().focused_item().expect("cursor").1, notes);
@@ -158,8 +165,11 @@ fn context_menus_preserve_filtered_grouped_and_chooser_selections() {
                         let popup = menu(&window);
                         assert!(label(popup.upcast_ref(), "New Folder").is_some());
                         press(&popup, Key::Escape);
-                        wait_until(|| popup.parent().is_none());
-                        assert!(view.browser().selected_entries().is_empty());
+                        wait_until(|| !popup.is_mapped());
+                        assert!(
+                            view.browser().selected_entries().is_empty(),
+                            "{mode:?} chooser={chooser} grouped={grouped}"
+                        );
                         assert_eq!(native_selection_count(&view), 0);
                         view.browser().clear_observer();
                         window.destroy();
@@ -193,7 +203,7 @@ fn keyboard_trash_menu_targets_the_selection_in_every_view() {
                 assert!(label(popup.upcast_ref(), "Restore").is_some(), "{mode:?}");
                 assert!(label(popup.upcast_ref(), "notes.txt").is_some());
                 press(&popup, Key::Escape);
-                wait_until(|| popup.parent().is_none());
+                wait_until(|| !popup.is_mapped());
                 assert_eq!(
                     view.browser().selected_entries()[0].display_name,
                     "notes.txt"

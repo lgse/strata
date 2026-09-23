@@ -179,9 +179,13 @@ fn completing_rename_recovers_the_panes_fallback_keyboard_focus() {
                 wait_until(|| {
                     gtk::prelude::RootExt::focus(window).is_some_and(|focus| {
                         focus == column.list || focus.is_ancestor(&column.list)
-                    })
+                    }) && view
+                        .browser()
+                        .selected_entries()
+                        .iter()
+                        .map(|entry| entry.display_name.as_str())
+                        .eq(["renamed"])
                 });
-                assert_eq!(view.browser().selected_entries()[0].display_name, "renamed");
             });
         },
     );

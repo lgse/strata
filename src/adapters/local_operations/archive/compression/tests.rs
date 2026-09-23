@@ -8,7 +8,7 @@ use super::super::fixtures::{
 };
 use super::{ArchiveError, inspect_archive_sources, process_umask, write_staged_archive};
 use crate::{
-    services::{ArchiveFormat, TransferConflict},
+    services::{ArchiveFormat, TransferConflict, TrashedOriginal},
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
 use gtk::glib;
@@ -37,6 +37,7 @@ fn compression_staging_stays_private_while_encoding() -> Result<(), Box<dyn Erro
     let archive = destination.join("existing.zip");
     fs::write(&archive, b"original")?;
     fs::set_permissions(&archive, fs::Permissions::from_mode(0o640))?;
+    let original = TrashedOriginal::from_metadata(&fs::symlink_metadata(&archive)?);
     let started = Arc::new(AtomicBool::new(false));
     let release = Arc::new(AtomicBool::new(false));
     let worker_started = started.clone();
@@ -69,7 +70,10 @@ fn compression_staging_stays_private_while_encoding() -> Result<(), Box<dyn Erro
     assert_eq!(compression_stage_mode(&destination)?, 0o600);
 
     release.store(true, Ordering::Release);
-    assert_eq!(context.block_on(task)?, Ok("existing.zip".to_owned()));
+    assert_eq!(
+        context.block_on(task)?,
+        Ok(("existing.zip".to_owned(), Some(original)))
+    );
     assert_eq!(fs::read(&archive)?, b"replacement");
     assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
     assert!(compression_stages(&destination)?.is_empty());
@@ -94,7 +98,7 @@ fn compression_new_archive_staging_stays_private_until_publish() -> Result<(), B
         write_staged_archive(
             &worker_destination,
             &worker_archive,
-            TransferConflict::FailIfExists,
+            TransferConflict::ReplaceExisting,
             &never_cancelled(),
             move |mut file| {
                 file.write_all(b"created")
@@ -116,13 +120,50 @@ fn compression_new_archive_staging_stays_private_until_publish() -> Result<(), B
     assert_eq!(compression_stage_mode(&destination)?, 0o600);
 
     release.store(true, Ordering::Release);
-    assert_eq!(context.block_on(task)?, Ok("created.zip".to_owned()));
+    assert_eq!(
+        context.block_on(task)?,
+        Ok(("created.zip".to_owned(), None))
+    );
     assert_eq!(fs::read(&archive)?, b"created");
     assert_eq!(
         fs::metadata(&archive)?.permissions().mode() & 0o777,
         0o666 & !process_umask()
     );
     assert!(compression_stages(&destination)?.is_empty());
+    Ok(())
+}
+
+#[test]
+fn compression_replacement_preserves_directory_destinations() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for populated in [false, true] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join("existing.zip");
+        fs::create_dir(&archive)?;
+        if populated {
+            fs::write(archive.join("contents"), b"original")?;
+        }
+        let result = glib::MainContext::default().block_on(write_staged_archive(
+            root.path(),
+            &archive,
+            TransferConflict::ReplaceExisting,
+            &never_cancelled(),
+            |mut file| {
+                file.write_all(b"replacement")
+                    .map_err(|error| error.to_string())?;
+                Ok(())
+            },
+        ));
+
+        assert!(matches!(result, Err(ArchiveError::Failed(_))));
+        assert!(archive.is_dir());
+        if populated {
+            assert_eq!(fs::read(archive.join("contents"))?, b"original");
+        }
+        assert!(compression_stages(root.path())?.is_empty());
+    }
     Ok(())
 }
 
@@ -145,7 +186,7 @@ fn keep_both_retries_publication_collisions_without_encoding_again() -> Result<(
         let worker_encoded = encoded.clone();
         let late_archive = archive.clone();
         let late_first = first.clone();
-        let published = glib::MainContext::default().block_on(write_staged_archive(
+        let (published, original) = glib::MainContext::default().block_on(write_staged_archive(
             &destination,
             &archive,
             TransferConflict::KeepBoth,
@@ -160,6 +201,7 @@ fn keep_both_retries_publication_collisions_without_encoding_again() -> Result<(
             },
         ))?;
         assert_eq!(published, format!("archive.part (4).{extension}"));
+        assert!(original.is_none());
         assert_eq!(encoded.load(Ordering::Relaxed), 1);
         assert_eq!(fs::read(destination.join(published))?, b"new archive");
         assert_eq!(fs::read(&archive)?, b"late original");

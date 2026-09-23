@@ -67,7 +67,7 @@ fn present_filtered_view(
     tempfile::TempDir,
     Rc<crate::app::Browser>,
 ) {
-    crate::ui::theme::ThemeManager::seed_saved_preferences_for_test();
+    crate::ui::preferences::PreferenceManager::seed_saved_preferences_for_test();
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("needle.txt"), b"needle").expect("needle");
     std::fs::write(fixture.path().join("other.txt"), b"other").expect("other");

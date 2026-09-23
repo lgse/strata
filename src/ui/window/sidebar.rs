@@ -9,7 +9,7 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{
     model::Location,
-    ui::{browser::BrowserView, theme::ThemeManager},
+    ui::{browser::BrowserView, preferences::PreferenceManager},
 };
 
 use super::{
@@ -20,7 +20,7 @@ use super::{
 
 pub(in crate::ui) fn build_sidebar(
     view: BrowserView,
-    preferences: Rc<ThemeManager>,
+    preferences: Rc<PreferenceManager>,
     local_only: bool,
 ) -> SidebarView {
     let shell = SidebarShell::new();
@@ -32,6 +32,14 @@ pub(in crate::ui) fn build_sidebar(
     // Device discovery remains deferred to the window's first-paint callback.
     state.append_static_places();
     state.sync_active_place();
+    let release_watch = {
+        let weak = Rc::downgrade(&state);
+        super::device_release::watch_sidebars(move || {
+            if let Some(state) = weak.upgrade() {
+                state.rebuild();
+            }
+        })
+    };
     SidebarView {
         widget: shell.widget.upcast(),
         state,
@@ -41,6 +49,7 @@ pub(in crate::ui) fn build_sidebar(
         handlers: RefCell::new(handlers),
         mount_handler: RefCell::new(Some(mount_handler)),
         recent_setting_handler: RefCell::new(recent_setting_handler),
+        release_watch,
     }
 }
 
@@ -129,19 +138,19 @@ impl SidebarState {
     fn new(
         widget: gtk::Box,
         view: BrowserView,
-        theme_manager: Rc<ThemeManager>,
+        preference_manager: Rc<PreferenceManager>,
         local_only: bool,
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
-        let place_order = resolve_place_order(&theme_manager.sidebar_order());
-        let places_visibility = theme_manager.sidebar_places_visibility();
+        let place_order = resolve_place_order(&preference_manager.sidebar_order());
+        let places_visibility = preference_manager.sidebar_places_visibility();
         Rc::new(Self {
             widget,
             browser: view.browser(),
             view,
             volume_monitor,
             mount_monitor: gio_unix::MountMonitor::get(),
-            theme_manager,
+            preference_manager,
             place_order: RefCell::new(place_order),
             places_visibility: RefCell::new(places_visibility),
             pinned_places: Rc::new(RefCell::new(load_pinned_places().unwrap_or_default())),
@@ -161,9 +170,9 @@ impl SidebarState {
 
     fn bind_order(self: &Rc<Self>) {
         let weak = Rc::downgrade(self);
-        self.theme_manager.bind_preference(
+        self.preference_manager.bind_preference(
             &self.widget,
-            ThemeManager::sidebar_order,
+            PreferenceManager::sidebar_order,
             move |_, order| {
                 if let Some(state) = weak.upgrade() {
                     let order = resolve_place_order(&order);
@@ -175,9 +184,9 @@ impl SidebarState {
             },
         );
         let weak = Rc::downgrade(self);
-        self.theme_manager.bind_preference(
+        self.preference_manager.bind_preference(
             &self.widget,
-            ThemeManager::sidebar_places_visibility,
+            PreferenceManager::sidebar_places_visibility,
             move |_, visibility| {
                 if let Some(state) = weak.upgrade()
                     && *state.places_visibility.borrow() != visibility

@@ -80,22 +80,22 @@ fn trash_mutating_operations_refresh_the_context_menu() {
 }
 
 #[test]
-fn the_trash_probe_reports_emptiness_from_the_first_entry_alone() {
+fn the_trash_probe_stops_after_finding_an_entry() {
     let fixture = tempfile::tempdir().expect("fixture");
     let root = gtk::gio::File::for_path(fixture.path());
 
     let empty = glib::MainContext::new()
-        .block_on(trash_has_entries(&root))
+        .block_on(trash_has_items(&root))
         .expect("an empty directory should enumerate");
     assert!(!empty);
 
     std::fs::write(fixture.path().join("note.txt"), b"trashed").expect("fixture entry");
-    let non_empty = glib::MainContext::new()
-        .block_on(trash_has_entries(&root))
+    let populated = glib::MainContext::new()
+        .block_on(trash_has_items(&root))
         .expect("a populated directory should enumerate");
-    assert!(non_empty);
+    assert!(populated);
 
-    let missing = glib::MainContext::new().block_on(trash_has_entries(&gtk::gio::File::for_path(
+    let missing = glib::MainContext::new().block_on(trash_has_items(&gtk::gio::File::for_path(
         fixture.path().join("absent"),
     )));
     assert!(missing.is_err());

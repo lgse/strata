@@ -2,6 +2,36 @@
 
 use gtk::prelude::*;
 
+pub(super) fn stepper(labels: [&str; 3]) -> (gtk::Box, [gtk::Button; 3]) {
+    let control = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    control.add_css_class("appearance-text-stepper");
+    control.set_hexpand(true);
+    control.set_halign(gtk::Align::End);
+    let buttons = std::array::from_fn(|index| {
+        let button = gtk::Button::new();
+        if index == 1 {
+            button.add_css_class("appearance-text-value");
+            button.set_hexpand(true);
+        } else {
+            let icon = if index == 0 {
+                crate::assets::icons::MINUS
+            } else {
+                crate::assets::icons::PLUS
+            };
+            let image = crate::assets::primary_icon(icon, 16);
+            image.set_halign(gtk::Align::Center);
+            image.set_valign(gtk::Align::Center);
+            button.set_child(Some(&image));
+            button.add_css_class("appearance-text-step");
+            super::accessibility::set_label(&button, labels[index]);
+        }
+        button.set_tooltip_text(Some(labels[index]));
+        control.append(&button);
+        button
+    });
+    (control, buttons)
+}
+
 pub(super) fn pane_header_action(widget: &impl IsA<gtk::Widget>) {
     widget.add_css_class("column-header-action");
     widget.set_valign(gtk::Align::Center);
@@ -133,6 +163,18 @@ pub(super) struct ModalLayout {
     pub icon: gtk::Image,
 }
 
+pub(super) fn focus_button(button: &gtk::Button) {
+    let weak = button.downgrade();
+    glib::idle_add_local_once(move || {
+        if let Some(button) = weak.upgrade() {
+            button.grab_focus();
+            if let Some(window) = button.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+        }
+    });
+}
+
 impl ModalLayout {
     pub fn set_loading(&self, loading: bool, tooltip: Option<&str>) {
         if loading {
@@ -202,8 +244,8 @@ pub(super) fn modal_layout_with_tone(
     if tone == ModalTone::Danger {
         symbol.add_css_class("danger");
     }
-    symbol.set_size_request(40, 40);
     symbol.set_hexpand(false);
+    symbol.set_valign(gtk::Align::Fill);
     let icon = match tone {
         ModalTone::Accent => crate::assets::primary_icon(icon, 21),
         ModalTone::Danger => crate::assets::danger_icon(icon, 21),

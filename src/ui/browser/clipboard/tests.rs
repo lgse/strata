@@ -414,13 +414,16 @@ fn cut_matches_gio_equivalent_representations() {
 }
 
 fn result_row(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
-    if let Some(label) = widget.downcast_ref::<gtk::Label>()
-        && label.text() == name
-        && label.is_mapped()
-    {
-        let mut parent = label.parent();
+    let matches = widget
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.text() == name)
+        || widget
+            .downcast_ref::<gtk::Inscription>()
+            .is_some_and(|label| label.text().as_deref() == Some(name));
+    if matches && widget.is_mapped() {
+        let mut parent = widget.parent();
         while let Some(widget) = parent {
-            if widget.has_css_class("file-row") {
+            if widget.has_css_class("file-row") || widget.has_css_class("icons-card") {
                 return Some(widget);
             }
             parent = widget.parent();

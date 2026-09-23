@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import pytest
+from PIL import Image
 
+from harness.interaction import keysym
 from harness.modes import ALL_MODES, COLUMNS_AND_ONE, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
@@ -64,6 +66,33 @@ def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, binding
     )
     strata.keyboard.press(up)
     strata.wait_for_focused_entry("archive")
+
+
+@pytest.mark.preferences(browser_mode="icons")
+def test_page_key_bursts_leave_large_image_directories_responsive(strata):
+    folder = strata.fixture.path("large-photos")
+    folder.mkdir()
+    source = folder / "photo-000000.png"
+    Image.new("RGB", (32, 24), (40, 160, 80)).save(source)
+    png = source.read_bytes()
+    for index in range(1, 100000):
+        (folder / f"photo-{index:06}.png").write_bytes(png)
+    strata.open_directory("large-photos")
+    strata.select_entry("photo-000000.png")
+
+    for key, start in [("Page_Down", "photo-000000.png"), ("Page_Up", "photo-099999.png")]:
+        if key == "Page_Up":
+            strata.keyboard.press("End")
+            strata.wait_for_selection([start])
+        for _ in range(100):
+            strata.keyboard.connection.key(keysym(key), True)
+            strata.keyboard.connection.key(keysym(key), False)
+        strata.keyboard.press("ctrl+l")
+        field = strata.editable_field()
+        strata.wait(lambda: field.has_state("focused"), "address bar responds after page-key burst")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: len(names := strata.selected_names()) == 1 and names != [start],
+                    "page keys move the selection")
 
 
 @pytest.mark.parametrize("mode", COLUMNS_AND_ONE)
