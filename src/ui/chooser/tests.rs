@@ -2,9 +2,11 @@
 
 mod acceptance;
 mod context_menu;
+mod filename;
 mod filtered_preview;
 mod keyboard;
 mod layout;
+mod recent;
 mod selection;
 mod sizing;
 
@@ -59,11 +61,11 @@ fn native_filters_match_globs_and_mime_types_without_hiding_directories() {
     ));
     let hidden = entry("archive.zip", EntryKind::File);
     assert!(
-        matches!(filter_directory_change(Some(&filter), DirectoryChange::Upsert(hidden.clone())), DirectoryChange::Remove(location) if location == hidden.location)
+        matches!(filter_directory_change(Some(&filter), false, DirectoryChange::Upsert(hidden.clone())), DirectoryChange::Remove(location) if location == hidden.location)
     );
     let previous = Location::local("/tmp/previous.txt");
     assert!(
-        matches!(filter_directory_change(Some(&filter), DirectoryChange::Move { from: previous.clone(), entry: hidden }), DirectoryChange::Remove(location) if location == previous)
+        matches!(filter_directory_change(Some(&filter), false, DirectoryChange::Move { from: previous.clone(), entry: hidden }), DirectoryChange::Remove(location) if location == previous)
     );
 }
 
@@ -187,10 +189,18 @@ fn chooser_previews_the_same_supported_types_as_the_main_browser() {
             "{name} should be previewable"
         );
     }
-    assert!(preview_target(Some(entry("archive.zip", EntryKind::File))).is_none());
+    assert!(preview_target(Some(entry("archive.zip", EntryKind::File))).is_some());
     assert!(
         preview_target(Some(entry("folder.mp4", EntryKind::Directory))).is_none(),
         "folders should remain navigation targets"
+    );
+    assert!(
+        preview_target(Some(entry("data.tar.gz", EntryKind::File))).is_some(),
+        "archives should be previewable"
+    );
+    assert!(
+        preview_target(Some(entry("compressed.gz", EntryKind::File))).is_none(),
+        "plain gzip streams should not open the archive tree preview"
     );
 }
 

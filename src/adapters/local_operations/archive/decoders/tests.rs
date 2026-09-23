@@ -355,58 +355,51 @@ fn tar_extraction_rejects_empty_paths_and_root_file_entries() -> Result<(), Box<
 }
 
 #[test]
-fn every_archive_format_rejects_parent_traversal() -> Result<(), Box<dyn Error>> {
+fn every_archive_format_sanitizes_parent_traversal_without_stopping() -> Result<(), Box<dyn Error>>
+{
     let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    fs::create_dir(&destination)?;
-    let zip_path = root.path().join("malicious.zip");
-    let tar_path = root.path().join("malicious.tar");
-    let tar_gz_path = root.path().join("malicious.tar.gz");
-    let seven_z_path = root.path().join("malicious.7z");
-    write_zip(&zip_path, &[("../zip-marker", b"escaped")])?;
-    write_tar(&tar_path, "../tar-marker", b"escaped", false)?;
-    write_tar(&tar_gz_path, "../tar-gz-marker", b"escaped", true)?;
-    write_7z(&seven_z_path, "../seven-z-marker", b"escaped")?;
-
-    assert!(extract_zip(&zip_path, &destination).is_err());
-    assert!(
-        extract_tar(
-            &tar_path,
-            &destination,
-            false,
-            &Arc::new(AtomicUsize::new(0)),
-            &never_cancelled(),
-        )
-        .is_err()
-    );
-    assert!(
-        extract_tar(
-            &tar_gz_path,
-            &destination,
-            true,
-            &Arc::new(AtomicUsize::new(0)),
-            &never_cancelled(),
-        )
-        .is_err()
-    );
-    assert!(
-        extract_7z_from_reader(
-            fs::File::open(&seven_z_path)?,
-            &destination,
-            sevenz_rust2::Password::empty(),
-            &Arc::new(AtomicUsize::new(0)),
-            &never_cancelled(),
-        )
-        .is_err()
-    );
-
-    for marker in [
-        "zip-marker",
-        "tar-marker",
-        "tar-gz-marker",
-        "seven-z-marker",
+    let archive = root.path().join("archive");
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::Tar,
+        ArchiveFormat::TarGz,
     ] {
-        assert!(!root.path().join(marker).exists(), "created {marker}");
+        let entries = [
+            ("../escaped.txt", &b"escaped"[..]),
+            ("after.txt", &b"after"[..]),
+        ];
+        match format {
+            ArchiveFormat::Zip => write_zip(&archive, &entries)?,
+            ArchiveFormat::SevenZ => write_7z_entries(&archive, &entries)?,
+            ArchiveFormat::Tar | ArchiveFormat::TarGz => write_tar_entries(
+                &archive,
+                &entries.map(|(name, contents)| (tar::EntryType::Regular, name, contents)),
+                format == ArchiveFormat::TarGz,
+            )?,
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
+        }
+        let destination = tempfile::tempdir_in(root.path())?;
+        let progress = Arc::new(AtomicUsize::new(0));
+
+        assert_eq!(
+            completed_extract(decode_fixture(
+                &archive,
+                destination.path(),
+                format,
+                None,
+                &progress,
+            )?)?,
+            Some("escaped.txt".to_owned()),
+            "{format:?}"
+        );
+        assert_eq!(
+            fs::read(destination.path().join("escaped.txt"))?,
+            b"escaped"
+        );
+        assert_eq!(fs::read(destination.path().join("after.txt"))?, b"after");
+        assert!(!root.path().join("escaped.txt").exists());
+        assert_eq!(progress.load(Ordering::Relaxed), 2);
     }
     Ok(())
 }
@@ -768,7 +761,7 @@ fn sevenz_mid_copy_cancellation_tracks_header_identity_and_destination_renames()
 }
 
 #[test]
-fn pending_unsafe_names_are_omitted_by_every_decoder() -> Result<(), Box<dyn Error>> {
+fn pending_unsafe_names_are_sanitized_by_every_decoder() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     let archive = root.path().join("archive");
     for format in [
@@ -820,7 +813,8 @@ fn pending_unsafe_names_are_omitted_by_every_decoder() -> Result<(), Box<dyn Err
         };
         assert!(
             matches!(outcome, ArchiveOutcome::Cancelled { completed, failed, not_attempted }
-            if completed.is_empty() && failed.is_empty() && not_attempted.is_empty()),
+            if completed.is_empty() && failed.is_empty()
+                && not_attempted == [Location::local(destination.path().join("outside"))]),
             "{format:?}"
         );
         assert_eq!(progress.load(Ordering::Relaxed), 0);

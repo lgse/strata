@@ -44,13 +44,14 @@ thread_local! {
     static THUMBNAIL_CACHE: RefCell<ThumbnailCache> = RefCell::new(ThumbnailCache::default());
     /// Per-viewport admission batches; one view's fling never postpones another's.
     static SETTLE_VIEWS: RefCell<HashMap<usize, ViewSettle>> = RefCell::new(HashMap::new());
-    static TRACKED_CUSTOMIZED_ICONS: RefCell<Vec<TrackedCustomizedIcon>> =
-        const { RefCell::new(Vec::new()) };
-    static TRACKED_THUMBNAILS: RefCell<Vec<TrackedThumbnail>> = const { RefCell::new(Vec::new()) };
+    static TRACKED_CUSTOMIZED_ICONS: RefCell<HashMap<usize, TrackedCustomizedIcon>> =
+        RefCell::new(HashMap::new());
+    static TRACKED_THUMBNAILS: RefCell<HashMap<usize, TrackedThumbnail>> = RefCell::new(HashMap::new());
     static REFRESHING_CUSTOMIZED_ICONS: Cell<bool> = const { Cell::new(false) };
 }
 
 struct TrackedThumbnail {
+    #[cfg(test)]
     image: glib::WeakRef<ThumbnailSlot>,
     path: PathBuf,
 }
@@ -275,6 +276,39 @@ impl CachedThumbnail {
             Self::Failed(_) => 0,
         }
     }
+}
+
+pub(super) fn preserve_renamed_thumbnail(from: &crate::model::Location, entry: &FileEntry) {
+    let Some((from, to)) = from.native_path().zip(entry.location.native_path()) else {
+        return;
+    };
+    if from == to || from.extension() != to.extension() {
+        return;
+    }
+    let (Some(modified), Some(file_size)) = (
+        known_metadata(&entry.modified_unix_seconds),
+        known_metadata(&entry.size),
+    ) else {
+        return;
+    };
+    THUMBNAIL_CACHE.with_borrow_mut(|cache| {
+        let key = ThumbnailKey {
+            path: from.to_path_buf(),
+            modified: Some(modified),
+            file_size: Some(file_size),
+            thumbnail_size: super::thumbnail_cache::CANONICAL_MAX_EDGE,
+        };
+        if let Some(CacheHit::Ready(texture)) = cache.get(&key) {
+            cache.remove(&key);
+            cache.insert(
+                ThumbnailKey {
+                    path: to.to_path_buf(),
+                    ..key
+                },
+                texture,
+            );
+        }
+    });
 }
 
 #[derive(Default)]
@@ -1089,44 +1123,39 @@ fn apply_thumbnail(image: &ThumbnailSlot, texture: &gdk::Texture, path: &Path) {
 }
 
 fn displayed_thumbnail_matches(image: &ThumbnailSlot, path: &Path) -> bool {
-    TRACKED_THUMBNAILS.with(|thumbnails| {
-        let mut thumbnails = thumbnails.borrow_mut();
-        thumbnails.retain(|tracked| tracked.image.upgrade().is_some());
+    TRACKED_THUMBNAILS.with_borrow(|thumbnails| {
         thumbnails
-            .iter()
-            .find(|tracked| tracked.image.upgrade().as_ref() == Some(image))
+            .get(&(image.as_ptr() as usize))
             .is_some_and(|tracked| tracked.path == path)
     })
 }
 
 fn register_displayed_thumbnail(image: &ThumbnailSlot, path: &Path) {
-    let weak_ref = glib::WeakRef::new();
-    weak_ref.set(Some(image));
-    TRACKED_THUMBNAILS.with(|thumbnails| {
-        let mut thumbnails = thumbnails.borrow_mut();
-        thumbnails.retain(|tracked| tracked.image.upgrade().is_some());
-        if let Some(existing) = thumbnails
-            .iter_mut()
-            .find(|tracked| tracked.image.upgrade().as_ref() == Some(image))
-        {
-            existing.path = path.to_path_buf();
-        } else {
-            thumbnails.push(TrackedThumbnail {
-                image: weak_ref,
+    TRACKED_THUMBNAILS.with_borrow_mut(|thumbnails| {
+        thumbnails.insert(
+            image.as_ptr() as usize,
+            TrackedThumbnail {
+                #[cfg(test)]
+                image: image.downgrade(),
                 path: path.to_path_buf(),
-            });
-        }
+            },
+        );
     });
 }
 
 fn clear_displayed_thumbnail(image: &ThumbnailSlot) {
-    TRACKED_THUMBNAILS.with(|thumbnails| {
-        thumbnails.borrow_mut().retain(|tracked| {
-            tracked
-                .image
-                .upgrade()
-                .is_some_and(|tracked_image| tracked_image != *image)
-        });
+    TRACKED_THUMBNAILS.with_borrow_mut(|thumbnails| {
+        thumbnails.remove(&(image.as_ptr() as usize));
+    });
+}
+
+fn forget_slot(image_id: usize) {
+    // Dispose removes pointer keys before GTK can reuse the slot's address.
+    let _ = TRACKED_THUMBNAILS.try_with(|thumbnails| {
+        thumbnails.borrow_mut().remove(&image_id);
+    });
+    let _ = TRACKED_CUSTOMIZED_ICONS.try_with(|icons| {
+        icons.borrow_mut().remove(&image_id);
     });
 }
 
@@ -1198,6 +1227,10 @@ fn set_fallback_icon(
     image.set_fallback(icon, texture.as_ref());
     if let Some(p) = path {
         register_tracked_icon(image, p, icon, customized);
+    } else {
+        TRACKED_CUSTOMIZED_ICONS.with_borrow_mut(|icons| {
+            icons.remove(&(image.as_ptr() as usize));
+        });
     }
     ids
 }
@@ -1273,26 +1306,16 @@ fn apply_path_customization_image(image: &gtk::Image, path: &Path, fallback_icon
 }
 
 fn register_tracked_icon(image: &ThumbnailSlot, path: &Path, icon: &str, customized: bool) {
-    let weak_ref = glib::WeakRef::new();
-    weak_ref.set(Some(image));
-    TRACKED_CUSTOMIZED_ICONS.with(|icons| {
-        let mut icons = icons.borrow_mut();
-        icons.retain(|t| t.image.upgrade().is_some());
-        if let Some(existing) = icons
-            .iter_mut()
-            .find(|t| t.image.upgrade().as_ref() == Some(image))
-        {
-            existing.path = path.to_path_buf();
-            existing.icon = icon.to_owned();
-            existing.customized = customized;
-        } else {
-            icons.push(TrackedCustomizedIcon {
-                image: weak_ref,
+    TRACKED_CUSTOMIZED_ICONS.with_borrow_mut(|icons| {
+        icons.insert(
+            image.as_ptr() as usize,
+            TrackedCustomizedIcon {
+                image: image.downgrade(),
                 path: path.to_path_buf(),
                 icon: icon.to_owned(),
                 customized,
-            });
-        }
+            },
+        );
     });
 }
 
@@ -1316,10 +1339,9 @@ fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
     }
     let _reset = Reset;
     let pending = TRACKED_CUSTOMIZED_ICONS.with(|icons| {
-        let mut icons = icons.borrow_mut();
-        icons.retain(|tracked| tracked.image.upgrade().is_some());
         icons
-            .iter()
+            .borrow()
+            .values()
             .filter(|tracked| matches(tracked))
             .filter_map(|tracked| {
                 let image = tracked.image.upgrade()?;
@@ -1342,10 +1364,7 @@ fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
             let Ok(mut icons) = icons.try_borrow_mut() else {
                 return;
             };
-            if let Some(tracked) = icons
-                .iter_mut()
-                .find(|tracked| tracked.image.upgrade().as_ref() == Some(&image))
-            {
+            if let Some(tracked) = icons.get_mut(&(image.as_ptr() as usize)) {
                 tracked.customized = customized;
             }
         });
@@ -1402,6 +1421,10 @@ fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
         "pdf" => Some(ThumbnailKind::Pdf),
         "appimage" => Some(ThumbnailKind::AppImage),
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
+            Some(ThumbnailKind::Video)
+        }
+        // FFmpeg exposes no art stream for tag-only Ogg, Opus or WAV covers.
+        "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => {
             Some(ThumbnailKind::Video)
         }
         _ => None,

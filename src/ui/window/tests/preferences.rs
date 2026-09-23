@@ -20,6 +20,7 @@ fn live_preferences_reach_existing_and_future_browsers_but_preserve_chooser_poli
             for enabled in [true, false, true] {
                 manager.set_folder_peeking(enabled);
                 manager.set_single_click_previews(enabled);
+                manager.set_columns_mirror_selection(enabled);
                 manager.set_group_by_type(enabled);
                 manager.set_auto_refresh_interval(if enabled { 60 } else { 0 });
                 manager.set_browser_density(if enabled {
@@ -27,8 +28,10 @@ fn live_preferences_reach_existing_and_future_browsers_but_preserve_chooser_poli
                 } else {
                     BrowserDensity::Airy
                 });
+                manager.set_icons_thumbnail_size(if enabled { 128 } else { 64 });
                 for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
                     manager.set_browser_mode(mode);
+                    manager.set_icons_thumbnail_size(if enabled { 203 } else { 95 });
                     manager.set_click_activation(
                         mode,
                         ClickActivation {
@@ -145,6 +148,7 @@ folders_first = false
 sort_key = "size"
 sort_direction = "descending"
 auto_refresh_interval = 600
+icons_thumbnail_size = 203
 "#;
             std::fs::write(&path, saved).expect("persist non-default startup preferences");
             let manager = PreferenceManager::shared();
@@ -249,6 +253,19 @@ fn startup_applies_disabled_single_click_previews_before_the_first_click() {
             manager.set_single_click_previews(false);
             let browser = browser_for_window();
             assert!(!browser.single_click_previews_enabled());
+        },
+    );
+}
+
+#[test]
+fn startup_applies_disabled_columns_mirror_before_the_first_selection() {
+    gtk_test(
+        "ui::window::tests::preferences::startup_applies_disabled_columns_mirror_before_the_first_selection",
+        || {
+            let manager = PreferenceManager::shared();
+            manager.set_columns_mirror_selection(false);
+            let browser = browser_for_window();
+            assert!(!browser.columns_mirror_selection_enabled());
         },
     );
 }

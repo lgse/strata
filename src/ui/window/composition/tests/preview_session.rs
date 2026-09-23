@@ -48,7 +48,7 @@ fn appearance_and_space_share_a_window_local_preview_session_across_unsupported_
             std::fs::create_dir(directory.path().join("folder")).expect("folder");
             for (path, data) in [
                 ("a.txt", "alpha"),
-                ("z.zip", "unsupported"),
+                ("z.rar", "unsupported"),
                 ("folder/nested.txt", "nested"),
             ] {
                 std::fs::write(directory.path().join(path), data).expect("fixture file");
@@ -81,7 +81,7 @@ fn appearance_and_space_share_a_window_local_preview_session_across_unsupported_
             let path = glib::user_config_dir().join("strata/settings.toml");
             let saved = std::fs::read(&path).expect("saved settings");
             let browser = first.content.browser.browser();
-            select(&browser, 0, "z.zip");
+            select(&browser, 0, "z.rar");
             first_toggle.emit_clicked();
             assert!(first.content.preview.is_enabled());
             assert!(first_toggle.is_active());
@@ -90,7 +90,7 @@ fn appearance_and_space_share_a_window_local_preview_session_across_unsupported_
 
             select(&browser, 0, "a.txt");
             wait(|| first.content.preview.is_open());
-            select(&browser, 0, "z.zip");
+            select(&browser, 0, "z.rar");
             assert!(first.content.preview.is_enabled());
             assert!(first_toggle.is_active());
             assert!(!first.content.preview.is_open());

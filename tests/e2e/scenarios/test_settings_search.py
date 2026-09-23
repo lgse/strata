@@ -65,6 +65,32 @@ def test_settings_search_filters_navigates_and_clears(strata, width):
     assert strata.window.find(name="Keep arrows in file list") is None
 
     strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("modified date format")
+    date_format = strata.wait(
+        lambda: strata.window.find(role="button", name="Modified date format"),
+        "date format setting in General",
+    )
+    assert strata.window.find(role="label", name="General") is not None
+    if width == 640:
+        strata.pointer.click(date_format)  # Dismiss the modal search popover first.
+    strata.pointer.click(date_format)
+    iso = strata.wait(
+        lambda: strata.window.find(role="label", name="ISO 8601"),
+        "ISO date format choice",
+    )
+    strata.pointer.click(iso)
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("date_format") == '"iso"',
+        "date format selection persists from General",
+    )
+    if width == 640:
+        strata.pointer.click(strata.window.find(role="button", name="Search settings"))
+    search = strata.wait(
+        lambda: strata.window.find(role="text", name="Search settings"),
+        "settings search after changing date format",
+    )
+    strata.pointer.click(search)
+    strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("unfindablequantumsetting")
     strata.wait(
         lambda: strata.window.find(role="label", name="No settings match your search."),

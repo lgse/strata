@@ -28,6 +28,11 @@ impl BrowserView {
         );
         self.bind_view_preference(
             manager,
+            PreferenceManager::icons_thumbnail_size,
+            Self::set_icons_thumbnail_size,
+        );
+        self.bind_view_preference(
+            manager,
             PreferenceManager::browser_mode,
             Self::set_view_mode,
         );
@@ -52,6 +57,11 @@ impl BrowserView {
             Self::set_single_click_previews,
         );
         let interactive = self.state.interactive;
+        self.bind_view_preference(
+            manager,
+            move |manager| interactive && manager.columns_mirror_selection(),
+            Self::set_columns_mirror_selection,
+        );
         self.bind_view_preference(
             manager,
             move |manager| interactive && manager.folder_peeking(),

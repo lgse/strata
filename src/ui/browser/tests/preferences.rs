@@ -210,6 +210,10 @@ impl BrowserView {
             manager.single_click_previews()
         );
         assert_eq!(
+            self.columns_mirror_selection_enabled(),
+            manager.columns_mirror_selection()
+        );
+        assert_eq!(
             self.state.columns_click_activation.get(),
             manager.click_activation(BrowserMode::Columns)
         );

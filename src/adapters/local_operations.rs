@@ -6,6 +6,19 @@ mod tests;
 mod archive;
 mod create_entry;
 
+#[cfg(test)]
+pub(crate) use archive::ArchiveListing;
+pub(crate) use archive::{
+    ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
+    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, archive_payload_valid,
+    decode_archive_listing, encode_archive_result, list_archive_entries_direct,
+};
+
+#[cfg(test)]
+pub(crate) use archive::write_compression_fixture;
+
+#[cfg(test)]
+use std::cell::RefCell;
 use std::{
     cell::Cell,
     collections::{HashMap, HashSet},
@@ -33,6 +46,7 @@ use crate::{
     adapters::{
         gio_file_for_location, location_for_file,
         trash_restore::{RestoreContext, plan_restore_for_location},
+        volume::MountTable,
     },
     model::{FileEntry, Location},
     services::{
@@ -43,6 +57,404 @@ use crate::{
         UndoRenameRequest, validate_basename,
     },
 };
+
+#[derive(Clone, Debug)]
+pub(crate) struct MountFlushHint {
+    pub root: PathBuf,
+    pub removable: bool,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum SyncDestination<'a> {
+    Local(&'a Path),
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "copy helper tests pass a destination that has no local path"
+        )
+    )]
+    NonLocal,
+}
+
+fn blocking_join_message(error: Box<dyn std::any::Any + Send>) -> String {
+    error
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| {
+            error
+                .downcast_ref::<&str>()
+                .map(|message| (*message).to_owned())
+        })
+        .unwrap_or_else(|| "filesystem sync panicked".to_owned())
+}
+
+pub(crate) fn sync_filesystem(root: &Path) -> io::Result<()> {
+    let handle = rustix::fs::open(
+        root,
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )
+    .map_err(io::Error::from)?;
+    rustix::fs::syncfs(&handle).map_err(io::Error::from)?;
+    Ok(())
+}
+
+pub(crate) fn flush_filesystem(root: &Path) -> io::Result<()> {
+    #[cfg(test)]
+    if let Some(kind) = sync_probe_before(root) {
+        return Err(io::Error::new(kind, "flush failed"));
+    }
+    sync_filesystem(root)
+}
+
+#[cfg(test)]
+mod sync_probe {
+    use std::{
+        io,
+        path::{Path, PathBuf},
+        sync::{Arc, Condvar, Mutex, atomic::AtomicBool, atomic::Ordering},
+        thread,
+    };
+
+    struct SyncGate {
+        started: AtomicBool,
+        released: Mutex<bool>,
+        released_cv: Condvar,
+    }
+
+    struct SyncProbeState {
+        fail: Option<io::ErrorKind>,
+        gate: Option<Arc<SyncGate>>,
+        calls: Vec<SyncObservation>,
+    }
+
+    type SyncObserver = Arc<dyn Fn(&Path) + Send + Sync>;
+
+    static SYNC_PROBE: Mutex<Option<SyncProbeState>> = Mutex::new(None);
+    static SYNC_OBSERVER: Mutex<Option<SyncObserver>> = Mutex::new(None);
+
+    #[derive(Clone, Debug)]
+    pub(crate) struct SyncObservation {
+        pub root: PathBuf,
+        pub thread_id: thread::ThreadId,
+    }
+
+    pub(crate) fn install_sync_probe(fail: Option<io::ErrorKind>, gate: bool) {
+        let gate = gate.then(|| {
+            Arc::new(SyncGate {
+                started: AtomicBool::new(false),
+                released: Mutex::new(false),
+                released_cv: Condvar::new(),
+            })
+        });
+        let mut slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        *slot = Some(SyncProbeState {
+            fail,
+            gate,
+            calls: Vec::new(),
+        });
+    }
+
+    pub(crate) fn clear_sync_probe() {
+        release_sync_probe();
+        let mut slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        *slot = None;
+    }
+
+    pub(crate) fn set_sync_observer(observer: Option<SyncObserver>) {
+        let mut slot = SYNC_OBSERVER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *slot = observer;
+    }
+
+    pub(crate) fn release_sync_probe() {
+        let gate = {
+            let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+            slot.as_ref().and_then(|probe| probe.gate.clone())
+        };
+        let Some(gate) = gate else {
+            return;
+        };
+        let mut released = gate
+            .released
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        *released = true;
+        gate.released_cv.notify_all();
+    }
+
+    pub(crate) fn sync_probe_is_blocked() -> bool {
+        let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        slot.as_ref()
+            .and_then(|probe| probe.gate.as_ref())
+            .is_some_and(|gate| gate.started.load(Ordering::SeqCst))
+    }
+
+    pub(crate) fn sync_probe_len() -> usize {
+        let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        slot.as_ref().map(|probe| probe.calls.len()).unwrap_or(0)
+    }
+
+    pub(crate) fn sync_probe_observations() -> Vec<SyncObservation> {
+        let slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+        slot.as_ref()
+            .map(|probe| probe.calls.clone())
+            .unwrap_or_default()
+    }
+
+    pub(super) fn sync_probe_before(root: &Path) -> Option<io::ErrorKind> {
+        let (fail, gate) = {
+            let mut slot = SYNC_PROBE.lock().unwrap_or_else(|error| error.into_inner());
+            let probe = slot.as_mut()?;
+            probe.calls.push(SyncObservation {
+                root: root.to_path_buf(),
+                thread_id: thread::current().id(),
+            });
+            (probe.fail, probe.gate.clone())
+        };
+        let observer = SYNC_OBSERVER
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        if let Some(observer) = observer {
+            observer(root);
+        }
+        if let Some(gate) = gate {
+            gate.started.store(true, Ordering::SeqCst);
+            let mut released = gate
+                .released
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            while !*released {
+                released = gate
+                    .released_cv
+                    .wait(released)
+                    .unwrap_or_else(|error| error.into_inner());
+            }
+        }
+        fail
+    }
+}
+
+#[cfg(test)]
+use sync_probe::sync_probe_before;
+#[cfg(test)]
+pub(crate) use sync_probe::{
+    clear_sync_probe, install_sync_probe, release_sync_probe, set_sync_observer,
+    sync_probe_is_blocked, sync_probe_len, sync_probe_observations,
+};
+
+#[cfg(test)]
+thread_local! {
+    static REMOVABLE_ROOTS_FOR_TEST: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
+    static FORCE_CROSS_VOLUME_FOR_TEST: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(test)]
+pub(crate) fn set_removable_roots_for_test(roots: Option<Vec<PathBuf>>) {
+    REMOVABLE_ROOTS_FOR_TEST.with(|slot| *slot.borrow_mut() = roots);
+}
+
+#[cfg(test)]
+pub(crate) fn set_force_cross_volume_for_test(force: bool) {
+    FORCE_CROSS_VOLUME_FOR_TEST.with(|slot| slot.set(force));
+}
+
+#[cfg(test)]
+fn force_cross_volume_for_test() -> bool {
+    FORCE_CROSS_VOLUME_FOR_TEST.with(|slot| slot.get())
+}
+
+#[cfg(test)]
+fn removable_hints_for_test() -> Option<Vec<MountFlushHint>> {
+    REMOVABLE_ROOTS_FOR_TEST.with(|slot| {
+        slot.borrow().as_ref().map(|roots| {
+            roots
+                .iter()
+                .map(|root| MountFlushHint {
+                    root: root.clone(),
+                    removable: true,
+                })
+                .collect()
+        })
+    })
+}
+
+pub(crate) fn removable_sync_roots(
+    destinations: &[SyncDestination<'_>],
+    hints: &[MountFlushHint],
+) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for destination in destinations {
+        let SyncDestination::Local(path) = destination else {
+            continue;
+        };
+        let Some(hint) = hints
+            .iter()
+            .filter(|hint| path.starts_with(&hint.root))
+            .max_by_key(|hint| hint.root.as_os_str().len())
+        else {
+            continue;
+        };
+        if hint.removable && !roots.iter().any(|root| root == &hint.root) {
+            roots.push(hint.root.clone());
+        }
+    }
+    roots
+}
+
+fn removable_roots_for_paths(paths: &[PathBuf]) -> Vec<PathBuf> {
+    if paths.is_empty() {
+        return Vec::new();
+    }
+    #[cfg(test)]
+    if let Some(hints) = removable_hints_for_test() {
+        let destinations: Vec<_> = paths
+            .iter()
+            .map(|path| SyncDestination::Local(path))
+            .collect();
+        return removable_sync_roots(&destinations, &hints);
+    }
+    let table = MountTable::current();
+    let mounts = gio::VolumeMonitor::get().mounts();
+    let mut hints = Vec::new();
+    for path in paths {
+        let Some(root) = table.mount_point_for(path).map(Path::to_path_buf) else {
+            continue;
+        };
+        if hints.iter().any(|hint: &MountFlushHint| hint.root == root) {
+            continue;
+        }
+        let removable = mounts.iter().any(|mount| {
+            mount.root().path().as_deref() == Some(root.as_path())
+                && mount_drive_is_removable(mount)
+        });
+        hints.push(MountFlushHint { root, removable });
+    }
+    let destinations: Vec<_> = paths
+        .iter()
+        .map(|path| SyncDestination::Local(path))
+        .collect();
+    removable_sync_roots(&destinations, &hints)
+}
+
+fn mount_drive_is_removable(mount: &gio::Mount) -> bool {
+    let drive = mount
+        .drive()
+        .or_else(|| mount.volume().and_then(|volume| volume.drive()));
+    drive.is_some_and(|drive| drive.is_removable() || drive.is_media_removable())
+}
+
+async fn flush_removable_writes(
+    paths: Vec<PathBuf>,
+    cancellable: &gio::Cancellable,
+    emit: &Rc<dyn Fn(OperationEvent)>,
+    request_id: OperationRequestId,
+    completed: &[Location],
+    affected_locations: HashSet<Location>,
+) -> bool {
+    let roots = removable_roots_for_paths(&paths);
+    if roots.is_empty() {
+        if cancellable.is_cancelled() {
+            emit(cancelled_event(
+                request_id,
+                completed.to_vec(),
+                Vec::new(),
+                Vec::new(),
+                affected_locations,
+            ));
+            return false;
+        }
+        return true;
+    }
+    emit(OperationEvent::FlushingToDevice { request_id });
+    for root in roots {
+        let synced = gio::spawn_blocking(move || flush_filesystem(&root)).await;
+        let error = match synced {
+            Ok(Ok(())) => continue,
+            Ok(Err(error)) => error.to_string(),
+            Err(error) => blocking_join_message(error),
+        };
+        emit(OperationEvent::TransferFailed {
+            request_id,
+            completed_locations: completed.to_vec(),
+            message: error,
+        });
+        return false;
+    }
+    if cancellable.is_cancelled() {
+        emit(cancelled_event(
+            request_id,
+            completed.to_vec(),
+            Vec::new(),
+            Vec::new(),
+            affected_locations,
+        ));
+        return false;
+    }
+    true
+}
+
+async fn flush_removable_destination(path: &Path) -> Result<(), glib::Error> {
+    let roots = removable_roots_for_paths(std::slice::from_ref(&path.to_path_buf()));
+    for root in roots {
+        let synced = gio::spawn_blocking(move || flush_filesystem(&root)).await;
+        match synced {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => return Err(io_error(error)),
+            Err(error) => return Err(io_error(blocking_join_message(error))),
+        }
+    }
+    Ok(())
+}
+
+async fn flush_written_roots(
+    paths: &[PathBuf],
+    emit: &Rc<dyn Fn(OperationEvent)>,
+    request_id: OperationRequestId,
+) {
+    let roots = removable_roots_for_paths(paths);
+    if roots.is_empty() {
+        return;
+    }
+    emit(OperationEvent::FlushingToDevice { request_id });
+    for root in roots {
+        let _synced = gio::spawn_blocking(move || flush_filesystem(&root)).await;
+    }
+}
+
+struct TransferStop {
+    completed: Vec<Location>,
+    failed: Vec<Location>,
+    not_attempted: Vec<Location>,
+    affected_locations: HashSet<Location>,
+    failure: Option<String>,
+}
+
+async fn stop_transfer(
+    paths: &[PathBuf],
+    emit: &Rc<dyn Fn(OperationEvent)>,
+    request_id: OperationRequestId,
+    stop: TransferStop,
+) {
+    flush_written_roots(paths, emit, request_id).await;
+    match stop.failure {
+        Some(message) => emit(OperationEvent::TransferFailed {
+            request_id,
+            completed_locations: stop.completed,
+            message,
+        }),
+        None => emit(cancelled_event(
+            request_id,
+            stop.completed,
+            stop.failed,
+            stop.not_attempted,
+            stop.affected_locations,
+        )),
+    }
+}
 
 async fn await_cancellable<O, T>(
     object: &O,
@@ -312,6 +724,113 @@ fn duplicate_target(
         }
     }
     Err(io_error("Could not find an unused duplicate name"))
+}
+
+const FAT_INVALID_BYTES: &[u8] = b"\"*/:<>?\\|";
+
+fn fat_sanitized_name(name: &OsStr) -> OsString {
+    let mut bytes: Vec<u8> = name
+        .as_bytes()
+        .iter()
+        .map(|&byte| {
+            if FAT_INVALID_BYTES.contains(&byte) || byte < 0x20 {
+                b'_'
+            } else {
+                byte
+            }
+        })
+        .collect();
+    // FAT drivers strip trailing dots and spaces.
+    while matches!(bytes.last(), Some(b'.' | b' ')) {
+        bytes.pop();
+    }
+    if bytes.is_empty() {
+        bytes.push(b'_');
+    }
+    OsString::from_vec(bytes)
+}
+
+fn fat_name_key(name: &OsStr) -> OsString {
+    match name.to_str() {
+        Some(name) => OsString::from(name.to_uppercase()),
+        None => OsString::from_vec(name.as_bytes().to_ascii_uppercase()),
+    }
+}
+
+fn unique_fat_sibling_name(candidate: OsString, used: &mut HashSet<OsString>) -> OsString {
+    if used.insert(fat_name_key(&candidate)) {
+        return candidate;
+    }
+    let extension = Path::new(&candidate)
+        .extension()
+        .filter(|extension| !extension.is_empty())
+        .map(OsStr::to_os_string);
+    let stem = Path::new(&candidate)
+        .file_stem()
+        .map(OsStr::to_os_string)
+        .unwrap_or(candidate);
+    let (base_stem, copy_num) = parse_copy_suffix(&stem);
+    let mut index = copy_num.map_or(1, |number| number + 1);
+    loop {
+        let attempt = duplicate_candidate_name(base_stem, extension.as_deref(), index);
+        if used.insert(fat_name_key(&attempt)) {
+            return attempt;
+        }
+        index = index.checked_add(1).unwrap_or(1);
+    }
+}
+
+fn fat_family_child_name(name: &OsStr, fat_family: bool, used: &mut HashSet<OsString>) -> OsString {
+    if fat_family {
+        unique_fat_sibling_name(fat_sanitized_name(name), used)
+    } else {
+        name.to_os_string()
+    }
+}
+
+#[derive(Clone, Copy)]
+struct CopyOptions {
+    overwrite_existing: bool,
+    fat_family: bool,
+}
+
+fn target_is_fat_family(target: &gio::File, mounts: &MountTable) -> bool {
+    target
+        .path()
+        .is_some_and(|path| matches!(mounts.fs_type_for(&path), Some("msdos" | "vfat" | "exfat")))
+}
+
+async fn copy_children(
+    enumerator: &gio::FileEnumerator,
+    cancellable: &gio::Cancellable,
+    fat_family: bool,
+) -> Result<Vec<gio::FileInfo>, glib::Error> {
+    let mut children = Vec::new();
+    loop {
+        let batch = await_cancellable(
+            enumerator,
+            cancellable,
+            |enumerator, cancellable, result| {
+                enumerator.next_files_async(
+                    64,
+                    glib::Priority::DEFAULT,
+                    Some(cancellable),
+                    move |output| result.resolve(output),
+                );
+            },
+        )
+        .await?;
+        let finished = batch.is_empty();
+        children.extend(batch);
+        if !fat_family || finished {
+            break;
+        }
+    }
+    if fat_family {
+        // Planning and copying must allocate collision suffixes in the same order.
+        children.sort_by_key(|child| child.name());
+    }
+    Ok(children)
 }
 
 fn was_cancelled(error: &glib::Error) -> bool {
@@ -592,7 +1111,7 @@ fn copy_recursively_local(
     parent: OwnedFd,
     name: OsString,
     target: gio::File,
-    overwrite_existing: bool,
+    options: CopyOptions,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
     progress: Option<Rc<TransferProgressTracker>>,
@@ -611,7 +1130,7 @@ fn copy_recursively_local(
                     .path()
                     .ok_or_else(|| io_error("Copy destination must be a local path"))?;
                 run_local_fs_step(move || {
-                    copy_local_symlink(&link_target, &target_path, overwrite_existing)
+                    copy_local_symlink(&link_target, &target_path, options.overwrite_existing)
                 })
                 .await
             }
@@ -623,7 +1142,7 @@ fn copy_recursively_local(
                 // than copying the magic-link's target text as a new symlink.
                 let source_ref = gio::File::for_path(format!("/proc/self/fd/{}", file.as_raw_fd()));
                 let flags = gio::FileCopyFlags::ALL_METADATA
-                    | if overwrite_existing {
+                    | if options.overwrite_existing {
                         gio::FileCopyFlags::OVERWRITE
                     } else {
                         gio::FileCopyFlags::NONE
@@ -655,8 +1174,14 @@ fn copy_recursively_local(
                 drop(file);
                 result
             }
-            LocalCopySource::Directory { handle, children } => {
-                if !overwrite_existing || !target.query_exists(Some(&cancellable)) {
+            LocalCopySource::Directory {
+                handle,
+                mut children,
+            } => {
+                if options.fat_family {
+                    children.sort();
+                }
+                if !options.overwrite_existing || !target.query_exists(Some(&cancellable)) {
                     await_cancellable(&target, &cancellable, |target, cancellable, result| {
                         target.make_directory_async(
                             glib::Priority::DEFAULT,
@@ -667,17 +1192,20 @@ fn copy_recursively_local(
                     .await?;
                     record_created_copy_root(&created_root, &target).await?;
                 }
+                let mut used_names = HashSet::with_capacity(children.len());
                 for child_name in children {
                     if cancellable.is_cancelled() {
                         return Err(cancelled_local_operation());
                     }
                     let child_parent = handle.try_clone().map_err(io_error)?;
-                    let child_target = target.child(&child_name);
+                    let target_name =
+                        fat_family_child_name(&child_name, options.fat_family, &mut used_names);
+                    let child_target = target.child(&target_name);
                     copy_recursively_local(
                         child_parent,
                         child_name,
                         child_target,
-                        overwrite_existing,
+                        options,
                         cancellable.clone(),
                         None,
                         progress.clone(),
@@ -700,6 +1228,7 @@ fn copy_recursively_local_path(
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
     progress: Option<Rc<TransferProgressTracker>>,
+    fat_family: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         let Some(parent_path) = source_path.parent().map(Path::to_path_buf) else {
@@ -713,7 +1242,10 @@ fn copy_recursively_local_path(
             parent,
             name,
             target,
-            overwrite_existing,
+            CopyOptions {
+                overwrite_existing,
+                fat_family,
+            },
             cancellable,
             created_root,
             progress,
@@ -729,6 +1261,7 @@ fn copy_recursively_with_progress(
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
     progress: Option<Rc<TransferProgressTracker>>,
+    fat_family: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     if source.is_native()
         && target.is_native()
@@ -744,6 +1277,7 @@ fn copy_recursively_with_progress(
             cancellable,
             created_root,
             progress,
+            fat_family,
         );
     }
     Box::pin(async move {
@@ -780,33 +1314,29 @@ fn copy_recursively_with_progress(
                     );
                 })
                 .await?;
+            let mut used_names = HashSet::new();
             loop {
-                let children = await_cancellable(
-                    &enumerator,
-                    &cancellable,
-                    |enumerator, cancellable, result| {
-                        enumerator.next_files_async(
-                            64,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            move |output| result.resolve(output),
-                        );
-                    },
-                )
-                .await?;
+                let children = copy_children(&enumerator, &cancellable, fat_family).await?;
                 if children.is_empty() {
                     break;
                 }
                 for child in children {
+                    let child_name = child.name();
+                    let target_name =
+                        fat_family_child_name(child_name.as_os_str(), fat_family, &mut used_names);
                     copy_recursively_with_progress(
-                        source.child(child.name()),
-                        target.child(child.name()),
+                        source.child(&child_name),
+                        target.child(&target_name),
                         overwrite_existing,
                         cancellable.clone(),
                         None,
                         progress.clone(),
+                        fat_family,
                     )
                     .await?;
+                }
+                if fat_family {
+                    break;
                 }
             }
             Ok(())
@@ -857,6 +1387,7 @@ fn copy_recursively(
         cancellable,
         created_root,
         None,
+        false,
     )
 }
 
@@ -866,6 +1397,7 @@ async fn copy_new_recursively_with_progress(
     cancellable: gio::Cancellable,
     progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
+    let fat_family = target_is_fat_family(&target, &MountTable::current());
     if !target.is_native() {
         let source_type =
             await_cancellable(&source, &cancellable, |source, cancellable, result| {
@@ -895,6 +1427,7 @@ async fn copy_new_recursively_with_progress(
                             cancellable,
                             None,
                             progress,
+                            fat_family,
                         )
                         .await
                     })
@@ -951,6 +1484,7 @@ async fn copy_new_recursively_with_progress(
                 cancellable.clone(),
                 None,
                 progress.clone(),
+                fat_family,
             )
             .await
             {
@@ -997,6 +1531,7 @@ async fn copy_new_recursively_with_progress(
         cancellable.clone(),
         Some(created_root.clone()),
         progress,
+        fat_family,
     )
     .await;
     if result.as_ref().is_err_and(was_cancelled) && created_root.was_created.get() {
@@ -1037,6 +1572,7 @@ async fn move_local_with_progress(
     attempt_move: MoveAttempt,
 ) -> Result<(), glib::Error> {
     let source_identity = local_file_identity(&source).await?;
+    let target_path = target.path();
     let result = attempt_move(source.clone(), target.clone(), cancellable.clone()).await;
     match result {
         Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
@@ -1047,6 +1583,9 @@ async fn move_local_with_progress(
                 progress,
             )
             .await?;
+            if let Some(path) = target_path.as_deref() {
+                flush_removable_destination(path).await?;
+            }
             permanently_delete_maybe_local_if_unchanged(source, true, source_identity, cancellable)
                 .await
         }
@@ -1074,6 +1613,13 @@ fn move_local_path(
     Box::pin(async move {
         if cancellable.is_cancelled() {
             return Err(cancelled_local_operation());
+        }
+        #[cfg(test)]
+        if force_cross_volume_for_test() {
+            return Err(glib::Error::new(
+                gio::IOErrorEnum::WouldRecurse,
+                "Cannot move directly",
+            ));
         }
         let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
             return Err(io_error("Cannot move the filesystem root"));
@@ -1428,17 +1974,18 @@ async fn replace_local_with(
         }
     };
     if trashed {
-        publish_staged_replacement(staged, target_path).await?;
+        publish_staged_replacement(staged, target_path.clone()).await?;
         // A failed publication must not register an undo that would delete
         // a concurrent arrival. The original remains recoverable in Trash.
         on_replaced();
     } else {
+        let exchange_target = target_path.clone();
         let exchanged = gio::spawn_blocking(move || {
             rustix::fs::renameat_with(
                 rustix::fs::CWD,
                 &staged_path,
                 rustix::fs::CWD,
-                &target_path,
+                &exchange_target,
                 rustix::fs::RenameFlags::EXCHANGE,
             )
         })
@@ -1466,6 +2013,7 @@ async fn replace_local_with(
         .await?;
     }
     if move_source {
+        flush_removable_destination(&target_path).await?;
         permanently_delete_maybe_local_if_unchanged(
             source,
             source_is_directory,
@@ -1517,6 +2065,7 @@ async fn replace_local_with_progress(
     progress: Option<Rc<TransferProgressTracker>>,
     on_replaced: &dyn Fn(),
 ) -> Result<(), glib::Error> {
+    let fat_family = target_is_fat_family(&target, &MountTable::current());
     replace_local_with(
         source,
         target,
@@ -1531,6 +2080,7 @@ async fn replace_local_with_progress(
                 cancellable,
                 None,
                 progress.clone(),
+                fat_family,
             )
         }),
         on_replaced,
@@ -1591,6 +2141,7 @@ fn trash_stage_overwrite(
 
 /// The injectable steps of a merge, bundled to keep the call sites small.
 struct MergeHooks<'a> {
+    fat_family: bool,
     copy_into_target: StageCopy,
     stage_overwrite: StageOverwrite,
     on_merged: &'a dyn Fn(MergePlan),
@@ -1601,6 +2152,7 @@ fn classify_merge<'a>(
     target: &'a gio::File,
     plan: &'a mut MergePlan,
     cancellable: &'a gio::Cancellable,
+    fat_family: bool,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>> + 'a>> {
     Box::pin(async move {
         let enumerator = await_cancellable(source, cancellable, |source, cancellable, result| {
@@ -1613,20 +2165,9 @@ fn classify_merge<'a>(
             );
         })
         .await?;
+        let mut used_names = HashSet::new();
         loop {
-            let children = await_cancellable(
-                &enumerator,
-                cancellable,
-                |enumerator, cancellable, result| {
-                    enumerator.next_files_async(
-                        64,
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        move |output| result.resolve(output),
-                    );
-                },
-            )
-            .await?;
+            let children = copy_children(&enumerator, cancellable, fat_family).await?;
             if children.is_empty() {
                 return Ok(());
             }
@@ -1634,8 +2175,11 @@ fn classify_merge<'a>(
                 if cancellable.is_cancelled() {
                     return Err(cancelled_local_operation());
                 }
-                let child_source = source.child(child.name());
-                let child_target = target.child(child.name());
+                let child_name = child.name();
+                let target_name =
+                    fat_family_child_name(child_name.as_os_str(), fat_family, &mut used_names);
+                let child_source = source.child(&child_name);
+                let child_target = target.child(&target_name);
                 let target_type = match await_cancellable(
                     &child_target,
                     cancellable,
@@ -1663,7 +2207,8 @@ fn classify_merge<'a>(
                         }
                     }
                     Some(gio::FileType::Directory) if source_is_directory => {
-                        classify_merge(&child_source, &child_target, plan, cancellable).await?;
+                        classify_merge(&child_source, &child_target, plan, cancellable, fat_family)
+                            .await?;
                     }
                     Some(gio::FileType::Directory) => {
                         return Err(glib::Error::new(
@@ -1683,6 +2228,9 @@ fn classify_merge<'a>(
                         }
                     }
                 }
+            }
+            if fat_family {
+                return Ok(());
             }
         }
     })
@@ -1724,7 +2272,7 @@ async fn merge_local_with(
         }
     }
     let mut plan = MergePlan::default();
-    classify_merge(&source, &target, &mut plan, &cancellable).await?;
+    classify_merge(&source, &target, &mut plan, &cancellable, hooks.fat_family).await?;
     // Stage every overwritten original in Trash before the copy so undo can
     // restore it; on failure, report what was staged so it stays recoverable.
     let mut staged = Vec::new();
@@ -1747,8 +2295,12 @@ async fn merge_local_with(
     }
     (hooks.on_merged)(plan);
     let source_identity = local_file_identity(&source).await?;
+    let target_path = target.path();
     (hooks.copy_into_target)(source.clone(), target, true, cancellable.clone()).await?;
     if move_source {
+        if let Some(path) = target_path.as_deref() {
+            flush_removable_destination(path).await?;
+        }
         permanently_delete_maybe_local_if_unchanged(source, true, source_identity, cancellable)
             .await?;
     }
@@ -1764,6 +2316,7 @@ async fn merge_local_with_progress(
     progress: Option<Rc<TransferProgressTracker>>,
     on_merged: &dyn Fn(MergePlan),
 ) -> Result<(), glib::Error> {
+    let fat_family = target_is_fat_family(&target, &MountTable::current());
     merge_local_with(
         source,
         target,
@@ -1771,6 +2324,7 @@ async fn merge_local_with_progress(
         cancellable,
         affected_locations,
         MergeHooks {
+            fat_family,
             copy_into_target: Rc::new(move |source, target, _directory, cancellable| {
                 copy_recursively_with_progress(
                     source,
@@ -1779,6 +2333,7 @@ async fn merge_local_with_progress(
                     cancellable,
                     None,
                     progress.clone(),
+                    fat_family,
                 )
             }),
             stage_overwrite: Rc::new(trash_stage_overwrite),
@@ -3507,6 +4062,8 @@ impl OperationProvider for LocalOperationProvider {
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
             let destination = gio_file_for_location(&request.destination);
+            let fat_family = target_is_fat_family(&destination, &MountTable::current());
+            let mut used_names = HashSet::new();
             let mut affected_locations = HashSet::from([request.destination.clone()]);
             for parent in request.items.iter().filter_map(|item| item.source.parent()) {
                 affected_locations.insert(parent);
@@ -3545,29 +4102,42 @@ impl OperationProvider for LocalOperationProvider {
             let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
             progress.emit();
             let mut completed = Vec::new();
+            let mut written_paths = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 if operation_cancellable.is_cancelled() {
-                    emit(cancelled_event(
+                    stop_transfer(
+                        &written_paths,
+                        &emit,
                         request.id,
-                        completed,
-                        Vec::new(),
-                        request.items[index..]
-                            .iter()
-                            .map(|item| item.source.clone())
-                            .collect(),
-                        affected_locations,
-                    ));
+                        TransferStop {
+                            completed,
+                            failed: Vec::new(),
+                            not_attempted: request.items[index..]
+                                .iter()
+                                .map(|item| item.source.clone())
+                                .collect(),
+                            affected_locations,
+                            failure: None,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 let source = sources[index].clone();
                 let item_started_at = progress.transferred_bytes.get();
                 let Some(name) = source.basename() else {
+                    flush_written_roots(&written_paths, &emit, request.id).await;
                     emit(OperationEvent::Failed {
                         request_id: request.id,
                         message: "A clipboard item has no file name".to_owned(),
                     });
                     return;
                 };
+                let name = PathBuf::from(fat_family_child_name(
+                    name.as_os_str(),
+                    fat_family,
+                    &mut used_names,
+                ));
                 let default_target = destination.child(&name);
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 let needs_unique_target =
@@ -3597,24 +4167,23 @@ impl OperationProvider for LocalOperationProvider {
                     {
                         Ok(info) => info.file_type() == gio::FileType::Directory,
                         Err(error) => {
-                            if was_cancelled(&error) {
-                                emit(cancelled_event(
-                                    request.id,
+                            let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                            stop_transfer(
+                                &written_paths,
+                                &emit,
+                                request.id,
+                                TransferStop {
                                     completed,
-                                    vec![item.source.clone()],
-                                    request.items[index + 1..]
+                                    failed: vec![item.source.clone()],
+                                    not_attempted: request.items[index + 1..]
                                         .iter()
                                         .map(|item| item.source.clone())
                                         .collect(),
                                     affected_locations,
-                                ));
-                                return;
-                            }
-                            emit(OperationEvent::TransferFailed {
-                                request_id: request.id,
-                                completed_locations: completed,
-                                message: error.to_string(),
-                            });
+                                    failure,
+                                },
+                            )
+                            .await;
                             return;
                         }
                     };
@@ -3626,24 +4195,23 @@ impl OperationProvider for LocalOperationProvider {
                     ) {
                         Ok(target) => target,
                         Err(error) => {
-                            if was_cancelled(&error) {
-                                emit(cancelled_event(
-                                    request.id,
+                            let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                            stop_transfer(
+                                &written_paths,
+                                &emit,
+                                request.id,
+                                TransferStop {
                                     completed,
-                                    vec![item.source.clone()],
-                                    request.items[index + 1..]
+                                    failed: vec![item.source.clone()],
+                                    not_attempted: request.items[index + 1..]
                                         .iter()
                                         .map(|item| item.source.clone())
                                         .collect(),
                                     affected_locations,
-                                ));
-                                return;
-                            }
-                            emit(OperationEvent::TransferFailed {
-                                request_id: request.id,
-                                completed_locations: completed,
-                                message: error.to_string(),
-                            });
+                                    failure,
+                                },
+                            )
+                            .await;
                             return;
                         }
                     }
@@ -3654,6 +4222,9 @@ impl OperationProvider for LocalOperationProvider {
                 let target_location = location_for_file(&target);
                 if let Some(target) = target_location.clone() {
                     affected_locations.insert(target);
+                }
+                if let Some(path) = target.path() {
+                    written_paths.push(path);
                 }
                 let result = if is_duplicate {
                     copy_new_recursively_with_progress(
@@ -3727,24 +4298,23 @@ impl OperationProvider for LocalOperationProvider {
                     .await
                 };
                 if let Err(error) = result {
-                    if was_cancelled(&error) {
-                        emit(cancelled_event(
-                            request.id,
+                    let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                    stop_transfer(
+                        &written_paths,
+                        &emit,
+                        request.id,
+                        TransferStop {
                             completed,
-                            vec![item.source.clone()],
-                            request.items[index + 1..]
+                            failed: vec![item.source.clone()],
+                            not_attempted: request.items[index + 1..]
                                 .iter()
                                 .map(|item| item.source.clone())
                                 .collect(),
                             affected_locations,
-                        ));
-                        return;
-                    }
-                    emit(OperationEvent::TransferFailed {
-                        request_id: request.id,
-                        completed_locations: completed,
-                        message: error.to_string(),
-                    });
+                            failure,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 completed.push(item.source.clone());
@@ -3754,6 +4324,18 @@ impl OperationProvider for LocalOperationProvider {
                 let created_location = target_location
                     .filter(|_| !request.move_sources && item.conflict != TransferConflict::Merge);
                 progress.finish_item(item_started_at, item_sizes[index], created_location);
+            }
+            if !flush_removable_writes(
+                written_paths,
+                &operation_cancellable,
+                &emit,
+                request.id,
+                &completed,
+                affected_locations,
+            )
+            .await
+            {
+                return;
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -3810,6 +4392,7 @@ impl OperationProvider for LocalOperationProvider {
             let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
             progress.emit();
             let mut completed = Vec::new();
+            let mut restored_paths = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 let remaining = || {
                     request.items[index..]
@@ -3818,17 +4401,27 @@ impl OperationProvider for LocalOperationProvider {
                         .collect::<Vec<_>>()
                 };
                 if operation_cancellable.is_cancelled() {
-                    emit(cancelled_event(
+                    stop_transfer(
+                        &restored_paths,
+                        &emit,
                         request.id,
-                        completed,
-                        Vec::new(),
-                        remaining(),
-                        affected_locations,
-                    ));
+                        TransferStop {
+                            completed,
+                            failed: Vec::new(),
+                            not_attempted: remaining(),
+                            affected_locations,
+                            failure: None,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 let source = sources[index].clone();
                 let item_started_at = progress.transferred_bytes.get();
+                let restored_path = item.record.original.native_path().map(Path::to_path_buf);
+                if let Some(path) = restored_path {
+                    restored_paths.push(path);
+                }
                 let target = gio_file_for_location(&item.record.original);
                 let result = if item.conflict == TransferConflict::ReplaceExisting {
                     replace_local_with_progress(
@@ -3851,28 +4444,39 @@ impl OperationProvider for LocalOperationProvider {
                     .await
                 };
                 if let Err(error) = result {
-                    if was_cancelled(&error) {
-                        emit(cancelled_event(
-                            request.id,
+                    let failure = (!was_cancelled(&error)).then(|| error.to_string());
+                    stop_transfer(
+                        &restored_paths,
+                        &emit,
+                        request.id,
+                        TransferStop {
                             completed,
-                            vec![item.record.current.clone()],
-                            request.items[index + 1..]
+                            failed: vec![item.record.current.clone()],
+                            not_attempted: request.items[index + 1..]
                                 .iter()
                                 .map(|item| item.record.current.clone())
                                 .collect(),
                             affected_locations,
-                        ));
-                        return;
-                    }
-                    emit(OperationEvent::TransferFailed {
-                        request_id: request.id,
-                        completed_locations: completed,
-                        message: error.to_string(),
-                    });
+                            failure,
+                        },
+                    )
+                    .await;
                     return;
                 }
                 completed.push(item.record.current.clone());
                 progress.finish_item(item_started_at, item_sizes[index], None);
+            }
+            if !flush_removable_writes(
+                restored_paths,
+                &operation_cancellable,
+                &emit,
+                request.id,
+                &completed,
+                affected_locations,
+            )
+            .await
+            {
+                return;
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,

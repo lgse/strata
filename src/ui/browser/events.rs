@@ -19,6 +19,7 @@ use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::trash::retryable_delete_entries;
 use crate::ui::browser_modes::BrowserMode;
 use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
+use crate::ui::preview::{FOCUS_PREVIEW_DELAY, preview_target};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::collections::HashMap;
@@ -196,7 +197,7 @@ impl ViewState {
                         .collect();
                     if !filled.is_empty() {
                         column.bound_rows.borrow_mut().retain(|bound| {
-                            let (Some(item), Some(row)) =
+                            let (Some(item), Some(_row)) =
                                 (bound.item.upgrade(), bound.row.upgrade())
                             else {
                                 return false;
@@ -204,20 +205,10 @@ impl ViewState {
                             let position = column.map.source_position(item.position());
                             if let Some(position) = position
                                 && let Some(&entry) = filled.get(&position)
-                                && let Some(size) = row
-                                    .first_child()
-                                    .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
-                                    .and_then(|icon| icon.next_sibling())
-                                    .and_then(|middle| middle.downcast::<gtk::Overlay>().ok())
-                                    .and_then(|middle| middle.last_child())
-                                    .and_downcast::<gtk::Label>()
                             {
+                                let size = &bound.size;
                                 let text = column_size_text(Some(entry));
-                                let actively_renaming = self
-                                    .active_rename
-                                    .borrow()
-                                    .as_ref()
-                                    .is_some_and(|rename| rename.size == size);
+                                let actively_renaming = bound.edit.is_editing();
                                 size.set_label(&text);
                                 size.set_visible(!text.is_empty() && !actively_renaming);
                             }
@@ -308,17 +299,21 @@ impl ViewState {
                         *depth,
                         &column.sort_direction_button,
                     );
-                    column.search_handle.borrow_mut().take();
-                    column
-                        .search_generation
-                        .set(column.search_generation.get().saturating_add(1));
-                    column.search_results.borrow_mut().clear();
-                    column
-                        .search_model
-                        .splice(0, column.search_model.n_items(), &[]);
-                    column.filter_entry.set_text("");
-                    column.syncing_selection.set(true);
-                    column.selection.set_model(None::<&gio::ListModel>);
+                    let preserve_search =
+                        self.refreshing_source_filter.get() && column.recursive_search_active.get();
+                    if !preserve_search {
+                        column.search_session.cancel();
+                        super::collection::deactivate_recursive_search(
+                            &column.recursive_search_active,
+                            &column.search_results,
+                            &column.search_model,
+                            &column.filtered_model,
+                            &column.model,
+                        );
+                        column.filter_entry.set_text("");
+                        column.syncing_selection.set(true);
+                        column.selection.set_model(None::<&gio::ListModel>);
+                    }
                     touch_source_model(column);
                     column.model.replace(0);
                     column.entry_count.set(0);
@@ -327,12 +322,15 @@ impl ViewState {
                     column.spinner.set_visible(true);
                     column.spinner.start();
                     set_column_busy(column, true);
-                    column.presentation.show_loading();
+                    if !preserve_search {
+                        column.presentation.show_loading();
+                    }
                 }
             }
             BrowserEvent::HiddenToggled { show_hidden } => {
                 for column in self.columns.borrow().iter() {
                     column.show_hidden.set(*show_hidden);
+                    column.search_session.set_show_hidden(*show_hidden);
                     touch_source_model(column);
                     column.filter.changed(gtk::FilterChange::Different);
                 }
@@ -365,11 +363,13 @@ impl ViewState {
                         .into_iter()
                         .filter_map(|position| column.map.view_position(position))
                         .collect();
-                    set_column_selections(column, &positions);
+                    if !column.recursive_search_active.get() {
+                        set_column_selections(column, &positions);
+                    }
                     stop_column_spinner(column);
                     column.truncated_hint.set_visible(*truncated);
                     let count = column.entry_count.get();
-                    if count == 0 {
+                    if count == 0 && !column.recursive_search_active.get() {
                         if !defer_empty {
                             column.presentation.show_empty();
                         }
@@ -459,7 +459,7 @@ impl ViewState {
                                 }
                                 state.reveal_focused_entry();
                                 if properties && let Some(entry) = state.browser.focused_entry() {
-                                    state.show_entry_properties(entry);
+                                    state.show_entry_properties_at(entry, depth);
                                 }
                             }
                         });
@@ -579,6 +579,7 @@ impl ViewState {
                         self.reveal_column(column.shell);
                     }
                 }
+                self.mirror_focused_folder(*depth, *position);
             }
             BrowserEvent::PreviewRequested { .. } => {}
             BrowserEvent::ExtractRequested { entry } => {
@@ -634,6 +635,7 @@ impl ViewState {
             } => {
                 self.update_transfer_progress(*completed_items, *transferred_bytes, *total_bytes);
             }
+            BrowserEvent::FlushingToDevice => self.show_device_flush_status(),
             BrowserEvent::TransferFinished { moved_locations } => {
                 if !moved_locations.is_empty() {
                     self.complete_cut_transfer(moved_locations);
@@ -1041,10 +1043,78 @@ impl ViewState {
     }
 
     fn prune_stale_search_results(&self) {
-        for column in self.columns.borrow().iter() {
-            prune_missing_search_results(column);
+        let columns = self.columns.borrow().clone();
+        let mut changed = false;
+        for column in &columns {
+            changed |= prune_missing_search_results(column);
+        }
+        if changed {
+            self.notify_search_selection_changed();
         }
         self.mode_views.borrow().prune_stale_search_results();
+    }
+
+    fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
+        if let Some(source) = self.pending_mirror.borrow_mut().take() {
+            source.remove();
+        }
+        let Some(position) = position else {
+            return;
+        };
+        if self.browser.child_mirror_suppressed()
+            || !self.columns_mirror_selection.get()
+            || self.active_rename.borrow().is_some()
+            || self.pending_new_entry.borrow().is_some()
+            || self.mode_views.borrow().mode() != BrowserMode::Columns
+            || self.input_ownership.borrow().last_navigation
+                != crate::ui::input_ownership::NavigationInput::Keyboard
+        {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_mirror.borrow_mut().take();
+            state.apply_child_mirror(depth, position);
+        });
+        self.pending_mirror.replace(Some(source));
+    }
+
+    fn apply_child_mirror(self: &Rc<Self>, depth: usize, position: usize) {
+        let filtered = self
+            .columns
+            .borrow()
+            .get(depth)
+            .is_some_and(|column| column.map.has_query());
+        if filtered
+            || self.browser.child_mirror_suppressed()
+            || !self.columns_mirror_selection.get()
+            || self.active_rename.borrow().is_some()
+            || self.pending_new_entry.borrow().is_some()
+            || self.mode_views.borrow().mode() != BrowserMode::Columns
+            || self.input_ownership.borrow().last_navigation
+                != crate::ui::input_ownership::NavigationInput::Keyboard
+        {
+            return;
+        }
+        let Some((focused_depth, focused_position, entry)) = self.browser.focused_item() else {
+            return;
+        };
+        if (focused_depth, focused_position) != (depth, position) {
+            return;
+        }
+        if entry.is_directory() {
+            self.browser.show_child(depth, entry.location);
+        } else {
+            self.browser.close_column(depth + 1);
+            if self.single_click_previews.get()
+                && let Some(entry) = preview_target(Some(entry))
+            {
+                self.browser.request_preview(entry);
+            }
+        }
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {

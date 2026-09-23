@@ -90,9 +90,9 @@ fn filter_queries_keep_matches_near_the_end() {
 }
 
 #[test]
-fn wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync() {
+fn wildcard_and_typo_filter_updates_keep_visible_rows_and_position_maps_in_sync() {
     crate::test_support::gtk_test(
-        "ui::browser::collection::tests::wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync",
+        "ui::browser::collection::tests::wildcard_and_typo_filter_updates_keep_visible_rows_and_position_maps_in_sync",
         || {
             let source = mapped_source(&[
                 "fv\tclip.MOV.bak",
@@ -100,6 +100,9 @@ fn wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync() {
                 "fh\t.hidden.MOV",
                 "fv\tclip.MOV.backup",
                 "fv\tIMG_001.jpg",
+                "fv\ttrash.svg",
+                "fv\ttrahs.svg",
+                "fv\tstrata-search.svg",
             ]);
             let query = Rc::new(RefCell::new(String::new()));
             let show_hidden = Rc::new(Cell::new(false));
@@ -113,16 +116,21 @@ fn wildcard_filter_updates_keep_visible_rows_and_position_maps_in_sync() {
                 model.clone(),
                 None,
             );
-            // Appending a star broadens an anchored suffix; deleting the first star
-            // changes to substring matching and can both add and remove rows.
             for (text, expected) in [
                 ("*.MOV", vec![1]),
                 ("*.MOV.b", vec![]),
                 ("*.MOV.b*", vec![0, 3]),
                 ("*.MOV.b", vec![]),
                 (".MOV.b", vec![0, 3]),
-                ("*", vec![0, 1, 3, 4]),
-                ("", vec![0, 1, 3, 4]),
+                ("trs", vec![]),
+                ("trsh", vec![5]),
+                ("trs", vec![]),
+                ("trahs", vec![5, 6]),
+                ("trahs*", vec![6]),
+                ("trash", vec![5, 6]),
+                ("trash*", vec![5]),
+                ("*", vec![0, 1, 3, 4, 5, 6, 7]),
+                ("", vec![0, 1, 3, 4, 5, 6, 7]),
             ] {
                 notify_filter_query(&filter, &query, text.into());
                 assert_eq!(model.n_items() as usize, expected.len(), "{text}");

@@ -33,7 +33,7 @@ impl DirectorySummary {
         self.issues.unreadable || self.issues.timed_out || self.issues.depth_limited
     }
 
-    fn include(&mut self, child: Self) {
+    pub(crate) fn include(&mut self, child: Self) {
         self.item_count = self.item_count.saturating_add(child.item_count);
         self.total_size = self.total_size.saturating_add(child.total_size);
         self.visible_file_count = self

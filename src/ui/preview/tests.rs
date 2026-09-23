@@ -4,7 +4,7 @@ pub(super) mod media_size;
 mod preferences;
 mod source;
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gtk::{glib, prelude::*};
 
@@ -346,5 +346,179 @@ fn keyboard_opened_preview_closes_when_the_displayed_entry_is_spliced_out() {
             },
         );
         assert!(!preview.is_open());
+    });
+}
+
+#[test]
+fn archive_keys_route_into_the_preview_tree() {
+    const TEST: &str = "ui::preview::tests::archive_keys_route_into_the_preview_tree";
+    crate::test_support::gtk_test(TEST, || {
+        let drawer = PreviewDrawer::new(Rc::new(NoopPreviewProvider), false);
+        let tree = crate::services::archive_preview_tree(vec![
+            crate::services::ArchiveFileEntry {
+                name: "readme.md".to_owned(),
+                directory: false,
+                size: 2,
+            },
+            crate::services::ArchiveFileEntry {
+                name: "src/a.txt".to_owned(),
+                directory: false,
+                size: 1,
+            },
+        ]);
+        drawer.state.render_archive(tree, false);
+        let selected = |drawer: &PreviewDrawer| {
+            drawer
+                .state
+                .archive_browser
+                .borrow()
+                .as_ref()
+                .expect("archive browser")
+                .selected_index()
+        };
+        assert_eq!(selected(&drawer), Some(0));
+
+        assert!(drawer.archive_key(gtk::gdk::Key::Down));
+        assert_eq!(selected(&drawer), Some(1));
+        assert!(drawer.archive_key(gtk::gdk::Key::Up));
+        assert_eq!(selected(&drawer), Some(0));
+
+        assert!(drawer.archive_key(gtk::gdk::Key::Left));
+        assert_eq!(selected(&drawer), Some(0));
+        assert!(drawer.archive_key(gtk::gdk::Key::Right));
+
+        assert!(!drawer.archive_key(gtk::gdk::Key::space));
+    });
+}
+
+#[test]
+fn archive_password_prompt_submits_the_password_and_clears_it_when_closed() {
+    const TEST: &str = "ui::preview::tests::archive_password_prompt_submits_the_password_and_clears_it_when_closed";
+    crate::test_support::gtk_test(TEST, || {
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        let drawer = PreviewDrawer::new(
+            Rc::new(media_size::RecordingProvider(requests.clone())),
+            false,
+        );
+        drawer.show(media_size::entry("secret.zip"), None);
+        assert_eq!(requests.borrow().len(), 1);
+        let request_id = requests.borrow()[0].id;
+        assert_eq!(requests.borrow()[0].archive_password, None);
+        let entry = requests.borrow()[0].entry.clone();
+
+        drawer.state.handle_event(
+            request_id,
+            PreviewEvent::NeedsPassword { request_id, entry },
+        );
+        let password = drawer
+            .state
+            .password_entry
+            .borrow()
+            .clone()
+            .expect("password prompt shown");
+
+        password.set_text("s3cret");
+        password.emit_activate();
+        assert_eq!(requests.borrow().len(), 2);
+        assert_eq!(
+            requests.borrow()[1]
+                .archive_password
+                .as_ref()
+                .map(|secret| secret.expose()),
+            Some("s3cret")
+        );
+
+        drawer.close();
+        assert!(
+            drawer.state.password_entry.borrow().is_none(),
+            "password cleared from state on close"
+        );
+        drawer.state.handle_event(
+            requests.borrow()[1].id,
+            PreviewEvent::NeedsPassword {
+                request_id: requests.borrow()[1].id,
+                entry: requests.borrow()[1].entry.clone(),
+            },
+        );
+        assert!(
+            drawer.state.password_entry.borrow().is_none(),
+            "closed preview rejects stale password prompts"
+        );
+    });
+}
+
+#[test]
+fn archive_unlock_retry_focuses_the_tree_first_entry() {
+    const TEST: &str = "ui::preview::tests::archive_unlock_retry_focuses_the_tree_first_entry";
+    crate::test_support::gtk_test(TEST, || {
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        let drawer = PreviewDrawer::new(
+            Rc::new(media_size::RecordingProvider(requests.clone())),
+            false,
+        );
+        let window = gtk::Window::builder()
+            .child(&drawer.widget())
+            .default_width(800)
+            .default_height(600)
+            .build();
+        window.present();
+        let start = std::time::Instant::now();
+        while !drawer.widget().is_mapped() {
+            assert!(
+                start.elapsed() < std::time::Duration::from_secs(5),
+                "preview drawer did not map"
+            );
+            glib::MainContext::default().iteration(false);
+        }
+        let entry = media_size::entry("secret.zip");
+        drawer.toggle(Some(entry), None);
+        assert_eq!(requests.borrow().len(), 1);
+        let first = requests.borrow()[0].clone();
+        drawer.state.handle_event(
+            first.id,
+            PreviewEvent::NeedsPassword {
+                request_id: first.id,
+                entry: first.entry.clone(),
+            },
+        );
+        let password = drawer
+            .state
+            .password_entry
+            .borrow()
+            .clone()
+            .expect("password prompt shown");
+        password.set_text("s3cret");
+        password.emit_activate();
+        assert_eq!(requests.borrow().len(), 2);
+        let retry = requests.borrow()[1].clone();
+        drawer.state.handle_event(
+            retry.id,
+            PreviewEvent::Ready(crate::services::Preview {
+                request_id: retry.id,
+                entry: retry.entry.clone(),
+                content_type: "application/zip".into(),
+                content: crate::services::PreviewContent::Archive {
+                    tree: crate::services::archive_preview_tree(vec![
+                        crate::services::ArchiveFileEntry {
+                            name: "top.txt".to_owned(),
+                            directory: false,
+                            size: 2,
+                        },
+                    ]),
+                },
+            }),
+        );
+        let root: gtk::Widget = {
+            let archive = drawer.state.archive_browser.borrow();
+            let tree = archive.as_ref().expect("archive browser");
+            assert_eq!(tree.selected_index(), Some(0));
+            tree.root().clone().upcast()
+        };
+        let focused = gtk::prelude::RootExt::focus(&window).expect("window focus");
+        assert!(
+            focused == root || focused.is_ancestor(&root),
+            "archive tree must own keyboard focus, got {focused:?}"
+        );
+        window.destroy();
     });
 }
