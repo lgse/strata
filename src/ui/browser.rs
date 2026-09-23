@@ -293,11 +293,11 @@ impl BrowserView {
             .hexpand(true)
             .width_chars(36)
             .placeholder_text("Enter a path or URI…")
-            .tooltip_text("Location (Ctrl+L)")
+            .tooltip_text(super::accessibility::LOCATION_LABEL)
             .build();
         location_entry.add_css_class("location-entry");
         let confirm_location = gtk::Button::builder()
-            .tooltip_text("Navigate (Enter)")
+            .tooltip_text(super::accessibility::LOCATION_CONFIRM_LABEL)
             .build();
         confirm_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::CHECK,
@@ -305,13 +305,18 @@ impl BrowserView {
         )));
         confirm_location.add_css_class("location-action");
         let cancel_location = gtk::Button::builder()
-            .tooltip_text("Cancel (Escape)")
+            .tooltip_text(super::accessibility::LOCATION_CANCEL_LABEL)
             .build();
         cancel_location.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::X,
             16,
         )));
         cancel_location.add_css_class("location-action");
+        super::accessibility::describe_location_controls(
+            &location_entry,
+            &confirm_location,
+            &cancel_location,
+        );
         let entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         entry_row.append(&location_entry);
         entry_row.append(&confirm_location);
@@ -897,10 +902,11 @@ impl BrowserView {
         self.state.pending_new_entry.borrow().is_some()
     }
 
-    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
-    /// and run into whichever view the current mode shows. The pane nearest the start
-    /// edge is the target, since that is the one such a drag runs into.
-    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>) {
+    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar or
+    /// the preview pane — and run into whichever view the current mode shows. The pane
+    /// nearest the `edge` the surface sits on is the target, since that is the one such
+    /// a drag runs into.
+    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>, edge: gtk::PackType) {
         let weak_state = Rc::downgrade(&self.state);
         super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
             let state = weak_state.upgrade()?;
@@ -909,11 +915,12 @@ impl BrowserView {
             state.pointer_navigation();
             let mode = state.mode_views.borrow().mode();
             if mode == BrowserMode::Columns {
-                return state
-                    .columns
-                    .borrow()
-                    .first()
-                    .map(|column| column.marquee.clone());
+                let columns = state.columns.borrow();
+                let column = match edge {
+                    gtk::PackType::End => columns.last(),
+                    _ => columns.first(),
+                };
+                return column.map(|column| column.marquee.clone());
             }
             state.mode_views.borrow().leading_marquee()
         });

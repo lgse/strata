@@ -4096,7 +4096,7 @@ textview > popover.menu button.model:focus-visible,
   border-radius: 6px;
   margin: 1px 8px;
   padding: 0;
-  transition: background 160ms ease-out, color 160ms ease-out;
+  transition: color 160ms ease-out;
 }
 
 .file-list row {
@@ -4433,7 +4433,8 @@ textview > popover.menu button.model:focus-visible,
   color: @theme_text;
 }
 
-.file-list row:focus-visible {
+.file-list row:focus-visible,
+.file-list-mode row:focus-visible {
   outline: none;
 }
 
@@ -4990,8 +4991,12 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .file-icons > child:focus-visible .icons-card-icon-frame {
-  outline: 1px solid @theme_accent;
-  outline-offset: -1px;
+  outline: none;
+}
+
+.keyboard-navigation .file-icons > child:focus-visible .icons-card-icon-frame {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .icons-card {
@@ -5182,6 +5187,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   opacity: 0.52;
 }
 
+.file-list-mode row:focus-visible,
 .keyboard-navigation .file-list-mode row:focus-within {
   outline: 1px solid @theme_accent;
   outline-offset: -1px;

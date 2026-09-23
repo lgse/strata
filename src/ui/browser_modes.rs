@@ -438,7 +438,9 @@ impl ModeViews {
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
         }?;
-        Some(pane.marquee.clone())
+        pane.search
+            .active_marquee()
+            .or_else(|| Some(pane.marquee.clone()))
     }
 
     fn single_pane(&self) -> Option<&Pane> {
@@ -2036,7 +2038,13 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone(), false);
+    let (collection, marquee) = collection_with_marquee(
+        &root,
+        scroll,
+        targets.clone(),
+        false,
+        context.click.multiple_selection.clone(),
+    );
     let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -2992,8 +3000,13 @@ fn build_list_pane(
     table.set_vexpand(true);
     table.append(&headings);
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), true);
+    let (collection, marquee) = collection_with_marquee(
+        view.upcast_ref(),
+        scroll,
+        targets.clone(),
+        true,
+        click_options.multiple_selection.clone(),
+    );
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -3297,6 +3310,7 @@ fn collection_with_marquee(
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
     list_rows: bool,
+    multiple_selection: Rc<Cell<bool>>,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -3329,6 +3343,7 @@ fn collection_with_marquee(
                 selection.unselect_all();
             }
         }),
+        allow_drag: multiple_selection,
     });
     (overlay, marquee)
 }
@@ -3892,7 +3907,7 @@ fn install_preview_click(
             gesture.set_state(gtk::EventSequenceState::Claimed);
             if press_count == 1 {
                 browser.select(depth, position);
-                if !browser.is_chooser_mode()
+                if (!browser.is_chooser_mode() || entry.is_directory())
                     && (!is_trash_location(&entry.location) || entry.is_directory())
                 {
                     browser.activate_in_place(depth, position);
@@ -3907,8 +3922,8 @@ fn install_preview_click(
         }
         if should_activate_pointer_click(press_count, entry.is_directory(), click_activation.get())
         {
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            if !browser.is_chooser_mode() {
+            if !browser.is_chooser_mode() || entry.is_directory() {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
                 browser.activate_in_place(depth, position);
             }
         } else if press_count == 1
@@ -4007,6 +4022,14 @@ fn connect_selection(
             }
             let selected_positions =
                 selected_source_positions(&source_index, &view_model, selection);
+            let changed_end = position.saturating_add(count) as usize;
+            let toggled = bitset_positions(&selection.selection())
+                .into_iter()
+                .rev()
+                .find(|candidate| *candidate >= position as usize && *candidate < changed_end)
+                .and_then(|position| {
+                    source_position_for_view(&source_index, Some(&view_model), position as u32)
+                });
             let native_focus = weak_view
                 .upgrade()
                 .and_then(|view| view.root())
@@ -4027,7 +4050,9 @@ fn connect_selection(
                     source_position_for_view(&source_index, Some(&view_model), position)
                 })
                 .filter(|position| selected_positions.contains(position));
-            let focused = native_focus.or_else(|| selected_positions.last().copied());
+            let focused = toggled
+                .or(native_focus)
+                .or_else(|| selected_positions.last().copied());
             sync_browser_selection(&sections, &browser, depth, &source_index, focused);
         });
 }
