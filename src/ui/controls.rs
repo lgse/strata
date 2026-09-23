@@ -163,6 +163,18 @@ pub(super) struct ModalLayout {
     pub icon: gtk::Image,
 }
 
+pub(super) fn focus_button(button: &gtk::Button) {
+    let weak = button.downgrade();
+    glib::idle_add_local_once(move || {
+        if let Some(button) = weak.upgrade() {
+            button.grab_focus();
+            if let Some(window) = button.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+        }
+    });
+}
+
 impl ModalLayout {
     pub fn set_loading(&self, loading: bool, tooltip: Option<&str>) {
         if loading {

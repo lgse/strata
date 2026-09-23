@@ -1249,8 +1249,9 @@ impl ViewState {
 
     pub(super) fn cancel_location_edit(&self) {
         self.path_completion.dismiss();
-        self.restore_location_text();
+        // Resetting a visible entry emits changed and reopens its completion popover.
         self.location_stack.set_visible_child_name("breadcrumbs");
+        self.restore_location_text();
         self.browser.focus_active();
     }
 
@@ -1260,8 +1261,8 @@ impl ViewState {
         let (input, credentials) = match credentials_from_location_input(input.as_str()) {
             Ok(parsed) => parsed,
             Err(error) => {
-                self.restore_location_text();
                 self.location_stack.set_visible_child_name("breadcrumbs");
+                self.restore_location_text();
                 show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
                 return;
             }
@@ -1293,8 +1294,8 @@ impl ViewState {
             }
             Err(error) => {
                 self.pending_location_credentials.take();
-                self.restore_location_text();
                 self.location_stack.set_visible_child_name("breadcrumbs");
+                self.restore_location_text();
                 show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
             }
         }
@@ -1346,8 +1347,8 @@ impl ViewState {
                             prompt_details,
                         );
                     } else {
-                        state.restore_location_text();
                         state.location_stack.set_visible_child_name("breadcrumbs");
+                        state.restore_location_text();
                         if let Some(message) = mount_failure_message(&location, &error) {
                             show_error_dialog(&state.overlay, "Unable to connect", &message);
                         }
@@ -1421,8 +1422,8 @@ impl ViewState {
             },
             move || {
                 if let Some(state) = cancel_weak.upgrade() {
-                    state.restore_location_text();
                     state.location_stack.set_visible_child_name("breadcrumbs");
+                    state.restore_location_text();
                     state.browser.focus_active();
                 }
             },
@@ -1888,7 +1889,6 @@ impl ViewState {
     }
 
     pub(super) fn set_location(self: &Rc<Self>, location: &Location) {
-        self.location_entry.set_text(&location.display_path());
         while let Some(child) = self.breadcrumbs.first_child() {
             self.breadcrumbs.remove(&child);
         }
@@ -1977,6 +1977,7 @@ impl ViewState {
             }
         }
         self.location_stack.set_visible_child_name("breadcrumbs");
+        self.location_entry.set_text(&location.display_path());
         let Some(last) = self.breadcrumbs.last_child() else {
             return;
         };

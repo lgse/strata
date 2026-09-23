@@ -29,7 +29,7 @@ use super::{
         show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
-    controls::{ModalTone, message_dialog_description, message_dialog_layout},
+    controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
     modal::{ModalHost, dismiss_modal_layer, modal_layer},
     motion::{animations_enabled, emphasized_deceleration},
     preferences::PreferenceManager,
@@ -2882,7 +2882,7 @@ fn confirm_forget_cached_password(
         glib::Propagation::Stop
     });
     layer.add_controller(escape);
-    cancel.grab_focus();
+    focus_button(&confirm);
 }
 
 fn password_stop_drive(drive: Option<gio::Drive>) -> Option<gio::Drive> {
