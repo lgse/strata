@@ -147,12 +147,7 @@ fn non_native_location_filters_entries_in_columns_mode() {
             }
 
             assert_eq!(view.state.columns.borrow()[0].filtered_model.n_items(), 1);
-            assert!(
-                view.state.columns.borrow()[0]
-                    .search_handle
-                    .borrow()
-                    .is_none()
-            );
+            assert!(!view.state.columns.borrow()[0].search_session.is_active());
 
             let opened = Rc::new(Cell::new(false));
             let opened_for_observe = opened.clone();

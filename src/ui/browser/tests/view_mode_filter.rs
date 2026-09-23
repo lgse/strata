@@ -154,6 +154,39 @@ fn assert_unfiltered(view: &BrowserView) {
 }
 
 #[test]
+fn pane_filter_placeholder_counts_items_in_every_mode() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::view_mode_filter::pane_filter_placeholder_counts_items_in_every_mode",
+        || {
+            for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Columns] {
+                let (view, window, fixture, browser) = present_filtered_view(mode);
+                wait_until(
+                    || {
+                        let placeholder = match mode {
+                            BrowserMode::Columns => view
+                                .state
+                                .columns
+                                .borrow()
+                                .first()
+                                .and_then(|column| column.filter_entry.placeholder_text())
+                                .map(|text| text.to_string()),
+                            BrowserMode::Icons | BrowserMode::List => {
+                                view.state.mode_views.borrow().active_filter_placeholder()
+                            }
+                        };
+                        placeholder.as_deref() == Some("Filter 2 items…")
+                    },
+                    &format!("{mode:?} filter placeholder should count the listing"),
+                );
+                browser.clear_observer();
+                window.close();
+                drop(fixture);
+            }
+        },
+    );
+}
+
+#[test]
 fn switching_view_modes_keeps_the_active_pane_filter() {
     crate::test_support::gtk_test(
         "ui::browser::tests::view_mode_filter::switching_view_modes_keeps_the_active_pane_filter",

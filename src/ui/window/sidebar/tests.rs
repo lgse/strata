@@ -486,10 +486,24 @@ fn sidebar_visibility_prefs_hide_and_restore_default_places_across_windows() {
                 assert!(has_location(sidebar, &recent));
             }
             let chooser = build_sidebar(browser_for_window(), manager.clone(), true);
+            chooser.state.recent_availability.set(RecentAvailability {
+                platform_tracking_enabled: true,
+                runtime_backend_supported: true,
+            });
+            chooser.state.rebuild();
             assert!(has_location(&chooser, &home));
             assert!(!has_location(&chooser, &trash));
             assert!(!has_location(&chooser, &network));
+            assert!(has_location(&chooser, &recent));
+            row(&chooser, &recent).emit_clicked();
+            assert_eq!(
+                chooser.state.browser.active_location(),
+                Some(recent.clone())
+            );
+            manager.set_sidebar_show_recent(false);
             assert!(!has_location(&chooser, &recent));
+            manager.set_sidebar_show_recent(true);
+            assert!(has_location(&chooser, &recent));
             for (index, location) in [&home, &trash, &network]
                 .into_iter()
                 .chain(standards.iter().map(|(_, location)| location))

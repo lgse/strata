@@ -356,6 +356,7 @@ fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_o
             id: OperationRequestId(11),
             entry: test_file_entry(&archive_path),
             destination: Location::local(&destination),
+            created_destination: false,
             password: None,
         },
         Rc::new(move |event| {
@@ -455,7 +456,6 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a directory"),
-        ("unsafe.zip", "Refusing unsafe ZIP path"),
         ("unknown.iso", "Unsupported archive format"),
     ] {
         let archive = root.path().join(name);
@@ -468,9 +468,6 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         if name == "destination.zip" {
             write_zip_stored(&archive, &[("file.txt", b"contents")])?;
         }
-        if name == "unsafe.zip" {
-            write_zip_stored(&archive, &[("../outside", b"contents")])?;
-        }
         let events = Rc::new(RefCell::new(Vec::new()));
         let emitted = events.clone();
         let handle = LocalOperationProvider.extract(
@@ -482,6 +479,7 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
                 } else {
                     &destination
                 }),
+                created_destination: false,
                 password: None,
             },
             Rc::new(move |event| emitted.borrow_mut().push(event)),
@@ -525,6 +523,43 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
 }
 
 #[test]
+fn extraction_provider_sanitizes_parent_paths_without_failure() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let archive = root.path().join("unsafe.zip");
+    write_zip_stored(
+        &archive,
+        &[("../escaped.txt", b"escaped"), ("after.txt", b"after")],
+    )?;
+
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(435),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+
+    assert!(events.iter().any(|event| matches!(
+        event,
+        OperationEvent::Extracted { first_name: Some(name), .. } if name == "escaped.txt"
+    )));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Failed { .. }))
+    );
+    assert_eq!(fs::read(destination.join("escaped.txt"))?, b"escaped");
+    assert_eq!(fs::read(destination.join("after.txt"))?, b"after");
+    assert!(!root.path().join("escaped.txt").exists());
+    Ok(())
+}
+
+#[test]
 fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -537,6 +572,7 @@ fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), B
         id: OperationRequestId(908),
         entry: test_file_entry(&archive),
         destination: Location::local(&destination),
+        created_destination: false,
         password: None,
     });
     assert!(
@@ -566,6 +602,7 @@ fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dy
         id: OperationRequestId(909),
         entry: test_file_entry(&archive),
         destination: Location::local(&destination),
+        created_destination: false,
         password: None,
     });
     assert!(
@@ -577,6 +614,35 @@ fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dy
     assert!(
         destination.join("kept.txt").exists(),
         "user content was lost"
+    );
+    Ok(())
+}
+
+#[test]
+fn failed_extraction_removes_a_caller_created_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("broken.zip");
+    fs::write(&archive, b"not an archive")?;
+    let destination = root.path().join("broken");
+    fs::create_dir(&destination)?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(910),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: true,
+        password: None,
+    });
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Failed { .. })),
+        "{:?}",
+        events
+    );
+    assert!(
+        !destination.exists(),
+        "caller-created destination was not cleaned up"
     );
     Ok(())
 }

@@ -19,6 +19,7 @@ use crate::{
 };
 
 mod about;
+mod actions;
 mod bindings;
 mod general;
 mod keybindings;
@@ -705,6 +706,7 @@ pub fn build_layer(
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Appearance", icons::PALETTE, "theme"),
+        ("Actions", icons::PLAY, "actions"),
         ("Keybindings", icons::KEYBOARD, "keybindings"),
         ("Updates", icons::DOWNLOADS, "updates"),
         ("About", icons::INFO, "about"),
@@ -745,6 +747,11 @@ pub fn build_layer(
                         for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
                         }
+                    }
+                    "actions" => {
+                        let page = actions::actions_page();
+                        search::apply(&page, &search_state);
+                        stack.add_named(&page, Some("actions"));
                     }
                     "updates" => {
                         let container = updates_container.clone();
@@ -1765,6 +1772,7 @@ fn update_check_row(
                     button_for_installed.set_sensitive(true);
                     installed_for_installed.set(true);
                     checking_for_installed.set(false);
+                    restart_application(&button_for_installed);
                 },
                 move |message| {
                     match message {
@@ -1946,20 +1954,33 @@ fn restart_application(button: &gtk::Button) {
     restart(application.as_ref());
 }
 
+fn process_start_time(pid: u32) -> Option<String> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    // comm (field 2) may contain spaces or parentheses; the remaining fields
+    // begin after its final closing parenthesis. starttime is field 22.
+    stat.rsplit_once(") ")?
+        .1
+        .split_whitespace()
+        .nth(19)
+        .map(str::to_owned)
+}
+
 fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Command> {
     use std::{os::unix::process::CommandExt, process::Stdio};
 
     let mut command = crate::trusted_command::command("sh").ok()?;
     let sleep = crate::trusted_command::resolve("sleep").ok()?;
+    let start_time = process_start_time(parent_pid).unwrap_or_default();
     command
         .args([
             "-c",
-            "while kill -0 \"$1\" 2>/dev/null; do \"$3\" 0.1; done; \"$3\" 0.5; exec \"$2\"",
+            "pid=$1; binary=$2; sleeper=$3; born=$4; while kill -0 \"$pid\" 2>/dev/null && [ -r \"/proc/$pid/stat\" ]; do IFS= read -r stat < \"/proc/$pid/stat\" || break; rest=${stat##*) }; set -- $rest; shift 19; [ \"${1:-}\" = \"$born\" ] || break; \"$sleeper\" 0.1; done; \"$sleeper\" 0.5; exec \"$binary\"",
             "strata-restart",
         ])
         .arg(parent_pid.to_string())
         .arg(current_exe)
         .arg(sleep)
+        .arg(start_time)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -2294,6 +2315,7 @@ pub(super) fn show_update_dialog(
                 action_for_installed.add_css_class("suggested-action");
                 action_for_installed.set_sensitive(true);
                 installed_for_installed.set(true);
+                restart_application(&action_for_installed);
             },
             move |message| {
                 match message {

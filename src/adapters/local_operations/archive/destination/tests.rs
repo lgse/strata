@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{ExtractNameResolver, ExtractionDestination, validated_archive_path};
+use super::{ExtractNameResolver, ExtractionDestination, sanitized_archive_path};
 use std::{
     error::Error,
     ffi::OsString,
@@ -11,14 +11,15 @@ use std::{
 };
 
 #[test]
-fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dyn Error>> {
-    for path in [
+fn archive_paths_are_sanitized_to_confined_relative_paths() -> Result<(), Box<dyn Error>> {
+    for name in [
         "",
         ".",
         "./",
         "././",
-        "../marker",
-        "safe/../marker",
+        "..",
+        "safe/..",
+        "safe/../..",
         "/tmp/marker",
         "\\tmp\\marker",
         "C:\\tmp\\marker",
@@ -27,12 +28,21 @@ fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dy
         "\\\\server\\share\\marker",
         "//server/share/marker",
     ] {
-        assert!(validated_archive_path(path).is_err(), "accepted {path:?}");
+        assert!(sanitized_archive_path(name).is_err(), "accepted {name:?}");
     }
-    assert_eq!(
-        validated_archive_path("folder/./nested//item.txt")?,
-        Path::new("folder/nested/item.txt")
-    );
+    for (name, expected) in [
+        ("../marker", "marker"),
+        ("safe/../marker", "marker"),
+        ("safe/../../marker", "marker"),
+        ("safe\\..\\..\\marker", "marker"),
+        ("folder/./nested//item.txt", "folder/nested/item.txt"),
+    ] {
+        assert_eq!(
+            sanitized_archive_path(name)?,
+            Path::new(expected),
+            "{name:?}"
+        );
+    }
     Ok(())
 }
 

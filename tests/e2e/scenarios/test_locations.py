@@ -23,6 +23,33 @@ def test_typing_a_path_navigates_there(strata):
     strata.entry("notes.txt", directory="documents")
 
 
+def test_named_location_controls_navigate_and_cancel(strata):
+    strata.keyboard.press("ctrl+l")
+    field = strata.window.find(role="text", name="Location (Ctrl+L)")
+    assert field is not None, strata.window.dump()
+    confirm = strata.window.find(role="button", name="Navigate (Enter)")
+    cancel = strata.window.find(role="button", name="Cancel (Escape)")
+    assert confirm is not None and cancel is not None, strata.window.dump()
+
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(strata.fixture.path("documents")))
+    strata.wait(lambda: field.text.endswith("documents"), "typed location")
+    strata.pointer.click(confirm)
+    strata.wait_for_directory("documents")
+    strata.entry("notes.txt", directory="documents")
+
+    strata.keyboard.press("ctrl+l")
+    cancel = strata.window.find(role="button", name="Cancel (Escape)")
+    assert cancel is not None
+    strata.pointer.click(cancel)
+    strata.wait(
+        lambda: strata.window.find(role="button", name="Navigate (Enter)") is None,
+        "the location entry to close",
+    )
+    assert strata.window.find(role="text", name="Location (Ctrl+L)") is None
+    strata.wait_for_directory("documents")
+
+
 def test_a_breadcrumb_returns_to_the_parent(strata):
     strata.open_directory("documents")
 

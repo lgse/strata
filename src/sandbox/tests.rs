@@ -21,9 +21,10 @@ const PDF_PREVIEW: super::ParseOperation = super::ParseOperation::PreviewPdf(Pdf
 });
 
 use super::{
-    Cancellation, MAX_RASTER_INPUT_BYTES, MediaPreviewBackend, ParseOperation, PdfRenderSize,
-    PrivateOutput, gpu_devices, parse, polaris_gpu_available_at, resolve_renderer_executable,
-    sandbox_command, sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
+    Cancellation, MAX_RASTER_INPUT_BYTES, MediaPreviewBackend, OutputError, ParseOperation,
+    PdfRenderSize, PrivateOutput, archive_output_error, gpu_devices, parse,
+    polaris_gpu_available_at, resolve_renderer_executable, sandbox_command, sandbox_input_path,
+    spawn_renderer, stage_secret_anon, valid_output, wait_for_renderer,
 };
 
 #[test]
@@ -175,7 +176,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Downloads/untrusted.pdf"),
         Path::new("/tmp/private-output"),
-        PDF_PREVIEW,
+        PDF_PREVIEW.clone(),
         2,
         MediaPreviewBackend::Software,
         &[],
@@ -233,6 +234,37 @@ fn workbook_parser_uses_resource_limited_sandbox_and_validated_output() {
 }
 
 #[test]
+fn word_document_parser_uses_resource_limited_sandbox_and_validated_output() {
+    let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
+        Path::new("/app/strata"),
+        Path::new("/fixtures/report.docx"),
+        Path::new("/private-output"),
+        ParseOperation::PreviewDocument,
+        0,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let arguments = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(arguments.contains("--unshare-all --die-with-parent --new-session --clearenv"));
+    assert!(arguments.contains("--as=2147483648 --cpu=10"));
+    assert!(arguments.contains("preview-document /input.docx /output/result.json"));
+    assert!(!arguments.contains("--share-net"));
+    assert!(valid_output(
+        ParseOperation::PreviewDocument,
+        br#"{"html":"<p>a</p>","truncated":false}"#
+    ));
+    assert!(!valid_output(
+        ParseOperation::PreviewDocument,
+        br#"{"rows":[["a"]],"truncated":false}"#
+    ));
+}
+
+#[test]
 fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
     let command = sandbox_command(
         Path::new("/usr/bin/bwrap"),
@@ -272,13 +304,13 @@ fn metadata_probe_retains_software_sandbox_limits_and_narrow_runtime_access() {
 
 #[test]
 fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits() {
-    let operation = MEDIA_PREVIEW;
+    let operation = MEDIA_PREVIEW.clone();
     let command = sandbox_command(
         Path::new("/usr/bin/bwrap"),
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        operation,
+        operation.clone(),
         0,
         MediaPreviewBackend::Automatic,
         &[],
@@ -381,7 +413,7 @@ fn every_polaris_range_uses_the_safe_default_but_remains_available_for_opt_in() 
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        MEDIA_PREVIEW,
+        MEDIA_PREVIEW.clone(),
         0,
         MediaPreviewBackend::Automatic,
         &devices,
@@ -461,7 +493,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        MEDIA_PREVIEW,
+        MEDIA_PREVIEW.clone(),
         0,
         MediaPreviewBackend::Automatic,
         &devices,
@@ -489,7 +521,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        MEDIA_PREVIEW,
+        MEDIA_PREVIEW.clone(),
         0,
         MediaPreviewBackend::Software,
         &["/dev/dri/renderD128".into(), "/dev/nvidia0".into()],
@@ -529,6 +561,142 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
 }
 
 #[test]
+fn archive_listings_execute_inside_the_bounded_sandbox_without_leaking_secrets() {
+    let command = sandbox_command(
+        Path::new("/usr/bin/bwrap"),
+        Path::new("/tmp/strata"),
+        Path::new("/home/alice/Downloads/untrusted.zip"),
+        Path::new("/tmp/private-output"),
+        ParseOperation::ArchiveList {
+            format: crate::services::ArchiveFormat::Zip,
+            password: Some(crate::services::SecretString::new("s3cret".to_owned())),
+        },
+        0,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let joined = command
+        .get_args()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    assert!(joined.contains("--unshare-all"));
+    assert!(joined.contains("--ro-bind /home/alice/Downloads/untrusted.zip /input.zip"));
+    assert!(joined.contains("--bind /tmp/private-output /output"));
+    assert!(joined.contains("--as=2147483648"));
+    assert!(joined.contains("--cpu=10"));
+    assert!(joined.contains("--fsize=536870912"));
+    assert!(joined.contains(
+        "/app/strata --preview-helper archive-list /input.zip /output/result.archive.json zip software"
+    ));
+    assert!(!joined.contains("s3cret"));
+    assert!(!joined.contains("--share-net"));
+}
+
+#[test]
+fn archive_listings_accept_only_valid_listing_payloads() {
+    let operation = ParseOperation::ArchiveList {
+        format: crate::services::ArchiveFormat::Tar,
+        password: None,
+    };
+    let payload = serde_json::json!({
+        "status": "open",
+        "entries": [{"name": "a.txt", "directory": false, "size": 1}],
+        "message": null,
+    })
+    .to_string()
+    .into_bytes();
+    assert!(valid_output(operation.clone(), &payload));
+    assert!(!valid_output(operation.clone(), b"not json"));
+    assert!(!valid_output(operation.clone(), b"{\"status\":\"open\"}"));
+    assert!(!valid_output(
+        operation.clone(),
+        b"{\"status\":\"bogus\",\"entries\":[]}"
+    ));
+    assert!(valid_output(
+        operation.clone(),
+        b"{\"status\":\"too-large\",\"entries\":[],\"message\":null}"
+    ));
+    assert!(valid_output(
+        operation.clone(),
+        b"{\"status\":\"error\",\"entries\":[],\"message\":\"broken\"}"
+    ));
+    assert!(!valid_output(
+        operation.clone(),
+        b"{\"status\":\"error\",\"entries\":[],\"message\":\"\"}"
+    ));
+}
+
+#[test]
+fn helper_output_failures_classify_by_kind() {
+    let dir = tempfile::tempdir().expect("scratch directory");
+    let missing = dir.path().join("absent.bin");
+    assert_eq!(
+        super::read_private_output(&missing, 16),
+        Err(OutputError::Missing)
+    );
+
+    let empty = dir.path().join("empty.bin");
+    fs::write(&empty, b"").expect("empty output");
+    assert_eq!(
+        super::read_private_output(&empty, 16),
+        Err(OutputError::Empty)
+    );
+
+    let bounded = dir.path().join("bounded.bin");
+    fs::write(&bounded, b"12345678").expect("bounded output");
+    assert_eq!(
+        super::read_private_output(&bounded, 8).expect("exact size limit is allowed"),
+        b"12345678"
+    );
+    assert_eq!(
+        super::read_private_output(&bounded, 7),
+        Err(OutputError::Oversize)
+    );
+
+    assert_eq!(
+        super::read_private_output(dir.path(), 16),
+        Err(OutputError::NonRegular)
+    );
+}
+
+#[test]
+fn archive_output_failures_map_to_archive_errors_not_image_errors() {
+    assert_eq!(
+        archive_output_error(&OutputError::Oversize),
+        crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE
+    );
+    for error in [
+        OutputError::Missing,
+        OutputError::NonRegular,
+        OutputError::Empty,
+        OutputError::Io("boom".to_owned()),
+    ] {
+        assert_eq!(
+            archive_output_error(&error),
+            crate::adapters::INVALID_ARCHIVE
+        );
+    }
+    assert_eq!(
+        OutputError::Missing.message(),
+        "The preview renderer produced no output"
+    );
+    assert_eq!(
+        OutputError::NonRegular.message(),
+        "The preview renderer produced a non-regular output"
+    );
+    assert_eq!(
+        OutputError::Empty.message(),
+        "The preview renderer produced an invalid output size"
+    );
+    assert_eq!(
+        OutputError::Oversize.message(),
+        "The preview renderer produced an invalid output size"
+    );
+}
+
+#[test]
 fn video_thumbnails_execute_the_helper_inside_the_bounded_sandbox() {
     let command = sandbox_command(
         Path::new("/usr/bin/bwrap"),
@@ -565,18 +733,21 @@ fn accepts_only_bounded_png_outputs_and_never_compressed_media() {
     assert!(!valid_output(ParseOperation::ThumbnailImage, &png(257, 1)));
     assert!(valid_output(ParseOperation::PreviewImage, &png(800, 800)));
     assert!(!valid_output(ParseOperation::PreviewImage, &png(801, 1)));
-    assert!(valid_output(PDF_PREVIEW, &png(640, 800)));
-    assert!(!valid_output(PDF_PREVIEW, &png(641, 799)));
-    assert!(!valid_output(PDF_PREVIEW, &png(640, 801)));
-    assert!(!valid_output(PDF_PREVIEW, &png(0, 100)));
+    assert!(valid_output(PDF_PREVIEW.clone(), &png(640, 800)));
+    assert!(!valid_output(PDF_PREVIEW.clone(), &png(641, 799)));
+    assert!(!valid_output(PDF_PREVIEW.clone(), &png(640, 801)));
+    assert!(!valid_output(PDF_PREVIEW.clone(), &png(0, 100)));
     assert!(!valid_output(
         ParseOperation::PreviewImage,
         b"\x89PNG\r\n\x1a\n"
     ));
-    assert!(!valid_output(MEDIA_PREVIEW, b"\x1a\x45\xdf\xa3content"));
-    assert!(!valid_output(MEDIA_PREVIEW, b"\0\0\0\x18ftypisom"));
-    assert!(!valid_output(MEDIA_PREVIEW, b""));
-    assert!(!valid_output(MEDIA_PREVIEW, b"unrelated data"));
+    assert!(!valid_output(
+        MEDIA_PREVIEW.clone(),
+        b"\x1a\x45\xdf\xa3content"
+    ));
+    assert!(!valid_output(MEDIA_PREVIEW.clone(), b"\0\0\0\x18ftypisom"));
+    assert!(!valid_output(MEDIA_PREVIEW.clone(), b""));
+    assert!(!valid_output(MEDIA_PREVIEW.clone(), b"unrelated data"));
 }
 
 #[test]
@@ -628,6 +799,93 @@ fn cancelled_requests_fail_without_starting_a_renderer() {
     .expect("cancelled parse must fail");
 
     assert_eq!(error, "Preview cancelled");
+}
+
+#[test]
+fn staged_secrets_have_no_directory_entry() {
+    use std::os::fd::AsRawFd;
+
+    let secret = stage_secret_anon(b"s3cret").expect("stage secret");
+    let number = secret.as_raw_fd();
+
+    let link =
+        std::fs::read_link(format!("/proc/self/fd/{number}")).expect("inspect secret descriptor");
+    assert!(
+        link.to_string_lossy().ends_with(" (deleted)"),
+        "secret descriptor must resolve to an unlinked inode, got {link:?}"
+    );
+    let stat = rustix::fs::fstat(&secret).expect("stat secret");
+    assert_eq!(
+        stat.st_nlink, 0,
+        "anonymous secret inode must have no links"
+    );
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(
+        std::fs::metadata(format!("/proc/self/fd/{number}"))
+            .expect("stat secret path")
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600,
+        "anonymous secret inode must stay mode-0600"
+    );
+
+    let round_trip = std::fs::read(format!("/proc/self/fd/{number}")).expect("read secret");
+    assert_eq!(round_trip, b"s3cret");
+}
+
+#[test]
+fn staged_secrets_are_inherited_only_when_explicitly_mapped_to_stdin() {
+    use std::os::fd::AsRawFd;
+    use std::process::{Command, Stdio};
+
+    let secret = stage_secret_anon(b"synthetic archive password").expect("stage secret");
+    let path = format!("/proc/self/fd/{}", secret.as_raw_fd());
+    let unrelated = Command::new("/bin/cat")
+        .arg(&path)
+        .output()
+        .expect("spawn unrelated child");
+    assert!(!unrelated.status.success());
+    assert!(unrelated.stdout.is_empty());
+
+    let intended = Command::new("/bin/cat")
+        .arg("/proc/self/fd/0")
+        .stdin(Stdio::from(fs::File::from(secret)))
+        .output()
+        .expect("spawn intended child");
+    assert!(intended.status.success());
+    assert_eq!(intended.stdout, b"synthetic archive password");
+}
+
+#[test]
+fn archive_parse_infra_failures_report_renderer_failure() {
+    let error = parse(
+        Path::new("does-not-need-to-exist.zip"),
+        ParseOperation::ArchiveList {
+            format: crate::services::ArchiveFormat::Zip,
+            password: None,
+        },
+        0,
+        MediaPreviewBackend::Software,
+        &Cancellation::default(),
+    )
+    .err()
+    .expect("missing archive input must fail");
+    assert_eq!(error, crate::adapters::ARCHIVE_PREVIEW_FAILED_MESSAGE);
+
+    let error = parse(
+        Path::new("does-not-need-to-exist.png"),
+        ParseOperation::PreviewImage,
+        0,
+        MediaPreviewBackend::Software,
+        &Cancellation::default(),
+    )
+    .err()
+    .expect("missing image input must fail");
+    assert!(
+        error.starts_with("Unable to open preview input: "),
+        "non-archive operations keep their own message, got {error:?}"
+    );
 }
 
 #[test]
@@ -723,5 +981,33 @@ fn assert_process_marker_stopped(marker: &Path) {
             .len(),
         length,
         "renderer descendant survived termination"
+    );
+}
+
+#[test]
+fn archive_operation_debug_redacts_the_password() {
+    let operation = ParseOperation::ArchiveList {
+        format: crate::services::ArchiveFormat::Zip,
+        password: Some(crate::services::SecretString::new(
+            "strata-security-repro-password".to_owned(),
+        )),
+    };
+    let rendered = format!("{operation:?}");
+    assert!(
+        !rendered.contains("strata-security-repro-password"),
+        "Debug must never expose the password, got {rendered:?}"
+    );
+    assert!(
+        rendered.contains("Some([REDACTED])"),
+        "a present password must render redacted-but-present, got {rendered:?}"
+    );
+    let operation = ParseOperation::ArchiveList {
+        format: crate::services::ArchiveFormat::Zip,
+        password: None,
+    };
+    let rendered = format!("{operation:?}");
+    assert!(
+        rendered.contains("password: None"),
+        "an absent password must stay distinguishable, got {rendered:?}"
     );
 }

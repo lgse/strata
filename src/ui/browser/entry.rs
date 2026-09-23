@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use crate::model::{EntryKind, FileEntry};
+use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
+use crate::adapters::gio_file_for_location;
+use crate::model::{EntryKind, FileEntry, MetadataValue};
 use crate::services::{
     PreviewContent, content_family, filter_name_matches, fold_for_search, has_plain_text_extension,
     is_extensionless_dotfile,
@@ -156,7 +158,7 @@ pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool
             || filter_name_matches(&fold_for_search(model_display_name(value)), query))
 }
 
-pub(super) fn icon_for_name(name: &str) -> &'static str {
+pub(in crate::ui) fn icon_for_name(name: &str) -> &'static str {
     let extension = name
         .rsplit_once('.')
         .map(|(_, extension)| extension.to_ascii_lowercase());
@@ -198,6 +200,43 @@ pub(super) fn entry_kind_summary(entries: &[FileEntry]) -> String {
         (0, directories) => format!("{directories} folders"),
         _ => item_count_label(entries.len()),
     }
+}
+
+pub(super) async fn aggregate_directory_summary(entries: &[FileEntry]) -> DirectorySummary {
+    let mut total = DirectorySummary::default();
+    for entry in entries {
+        if entry.is_directory() {
+            let directory = gio_file_for_location(&entry.location);
+            match summarize_directory(&directory).await {
+                Ok(summary) => {
+                    total.item_count = total.item_count.saturating_add(summary.item_count);
+                    total.total_size = total.total_size.saturating_add(summary.total_size);
+                    total.visible_file_count = total
+                        .visible_file_count
+                        .saturating_add(summary.visible_file_count);
+                    total.visible_folder_count = total
+                        .visible_folder_count
+                        .saturating_add(summary.visible_folder_count);
+                    total.issues.unreadable |= summary.issues.unreadable;
+                    total.issues.timed_out |= summary.issues.timed_out;
+                    total.issues.depth_limited |= summary.issues.depth_limited;
+                }
+                Err(_) => total.issues.unreadable = true,
+            }
+        } else {
+            total.item_count = total.item_count.saturating_add(1);
+            total.visible_file_count = total.visible_file_count.saturating_add(1);
+            match entry.size {
+                MetadataValue::Known(size) => {
+                    total.total_size = total.total_size.saturating_add(size);
+                }
+                MetadataValue::Unknown | MetadataValue::Unavailable => {
+                    total.issues.unreadable = true;
+                }
+            }
+        }
+    }
+    total
 }
 
 #[cfg(test)]

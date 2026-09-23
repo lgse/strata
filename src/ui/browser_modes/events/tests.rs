@@ -167,6 +167,48 @@ fn assert_attached(pane: &Pane, attached: bool) {
 }
 
 #[test]
+fn page_targets_follow_visible_order_without_a_bound_cursor() {
+    gtk_test(
+        "ui::browser_modes::events::tests::page_targets_follow_visible_order_without_a_bound_cursor",
+        || {
+            for (mode, grouped) in presentations() {
+                let fixture = Fixture::new(mode, grouped);
+                let order = fixture.views.visual_order(0);
+                assert_eq!(order.len(), 3);
+                fixture.browser.select(0, order[1]);
+                fixture.browser.clear_active_selection();
+                assert_eq!(fixture.views.page_target(0, 1, 2), Some(order[2]));
+                assert_eq!(fixture.views.page_target(0, -1, 2), Some(order[0]));
+                fixture.browser.select(0, order[0]);
+                assert_eq!(fixture.views.page_target(0, 1, 1), Some(order[1]));
+                assert_eq!(fixture.views.page_target(0, -1, 10), Some(order[0]));
+                fixture
+                    .browser
+                    .set_selection(0, &order[..2], Some(order[1]));
+                assert_eq!(fixture.views.page_target(0, 1, 10), Some(order[2]));
+                assert_eq!(fixture.views.page_target(0, -1, 1), Some(order[0]));
+
+                let pane = fixture.pane();
+                pane.filter_query.replace(".png".to_owned());
+                pane.filter.changed(gtk::FilterChange::Different);
+                let image = fixture.views.visual_order(0)[0];
+                fixture.browser.select(0, image);
+                assert_eq!(fixture.views.page_target(0, 1, 10), Some(image));
+                assert_eq!(fixture.views.page_target(0, -1, 10), Some(image));
+                fixture.browser.select(
+                    0,
+                    order
+                        .into_iter()
+                        .find(|&source| source != image)
+                        .expect("hidden by filter"),
+                );
+                assert_eq!(fixture.views.page_target(0, 1, 1), None);
+            }
+        },
+    );
+}
+
+#[test]
 fn camera_device_order_does_not_enable_saved_type_grouping_at_completion() {
     gtk_test(
         "ui::browser_modes::events::tests::camera_device_order_does_not_enable_saved_type_grouping_at_completion",
@@ -952,6 +994,56 @@ fn resume_native_selection_starts_from_the_cursor_after_escape() {
                 assert!(
                     !fixture.views.resume_native_selection(),
                     "{mode:?} grouped={grouped}: a filled selection must keep native Shift movement"
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn ctrl_click_focuses_the_toggled_item_not_the_previous_selection() {
+    gtk_test(
+        "ui::browser_modes::events::tests::ctrl_click_focuses_the_toggled_item_not_the_previous_selection",
+        || {
+            for (mode, grouped) in presentations() {
+                let fixture = Fixture::new(mode, grouped);
+                fixture.show();
+                fixture.outside.grab_focus();
+                let pane = fixture.pane();
+                let view = pane.section.view.clone();
+                let source_of = |position: u32| {
+                    pane.source_index
+                        .of_view_position(&pane.section.view_model, position)
+                        .expect("view row has a source position")
+                };
+                let highest = (0..pane.section.view_model.n_items())
+                    .max_by_key(|&position| source_of(position))
+                    .expect("entries");
+                let lowest = (0..pane.section.view_model.n_items())
+                    .min_by_key(|&position| source_of(position))
+                    .expect("entries");
+                native_select_item(&view, highest, false, false);
+                native_select_item(&view, lowest, true, false);
+                assert_eq!(
+                    fixture.browser.selected_positions(0),
+                    [source_of(lowest), source_of(highest)],
+                );
+                assert_eq!(
+                    fixture
+                        .browser
+                        .focused_item()
+                        .map(|(_, position, _)| position),
+                    Some(source_of(lowest)),
+                    "{mode:?} grouped={grouped}: ctrl+click focuses the toggled item"
+                );
+                native_select_item(&view, lowest, true, false);
+                assert_eq!(
+                    fixture
+                        .browser
+                        .focused_item()
+                        .map(|(_, position, _)| position),
+                    Some(source_of(highest)),
+                    "{mode:?} grouped={grouped}: deselecting moves focus to the remaining selection"
                 );
             }
         },
