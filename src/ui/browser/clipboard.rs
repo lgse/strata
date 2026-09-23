@@ -834,14 +834,28 @@ impl ViewState {
     }
 
     pub(super) fn complete_cut_transfer(&self, transferred: &[Location]) {
+        let consumed = shared_cut_locations()
+            .iter()
+            .any(|cut| transferred.iter().any(|moved| locations_equal(cut, moved)));
+        if !consumed {
+            return;
+        }
         retain_shared_untransferred(transferred);
         let remaining = shared_cut_locations();
+        let Some(display) = gtk::gdk::Display::default() else {
+            return;
+        };
+        let clipboard = display.clipboard();
+        // A newer clipboard payload (copied names, images) is unrelated to the
+        // finished move; only consume a file list this session placed.
+        if !clipboard
+            .formats()
+            .contains_type(gtk::gdk::FileList::static_type())
+        {
+            return;
+        }
         if remaining.is_empty() {
-            if let Some(display) = gtk::gdk::Display::default() {
-                let _result = display
-                    .clipboard()
-                    .set_content(None::<&gtk::gdk::ContentProvider>);
-            }
+            let _result = clipboard.set_content(None::<&gtk::gdk::ContentProvider>);
         } else {
             let _set = set_location_files_clipboard(&remaining);
         }

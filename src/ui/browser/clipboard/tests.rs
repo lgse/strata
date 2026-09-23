@@ -329,6 +329,82 @@ fn paste_into_rejects_the_recent_collection_at_the_action_boundary() {
 }
 
 #[test]
+fn completing_a_plain_move_keeps_unrelated_clipboard_text() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_plain_move_keeps_unrelated_clipboard_text",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            clipboard.set_text("copied-name.txt");
+
+            view.state
+                .complete_cut_transfer(&[Location::local("/fixture/moved.txt")]);
+
+            assert!(
+                clipboard.formats().contains_type(glib::types::Type::STRING),
+                "a move with no pending cut must not clear the clipboard"
+            );
+        },
+    );
+}
+
+#[test]
+fn completing_a_cut_paste_consumes_the_clipboard_file_list() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_cut_paste_consumes_the_clipboard_file_list",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let cut = Location::local("/fixture/cut.txt");
+            set_shared_cut(std::slice::from_ref(&cut));
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+
+            view.state.complete_cut_transfer(std::slice::from_ref(&cut));
+
+            assert!(shared_cut_locations().is_empty());
+            assert!(
+                !clipboard
+                    .formats()
+                    .contains_type(gtk::gdk::FileList::static_type()),
+                "a consumed cut must release the clipboard file list"
+            );
+        },
+    );
+}
+
+#[test]
+fn completing_a_cut_keeps_text_copied_afterward() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_cut_keeps_text_copied_afterward",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let cut = Location::local("/fixture/cut.txt");
+            set_shared_cut(std::slice::from_ref(&cut));
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+            clipboard.set_text("copied-name.txt");
+
+            view.state.complete_cut_transfer(std::slice::from_ref(&cut));
+
+            assert!(shared_cut_locations().is_empty());
+            assert!(
+                clipboard.formats().contains_type(glib::types::Type::STRING),
+                "consuming a cut must not clobber newer clipboard contents"
+            );
+        },
+    );
+}
+
+#[test]
 fn move_only_protocol_still_copies_across_volumes() {
     let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
     let offered = offered_file_actions(dest, gtk::gdk::DragAction::MOVE);
