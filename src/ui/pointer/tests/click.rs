@@ -18,7 +18,7 @@ fn release_requires_a_click_on_the_original_bound_item() {
                 let row = gtk::Label::new(Some("entry"));
                 let click = gtk::GestureClick::new();
                 let calls = calls_for_setup.clone();
-                connect_click_release(&click, item, move |_, _| calls.set(calls.get() + 1));
+                connect_click_release(&click, item, move |_, _, _, _| calls.set(calls.get() + 1));
                 row.add_controller(click.clone());
                 item.set_child(Some(&row));
                 bound_for_setup.replace(Some(click));

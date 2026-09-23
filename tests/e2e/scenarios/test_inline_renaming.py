@@ -100,23 +100,81 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
     assert not strata.fixture.path(name + "-final").exists()
 
 
+def name_text_point(strata, name, mode):
+    """A point on the rendered name text — the only spot a slow click renames."""
+    label = strata.entry(name).find(role="label", name=name)
+    assert label is not None, f"no name label on {name!r}"
+    bounds = label.screen_bounds()
+    # Row labels left-align their text; the icons caption centers it.
+    return bounds.center if mode == "Icons" else (bounds.x + 4, bounds.center[1])
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_slow_click_rename_respects_escape_and_selects_the_stem(strata, mode):
     strata.select_entry_with_keyboard("todo.txt")
-    strata.pointer.click(strata.entry("todo.txt"))
+    strata.pointer.click(strata.entry("todo.txt"), at=name_text_point(strata, "todo.txt", mode))
     strata.keyboard.press("Escape")
     # Outlast GTK's 400ms double-click interval to detect a stale timeout.
     time.sleep(0.6)
     assert strata.window.find(role="text", name="Rename", states={"editable"}) is None
 
     strata.select_entry_with_keyboard("todo.txt")
-    strata.pointer.click(strata.entry("todo.txt"))
+    strata.pointer.click(strata.entry("todo.txt"), at=name_text_point(strata, "todo.txt", mode))
     field = rename_field(strata)
     text = Atspi.Accessible.get_text_iface(field.accessible)
     selection = Atspi.Text.get_selection(text, 0)
     assert (selection.start_offset, selection.end_offset) == (0, len("todo"))
     assert field.text == "todo.txt"
     assert strata.fixture.path("todo.txt").exists()
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("target", ["icon", "name-padding"])
+def test_slow_click_away_from_the_name_does_not_rename(strata, mode, target):
+    """Only the name text arms rename; the icon and row padding just re-select."""
+    if target == "name-padding" and mode == "Icons":
+        pytest.skip("the icons caption band is the name label")
+    strata.select_entry_with_keyboard("todo.txt")
+    entry = strata.entry("todo.txt")
+    if target == "icon":
+        icon = entry.find(role="image")
+        assert icon is not None
+        point = icon.screen_bounds().center
+    else:
+        point = strata.pointer.row_whitespace_point(entry, "todo.txt")
+    strata.pointer.click(entry, at=point)
+    time.sleep(0.6)
+    assert strata.window.find(role="text", name="Rename", states={"editable"}) is None
+    assert strata.selected_names() == ["todo.txt"]
+
+
+@pytest.mark.preferences(browser_mode="columns")
+def test_columns_reclick_open_folder_name_renames_and_empty_space_closes(strata):
+    """An open folder's column does not collapse on re-click: its name arms
+    slow-click rename, and empty space is what closes the child column."""
+    root = strata.fixture.root.name
+    strata.pointer.click(strata.entry("documents"))
+    strata.wait(
+        lambda: strata.pane().name == "documents",
+        "one click to open the folder column",
+    )
+    # Outlast the double-click interval so the re-click is a lone slow click.
+    time.sleep(0.6)
+
+    strata.pointer.click(
+        strata.entry("documents", root),
+        at=name_text_point(strata, "documents", "Columns"),
+    )
+    rename_field(strata)
+    strata.keyboard.press("Escape")
+    wait_for_edit_closed(strata)
+
+    strata.pointer.click(strata.pane(root), at=strata.background_point(root))
+    strata.wait(
+        lambda: strata.pane_names() == [root],
+        "empty space to close the child column",
+    )
+    strata.entry("documents", root)
 
 
 def rename_field(strata):

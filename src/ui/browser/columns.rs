@@ -1206,6 +1206,7 @@ impl ViewState {
             clear_selection: Rc::new(move || {
                 if let Some(state) = weak_for_clear.upgrade() {
                     state.clear_column_selections();
+                    state.browser.close_column(depth + 1);
                     if returning_for_clear.replace(false) && !search_active_for_clear.get() {
                         let first = state.columns.borrow().get(depth).and_then(|column| {
                             (0..column.selection.n_items())

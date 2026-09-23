@@ -363,6 +363,7 @@ pub(super) fn column_rows(
         let rename_position = Rc::new(Cell::new(None::<usize>));
         let rename_position_for_press = rename_position.clone();
         let rename_position_for_release = rename_position.clone();
+        let name_label_for_press = label.downgrade();
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
             rename_position_for_press.set(None);
@@ -485,6 +486,8 @@ pub(super) fn column_rows(
             {
                 let entry = state.browser.entry_at(depth, source_position);
                 if let Some(entry) = entry.as_ref() {
+                    // Re-clicking the open folder must not collapse its column;
+                    // its name stays eligible for slow-click rename instead.
                     let activate = should_activate_single_click(
                         press_count,
                         entry.is_directory(),
@@ -492,7 +495,7 @@ pub(super) fn column_rows(
                         control,
                         shift,
                         preserve_group,
-                    );
+                    ) && !state.browser.is_open_child(depth, &entry.location);
                     let slow_click_rename = press_count == 1
                         && selected_before
                         && selected_count_before == 1
@@ -506,7 +509,13 @@ pub(super) fn column_rows(
                         && !preserve_group
                         && !activate
                         && !state.browser.is_chooser_mode()
-                        && !is_trash_location(&entry.location);
+                        && !is_trash_location(&entry.location)
+                        && gesture
+                            .widget()
+                            .zip(name_label_for_press.upgrade())
+                            .is_some_and(|(row, label)| {
+                                crate::ui::pointer::hits_name_label(&row, label.upcast_ref(), x, y)
+                            });
                     rename_position_for_press.set(if slow_click_rename {
                         Some(source_position)
                     } else {
