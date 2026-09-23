@@ -1316,6 +1316,14 @@ impl BrowserView {
         }
     }
 
+    pub(in crate::ui) fn set_archive_preview_active(&self, active: bool) {
+        if active {
+            self.state.overlay.add_css_class("archive-preview");
+        } else {
+            self.state.overlay.remove_css_class("archive-preview");
+        }
+    }
+
     pub fn keyboard_navigation(&self) {
         self.state
             .input_ownership

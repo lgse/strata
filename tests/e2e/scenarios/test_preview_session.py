@@ -36,6 +36,7 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     assert option.find(role="label", name="Space") is not None
     assert not option.has_state("pressed")
     strata.pointer.click(option)
+    strata.wait_for_menu_closed()
     if mode == "Icons":
         strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the reserved preview space")
     else:
@@ -53,6 +54,8 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     option = preview_option(strata)
     assert option.has_state("pressed"), option.states
     strata.pointer.click(option)
+    strata.wait_for_menu_closed()
+    strata.wait(lambda: strata.preview() is None, "the disabled preview panel to close")
     strata.select_entry("a.txt")
     assert strata.preview() is None
     strata.keyboard.press("space")

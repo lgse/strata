@@ -575,6 +575,26 @@ impl PreviewDrawer {
         self.state.close();
     }
 
+    pub(in crate::ui) fn password_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
+        self.state
+            .password_entry
+            .borrow()
+            .as_ref()
+            .is_some_and(|entry| {
+                focused.is_some_and(|focus| {
+                    focus == entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(entry)
+                })
+            })
+    }
+
+    pub fn archive_key(&self, key: gtk::gdk::Key) -> bool {
+        self.state.archive_key(key)
+    }
+
+    pub fn archive_list_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
+        self.state.archive_list_has_focus(focused)
+    }
+
     pub fn toggle(&self, entry: Option<FileEntry>, depth: Option<usize>) {
         self.state.toggle(entry, depth);
     }
@@ -1273,6 +1293,7 @@ impl PreviewState {
     }
 
     fn render_archive(self: &Rc<Self>, tree: ArchivePreviewTree) {
+        self.set_archive_preview_active(true);
         let weak = Rc::downgrade(self);
         let navigate = Rc::new(move |depth: usize| {
             if let Some(state) = weak.upgrade() {
@@ -1295,6 +1316,47 @@ impl PreviewState {
         if let Some(browser) = self.archive_browser.borrow_mut().as_mut() {
             browser.navigate_to(depth);
         }
+    }
+
+    fn archive_key(&self, key: gtk::gdk::Key) -> bool {
+        let mut browsers = self.archive_browser.borrow_mut();
+        let Some(browser) = browsers.as_mut() else {
+            return false;
+        };
+        match key {
+            gtk::gdk::Key::Up => {
+                browser.move_cursor(-1);
+            }
+            gtk::gdk::Key::Down => {
+                browser.move_cursor(1);
+            }
+            gtk::gdk::Key::Left => {
+                browser.go_up();
+            }
+            gtk::gdk::Key::Right | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter => {
+                browser.open_cursor();
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn set_archive_preview_active(&self, active: bool) {
+        if let Some(browser) = self.sizing.browser() {
+            browser.set_archive_preview_active(active);
+        }
+    }
+
+    fn archive_list_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
+        self.archive_browser
+            .borrow()
+            .as_ref()
+            .is_some_and(|browser| {
+                focused.is_some_and(|focused| {
+                    focused == browser.list().upcast_ref::<gtk::Widget>()
+                        || focused.is_ancestor(browser.list())
+                })
+            })
     }
 
     fn open_archive_row(self: &Rc<Self>, position: u32) {
@@ -1978,6 +2040,7 @@ impl PreviewState {
         self.text_view.take();
         self.text_scroll.take();
         self.archive_browser.take();
+        self.set_archive_preview_active(false);
         self.clear_password_entry();
         clear_box(&self.content);
     }

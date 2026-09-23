@@ -2465,8 +2465,9 @@ paned > separator {
   background: alpha(@theme_muted, 0.35);
 }
 
-.preview-archive-row:selected {
-  background: alpha(@theme_accent, 0.28);
+/* The shared selected-row fill stays visible when the pointer rests on it. */
+.preview-archive-list row:selected .preview-archive-row:hover {
+  background: transparent;
 }
 
 .preview-archive-name {
@@ -4090,13 +4091,18 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-list row,
-.file-list-mode row {
+.file-list-mode row,
+.preview-archive-list row {
   background: transparent;
   color: @theme_text;
   border-radius: 6px;
+  transition: color 160ms ease-out;
+}
+
+.file-list row,
+.file-list-mode row {
   margin: 1px 8px;
   padding: 0;
-  transition: color 160ms ease-out;
 }
 
 .file-list row {
@@ -4105,7 +4111,8 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-row,
-.list-row {
+.list-row,
+.preview-archive-row {
   outline: 1px solid transparent;
   outline-offset: -1px;
   transition: background 220ms ease-out, color 180ms ease-out, outline-color 220ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
@@ -4116,8 +4123,12 @@ textview > popover.menu button.model:focus-visible,
   outline-offset: -1px;
 }
 
-.file-row {
+.file-row,
+.preview-archive-row {
   border-radius: 6px;
+}
+
+.file-row {
   color: @theme_text;
   min-height: 26px;
   padding: 0 4px;
@@ -4422,7 +4433,8 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-list row:selected,
-.file-list-mode row:selected {
+.file-list-mode row:selected,
+.preview-archive-list row:selected {
   background: alpha(@theme_accent, 0.22);
   color: @theme_text;
   outline: none;
@@ -4439,9 +4451,16 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
-.file-list row:focus-within .file-row.filter-result {
+.file-list row:focus-within .file-row.filter-result,
+.preview-archive-list row:selected .preview-archive-row {
   outline: 1px solid @theme_accent;
   outline-offset: -1px;
+}
+
+/* The archive preview shows its own cursor; the listing keeps only the selection fill. */
+.keyboard-navigation.archive-preview .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
+.keyboard-navigation.archive-preview .file-list row:focus-within .file-row.filter-result {
+  outline: none;
 }
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
