@@ -12,19 +12,18 @@ use gtk::{gdk, glib};
 
 use super::{
     ACTIVE_REQUESTS, ActiveRequest, CacheHit, CachedThumbnail, MAX_CACHE_ENTRIES,
-    MAX_PERSIST_QUEUE, MAX_QUEUED_THUMBNAILS, MAX_THUMBNAIL_WORKERS, METADATA_WAITERS,
-    MetadataWaiter, PENDING_THUMBNAILS, PendingTarget, PendingThumbnail, PersistJob, PersistQueue,
-    SETTLE_VIEWS, SettledPark, THUMBNAIL_CACHE, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey,
-    ThumbnailKind, ThumbnailQueue, ViewSettle, cancel_thumbnail, clear_thumbnail_runtime,
-    finish_thumbnail_targets, fire_settled_thumbnails, has_pending_thumbnail,
-    hold_thumbnail_workers, note_metadata, refresh_all_customized_icons, retry_deferred_thumbnail,
-    schedule_or_defer, set_thumbnail_or_icon, show_customized_icon, take_pending_targets,
-    thumbnail_kind,
+    MAX_CACHE_READERS, MAX_PERSIST_QUEUE, MAX_QUEUED_THUMBNAILS, PENDING_THUMBNAILS, PendingTarget,
+    PendingThumbnail, PersistJob, PersistQueue, SETTLE_VIEWS, THUMBNAIL_CACHE, THUMBNAIL_QUEUE,
+    ThumbnailCache, ThumbnailKey, ThumbnailKind, ThumbnailQueue, ViewSettle, cancel_thumbnail,
+    clear_thumbnail_runtime, finish_thumbnail_targets, fire_settled_thumbnails,
+    has_pending_thumbnail, hold_thumbnail_workers, refresh_all_customized_icons,
+    retry_deferred_thumbnail, schedule_or_defer, set_thumbnail_or_icon, show_customized_icon,
+    take_pending_targets, thumbnail_kind,
 };
 use crate::{
     model::{EntryKind, FileEntry, FolderColor, FolderColorValue, Location, MetadataValue},
     test_support::gtk_test,
-    ui::theme::ThemeManager,
+    ui::preferences::PreferenceManager,
 };
 use gtk::prelude::*;
 
@@ -64,7 +63,7 @@ fn key(index: usize) -> ThumbnailKey {
 }
 
 #[test]
-fn recognizes_mainstream_image_and_video_formats() {
+fn recognizes_mainstream_image_video_and_cover_art_audio_formats() {
     assert_eq!(
         thumbnail_kind(Path::new("photo.JPEG")),
         Some(ThumbnailKind::Image)
@@ -104,6 +103,25 @@ fn recognizes_mainstream_image_and_video_formats() {
         thumbnail_kind(Path::new("clip.ogv")),
         Some(ThumbnailKind::Video)
     );
+    for name in [
+        "song.MP3",
+        "song.flac",
+        "song.m4a",
+        "song.m4b",
+        "song.mka",
+        "song.aiff",
+        "song.aif",
+        "song.wma",
+    ] {
+        assert_eq!(
+            thumbnail_kind(Path::new(name)),
+            Some(ThumbnailKind::Video),
+            "{name}"
+        );
+    }
+    for name in ["song.ogg", "song.oga", "song.opus", "song.wav"] {
+        assert_eq!(thumbnail_kind(Path::new(name)), None, "{name}");
+    }
 }
 
 fn sample_texture() -> gdk::Texture {
@@ -149,12 +167,12 @@ fn thumbnail_queue_bounds_waiting_and_running_jobs() {
     }
     assert!(!queue.enqueue(key(MAX_QUEUED_THUMBNAILS)));
 
-    for index in 0..MAX_THUMBNAIL_WORKERS {
+    for index in 0..MAX_CACHE_READERS {
         assert_eq!(queue.begin_next(), Some(key(index)));
     }
     assert!(queue.begin_next().is_none());
     queue.finish();
-    assert_eq!(queue.begin_next(), Some(key(MAX_THUMBNAIL_WORKERS)));
+    assert_eq!(queue.begin_next(), Some(key(MAX_CACHE_READERS)));
 }
 
 #[test]
@@ -169,6 +187,7 @@ fn saturated_queue_defers_the_live_request() {
             image_id,
             ActiveRequest {
                 id: request,
+                key: key(MAX_QUEUED_THUMBNAILS),
                 image: glib::WeakRef::new(),
                 deferred: None,
             },
@@ -240,6 +259,7 @@ fn failed_jobs_release_their_active_requests() {
             image_id,
             ActiveRequest {
                 id: 7,
+                key: key(0),
                 image: glib::WeakRef::new(),
                 deferred: None,
             },
@@ -343,147 +363,6 @@ fn rejects_files_without_a_thumbnail_provider() {
 }
 
 #[test]
-fn viewport_eligibility_covers_visible_plus_overscan() {
-    use super::rect_eligible;
-    assert!(rect_eligible(10.0, 10.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(rect_eligible(-20.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(rect_eligible(950.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(rect_eligible(100.0, -20.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(rect_eligible(100.0, 750.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(rect_eligible(100.0, -190.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(rect_eligible(
-        100.0,
-        760.0 + 100.0,
-        100.0,
-        40.0,
-        1000.0,
-        760.0
-    ));
-    assert!(!rect_eligible(100.0, -300.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(!rect_eligible(
-        100.0,
-        760.0 + 500.0,
-        100.0,
-        40.0,
-        1000.0,
-        760.0
-    ));
-    assert!(!rect_eligible(2000.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(!rect_eligible(-500.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
-    assert!(!rect_eligible(0.0, 4.0, 0.0, 0.0, 1000.0, 760.0));
-    assert!(!rect_eligible(0.0, 4.0, -1.0, 40.0, 1000.0, 760.0));
-    assert!(!rect_eligible(0.0, 0.0, 100.0, 40.0, 0.0, 0.0));
-}
-
-#[test]
-fn metadata_fill_updates_thumbnail_waiting_for_settle() {
-    let path = PathBuf::from("pending.png");
-    SETTLE_VIEWS.with(|views| {
-        views.borrow_mut().insert(
-            0,
-            ViewSettle {
-                viewport: glib::WeakRef::new(),
-                pending: vec![SettledPark {
-                    key: ThumbnailKey {
-                        path: path.clone(),
-                        modified: None,
-                        file_size: None,
-                        thumbnail_size: 64,
-                    },
-                    kind: ThumbnailKind::Image,
-                    target: PendingTarget {
-                        image_id: 1,
-                        request: 1,
-                        image: glib::WeakRef::new(),
-                    },
-                    wait_for_metadata: true,
-                }],
-                timer: None,
-                first_park: None,
-                hooked: false,
-            },
-        );
-    });
-
-    note_metadata(&path, Some(42), Some(99));
-
-    SETTLE_VIEWS.with(|views| {
-        let mut views = views.borrow_mut();
-        let park = &views[&0].pending[0];
-        assert_eq!(park.key.modified, Some(42));
-        assert_eq!(park.key.file_size, Some(99));
-        assert!(!park.wait_for_metadata);
-        views.clear();
-    });
-}
-
-#[test]
-fn unavailable_metadata_releases_settled_thumbnail_work() {
-    let path = PathBuf::from("unavailable.png");
-    SETTLE_VIEWS.with(|views| {
-        views.borrow_mut().insert(
-            0,
-            ViewSettle {
-                viewport: glib::WeakRef::new(),
-                pending: vec![SettledPark {
-                    key: ThumbnailKey {
-                        path: path.clone(),
-                        modified: None,
-                        file_size: None,
-                        thumbnail_size: 64,
-                    },
-                    kind: ThumbnailKind::Image,
-                    target: PendingTarget {
-                        image_id: 1,
-                        request: 1,
-                        image: glib::WeakRef::new(),
-                    },
-                    wait_for_metadata: true,
-                }],
-                timer: None,
-                first_park: None,
-                hooked: false,
-            },
-        );
-    });
-
-    note_metadata(&path, None, None);
-
-    SETTLE_VIEWS.with(|views| {
-        let mut views = views.borrow_mut();
-        let park = &views[&0].pending[0];
-        assert_eq!(park.key.modified, None);
-        assert!(!park.wait_for_metadata);
-        views.clear();
-    });
-}
-
-#[test]
-fn cancellation_removes_metadata_waiters() {
-    let path = PathBuf::from("cancelled.png");
-    METADATA_WAITERS.with(|waiters| {
-        waiters.borrow_mut().insert(
-            path.clone(),
-            vec![MetadataWaiter {
-                group: 0,
-                kind: ThumbnailKind::Image,
-                target: PendingTarget {
-                    image_id: 7,
-                    request: 1,
-                    image: glib::WeakRef::new(),
-                },
-                file_size: None,
-                thumbnail_size: 64,
-            }],
-        );
-    });
-
-    cancel_thumbnail(7);
-
-    METADATA_WAITERS.with(|waiters| assert!(!waiters.borrow().contains_key(&path)));
-}
-
-#[test]
 fn cancelling_drops_hooked_settle_groups_with_a_dead_viewport() {
     SETTLE_VIEWS.with(|views| {
         views.borrow_mut().insert(
@@ -492,7 +371,6 @@ fn cancelling_drops_hooked_settle_groups_with_a_dead_viewport() {
                 viewport: glib::WeakRef::new(),
                 pending: Vec::new(),
                 timer: None,
-                first_park: None,
                 hooked: true,
             },
         );
@@ -528,6 +406,61 @@ fn persist_queue_bounds_and_drains_oldest_first() {
         drained += 1;
     }
     assert_eq!(drained, MAX_PERSIST_QUEUE);
+}
+
+#[test]
+fn renamed_thumbnail_rebind_reuses_texture_without_a_request() {
+    gtk_test(
+        "ui::thumbnail::tests::renamed_thumbnail_rebind_reuses_texture_without_a_request",
+        || {
+            for change in ["name", "size", "mtime", "unknown", "extension"] {
+                clear_thumbnail_runtime();
+                let from = Path::new("/rename/before.png");
+                let to = Path::new(if change == "extension" {
+                    "/rename/after.mp4"
+                } else {
+                    "/rename/after.png"
+                });
+                let pixels = glib::Bytes::from_owned(vec![255u8; 4]);
+                let texture: gdk::Texture =
+                    gdk::MemoryTexture::new(1, 1, gdk::MemoryFormat::R8g8b8a8, &pixels, 4).upcast();
+                let key = ThumbnailKey {
+                    path: from.to_path_buf(),
+                    modified: Some(1),
+                    file_size: Some(1),
+                    thumbnail_size: crate::ui::thumbnail_cache::CANONICAL_MAX_EDGE,
+                };
+                THUMBNAIL_CACHE.with_borrow_mut(|cache| cache.insert(key, texture.clone()));
+                let mut entry = sample_entry(to);
+                match change {
+                    "size" => entry.size = MetadataValue::Known(2),
+                    "mtime" => entry.modified_unix_seconds = MetadataValue::Known(2),
+                    "unknown" => entry.modified_unix_seconds = MetadataValue::Unknown,
+                    _ => {}
+                }
+                super::preserve_renamed_thumbnail(&Location::local(from), &entry);
+                let slot = super::ThumbnailSlot::new(64);
+                set_thumbnail_or_icon(&slot, &entry, crate::assets::icons::PICTURES, 32, 64);
+                if change != "name" {
+                    assert!(slot.texture().is_none());
+                    assert!(
+                        ACTIVE_REQUESTS.with_borrow(
+                            |requests| requests.contains_key(&(slot.as_ptr() as usize))
+                        )
+                    );
+                } else {
+                    assert_eq!(slot.texture(), Some(texture));
+                    assert!(
+                        !ACTIVE_REQUESTS.with_borrow(
+                            |requests| requests.contains_key(&(slot.as_ptr() as usize))
+                        )
+                    );
+                }
+                cancel_thumbnail(slot.as_ptr() as usize);
+            }
+            clear_thumbnail_runtime();
+        },
+    );
 }
 
 fn sample_entry(path: &Path) -> FileEntry {
@@ -589,8 +522,10 @@ fn cache_hit_applies_texture_on_idle_not_during_bind() {
     gtk_test(
         "ui::thumbnail::tests::cache_hit_applies_texture_on_idle_not_during_bind",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             let path = PathBuf::from("/fixture/cache-hit.png");
+            let pending = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&pending, &sample_entry(&path));
             let texture = sample_texture();
             THUMBNAIL_CACHE.with(|cache| {
                 cache.borrow_mut().insert(
@@ -598,14 +533,25 @@ fn cache_hit_applies_texture_on_idle_not_during_bind() {
                         path: path.clone(),
                         modified: Some(1),
                         file_size: Some(1),
-                        thumbnail_size: 64,
+                        thumbnail_size: 256,
                     },
                     texture.clone(),
                 );
             });
-            let image = super::ThumbnailSlot::new(64);
-            bind_thumbnail(&image, &sample_entry(&path));
-            assert_eq!(displayed_texture(&image).as_ref(), Some(&texture));
+            bind_thumbnail(&pending, &sample_entry(&path));
+            assert_eq!(displayed_texture(&pending).as_ref(), Some(&texture));
+            for size in [17, 18, 96] {
+                let image = super::ThumbnailSlot::new(size);
+                super::set_thumbnail_or_icon(
+                    &image,
+                    &sample_entry(&path),
+                    crate::assets::icons::PICTURES,
+                    size,
+                    size,
+                );
+                assert_eq!(displayed_texture(&image).as_ref(), Some(&texture));
+                assert!(!has_pending_thumbnail(&path));
+            }
             clear_thumbnail_runtime();
         },
     );
@@ -616,7 +562,7 @@ fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
     gtk_test(
         "ui::thumbnail::tests::theme_refresh_does_not_reenter_tracked_icon_refcell",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             let list = gtk::ListBox::new();
             let scroll = gtk::ScrolledWindow::builder()
                 .child(&list)
@@ -639,14 +585,12 @@ fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
     );
 }
 
-/// Icon resolution reads folder color and custom icon from the manager, and
-/// already-shown slots refresh when those preferences change.
 #[test]
 fn path_customization_refreshes_rendered_icons() {
     gtk_test(
         "ui::thumbnail::tests::path_customization_refreshes_rendered_icons",
         || {
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             let customized = Path::new("/fixture/custom-folder");
             let other = Path::new("/fixture/plain-folder");
             let color = FolderColorValue::Preset(FolderColor::Red);
@@ -678,7 +622,7 @@ fn path_customization_refreshes_rendered_icons() {
             assert_eq!(fallback_pixels(&customized_slot), default_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
 
-            manager.set_folder_color(customized, Some(color));
+            manager.set_folder_color(customized, Some(color.clone()));
             assert_eq!(fallback_pixels(&customized_slot), colored_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
 
@@ -689,7 +633,57 @@ fn path_customization_refreshes_rendered_icons() {
             manager.clear_item_customization(customized);
             assert_eq!(fallback_pixels(&customized_slot), default_pixels);
             assert_eq!(fallback_pixels(&other_slot), default_pixels);
+
+            manager.set_folder_color(customized, Some(color.clone()));
+            show_customized_icon(&customized_slot, other, crate::assets::icons::FOLDER, 32);
+            assert_eq!(fallback_pixels(&customized_slot), default_pixels);
+            manager.clear_item_customization(customized);
+            manager.set_folder_color(other, Some(color));
+            assert_eq!(fallback_pixels(&customized_slot), colored_pixels);
+            assert_eq!(fallback_pixels(&other_slot), colored_pixels);
+
+            super::show_fallback_icon(&customized_slot, crate::assets::icons::PICTURES, 32);
+            let fallback = fallback_pixels(&customized_slot);
+            manager.clear_item_customization(other);
+            refresh_all_customized_icons();
+            assert_eq!(fallback_pixels(&customized_slot), fallback);
+            assert_eq!(fallback_pixels(&other_slot), default_pixels);
             clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn recycled_and_disposed_slots_release_thumbnail_tracking() {
+    gtk_test(
+        "ui::thumbnail::tests::recycled_and_disposed_slots_release_thumbnail_tracking",
+        || {
+            let path = Path::new("/fixture/old.png");
+            let replacement = Path::new("/fixture/new.png");
+            let slot = super::ThumbnailSlot::new(64);
+            let other = super::ThumbnailSlot::new(64);
+            let texture = sample_texture();
+            for image in [&slot, &other] {
+                show_customized_icon(image, path, crate::assets::icons::PICTURES, 64);
+                super::apply_thumbnail(image, &texture, path);
+            }
+            super::apply_thumbnail(&slot, &texture, replacement);
+            assert!(!super::displayed_thumbnail_matches(&slot, path));
+            assert!(super::displayed_thumbnail_matches(&slot, replacement));
+            assert!(super::displayed_thumbnail_matches(&other, path));
+
+            let id = slot.as_ptr() as usize;
+            let weak = slot.downgrade();
+            drop(slot);
+            assert!(weak.upgrade().is_none());
+            assert!(!super::TRACKED_THUMBNAILS.with_borrow(|tracked| tracked.contains_key(&id)));
+            assert!(
+                !super::TRACKED_CUSTOMIZED_ICONS.with_borrow(|tracked| tracked.contains_key(&id))
+            );
+            assert!(super::displayed_thumbnail_matches(&other, path));
+            super::show_fallback_icon(&other, crate::assets::icons::PICTURES, 64);
+            assert!(!super::displayed_thumbnail_matches(&other, path));
+            assert!(other.texture().is_none());
         },
     );
 }
@@ -715,7 +709,7 @@ fn cache_miss_enqueues_sandbox_job_without_settle_timeout() {
     gtk_test(
         "ui::thumbnail::tests::cache_miss_enqueues_sandbox_job_without_settle_timeout",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             hold_thumbnail_workers();
             let path = PathBuf::from("/fixture/cache-miss.png");
             let image = super::ThumbnailSlot::new(64);
@@ -735,11 +729,116 @@ fn cache_miss_enqueues_sandbox_job_without_settle_timeout() {
 }
 
 #[test]
+fn uri_entries_with_a_local_mirror_render_via_the_mirror_path() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_with_a_local_mirror_render_via_the_mirror_path",
+        || {
+            super::super::preferences::PreferenceManager::shared();
+            hold_thumbnail_workers();
+            // file:// exercises URI routing, not GVfs/FUSE integration.
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(has_pending_thumbnail(mirror.path()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn mirror_rendering_does_not_wait_for_a_metadata_fill() {
+    gtk_test(
+        "ui::thumbnail::tests::mirror_rendering_does_not_wait_for_a_metadata_fill",
+        || {
+            super::super::preferences::PreferenceManager::shared();
+            hold_thumbnail_workers();
+            let mirror = tempfile::Builder::new()
+                .suffix(".png")
+                .tempfile()
+                .expect("temp mirror file");
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri(gio::File::for_path(mirror.path()).uri()),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(
+                has_pending_thumbnail(mirror.path()),
+                "mirror rendering must not depend on a metadata producer"
+            );
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon() {
+    gtk_test(
+        "ui::thumbnail::tests::uri_entries_without_a_local_mirror_fall_back_to_a_generic_icon",
+        || {
+            super::super::preferences::PreferenceManager::shared();
+            hold_thumbnail_workers();
+            let entry = FileEntry {
+                recent_unix_seconds: MetadataValue::Unavailable,
+                location: Location::uri("smb://example.invalid/share/photo.png"),
+                thumbnail_path: None,
+                native_name: "photo.png".into(),
+                display_name: "photo.png".to_owned(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Unavailable,
+                is_hidden: false,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+            };
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &entry);
+            drain_main_loop();
+            assert!(PENDING_THUMBNAILS.with(|pending| pending.borrow().is_empty()));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
 fn stale_request_id_does_not_apply_completed_texture() {
     gtk_test(
         "ui::thumbnail::tests::stale_request_id_does_not_apply_completed_texture",
         || {
-            super::super::theme::ThemeManager::shared();
+            super::super::preferences::PreferenceManager::shared();
             let path = PathBuf::from("/fixture/stale.png");
             let image = super::ThumbnailSlot::new(64);
             let image_id = image.as_ptr() as usize;
@@ -750,6 +849,7 @@ fn stale_request_id_does_not_apply_completed_texture() {
                     image_id,
                     ActiveRequest {
                         id: 2,
+                        key: key(0),
                         image: weak.clone(),
                         deferred: None,
                     },

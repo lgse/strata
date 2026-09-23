@@ -18,7 +18,7 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
                 button: gtk::Button::new(),
                 blurred_root,
                 overlay: overlay.clone(),
-                preferences: ThemeManager::shared(),
+                preferences: PreferenceManager::shared(),
                 notice: Rc::new(|_| {}),
                 guard: settings::install_guard(),
             };

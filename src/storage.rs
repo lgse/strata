@@ -10,6 +10,10 @@ use std::{
 
 static NEXT_TEMP_FILE: AtomicU64 = AtomicU64::new(0);
 
+pub(crate) fn config_directory() -> PathBuf {
+    gtk::glib::user_config_dir().join("strata")
+}
+
 pub(crate) fn atomic_write(path: &Path, contents: &[u8]) -> io::Result<()> {
     atomic_write_with(path, |file| file.write_all(contents))
 }

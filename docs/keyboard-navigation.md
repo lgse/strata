@@ -65,8 +65,15 @@ original item and report an error.
 
 ## Filename patterns while filtering
 
-Use **Ctrl+F** to filter a pane. Plain text keeps its existing matching behavior.
-Add `*` to match a whole filename, ignoring case:
+Use **Ctrl+F** to filter a pane. Plain text matches a substring of the filename,
+ignoring case. Queries of at least four letters or digits also allow one inserted,
+missing, substituted, or adjacent swapped character within a whole filename word.
+Words are separated by punctuation or spaces. For example, `trahs` finds
+`strata-trash.svg`, but `trash` does not find `strata-search.svg`. Shorter queries
+and queries containing punctuation remain literal. Indexed results rank literal
+matches ahead of typo matches; parent paths do not qualify a result.
+
+Add `*` for a whole-filename pattern without typo tolerance:
 
 - `*.MOV` matches `clip.MOV`, but not `clip.MOV.bak`.
 - `IMG*` matches names beginning with `IMG`.
@@ -88,6 +95,19 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 **Menu/Shift+F10** on a focused result opens its file menu. While the input itself is focused, its text-editing menu remains available. **Space** toggles quick preview for the selected result in Columns, Icons, and List, including after returning to the query. The query, selection, and current directory stay intact.
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Folders and unsupported files do not open a preview.
+
+## Navigating an archive preview
+
+Quick Look on a local ZIP, 7z, TAR, or TAR.GZ opens the archive's member tree
+instead of extracting it. The preview starts at the archive root with its first
+member highlighted. The listing keeps its selection, but drops the
+keyboard-cursor outline so only one cursor is visible.
+
+Inside the preview, **Up/Down** (or **k/j**) move the highlight, **Right/l/Enter**
+opens the highlighted folder, and **Left/h** returns to the parent. Left at the
+archive root and Right/Enter on a member file do nothing. Navigating never
+extracts anything or touches the filesystem; **Space** and **Escape** still
+close the preview.
 
 ## Shortcut footer
 

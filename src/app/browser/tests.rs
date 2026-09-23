@@ -515,10 +515,16 @@ impl FileSource for CountingFileSource {
     }
 }
 
+type UndoMergeRecord = (
+    Vec<Location>,
+    Vec<Location>,
+    HashMap<Location, TrashedOriginal>,
+);
+
 thread_local! {
     static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
     static UNDO_COPY_REQUESTS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
-    static UNDO_MERGE_REQUESTS: RefCell<Vec<(Vec<Location>, Vec<Location>)>> =
+    static UNDO_MERGE_REQUESTS: RefCell<Vec<UndoMergeRecord>> =
         const { RefCell::new(Vec::new()) };
     static UNDO_RENAME_REQUESTS: RefCell<Vec<(Location, Location)>> = const { RefCell::new(Vec::new()) };
     static FORWARD_RENAME_OUTCOME: Cell<Option<ForwardRenameOutcome>> = const { Cell::new(None) };
@@ -661,13 +667,16 @@ impl OperationProvider for ImmediateOperationProvider {
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
         UNDO_MERGE_REQUESTS.with(|requests| {
-            requests
-                .borrow_mut()
-                .push((request.created.clone(), request.overwritten.clone()));
+            requests.borrow_mut().push((
+                request.created.clone(),
+                request.overwritten.clone(),
+                request.originals.clone(),
+            ));
         });
         emit(OperationEvent::Restored {
             request_id: request.id,
             locations: Vec::new(),
+            restored: Vec::new(),
         });
         LoadHandle::new(|| {})
     }
@@ -685,17 +694,31 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let restored = match &request.source {
+            RestoreSource::TrashEntries(items) => items
+                .iter()
+                .map(|item| Location::local(item.destination.clone()))
+                .collect(),
+            RestoreSource::OriginalLocations(locations) => locations.clone(),
+        };
         emit(OperationEvent::Restored {
             request_id: request.id,
             locations: Vec::new(),
+            restored,
         });
         LoadHandle::new(|| {})
     }
 
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let archive = request
+            .destination
+            .child(std::ffi::OsStr::new(&request.archive_name))
+            .unwrap_or_else(|| request.destination.clone());
         emit(OperationEvent::Compressed {
             request_id: request.id,
             archive_name: request.archive_name,
+            archive,
+            original: None,
         });
         LoadHandle::new(|| {})
     }
@@ -936,6 +959,7 @@ enum FillAnswer {
 struct FillCall {
     id: RequestId,
     full: bool,
+    include_icon_details: bool,
     entries: Vec<Location>,
     emit: DirectoryEmit,
 }
@@ -1100,6 +1124,7 @@ impl FileSource for ScriptedSource {
                 self.fill_calls.borrow_mut().push(FillCall {
                     id,
                     full,
+                    include_icon_details: request.include_icon_details,
                     entries,
                     emit,
                 });
@@ -1108,6 +1133,7 @@ impl FileSource for ScriptedSource {
                 self.fill_calls.borrow_mut().push(FillCall {
                     id,
                     full,
+                    include_icon_details: request.include_icon_details,
                     entries,
                     emit: emit.clone(),
                 });

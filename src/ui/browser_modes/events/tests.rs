@@ -167,6 +167,48 @@ fn assert_attached(pane: &Pane, attached: bool) {
 }
 
 #[test]
+fn page_targets_follow_visible_order_without_a_bound_cursor() {
+    gtk_test(
+        "ui::browser_modes::events::tests::page_targets_follow_visible_order_without_a_bound_cursor",
+        || {
+            for (mode, grouped) in presentations() {
+                let fixture = Fixture::new(mode, grouped);
+                let order = fixture.views.visual_order(0);
+                assert_eq!(order.len(), 3);
+                fixture.browser.select(0, order[1]);
+                fixture.browser.clear_active_selection();
+                assert_eq!(fixture.views.page_target(0, 1, 2), Some(order[2]));
+                assert_eq!(fixture.views.page_target(0, -1, 2), Some(order[0]));
+                fixture.browser.select(0, order[0]);
+                assert_eq!(fixture.views.page_target(0, 1, 1), Some(order[1]));
+                assert_eq!(fixture.views.page_target(0, -1, 10), Some(order[0]));
+                fixture
+                    .browser
+                    .set_selection(0, &order[..2], Some(order[1]));
+                assert_eq!(fixture.views.page_target(0, 1, 10), Some(order[2]));
+                assert_eq!(fixture.views.page_target(0, -1, 1), Some(order[0]));
+
+                let pane = fixture.pane();
+                pane.filter_query.replace(".png".to_owned());
+                pane.filter.changed(gtk::FilterChange::Different);
+                let image = fixture.views.visual_order(0)[0];
+                fixture.browser.select(0, image);
+                assert_eq!(fixture.views.page_target(0, 1, 10), Some(image));
+                assert_eq!(fixture.views.page_target(0, -1, 10), Some(image));
+                fixture.browser.select(
+                    0,
+                    order
+                        .into_iter()
+                        .find(|&source| source != image)
+                        .expect("hidden by filter"),
+                );
+                assert_eq!(fixture.views.page_target(0, 1, 1), None);
+            }
+        },
+    );
+}
+
+#[test]
 fn camera_device_order_does_not_enable_saved_type_grouping_at_completion() {
     gtk_test(
         "ui::browser_modes::events::tests::camera_device_order_does_not_enable_saved_type_grouping_at_completion",
@@ -279,6 +321,54 @@ fn reload_reconnects_with_the_restored_multi_selection() {
                     })
                     .collect();
                 assert_eq!(selected, vec![0, 2], "{mode:?} grouped={grouped}");
+            }
+        },
+    );
+}
+
+#[test]
+fn reload_restores_a_parked_cursor_without_taking_external_focus() {
+    gtk_test(
+        "ui::browser_modes::events::tests::reload_restores_a_parked_cursor_without_taking_external_focus",
+        || {
+            for (mode, grouped) in presentations() {
+                for parked in [true, false] {
+                    let mut fixture = Fixture::new(mode, grouped);
+                    fixture.show();
+                    fixture.browser.set_selection(0, &[0, 2], Some(2));
+                    let pane = fixture.pane();
+                    fixture
+                        .views
+                        .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+                    if parked {
+                        assert!(pane.stack.grab_focus());
+                    } else {
+                        assert!(fixture.outside.grab_focus());
+                    }
+                    fixture
+                        .views
+                        .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 3 });
+                    fixture.views.handle(&BrowserEvent::LoadFinished {
+                        depth: 0,
+                        truncated: false,
+                    });
+                    if parked {
+                        pump_until(|| fixture.views.focused_position() == Some((0, 2)));
+                    } else {
+                        let done = Rc::new(Cell::new(false));
+                        let flag = done.clone();
+                        let _frame =
+                            crate::ui::frame::FrameTask::new(Some(&pane.section.view), move || {
+                                flag.set(true)
+                            });
+                        pump_until(|| done.get());
+                        assert!(super::super::widget_has_focus(
+                            &fixture.outside,
+                            gtk::prelude::RootExt::focus(&fixture.window).as_ref(),
+                        ));
+                    }
+                    assert_eq!(fixture.browser.selected_positions(0), vec![0, 2]);
+                }
             }
         },
     );
@@ -771,6 +861,12 @@ fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
                 pump_until(|| bound_row(&pane, 1).is_some());
                 let card = bound_row(&pane, 1).expect("bound card");
                 let details = crate::ui::icons_cell::details_label(&card).expect("details label");
+                fixture.browser.set_selection(0, &[1], Some(1));
+                fixture.views.handle(&BrowserEvent::FocusChanged {
+                    depth: 0,
+                    position: Some(1),
+                });
+                assert_eq!(fixture.views.selected_positions(), Some((0, vec![1])));
                 assert_eq!(details.label(), "10 B");
                 let changed = Rc::new(Cell::new(false));
                 let observed = changed.clone();
@@ -784,6 +880,8 @@ fn icons_metadata_updates_bound_cards_without_replacing_the_model() {
                 });
                 assert!(details.is_visible());
                 assert_eq!(details.label(), "1920×1080");
+                assert_eq!(fixture.views.selected_positions(), Some((0, vec![1])));
+                assert_eq!(bound_row(&pane, 1).as_ref(), Some(&card));
                 assert!(!changed.get());
             }
         },
@@ -896,6 +994,56 @@ fn resume_native_selection_starts_from_the_cursor_after_escape() {
                 assert!(
                     !fixture.views.resume_native_selection(),
                     "{mode:?} grouped={grouped}: a filled selection must keep native Shift movement"
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn ctrl_click_focuses_the_toggled_item_not_the_previous_selection() {
+    gtk_test(
+        "ui::browser_modes::events::tests::ctrl_click_focuses_the_toggled_item_not_the_previous_selection",
+        || {
+            for (mode, grouped) in presentations() {
+                let fixture = Fixture::new(mode, grouped);
+                fixture.show();
+                fixture.outside.grab_focus();
+                let pane = fixture.pane();
+                let view = pane.section.view.clone();
+                let source_of = |position: u32| {
+                    pane.source_index
+                        .of_view_position(&pane.section.view_model, position)
+                        .expect("view row has a source position")
+                };
+                let highest = (0..pane.section.view_model.n_items())
+                    .max_by_key(|&position| source_of(position))
+                    .expect("entries");
+                let lowest = (0..pane.section.view_model.n_items())
+                    .min_by_key(|&position| source_of(position))
+                    .expect("entries");
+                native_select_item(&view, highest, false, false);
+                native_select_item(&view, lowest, true, false);
+                assert_eq!(
+                    fixture.browser.selected_positions(0),
+                    [source_of(lowest), source_of(highest)],
+                );
+                assert_eq!(
+                    fixture
+                        .browser
+                        .focused_item()
+                        .map(|(_, position, _)| position),
+                    Some(source_of(lowest)),
+                    "{mode:?} grouped={grouped}: ctrl+click focuses the toggled item"
+                );
+                native_select_item(&view, lowest, true, false);
+                assert_eq!(
+                    fixture
+                        .browser
+                        .focused_item()
+                        .map(|(_, position, _)| position),
+                    Some(source_of(highest)),
+                    "{mode:?} grouped={grouped}: deselecting moves focus to the remaining selection"
                 );
             }
         },

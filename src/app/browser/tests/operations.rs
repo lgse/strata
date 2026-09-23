@@ -180,6 +180,7 @@ fn restoration_monitor_changes_publish_once_after_the_terminal_event() {
     complete(OperationEvent::Restored {
         request_id,
         locations: vec![first.location, second.location],
+        restored: Vec::new(),
     });
 
     assert_eq!(
@@ -481,7 +482,7 @@ fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() 
         child_count: MetadataValue::Unknown,
         duration_seconds: MetadataValue::Unknown,
     };
-    browser.extract(entry, Location::local("/fixture"), None);
+    browser.extract(entry, Location::local("/fixture"), false, None);
 
     let request_id = request_id.get().expect("extract request");
     assert_eq!(browser.current_operation.get(), Some(request_id));

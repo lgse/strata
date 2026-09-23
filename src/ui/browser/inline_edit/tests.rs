@@ -447,12 +447,12 @@ fn columns_rename_hides_and_restores_the_size_badge() {
             });
             browser.select(0, 0);
             wait_until(|| view.state.begin_rename());
-            let size = view
-                .state
-                .active_rename
+            let size = view.state.columns.borrow()[0]
+                .bound_rows
                 .borrow()
-                .as_ref()
-                .map(|rename| rename.size.clone())
+                .iter()
+                .find(|bound| bound.edit.is_editing())
+                .map(|bound| bound.size.clone())
                 .expect("a Columns rename is open");
 
             wait_until(|| !size.label().is_empty());
@@ -916,6 +916,19 @@ fn invalid_renames_retain_the_original_file_in_every_view_mode() {
                 });
                 let widget = view.widget();
                 let bounds_before = (mode == BrowserMode::Icons).then(|| {
+                    // Compare rename states, not the earlier metadata-placeholder state.
+                    wait_until(|| {
+                        (0..6).all(|position| {
+                            browser.entry_at(0, position).is_some_and(|entry| {
+                                entry.size == crate::model::MetadataValue::Known(4)
+                            })
+                        })
+                    });
+                    let rendered = Rc::new(std::cell::Cell::new(false));
+                    let done = rendered.clone();
+                    let _frame =
+                        crate::ui::frame::FrameTask::new(Some(&widget), move || done.set(true));
+                    wait_until(|| rendered.get());
                     wait_until(|| {
                         let bounds = icon_card_bounds(&widget);
                         bounds.len() == 6
@@ -1001,8 +1014,12 @@ fn slow_click_rename_opens_editor_after_the_double_click_interval() {
                         PeekBehavior::default(),
                     );
                     view.set_view_mode(mode);
+                    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    let password = gtk::PasswordEntry::new();
+                    content.append(&view.widget());
+                    content.append(&password);
                     let window = gtk::Window::builder()
-                        .child(&view.widget())
+                        .child(&content)
                         .default_width(600)
                         .default_height(300)
                         .build();
@@ -1048,6 +1065,19 @@ fn slow_click_rename_opens_editor_after_the_double_click_interval() {
                         !view.rename_is_active(),
                         "selection changes cancel rename in {mode:?} at {interval}ms"
                     );
+                    view.state.schedule_click_rename(0, 0);
+                    assert!(password.grab_focus());
+                    let deadline = Instant::now() + Duration::from_millis(interval as u64 + 100);
+                    while Instant::now() < deadline {
+                        glib::MainContext::default().iteration(false);
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    assert!(
+                        !view.rename_is_active(),
+                        "password entry owns input in {mode:?}"
+                    );
+                    let focused = gtk::prelude::RootExt::focus(&window).expect("password focus");
+                    assert!(focused == password || focused.is_ancestor(&password));
                     browser.clear_observer();
                     window.destroy();
                 }

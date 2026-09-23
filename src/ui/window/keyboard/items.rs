@@ -46,13 +46,35 @@ impl Dispatcher {
         None
     }
 
-    fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
+    pub(super) fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
         if self.preview.is_enabled() {
             self.preview.close();
+            browser.focus_active();
             return Some(Propagation::Stop);
         }
         // Transient surfaces may return focus to pane chrome rather than an item.
         (browser.close_peek() || browser.clear_active_selection()).then_some(Propagation::Stop)
+    }
+
+    pub(super) fn archive_navigation(&self, event: &KeyEvent) -> KeyResult {
+        if !event.without(
+            Modifiers::CONTROL_MASK
+                | Modifiers::ALT_MASK
+                | Modifiers::SUPER_MASK
+                | Modifiers::SHIFT_MASK,
+        ) || event.text_has_focus()
+            || (!self.view.item_view_has_focus()
+                && !self.preview.archive_list_has_focus(event.focused.as_ref()))
+        {
+            return None;
+        }
+        match event.key {
+            Key::Up | Key::Down | Key::Left | Key::Right | Key::Return | Key::KP_Enter => self
+                .preview
+                .archive_key(event.key)
+                .then_some(Propagation::Stop),
+            _ => None,
+        }
     }
 
     pub(super) fn item_navigation(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
@@ -130,6 +152,13 @@ impl Dispatcher {
         }
         if self.view.item_view_has_focus() && matches!(event.key, Key::Home | Key::End) {
             self.view.commit_selection();
+            if !event.shift()
+                && self
+                    .view
+                    .jump_parked_selection(if event.key == Key::Home { -1 } else { 1 })
+            {
+                return Some(Propagation::Stop);
+            }
         }
         if let Some(direction) = page_direction(event.key)
             && self.view.page_selection(direction)

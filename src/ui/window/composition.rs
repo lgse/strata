@@ -5,8 +5,8 @@ use std::rc::Rc;
 use gtk::{gio, prelude::*};
 
 use crate::ui::{
-    blur::BlurBin, browser::BrowserView, preview::PreviewDrawer, settings::UpdateNoticeHandler,
-    theme::ThemeManager,
+    blur::BlurBin, browser::BrowserView, preferences::PreferenceManager, preview::PreviewDrawer,
+    settings::UpdateNoticeHandler,
 };
 
 use super::{SidebarView, TypeToSearch, keyboard};
@@ -27,7 +27,10 @@ pub(super) struct WindowContent {
 }
 
 impl WindowContent {
-    pub(super) fn new(window: &gtk::ApplicationWindow, preferences: &Rc<ThemeManager>) -> Self {
+    pub(super) fn new(
+        window: &gtk::ApplicationWindow,
+        preferences: &Rc<PreferenceManager>,
+    ) -> Self {
         let browser = super::browser_for_window();
         let preview = layout::preview(&browser, preferences);
         let header = layout::Header::new(window, &browser, &preview, preferences);
@@ -53,7 +56,7 @@ impl WindowContent {
     pub(super) fn bind(
         &self,
         window: &gtk::ApplicationWindow,
-        preferences: &Rc<ThemeManager>,
+        preferences: &Rc<PreferenceManager>,
     ) -> UpdateNoticeHandler {
         search::install(window, self, preferences);
         install_browser_actions(window, &self.browser, preferences);
@@ -111,7 +114,7 @@ impl WindowContent {
 fn install_browser_actions(
     window: &gtk::ApplicationWindow,
     browser: &BrowserView,
-    preferences: &Rc<ThemeManager>,
+    preferences: &Rc<PreferenceManager>,
 ) {
     let terminal_view = browser.clone();
     let terminal_action = gio::SimpleAction::new("open-terminal", None);

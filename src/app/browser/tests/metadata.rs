@@ -352,7 +352,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
 }
 
 #[test]
-fn settle_timer_restarts_while_rows_keep_arriving() {
+fn metadata_dispatch_coalesces_on_idle_and_reuses_covered_in_flight_requests() {
     let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .expect("the async test lock should not be poisoned");
@@ -361,21 +361,253 @@ fn settle_timer_restarts_while_rows_keep_arriving() {
         vec![FillAnswer::Never],
     ));
     browser.navigate(Location::local("/fixture"));
-    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
-    let pump_until_elapsed = |millis: u64, start: std::time::Instant| {
-        while start.elapsed() < std::time::Duration::from_millis(millis) {
+    let drain_idle = || {
+        let done = Rc::new(Cell::new(false));
+        let done_for_idle = done.clone();
+        gtk::glib::idle_add_local_once(move || done_for_idle.set(true));
+        while !done.get() {
             gtk::glib::MainContext::default().iteration(false);
-            std::thread::sleep(std::time::Duration::from_millis(2));
         }
     };
-    let start = std::time::Instant::now();
-    pump_until_elapsed(80, start);
-    browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
-    pump_until_elapsed(140, start);
+    for _ in 0..3 {
+        browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
+        browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
+    }
     assert!(source.fill_calls.borrow().is_empty());
-    pump_until_elapsed(400, start);
+    drain_idle();
     assert_eq!(source.fill_calls.borrow().len(), 1);
+    assert_eq!(source.fill_calls.borrow()[0].entries.len(), 2);
     assert!(!source.fill_calls.borrow()[0].full);
+    for _ in 0..3 {
+        browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), false);
+        browser.request_metadata_fill(0, 1, Location::local("/fixture/beta"), false);
+        drain_idle();
+    }
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        1,
+        "in-flight work is not restarted"
+    );
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    drain_idle();
+    assert_eq!(source.fill_calls.borrow().len(), 1);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone())
+    };
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    drain_idle();
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        2,
+        "richer requests reach the source after the active fill finishes"
+    );
+    assert!(source.fill_calls.borrow()[1].include_icon_details);
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    drain_idle();
+    assert_eq!(source.fill_calls.borrow().len(), 2);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[1].id, calls[1].emit.clone())
+    };
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    drain_idle();
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        3,
+        "completed work releases its claim"
+    );
+}
+
+#[test]
+fn newly_visible_rows_do_not_discard_late_dimensions_for_the_focused_file() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let (browser, events, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["alpha", "beta", "gamma"],
+        vec![FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    browser.set_selection(0, &[0], Some(0));
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone())
+    };
+    let mut update = MetadataUpdate {
+        location: Location::local("/fixture/alpha"),
+        size: MetadataValue::Known(2048),
+        modified_unix_seconds: MetadataValue::Known(7),
+        mode: MetadataValue::Unknown,
+        image_dimensions: MetadataValue::Unknown,
+        child_count: MetadataValue::Unknown,
+        duration_seconds: MetadataValue::Unknown,
+    };
+    emit(DirectoryEvent::MetadataFilled {
+        request_id: id,
+        updates: vec![update.clone()],
+    });
+    for (position, name) in [(1, "beta"), (2, "gamma")] {
+        browser.request_metadata_fill(
+            0,
+            position,
+            Location::local(format!("/fixture/{name}")),
+            true,
+        );
+        pump_until(|| browser.metadata_idle.borrow().is_none());
+        assert_eq!(source.fill_calls.borrow().len(), 1);
+    }
+    events.borrow_mut().clear();
+    update.image_dimensions = MetadataValue::Known((1920, 1080));
+    emit(DirectoryEvent::MetadataFilled {
+        request_id: id,
+        updates: vec![update],
+    });
+    assert_eq!(
+        browser
+            .entry_at(0, 0)
+            .expect("focused file")
+            .image_dimensions,
+        MetadataValue::Known((1920, 1080))
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::MetadataFilled { depth: 0, updates }
+            if updates.iter().any(|(position, entry)| *position == 0
+                && entry.image_dimensions == MetadataValue::Known((1920, 1080)))
+    )));
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| source.fill_calls.borrow().len() == 2);
+    assert_eq!(
+        source.fill_calls.borrow()[1].entries,
+        vec![
+            Location::local("/fixture/beta"),
+            Location::local("/fixture/gamma")
+        ]
+    );
+}
+
+#[test]
+fn visible_metadata_is_admitted_when_the_offscreen_backlog_is_full() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async lock");
+    let (browser, _, source) = scripted_browser(ScriptedSource::scripted(
+        vec!["alpha", "beta", "gamma"],
+        vec![FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    browser.request_metadata_fill(0, 0, Location::local("/fixture/alpha"), true);
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let (id, emit) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone())
+    };
+    let mut backlog = (0..MAX_PENDING_FILL_LOCATIONS - 1)
+        .map(|index| ViewportTarget {
+            position: index + 3,
+            location: Location::local(format!("/fixture/offscreen-{index}")),
+            include_icon_details: false,
+        })
+        .collect::<Vec<_>>();
+    let beta = Location::local("/fixture/beta");
+    let gamma = Location::local("/fixture/gamma");
+    backlog.push(ViewportTarget {
+        position: 1,
+        location: beta.clone(),
+        include_icon_details: false,
+    });
+    browser.metadata_pending.borrow_mut().insert(0, backlog);
+
+    browser.request_visible_metadata_fill(0, 1, beta.clone(), true);
+    browser.request_visible_metadata_fill(0, 2, gamma.clone(), false);
+    browser.prioritize_metadata_fills(0, &[beta.clone(), gamma.clone()]);
+    assert_eq!(
+        browser.metadata_pending.borrow()[&0].len(),
+        MAX_PENDING_FILL_LOCATIONS
+    );
+    pump_until(|| browser.metadata_idle.borrow().is_none());
+    assert_eq!(
+        source.fill_calls.borrow().len(),
+        1,
+        "active work is not restarted"
+    );
+    assert!(browser.fill_tokens.borrow().contains_key(&id));
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| source.fill_calls.borrow().len() == 2);
+    let calls = source.fill_calls.borrow();
+    assert_eq!(&calls[1].entries[..2], &[beta, gamma]);
+    assert!(
+        calls[1].include_icon_details,
+        "promoted entries retain richer requests"
+    );
+}
+
+#[test]
+fn viewport_metadata_reprioritizes_between_bounded_batches() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("async lock");
+    let names: Vec<&'static str> = "abcdefghijklmnopqrstuvwxyz"
+        .as_bytes()
+        .chunks(1)
+        .map(|name| std::str::from_utf8(name).expect("ASCII name"))
+        .collect();
+    let (browser, _, source) = scripted_browser(ScriptedSource::scripted(
+        names.clone(),
+        vec![FillAnswer::Never],
+    ));
+    browser.navigate(Location::local("/fixture"));
+    for (position, name) in names.iter().enumerate() {
+        browser.request_metadata_fill(
+            0,
+            position,
+            Location::local(format!("/fixture/{name}")),
+            true,
+        );
+    }
+    pump_until(|| source.fill_calls.borrow().len() == 1);
+    let (id, emit, first_count) = {
+        let calls = source.fill_calls.borrow();
+        (calls[0].id, calls[0].emit.clone(), calls[0].entries.len())
+    };
+    assert!(
+        first_count < names.len(),
+        "offscreen backlog must leave room for reprioritization"
+    );
+    let visible = Location::local("/fixture/z");
+    browser.prioritize_metadata_fills(0, std::slice::from_ref(&visible));
+    emit(DirectoryEvent::MetadataFinished {
+        request_id: id,
+        outcome: MetadataOutcome::Complete,
+    });
+    pump_until(|| source.fill_calls.borrow().len() == 2);
+    let calls = source.fill_calls.borrow();
+    assert_eq!(calls[1].entries.first(), Some(&visible));
+    let filled: HashSet<_> = calls
+        .iter()
+        .flat_map(|call| call.entries.iter().cloned())
+        .collect();
+    assert_eq!(
+        filled.len(),
+        names.len(),
+        "reprioritization retains unfinished files"
+    );
 }
 
 #[test]

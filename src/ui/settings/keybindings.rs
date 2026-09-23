@@ -3,7 +3,7 @@
 use super::{
     append_heading, bindings::bind_switch, page_content, scrollable_page, settings_option,
 };
-use crate::ui::theme::ThemeManager;
+use crate::ui::preferences::PreferenceManager;
 use gtk::prelude::*;
 use std::rc::Rc;
 
@@ -73,7 +73,7 @@ pub(super) fn search_text() -> String {
         .join(" ")
 }
 
-pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
+pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     let content = page_content();
     let hints = super::settings_group(&content, "SHORTCUTS BUTTON");
     let (row, toggle) = settings_option(
@@ -84,8 +84,8 @@ pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     bind_switch(
         &manager,
         &toggle,
-        ThemeManager::show_keybinding_hints,
-        ThemeManager::set_show_keybinding_hints,
+        PreferenceManager::show_keybinding_hints,
+        PreferenceManager::set_show_keybinding_hints,
     );
     row.add_css_class("keybinding-hints");
     hints.append(&row);

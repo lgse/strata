@@ -53,6 +53,36 @@ fn members_share_conflict_names_and_count_only_completed_work() -> Result<(), Bo
 }
 
 #[test]
+fn unsafe_member_paths_are_sanitized_without_stopping_extraction() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open(&destination, &progress, &cancelled)?;
+
+    session.extract_member(
+        "../escaped.txt",
+        MemberContent::File(&mut &b"escaped"[..], Some(7)),
+    )?;
+    session.extract_member(
+        "escaped.txt",
+        MemberContent::File(&mut &b"duplicate"[..], Some(9)),
+    )?;
+    session.extract_member(
+        "after.txt",
+        MemberContent::File(&mut &b"after"[..], Some(5)),
+    )?;
+
+    assert_eq!(fs::read(destination.join("escaped.txt"))?, b"escaped");
+    assert_eq!(fs::read(destination.join("escaped (2).txt"))?, b"duplicate");
+    assert_eq!(fs::read(destination.join("after.txt"))?, b"after");
+    assert!(!root.path().join("escaped.txt").exists());
+    assert_eq!(progress.load(Ordering::Relaxed), 3);
+    Ok(())
+}
+
+#[test]
 fn cancellation_reports_actual_destinations_for_duplicate_members() -> Result<(), Box<dyn Error>> {
     for (name, first, second) in [
         ("same.txt", "same.txt", "same (2).txt"),
@@ -247,7 +277,7 @@ fn completed_worker_is_not_reclassified_by_late_cancellation() -> Result<(), Box
 }
 
 #[test]
-fn pending_names_are_validated_and_only_use_established_renames() -> Result<(), Box<dyn Error>> {
+fn pending_names_are_sanitized_and_only_use_established_renames() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
     fs::create_dir(root.path().join("folder"))?;
     fs::write(root.path().join("unvisited.txt"), b"original")?;
@@ -299,7 +329,8 @@ fn pending_names_are_validated_and_only_use_established_renames() -> Result<(), 
             "unvisited.txt",
             "unvisited.txt",
             "missing/new.txt",
-            "redirect/child"
+            "redirect/child",
+            "outside"
         ]
         .map(|name| Location::local(root.path().join(name)))
     );

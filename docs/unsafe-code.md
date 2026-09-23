@@ -48,3 +48,37 @@ The operations are individually scoped and document:
 - Why rebuilding the font set occurs before GTK/Pango creates the application font map
 
 If a maintained safe API gains this capability, this exception should be removed.
+
+### Browser sandbox fork boundary
+
+Location: `src/sandbox/browser/process.rs::{fork,namespaces}`
+
+Reason: reusing a codec-free supervisor's process image avoids per-file helper
+exec and namespace-tool startup while keeping native decoders disposable and
+isolated per file.
+Neither libc fork nor descriptor-sensitive namespace unshare has a suitable safe
+API for this use. The two calls are individually scoped behind private interfaces.
+
+Only the separate bubblewrap supervisor and its trusted setup child call them,
+never the GTK application or an initialized decoder. Both reject anything other
+than one task in `/proc/self/task`; no caller starts threads, owns shared mappings
+or external locks, or initializes codec/RNG state before this boundary. libc fork
+runs atfork handlers and resets libc's threading state. Namespace unshare uses
+only user/mount/PID/IPC flags, never `CLONE_FILES`.
+
+Children replace stdin/stdout and close inherited control descriptors before
+setup. Results use a per-job write-only pipe directly to the application; the
+supervisor never buffers media bytes or metadata, including previous thumbnails,
+that a subsequent fork could expose. A second fork enters the new PID namespace;
+its PID 1 installs a private proc mount, scratch mounts and input protections
+before decoding. Children exit
+through `exit_group`, without inherited atexit handlers or supervisor-buffer
+flushes. The supervisor reaps the setup child, and the parent application's
+absolute deadline tears down the entire bubblewrap namespace on failure.
+
+Coverage includes rejecting multithreaded callers, descriptor ownership and
+hostile framing, read-only source mutation attempts, decoder operation under the
+policy, and real process reuse/replacement across browser views. Runtime checks
+use private headless displays/buses where needed. Changes to supervisor
+initialization must preserve these pre-fork invariants, not merely keep the
+task-count check.

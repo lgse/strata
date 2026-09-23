@@ -21,6 +21,34 @@ fn settle() {
     }
 }
 
+fn mapped_popover(widget: &gtk::Widget) -> Option<gtk::Popover> {
+    if let Some(popover) = widget.downcast_ref::<gtk::Popover>()
+        && popover.is_mapped()
+    {
+        return Some(popover.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(popover) = mapped_popover(&widget) {
+            return Some(popover);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+fn wait_for_mapped_popover(root: &gtk::Widget) -> gtk::Popover {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(popover) = mapped_popover(root) {
+            return popover;
+        }
+        assert!(Instant::now() < deadline, "context menu did not open");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 #[test]
 fn background_splices_preserve_column_multiselection_and_pending_properties() {
     crate::test_support::gtk_test(
@@ -533,17 +561,7 @@ fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
                             .find(|gesture| gesture.button() == 3)
                             .expect("context gesture");
                         gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
-                        let popover = {
-                            let mut child = overlay.first_child();
-                            loop {
-                                let widget = child.unwrap_or_else(|| panic!("open context menu: chooser={chooser}, previous={previous}, item={item}"));
-                                child = widget.next_sibling();
-                                if let Ok(popover) = widget.downcast::<gtk::Popover>() {
-                                    break popover;
-                                }
-                            }
-                        };
-                        wait_until(|| popover.is_mapped());
+                        let popover = wait_for_mapped_popover(overlay.upcast_ref());
                         for hovered in [None, Some(previous)] {
                             view.state.hovered_column.set(hovered);
                             view.state.refresh_destination_style();
@@ -1003,4 +1021,52 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     }
     window.destroy();
     browser.clear_observer();
+}
+
+#[test]
+fn background_click_keeps_the_scrolled_column_in_place() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::background_click_keeps_the_scrolled_column_in_place",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            for index in 0..80 {
+                std::fs::write(fixture.path().join(format!("{index:03}.txt")), "x")
+                    .expect("fixture file");
+            }
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(640)
+                .default_height(360)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 80)
+            });
+            browser.select(0, 0);
+            browser.focus_active();
+            let adjustment = view.state.columns.borrow()[0].listing_scroll.vadjustment();
+            wait_until(|| adjustment.upper() - adjustment.page_size() > 100.0);
+            settle();
+            adjustment.set_value(adjustment.upper() - adjustment.page_size());
+            let scrolled = adjustment.value();
+            assert!(scrolled > 0.0, "selected row must be scrolled out of view");
+            press_column_background(&view, 0);
+            settle();
+            assert!(
+                (adjustment.value() - scrolled).abs() < 1.0,
+                "empty-space click moved the column from {scrolled} to {}",
+                adjustment.value()
+            );
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
 }

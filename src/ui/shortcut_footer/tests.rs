@@ -219,7 +219,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
         "closing keyboard help must restore the previous editing or browsing focus"
     );
     assert_eq!(footer.handle_key(gdk::Key::Delete, none), None);
-    let manager = super::super::theme::ThemeManager::shared();
+    let manager = super::super::preferences::PreferenceManager::shared();
     footer.bind_preferences(&manager);
     let other = ShortcutFooter::new(BrowserMode::Icons);
     other.bind_preferences(&manager);
@@ -287,7 +287,7 @@ fn paste_availability_tracks_file_clipboard() {
                 .expect("file clipboard");
             let footer = ShortcutFooter::new(BrowserMode::Columns);
             let handler = footer.connect_clipboard(&clipboard);
-            let manager = super::super::theme::ThemeManager::shared();
+            let manager = super::super::preferences::PreferenceManager::shared();
             manager.set_show_keybinding_hints(false);
             footer.bind_preferences(&manager);
             footer.assert_hints_visible(false);

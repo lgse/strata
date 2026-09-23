@@ -32,6 +32,55 @@ fn rename_stage(staging: PathBuf) -> (StageOverwrite, Rc<RefCell<Vec<Location>>>
     (stage, calls)
 }
 
+#[test]
+fn fat_merge_backs_up_sanitized_collisions_and_records_actual_paths() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(source.join("nested?"))?;
+    fs::create_dir_all(target.join("nested_"))?;
+    fs::write(source.join("nested?/a?.txt"), b"question")?;
+    fs::write(source.join("nested?/a:.txt"), b"colon")?;
+    fs::write(target.join("nested_/a_.txt"), b"original")?;
+    let staging = root.path().join("staging");
+    let (stage, staged) = rename_stage(staging.clone());
+    let (plans, on_merged) = recorded_plans();
+    glib::MainContext::default().block_on(merge_local_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+        MergeHooks {
+            fat_family: true,
+            copy_into_target: Rc::new(|source, target, _, cancellable| {
+                copy_recursively_fat_family(source, target, true, cancellable, None)
+            }),
+            stage_overwrite: stage,
+            on_merged: &on_merged,
+        },
+    ))?;
+    assert_eq!(fs::read(staging.join("staged-0"))?, b"original");
+    assert_eq!(fs::read(target.join("nested_/a_.txt"))?, b"colon");
+    assert_eq!(fs::read(target.join("nested_/a_ (1).txt"))?, b"question");
+    assert_eq!(
+        *staged.borrow(),
+        vec![Location::local(target.join("nested_/a_.txt"))]
+    );
+    let plans = plans.borrow();
+    assert_eq!(plans.len(), 1);
+    assert_eq!(
+        plans[0].created,
+        vec![Location::local(target.join("nested_/a_ (1).txt"))]
+    );
+    assert_eq!(plans[0].overwritten, *staged.borrow());
+    Ok(())
+}
+
 fn no_plan(_: MergePlan) {}
 
 fn recorded_plans() -> (Rc<RefCell<Vec<MergePlan>>>, impl Fn(MergePlan)) {
@@ -65,6 +114,7 @@ fn merging_folders_unites_contents_and_overwrites_shared_names() -> Result<(), B
         gio::Cancellable::new(),
         None,
         MergeHooks {
+            fat_family: false,
             copy_into_target: real_copy(),
             stage_overwrite: stage,
             on_merged: &on_merged,
@@ -119,6 +169,7 @@ fn merging_recurses_into_subdirectories_shared_by_both_sides() -> Result<(), Box
         gio::Cancellable::new(),
         None,
         MergeHooks {
+            fat_family: false,
             copy_into_target: real_copy(),
             stage_overwrite: stage,
             on_merged: &on_merged,
@@ -226,6 +277,7 @@ fn a_staging_failure_aborts_the_merge_and_reports_only_what_was_staged()
         gio::Cancellable::new(),
         None,
         MergeHooks {
+            fat_family: false,
             copy_into_target: real_copy(),
             stage_overwrite: stage,
             on_merged: &on_merged,
@@ -354,6 +406,7 @@ fn a_failed_merge_preserves_the_destinations_existing_contents() -> Result<(), B
         gio::Cancellable::new(),
         None,
         MergeHooks {
+            fat_family: false,
             copy_into_target: Rc::new(|_, target, _directory, _| {
                 Box::pin(async move {
                     fs::write(
@@ -457,6 +510,79 @@ fn staged_lookup(entries: HashMap<PathBuf, RestoreEntry>) -> StagedOriginalLooku
             })
         })
     })
+}
+
+#[test]
+fn merge_undo_uses_recorded_identity_when_trash_dates_collide() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    for chosen in ["older.zip", "current.zip", "removed.zip"] {
+        let root = tempfile::tempdir()?;
+        let target = root.path().join("archive.zip");
+        fs::write(&target, b"incoming archive")?;
+        let mut staged = HashMap::new();
+        for name in ["older.zip", "current.zip", "removed.zip"] {
+            let entry = staged_trash_fixture(root.path(), name, &target, name.as_bytes())?;
+            staged.insert(
+                name,
+                entry.source.native_path().expect("staged path").to_owned(),
+            );
+        }
+        let original = TrashedOriginal::from_metadata(&fs::symlink_metadata(&staged[chosen])?);
+        if chosen == "removed.zip" {
+            fs::remove_file(&staged[chosen])?;
+        }
+        let trash_root = staged[chosen]
+            .parent()
+            .expect("trash files directory")
+            .parent()
+            .expect("trash root")
+            .to_owned();
+        let location = Location::local(&target);
+        let originals = HashMap::from([(location.clone(), original)]);
+        let lookup: StagedOriginalLookup = Rc::new(move |location, cancellable| {
+            let path = location.native_path().expect("local original").to_owned();
+            let entry = home_trash_entries_at(
+                &trash_root,
+                &HashSet::from([path.clone()]),
+                &cancellable,
+                &originals,
+            )
+            .remove(&path);
+            Box::pin(async move { entry.ok_or_else(|| io_error("Recorded original is missing")) })
+        });
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let emitted = events.clone();
+        glib::MainContext::default().block_on(run_merge_undo(
+            OperationRequestId(91),
+            Vec::new(),
+            vec![location],
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+            gio::Cancellable::new(),
+            lookup,
+        ));
+
+        if chosen == "removed.zip" {
+            assert_eq!(fs::read(&target)?, b"incoming archive");
+            assert!(matches!(
+                events.borrow().last(),
+                Some(OperationEvent::CompletedWithErrors { .. })
+            ));
+        } else {
+            assert_eq!(fs::read(&target)?, chosen.as_bytes());
+            assert!(matches!(
+                events.borrow().last(),
+                Some(OperationEvent::Restored { .. })
+            ));
+        }
+        for (name, path) in &staged {
+            if *name != chosen {
+                assert_eq!(fs::read(path)?, name.as_bytes());
+            }
+        }
+    }
+    Ok(())
 }
 
 #[test]

@@ -6,7 +6,7 @@ use super::*;
 use crate::adapters::{LocalFileSource, LocalOperationProvider};
 use crate::model::Location;
 use crate::ui::browser::PeekBehavior;
-use crate::ui::theme::ThemeManager;
+use crate::ui::preferences::PreferenceManager;
 use crate::ui::window::home_directory;
 use crate::ui::window::open_argument::status_widget;
 
@@ -161,7 +161,7 @@ fn match_hides_connecting_overlay() {
     crate::test_support::gtk_test(
         "ui::window::unlock_argument::tests::match_hides_connecting_overlay",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             show_connecting_overlay(&browser, CONNECTING_MESSAGE, || {});
             assert!(
@@ -189,7 +189,7 @@ fn wait_timeout_not_found() {
     crate::test_support::gtk_test(
         "ui::window::unlock_argument::tests::wait_timeout_not_found",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             start_unlock_wait(
                 browser.clone(),
@@ -211,7 +211,7 @@ fn wait_cancel_leaves_default_directory() {
     crate::test_support::gtk_test(
         "ui::window::unlock_argument::tests::wait_cancel_leaves_default_directory",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
+            PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
             let home = Location::local(home_directory());
             browser.navigate_location(home.clone());

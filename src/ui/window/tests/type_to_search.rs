@@ -36,9 +36,9 @@ fn type_to_search_shortcuts_work_in_all_view_modes() {
 }
 
 fn exercise_type_to_search() {
-    ThemeManager::seed_saved_preferences_for_test();
+    PreferenceManager::seed_saved_preferences_for_test();
     load_styles();
-    let preferences = ThemeManager::shared();
+    let preferences = PreferenceManager::shared();
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("notes.txt"), b"preview fixture").expect("fixture file");
     std::fs::create_dir(fixture.path().join("folder")).expect("fixture directory");
@@ -75,10 +75,14 @@ fn exercise_type_to_search() {
             shortcuts: ShortcutFooter::new(BrowserMode::Columns),
         },
     );
-    let keys = window
-        .observe_controllers()
-        .item(0)
-        .and_downcast::<gtk::EventControllerKey>()
+    let controllers = window.observe_controllers();
+    let keys = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .next()
         .expect("keyboard controller");
     window.present();
     browser.navigate(Location::local(fixture.path()));
@@ -109,7 +113,8 @@ fn exercise_type_to_search() {
         assert!(!view.filter_has_focus());
         press(&keys, gtk::gdk::Key::space);
         assert!(!preview.is_open(), "Space closes preview: {mode:?}");
-        for name in ["folder", "archive.zip"] {
+        {
+            let name = "folder";
             select_entry(&browser, name);
             browser.focus_active();
             wait_until(|| view.item_view_has_focus());
@@ -119,7 +124,7 @@ fn exercise_type_to_search() {
                 "Space must not preview {name}: {mode:?}"
             );
             assert!(!view.filter_has_focus());
-            if name == "folder" && mode == BrowserMode::Columns {
+            if mode == BrowserMode::Columns {
                 wait_until(|| {
                     browser
                         .column_snapshot(1)
@@ -148,6 +153,14 @@ fn exercise_type_to_search() {
             }
             preview.close();
         }
+        select_entry(&browser, "archive.zip");
+        browser.focus_active();
+        wait_until(|| view.item_view_has_focus());
+        press(&keys, gtk::gdk::Key::space);
+        wait_until(|| preview.is_open());
+        assert!(!view.filter_has_focus());
+        press(&keys, gtk::gdk::Key::space);
+        assert!(!preview.is_open(), "Space closes archive preview: {mode:?}");
     }
 
     preferences.set_type_to_search(false);

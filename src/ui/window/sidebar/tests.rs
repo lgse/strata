@@ -39,8 +39,8 @@ fn saved_order_rebuilds_both_sidebars_without_losing_active_places() {
     gtk_test(
         "ui::window::sidebar::tests::saved_order_rebuilds_both_sidebars_without_losing_active_places",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let preferences = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let preferences = PreferenceManager::shared();
             let location = Location::local(home_directory().join("fixture-pin"));
             save_pinned_places(&[(location.clone(), "Pinned fixture".into())])
                 .expect("seed bookmarks");
@@ -83,7 +83,7 @@ fn pinned_row_reordering_preserves_storage_and_chooser_filtering() {
     gtk_test(
         "ui::window::sidebar::tests::pinned_row_reordering_preserves_storage_and_chooser_filtering",
         || {
-            let preferences = ThemeManager::shared();
+            let preferences = PreferenceManager::shared();
             let sidebar = build_sidebar(browser_for_window(), preferences.clone(), false);
             let first = Location::local(home_directory().join("first-pin"));
             let second = Location::local(home_directory().join("second-pin"));
@@ -159,7 +159,7 @@ fn shared_place_bindings_keep_navigation_and_drop_policies_distinct() {
         || {
             let source = Rc::new(NavigationSource::default());
             let view = BrowserView::new(source.clone(), PeekBehavior::default());
-            let sidebar = build_sidebar(view, ThemeManager::shared(), true);
+            let sidebar = build_sidebar(view, PreferenceManager::shared(), true);
             let direct = Location::uri("fixture:///direct");
             let validated = Location::uri("fixture:///validated");
             let direct_row = sidebar_button(crate::assets::icons::FOLDER, "Direct");
@@ -231,7 +231,7 @@ fn device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly() {
     gtk_test(
         "ui::window::sidebar::tests::device_subscriptions_rebuild_until_disconnected_and_capture_state_weakly",
         || {
-            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let sidebar = build_sidebar(browser_for_window(), PreferenceManager::shared(), true);
             assert_eq!(sidebar.handlers.borrow().len(), 9);
             let callback = rebuild_on_change::<()>(&sidebar.state);
             let monitor = sidebar.state.volume_monitor.clone();
@@ -287,7 +287,7 @@ fn rebuild_preserves_scrolled_offset() {
                 })
                 .collect::<Vec<_>>();
             save_pinned_places(&pins).expect("seed bookmarks");
-            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), false);
+            let sidebar = build_sidebar(browser_for_window(), PreferenceManager::shared(), false);
             let window = gtk::Window::builder()
                 .child(&sidebar.widget)
                 .default_width(240)
@@ -398,7 +398,7 @@ fn recent_place_appears_by_default_when_runtime_is_available() {
     gtk_test(
         "ui::window::sidebar::tests::recent_place_appears_by_default_when_runtime_is_available",
         || {
-            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), false);
+            let sidebar = build_sidebar(browser_for_window(), PreferenceManager::shared(), false);
             sidebar.state.recent_availability.set(RecentAvailability {
                 platform_tracking_enabled: true,
                 runtime_backend_supported: true,
@@ -416,8 +416,8 @@ fn sidebar_visibility_prefs_hide_and_restore_default_places_across_windows() {
     gtk_test(
         "ui::window::sidebar::tests::sidebar_visibility_prefs_hide_and_restore_default_places_across_windows",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             assert_eq!(
                 manager.sidebar_places_visibility(),
                 [
@@ -486,10 +486,24 @@ fn sidebar_visibility_prefs_hide_and_restore_default_places_across_windows() {
                 assert!(has_location(sidebar, &recent));
             }
             let chooser = build_sidebar(browser_for_window(), manager.clone(), true);
+            chooser.state.recent_availability.set(RecentAvailability {
+                platform_tracking_enabled: true,
+                runtime_backend_supported: true,
+            });
+            chooser.state.rebuild();
             assert!(has_location(&chooser, &home));
             assert!(!has_location(&chooser, &trash));
             assert!(!has_location(&chooser, &network));
+            assert!(has_location(&chooser, &recent));
+            row(&chooser, &recent).emit_clicked();
+            assert_eq!(
+                chooser.state.browser.active_location(),
+                Some(recent.clone())
+            );
+            manager.set_sidebar_show_recent(false);
             assert!(!has_location(&chooser, &recent));
+            manager.set_sidebar_show_recent(true);
+            assert!(has_location(&chooser, &recent));
             for (index, location) in [&home, &trash, &network]
                 .into_iter()
                 .chain(standards.iter().map(|(_, location)| location))
@@ -538,7 +552,7 @@ fn schedule_after_first_paint_rebuilds_sidebar_places() {
     gtk_test(
         "ui::window::sidebar::tests::schedule_after_first_paint_rebuilds_sidebar_places",
         || {
-            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let sidebar = build_sidebar(browser_for_window(), PreferenceManager::shared(), true);
             let window = gtk::Window::builder()
                 .child(&sidebar.widget)
                 .default_width(240)

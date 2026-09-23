@@ -299,9 +299,10 @@ fn command(path: &Path, input: &Input, backend: &Backend, track: Track) -> Comma
     let remaining =
         (input.header.duration_us - media::timestamp(input.header.start_tick)) as f64 / 1_000_000.0;
     let cover = input.cover && matches!(track, Track::Video);
-    command
-        .arg("-ss")
-        .arg(format!("{:.6}", if cover { 0.0 } else { start }));
+    // Seeking an attached picture drops it: MP3 hands back no frame at all for `-ss 0`.
+    if !cover {
+        command.arg("-ss").arg(format!("{start:.6}"));
+    }
     // Keep the frame covering the seek point; fps trims negative preroll timestamps.
     if matches!(track, Track::Video) && !cover {
         command.arg("-noaccurate_seek");

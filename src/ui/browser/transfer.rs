@@ -120,8 +120,12 @@ impl ViewState {
         sources: Vec<Location>,
         commit: DropCommit,
     ) {
+        self.stop_drag_autoscroll();
+        self.horizontal_scroll_generation
+            .set(self.horizontal_scroll_generation.get().saturating_add(1));
         let sources = transferable_drop_sources(&destination, &sources);
         if sources.is_empty() {
+            self.suppress_scroll_after_drop.set(false);
             return;
         }
         match commit {
@@ -130,7 +134,9 @@ impl ViewState {
             DropCommit::Ask { volume, .. } => {
                 self.confirm_cross_volume_drop(destination, sources, volume);
             }
-            DropCommit::Forbidden => {}
+            DropCommit::Forbidden => {
+                self.suppress_scroll_after_drop.set(false);
+            }
         }
     }
 
@@ -244,7 +250,7 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
-        let reveal = crate::ui::theme::ThemeManager::shared().open_folder_after_drop();
+        let reveal = crate::ui::preferences::PreferenceManager::shared().open_folder_after_drop();
         self.start_transfer_with_reveal(destination, sources, move_sources, reveal);
     }
 
@@ -293,6 +299,9 @@ impl ViewState {
         reveal: bool,
     ) {
         if collisions.is_empty() {
+            if !accepted.is_empty() {
+                self.suppress_scroll_after_drop.set(!reveal);
+            }
             self.browser
                 .transfer(destination, accepted, move_sources, reveal);
             return;
@@ -619,7 +628,13 @@ impl ViewState {
             }
         });
         layer.add_controller(escape);
-        replace.grab_focus();
+        let initial_focus = replace.clone();
+        glib::idle_add_local_once(move || {
+            initial_focus.grab_focus();
+            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+        });
     }
 
     pub(super) fn show_transfer_dialog(

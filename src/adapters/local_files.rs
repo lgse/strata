@@ -1366,6 +1366,35 @@ fn fill_parallel_with(
     time_budget: Duration,
     emit: Rc<dyn Fn(DirectoryEvent)>,
 ) -> LoadHandle {
+    fill_parallel_with_details(
+        width,
+        request_id,
+        locations,
+        include_icon_details,
+        time_budget,
+        emit,
+        fill_icon_details,
+    )
+}
+
+fn fill_parallel_with_details(
+    width: usize,
+    request_id: RequestId,
+    locations: Vec<Location>,
+    include_icon_details: bool,
+    time_budget: Duration,
+    emit: Rc<dyn Fn(DirectoryEvent)>,
+    fill_details: impl Fn(
+        &mut MetadataUpdate,
+        &gio::FileInfo,
+        &Location,
+        &gio::Cancellable,
+        Instant,
+    ) -> bool
+    + Send
+    + Sync
+    + 'static,
+) -> LoadHandle {
     let cancellable = gio::Cancellable::new();
     let cancel = cancellable.clone();
     let cancelled = cancellable.clone();
@@ -1386,8 +1415,10 @@ fn fill_parallel_with(
                     let tx = tx.clone();
                     let locations = &locations;
                     let next = &next;
+                    let fill_details = &fill_details;
                     handles.push(scope.spawn(move || {
                         let mut updates = Vec::new();
+                        let mut pending_details = Vec::new();
                         let mut sent_first = false;
                         let mut attempted = 0usize;
                         let mut failed = 0usize;
@@ -1405,23 +1436,17 @@ fn fill_parallel_with(
                                 continue;
                             };
                             attempted += 1;
-                            let (mut update, ok, details_complete) = match gio::File::for_path(path)
-                                .query_info(
-                                    METADATA_ATTRIBUTES,
-                                    gio::FileQueryInfoFlags::NONE,
-                                    Some(&cancellable),
-                                ) {
+                            let (update, ok) = match gio::File::for_path(path).query_info(
+                                METADATA_ATTRIBUTES,
+                                gio::FileQueryInfoFlags::NONE,
+                                Some(&cancellable),
+                            ) {
                                 Ok(info) => {
-                                    let (mut update, ok) = update_from_info(&info, location);
-                                    let details_complete = !include_icon_details
-                                        || fill_icon_details(
-                                            &mut update,
-                                            &info,
-                                            location,
-                                            &cancellable,
-                                            deadline,
-                                        );
-                                    (update, ok, details_complete)
+                                    let (update, ok) = update_from_info(&info, location);
+                                    if include_icon_details {
+                                        pending_details.push((update.clone(), info, location));
+                                    }
+                                    (update, ok)
                                 }
                                 Err(_) => (
                                     MetadataUpdate {
@@ -1434,27 +1459,24 @@ fn fill_parallel_with(
                                         duration_seconds: MetadataValue::Unknown,
                                     },
                                     false,
-                                    true,
                                 ),
                             };
-                            if include_icon_details && !details_complete {
-                                update.image_dimensions = MetadataValue::Unknown;
-                                update.child_count = MetadataValue::Unknown;
-                                update.duration_seconds = MetadataValue::Unknown;
-                                truncated = true;
-                            }
                             failed += usize::from(!ok);
                             updates.push(update);
                             if !sent_first || updates.len() >= 8 {
                                 let _ = tx.unbounded_send(std::mem::take(&mut updates));
                                 sent_first = true;
                             }
-                            if !details_complete {
-                                break;
-                            }
                         }
                         if !updates.is_empty() {
-                            let _ = tx.unbounded_send(updates);
+                            let _ = tx.unbounded_send(std::mem::take(&mut updates));
+                        }
+                        for (mut update, info, location) in pending_details {
+                            if !fill_details(&mut update, &info, location, &cancellable, deadline) {
+                                truncated = true;
+                                break;
+                            }
+                            let _ = tx.unbounded_send(vec![update]);
                         }
                         (attempted, failed, truncated)
                     }));
@@ -1530,21 +1552,24 @@ fn media_metadata_probe_count(path: &Path) -> usize {
 fn probe_sandboxed_media_metadata(
     path: &Path,
     image: bool,
+    cancellable: &gio::Cancellable,
 ) -> Result<crate::sandbox::metadata::MediaMetadata, String> {
     #[cfg(not(test))]
     {
         let cancellation = crate::sandbox::Cancellation::default();
-        crate::sandbox::parse(
-            path,
-            crate::sandbox::ParseOperation::MediaMetadata,
-            0,
-            crate::sandbox::MediaPreviewBackend::Software,
-            &cancellation,
-        )
-        .and_then(|output| crate::sandbox::metadata::MediaMetadata::from_json(&output.data, image))
+        let cancel = cancellation.clone();
+        let handler = cancellable.connect_cancelled(move |_| cancel.cancel());
+        let result = crate::sandbox::browser::metadata(path, image, &cancellation);
+        if let Some(handler) = handler {
+            cancellable.disconnect_cancelled(handler);
+        }
+        result
     }
     #[cfg(test)]
     {
+        if cancellable.is_cancelled() {
+            return Err("Metadata probe cancelled".to_owned());
+        }
         let output_dir = tempfile::tempdir().map_err(|error| error.to_string())?;
         let output_path = output_dir.path().join("result.json");
         crate::sandbox_helper::run(&[
@@ -1565,6 +1590,28 @@ fn fill_icon_details(
     location: &Location,
     cancellable: &gio::Cancellable,
     deadline: Instant,
+) -> bool {
+    fill_icon_details_with_probe(
+        update,
+        info,
+        location,
+        cancellable,
+        deadline,
+        probe_sandboxed_media_metadata,
+    )
+}
+
+fn fill_icon_details_with_probe(
+    update: &mut MetadataUpdate,
+    info: &gio::FileInfo,
+    location: &Location,
+    cancellable: &gio::Cancellable,
+    deadline: Instant,
+    probe: impl FnOnce(
+        &Path,
+        bool,
+        &gio::Cancellable,
+    ) -> Result<crate::sandbox::metadata::MediaMetadata, String>,
 ) -> bool {
     let Some(path) = location.native_path() else {
         update.image_dimensions = MetadataValue::Unavailable;
@@ -1588,6 +1635,9 @@ fn fill_icon_details(
             update.image_dimensions = MetadataValue::Unavailable;
             update.child_count = MetadataValue::Unavailable;
             update.duration_seconds = MetadataValue::Unavailable;
+            if cancellable.is_cancelled() || Instant::now() >= deadline {
+                return false;
+            }
             cache_icon_details(path, fingerprint, update);
             return true;
         };
@@ -1616,7 +1666,11 @@ fn fill_icon_details(
             *counts.entry(path.to_path_buf()).or_default() += 1;
         }
         let image = is_image_path(path);
-        match probe_sandboxed_media_metadata(path, image) {
+        let result = probe(path, image, cancellable);
+        if cancellable.is_cancelled() || Instant::now() >= deadline {
+            return false;
+        }
+        match result {
             Ok(metadata) => {
                 update.image_dimensions = metadata
                     .dimensions
@@ -1636,6 +1690,9 @@ fn fill_icon_details(
     } else {
         update.image_dimensions = MetadataValue::Unavailable;
         update.duration_seconds = MetadataValue::Unavailable;
+    }
+    if cancellable.is_cancelled() || Instant::now() >= deadline {
+        return false;
     }
     cache_icon_details(path, fingerprint, update);
     true

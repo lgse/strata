@@ -3,7 +3,12 @@
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashSet, ffi::OsString, path::PathBuf, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    path::PathBuf,
+    rc::Rc,
+};
 
 use crate::model::{FileEntry, Location};
 
@@ -101,6 +106,13 @@ pub struct UndoCopyRequest {
     pub locations: Vec<Location>,
 }
 
+/// Identity preserved by a local move to Trash, independent of deletion timestamps.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TrashedOriginal {
+    pub device: u64,
+    pub inode: u64,
+}
+
 #[derive(Clone, Debug)]
 pub struct UndoMergeRequest {
     pub id: OperationRequestId,
@@ -109,6 +121,7 @@ pub struct UndoMergeRequest {
     /// Paths whose originals were staged in Trash before being overwritten;
     /// undo deletes the incoming copy and restores the original.
     pub overwritten: Vec<Location>,
+    pub originals: HashMap<Location, TrashedOriginal>,
 }
 
 #[derive(Clone, Debug)]
@@ -210,6 +223,8 @@ pub struct ExtractRequest {
     pub id: OperationRequestId,
     pub entry: FileEntry,
     pub destination: Location,
+    /// Caller-reserved destinations are eligible for empty-folder cleanup.
+    pub created_destination: bool,
     pub password: Option<String>,
 }
 
@@ -287,11 +302,17 @@ pub enum OperationEvent {
     },
     Restored {
         request_id: OperationRequestId,
+        /// Trash entries that left the trash view.
         locations: Vec<Location>,
+        /// Where the restored items landed, recorded for undo.
+        restored: Vec<Location>,
     },
     RestoreCompletedWithErrors {
         request_id: OperationRequestId,
+        /// Trash entries that left the trash view.
         restored_locations: Vec<Location>,
+        /// Where the restored items landed, recorded for undo.
+        restored: Vec<Location>,
         message: String,
     },
     Cancelled {
@@ -305,6 +326,10 @@ pub enum OperationEvent {
     Compressed {
         request_id: OperationRequestId,
         archive_name: String,
+        /// The finished archive, recorded so undo can trash it.
+        archive: Location,
+        /// The exact original to restore, when publication replaced an archive.
+        original: Option<TrashedOriginal>,
     },
     Extracted {
         request_id: OperationRequestId,

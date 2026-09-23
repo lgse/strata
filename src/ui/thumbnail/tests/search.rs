@@ -17,10 +17,22 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
+fn thumbnail_is_displayed(path: &Path) -> bool {
+    thumbnail::TRACKED_THUMBNAILS.with_borrow(|tracked| {
+        tracked.values().any(|tracked| {
+            tracked.path == path
+                && tracked
+                    .image
+                    .upgrade()
+                    .is_some_and(|image| image.is_mapped() && image.texture().is_some())
+        })
+    })
+}
+
 #[test]
-fn search_results_load_thumbnails_in_every_view() {
+fn search_results_load_thumbnails_after_matching_rename_in_every_view() {
     gtk_test(
-        "ui::thumbnail::tests::search::search_results_load_thumbnails_in_every_view",
+        "ui::thumbnail::tests::search::search_results_load_thumbnails_after_matching_rename_in_every_view",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 let fixture = tempfile::tempdir().expect("fixture");
@@ -45,6 +57,7 @@ fn search_results_load_thumbnails_in_every_view() {
                     PeekBehavior::default(),
                 );
                 view.set_view_mode(mode);
+                view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
                 let browser = view.browser();
                 let window = gtk::Window::builder()
                     .child(&view.widget())
@@ -65,23 +78,24 @@ fn search_results_load_thumbnails_in_every_view() {
                     path: path.clone(),
                     modified: None,
                     file_size: None,
-                    thumbnail_size: 17,
+                    thumbnail_size: 256,
                 };
                 let job_id = PENDING_THUMBNAILS.with(|pending| pending.borrow()[&key].id);
                 let targets = take_pending_targets(&key, job_id).expect("search thumbnail job");
                 assert!(!targets.is_empty());
                 finish_thumbnail_targets(targets, Some(&sample_texture()), &path);
-                wait_until(|| {
-                    thumbnail::TRACKED_THUMBNAILS.with(|tracked| {
-                        tracked.borrow().iter().any(|tracked| {
-                            tracked.path == path
-                                && tracked
-                                    .image
-                                    .upgrade()
-                                    .is_some_and(|image| image.is_mapped())
-                        })
-                    })
-                });
+                wait_until(|| thumbnail_is_displayed(&path));
+
+                let mut entry = sample_entry(&path);
+                entry.size = MetadataValue::Unknown;
+                entry.modified_unix_seconds = MetadataValue::Unknown;
+                browser.rename(entry, "search-photo-renamed.png".to_owned());
+                let renamed = nested.join("search-photo-renamed.png");
+                wait_until(|| has_pending_thumbnail(&renamed));
+                assert!(!path.exists());
+                assert_eq!(std::fs::read(&renamed).expect("renamed image"), png);
+                complete_pending_thumbnail(&renamed);
+                wait_until(|| thumbnail_is_displayed(&renamed));
                 thumbnail::cancel_thumbnails_in(&view.widget());
                 browser.clear_observer();
                 window.destroy();

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::ui::theme::ThemeManager;
+use crate::ui::preferences::PreferenceManager;
 
 impl BrowserView {
     fn bind_view_preference<T: PartialEq + Clone + 'static>(
         &self,
-        manager: &ThemeManager,
-        read: impl Fn(&ThemeManager) -> T + 'static,
+        manager: &PreferenceManager,
+        read: impl Fn(&PreferenceManager) -> T + 'static,
         apply: impl Fn(&Self, T) + 'static,
     ) {
         let weak = Rc::downgrade(&self.state);
@@ -18,22 +18,42 @@ impl BrowserView {
         });
     }
 
-    pub(super) fn bind_preferences(&self, manager: &ThemeManager) {
-        self.bind_view_preference(manager, ThemeManager::browser_mode, Self::set_view_mode);
-        self.bind_view_preference(manager, ThemeManager::browser_density, Self::set_density);
+    pub(super) fn bind_preferences(&self, manager: &PreferenceManager) {
         self.bind_view_preference(
             manager,
-            ThemeManager::group_by_type,
+            PreferenceManager::thumbnail_workers,
+            |_, workers| {
+                super::super::thumbnail::set_worker_limit(workers);
+            },
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::icons_thumbnail_size,
+            Self::set_icons_thumbnail_size,
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::browser_mode,
+            Self::set_view_mode,
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::browser_density,
+            Self::set_density,
+        );
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::group_by_type,
             Self::set_group_by_type,
         );
         self.bind_view_preference(
             manager,
-            ThemeManager::auto_refresh_interval,
+            PreferenceManager::auto_refresh_interval,
             Self::set_auto_refresh_interval,
         );
         self.bind_view_preference(
             manager,
-            ThemeManager::single_click_previews,
+            PreferenceManager::single_click_previews,
             Self::set_single_click_previews,
         );
         let interactive = self.state.interactive;
@@ -49,8 +69,12 @@ impl BrowserView {
                 move |view, value| view.set_click_activation(mode, value),
             );
         }
-        self.bind_view_preference(manager, ThemeManager::sort_preferences, |view, value| {
-            view.browser().apply_default_preferences(value);
-        });
+        self.bind_view_preference(
+            manager,
+            PreferenceManager::sort_preferences,
+            |view, value| {
+                view.browser().apply_default_preferences(value);
+            },
+        );
     }
 }

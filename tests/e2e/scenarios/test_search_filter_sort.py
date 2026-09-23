@@ -147,7 +147,7 @@ def assert_filtered_result_opens(strata):
     strata.keyboard.type_text("doc*ments")
     strata.wait(lambda: field.text == "doc*ments", "the filter query")
     result = strata.wait(
-        lambda: strata.window.find(role="list item", name="documents"),
+        lambda: strata.search_result("documents"),
         "the filtered folder result",
     )
     strata.pointer.click(result)
@@ -175,7 +175,7 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata):
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")
     result = strata.wait(
-        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        lambda: strata.search_result("spreadsheet.csv"),
         "the recursive file result",
     )
 
@@ -184,11 +184,13 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata):
         lambda: launch_counter.exists() and len(launch_counter.read_text().splitlines()) >= 1,
         "the file launch",
     )
+    strata.keyboard.press("ctrl+f")
+    strata.wait(lambda: field.has_state("focused"), "focus to return to the filter")
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("photo")
     strata.wait(lambda: field.text == "photo", "the follow-up query")
     strata.wait(
-        lambda: strata.window.find(role="list item", name="photo.txt") is not None,
+        lambda: strata.search_result("photo.txt") is not None,
         "the follow-up results",
     )
     assert len(launch_counter.read_text().splitlines()) == 1
@@ -201,7 +203,7 @@ def test_filtered_result_waits_for_release_before_launching(launch_counter, stra
     strata.keyboard.type_text("spreadsheet")
     strata.wait(lambda: field.text == "spreadsheet", "the filter query")
     result = strata.wait(
-        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        lambda: strata.search_result("spreadsheet.csv"),
         "the filtered file result",
     )
 
@@ -426,3 +428,53 @@ def test_global_search_finds_a_file_under_home(strata, root):
         lambda: strata.window.find(role="text", states={"editable"}) is None,
         "Escape to close the search palette",
     )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("directory", [False, True], ids=["file", "directory"])
+@pytest.mark.parametrize("route", ["menu", "shortcut"])
+def test_global_search_reveal(strata, mode, directory, route):
+    parent = strata.environment.home / "reveal-parent"
+    parent.mkdir()
+    target = parent / "reveal-target"
+    if directory:
+        target.mkdir()
+    else:
+        target.write_text("reveal without opening\n")
+    strata.keyboard.press("ctrl+k")
+    field = strata.editable_field()
+    strata.keyboard.type_text(target.name)
+    result = strata.wait(
+        lambda: next(
+            (node for node in strata.window.find_all(role="list item")
+             if node.name.endswith(f"/{target.name}")),
+            None,
+        ),
+        "global search result",
+    )
+    if route == "shortcut":
+        strata.keyboard.press("alt+Return")
+    else:
+        strata.pointer.right_click(result)
+        strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder"),
+            "reveal context menu",
+        )
+        assert field.text == target.name
+        assert strata.window.find(role="text", states={"editable"}) is not None
+        strata.keyboard.press("Escape")
+        strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder") is None,
+            "dismissed menu",
+        )
+        assert field.text == target.name
+        strata.pointer.right_click(result)
+        reveal = strata.wait(
+            lambda: strata.window.find(role="menu item", name="Open containing folder"),
+            "reopened reveal menu",
+        )
+        strata.pointer.click(reveal)
+    strata.wait_for_directory(parent.name)
+    strata.wait_for_selection([target.name], directory=parent.name)
+    strata.wait_for_focused_entry(target.name)
+    assert strata.window.find(role="text", states={"editable"}) is None

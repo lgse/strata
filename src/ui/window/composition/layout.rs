@@ -11,8 +11,8 @@ use crate::{
     adapters::LocalPreviewProvider,
     assets::{self, icons},
     ui::{
-        browser::BrowserView, preview::PreviewDrawer, shortcut_footer::ShortcutFooter,
-        theme::ThemeManager,
+        browser::BrowserView, preferences::PreferenceManager, preview::PreviewDrawer,
+        shortcut_footer::ShortcutFooter,
     },
 };
 
@@ -34,7 +34,7 @@ impl Header {
         window: &gtk::ApplicationWindow,
         browser: &BrowserView,
         preview: &PreviewDrawer,
-        preferences: &Rc<ThemeManager>,
+        preferences: &Rc<PreferenceManager>,
     ) -> Self {
         let widget = gtk::HeaderBar::new();
         widget.set_show_title_buttons(false);
@@ -85,7 +85,7 @@ fn header_action(icon: &str, tooltip: &str) -> gtk::Button {
     button
 }
 
-pub(super) fn preview(browser: &BrowserView, preferences: &Rc<ThemeManager>) -> PreviewDrawer {
+pub(super) fn preview(browser: &BrowserView, preferences: &Rc<PreferenceManager>) -> PreviewDrawer {
     let preferences = preferences.clone();
     let preview = PreviewDrawer::new(
         Rc::new(LocalPreviewProvider::new(Rc::new(move || {
@@ -121,6 +121,7 @@ pub(super) fn browser_layout(
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
     preview.attach_split(&preview_split, &content, browser);
+    browser.add_marquee_origin(&preview.widget(), gtk::PackType::End);
     root.append(&preview_split);
     root
 }
@@ -158,7 +159,7 @@ fn browser_split(
     content.set_position(SIDEBAR_WIDTH);
     content.set_vexpand(true);
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
-    browser.add_marquee_origin(&sidebar.widget);
+    browser.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
     bind_sidebar_toggle(&content, &sidebar.widget, toggle);
@@ -203,11 +204,14 @@ impl FooterBinding {
         window: &gtk::ApplicationWindow,
         root: &gtk::Box,
         browser: &BrowserView,
-        preferences: &ThemeManager,
+        preferences: &PreferenceManager,
     ) -> Self {
         let shortcuts = ShortcutFooter::new(browser.view_mode());
         shortcuts.bind_preferences(preferences);
         shortcuts.observe_browser(&browser.browser());
+        let jobs = crate::ui::jobs::JobsIndicator::new();
+        jobs.bind_window(window);
+        shortcuts.set_activity(jobs.widget());
         let clipboard = window.clipboard();
         let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
         root.append(shortcuts.widget());

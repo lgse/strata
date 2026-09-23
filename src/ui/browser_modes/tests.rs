@@ -14,7 +14,10 @@ use std::process::Command;
 use std::{cell::RefCell, collections::HashSet};
 
 impl super::ModeViews {
-    pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
+    pub(in crate::ui) fn assert_saved_preferences(
+        &self,
+        manager: &crate::ui::preferences::PreferenceManager,
+    ) {
         assert_eq!(self.density, manager.browser_density());
         assert_eq!(self.group_by_type, manager.group_by_type());
         assert_eq!(
@@ -29,6 +32,19 @@ impl super::ModeViews {
             self.list_click_activation.get(),
             manager.click_activation(BrowserMode::List)
         );
+        assert_eq!(
+            self.icons_thumbnail_size.get(),
+            manager.icons_thumbnail_size()
+        );
+        for pane in &self.icons_panes {
+            assert_eq!(
+                pane.thumbnail_scale
+                    .as_ref()
+                    .expect("Icons size control")
+                    .value(),
+                f64::from(manager.icons_thumbnail_size())
+            );
+        }
     }
 }
 
@@ -496,6 +512,29 @@ fn run_source_index_map_checks() {
         "the range anchor follows its entry through a re-sort"
     );
 
+    let sorted_index = SourceIndexMap::watch(&sorted);
+    let visible_index = SourceIndexMap::watch(&visible);
+    let removed = source.item(0).expect("removed item");
+    source.remove(0);
+    assert_eq!(sorted_index.of_item(&removed), None);
+    assert_eq!(visible_index.of_item(&removed), None);
+    source.append("fh\t.hidden");
+    let hidden = source.item(source.n_items() - 1).expect("hidden item");
+    assert_eq!(visible_index.of_item(&hidden), None);
+    visible.set_filter(None::<&gtk::Filter>);
+    sorted.set_sorter(None::<&gtk::Sorter>);
+    for (model, index) in [
+        (sorted.upcast_ref::<gio::ListModel>(), &sorted_index),
+        (visible.upcast_ref::<gio::ListModel>(), &visible_index),
+    ] {
+        for position in 0..model.n_items() {
+            assert_eq!(
+                index.of_item(&model.item(position).expect("view item")),
+                Some(position as usize)
+            );
+        }
+    }
+
     let source = gtk::StringList::new(&["fv\talpha"]);
     let weak = source.downgrade();
     let map = SourceIndexMap::watch(&source);
@@ -552,11 +591,64 @@ fn icons_hover_only_tracks_thumbnail_or_caption_content() {
 }
 
 #[test]
+fn continuous_scroll_refreshes_once_per_frame_without_waiting_for_settle() {
+    gtk_test(
+        "ui::browser_modes::tests::continuous_scroll_refreshes_once_per_frame_without_waiting_for_settle",
+        || {
+            use std::{
+                cell::Cell,
+                rc::Rc,
+                time::{Duration, Instant},
+            };
+            let scroll = gtk::ScrolledWindow::new();
+            let window = gtk::Window::builder().child(&scroll).build();
+            window.present();
+            let scrolling = Rc::new(Cell::new(false));
+            let frames = Rc::new(RefCell::new(HashSet::new()));
+            let frames_for_refresh = frames.clone();
+            let scroll_for_refresh = scroll.downgrade();
+            super::install_scroll_refresh(&scroll, scrolling.clone(), None, move || {
+                let clock = scroll_for_refresh
+                    .upgrade()
+                    .expect("scroller")
+                    .frame_clock()
+                    .expect("frame clock");
+                assert!(
+                    frames_for_refresh
+                        .borrow_mut()
+                        .insert(clock.frame_counter()),
+                    "one refresh per frame"
+                );
+            });
+            let tick = scroll.add_tick_callback(|scroll, _| {
+                for _ in 0..4 {
+                    scroll
+                        .vadjustment()
+                        .emit_by_name::<()>("value-changed", &[]);
+                }
+                gtk::glib::ControlFlow::Continue
+            });
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while frames.borrow().len() < 3 {
+                assert!(
+                    Instant::now() < deadline,
+                    "scrolling postponed presentation updates"
+                );
+                gtk::glib::MainContext::default().iteration(false);
+            }
+            tick.remove();
+            assert!(!scrolling.get());
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
     gtk_test(
         "ui::browser_modes::tests::icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome",
         || {
-            crate::ui::theme::ThemeManager::shared();
+            crate::ui::preferences::PreferenceManager::shared();
             crate::ui::thumbnail::hold_thumbnail_workers();
             let path = PathBuf::from("/fixture/icons-scroll.png");
             let entry = FileEntry {
@@ -587,9 +679,10 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 }
             }
             assert!(
-                !crate::ui::thumbnail::has_pending_thumbnail(&path),
-                "scrolling bind must not enqueue thumbnail work"
+                crate::ui::thumbnail::has_pending_thumbnail(&path),
+                "scrolling bind must admit viewport-prioritized thumbnail work"
             );
+            let initial_job = crate::ui::thumbnail::pending_thumbnail_id(&path);
             crate::ui::thumbnail::set_thumbnail_or_icon(
                 &icon,
                 &entry,
@@ -604,6 +697,10 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
             }
             assert!(crate::ui::thumbnail::has_pending_thumbnail(&path));
             let job = crate::ui::thumbnail::pending_thumbnail_id(&path);
+            assert_eq!(
+                job, initial_job,
+                "an unchanged row must retain its in-flight thumbnail"
+            );
             let mut cuts = HashSet::new();
             cuts.insert(entry.location.clone());
             super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &cuts);
@@ -640,7 +737,7 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
             let details = crate::ui::icons_cell::details_label(&card).expect("details label");
 
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
-            assert!(!details.is_visible());
+            assert!(details.text().is_empty());
 
             entry.image_dimensions = MetadataValue::Known((1920, 1080));
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
@@ -684,6 +781,13 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
             folder_entry.child_count = MetadataValue::Known(0);
             super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
             assert_eq!(details.text().as_str(), "No items");
+
+            folder_entry.child_count = MetadataValue::Unknown;
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, true, None);
+            assert!(
+                details.text().is_empty(),
+                "recycled cards clear old details"
+            );
         },
     );
 }

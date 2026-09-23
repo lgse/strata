@@ -17,8 +17,8 @@ use crate::{
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRecord,
         RenameRequest, RequestId, RestoreRequest, RestoreSource, RestoreTrashItem,
-        TransferConflict, UndoCopyRequest, UndoMergeRequest, UndoMoveItem, UndoMoveRequest,
-        UndoRenameRequest, validate_basename, validate_uri_credentials,
+        TransferConflict, TrashedOriginal, UndoCopyRequest, UndoMergeRequest, UndoMoveItem,
+        UndoMoveRequest, UndoRenameRequest, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -264,6 +264,7 @@ pub enum UndoEntry {
     Merge {
         created: Vec<Location>,
         overwritten: Vec<Location>,
+        originals: HashMap<Location, TrashedOriginal>,
     },
     Rename(RenameRecord),
 }
@@ -275,6 +276,7 @@ impl UndoEntry {
             Self::Merge {
                 created,
                 overwritten,
+                ..
             } => created.is_empty() && overwritten.is_empty(),
             Self::Move(records) => records.is_empty(),
             Self::Rename(_) => false,
@@ -373,9 +375,11 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
             UndoEntry::Merge {
                 created,
                 overwritten,
+                originals,
             } => {
                 created.retain(|candidate| candidate != location);
                 overwritten.retain(|candidate| candidate != location);
+                originals.remove(location);
             }
             UndoEntry::Move(records) => {
                 records.retain(|record| &record.current != location);
@@ -429,10 +433,12 @@ fn retain_pending_merge_items(generation: u64, created: &[Location], overwritten
             && let UndoEntry::Merge {
                 created: kept_created,
                 overwritten: kept_overwritten,
+                originals,
             } = &mut pending.entry
         {
             kept_created.retain(|location| created.contains(location));
             kept_overwritten.retain(|location| overwritten.contains(location));
+            originals.retain(|location, _| overwritten.contains(location));
         }
     });
 }
@@ -471,14 +477,12 @@ fn pending_undo_entry() -> Option<UndoEntry> {
     })
 }
 
-/// Settles scrolling before asking for viewport metadata, so a fling never
-/// stats hundreds of rows it never shows.
-const METADATA_FILL_DEBOUNCE: Duration = Duration::from_millis(100);
 /// Bounds one metadata fill; partial results still apply, the rest retries on
 /// its next bind.
 const METADATA_FILL_TIME_BUDGET: Duration = Duration::from_secs(5);
 /// Defensive cap per depth: the UI only ever asks for its visible window.
 const MAX_PENDING_FILL_LOCATIONS: usize = 1024;
+const MAX_VIEWPORT_FILL_BATCH: usize = 16;
 
 /// Remote loads only (native loads stage instead): entries accumulate this far
 /// before an early flush bounds first-result latency.
@@ -510,6 +514,7 @@ struct ViewportFill {
     depth: usize,
     directory_request: RequestId,
     tokens: Vec<(usize, Location)>,
+    include_icon_details: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -545,7 +550,7 @@ pub struct Browser {
     loads: RefCell<Vec<LoadHandle>>,
     monitors: RefCell<Vec<Option<LoadHandle>>>,
     metadata_pending: RefCell<HashMap<usize, Vec<ViewportTarget>>>,
-    metadata_timer: RefCell<Option<gio::glib::SourceId>>,
+    metadata_idle: RefCell<Option<gio::glib::SourceId>>,
     staging: RefCell<HashMap<usize, StagingLoad>>,
     sorting: RefCell<HashMap<usize, SortingLoad>>,
     staged_publishes: RefCell<HashMap<usize, StagedPublish>>,
@@ -554,7 +559,7 @@ pub struct Browser {
     metadata_loads: RefCell<HashMap<usize, LoadHandle>>,
     fill_tokens: RefCell<HashMap<RequestId, ViewportFill>>,
     /// Full-column sort fills, kept apart from viewport fills so a viewport
-    /// settle timer can never overwrite or cancel an active full sort.
+    /// metadata dispatch can never overwrite or cancel an active full sort.
     sort_loads: RefCell<HashMap<usize, LoadHandle>>,
     sort_awaiting_fill: RefCell<Option<SortFill>>,
     last_batch_selection: RefCell<BatchSelectionState>,
@@ -602,7 +607,7 @@ impl Browser {
             loads: RefCell::new(Vec::new()),
             monitors: RefCell::new(Vec::new()),
             metadata_pending: RefCell::new(HashMap::new()),
-            metadata_timer: RefCell::new(None),
+            metadata_idle: RefCell::new(None),
             staging: RefCell::new(HashMap::new()),
             sorting: RefCell::new(HashMap::new()),
             staged_publishes: RefCell::new(HashMap::new()),
@@ -781,6 +786,10 @@ impl Browser {
 
     pub fn can_delete_at(&self, depth: usize) -> Option<bool> {
         self.state.borrow().can_delete_at(depth)
+    }
+
+    pub fn allows_entry(&self, entry: &FileEntry) -> bool {
+        self.source.allows_entry(entry)
     }
 
     /// Synchronizes widget focus without changing selection or reopening a directory.
@@ -1397,6 +1406,17 @@ impl Browser {
         state.entry_at(parent_depth, position).into_iter().collect()
     }
 
+    pub fn entries_named(&self, names: &HashSet<String>) -> Vec<FileEntry> {
+        self.state
+            .borrow()
+            .columns
+            .iter()
+            .flat_map(|column| column.entries.iter())
+            .filter(|entry| names.contains(&entry.display_name))
+            .cloned()
+            .collect()
+    }
+
     pub fn set_selection(&self, depth: usize, positions: &[usize], focused: Option<usize>) {
         let mut state = self.state.borrow_mut();
         if state.set_selection(depth, positions, focused) {
@@ -1725,6 +1745,7 @@ impl Browser {
                 UndoEntry::Merge {
                     created,
                     overwritten,
+                    ..
                 },
             ) => Some((generation, created, overwritten)),
             (
@@ -1753,6 +1774,22 @@ impl Browser {
                 UndoEntry::Trash(_)
                 | UndoEntry::Move(_)
                 | UndoEntry::Copy(_)
+                | UndoEntry::Merge { .. },
+            ) => None,
+        }
+    }
+
+    pub fn pending_undo_trash(&self) -> Option<Vec<Location>> {
+        if self.current_operation.get().is_some() {
+            return None;
+        }
+        match peek_pending_undo()? {
+            (_, UndoEntry::Trash(locations)) => Some(locations),
+            (
+                _,
+                UndoEntry::Move(_)
+                | UndoEntry::Copy(_)
+                | UndoEntry::Rename(_)
                 | UndoEntry::Merge { .. },
             ) => None,
         }
@@ -1891,7 +1928,7 @@ impl Browser {
         let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
             return false;
         };
-        let UndoEntry::Merge { .. } = entry else {
+        let UndoEntry::Merge { mut originals, .. } = entry else {
             finish_undo(generation, false);
             return false;
         };
@@ -1900,6 +1937,7 @@ impl Browser {
             return false;
         };
         retain_pending_merge_items(generation, &created, &overwritten);
+        originals.retain(|location, _| overwritten.contains(location));
         let total = created.len() + overwritten.len();
         let refresh_locations = created
             .iter()
@@ -1913,6 +1951,7 @@ impl Browser {
             UndoEntry::Merge {
                 created: created.clone(),
                 overwritten: overwritten.clone(),
+                originals: originals.clone(),
             },
         )));
         self.emit(BrowserEvent::RestorationStarted { total });
@@ -1921,6 +1960,7 @@ impl Browser {
                 id: request_id,
                 created,
                 overwritten,
+                originals,
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
@@ -1981,6 +2021,12 @@ impl Browser {
                     restored.is_hidden = is_hidden;
                     browser.publish_rename(&current_for_publish, restored);
                 } else {
+                    if let (Some(from), Some(to)) = (
+                        current_for_publish.native_path(),
+                        original_for_publish.native_path(),
+                    ) {
+                        crate::services::refresh_search_indexes_for_rename(from, to);
+                    }
                     browser.relocate_open_columns(&current_for_publish, &original_for_publish);
                 }
             }
@@ -2037,6 +2083,7 @@ impl Browser {
         self: &Rc<Self>,
         entry: FileEntry,
         destination: Location,
+        created_destination: bool,
         password: Option<String>,
     ) {
         let Some(provider) = self.operation_provider.borrow().clone() else {
@@ -2052,6 +2099,7 @@ impl Browser {
                 id: request_id,
                 entry,
                 destination,
+                created_destination,
                 password,
             },
             self.operation_callback(request_id, false, HashSet::new()),
@@ -2340,6 +2388,9 @@ impl Browser {
     }
 
     fn publish_rename(self: &Rc<Self>, old: &Location, entry: FileEntry) {
+        if let (Some(from), Some(to)) = (old.native_path(), entry.location.native_path()) {
+            crate::services::refresh_search_indexes_for_rename(from, to);
+        }
         if !(0..)
             .map_while(|depth| self.location_at(depth))
             .any(|location| location.is_within(old))
@@ -2492,25 +2543,90 @@ impl Browser {
         location: Location,
         include_icon_details: bool,
     ) {
+        self.queue_metadata_fill(depth, position, location, include_icon_details, false);
+    }
+
+    pub(crate) fn request_visible_metadata_fill(
+        self: &Rc<Self>,
+        depth: usize,
+        position: usize,
+        location: Location,
+        include_icon_details: bool,
+    ) {
+        self.queue_metadata_fill(depth, position, location, include_icon_details, true);
+    }
+
+    fn queue_metadata_fill(
+        self: &Rc<Self>,
+        depth: usize,
+        position: usize,
+        location: Location,
+        include_icon_details: bool,
+        visible: bool,
+    ) {
         // Defer to the provider instead of rejecting remote locations owner-side:
         // unsupported sources answer `Unsupported`.
         if !self.source.supports_metadata_fill(&location) {
             return;
         }
+        let directory_request = self.state.borrow().request_id_for_depth(depth);
+        if self.fill_tokens.borrow().values().any(|fill| {
+            fill.depth == depth
+                && Some(fill.directory_request) == directory_request
+                && (!include_icon_details || fill.include_icon_details)
+                && fill
+                    .tokens
+                    .iter()
+                    .any(|(index, entry)| *index == position && *entry == location)
+        }) {
+            return;
+        }
         {
             let mut pending = self.metadata_pending.borrow_mut();
             let queued = pending.entry(depth).or_default();
-            if let Some(target) = queued.iter_mut().find(|target| target.location == location) {
-                target.include_icon_details |= include_icon_details;
-            } else if queued.len() < MAX_PENDING_FILL_LOCATIONS {
-                queued.push(ViewportTarget {
+            if let Some(index) = queued.iter().position(|target| target.location == location) {
+                queued[index].position = position;
+                queued[index].include_icon_details |= include_icon_details;
+                if visible {
+                    let target = queued.remove(index);
+                    queued.insert(0, target);
+                }
+            } else if visible || queued.len() < MAX_PENDING_FILL_LOCATIONS {
+                let target = ViewportTarget {
                     position,
                     location,
                     include_icon_details,
-                });
+                };
+                if visible {
+                    // A saturated offscreen backlog must not strand newly visible details.
+                    if queued.len() == MAX_PENDING_FILL_LOCATIONS {
+                        queued.pop();
+                    }
+                    queued.insert(0, target);
+                } else {
+                    queued.push(target);
+                }
             }
         }
         self.schedule_metadata_fill();
+    }
+
+    pub(crate) fn prioritize_metadata_fills(&self, depth: usize, visible: &[Location]) {
+        let mut pending = self.metadata_pending.borrow_mut();
+        let Some(targets) = pending.get_mut(&depth) else {
+            return;
+        };
+        let priorities: HashMap<_, _> = visible
+            .iter()
+            .enumerate()
+            .map(|(i, path)| (path, i))
+            .collect();
+        targets.sort_by_key(|target| {
+            priorities
+                .get(&target.location)
+                .copied()
+                .unwrap_or(usize::MAX)
+        });
     }
 
     fn request_sort_fill(
@@ -2569,6 +2685,7 @@ impl Browser {
         preferences.show_hidden = self.preferences.get().show_hidden;
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
+        self.state.borrow_mut().clear_metadata_positions(depth);
         let outcome = {
             let mut state = self.state.borrow_mut();
             if self.pending_sort.get() != Some((generation, depth)) {
@@ -2625,8 +2742,12 @@ impl Browser {
         }
         // Only a fill's own id releases its handle; terminals from superseded fills
         // cannot affect a sort or a newer request.
-        if let Some(fill) = self.fill_tokens.borrow_mut().remove(&request_id) {
+        let fill = self.fill_tokens.borrow_mut().remove(&request_id);
+        if let Some(fill) = fill {
             self.metadata_loads.borrow_mut().remove(&fill.depth);
+            if self.metadata_pending.borrow().contains_key(&fill.depth) {
+                self.schedule_metadata_fill();
+            }
         }
     }
 
@@ -2634,6 +2755,7 @@ impl Browser {
     fn abandon_awaited_sort(&self, depth: usize, generation: u64, outcome: MetadataOutcome) {
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
+        self.state.borrow_mut().clear_metadata_positions(depth);
         if self.pending_sort.get() != Some((generation, depth)) {
             return;
         }
@@ -2697,13 +2819,28 @@ impl Browser {
     }
 
     fn flush_metadata_fills(self: &Rc<Self>) {
-        self.metadata_timer.borrow_mut().take();
-        let pending: Vec<(usize, Vec<ViewportTarget>)> =
-            self.metadata_pending.borrow_mut().drain().collect();
-        for (depth, targets) in pending {
+        self.metadata_idle.borrow_mut().take();
+        // Newly bound rows must not cancel late details for cards that remain bound.
+        let active_depths: HashSet<usize> = self
+            .fill_tokens
+            .borrow()
+            .values()
+            .map(|fill| fill.depth)
+            .collect();
+        let pending: Vec<(usize, Vec<ViewportTarget>)> = self
+            .metadata_pending
+            .borrow_mut()
+            .extract_if(|depth, _| !active_depths.contains(depth))
+            .collect();
+        for (depth, mut targets) in pending {
             let Some(directory_request) = self.state.borrow().request_id_for_depth(depth) else {
                 continue;
             };
+            // Bound the non-preemptible batch so scrolling can reprioritize the backlog.
+            if targets.len() > MAX_VIEWPORT_FILL_BATCH {
+                let remainder = targets.split_off(MAX_VIEWPORT_FILL_BATCH);
+                self.metadata_pending.borrow_mut().insert(depth, remainder);
+            }
             let fill_request = self.new_request_id();
             let weak: Weak<Self> = Rc::downgrade(self);
             let emit = Rc::new(move |event| {
@@ -2717,16 +2854,13 @@ impl Browser {
                 .collect();
             let include_icon_details = targets.iter().any(|target| target.include_icon_details);
             // Stored before the provider runs: synchronous fills answer inside the call.
-            self.fill_tokens
-                .borrow_mut()
-                .retain(|_, fill| fill.depth != depth);
-            self.metadata_loads.borrow_mut().remove(&depth);
             self.fill_tokens.borrow_mut().insert(
                 fill_request,
                 ViewportFill {
                     depth,
                     directory_request,
                     tokens,
+                    include_icon_details,
                 },
             );
             let handle = self.source.fill_metadata(

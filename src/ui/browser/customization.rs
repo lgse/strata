@@ -187,9 +187,9 @@ pub(super) fn show_customize_modal(
     layout.subtitle.set_max_width_chars(36);
     layout.cancel.set_visible(false);
 
-    let theme_manager = crate::ui::theme::ThemeManager::shared();
-    let initial_color = theme_manager.folder_color(&path);
-    let initial_icon = theme_manager.custom_icon(&path);
+    let preference_manager = crate::ui::preferences::PreferenceManager::shared();
+    let initial_color = preference_manager.folder_color(&path);
+    let initial_icon = preference_manager.custom_icon(&path);
 
     let preview = gtk::Box::new(gtk::Orientation::Vertical, 7);
     preview.add_css_class("customize-preview");
@@ -228,7 +228,8 @@ pub(super) fn show_customize_modal(
         fallback_icon,
         item_label,
         move |selected_color| {
-            crate::ui::theme::ThemeManager::shared().set_folder_color(&color_path, selected_color);
+            crate::ui::preferences::PreferenceManager::shared()
+                .set_folder_color(&color_path, selected_color);
             crate::ui::thumbnail::show_customized_icon_image(
                 &color_preview,
                 &color_path,
@@ -309,7 +310,7 @@ pub(super) fn show_customize_modal(
                 }
             }
             emoji_for_icon.set_label("Choose Emoji…");
-            crate::ui::theme::ThemeManager::shared()
+            crate::ui::preferences::PreferenceManager::shared()
                 .set_custom_icon(&icon_path, Some(selected_name));
             crate::ui::thumbnail::show_customized_icon_image(
                 &preview,
@@ -332,7 +333,8 @@ pub(super) fn show_customize_modal(
             button.remove_css_class("active");
         }
         emoji_label.set_label(&format!("Emoji  {emoji}"));
-        crate::ui::theme::ThemeManager::shared().set_custom_icon(&emoji_path, Some(&preference));
+        crate::ui::preferences::PreferenceManager::shared()
+            .set_custom_icon(&emoji_path, Some(&preference));
         crate::ui::thumbnail::show_customized_icon_image(
             &emoji_preview,
             &emoji_path,
@@ -353,7 +355,7 @@ pub(super) fn show_customize_modal(
     let buttons_for_clear = icon_buttons;
     let emoji_for_clear = emoji_button;
     clear.connect_clicked(move |button| {
-        crate::ui::theme::ThemeManager::shared().clear_item_customization(&clear_path);
+        crate::ui::preferences::PreferenceManager::shared().clear_item_customization(&clear_path);
         reset_color_ui(None);
         for (_, icon_button) in buttons_for_clear.iter() {
             icon_button.remove_css_class("active");
