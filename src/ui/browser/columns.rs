@@ -96,7 +96,9 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
                     column.resize_handle.remove_css_class("resize-hover");
                 }
             }
-            state.scroller.set_cursor_from_name(hovered.map(|_| "col-resize"));
+            state
+                .scroller
+                .set_cursor_from_name(hovered.map(|_| "col-resize"));
         }
     });
     let weak = Rc::downgrade(state);
@@ -128,9 +130,12 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
             return;
         };
         let now = glib::monotonic_time() as u64;
-        let autofit = last_press.borrow().as_ref().is_some_and(|(previous, time)| {
-            *previous == shell && now.wrapping_sub(*time) <= 400_000
-        });
+        let autofit = last_press
+            .borrow()
+            .as_ref()
+            .is_some_and(|(previous, time)| {
+                *previous == shell && now.wrapping_sub(*time) <= 400_000
+            });
         *last_press.borrow_mut() = Some((shell.clone(), now));
         if autofit {
             let max_natural = shell
@@ -147,7 +152,8 @@ pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
             .current_event()
             .and_then(|event| event.position())
             .map_or(x, |(pointer_x, _)| pointer_x);
-        *active_for_begin.borrow_mut() = Some((shell.clone(), shell.width().max(COLUMN_WIDTH), pointer_x));
+        *active_for_begin.borrow_mut() =
+            Some((shell.clone(), shell.width().max(COLUMN_WIDTH), pointer_x));
         gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     let active_for_update = active.clone();
