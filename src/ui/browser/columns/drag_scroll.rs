@@ -8,6 +8,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
+#[cfg(test)]
+mod tests;
+
 const EDGE_MARGIN: f64 = 44.0;
 const EDGE_SATURATION: f64 = 16.0;
 const MAX_HORIZONTAL_SPEED: f64 = 720.0;
@@ -137,7 +140,6 @@ impl DragAutoscroll {
         if direction_x == 0.0 && vertical.is_none() {
             self.burst_x.set(None);
             self.burst_y.set(None);
-            self.set_drop_hover(None);
             return false;
         }
 
@@ -202,7 +204,11 @@ impl DragAutoscroll {
             if tracker.file_drag_over() && tracker.apply_scroll(dt) {
                 return glib::ControlFlow::Continue;
             }
-            tracker.stop();
+            if tracker.file_drag_over() {
+                tracker.stop_ticks();
+            } else {
+                tracker.stop();
+            }
             glib::ControlFlow::Break
         });
         self.tick.replace(Some(id));
