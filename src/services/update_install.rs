@@ -3,10 +3,11 @@
 use std::{
     fs,
     io::{Read, Write},
+    os::unix::fs::MetadataExt as _,
     path::{Path, PathBuf},
     process::Command,
     sync::mpsc::{self, Receiver, Sender},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use gtk::glib;
@@ -431,6 +432,8 @@ fn try_install(
     let binary_path = binary_paths
         .first()
         .ok_or_else(|| "Could not find the strata binary in the downloaded archive".to_owned())?;
+    let old_executable = fs::metadata(current_exe)
+        .map_err(|error| format!("Could not inspect the installed binary: {error}"))?;
     let staged = stage_binary_path(exe_dir)?;
     fs::copy(binary_path, staged.path())
         .map_err(|error| format!("Could not stage the new binary: {error}"))?;
@@ -445,8 +448,111 @@ fn try_install(
     if let Err(error) = crate::portal_setup::refresh_after_in_place_update() {
         tracing::warn!(%error, "could not refresh the configured Strata portal after updating");
     }
+    retire_old_instances(Path::new("/proc"), current_exe, &old_executable);
 
     Ok(())
+}
+
+/// Retire only our old executable's chooser and file-manager instances. Leave the
+/// updating instance alive to report success and relaunch the replacement.
+fn retire_old_instances(proc_root: &Path, install_path: &Path, old_executable: &fs::Metadata) {
+    let Ok(entries) = fs::read_dir(proc_root) else {
+        tracing::warn!("could not enumerate old Strata processes after updating");
+        return;
+    };
+    let mut retirees = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<i32>().ok())
+            .and_then(rustix::process::Pid::from_raw)
+        else {
+            continue;
+        };
+        if pid.as_raw_pid() as u32 == std::process::id() {
+            continue;
+        }
+        let path = entry.path();
+        if !is_old_instance(&path, install_path, old_executable) {
+            continue;
+        }
+        // A pidfd pins the process identity across the final /proc check and
+        // SIGTERM; a reused numeric PID must never be signalled by the updater.
+        let fd = match rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()) {
+            Ok(fd) => fd,
+            Err(error) => {
+                tracing::warn!(%error, pid = pid.as_raw_pid(), "could not identify old Strata process safely");
+                continue;
+            }
+        };
+        if is_old_instance(&path, install_path, old_executable) {
+            match rustix::process::pidfd_send_signal(&fd, rustix::process::Signal::TERM) {
+                Ok(()) => retirees.push((pid, fd)),
+                Err(error) => {
+                    tracing::warn!(%error, pid = pid.as_raw_pid(), "could not stop old Strata instance")
+                }
+            }
+        }
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    for (pid, fd) in retirees {
+        if pidfd_exited(&fd, deadline) {
+            continue;
+        }
+        // A lingering old instance could still own the GApplication bus name.
+        // Do not relaunch into it after the replacement has been installed.
+        if let Err(error) = rustix::process::pidfd_send_signal(&fd, rustix::process::Signal::KILL) {
+            tracing::warn!(%error, pid = pid.as_raw_pid(), "could not terminate old Strata instance");
+        } else if !pidfd_exited(&fd, Instant::now() + Duration::from_secs(2)) {
+            tracing::warn!(pid = pid.as_raw_pid(), "old Strata instance has not exited");
+        }
+    }
+}
+
+fn pidfd_exited(fd: &rustix::fd::OwnedFd, deadline: Instant) -> bool {
+    use rustix::event::{PollFd, PollFlags, Timespec, poll};
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let timeout = Timespec {
+        tv_sec: remaining.as_secs() as i64,
+        tv_nsec: i64::from(remaining.subsec_nanos()),
+    };
+    poll(&mut [PollFd::new(fd, PollFlags::IN)], Some(&timeout)).is_ok_and(|ready| ready > 0)
+}
+
+fn is_old_instance(proc_entry: &Path, install_path: &Path, old_executable: &fs::Metadata) -> bool {
+    let Ok(executable) = fs::metadata(proc_entry.join("exe")) else {
+        return false;
+    };
+    if !fs::metadata(proc_entry)
+        .is_ok_and(|process| process.uid() == rustix::process::getuid().as_raw())
+    {
+        return false;
+    }
+    // An instance left behind by an earlier update has an older inode, but
+    // /proc still exposes the original install path with " (deleted)".
+    let mut deleted_path = install_path.as_os_str().to_os_string();
+    deleted_path.push(" (deleted)");
+    let same_binary =
+        (executable.dev(), executable.ino()) == (old_executable.dev(), old_executable.ino());
+    if !same_binary
+        && !fs::read_link(proc_entry.join("exe")).is_ok_and(|path| path.as_os_str() == deleted_path)
+    {
+        return false;
+    }
+    let Ok(arguments) = fs::read(proc_entry.join("cmdline")) else {
+        return false;
+    };
+    let mut arguments = arguments.split(|byte| *byte == 0);
+    let Some(program) = arguments.next() else {
+        return false;
+    };
+    if program.is_empty() {
+        return false;
+    }
+    arguments
+        .next()
+        .is_none_or(|argument| !argument.starts_with(b"--") || argument == b"--portal")
 }
 
 /// Rewrites an already installed desktop entry and application icon from the
