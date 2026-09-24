@@ -180,6 +180,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance disable animations",
     },
     Target {
+        id: "renderer",
+        page: "theme",
+        title: "Interface renderer",
+        aliases: "appearance graphics cairo gtk gpu text artifacts performance restart",
+    },
+    Target {
         id: "hints",
         page: "keybindings",
         title: "Show F1 Shortcuts button",

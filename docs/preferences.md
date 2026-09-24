@@ -64,6 +64,7 @@ control that might be midway through synchronization.
 | Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
 | Theme, Omarchy following, text size | `ThemeManager` applies shared CSS when theme selection, Omarchy following, text size, or element glow change; controls and theme-card selections bind to preferences through `ThemeManager::bind_theme_preference`. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
+| Interface renderer | GTK selects the renderer at process startup. The saved Cairo (default) or GTK default choice is read before GTK initializes; the control and Restart button synchronize across Settings windows, but changes take effect only after restarting Strata (via the button or after fully quitting and reopening). An explicit `GSK_RENDERER` always overrides the saved choice. |
 | Keybinding hints | Navigation hints and the shortcuts button bind immediately and live. When hidden, the status bar appears only while the clipboard badge or F1 reference needs it; otherwise the empty bar is hidden. |
 | Thumbnail workers | Browser construction binds the shared decoder limit before Settings opens. Changes apply across windows and rebuilt views; lowering the limit lets active work finish and retires excess idle supervisors. |
 | Icons view thumbnail size | Every browser binds at construction, before the browser mode preference applies, so an Icons pane built at startup already uses the saved size. The popover slider's own live change persists it; other windows' visible Icons panes move their slider (and resize) to match. Clamped to 32–256 px; not exposed in Settings. |
@@ -145,6 +146,17 @@ Thumbnail zoom, image/PDF zoom, media decode resolution, volume, and playback
 position remain independent of interface text size. At extreme sizes on small
 logical displays, scrolling or resizing panes may be necessary. Physical
 mixed-DPI monitor transitions still need compositor-specific manual testing.
+
+## Interface renderer
+
+**Settings → Appearance → Rendering** offers **Cairo** (default) and **GTK default**.
+Cairo avoids small-text artifacts on some systems but can use more CPU and reduce
+rendering performance. The choice is saved as `interface_renderer = "cairo"` or
+`"system"`. Use **Restart now** after changing the choice, or fully quit and reopen Strata,
+including closing all windows. A caller-supplied `GSK_RENDERER` (even an empty value)
+takes precedence. Cairo selected by Strata is a process environment setting,
+so applications started by Strata may inherit it; it does not change desktop
+or system-wide settings.
 
 ## Element glow
 

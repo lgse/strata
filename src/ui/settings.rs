@@ -531,7 +531,9 @@ fn reflow_settings(
             .last_child()
             .is_some_and(|child| child.is::<gtk::Switch>());
         // Short numeric controls can stay beside wrapping copy after other rows stack.
-        let stack_row = if row.has_css_class("settings-text-size-row") {
+        let stack_row = if row.has_css_class("settings-renderer-row") {
+            true
+        } else if row.has_css_class("settings-text-size-row") {
             stack_text_size
         } else {
             compact
@@ -2007,6 +2009,14 @@ fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Comm
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .process_group(0);
+    if std::env::var_os(crate::CAIRO_SELECTED_BY_STRATA).as_deref()
+        == Some(std::ffi::OsStr::new("1"))
+        && std::env::var_os("GSK_RENDERER").as_deref() == Some(std::ffi::OsStr::new("cairo"))
+    {
+        // The next process must read the saved renderer, not inherit our default.
+        command.env_remove("GSK_RENDERER");
+        command.env_remove(crate::CAIRO_SELECTED_BY_STRATA);
+    }
     Some(command)
 }
 

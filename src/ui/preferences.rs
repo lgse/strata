@@ -30,6 +30,14 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<PreferenceManager>> = const { RefCell::new(std::rc::Weak::new()) };
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum InterfaceRenderer {
+    #[default]
+    Cairo,
+    System,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
@@ -102,6 +110,8 @@ pub(in crate::ui) struct Preferences {
     show_hidden: bool,
     #[serde(default)]
     text_size: TextSize,
+    #[serde(default)]
+    interface_renderer: InterfaceRenderer,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -179,6 +189,7 @@ impl Default for Preferences {
             sidebar_show_videos: true,
             show_hidden: false,
             text_size: TextSize::default(),
+            interface_renderer: InterfaceRenderer::default(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
@@ -297,6 +308,7 @@ fn normalized_volume(volume: f64) -> f64 {
 
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
+    startup_interface_renderer: InterfaceRenderer,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
     persistence_enabled: bool,
@@ -333,6 +345,7 @@ impl PreferenceManager {
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
         Rc::new(Self {
+            startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
             persistence_enabled,
@@ -806,6 +819,19 @@ impl PreferenceManager {
         }
         .to_owned();
         self.save_preferences();
+    }
+
+    pub fn interface_renderer(&self) -> InterfaceRenderer {
+        self.preferences.borrow().interface_renderer
+    }
+
+    pub fn set_interface_renderer(&self, renderer: InterfaceRenderer) {
+        self.preferences.borrow_mut().interface_renderer = renderer;
+        self.save_preferences();
+    }
+
+    pub fn interface_renderer_restart_required(&self) -> bool {
+        self.interface_renderer() != self.startup_interface_renderer
     }
 
     pub fn text_size(&self) -> TextSize {

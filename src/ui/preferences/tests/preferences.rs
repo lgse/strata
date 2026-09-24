@@ -512,6 +512,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_sidebar_show_videos(true),
                 |m| m.set_sort_preferences(ViewPreferences::default()),
                 |m| m.set_text_size(TextSize::new(11)),
+                |m| m.set_interface_renderer(InterfaceRenderer::Cairo),
                 |m| m.set_checks_for_updates(true),
                 |m| m.set_release_channel(Channel::Stable),
                 |m| m.set_preview_muted(false),
