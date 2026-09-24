@@ -1177,9 +1177,17 @@ fn build_chooser_with_source(
     browser.observe(move |event| {
         match event {
             BrowserEvent::OpenRequested { location } => state_for_observer.activate_file(location),
-            BrowserEvent::FocusChanged { .. }
-            | BrowserEvent::SelectionSetChanged { .. }
-            | BrowserEvent::SelectionSynced { .. } => state_for_observer.update_selected_filename(),
+            BrowserEvent::FocusChanged { .. } | BrowserEvent::SelectionSetChanged { .. } => {
+                state_for_observer.update_selected_filename()
+            }
+            BrowserEvent::SelectionSynced { .. } => {
+                let weak = Rc::downgrade(&state_for_observer);
+                glib::idle_add_local_once(move || {
+                    if let Some(state) = weak.upgrade() {
+                        state.update_selected_filename();
+                    }
+                });
+            }
             _ => {}
         }
         if let Some(browser) = weak_browser.upgrade() {
@@ -1566,7 +1574,7 @@ fn install_shortcuts(
             )
             && let Some(entry) = state.view.selected_search_result()
         {
-            if state.view.activate_directory_column() {
+            if state.view.activate_directory_on_space() {
                 return glib::Propagation::Stop;
             }
             preview.toggle(
@@ -1791,7 +1799,7 @@ fn install_shortcuts(
         if key == gtk::gdk::Key::space && !control && !alt {
             if !modifiers
                 .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
-                && state.view.activate_directory_column()
+                && state.view.activate_directory_on_space()
             {
                 return glib::Propagation::Stop;
             }
