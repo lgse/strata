@@ -823,7 +823,9 @@ pub(super) fn column_rows(
                 .as_ref()
                 .is_some_and(|browser| browser.is_open_child(depth, &entry.location))
         });
-        set_active_path_style(&row, active);
+        let immediate =
+            browser.as_ref().and_then(|browser| browser.active_depth()) == Some(depth + 1);
+        set_active_path_style(&row, active, immediate);
         set_cut_path_style(
             &row,
             entry.as_ref().is_some_and(|entry| {
