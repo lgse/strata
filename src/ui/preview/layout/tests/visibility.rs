@@ -271,9 +271,9 @@ fn assert_last_column_visible(fixture: &Fixture) {
 }
 
 #[test]
-fn compact_previews_load_targets_and_preserve_the_manual_session_choice() {
+fn constrained_previews_defer_targets_and_preserve_the_manual_session_choice() {
     crate::test_support::gtk_test(
-        "ui::preview::layout::tests::visibility::compact_previews_load_targets_and_preserve_the_manual_session_choice",
+        "ui::preview::layout::tests::visibility::constrained_previews_defer_targets_and_preserve_the_manual_session_choice",
         || {
             let preferences = PreferenceManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
@@ -285,8 +285,8 @@ fn compact_previews_load_targets_and_preserve_the_manual_session_choice() {
                 fixture.preview.show(entry("first.png"), None);
                 fixture.settle();
                 assert!(fixture.preview.is_enabled());
-                assert!(fixture.preview.is_open());
-                assert_eq!(fixture.requests.borrow().len(), 1);
+                assert!(!fixture.preview.is_open());
+                assert!(fixture.requests.borrow().is_empty());
 
                 fixture.resize(1400);
                 wait_until(|| {
@@ -310,8 +310,8 @@ fn compact_previews_load_targets_and_preserve_the_manual_session_choice() {
                 fixture.settle();
                 fixture.preview.show(entry("latest.png"), None);
                 fixture.settle();
-                assert!(fixture.preview.is_open());
-                assert_eq!(fixture.requests.borrow().len(), 2);
+                assert!(!fixture.preview.is_open());
+                assert_eq!(fixture.requests.borrow().len(), 1);
                 fixture.resize(1400);
                 wait_until(|| {
                     fixture.preview.widget().is_visible() && fixture.preview.widget().width() == 700
@@ -360,7 +360,7 @@ fn a_focused_parent_takes_priority_over_a_wider_unfocused_leaf() {
             fixture.settle();
             fixture.browser.browser().set_active_column(0);
             fixture.browser.browser().focus_active();
-            wait_until(|| !fixture.preview.state.sizing.is_compact());
+            wait_until(|| !fixture.preview.state.sizing.is_suspended());
             fixture.settle();
             let focused = fixture
                 .columns()
@@ -429,13 +429,15 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
             );
             fixture.window.present();
             wait_until(|| media.is_playing() && media.timestamp() > 0);
-            for playing in [true, false] {
+            for (hide_window, playing) in
+                [(false, true), (false, false), (true, true), (true, false)]
+            {
                 media.set_playing(playing);
-                fixture.resize(640);
-                fixture.settle();
-                assert_eq!(media.is_playing(), playing);
-                assert!(fixture.preview.has_video());
-                fixture.window.set_visible(false);
+                if hide_window {
+                    fixture.window.set_visible(false);
+                } else {
+                    fixture.resize(640);
+                }
                 wait_until(|| fixture.preview.state.sizing.is_suspended());
                 let paused_at = media.timestamp();
                 assert!(!media.is_playing());
@@ -444,7 +446,11 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
                     gtk::gdk::Key::space,
                     gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK,
                 ));
-                fixture.window.present();
+                if hide_window {
+                    fixture.window.present();
+                } else {
+                    fixture.resize(1800);
+                }
                 wait_until(|| !fixture.preview.state.sizing.is_suspended());
                 assert_eq!(media.is_playing(), playing);
                 assert!(media.timestamp() >= paused_at);
@@ -535,7 +541,7 @@ fn icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled()
                 fixture.preview.clear_target();
                 assert!(!fixture.preview.widget().is_visible());
                 fixture.preview.show(entry("constrained.txt"), None);
-                assert!(fixture.preview.is_open());
+                assert!(!fixture.preview.is_open());
                 fixture.preview.clear_target();
                 fixture.settle();
                 assert!(!fixture.preview.widget().is_visible());

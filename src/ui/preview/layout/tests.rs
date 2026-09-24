@@ -43,7 +43,7 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
         .can_show_preview()
     );
     assert!(
-        Geometry {
+        !Geometry {
             available: 1,
             ..geometry
         }

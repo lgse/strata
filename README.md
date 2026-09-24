@@ -256,7 +256,7 @@ strata --version            # print the installed version
 
 Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest reversible file operation, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
 
-In narrow or highly scaled windows, the preview uses the full content area rather than disappearing. Close it with <kbd>Space</kbd> or its close button to return to browsing. Widening the window restores the side-by-side preview and its session width without reloading the file.
+In narrow or highly scaled windows, the file view takes priority: the preview shrinks, then hides when there is not enough room for both. Widening the window restores the preview and its session width automatically. Hidden previews pause playback and defer loading new selections; unchanged previews return without reloading the file.
 
 ### Desktop entry
 

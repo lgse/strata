@@ -2,33 +2,10 @@
 
 use super::*;
 
-fn assert_dismissal_focus_stays_put(fixture: &Fixture) {
-    let close = fixture.preview.state.close_button.clone();
-    wait_until(|| close.has_focus());
-    let frames = Rc::new(Cell::new(0));
-    let stable = Rc::new(Cell::new(true));
-    let observed_frames = frames.clone();
-    let observed_focus = stable.clone();
-    fixture.split.add_tick_callback(move |_, _| {
-        observed_focus.set(observed_focus.get() && close.has_focus());
-        observed_frames.set(observed_frames.get() + 1);
-        if observed_frames.get() >= 12 {
-            glib::ControlFlow::Break
-        } else {
-            glib::ControlFlow::Continue
-        }
-    });
-    wait_until(|| frames.get() >= 12);
-    assert!(
-        stable.get(),
-        "idle preview must retain its keyboard dismissal target"
-    );
-}
-
 #[test]
-fn compact_preview_loads_and_returns_keyboard_focus_without_losing_selection() {
+fn constrained_previews_defer_loading_and_return_focus_without_losing_selection() {
     crate::test_support::gtk_test(
-        "ui::preview::layout::tests::compact::compact_preview_loads_and_returns_keyboard_focus_without_losing_selection",
+        "ui::preview::layout::tests::compact::constrained_previews_defer_loading_and_return_focus_without_losing_selection",
         || {
             let preferences = PreferenceManager::shared();
             preferences.set_reduce_motion(true);
@@ -48,13 +25,19 @@ fn compact_preview_loads_and_returns_keyboard_focus_without_losing_selection() {
                         let before = fixture.requests.borrow().len();
                         fixture.preview.toggle(Some(selected.clone()), Some(0));
                         fixture.settle();
+                        assert!(fixture.preview.is_enabled());
+                        assert!(!fixture.preview.is_open());
+                        assert!(fixture.browser.widget().is_mapped());
+                        assert_eq!(fixture.requests.borrow().len(), before);
+
+                        fixture.resize(1400);
+                        wait_until(|| fixture.requests.borrow().len() == before + 1);
                         assert!(fixture.preview.is_open());
-                        assert_eq!(fixture.requests.borrow().len(), before + 1);
                         let request = fixture
                             .requests
                             .borrow()
                             .last()
-                            .expect("compact preview request")
+                            .expect("resumed request")
                             .clone();
                         fixture.preview.state.handle_event(
                             request.id,
@@ -73,31 +56,47 @@ fn compact_preview_loads_and_returns_keyboard_focus_without_losing_selection() {
                             .state
                             .content
                             .first_child()
-                            .expect("loaded preview content");
-                        assert_dismissal_focus_stays_put(&fixture);
+                            .expect("loaded content");
+                        for focus_preview in [false, true] {
+                            if focus_preview {
+                                find(&fixture.preview.widget(), "preview-close")
+                                    .expect("preview close button")
+                                    .grab_focus();
+                            } else {
+                                browser.focus_active();
+                            }
+                            fixture.resize(width);
+                            wait_until(|| fixture.preview.state.sizing.is_suspended());
+                            assert!(!fixture.preview.is_open());
+                            assert!(fixture.browser.widget().is_mapped());
+                            assert!(
+                                RootExt::focus(&fixture.window).is_some_and(|focus| {
+                                    focus.is_ancestor(&fixture.browser.widget())
+                                }),
+                                "chooser={chooser}, mode={mode:?}: hiding the preview must retain browser input"
+                            );
+                            fixture.resize(1400);
+                            wait_until(|| fixture.preview.is_open());
+                            assert_eq!(
+                                fixture.preview.state.content.first_child(),
+                                Some(content.clone())
+                            );
+                            assert_eq!(fixture.requests.borrow().len(), before + 1);
+                        }
+
+                        fixture.resize(width);
+                        wait_until(|| !fixture.preview.is_open());
+                        fixture.preview.toggle(Some(selected.clone()), Some(0));
                         fixture.resize(1400);
                         fixture.settle();
-                        assert_eq!(fixture.preview.state.content.first_child(), Some(content));
-                        assert_eq!(fixture.requests.borrow().len(), before + 1);
-                        fixture.resize(width);
-                        fixture.settle();
-                        assert_dismissal_focus_stays_put(&fixture);
-                        fixture.preview.state.close_button.emit_clicked();
-                        fixture.settle();
                         assert!(!fixture.preview.is_enabled());
+                        assert!(!fixture.preview.is_open());
                         assert_eq!(
                             browser
                                 .focused_entry()
                                 .expect("preserved selection")
                                 .location,
                             selected.location
-                        );
-                        assert!(
-                            RootExt::focus(&fixture.window).is_some_and(|focus| {
-                                focus.is_ancestor(&fixture.browser.widget())
-                            }),
-                            "chooser={chooser}, mode={mode:?}, width={width}, focus={:?}",
-                            RootExt::focus(&fixture.window)
                         );
                     }
                     fixture.close();
