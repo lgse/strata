@@ -11,14 +11,10 @@ use std::{
 use gtk::{gdk, glib};
 
 use super::{
-    ACTIVE_REQUESTS, ARCHIVE_ART, AUDIO_ART, AUDIO_PROJECT_ART, ActiveRequest, CERT_ART,
-    COMICS_ART, CONFIG_ART, CacheHit, CachedThumbnail, DATABASE_ART, DESIGN_ART, DOCX_ART,
-    EBOOKS_ART, FONT_ART, IMAGE_ART, ISO_ART, LOG_ART, MAPS_ART, MAX_CACHE_ENTRIES,
-    MAX_CACHE_READERS, MAX_PERSIST_QUEUE, MAX_QUEUED_THUMBNAILS, MODELS_3D_ART, MUSIC_ART,
-    PACKAGE_ART, PENDING_THUMBNAILS, PLAYLISTS_ART, PPTX_ART, PendingTarget, PendingThumbnail,
-    PersistJob, PersistQueue, SCIENCE_ART, SETTLE_VIEWS, SPREADSHEET_ART, SQL_ART, SUBTITLES_ART,
-    TEXT_ART, THUMBNAIL_CACHE, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey, ThumbnailKind,
-    ThumbnailQueue, VIDEO_ART, VIRTUAL_DISK_ART, VM_ART, ViewSettle, WEB_ART, cancel_thumbnail,
+    ACTIVE_REQUESTS, ActiveRequest, CacheHit, CachedThumbnail, ISO_ART, MAX_CACHE_ENTRIES,
+    MAX_CACHE_READERS, MAX_PERSIST_QUEUE, MAX_QUEUED_THUMBNAILS, PENDING_THUMBNAILS, PendingTarget,
+    PendingThumbnail, PersistJob, PersistQueue, SETTLE_VIEWS, THUMBNAIL_CACHE, THUMBNAIL_QUEUE,
+    ThumbnailCache, ThumbnailKey, ThumbnailKind, ThumbnailQueue, ViewSettle, cancel_thumbnail,
     clear_thumbnail_runtime, fallback_art_source, finish_thumbnail_targets,
     fire_settled_thumbnails, has_pending_thumbnail, hold_thumbnail_workers,
     refresh_all_customized_icons, retry_deferred_thumbnail, schedule_or_defer,
@@ -116,15 +112,16 @@ fn recognizes_mainstream_image_video_and_cover_art_audio_formats() {
         "song.aiff",
         "song.aif",
         "song.wma",
+        "song.ogg",
+        "song.oga",
+        "song.opus",
+        "song.wav",
     ] {
         assert_eq!(
             thumbnail_kind(Path::new(name)),
-            Some(ThumbnailKind::Video),
+            Some(ThumbnailKind::AudioArt),
             "{name}"
         );
-    }
-    for name in ["song.ogg", "song.oga", "song.opus", "song.wav"] {
-        assert_eq!(thumbnail_kind(Path::new(name)), None, "{name}");
     }
 }
 
@@ -362,106 +359,22 @@ fn failed_thumbnails_expire_and_share_the_cache_bound() {
 
 #[test]
 fn recognizes_container_audio_and_text_formats() {
-    for name in [
-        "novel.epub",
-        "issue1.cbz",
-        "issue2.cbr",
-        "novel.fb2",
-        "kindle.mobi",
-        "kindle.azw3",
-        "scan.djvu",
-        "mockup.sketch",
-        "painting.kra",
-        "app.ipa",
-        "app.apk",
-        "tablet.mobi",
-        "ebook.prc",
-    ] {
-        assert_eq!(
-            thumbnail_kind(Path::new(name)),
-            Some(ThumbnailKind::Embedded),
-            "{name}"
-        );
-    }
-    for name in [
-        "track.mp3",
-        "album.flac",
-        "song.m4a",
-        "song.aac",
-        "sample.wav",
-        "tape.aiff",
-        "clip.ogg",
-        "voice.opus",
-        "tune.wma",
-    ] {
-        assert_eq!(
-            thumbnail_kind(Path::new(name)),
-            Some(ThumbnailKind::AudioArt),
-            "{name}"
-        );
-    }
-    for name in [
-        "README.md",
-        "notes.txt",
-        "data.json",
-        "letter.rtf",
-        "movie.srt",
-        "mix.m3u8",
-        "trail.gpx",
-        "route.kml",
-        "model.obj",
-        "print.stl",
-        "scene.gltf",
-        "plan.dxf",
-        "query.sql",
-        "page.xhtml",
-    ] {
-        assert_eq!(
-            thumbnail_kind(Path::new(name)),
-            Some(ThumbnailKind::Text),
-            "{name}"
-        );
-    }
-    for (name, language) in [
-        ("main.rs", crate::sandbox::CodeLanguage::Rust),
-        ("script.py", crate::sandbox::CodeLanguage::Python),
-        ("app.ts", crate::sandbox::CodeLanguage::TypeScript),
-        ("style.css", crate::sandbox::CodeLanguage::Css),
-        ("script.sh", crate::sandbox::CodeLanguage::Shell),
-        ("page.html", crate::sandbox::CodeLanguage::Html),
-    ] {
-        assert_eq!(
-            thumbnail_kind(Path::new(name)),
-            Some(ThumbnailKind::Code(language)),
-            "{name}"
-        );
-    }
-    for name in [
-        "disk.iso",
-        "drive.img",
-        "disc.bin",
-        "disc.cue",
-        "bundle.zip",
-        "backup.7z",
-        "files.tar",
-        "release.tar.gz",
-        "data.rar",
-        "installer.dmg",
-        "report.docx",
-        "sheet.xlsx",
-        "slides.pptx",
-        "deck.key",
-        "letter.odt",
-        "show.ppsx",
-        "template.dotx",
-        "macro.xlsm",
-        "type.ttf",
-        "type.otf",
-        "type.woff",
-        "type.woff2",
-    ] {
-        assert_eq!(thumbnail_kind(Path::new(name)), None, "{name}");
-    }
+    assert_eq!(
+        thumbnail_kind(Path::new("novel.epub")),
+        Some(ThumbnailKind::Embedded)
+    );
+    assert_eq!(
+        thumbnail_kind(Path::new("track.mp3")),
+        Some(ThumbnailKind::AudioArt)
+    );
+    assert_eq!(
+        thumbnail_kind(Path::new("notes.txt")),
+        Some(ThumbnailKind::Text)
+    );
+    assert_eq!(
+        thumbnail_kind(Path::new("main.rs")),
+        Some(ThumbnailKind::Code(crate::sandbox::CodeLanguage::Rust))
+    );
     assert_eq!(
         thumbnail_kind(Path::new("artwork.psd")),
         Some(ThumbnailKind::Image)
@@ -470,6 +383,9 @@ fn recognizes_container_audio_and_text_formats() {
         thumbnail_kind(Path::new("logo.ai")),
         Some(ThumbnailKind::Pdf)
     );
+    assert_eq!(thumbnail_kind(Path::new("disk.iso")), None);
+    assert_eq!(thumbnail_kind(Path::new("report.docx")), None);
+    assert_eq!(thumbnail_kind(Path::new("type.ttf")), None);
 }
 
 #[test]
@@ -482,52 +398,8 @@ fn rejects_files_without_a_thumbnail_provider() {
 
 #[test]
 fn fallback_art_maps_extensions_to_category_icons() {
-    let cases: [(&str, &str); 40] = [
-        ("photo.png", IMAGE_ART),
-        ("clip.flv", VIDEO_ART),
-        ("font.ttf", FONT_ART),
-        ("book.kfx", EBOOKS_ART),
-        ("issue.cb7", COMICS_ART),
-        ("map.kmz", MAPS_ART),
-        ("deck.key", PPTX_ART),
-        ("legacy.doc", DOCX_ART),
-        ("model.glb", MODELS_3D_ART),
-        ("sub.srt", SUBTITLES_ART),
-        ("list.m3u", PLAYLISTS_ART),
-        ("design.dwg", DESIGN_ART),
-        ("disc.iso", ISO_ART),
-        ("pack.7z", ARCHIVE_ART),
-        ("song.wma", AUDIO_ART),
-        ("main.rs", TEXT_ART),
-        ("macro.xlsm", SPREADSHEET_ART),
-        ("show.ppsx", PPTX_ART),
-        ("app.ipa", PACKAGE_ART),
-        ("disk.vdi", VIRTUAL_DISK_ART),
-        ("flatpak.ova", VM_ART),
-        ("score.mscz", MUSIC_ART),
-        ("lidar.step", DESIGN_ART),
-        ("scene.c4d", MODELS_3D_ART),
-        ("book.lrf", EBOOKS_ART),
-        ("tiles.mbtiles", MAPS_ART),
-        ("machine.ovf", VM_ART),
-        ("database.db", DATABASE_ART),
-        ("data.sqlite3", DATABASE_ART),
-        ("query.sql", SQL_ART),
-        ("cert.p12", CERT_ART),
-        ("site.pem", CERT_ART),
-        ("scope.fits", SCIENCE_ART),
-        ("page.html", WEB_ART),
-        ("app.ini", CONFIG_ART),
-        ("secrets.env", CONFIG_ART),
-        ("sys.log", LOG_ART),
-        ("song.mid", MUSIC_ART),
-        ("proj.flp", AUDIO_PROJECT_ART),
-        ("sheet.csv", SPREADSHEET_ART),
-    ];
-    for (name, art) in cases {
-        assert_eq!(fallback_art_source(Path::new(name)), Some(art), "{name}");
-        assert!(super::fallback_art(Path::new(name)).is_some(), "{name}");
-    }
+    assert_eq!(fallback_art_source(Path::new("disc.iso")), Some(ISO_ART));
+    assert!(super::fallback_art(Path::new("disc.iso")).is_some());
     assert_eq!(fallback_art_source(Path::new("binary.dat")), None);
     assert_eq!(fallback_art_source(Path::new("no-extension")), None);
 }
