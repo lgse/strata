@@ -50,6 +50,28 @@ fn home_relative_input_preserves_the_native_home_path() {
 }
 
 #[test]
+fn typed_paths_drop_trailing_slashes_so_files_reveal() {
+    let home = Path::new("/home/fixture");
+
+    let file = location_from_input_with_home("/fixture/report.pdf/", home)
+        .expect("a trailing slash is still a valid typed path");
+    assert_eq!(
+        file.native_path().map(Path::as_os_str),
+        Some(OsStr::new("/fixture/report.pdf"))
+    );
+
+    let home_file = location_from_input_with_home("~/Documents/report.pdf/", home)
+        .expect("a home-relative trailing slash is still valid");
+    assert_eq!(
+        home_file.native_path().map(Path::as_os_str),
+        Some(OsStr::new("/home/fixture/Documents/report.pdf"))
+    );
+
+    let root = location_from_input_with_home("/", home).expect("the root stays the root");
+    assert_eq!(root.native_path().map(Path::as_os_str), Some(OsStr::new("/")));
+}
+
+#[test]
 fn other_users_home_shorthand_is_rejected() {
     assert!(matches!(
         location_from_input_with_home("~other-user/Documents", Path::new("/home/fixture")),

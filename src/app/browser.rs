@@ -3587,7 +3587,7 @@ fn location_from_input_with_home(
         return Ok(Location::local(home));
     }
     if let Some(relative) = input.strip_prefix("~/") {
-        return Ok(Location::local(home.join(relative.trim_start_matches('/'))));
+        return Ok(Location::local(home.join(relative.trim_matches('/'))));
     }
     if input.starts_with('~') {
         return Err(LocationValidationError::UnsupportedShorthand(
@@ -3595,7 +3595,11 @@ fn location_from_input_with_home(
         ));
     }
     if !is_uri_like(input) {
-        return Ok(Location::local(PathBuf::from(input)));
+        // A trailing slash makes stat report ENOTDIR on a file, which reads as
+        // unavailable rather than "not a directory" for the reveal path.
+        let trimmed = input.trim_end_matches('/');
+        let path = if trimmed.is_empty() { "/" } else { trimmed };
+        return Ok(Location::local(PathBuf::from(path)));
     }
     let scheme_end = input.find("://").unwrap_or_default();
     let scheme = &input[..scheme_end];
