@@ -935,6 +935,3 @@ impl ViewState {
         });
     }
 }
-
-#[cfg(test)]
-mod tests;

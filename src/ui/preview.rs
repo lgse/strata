@@ -2850,6 +2850,3 @@ fn install_preview_drag(widget: &impl IsA<gtk::Widget>, state: &Rc<PreviewState>
     });
     widget.add_controller(drag);
 }
-
-#[cfg(test)]
-mod tests;

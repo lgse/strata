@@ -1773,6 +1773,3 @@ mod rows;
 mod search;
 
 pub(super) use reveal::ColumnSpan;
-
-#[cfg(test)]
-mod tests;

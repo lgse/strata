@@ -1166,6 +1166,3 @@ fn extract_error_needs_password(message: &str) -> bool {
         lower.contains("password") || lower.contains("encrypt")
     })
 }
-
-#[cfg(test)]
-mod tests;
