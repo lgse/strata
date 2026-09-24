@@ -130,7 +130,7 @@ impl Browser {
     }
 
     fn install_sorted_snapshot(
-        &self,
+        self: &Rc<Self>,
         task: SortTask,
         sorted: Vec<FileEntry>,
         sorting: SortingLoad,
@@ -147,6 +147,8 @@ impl Browser {
                 let _applied = state.apply_directory_change(task.depth, &watched, change);
             }
         }
+        drop(state);
+        self.apply_resolved_location_reveal(task.depth, task.request_id);
         true
     }
 
@@ -163,6 +165,7 @@ impl Browser {
                 depth: task.depth,
                 truncated: task.plan.completion.truncated,
             });
+            self.report_unresolved_location_reveal(task.depth, task.request_id);
             self.ensure_sorted_after_load(task.depth);
         } else {
             self.resort_installed_column(task, current);

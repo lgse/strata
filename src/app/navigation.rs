@@ -51,6 +51,7 @@ pub struct ColumnState {
     selection_anchor: Option<Location>,
     selection_target: Option<Location>,
     pending_selection: HashSet<Location>,
+    pending_reveal: Option<Location>,
     pub load_state: LoadState,
     pub truncated: bool,
     /// Whether entries here can be moved to Trash, resolved from a listed entry
@@ -195,6 +196,7 @@ impl NavigationState {
                 selection_anchor: None,
                 selection_target: None,
                 pending_selection: HashSet::new(),
+                pending_reveal: None,
                 load_state: LoadState::Loading,
                 truncated: false,
                 can_trash: None,
@@ -269,6 +271,7 @@ impl NavigationState {
             selection_anchor: None,
             selection_target: None,
             pending_selection: HashSet::new(),
+            pending_reveal: None,
             load_state: LoadState::Loading,
             truncated: false,
             can_trash: None,
@@ -283,6 +286,51 @@ impl NavigationState {
         if let Some(column) = self.columns.get_mut(depth) {
             column.select_first_on_load = true;
         }
+    }
+
+    /// Replaces automatic/restored selection with an explicitly named file once loaded.
+    pub fn select_location_on_load(&mut self, depth: usize, location: Location) {
+        if let Some(column) = self.columns.get_mut(depth) {
+            column.selected = None;
+            column.selected_locations.clear();
+            column.selection_anchor = None;
+            column.selection_target = None;
+            column.pending_selection.clear();
+            column.pending_reveal = Some(location);
+            column.select_first_on_load = false;
+            column.load_cursor = None;
+        }
+    }
+
+    pub fn take_resolved_location_reveal(
+        &mut self,
+        depth: usize,
+        request_id: RequestId,
+    ) -> Option<bool> {
+        let column = self.columns.get_mut(depth)?;
+        if column.request_id != request_id {
+            return None;
+        }
+        let target = column.pending_reveal.as_ref()?;
+        let is_hidden = column
+            .entries
+            .iter()
+            .find(|entry| &entry.location == target)?
+            .is_hidden;
+        column.pending_reveal = None;
+        Some(is_hidden)
+    }
+
+    pub fn take_unresolved_location_reveal(
+        &mut self,
+        depth: usize,
+        request_id: RequestId,
+    ) -> Option<Location> {
+        let column = self.columns.get_mut(depth)?;
+        if column.request_id != request_id {
+            return None;
+        }
+        column.pending_reveal.take()
     }
 
     pub fn apply_batch(
@@ -311,6 +359,7 @@ impl NavigationState {
                 column.selection_target = None;
             }
         }
+        column.resolve_pending_reveal();
         column.restore_pending_selection();
         if column.select_first_on_load && !column.entries.is_empty() {
             column.pending_selection.clear();
@@ -349,6 +398,7 @@ impl NavigationState {
                 column.selection_target = None;
             }
         }
+        column.resolve_pending_reveal();
         column.restore_pending_selection();
         if column.select_first_on_load && !column.entries.is_empty() {
             column.pending_selection.clear();
@@ -608,6 +658,7 @@ impl NavigationState {
             &mut column.selection_target,
             &mut column.selection_anchor,
             &mut column.load_cursor,
+            &mut column.pending_reveal,
         ] {
             *target = target
                 .as_ref()
@@ -759,6 +810,7 @@ impl NavigationState {
 
     pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
+        column.pending_reveal = None;
         column.load_state = LoadState::Error(message);
         Some(depth)
     }
@@ -1376,6 +1428,25 @@ impl ColumnState {
         .then_some(position)
     }
 
+    fn resolve_pending_reveal(&mut self) {
+        let Some(target) = self.pending_reveal.as_ref() else {
+            return;
+        };
+        let Some(position) = self
+            .entries
+            .iter()
+            .position(|entry| &entry.location == target)
+        else {
+            return;
+        };
+        let target = target.clone();
+        self.selected = Some(position);
+        self.selected_locations = HashSet::from([target.clone()]);
+        self.selection_anchor = Some(target);
+        self.selection_target = None;
+        self.load_cursor = None;
+    }
+
     fn restore_pending_selection(&mut self) {
         if self.pending_selection.is_empty() {
             return;
@@ -1402,6 +1473,7 @@ impl ColumnState {
 fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {
     if commit {
         column.load_cursor = None;
+        column.pending_reveal = None;
     }
     column.selected_locations = locations;
 }
