@@ -379,6 +379,35 @@ fn completing_a_cut_paste_consumes_the_clipboard_file_list() {
 }
 
 #[test]
+fn completing_a_cut_keeps_a_newer_file_list() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::completing_a_cut_keeps_a_newer_file_list",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let cut = Location::local("/fixture/cut.txt");
+            set_shared_cut(std::slice::from_ref(&cut));
+            assert!(set_location_files_clipboard(std::slice::from_ref(&cut)));
+            let clipboard = gtk::gdk::Display::default().expect("display").clipboard();
+            let newer = gtk::gdk::ContentProvider::for_value(
+                &gtk::gdk::FileList::from_array(&[gio::File::for_path("/fixture/new.txt")])
+                    .to_value(),
+            );
+            clipboard
+                .set_content(Some(&newer))
+                .expect("replace clipboard");
+
+            view.state.complete_cut_transfer(std::slice::from_ref(&cut));
+
+            assert!(shared_cut_locations().is_empty());
+            assert_eq!(clipboard.content(), Some(newer));
+        },
+    );
+}
+
+#[test]
 fn completing_a_cut_keeps_text_copied_afterward() {
     crate::test_support::gtk_test(
         "ui::browser::clipboard::tests::completing_a_cut_keeps_text_copied_afterward",
