@@ -33,8 +33,8 @@ thread_local! {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum InterfaceRenderer {
-    #[default]
     Cairo,
+    #[default]
     System,
 }
 

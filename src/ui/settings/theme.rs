@@ -103,8 +103,8 @@ pub(super) fn theme_page(
         &preferences,
         "Interface renderer",
         &[
-            ("Cairo", InterfaceRenderer::Cairo),
             ("GTK default", InterfaceRenderer::System),
+            ("Cairo", InterfaceRenderer::Cairo),
         ],
         PreferenceManager::interface_renderer,
         PreferenceManager::set_interface_renderer,

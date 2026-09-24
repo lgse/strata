@@ -279,20 +279,20 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
                     .find(|button| button.label().as_deref() == Some("Restart now"))
                     .expect("renderer restart")
             };
-            assert_eq!(manager.interface_renderer(), InterfaceRenderer::System);
+            assert_eq!(manager.interface_renderer(), InterfaceRenderer::Cairo);
+            for page in [&first, &second] {
+                assert_eq!(renderer_control(page).label().as_deref(), Some("Cairo"));
+                assert!(!restart_button(page).is_visible());
+            }
+            manager.set_interface_renderer(InterfaceRenderer::System);
             for page in [&first, &second] {
                 assert_eq!(
                     renderer_control(page).label().as_deref(),
                     Some("GTK default")
                 );
-                assert!(!restart_button(page).is_visible());
-            }
-            manager.set_interface_renderer(InterfaceRenderer::Cairo);
-            for page in [&first, &second] {
-                assert_eq!(renderer_control(page).label().as_deref(), Some("Cairo"));
                 assert!(restart_button(page).is_visible());
             }
-            manager.set_interface_renderer(InterfaceRenderer::System);
+            manager.set_interface_renderer(InterfaceRenderer::Cairo);
             for page in [&first, &second] {
                 assert!(!restart_button(page).is_visible());
             }
