@@ -54,11 +54,9 @@ const REMOTE_DIRECTORY_BATCH_SIZE: usize = 128;
 const PEEK_MAX_ENTRIES: usize = 64;
 const PEEK_TIME_BUDGET: Duration = Duration::from_secs(3);
 
-/// What a fresh navigation should select once the listing loads.
 enum LoadSelection {
     Nothing,
     FirstEntry,
-    /// A file the user named explicitly, revealed inside its parent.
     Target(Location),
 }
 
@@ -874,7 +872,6 @@ impl Browser {
         if location.native_path().is_some() {
             match self.source.validate_location(&location) {
                 Ok(()) => self.navigate(location),
-                // A typed path may name a file: reveal it inside its parent.
                 Err(LocationValidationError::NotDirectory) => match location.parent() {
                     Some(parent) => self.navigate_validated_revealing(parent, location),
                     None => return Err(LocationValidationError::NotDirectory),
@@ -891,8 +888,6 @@ impl Browser {
         self.navigate_validated_inner(location, select_first, None);
     }
 
-    /// Validates `parent`, then navigates to it with `target` selected, for
-    /// typed paths that name a file rather than a directory.
     fn navigate_validated_revealing(self: &Rc<Self>, parent: Location, target: Location) {
         self.navigate_validated_inner(parent, false, Some(target));
     }
@@ -922,7 +917,6 @@ impl Browser {
                         browser.navigate_with_selection(pending_location.clone(), select_first);
                     }
                 },
-                // A typed path may name a file: reveal it inside its parent.
                 Err(LocationValidationError::NotDirectory) => match pending_location.parent() {
                     Some(parent) => {
                         browser.navigate_validated_revealing(parent, pending_location.clone());
@@ -1040,7 +1034,6 @@ impl Browser {
         );
     }
 
-    /// Navigates to `parent` and selects `target` once the listing resolves it.
     fn navigate_revealing(self: &Rc<Self>, parent: Location, target: Location) {
         if self.active_location().as_ref() == Some(&parent) {
             self.bump_navigation_generation();
@@ -3595,8 +3588,7 @@ fn location_from_input_with_home(
         ));
     }
     if !is_uri_like(input) {
-        // A trailing slash makes stat report ENOTDIR on a file, which reads as
-        // unavailable rather than "not a directory" for the reveal path.
+        // stat reports ENOTDIR for a file with a trailing slash, bypassing file reveal.
         let trimmed = input.trim_end_matches('/');
         let path = if trimmed.is_empty() { "/" } else { trimmed };
         return Ok(Location::local(PathBuf::from(path)));

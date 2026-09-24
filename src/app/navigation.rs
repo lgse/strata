@@ -288,7 +288,6 @@ impl NavigationState {
         }
     }
 
-    /// Replaces automatic/restored selection with an explicitly named file once loaded.
     pub fn select_location_on_load(&mut self, depth: usize, location: Location) {
         if let Some(column) = self.columns.get_mut(depth) {
             column.selected = None;
