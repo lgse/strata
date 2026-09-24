@@ -35,7 +35,8 @@ use crate::{
     model::{EntryKind, MetadataValue},
     services::{
         CancelledOperation, CompressRequest, DirectoryEvent, ExtractRequest, LoadHandle,
-        MetadataOutcome, MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
+        MetadataOutcome, MetadataRequest, MetadataUpdate, RenameBatchRecord, RenameBatchRequest,
+        UndoCopyRequest, UndoMoveRequest,
     },
 };
 
@@ -556,6 +557,41 @@ impl OperationProvider for ImmediateOperationProvider {
         LoadHandle::new(|| {})
     }
 
+    fn rename_batch(
+        &self,
+        request: RenameBatchRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        let mut renamed = Vec::new();
+        let mut errors = Vec::new();
+        for item in &request.items {
+            let original_name = item
+                .location
+                .native_path()
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "item".to_owned());
+            match item
+                .location
+                .parent()
+                .and_then(|parent| parent.child(OsStr::new(&item.new_name)))
+            {
+                Some(current) => renamed.push(RenameBatchRecord {
+                    original: item.location.clone(),
+                    current,
+                    original_name,
+                }),
+                None => errors.push(format!("{original_name}: bad name")),
+            }
+        }
+        emit(OperationEvent::RenamedBatch {
+            request_id: request.id,
+            renamed,
+            errors,
+        });
+        LoadHandle::new(|| {})
+    }
+
     fn create_directory(
         &self,
         request: CreateDirectoryRequest,
@@ -743,6 +779,14 @@ struct HeldExtractProvider {
 impl OperationProvider for HeldExtractProvider {
     fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         ImmediateOperationProvider.rename(request, emit)
+    }
+
+    fn rename_batch(
+        &self,
+        request: RenameBatchRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.rename_batch(request, emit)
     }
 
     fn create_directory(

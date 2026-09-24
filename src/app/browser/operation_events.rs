@@ -10,6 +10,7 @@ use crate::{
     services::{OperationEvent, OperationRequestId},
 };
 
+use super::operation_updates::rename_batch_error_summary;
 use super::{
     Browser, BrowserEvent, MAX_INCREMENTAL_OPERATION_UPDATES, MergeUndoState, UndoEntry,
     completed_replay_items, finish_replay, mark_replay_item_completed, move_records,
@@ -30,6 +31,7 @@ struct OperationCompletion {
     deletion_permanent: bool,
     restoring: bool,
     archiving: bool,
+    renaming_batch: bool,
     destination: Option<Location>,
     reveal: bool,
     file_operation_refreshed: bool,
@@ -45,6 +47,7 @@ impl OperationCompletion {
             deletion_permanent: browser.deletion_permanent.replace(false),
             restoring: browser.restoration_operation.replace(false),
             archiving: browser.archive_operation.replace(false),
+            renaming_batch: browser.rename_batch_operation.replace(false),
             destination: browser.transfer_destination.replace(None),
             reveal: browser.transfer_reveal.replace(true),
             file_operation_refreshed: false,
@@ -107,6 +110,17 @@ impl OperationCompletion {
                 });
             }
             None => {}
+        }
+    }
+
+    fn record_rename_undo(&self, event: &OperationEvent) {
+        if self.undoing {
+            return;
+        }
+        if let OperationEvent::RenamedBatch { renamed, .. } = event
+            && !renamed.is_empty()
+        {
+            push_pending_undo(UndoEntry::RenameBatch(renamed.clone()));
         }
     }
 }
@@ -267,6 +281,7 @@ impl Browser {
         }
         completion.undoing = undoing.is_some() || redoing.is_some();
         completion.record_trash_undo(&event);
+        completion.record_rename_undo(&event);
         self.finish_transfer(&mut completion, &event);
         if completion.deleting {
             self.emit(BrowserEvent::DeletionFinished {
@@ -285,7 +300,7 @@ impl Browser {
         completion: &OperationCompletion,
         event: &OperationEvent,
     ) -> bool {
-        if !completion.deleting && !completion.restoring {
+        if !completion.deleting && !completion.restoring && !completion.renaming_batch {
             return false;
         }
         let changes = self.deferred_file_operation_changes.take();
@@ -402,6 +417,23 @@ impl Browser {
                 self.emit(BrowserEvent::RenameCompleted {
                     request_id: context.request_id,
                 });
+                self.refresh_unmonitored_operation_locations(context);
+            }
+            OperationEvent::RenamedBatch {
+                ref renamed,
+                ref errors,
+                ..
+            } => {
+                self.publish_rename_batch(renamed);
+                self.emit(BrowserEvent::RenameCompleted {
+                    request_id: context.request_id,
+                });
+                if !errors.is_empty() {
+                    let total = renamed.len() + errors.len();
+                    self.emit(BrowserEvent::OperationFailed {
+                        message: rename_batch_error_summary(total, errors),
+                    });
+                }
                 self.refresh_unmonitored_operation_locations(context);
             }
             OperationEvent::Compressed {
@@ -538,6 +570,7 @@ impl Browser {
 fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
     match event {
         OperationEvent::Renamed { request_id }
+        | OperationEvent::RenamedBatch { request_id, .. }
         | OperationEvent::Created { request_id }
         | OperationEvent::EntryCreated { request_id, .. }
         | OperationEvent::Pasted { request_id, .. }
@@ -565,6 +598,7 @@ fn completed_change_count(event: &OperationEvent) -> usize {
         OperationEvent::Deleted { locations, .. } | OperationEvent::Restored { locations, .. } => {
             locations.len()
         }
+        OperationEvent::RenamedBatch { renamed, .. } => renamed.len(),
         OperationEvent::CompletedWithErrors {
             deleted_locations, ..
         } => deleted_locations.len(),
@@ -611,6 +645,15 @@ fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: 
     let completed = match entry {
         _ if progress_marked => Vec::new(),
         UndoEntry::Move(_) => moved_locations(event),
+        // A batch rename replay reports each renamed record's post-replay
+        // location: `original` when undoing, `current` when redoing.
+        UndoEntry::RenameBatch(_) => match event {
+            OperationEvent::RenamedBatch { renamed, .. } => renamed
+                .iter()
+                .map(|record| record.current.clone())
+                .collect(),
+            _ => Vec::new(),
+        },
         UndoEntry::Rename(_) => Vec::new(),
         _ => deleted_locations(event),
     };
@@ -625,6 +668,10 @@ fn finish_claimed_replay(redo: bool, generation: u64, entry: &UndoEntry, event: 
         _ if restoring => matches!(event, OperationEvent::Restored { .. }),
         UndoEntry::Move(_) => matches!(event, OperationEvent::Pasted { .. }),
         UndoEntry::Rename(_) => matches!(event, OperationEvent::Renamed { .. }),
+        UndoEntry::RenameBatch(_) => matches!(
+            event,
+            OperationEvent::RenamedBatch { errors, .. } if errors.is_empty()
+        ),
         _ => matches!(event, OperationEvent::Deleted { .. }),
     };
     let applied = if succeeded {

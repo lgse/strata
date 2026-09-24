@@ -34,6 +34,7 @@ mod naming;
 mod paste_results;
 mod paths;
 mod progress;
+mod renames;
 mod replacement;
 mod restore_safety;
 mod sync;
@@ -77,9 +78,9 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DeleteRequest, LoadHandle, MoveRecord, OperationEvent, OperationProvider,
-        OperationRequestId, PasteItem, PasteRequest, RestoreRequest, RestoreSource,
-        RestoreTrashItem, TransferConflict, TrashedOriginal, UndoMoveItem, UndoMoveRequest,
-        UndoRenameRequest,
+        OperationRequestId, PasteItem, PasteRequest, RenameBatchItem, RenameBatchRequest,
+        RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict, TrashedOriginal,
+        UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
     },
 };
 

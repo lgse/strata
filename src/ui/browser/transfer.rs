@@ -4,8 +4,8 @@ use crate::adapters::gio_file_for_location;
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::services::{
-    DropCommit, MoveRecord, PasteItem, TransferConflict, UndoMoveItem, VolumeRelation,
-    transferable_drop_sources,
+    DropCommit, MoveRecord, PasteItem, RenameBatchRecord, TransferConflict, UndoMoveItem,
+    VolumeRelation, transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
@@ -459,6 +459,54 @@ impl ViewState {
 
     pub(super) fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
         self.replay_existing_locations(false, generation, locations, Browser::undo_copy)
+    }
+
+    /// Replays rename records toward or away from their original names.
+    /// Records whose source location is already gone are dropped; collisions
+    /// with names taken since the rename fail safely in the provider and
+    /// surface in its summary instead of overwriting.
+    fn replay_rename(
+        self: &Rc<Self>,
+        redo: bool,
+        generation: u64,
+        records: Vec<RenameBatchRecord>,
+    ) -> bool {
+        let existing = records
+            .into_iter()
+            .filter(|record| {
+                let source = if redo {
+                    &record.original
+                } else {
+                    &record.current
+                };
+                location_exists(source)
+            })
+            .collect::<Vec<_>>();
+        if existing.is_empty() {
+            self.browser.discard_pending_replay(redo, generation);
+            return false;
+        }
+        if redo {
+            self.browser.redo_rename_batch(generation, existing)
+        } else {
+            self.browser.undo_rename_batch(generation, existing)
+        }
+    }
+
+    pub(super) fn undo_rename(
+        self: &Rc<Self>,
+        generation: u64,
+        records: Vec<RenameBatchRecord>,
+    ) -> bool {
+        self.replay_rename(false, generation, records)
+    }
+
+    pub(super) fn redo_rename(
+        self: &Rc<Self>,
+        generation: u64,
+        records: Vec<RenameBatchRecord>,
+    ) -> bool {
+        self.replay_rename(true, generation, records)
     }
 
     pub(super) fn undo_merge(
