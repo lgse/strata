@@ -84,6 +84,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             .parse::<i32>()
             .map_err(|_| "Invalid preview helper size or page".to_owned())
     };
+    let mut text_layer_bytes = None;
     let (png, metadata) = match operation.as_str() {
         "thumbnail-image" => (render_raw(input, numeric_value()?.clamp(16, 256))?, None),
         "thumbnail-raw" => (
@@ -106,7 +107,8 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         "document-inline-math" => (document_media::math(input, false)?, None),
         "preview-pdf" => {
             let (page, size) = pdf_render_request(value)?;
-            let (png, page, pages) = render_pdf_page(input, page, size)?;
+            let (png, page, pages, text_layer) = render_pdf_page(input, page, size)?;
+            text_layer_bytes = text_layer;
             (png, Some(format!("{page} {pages}")))
         }
         _ => return Err("Unknown preview helper operation".to_owned()),
@@ -114,6 +116,10 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     fs::write(output, png).map_err(|error| error.to_string())?;
     if let Some(metadata) = metadata {
         fs::write(output.with_file_name("result.meta"), metadata)
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(text_layer) = text_layer_bytes {
+        fs::write(output.with_file_name("result.text"), text_layer)
             .map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -369,19 +375,28 @@ fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     let page = document
         .page(0)
         .ok_or_else(|| "This PDF has no pages".to_owned())?;
-    render_pdf_surface(
-        &page,
+    let (page_width, page_height) = page.size();
+    if page_width <= 0.0 || page_height <= 0.0 {
+        return Err("The PDF page has invalid dimensions".to_owned());
+    }
+    let (width, height, scale) = bounded_surface_dimensions(
+        page_width,
+        page_height,
         f64::from(size),
         f64::from(size),
         f64::from(size * size),
-    )
+    );
+    render_pdf_surface(&page, width, height, scale)
 }
+
+/// PNG bytes, clamped page index, page count, and the serialized text layer.
+type PdfPageRender = (Vec<u8>, i32, i32, Option<Vec<u8>>);
 
 fn render_pdf_page(
     path: &Path,
     requested_page: i32,
     size: PdfRenderSize,
-) -> Result<(Vec<u8>, i32, i32), String> {
+) -> Result<PdfPageRender, String> {
     let uri = gio::File::for_path(path).uri();
     let document = poppler::Document::from_file(&uri, None).map_err(|error| error.to_string())?;
     let pages = document.n_pages();
@@ -394,27 +409,79 @@ fn render_pdf_page(
         .ok_or_else(|| "Unable to load that PDF page".to_owned())?;
     let size = PdfRenderSize::new(size.width, size.height);
     let (_, _, max_pixels) = size.image_limits();
-    let png = render_pdf_surface(
-        &page,
-        f64::from(size.width),
-        f64::from(size.height),
-        max_pixels as f64,
-    )?;
-    Ok((png, page_index, pages))
-}
-
-fn render_pdf_surface(
-    page: &poppler::Page,
-    max_width: f64,
-    max_height: f64,
-    max_pixels: f64,
-) -> Result<Vec<u8>, String> {
     let (page_width, page_height) = page.size();
     if page_width <= 0.0 || page_height <= 0.0 {
         return Err("The PDF page has invalid dimensions".to_owned());
     }
-    let (width, height, scale) =
-        bounded_surface_dimensions(page_width, page_height, max_width, max_height, max_pixels);
+    let (width, height, scale) = bounded_surface_dimensions(
+        page_width,
+        page_height,
+        f64::from(size.width),
+        f64::from(size.height),
+        max_pixels as f64,
+    );
+    let png = render_pdf_surface(&page, width, height, scale)?;
+    let text_layer = pdf_text_layer(&page, width, height, scale);
+    Ok((png, page_index, pages, text_layer))
+}
+
+// poppler-rs does not bind poppler_page_get_text_layout, so the glyph boxes come
+// through FFI; the returned array is g_malloc'd and freed here.
+#[expect(
+    unsafe_code,
+    reason = "poppler-rs exposes no safe binding for poppler_page_get_text_layout"
+)]
+fn pdf_text_layer(page: &poppler::Page, width: i32, height: i32, scale: f64) -> Option<Vec<u8>> {
+    use glib::translate::ToGlibPtr;
+
+    let text = page.text()?;
+    if text.is_empty() {
+        return None;
+    }
+    let mut rects = std::ptr::null_mut();
+    let mut count = 0u32;
+    // SAFETY: page is a valid PopplerPage; rects/count are valid out-pointers.
+    let ok = unsafe {
+        poppler::ffi::poppler_page_get_text_layout(page.to_glib_none().0, &mut rects, &mut count)
+    };
+    if ok == glib::ffi::GFALSE || rects.is_null() {
+        return None;
+    }
+    // SAFETY: on success poppler returned a g_malloc'd array of count rectangles.
+    let layout = unsafe { std::slice::from_raw_parts(rects, count as usize) };
+    let glyphs: Vec<[f32; 4]> = layout
+        .iter()
+        .map(|rect| {
+            [
+                (rect.x1 * scale) as f32,
+                (rect.y1 * scale) as f32,
+                (rect.x2 * scale) as f32,
+                (rect.y2 * scale) as f32,
+            ]
+        })
+        .collect();
+    // SAFETY: rects came from g_malloc and is freed exactly once here.
+    unsafe { glib::ffi::g_free(rects.cast()) };
+    if glyphs.len() != text.chars().count() {
+        return None;
+    }
+    let layer = crate::services::PdfTextLayer {
+        width: width as f32,
+        height: height as f32,
+        text: text.to_string(),
+        glyphs,
+    };
+    serde_json::to_vec(&layer)
+        .ok()
+        .filter(|bytes| bytes.len() as u64 <= crate::sandbox::MAX_TEXT_LAYER_BYTES)
+}
+
+fn render_pdf_surface(
+    page: &poppler::Page,
+    width: i32,
+    height: i32,
+    scale: f64,
+) -> Result<Vec<u8>, String> {
     let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, width, height)
         .map_err(|error| error.to_string())?;
     let context = cairo::Context::new(&surface).map_err(|error| error.to_string())?;

@@ -27,6 +27,7 @@ const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const TEMPORARY_STORAGE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_RASTER_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_TEXT_LAYER_BYTES: u64 = 8 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -219,6 +220,7 @@ pub(crate) struct ParseOutput {
     pub(crate) data: Vec<u8>,
     pub(crate) page: i32,
     pub(crate) pages: i32,
+    pub(crate) text_layer: Option<crate::services::PdfTextLayer>,
 }
 
 pub(crate) fn parse(
@@ -348,7 +350,21 @@ fn parse_sandboxed(
         });
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
-    Ok(ParseOutput { data, page, pages })
+    // A page without an extractable text layer (scanned images, malformed layout)
+    // still previews; selection just stays unavailable there.
+    let text_layer = if matches!(operation, ParseOperation::PreviewPdf(_)) {
+        read_private_output(&output.path().join("result.text"), MAX_TEXT_LAYER_BYTES)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    } else {
+        None
+    };
+    Ok(ParseOutput {
+        data,
+        page,
+        pages,
+        text_layer,
+    })
 }
 
 // A memfd avoids named-file residue and dependence on TMPDIR's O_TMPFILE support.

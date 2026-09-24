@@ -156,7 +156,15 @@ impl PreviewCache {
 
 fn preview_content_size(content: &PreviewContent) -> usize {
     match content {
-        PreviewContent::Rasterized { png } | PreviewContent::Pdf { png, .. } => png.len(),
+        PreviewContent::Rasterized { png } => png.len(),
+        PreviewContent::Pdf {
+            png, text_layer, ..
+        } => {
+            png.len()
+                + text_layer.as_ref().map_or(0, |layer| {
+                    layer.text.len() + layer.glyphs.len() * size_of::<[f32; 4]>()
+                })
+        }
         PreviewContent::SandboxedMedia { .. } => 0,
         PreviewContent::Text { content, .. } => content.len(),
         _ => 0,
@@ -585,6 +593,7 @@ impl LocalPreviewProvider {
                             png: output.data,
                             page: output.page,
                             pages: output.pages,
+                            text_layer: output.text_layer.map(std::sync::Arc::new),
                         }
                     }
                     Ok(Ok(output)) => {

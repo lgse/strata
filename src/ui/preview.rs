@@ -5,6 +5,7 @@ use std::{
     collections::HashMap,
     path::Path,
     rc::Rc,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -15,9 +16,9 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, MetadataValue},
     services::{
-        ArchivePreviewTree, DocumentLayout, LoadHandle, MediaPreviewSize, Preview, PreviewContent,
-        PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId, SecretString,
-        normalize_preview_text,
+        ArchivePreviewTree, DocumentLayout, LoadHandle, MediaPreviewSize, PdfTextLayer, Preview,
+        PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+        SecretString, normalize_preview_text,
     },
 };
 
@@ -26,6 +27,7 @@ use super::{blur::BlurBin, controls::form_password_entry, controls::modal_layout
 mod archive;
 mod layout;
 mod media_layout;
+mod pdf_text;
 mod session;
 
 pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
@@ -922,7 +924,9 @@ impl PreviewState {
                         self.dismiss_print_progress();
                         print_rasterized(vec![png], &entry.display_name, parent.as_ref());
                     }
-                    PreviewContent::Pdf { png, page, pages } => {
+                    PreviewContent::Pdf {
+                        png, page, pages, ..
+                    } => {
                         rendered.borrow_mut().push(png);
                         let page_count = pages.clamp(1, 10_000);
                         let completed =
@@ -1311,9 +1315,14 @@ impl PreviewState {
                     "The sandboxed renderer returned no preview",
                 );
             }
-            PreviewContent::Pdf { png, page, pages } => {
+            PreviewContent::Pdf {
+                png,
+                page,
+                pages,
+                text_layer,
+            } => {
                 self.print.set_visible(true);
-                self.render_pdf_viewer(preview.entry, png, page, pages);
+                self.render_pdf_viewer(preview.entry, png, page, pages, text_layer);
             }
             PreviewContent::Archive { tree } => {
                 let focus = self.focus_archive_request.get() == Some(preview.request_id);
@@ -1587,6 +1596,7 @@ impl PreviewState {
         initial_png: Vec<u8>,
         initial_page: i32,
         pages: i32,
+        initial_text_layer: Option<Arc<crate::services::PdfTextLayer>>,
     ) {
         let page_count = pages.clamp(0, 10_000);
         let labels: Vec<_> = (1..=page_count).map(|page| page.to_string()).collect();
@@ -1596,9 +1606,18 @@ impl PreviewState {
         let factory = gtk::SignalListItemFactory::new();
         let zoom = Rc::new(Cell::new(PDF_MIN_ZOOM));
         let page_width = Rc::new(Cell::new(0));
-        let visible_pages = Rc::new(RefCell::new(
-            HashMap::<i32, (gtk::Overlay, gtk::Picture)>::new(),
-        ));
+        let visible_pages = Rc::new(RefCell::new(HashMap::<
+            i32,
+            (gtk::Overlay, gtk::Picture, gtk::DrawingArea),
+        >::new()));
+        let text_layers = Rc::new(RefCell::new(HashMap::<i32, Arc<PdfTextLayer>>::new()));
+        // Selected char-index ranges per page.
+        let pdf_ranges = Rc::new(RefCell::new(HashMap::<i32, (usize, usize)>::new()));
+        let pdf_drag = Rc::new(Cell::new(PdfDrag::Idle));
+        let pdf_anchor = Rc::new(Cell::new(0usize));
+        if let Some(layer) = initial_text_layer {
+            text_layers.borrow_mut().insert(initial_page, layer);
+        }
 
         factory.connect_setup(|_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -1610,10 +1629,16 @@ impl PreviewState {
             picture.set_content_fit(gtk::ContentFit::Contain);
             picture.set_hexpand(true);
             picture.set_vexpand(true);
+            let text_area = gtk::DrawingArea::new();
+            text_area.set_hexpand(true);
+            text_area.set_vexpand(true);
+            text_area.set_accessible_role(gtk::AccessibleRole::Img);
+            text_area.update_property(&[gtk::accessible::Property::Label("PDF page text")]);
             let spinner = gtk::Spinner::new();
             spinner.set_halign(gtk::Align::Center);
             spinner.set_valign(gtk::Align::Center);
             overlay.set_child(Some(&picture));
+            overlay.add_overlay(&text_area);
             overlay.add_overlay(&spinner);
             overlay.set_hexpand(true);
             overlay.set_size_request(-1, 560);
@@ -1628,6 +1653,8 @@ impl PreviewState {
         let entry_for_bind = entry.clone();
         let page_width_for_bind = page_width.clone();
         let visible_pages_for_bind = visible_pages.clone();
+        let layers_for_bind = text_layers.clone();
+        let ranges_for_bind = pdf_ranges.clone();
         factory.connect_bind(move |_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
                 return;
@@ -1642,6 +1669,9 @@ impl PreviewState {
             let Some(spinner) = overlay.last_child().and_downcast::<gtk::Spinner>() else {
                 return;
             };
+            let Some(text_area) = picture.next_sibling().and_downcast::<gtk::DrawingArea>() else {
+                return;
+            };
             let binding_name = format!("pdf-page-{page_index}");
             overlay.set_widget_name(&binding_name);
             overlay.set_tooltip_text(None);
@@ -1650,9 +1680,43 @@ impl PreviewState {
             picture.set_paintable(gtk::gdk::Paintable::NONE);
             spinner.start();
             spinner.set_visible(true);
-            visible_pages_for_bind
-                .borrow_mut()
-                .insert(page_index, (overlay.clone(), picture.clone()));
+            let layers_for_draw = layers_for_bind.clone();
+            let ranges_for_draw = ranges_for_bind.clone();
+            text_area.set_draw_func(move |_, cr, width, height| {
+                let Some(layer) = layers_for_draw.borrow().get(&page_index).cloned() else {
+                    return;
+                };
+                let Some(&(start, end)) = ranges_for_draw.borrow().get(&page_index) else {
+                    return;
+                };
+                if start == end {
+                    return;
+                }
+                let Some(color) = pdf_selection_color() else {
+                    return;
+                };
+                let (ox, oy, s) =
+                    pdf_text::image_bounds(&layer, f64::from(width), f64::from(height));
+                cr.set_source_rgba(
+                    f64::from(color.red()),
+                    f64::from(color.green()),
+                    f64::from(color.blue()),
+                    0.4,
+                );
+                for [x1, y1, x2, y2] in pdf_text::selection_runs(&layer, start, end) {
+                    cr.rectangle(
+                        ox + f64::from(x1) * s,
+                        oy + f64::from(y1) * s,
+                        f64::from(x2 - x1) * s,
+                        f64::from(y2 - y1) * s,
+                    );
+                }
+                let _ = cr.fill();
+            });
+            visible_pages_for_bind.borrow_mut().insert(
+                page_index,
+                (overlay.clone(), picture.clone(), text_area.clone()),
+            );
 
             let is_initial_page = initial_page
                 .borrow()
@@ -1675,7 +1739,9 @@ impl PreviewState {
             let weak_overlay = overlay.downgrade();
             let weak_picture = picture.downgrade();
             let weak_spinner = spinner.downgrade();
+            let weak_text_area = text_area.downgrade();
             let loads_for_event = loads.clone();
+            let layers_for_event = layers_for_bind.clone();
             let page_width_for_event = page_width_for_bind.clone();
             let emit = Rc::new(move |event| {
                 loads_for_event.borrow_mut().remove(&page_index);
@@ -1688,9 +1754,21 @@ impl PreviewState {
                 match event {
                     PreviewEvent::Ready(Preview {
                         request_id: response_id,
-                        content: PreviewContent::Pdf { png, page, .. },
+                        content:
+                            PreviewContent::Pdf {
+                                png,
+                                page,
+                                text_layer,
+                                ..
+                            },
                         ..
                     }) if response_id == request_id && page == page_index => {
+                        if let Some(layer) = text_layer {
+                            layers_for_event.borrow_mut().insert(page_index, layer);
+                            if let Some(area) = weak_text_area.upgrade() {
+                                area.queue_draw();
+                            }
+                        }
                         if let Some(picture) = weak_picture.upgrade() {
                             set_pdf_page_texture(
                                 &overlay,
@@ -1809,6 +1887,7 @@ impl PreviewState {
         });
         list.add_controller(reset_zoom);
 
+        scroll.set_focusable(true);
         scroll.set_cursor_from_name(Some("grab"));
         let drag_origin = Rc::new(Cell::new((0.0, 0.0)));
         let pan = gtk::GestureDrag::new();
@@ -1816,29 +1895,206 @@ impl PreviewState {
         pan.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak_scroll = scroll.downgrade();
         let drag_origin_for_begin = drag_origin.clone();
-        pan.connect_drag_begin(move |_, _, _| {
-            if let Some(scroll) = weak_scroll.upgrade() {
-                scroll.set_cursor_from_name(Some("grabbing"));
-                drag_origin_for_begin
-                    .set((scroll.hadjustment().value(), scroll.vadjustment().value()));
-            }
-        });
-        let weak_scroll = scroll.downgrade();
-        pan.connect_drag_update(move |_, offset_x, offset_y| {
+        let pages_for_begin = visible_pages.clone();
+        let layers_for_begin = text_layers.clone();
+        let ranges_for_begin = pdf_ranges.clone();
+        let drag_for_begin = pdf_drag.clone();
+        let anchor_for_begin = pdf_anchor.clone();
+        pan.connect_drag_begin(move |gesture, x, y| {
             let Some(scroll) = weak_scroll.upgrade() else {
                 return;
             };
+            let hit = pdf_page_at(
+                &scroll,
+                &pages_for_begin.borrow(),
+                &layers_for_begin.borrow(),
+                x,
+                y,
+            );
+            let Some((page, area, layer, px, py)) = hit else {
+                drag_for_begin.set(PdfDrag::Pan);
+                scroll.set_cursor_from_name(Some("grabbing"));
+                scroll.grab_focus();
+                drag_origin_for_begin
+                    .set((scroll.hadjustment().value(), scroll.vadjustment().value()));
+                // Pressing outside text clears the selection, like document viewers.
+                let cleared: Vec<i32> = ranges_for_begin.borrow().keys().copied().collect();
+                ranges_for_begin.borrow_mut().clear();
+                for old in cleared {
+                    if let Some((_, _, old_area)) = pages_for_begin.borrow().get(&old) {
+                        old_area.queue_draw();
+                    }
+                }
+                return;
+            };
+            // Text pages select instead of panning; a click plants an empty caret.
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            drag_for_begin.set(PdfDrag::Select(page));
+            anchor_for_begin.set(pdf_text::caret_at(&layer, px, py));
+            let cleared: Vec<i32> = ranges_for_begin.borrow().keys().copied().collect();
+            ranges_for_begin.borrow_mut().clear();
+            for old in cleared {
+                if let Some((_, _, old_area)) = pages_for_begin.borrow().get(&old) {
+                    old_area.queue_draw();
+                }
+            }
+            area.queue_draw();
+            scroll.grab_focus();
+        });
+        let weak_scroll = scroll.downgrade();
+        let pages_for_update = visible_pages.clone();
+        let layers_for_update = text_layers.clone();
+        let ranges_for_update = pdf_ranges.clone();
+        let drag_for_update = pdf_drag.clone();
+        let anchor_for_update = pdf_anchor.clone();
+        pan.connect_drag_update(move |gesture, offset_x, offset_y| {
+            let Some(scroll) = weak_scroll.upgrade() else {
+                return;
+            };
+            if let PdfDrag::Select(anchor_page) = drag_for_update.get() {
+                let Some((start_x, start_y)) = gesture.start_point() else {
+                    return;
+                };
+                let pages = pages_for_update.borrow();
+                let layers = layers_for_update.borrow();
+                let Some((current_page, layer, px, py)) = pdf_page_near(
+                    &scroll,
+                    &pages,
+                    &layers,
+                    start_x + offset_x,
+                    start_y + offset_y,
+                ) else {
+                    return;
+                };
+                let anchor = anchor_for_update.get();
+                let caret = pdf_text::caret_at(&layer, px, py);
+                // Pages between the anchor and the pointer select in full.
+                let (first, last, first_start, last_end) = if anchor_page <= current_page {
+                    (anchor_page, current_page, anchor, caret)
+                } else {
+                    (current_page, anchor_page, caret, anchor)
+                };
+                let mut desired = HashMap::new();
+                for page in first..=last {
+                    let Some(layer) = layers.get(&page) else {
+                        continue;
+                    };
+                    let len = pdf_text::len(layer);
+                    let start = if page == first { first_start } else { 0 };
+                    let end = if page == last { last_end } else { len };
+                    let (start, end) = (start.min(end), start.max(end).min(len));
+                    if start != end {
+                        desired.insert(page, (start, end));
+                    }
+                }
+                let mut ranges = ranges_for_update.borrow_mut();
+                let mut dirty: Vec<i32> = desired
+                    .iter()
+                    .filter(|(page, range)| ranges.get(*page) != Some(range))
+                    .map(|(page, _)| *page)
+                    .collect();
+                dirty.extend(
+                    ranges
+                        .keys()
+                        .filter(|page| !desired.contains_key(*page))
+                        .copied(),
+                );
+                *ranges = desired;
+                drop(ranges);
+                drop(layers);
+                for page in dirty {
+                    if let Some((_, _, area)) = pages.get(&page) {
+                        area.queue_draw();
+                    }
+                }
+                return;
+            }
             let (horizontal, vertical) = drag_origin.get();
             set_adjustment_value(&scroll.hadjustment(), horizontal - offset_x);
             set_adjustment_value(&scroll.vadjustment(), vertical - offset_y);
         });
         let weak_scroll = scroll.downgrade();
+        let drag_for_end = pdf_drag.clone();
         pan.connect_drag_end(move |_, _, _| {
-            if let Some(scroll) = weak_scroll.upgrade() {
+            let panned = drag_for_end.replace(PdfDrag::Idle) == PdfDrag::Pan;
+            if panned && let Some(scroll) = weak_scroll.upgrade() {
                 scroll.set_cursor_from_name(Some("grab"));
             }
         });
         scroll.add_controller(pan);
+
+        // I-beam over pages with a text layer, grab elsewhere (pan).
+        let motion = gtk::EventControllerMotion::new();
+        let weak_scroll = scroll.downgrade();
+        let pages_for_motion = visible_pages.clone();
+        let layers_for_motion = text_layers.clone();
+        let drag_for_motion = pdf_drag.clone();
+        motion.connect_motion(move |_, x, y| {
+            if drag_for_motion.get() != PdfDrag::Idle {
+                return;
+            }
+            let Some(scroll) = weak_scroll.upgrade() else {
+                return;
+            };
+            let over_text = pdf_page_at(
+                &scroll,
+                &pages_for_motion.borrow(),
+                &layers_for_motion.borrow(),
+                x,
+                y,
+            )
+            .is_some();
+            scroll.set_cursor_from_name(Some(if over_text { "text" } else { "grab" }));
+        });
+        scroll.add_controller(motion);
+
+        // Ctrl+A/Ctrl+C arrive via the window dispatcher's native-editing pass-through.
+        let keys = gtk::EventControllerKey::new();
+        let weak_scroll = scroll.downgrade();
+        let pages_for_keys = visible_pages.clone();
+        let layers_for_keys = text_layers.clone();
+        let ranges_for_keys = pdf_ranges.clone();
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            if modifiers != gtk::gdk::ModifierType::CONTROL_MASK {
+                return glib::Propagation::Proceed;
+            }
+            let Some(scroll) = weak_scroll.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            match key {
+                gtk::gdk::Key::a | gtk::gdk::Key::A => {
+                    let layers = layers_for_keys.borrow();
+                    if layers.is_empty() {
+                        return glib::Propagation::Proceed;
+                    }
+                    let mut ranges = ranges_for_keys.borrow_mut();
+                    let mut pages = Vec::new();
+                    for (page, layer) in layers.iter() {
+                        ranges.insert(*page, (0, layer.glyphs.len()));
+                        pages.push(*page);
+                    }
+                    drop(layers);
+                    drop(ranges);
+                    for page in pages {
+                        if let Some((_, _, area)) = pages_for_keys.borrow().get(&page) {
+                            area.queue_draw();
+                        }
+                    }
+                    glib::Propagation::Stop
+                }
+                gtk::gdk::Key::c | gtk::gdk::Key::C => {
+                    let text =
+                        pdf_selected_text(&layers_for_keys.borrow(), &ranges_for_keys.borrow());
+                    if text.is_empty() {
+                        return glib::Propagation::Proceed;
+                    }
+                    scroll.clipboard().set_text(&text);
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
+        });
+        scroll.add_controller(keys);
 
         let zoom_for_tick = zoom.clone();
         let page_width_for_tick = page_width.clone();
@@ -2662,8 +2918,11 @@ fn pdf_page_width(scroll: &gtk::ScrolledWindow, zoom: f64) -> i32 {
     (f64::from(fit_width) * zoom).round() as i32
 }
 
-fn resize_pdf_pages(pages: &HashMap<i32, (gtk::Overlay, gtk::Picture)>, width: i32) {
-    for (overlay, picture) in pages.values() {
+fn resize_pdf_pages(
+    pages: &HashMap<i32, (gtk::Overlay, gtk::Picture, gtk::DrawingArea)>,
+    width: i32,
+) {
+    for (overlay, picture, _) in pages.values() {
         resize_pdf_page(overlay, picture, width);
     }
 }
@@ -2712,6 +2971,120 @@ fn preserve_pdf_view_center(scroll: &gtk::ScrolledWindow, factor: f64) {
 fn set_adjustment_value(adjustment: &gtk::Adjustment, value: f64) {
     let maximum = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
     adjustment.set_value(value.clamp(adjustment.lower(), maximum));
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum PdfDrag {
+    Idle,
+    Pan,
+    Select(i32),
+}
+
+/// The visible page under a point in scroll coordinates, with the point
+/// mapped into the page's rendered pixels. Pages without a text layer
+/// (scanned documents) are skipped so drags there keep panning.
+fn pdf_page_at(
+    scroll: &gtk::ScrolledWindow,
+    pages: &HashMap<i32, (gtk::Overlay, gtk::Picture, gtk::DrawingArea)>,
+    layers: &HashMap<i32, Arc<PdfTextLayer>>,
+    x: f64,
+    y: f64,
+) -> Option<(i32, gtk::DrawingArea, Arc<PdfTextLayer>, f32, f32)> {
+    for (page, (_, _, area)) in pages {
+        let Some(layer) = layers.get(page) else {
+            continue;
+        };
+        let Some(point) =
+            scroll.compute_point(area, &gtk::graphene::Point::new(x as f32, y as f32))
+        else {
+            continue;
+        };
+        let (ox, oy, s) =
+            pdf_text::image_bounds(layer, f64::from(area.width()), f64::from(area.height()));
+        let px = (f64::from(point.x()) - ox) / s;
+        let py = (f64::from(point.y()) - oy) / s;
+        if px >= 0.0
+            && py >= 0.0
+            && px <= f64::from(layer.width)
+            && py <= f64::from(layer.height)
+            && pdf_text::hit_text(layer, px as f32, py as f32)
+        {
+            return Some((*page, area.clone(), layer.clone(), px as f32, py as f32));
+        }
+    }
+    None
+}
+
+/// The nearest page with a text layer for a point in scroll coordinates,
+/// used while a selection drag wanders off its origin page. The point is
+/// clamped into the page's rendered pixels.
+fn pdf_page_near(
+    scroll: &gtk::ScrolledWindow,
+    pages: &HashMap<i32, (gtk::Overlay, gtk::Picture, gtk::DrawingArea)>,
+    layers: &HashMap<i32, Arc<PdfTextLayer>>,
+    x: f64,
+    y: f64,
+) -> Option<(i32, Arc<PdfTextLayer>, f32, f32)> {
+    let mut nearest: Option<(i32, Arc<PdfTextLayer>, f32, f32, f64)> = None;
+    for (page, (_, _, area)) in pages {
+        let Some(layer) = layers.get(page) else {
+            continue;
+        };
+        let Some(point) =
+            scroll.compute_point(area, &gtk::graphene::Point::new(x as f32, y as f32))
+        else {
+            continue;
+        };
+        let (ox, oy, s) =
+            pdf_text::image_bounds(layer, f64::from(area.width()), f64::from(area.height()));
+        let (px, py) = (
+            (f64::from(point.x()) - ox) / s,
+            (f64::from(point.y()) - oy) / s,
+        );
+        let dx = px.clamp(0.0, f64::from(layer.width)) - px;
+        let dy = py.clamp(0.0, f64::from(layer.height)) - py;
+        let distance = dx * dx + dy * dy;
+        let better = nearest.as_ref().is_none_or(|(.., best)| distance < *best);
+        if better {
+            nearest = Some((
+                *page,
+                layer.clone(),
+                (px.clamp(0.0, f64::from(layer.width))) as f32,
+                (py.clamp(0.0, f64::from(layer.height))) as f32,
+                distance,
+            ));
+        }
+    }
+    nearest.map(|(page, layer, px, py, _)| (page, layer, px, py))
+}
+
+fn pdf_selected_text(
+    layers: &HashMap<i32, Arc<PdfTextLayer>>,
+    ranges: &HashMap<i32, (usize, usize)>,
+) -> String {
+    let mut pages: Vec<_> = ranges.iter().collect();
+    pages.sort_by_key(|(page, _)| **page);
+    let mut text = String::new();
+    for (page, &(start, end)) in pages {
+        let Some(layer) = layers.get(page) else {
+            continue;
+        };
+        let part = pdf_text::selection_text(layer, start, end);
+        if part.is_empty() {
+            continue;
+        }
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&part);
+    }
+    text
+}
+
+fn pdf_selection_color() -> Option<gtk::gdk::RGBA> {
+    crate::ui::theme::ThemeManager::shared()
+        .current_tokens()
+        .and_then(|tokens| gtk::gdk::RGBA::parse(&tokens.accent).ok())
 }
 
 fn clear_box(box_: &gtk::Box) {

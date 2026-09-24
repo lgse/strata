@@ -27,6 +27,7 @@ impl PreviewProvider for PdfPreview {
                 png,
                 page: request.pdf_page,
                 pages: 2,
+                text_layer: None,
             },
         }));
         LoadHandle::new(|| {})

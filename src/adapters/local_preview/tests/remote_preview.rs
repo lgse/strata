@@ -179,6 +179,7 @@ fn uri_images_stage_private_inputs_and_remove_them_after_rendering() {
                                     data: b"rendered".to_vec(),
                                     page: 0,
                                     pages: 2,
+                                    text_layer: None,
                                 })
                             }
                         },

@@ -124,6 +124,7 @@ fn images_stay_centered_and_bounded_while_text_and_pdf_use_the_full_pane() {
                     png: image(300, 400),
                     page: 0,
                     pages: 1,
+                    text_layer: None,
                 },
             ] {
                 drawer.state.render(Preview {

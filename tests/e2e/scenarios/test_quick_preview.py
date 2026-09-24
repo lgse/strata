@@ -465,6 +465,63 @@ def test_large_table_header_sort_reaches_rows_beyond_old_limits(strata, filename
     assert table_clipboard_text(strata, before_read=dismiss_and_copy) == "selection-cleared"
 
 
+@pytest.mark.preferences(single_click_previews=False)
+def test_preview_source_text_takes_pointer_focus_and_copies(strata):
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: strata.preview_shows("the quick brown fox"),
+        "the preview to render the file's text",
+    )
+    text = strata.preview().find(role="text")
+    assert text is not None, strata.preview().dump()
+    strata.pointer.click(text)
+    strata.wait(lambda: text.has_state("focused"), "the preview text to take focus")
+    bounds = text.screen_bounds()
+    strata.pointer.drag_points(
+        (bounds.x + 34, bounds.y + 14),
+        (bounds.x + 140, bounds.y + 14),
+    )
+    strata.keyboard.press("ctrl+c")
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.press("ctrl+v")
+    strata.wait(
+        lambda: "quick" in field.text or "fox" in field.text,
+        "the copied preview text to reach the clipboard",
+    )
+
+
+@pytest.mark.preferences(single_click_previews=False)
+def test_pdf_preview_selects_and_copies_text(strata, fixture_tree):
+    fixture_tree.path("page.pdf").write_bytes(
+        (Path(__file__).resolve().parents[2] / "fixtures" / "documents" / "text.pdf").read_bytes()
+    )
+    strata.select_entry_with_keyboard("page.pdf")
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: strata.preview() is not None
+        and strata.preview().find(role="image", name="PDF page text") is not None,
+        "the PDF page to appear in the preview",
+    )
+    page = strata.preview().find(role="image", name="PDF page text")
+    # The overlay starts at the loading placeholder's 560px and shrinks to the
+    # rendered page's aspect ratio once the PNG and text layer arrive.
+    strata.wait(
+        lambda: page.screen_bounds().height != 560,
+        "the rendered PDF page to replace the placeholder",
+    )
+    bounds = page.screen_bounds()
+    line_y = bounds.y + int(bounds.height * 0.11)
+    strata.pointer.drag_points(
+        (bounds.x + int(bounds.width * 0.13), line_y),
+        (bounds.x + int(bounds.width * 0.48), line_y),
+    )
+    strata.keyboard.press("ctrl+c")
+    assert "Hello PDF text" in table_clipboard_text(strata)
+
+
 def table_clipboard_text(strata, *, before_read=None):
     from gi.repository import Gdk, GLib
 
