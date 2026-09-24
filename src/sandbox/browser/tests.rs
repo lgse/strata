@@ -210,7 +210,10 @@ fn file_versions_invalidate_cached_work_after_replacement() {
     let first = FileKey::read(&path, &File::open(&path).expect("open")).expect("version");
     let cache = Mutex::new(Cache::default());
     let gate = cache_entry(&cache, first.clone(), Operation::Image);
-    assert!(Arc::ptr_eq(&gate, &cache_entry(&cache, first, Operation::Image)));
+    assert!(Arc::ptr_eq(
+        &gate,
+        &cache_entry(&cache, first, Operation::Image)
+    ));
     std::fs::rename(&path, directory.path().join("old")).expect("move");
     std::fs::write(&path, b"two").expect("replacement");
     let second = FileKey::read(&path, &File::open(&path).expect("open")).expect("version");

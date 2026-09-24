@@ -120,9 +120,7 @@ fn sniffed_svg_rejected_by_resvg_reaches_the_raster_loaders() {
     )
     .expect("fixture");
     let source = crate::sandbox_helper::svg_source(&input).expect("sniffed as SVG");
-    let resvg_error = svg(&source, 256)
-        .err()
-        .expect("resvg rejects it");
+    let resvg_error = svg(&source, 256).err().expect("resvg rejects it");
     // The raster chain decides the outcome; the resvg error must not
     // short-circuit the other loaders.
     if let Err(error) = image(&input, 256) {
@@ -132,9 +130,9 @@ fn sniffed_svg_rejected_by_resvg_reaches_the_raster_loaders() {
 
 #[test]
 fn numeric_character_references_keep_the_full_font_scan() {
+    assert!(needs_full_font_scan(r#"<svg><text>&#x1F600;</text></svg>"#));
     assert!(needs_full_font_scan(
-        r#"<svg><text>&#x1F600;</text></svg>"#
+        "<svg><text>\u{4e2d}\u{6587}</text></svg>"
     ));
-    assert!(needs_full_font_scan("<svg><text>caf\u{e9}</text></svg>"));
     assert!(!needs_full_font_scan("<svg><text>plain</text></svg>"));
 }

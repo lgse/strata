@@ -583,11 +583,11 @@ impl Lease<'_> {
         }) {
             self.discard();
             self.worker = Some(Worker::spawn().map_err(|e| e.to_string())?);
-            result = self
-                .worker
-                .as_mut()
-                .expect("replacement worker")
-                .execute(file, operation, cancellation);
+            result = self.worker.as_mut().expect("replacement worker").execute(
+                file,
+                operation,
+                cancellation,
+            );
         }
         if result.is_err() {
             self.discard();
