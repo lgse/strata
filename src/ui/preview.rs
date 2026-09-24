@@ -1614,7 +1614,18 @@ impl PreviewState {
         // Selected char-index ranges per page.
         let pdf_ranges = Rc::new(RefCell::new(HashMap::<i32, (usize, usize)>::new()));
         let pdf_drag = Rc::new(Cell::new(PdfDrag::Idle));
-        let pdf_anchor = Rc::new(Cell::new(0usize));
+        // Selection anchor as (page, char index); page -1 means none planted.
+        let pdf_anchor = Rc::new(Cell::new((-1i32, 0usize)));
+        // 1 = char, 2 = word, 3 = line, set by the click streak, used while dragging.
+        let pdf_granularity = Rc::new(Cell::new(1u8));
+        // (when, x, y, page, streak) of the last press on text.
+        let pdf_press = Rc::new(RefCell::new((
+            Instant::now(),
+            f64::MAX,
+            f64::MAX,
+            -1i32,
+            0u8,
+        )));
         if let Some(layer) = initial_text_layer {
             text_layers.borrow_mut().insert(initial_page, layer);
         }
@@ -1701,14 +1712,22 @@ impl PreviewState {
                     f64::from(color.red()),
                     f64::from(color.green()),
                     f64::from(color.blue()),
-                    0.4,
+                    0.42,
                 );
                 for [x1, y1, x2, y2] in pdf_text::selection_runs(&layer, start, end) {
-                    cr.rectangle(
-                        ox + f64::from(x1) * s,
-                        oy + f64::from(y1) * s,
-                        f64::from(x2 - x1) * s,
-                        f64::from(y2 - y1) * s,
+                    // Glyph boxes already hold ascender/descender space, so the
+                    // band stays nearly snug like Preview.app — extra vertical
+                    // pad reads as bottom-heavy since most letters never descend.
+                    let (rx, ry) = (ox + f64::from(x1) * s, oy + f64::from(y1) * s);
+                    let (rw, rh) = (f64::from(x2 - x1) * s, f64::from(y2 - y1) * s);
+                    let pad = rh * 0.06;
+                    rounded_rect(
+                        cr,
+                        rx - pad,
+                        ry - pad,
+                        rw + pad * 2.0,
+                        rh + pad * 2.0,
+                        (rh * 0.16).min(3.0),
                     );
                 }
                 let _ = cr.fill();
@@ -1900,6 +1919,8 @@ impl PreviewState {
         let ranges_for_begin = pdf_ranges.clone();
         let drag_for_begin = pdf_drag.clone();
         let anchor_for_begin = pdf_anchor.clone();
+        let granularity_for_begin = pdf_granularity.clone();
+        let press_for_begin = pdf_press.clone();
         pan.connect_drag_begin(move |gesture, x, y| {
             let Some(scroll) = weak_scroll.upgrade() else {
                 return;
@@ -1911,35 +1932,60 @@ impl PreviewState {
                 x,
                 y,
             );
-            let Some((page, area, layer, px, py)) = hit else {
+            let Some((page, _area, layer, px, py)) = hit else {
                 drag_for_begin.set(PdfDrag::Pan);
                 scroll.set_cursor_from_name(Some("grabbing"));
                 scroll.grab_focus();
                 drag_origin_for_begin
                     .set((scroll.hadjustment().value(), scroll.vadjustment().value()));
+                anchor_for_begin.set((-1, 0));
                 // Pressing outside text clears the selection, like document viewers.
-                let cleared: Vec<i32> = ranges_for_begin.borrow().keys().copied().collect();
-                ranges_for_begin.borrow_mut().clear();
-                for old in cleared {
-                    if let Some((_, _, old_area)) = pages_for_begin.borrow().get(&old) {
-                        old_area.queue_draw();
-                    }
-                }
+                pdf_apply_ranges(&ranges_for_begin, &pages_for_begin.borrow(), HashMap::new());
                 return;
             };
-            // Text pages select instead of panning; a click plants an empty caret.
             gesture.set_state(gtk::EventSequenceState::Claimed);
-            drag_for_begin.set(PdfDrag::Select(page));
-            anchor_for_begin.set(pdf_text::caret_at(&layer, px, py));
-            let cleared: Vec<i32> = ranges_for_begin.borrow().keys().copied().collect();
-            ranges_for_begin.borrow_mut().clear();
-            for old in cleared {
-                if let Some((_, _, old_area)) = pages_for_begin.borrow().get(&old) {
-                    old_area.queue_draw();
-                }
-            }
-            area.queue_draw();
+            drag_for_begin.set(PdfDrag::Select);
             scroll.grab_focus();
+            let caret = pdf_text::caret_at(&layer, px, py);
+            let shift = gesture
+                .current_event_state()
+                .contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            // Repeated presses on the same text bump the unit: word, then line.
+            let mut press = press_for_begin.borrow_mut();
+            let streak = if !shift
+                && press.3 == page
+                && press.0.elapsed() < Duration::from_millis(450)
+                && (x - press.1).abs() <= 6.0
+                && (y - press.2).abs() <= 6.0
+            {
+                (press.4 + 1).min(3)
+            } else {
+                1
+            };
+            *press = (Instant::now(), x, y, page, streak);
+            drop(press);
+            let extend = shift && anchor_for_begin.get().0 >= 0;
+            granularity_for_begin.set(if extend { 1 } else { streak });
+            let desired = if extend {
+                pdf_desired_ranges(
+                    &layers_for_begin.borrow(),
+                    anchor_for_begin.get(),
+                    (page, caret),
+                    1,
+                )
+            } else {
+                let unit = match streak {
+                    2 => pdf_text::word_range(&layer, caret),
+                    3 => pdf_text::line_range(&layer, caret),
+                    _ => (caret, caret),
+                };
+                anchor_for_begin.set((page, unit.0));
+                HashMap::from([(page, unit)])
+                    .into_iter()
+                    .filter(|(_, r)| r.0 != r.1)
+                    .collect()
+            };
+            pdf_apply_ranges(&ranges_for_begin, &pages_for_begin.borrow(), desired);
         });
         let weak_scroll = scroll.downgrade();
         let pages_for_update = visible_pages.clone();
@@ -1947,11 +1993,12 @@ impl PreviewState {
         let ranges_for_update = pdf_ranges.clone();
         let drag_for_update = pdf_drag.clone();
         let anchor_for_update = pdf_anchor.clone();
+        let granularity_for_update = pdf_granularity.clone();
         pan.connect_drag_update(move |gesture, offset_x, offset_y| {
             let Some(scroll) = weak_scroll.upgrade() else {
                 return;
             };
-            if let PdfDrag::Select(anchor_page) = drag_for_update.get() {
+            if drag_for_update.get() == PdfDrag::Select {
                 let Some((start_x, start_y)) = gesture.start_point() else {
                     return;
                 };
@@ -1966,47 +2013,14 @@ impl PreviewState {
                 ) else {
                     return;
                 };
-                let anchor = anchor_for_update.get();
                 let caret = pdf_text::caret_at(&layer, px, py);
-                // Pages between the anchor and the pointer select in full.
-                let (first, last, first_start, last_end) = if anchor_page <= current_page {
-                    (anchor_page, current_page, anchor, caret)
-                } else {
-                    (current_page, anchor_page, caret, anchor)
-                };
-                let mut desired = HashMap::new();
-                for page in first..=last {
-                    let Some(layer) = layers.get(&page) else {
-                        continue;
-                    };
-                    let len = pdf_text::len(layer);
-                    let start = if page == first { first_start } else { 0 };
-                    let end = if page == last { last_end } else { len };
-                    let (start, end) = (start.min(end), start.max(end).min(len));
-                    if start != end {
-                        desired.insert(page, (start, end));
-                    }
-                }
-                let mut ranges = ranges_for_update.borrow_mut();
-                let mut dirty: Vec<i32> = desired
-                    .iter()
-                    .filter(|(page, range)| ranges.get(*page) != Some(range))
-                    .map(|(page, _)| *page)
-                    .collect();
-                dirty.extend(
-                    ranges
-                        .keys()
-                        .filter(|page| !desired.contains_key(*page))
-                        .copied(),
+                let desired = pdf_desired_ranges(
+                    &layers,
+                    anchor_for_update.get(),
+                    (current_page, caret),
+                    granularity_for_update.get(),
                 );
-                *ranges = desired;
-                drop(ranges);
-                drop(layers);
-                for page in dirty {
-                    if let Some((_, _, area)) = pages.get(&page) {
-                        area.queue_draw();
-                    }
-                }
+                pdf_apply_ranges(&ranges_for_update, &pages, desired);
                 return;
             }
             let (horizontal, vertical) = drag_origin.get();
@@ -2977,7 +2991,7 @@ fn set_adjustment_value(adjustment: &gtk::Adjustment, value: f64) {
 enum PdfDrag {
     Idle,
     Pan,
-    Select(i32),
+    Select,
 }
 
 /// The visible page under a point in scroll coordinates, with the point
@@ -3013,6 +3027,83 @@ fn pdf_page_at(
         }
     }
     None
+}
+
+/// The selection implied by an anchor and a caret position. Pages between
+/// them select in full; the endpoint indices snap to word or line boundaries
+/// when `granularity` is 2 or 3 (double- and triple-click drags).
+fn pdf_desired_ranges(
+    layers: &HashMap<i32, Arc<PdfTextLayer>>,
+    anchor: (i32, usize),
+    caret: (i32, usize),
+    granularity: u8,
+) -> HashMap<i32, (usize, usize)> {
+    let (anchor_page, anchor) = anchor;
+    let (current_page, caret) = caret;
+    let snap_lo = |layer: &PdfTextLayer, index: usize| match granularity {
+        2 => pdf_text::word_range(layer, index).0,
+        3 => pdf_text::line_range(layer, index).0,
+        _ => index,
+    };
+    let snap_hi = |layer: &PdfTextLayer, index: usize| match granularity {
+        2 => pdf_text::word_range(layer, index).1,
+        3 => pdf_text::line_range(layer, index).1,
+        _ => index,
+    };
+    // Pages between the anchor and the pointer select in full.
+    let (first, last, first_start, last_end) = if anchor_page <= current_page {
+        (anchor_page, current_page, anchor, caret)
+    } else {
+        (current_page, anchor_page, caret, anchor)
+    };
+    let mut desired = HashMap::new();
+    for page in first..=last {
+        let Some(layer) = layers.get(&page) else {
+            continue;
+        };
+        let len = pdf_text::len(layer);
+        let (start, end) = match (page == first, page == last) {
+            (true, true) => (
+                snap_lo(layer, first_start.min(last_end)),
+                snap_hi(layer, first_start.max(last_end)),
+            ),
+            (true, false) => (snap_lo(layer, first_start), len),
+            (false, true) => (0, snap_hi(layer, last_end)),
+            _ => (0, len),
+        };
+        let (start, end) = (start.min(end), end.min(len));
+        if start != end {
+            desired.insert(page, (start, end));
+        }
+    }
+    desired
+}
+
+/// Replaces the selection ranges and redraws only the pages that changed.
+fn pdf_apply_ranges(
+    ranges: &RefCell<HashMap<i32, (usize, usize)>>,
+    pages: &HashMap<i32, (gtk::Overlay, gtk::Picture, gtk::DrawingArea)>,
+    desired: HashMap<i32, (usize, usize)>,
+) {
+    let mut ranges = ranges.borrow_mut();
+    let mut dirty: Vec<i32> = desired
+        .iter()
+        .filter(|(page, range)| ranges.get(*page) != Some(range))
+        .map(|(page, _)| *page)
+        .collect();
+    dirty.extend(
+        ranges
+            .keys()
+            .filter(|page| !desired.contains_key(*page))
+            .copied(),
+    );
+    *ranges = desired;
+    drop(ranges);
+    for page in dirty {
+        if let Some((_, _, area)) = pages.get(&page) {
+            area.queue_draw();
+        }
+    }
 }
 
 /// The nearest page with a text layer for a point in scroll coordinates,
@@ -3085,6 +3176,19 @@ fn pdf_selection_color() -> Option<gtk::gdk::RGBA> {
     crate::ui::theme::ThemeManager::shared()
         .current_tokens()
         .and_then(|tokens| gtk::gdk::RGBA::parse(&tokens.accent).ok())
+}
+
+/// Rounded rectangle path matching the subtle corner radius viewers give
+/// text selection bands.
+fn rounded_rect(cr: &cairo::Context, x: f64, y: f64, w: f64, h: f64, r: f64) {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    let r = r.min(w / 2.0).min(h / 2.0);
+    cr.new_sub_path();
+    cr.arc(x + w - r, y + r, r, -FRAC_PI_2, 0.0);
+    cr.arc(x + w - r, y + h - r, r, 0.0, FRAC_PI_2);
+    cr.arc(x + r, y + h - r, r, FRAC_PI_2, PI);
+    cr.arc(x + r, y + r, r, PI, 3.0 * FRAC_PI_2);
+    cr.close_path();
 }
 
 fn clear_box(box_: &gtk::Box) {

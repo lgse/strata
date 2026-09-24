@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 pub(super) mod media_size;
+mod pdf_ranges;
 mod preferences;
 mod source;
 

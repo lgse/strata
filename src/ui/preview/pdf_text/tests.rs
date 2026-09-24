@@ -59,18 +59,25 @@ fn hit_text_distinguishes_glyphs_from_margins() {
 
 #[test]
 fn selection_runs_merge_per_line_and_skip_empty_ranges() {
+    let tails = layer(
+        "ay",
+        vec![[10.0, 10.0, 20.0, 22.0], [20.0, 10.0, 30.0, 22.0]],
+    );
     let layer = two_line_layer();
     assert!(selection_runs(&layer, 0, 0).is_empty());
-    // "a\nb" (chars 1..4) covers the second half of line one and "c" on line two.
+    // "ab\ncd" has no descenders, so each band stops just past the baseline.
+    let trimmed = |top: f32, bottom: f32| top + (bottom - top) * 0.82;
     assert_eq!(
         selection_runs(&layer, 1, 4),
-        vec![[20.0, 10.0, 30.0, 22.0], [10.0, 40.0, 20.0, 52.0]]
+        vec![
+            [20.0, 10.0, 30.0, trimmed(10.0, 22.0)],
+            [10.0, 40.0, 20.0, trimmed(40.0, 52.0)]
+        ]
     );
     // A reversed range selects identically.
-    assert_eq!(
-        selection_runs(&layer, 4, 1),
-        vec![[20.0, 10.0, 30.0, 22.0], [10.0, 40.0, 20.0, 52.0]]
-    );
+    assert_eq!(selection_runs(&layer, 4, 1), selection_runs(&layer, 1, 4));
+    // A run containing a descender keeps the line's full bottom edge.
+    assert_eq!(selection_runs(&tails, 0, 2), vec![[10.0, 10.0, 30.0, 22.0]]);
 }
 
 #[test]
@@ -96,4 +103,33 @@ fn mismatched_glyph_counts_degrade_gracefully() {
     let layer = layer("abc", vec![[0.0, 0.0, 10.0, 10.0]]);
     assert_eq!(caret_at(&layer, 5.0, 5.0), 1);
     assert_eq!(selection_text(&layer, 0, 3), "a");
+}
+
+#[test]
+fn word_range_expands_to_whitespace_boundaries() {
+    let layer = layer(
+        "one two",
+        vec![
+            [10.0, 10.0, 20.0, 22.0],
+            [20.0, 10.0, 30.0, 22.0],
+            [30.0, 10.0, 40.0, 22.0],
+            [40.0, 22.0, 40.0, 22.0],
+            [50.0, 10.0, 60.0, 22.0],
+            [60.0, 10.0, 70.0, 22.0],
+            [70.0, 10.0, 80.0, 22.0],
+        ],
+    );
+    assert_eq!(word_range(&layer, 0), (0, 3));
+    assert_eq!(word_range(&layer, 1), (0, 3));
+    assert_eq!(word_range(&layer, 4), (4, 7));
+    // A press on the space itself selects nothing.
+    assert_eq!(word_range(&layer, 3), (3, 3));
+}
+
+#[test]
+fn line_range_covers_the_line_without_its_newline() {
+    let layer = two_line_layer();
+    assert_eq!(line_range(&layer, 0), (0, 2));
+    assert_eq!(line_range(&layer, 2), (0, 2));
+    assert_eq!(line_range(&layer, 4), (3, 5));
 }

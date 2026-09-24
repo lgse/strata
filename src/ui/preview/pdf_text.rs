@@ -136,6 +136,18 @@ pub(super) fn caret_at(layer: &PdfTextLayer, x: f32, y: f32) -> usize {
     end
 }
 
+/// Latin glyphs whose ink crosses the baseline. Runs without them have empty
+/// descent space below the baseline, so the band stops early — covering the
+/// full font box there reads as a bottom-heavy highlight.
+fn has_descender(layer: &PdfTextLayer, start: usize, end: usize) -> bool {
+    layer.text.chars().skip(start).take(end - start).any(|ch| {
+        matches!(
+            ch,
+            'g' | 'j' | 'p' | 'q' | 'y' | 'Q' | ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}' | '_'
+        )
+    })
+}
+
 /// Merged highlight rectangles for the char range `start..end`, in PNG pixels.
 /// Runs merge per line so a selected line draws as one block.
 pub(super) fn selection_runs(layer: &PdfTextLayer, start: usize, end: usize) -> Vec<[f32; 4]> {
@@ -155,9 +167,50 @@ pub(super) fn selection_runs(layer: &PdfTextLayer, start: usize, end: usize) -> 
                     x2 = x2.max(rect[2]);
                 }
             }
-            (x1 <= x2).then_some([x1, line.top, x2, line.bottom])
+            // Baseline sits ~4/5 down the font box; runs without descenders
+            // stop just past it instead of covering empty descent space.
+            let bottom = if has_descender(layer, first, last) {
+                line.bottom
+            } else {
+                line.top + (line.bottom - line.top) * 0.82
+            };
+            (x1 <= x2).then_some([x1, line.top, x2, bottom])
         })
         .collect()
+}
+
+/// The whitespace-delimited word holding `index`; empty when `index` lands on
+/// whitespace or at the end of the text.
+pub(super) fn word_range(layer: &PdfTextLayer, index: usize) -> (usize, usize) {
+    let len = len(layer);
+    let index = index.min(len);
+    let blank = |i: usize| layer.text.chars().nth(i).is_none_or(char::is_whitespace);
+    if blank(index) {
+        return (index, index);
+    }
+    let mut start = index;
+    while start > 0 && !blank(start - 1) {
+        start -= 1;
+    }
+    let mut end = index;
+    while end < len && !blank(end) {
+        end += 1;
+    }
+    (start, end)
+}
+
+/// The visual line holding `index`, excluding its trailing newline.
+pub(super) fn line_range(layer: &PdfTextLayer, index: usize) -> (usize, usize) {
+    let index = index.min(len(layer));
+    let all = lines(layer);
+    let Some(line) = all.iter().find(|line| index < line.end).or(all.last()) else {
+        return (index, index);
+    };
+    let mut end = line.end;
+    if end > line.start && layer.text.chars().nth(end - 1) == Some('\n') {
+        end -= 1;
+    }
+    (line.start, end)
 }
 
 /// The selected text, preserving the page's own newlines.
