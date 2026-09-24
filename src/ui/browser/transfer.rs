@@ -308,9 +308,9 @@ impl ViewState {
             if !accepted.is_empty() {
                 self.suppress_scroll_after_drop.set(!reveal);
                 if !reveal {
-                    let destination_depth = (0..).find(|depth| {
-                        self.browser.location_at(*depth).as_ref() == Some(&destination)
-                    });
+                    let destination_depth = (0..)
+                        .map_while(|depth| self.browser.location_at(depth))
+                        .position(|location| location == destination);
                     self.drop_active_depths
                         .set(source_depth.zip(destination_depth));
                 }
