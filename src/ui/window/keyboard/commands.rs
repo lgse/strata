@@ -96,7 +96,7 @@ impl Dispatcher {
             )
             && let Some(entry) = self.view.selected_search_result()
         {
-            if self.view.activate_directory_column() {
+            if self.view.activate_directory_on_space() {
                 return Some(Propagation::Stop);
             }
             self.preview.toggle(
