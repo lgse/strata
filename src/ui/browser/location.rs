@@ -28,10 +28,16 @@ const UNLOCK_PROGRESS_DELAY: Duration = Duration::from_millis(350);
 
 // Long crumbs middle-elide past this cap; the scroller handles deeper paths.
 const BREADCRUMB_LABEL_MAX_CHARS: i32 = 32;
+// Crumbs shrink with middle-ellipsis down to this floor, then the bar
+// overflows and the external scroller takes over instead of squeezing
+// every crumb to a bare "…".
+const BREADCRUMB_LABEL_MIN_CHARS: i32 = 10;
 
 fn ellipsize_crumb_label(label: &gtk::Label) {
     label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     label.set_max_width_chars(BREADCRUMB_LABEL_MAX_CHARS);
+    let chars = label.text().chars().count() as i32;
+    label.set_width_chars(chars.clamp(1, BREADCRUMB_LABEL_MIN_CHARS));
 }
 
 pub(super) struct UnlockProgressView {
@@ -2032,22 +2038,8 @@ impl ViewState {
 
         for (i, crumb) in locations.iter().enumerate() {
             let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-            let icon_name = if *crumb == home {
-                crate::assets::icons::HOME
-            } else if crumb
-                .native_path()
-                .is_some_and(|path| path == Path::new("/"))
-            {
-                crate::assets::icons::HARD_DRIVE
-            } else if crumb.uri_value().is_some_and(|u| u.starts_with("trash://")) {
-                crate::assets::icons::TRASH
-            } else if crumb.uri_value().is_some() {
-                crate::assets::icons::NETWORK
-            } else {
-                crate::assets::icons::FOLDER
-            };
-
-            let icon = crate::assets::primary_icon(icon_name, 16);
+            let icon =
+                crate::assets::primary_icon(super::paths::location_menu_icon(crumb, &home), 16);
             let display_name = if *crumb == home {
                 "~".to_owned()
             } else {

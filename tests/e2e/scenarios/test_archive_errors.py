@@ -24,18 +24,21 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
     dialog = strata.wait_for_dialog()
     strata.pointer.click(dialog.find(role="toggle button", name=format))
     strata.pointer.click(strata.dialog_button("Compress"))
-    strata.wait(
-        lambda: (dialog := strata.dialog()) is not None
-        and dialog.name == "Processing archive…"
-        and dialog.find(role="label", name="Preparing…") is not None,
+    toast = strata.wait(
+        lambda: (toast := strata.progress_toast("Processing archive…")) is not None
+        and toast.find(role="label", name="Preparing…") is not None
+        and toast,
         "immediate preparation feedback",
     )
-    strata.pointer.click(strata.dialog_button("Cancel"))
+    strata.pointer.click(toast.find(role="button", name="Cancel"))
     strata.wait(
         lambda: (dialog := strata.dialog()) is not None and dialog.name == "Operation cancelled",
         "compression worker to stop and report cancellation",
     )
-    assert not strata.window.find(role="progress bar")
+    strata.wait(
+        lambda: strata.window.find(role="progress bar") is None,
+        "progress toast to finish dismissing",
+    )
     assert not list(fixture.root.glob(".strata-compression-*"))
     assert not list(fixture.root.glob("*.7z"))
     assert not list(fixture.root.glob("*.tar.gz"))
@@ -48,7 +51,7 @@ def test_cancel_compression_stops_before_publishing_and_allows_another_operation
     strata.wait_for_dialog()
     strata.pointer.click(strata.dialog_button("Compress"))
     strata.wait(lambda: fixture.path("todo.txt.zip").exists(), "subsequent compression")
-    strata.wait(lambda: strata.dialog() is None, "subsequent progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "subsequent progress dismissal")
     with zipfile.ZipFile(fixture.path("todo.txt.zip")) as archive:
         assert archive.read("todo.txt") == fixture.path("todo.txt").read_bytes()
 
@@ -72,7 +75,10 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
         "the archive error dialog to replace the progress dialog",
     )
     assert dialog.find(role="label", name="This file is not a valid archive or is damaged.")
-    assert not strata.window.find(role="progress bar")
+    strata.wait(
+        lambda: strata.window.find(role="progress bar") is None,
+        "progress toast to finish dismissing",
+    )
     assert fixture.path(name).read_bytes() == b"This is harmless text, not an archive.\n"
     strata.pointer.click(strata.dialog_button("Close"))
     strata.wait(lambda: strata.dialog() is None, "error dismissal")
@@ -80,7 +86,7 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
     strata.choose_menu_item("Extract here")
     strata.wait(lambda: fixture.path("extracted.txt").exists(), "valid archive extraction")
     assert fixture.path("extracted.txt").read_text() == "harmless contents"
-    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "extraction progress dismissal")
 
 
 @pytest.mark.parametrize("source,password,member,contents", [
@@ -131,7 +137,7 @@ def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata,
     strata.pointer.click(strata.dialog_button("Extract"))
     extracted = fixture.path(member)
     strata.wait(lambda: extracted.exists(), "the archive to extract with the correct password")
-    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "extraction progress dismissal")
     assert extracted.read_text() == contents
 
 
@@ -160,7 +166,7 @@ def test_cancelled_extract_to_does_not_hijack_later_extract_here(strata):
     strata.open_context_menu("later.zip")
     strata.choose_menu_item("Extract here")
     strata.wait(lambda: fixture.path("later.txt").exists(), "later extraction")
-    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "extraction progress dismissal")
     assert strata.current_directory() == fixture.root.name
     assert fixture.path("later.txt").read_text() == "later extraction\n"
     assert not destination.exists()
@@ -335,4 +341,4 @@ def test_zipcrypto_collision_reopens_extract_dialog(strata, deflated, contents):
     extracted = fixture.path("some.txt")
     strata.wait(lambda: extracted.exists(), "the archive to extract with the correct password")
     assert extracted.read_text() == contents.decode()
-    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "extraction progress dismissal")

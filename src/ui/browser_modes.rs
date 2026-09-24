@@ -2748,7 +2748,7 @@ fn list_cell_content_width(cell: &gtk::Widget) -> i32 {
 fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("list-navigation");
-    for (icon, tooltip, action, available) in [
+    for (index, (icon, tooltip, action, available)) in [
         (
             crate::assets::icons::ARROW_LEFT,
             "Back (Alt+Left)",
@@ -2767,7 +2767,10 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
             Browser::parent as fn(&Rc<Browser>),
             browser.can_go_parent(),
         ),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let button = gtk::Button::builder()
             .tooltip_text(tooltip)
             .sensitive(available)
@@ -2781,9 +2784,105 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
                 action(&browser);
             }
         });
+        if index < 2 {
+            attach_history_gestures(&button, browser, index == 1);
+        }
         actions.append(&button);
     }
     actions
+}
+
+/// Finder-style history: long-press or right-click lists the stack, picking an
+/// entry jumps straight to it instead of stepping one at a time.
+fn attach_history_gestures(button: &gtk::Button, browser: &Rc<Browser>, forward: bool) {
+    let long_press = gtk::GestureLongPress::new();
+    let weak_browser = Rc::downgrade(browser);
+    let weak_button = button.downgrade();
+    long_press.connect_pressed(move |_, _, _| {
+        if let (Some(browser), Some(button)) = (weak_browser.upgrade(), weak_button.upgrade()) {
+            show_history_menu(&browser, &button, forward);
+        }
+    });
+    button.add_controller(long_press);
+
+    let right_click = gtk::GestureClick::new();
+    right_click.set_button(gtk::gdk::BUTTON_SECONDARY);
+    let weak_browser = Rc::downgrade(browser);
+    let weak_button = button.downgrade();
+    right_click.connect_pressed(move |gesture, _, _, _| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if let (Some(browser), Some(button)) = (weak_browser.upgrade(), weak_button.upgrade()) {
+            show_history_menu(&browser, &button, forward);
+        }
+    });
+    button.add_controller(right_click);
+}
+
+fn show_history_menu(browser: &Rc<Browser>, anchor: &gtk::Button, forward: bool) {
+    let targets = if forward {
+        browser.forward_targets()
+    } else {
+        browser.back_targets()
+    };
+    if targets.is_empty() {
+        return;
+    }
+
+    let content = crate::ui::accessibility::menu_box();
+    content.add_css_class("folder-context-menu");
+    let (popover, scroll) = super::browser::context_menu::context_menu_popover(&content);
+    popover.add_css_class("folder-context-popover");
+
+    let home = Location::local(glib::home_dir());
+    let pending = Rc::new(Cell::new(None));
+    for (index, location) in targets.iter().enumerate() {
+        let label = if *location == home {
+            "~".to_owned()
+        } else {
+            location.display_name()
+        };
+        let button = super::browser::context_menu::context_menu_option(
+            super::browser::paths::location_menu_icon(location, &home),
+            &label,
+            "",
+        );
+        let pending = pending.clone();
+        let weak = popover.downgrade();
+        button.connect_clicked(move |_| {
+            pending.set(Some(index + 1));
+            if let Some(popover) = weak.upgrade() {
+                popover.popdown();
+            }
+        });
+        content.append(&button);
+    }
+
+    let weak_browser = Rc::downgrade(browser);
+    popover.connect_closed(move |popover| {
+        popover.unparent();
+        if let (Some(browser), Some(steps)) = (weak_browser.upgrade(), pending.take()) {
+            glib::idle_add_local_once(move || {
+                if forward {
+                    browser.forward_to(steps);
+                } else {
+                    browser.back_to(steps);
+                }
+            });
+        }
+    });
+    super::browser::context_menu::show_context_popover(
+        &popover,
+        &scroll,
+        anchor.upcast_ref(),
+        f64::from(anchor.width()) / 2.0,
+        f64::from(anchor.height()),
+    );
+    // Finder-style history caps at ~10 rows regardless of free screen space.
+    let scale = crate::ui::preferences::PreferenceManager::shared().interface_scale();
+    let cap = ((26.0 * 10.0 + 16.0) * scale).round() as i32;
+    if scroll.max_content_height() > cap {
+        scroll.set_max_content_height(cap);
+    }
 }
 
 fn build_list_pane(

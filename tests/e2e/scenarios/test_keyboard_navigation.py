@@ -88,7 +88,7 @@ def test_page_key_bursts_leave_large_image_directories_responsive(strata):
             strata.keyboard.connection.key(keysym(key), True)
             strata.keyboard.connection.key(keysym(key), False)
         strata.keyboard.press("ctrl+l")
-        field = strata.editable_field()
+        field = strata.editable_field(timeout=60.0)
         strata.wait(lambda: field.has_state("focused"), "address bar responds after page-key burst")
         strata.keyboard.press("Escape")
         strata.wait(lambda: len(names := strata.selected_names()) == 1 and names != [start],

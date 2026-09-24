@@ -56,7 +56,7 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
     subfolder = fixture.path("activation")
     extracted = subfolder / "activated.txt"
     strata.wait(lambda: extracted.exists(), "archive activation to bundle spilled members")
-    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "extraction progress dismissal")
     assert extracted.read_text() == contents
     assert (subfolder / "nested/second.txt").read_bytes() == b"second member\n"
     assert not fixture.path("activated.txt").exists()
@@ -69,7 +69,7 @@ def test_archive_activation_extracts_to_subfolder(strata, activation, format):
         extract_archive(strata, archive_name, activation)
         fresh = fixture.path(f"activation ({suffix})") / "activated.txt"
         strata.wait(lambda: fresh.exists(), "repeated activation to use a fresh folder")
-        strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+        strata.wait(lambda: strata.progress_toast() is None, "extraction progress dismissal")
         assert fresh.read_text() == contents
         assert extracted.read_text() == "keep existing edits\n"
         strata.entry(f"activation ({suffix})")
@@ -90,7 +90,7 @@ def test_archive_activation_extracts_a_single_root_archive_verbatim(strata, acti
 
     extracted = fixture.path("VERSION")
     strata.wait(lambda: extracted.exists(), "single-root archive to extract verbatim")
-    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "extraction progress dismissal")
     assert extracted.read_text() == "unrar-0.4.0"
     assert not fixture.path("activation").exists()
     assert fixture.path(archive_name).exists()

@@ -550,10 +550,11 @@ class Strata:
         self.wait(still, f"{node!r} to stop moving")
         return node
 
-    def editable_field(self) -> Node:
+    def editable_field(self, timeout: float = tree.DEFAULT_TIMEOUT) -> Node:
         return self.wait(
             lambda: self.window.find(role="text", states={"editable", "focused"}),
             "an editable field to take focus",
+            timeout=timeout,
         )
 
     def preview(self) -> Node | None:
@@ -574,6 +575,18 @@ class Strata:
             if text in node.name or text in node.text:
                 return True
         return False
+
+    def progress_toast(self, title: str | None = None) -> Node | None:
+        """The non-modal corner card for a running file operation."""
+        anchor = self.window.find(role="progress bar")
+        if anchor is None:
+            return None
+        for node in anchor.ancestors():
+            if node.find(role="button", name="Cancel") is not None:
+                if title is None or node.find(role="label", name=title) is not None:
+                    return node
+                return None
+        return None
 
     def dialog(self) -> Node | None:
         return self.window.find(role="dialog") or self.window.find(role="alert")

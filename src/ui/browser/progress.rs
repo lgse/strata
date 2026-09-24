@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: MIT
 
-use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{format_file_size, item_count_label};
-use crate::ui::controls::modal_layout;
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
+use crate::ui::modal::{animate_in, dismiss_modal_layer_then};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -12,6 +10,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
+
+const FILE_PROGRESS_DONE_LINGER: Duration = Duration::from_millis(700);
 
 const INDETERMINATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -24,7 +24,6 @@ fn should_show_progress_immediately(total: usize) -> bool {
 pub(super) struct FileProgressView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
-    blurred_root: Option<BlurBin>,
     progress: gtk::ProgressBar,
     status: gtk::Label,
     archive_activity: gtk::Spinner,
@@ -80,26 +79,24 @@ impl ViewState {
         total: usize,
         icon: &str,
         title_text: &str,
-        subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
         self.dismiss_file_operation_progress();
         self.file_operation_progress.set((0, total));
         if should_show_progress_immediately(total) {
-            self.present_file_operation_progress(icon, title_text, subtitle_text, on_cancel);
+            self.present_file_operation_progress(icon, title_text, on_cancel);
             return;
         }
 
         let weak = Rc::downgrade(self);
         let icon = icon.to_owned();
         let title_text = title_text.to_owned();
-        let subtitle_text = subtitle_text.to_owned();
         let source = glib::timeout_add_local_once(FILE_PROGRESS_DELAY, move || {
             let Some(state) = weak.upgrade() else {
                 return;
             };
             state.pending_file_progress.borrow_mut().take();
-            state.present_file_operation_progress(&icon, &title_text, &subtitle_text, on_cancel);
+            state.present_file_operation_progress(&icon, &title_text, on_cancel);
         });
         self.pending_file_progress.replace(Some(source));
     }
@@ -108,51 +105,63 @@ impl ViewState {
         self: &Rc<Self>,
         icon: &str,
         title_text: &str,
-        subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
-        let Some(ModalHost {
-            overlay: window_overlay,
-            blurred_root,
-        }) = ModalHost::blurred_for(&self.overlay)
-        else {
-            return;
-        };
+        let overlay = self.overlay.clone();
 
-        let layout = modal_layout(icon, title_text, subtitle_text, "Cancel");
-        layout.content.add_css_class("compact");
-        layout.close.set_visible(false);
-        layout.cancel.set_visible(false);
-        let status = gtk::Label::new(Some("0%"));
-        status.add_css_class("modal-progress-status");
-        status.set_xalign(0.0);
-        let progress = gtk::ProgressBar::new();
-        progress.add_css_class("modal-progress");
-        progress.set_fraction(0.0);
+        let bezel = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        bezel.add_css_class("job-icon-bezel");
+        bezel.set_valign(gtk::Align::Center);
+        bezel.append(&crate::assets::primary_icon(icon, 16));
+        let title = gtk::Label::new(Some(title_text));
+        title.add_css_class("job-name");
+        title.set_hexpand(true);
+        title.set_xalign(0.0);
+        title.set_ellipsize(gtk::pango::EllipsizeMode::End);
         let archive_activity = gtk::Spinner::new();
         archive_activity.set_visible(false);
-        let status_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        status_row.append(&archive_activity);
-        status_row.append(&status);
-        layout.body.append(&status_row);
-        layout.body.append(&progress);
-        let content = layout.content;
-        let cancel = layout.confirm;
+        let status = gtk::Label::new(Some("0%"));
+        status.add_css_class("job-status");
+        let cancel = gtk::Button::new();
+        cancel.add_css_class("job-action");
+        cancel.set_child(Some(&crate::assets::primary_icon(
+            crate::assets::icons::X,
+            14,
+        )));
+        cancel.set_tooltip_text(Some("Cancel"));
+        cancel.update_property(&[gtk::accessible::Property::Label("Cancel")]);
+        cancel.set_valign(gtk::Align::Center);
+        let head = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        head.append(&title);
+        head.append(&archive_activity);
+        head.append(&status);
+        let progress = gtk::ProgressBar::new();
+        progress.add_css_class("job-progress");
+        progress.set_fraction(0.0);
+        let detail = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        detail.set_hexpand(true);
+        detail.set_valign(gtk::Align::Center);
+        detail.append(&head);
+        detail.append(&progress);
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        content.add_css_class("file-progress-toast");
+        content.append(&bezel);
+        content.append(&detail);
+        content.append(&cancel);
 
         let indeterminate = Rc::new(Cell::new(false));
         let pulse_source = Rc::new(RefCell::new(None));
 
-        let layer = modal_layer(
-            &content,
-            &window_overlay,
-            blurred_root.clone(),
-            Some(Rc::new(|| true)),
-        );
-        window_overlay.add_overlay(&layer);
+        let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        layer.add_css_class("file-progress-card");
+        layer.set_halign(gtk::Align::End);
+        layer.set_valign(gtk::Align::End);
+        layer.append(&content);
+        overlay.add_overlay(&layer);
+        animate_in(&layer);
         self.file_progress_view.replace(Some(FileProgressView {
             layer,
-            overlay: window_overlay,
-            blurred_root,
+            overlay,
             progress,
             status,
             archive_activity,
@@ -174,7 +183,6 @@ impl ViewState {
         if let Some(progress) = self.file_progress_view.borrow().as_ref() {
             progress.layer.add_controller(escape);
         }
-        cancel.grab_focus();
         if let Some(view) = self.file_progress_view.borrow().as_ref() {
             ensure_indeterminate_pulse(view);
         }
@@ -270,6 +278,34 @@ impl ViewState {
         }
     }
 
+    /// Terminal events land the same tick the last progress update does -- without
+    /// a beat at 100% the card vanishes before the finished state is ever visible.
+    pub(super) fn complete_file_operation_progress_then(
+        self: &Rc<Self>,
+        after_dismiss: impl FnOnce() + 'static,
+    ) {
+        if self.file_progress_view.borrow().is_none() {
+            self.dismiss_file_operation_progress_then(after_dismiss);
+            return;
+        }
+        if let Some(view) = self.file_progress_view.borrow().as_ref() {
+            view.indeterminate.set(false);
+            view.archive_activity.stop();
+            view.progress.set_fraction(1.0);
+            view.status.set_text("Done");
+        }
+        let weak = Rc::downgrade(self);
+        glib::timeout_add_local_once(FILE_PROGRESS_DONE_LINGER, move || {
+            if let Some(state) = weak.upgrade() {
+                state.dismiss_file_operation_progress_then(after_dismiss);
+            }
+        });
+    }
+
+    pub(super) fn complete_file_operation_progress(self: &Rc<Self>) {
+        self.complete_file_operation_progress_then(|| {});
+    }
+
     pub(super) fn dismiss_file_operation_progress(&self) {
         self.dismiss_file_operation_progress_then(|| {});
     }
@@ -290,16 +326,7 @@ impl ViewState {
             if let Some(source) = view.pulse_source.take() {
                 source.remove();
             }
-            let after_dismiss = Rc::new(RefCell::new(Some(after_dismiss)));
-            let callback = after_dismiss.clone();
-            view.layer.connect_parent_notify(move |layer| {
-                if layer.parent().is_none()
-                    && let Some(callback) = callback.borrow_mut().take()
-                {
-                    callback();
-                }
-            });
-            dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+            dismiss_modal_layer_then(&view.layer, &view.overlay, None, after_dismiss);
         } else {
             after_dismiss();
         }
@@ -312,7 +339,6 @@ impl ViewState {
             0,
             crate::assets::icons::TRASH,
             "Emptying Trash",
-            "This may take a moment",
             on_cancel,
         );
         self.update_empty_trash_progress(0);

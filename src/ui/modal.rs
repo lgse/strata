@@ -202,13 +202,31 @@ pub(super) fn dismiss_modal_layer_then(
     });
 }
 
-fn overlay_has_modal_layer(overlay: &gtk::Overlay) -> bool {
+pub(super) fn overlay_has_modal_layer(overlay: &gtk::Overlay) -> bool {
     let mut child = overlay.first_child();
     while let Some(widget) = child {
         if widget.is_visible() && widget.has_css_class("app-modal-layer") {
             return true;
         }
         child = widget.next_sibling();
+    }
+    false
+}
+
+pub(in crate::ui) fn has_modal_layer(widget: &impl IsA<gtk::Widget>) -> bool {
+    if let Some(window) = widget.root().and_downcast::<gtk::Window>()
+        && crate::ui::window::visible_modal_layer(&window).is_some()
+    {
+        return true;
+    }
+    let mut current = Some(widget.clone().upcast::<gtk::Widget>());
+    while let Some(w) = current {
+        if let Some(overlay) = w.downcast_ref::<gtk::Overlay>()
+            && overlay_has_modal_layer(overlay)
+        {
+            return true;
+        }
+        current = w.parent();
     }
     false
 }

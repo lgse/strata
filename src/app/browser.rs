@@ -1439,8 +1439,39 @@ impl Browser {
         }
     }
 
+    /// Deepest location of each back-history path, most recent first.
+    pub fn back_targets(&self) -> Vec<Location> {
+        self.state
+            .borrow()
+            .back_history()
+            .filter_map(|path| path.locations().last().cloned())
+            .collect()
+    }
+
+    pub fn back_to(self: &Rc<Self>, steps: usize) {
+        let target = self.state.borrow_mut().go_back_to(steps);
+        if let Some(target) = target {
+            self.restore_path(target);
+        }
+    }
+
     pub fn forward(self: &Rc<Self>) {
         let target = self.state.borrow_mut().go_forward();
+        if let Some(target) = target {
+            self.restore_path(target);
+        }
+    }
+
+    pub fn forward_targets(&self) -> Vec<Location> {
+        self.state
+            .borrow()
+            .forward_history()
+            .filter_map(|path| path.locations().last().cloned())
+            .collect()
+    }
+
+    pub fn forward_to(self: &Rc<Self>, steps: usize) {
+        let target = self.state.borrow_mut().go_forward_to(steps);
         if let Some(target) = target {
             self.restore_path(target);
         }

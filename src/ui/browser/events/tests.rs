@@ -44,11 +44,11 @@ fn archive_view(
     (view, browser, window, overlay)
 }
 
-fn progress_layer(overlay: &gtk::Overlay) -> gtk::Box {
-    let mut child = overlay.first_child();
+fn progress_layer(view: &crate::ui::browser::BrowserView) -> gtk::Box {
+    let mut child = view.overlay().first_child();
     while let Some(widget) = child {
         child = widget.next_sibling();
-        if widget.has_css_class("modal-backdrop") {
+        if widget.has_css_class("file-progress-card") {
             return widget.downcast().expect("progress layer");
         }
     }
@@ -161,10 +161,9 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 16,
                 crate::assets::icons::TRASH,
                 "Deleting items",
-                "Cancelling will not undo completed changes",
                 Rc::new(|| {}),
             );
-            let layer = progress_layer(&overlay);
+            let layer = progress_layer(&view);
             assert_eq!(state.overlay.opacity(), 0.0);
             let column = state.columns.borrow()[0].clone();
             state.handle(&BrowserEvent::EntriesSpliced {
@@ -220,7 +219,7 @@ fn completed_archive_does_not_restore_a_superseded_destination_after_modal_dismi
             let replacement = tempfile::tempdir().expect("replacement destination");
             std::fs::write(destination.path().join("source.txt"), "source")
                 .expect("source fixture");
-            let (view, browser, window, overlay) = archive_view(destination.path());
+            let (view, browser, window, _overlay) = archive_view(destination.path());
             let state = &view.state;
             state
                 .pending_archive_destination
@@ -229,10 +228,9 @@ fn completed_archive_does_not_restore_a_superseded_destination_after_modal_dismi
                 16,
                 crate::assets::icons::FILE_ARCHIVE,
                 "Working",
-                "Cancelling will not undo completed changes",
                 Rc::new(|| {}),
             );
-            let layer = progress_layer(&overlay);
+            let layer = progress_layer(&view);
 
             state.handle(&BrowserEvent::ArchiveCompleted {
                 select_name: "source.zip".to_owned(),
@@ -271,7 +269,7 @@ fn completed_extract_does_not_restore_destination_after_navigation_during_modal_
             let origin = tempfile::tempdir().expect("extract origin");
             let destination = tempfile::tempdir().expect("extract destination");
             let replacement = tempfile::tempdir().expect("replacement destination");
-            let (view, browser, window, overlay) = archive_view(origin.path());
+            let (view, browser, window, _overlay) = archive_view(origin.path());
             let state = &view.state;
             state
                 .pending_navigate
@@ -280,10 +278,9 @@ fn completed_extract_does_not_restore_destination_after_navigation_during_modal_
                 16,
                 crate::assets::icons::FILE_ARCHIVE,
                 "Working",
-                "Cancelling will not undo completed changes",
                 Rc::new(|| {}),
             );
-            let layer = progress_layer(&overlay);
+            let layer = progress_layer(&view);
 
             state.handle(&BrowserEvent::ArchiveCompleted {
                 select_name: "extracted.txt".to_owned(),
@@ -323,7 +320,7 @@ fn completed_archive_selects_the_authoritative_model_only_after_modal_dismissal(
             std::fs::write(destination.path().join("alpha.txt"), "source").expect("source fixture");
             std::fs::write(destination.path().join("source.zip"), "archive")
                 .expect("archive fixture");
-            let (view, browser, window, overlay) = archive_view(destination.path());
+            let (view, browser, window, _overlay) = archive_view(destination.path());
             let state = &view.state;
             state
                 .pending_archive_destination
@@ -332,10 +329,9 @@ fn completed_archive_selects_the_authoritative_model_only_after_modal_dismissal(
                 16,
                 crate::assets::icons::FILE_ARCHIVE,
                 "Working",
-                "Cancelling will not undo completed changes",
                 Rc::new(|| {}),
             );
-            let layer = progress_layer(&overlay);
+            let layer = progress_layer(&view);
 
             state.handle(&BrowserEvent::ArchiveCompleted {
                 select_name: "source.zip".to_owned(),
@@ -376,7 +372,6 @@ fn cancelled_archive_clears_flag_and_following_load_restores_transfer_selection(
                 16,
                 crate::assets::icons::FILE_ARCHIVE,
                 "Working",
-                "Cancelling will not undo completed changes",
                 Rc::new(|| {}),
             );
 
@@ -562,6 +557,53 @@ fn password_retry_preserves_extract_here_and_extract_to_navigation_intent() {
                 window.destroy();
                 browser.clear_observer();
             }
+        },
+    );
+}
+
+#[test]
+fn deferred_focus_restore_does_not_steal_focus_from_an_open_modal() {
+    crate::test_support::gtk_test(
+        "ui::browser::events::tests::deferred_focus_restore_does_not_steal_focus_from_an_open_modal",
+        || {
+            let destination = tempfile::tempdir().expect("destination");
+            std::fs::write(destination.path().join("file.txt"), "x").expect("fixture");
+            let (view, browser, window, overlay) = archive_view(destination.path());
+            let state = &view.state;
+
+            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let button = gtk::Button::with_label("Confirm");
+            content.append(&button);
+            let layer = crate::ui::modal::modal_layer(&content, &overlay, None, None);
+            overlay.add_overlay(&layer);
+            let layer_widget: gtk::Widget = layer.clone().upcast();
+            wait_until(
+                || {
+                    button.grab_focus();
+                    gtk::prelude::RootExt::focus(&window).is_some_and(|focused| {
+                        focused.is_ancestor(&layer) || focused == layer_widget
+                    })
+                },
+                "modal button did not take focus",
+            );
+
+            state.handle(&BrowserEvent::FocusChanged {
+                depth: 0,
+                position: Some(0),
+            });
+            state.handle(&BrowserEvent::SelectionSetChanged {
+                depth: 0,
+                positions: vec![0],
+                focused: 0,
+                take_focus: true,
+            });
+            assert!(
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focused| focused.is_ancestor(&layer) || focused == layer_widget),
+                "deferred focus restore stole focus from an open modal"
+            );
+            window.destroy();
+            browser.clear_observer();
         },
     );
 }

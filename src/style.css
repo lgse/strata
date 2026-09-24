@@ -686,13 +686,15 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .action-dialog,
 .search-dialog,
-.settings-dialog {
+.settings-dialog,
+.file-progress-toast {
   transition: opacity 200ms ease-out, transform 200ms ease-out;
 }
 
 .modal-hidden .action-dialog,
 .modal-hidden .search-dialog,
-.modal-hidden .settings-dialog {
+.modal-hidden .settings-dialog,
+.modal-hidden .file-progress-toast {
   opacity: 0;
   transform: scale(0.96);
 }
@@ -726,7 +728,8 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 
-.action-dialog {
+.action-dialog,
+.file-progress-toast {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
@@ -5946,6 +5949,15 @@ popover.jobs-popover.background {
 .jobs-empty {
   color: @theme_dim_text;
   padding: 16px;
+}
+
+.file-progress-card {
+  margin: 0 12px 12px 0;
+}
+
+.file-progress-toast {
+  min-width: 320px;
+  padding: 10px 14px;
 }
 
 .job-action {

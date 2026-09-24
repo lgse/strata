@@ -52,7 +52,7 @@ def test_keep_both_preserves_archives_and_selects_each_numbered_output(strata, m
         name = f"archive ({suffix}).{extension}"
         path = fixture.path(name)
         strata.wait(path.exists, "numbered archive publication")
-        strata.wait(lambda: strata.dialog() is None, "archive progress dismissal")
+        strata.wait(lambda: strata.progress_toast() is None, "archive progress dismissal")
         strata.wait_for_selection([name])
         strata.wait(lambda: strata.on_screen(strata.entry(name)), "numbered archive reveal")
         if format == "ZIP":
@@ -76,7 +76,7 @@ def test_undoing_a_compression_trashes_the_numbered_archive(strata, extension):
     strata.pointer.click(strata.dialog_button("Keep Both"))
     numbered = fixture.path(f"archive (2).{extension}")
     strata.wait(numbered.exists, "numbered archive publication")
-    strata.wait(lambda: strata.dialog() is None, "archive progress dismissal")
+    strata.wait(lambda: strata.progress_toast() is None, "archive progress dismissal")
 
     strata.keyboard.press("ctrl+z")
 
@@ -117,7 +117,7 @@ def test_archive_conflict_keyboard_choices_preserve_cancel_and_replace_behavior(
         with zipfile.ZipFile(original) as archive:
             assert archive.namelist() == ["todo.txt"]
             assert archive.read("todo.txt") == strata.fixture.path("todo.txt").read_bytes()
-        strata.wait(lambda: strata.dialog() is None, "archive progress dismissal")
+        strata.wait(lambda: strata.progress_toast() is None, "archive progress dismissal")
         # Equal deletion timestamps must not redirect undo to the older entry.
         for info in trash_info.glob("*.trashinfo"):
             lines = info.read_text().splitlines()

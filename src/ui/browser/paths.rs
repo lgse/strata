@@ -41,6 +41,23 @@ pub(super) fn pin_action_for(
     }
 }
 
+pub(in crate::ui) fn location_menu_icon(location: &Location, home: &Location) -> &'static str {
+    if location == home {
+        crate::assets::icons::HOME
+    } else if location
+        .native_path()
+        .is_some_and(|path| path == Path::new("/"))
+    {
+        crate::assets::icons::HARD_DRIVE
+    } else if is_trash_location(location) {
+        crate::assets::icons::TRASH
+    } else if location.uri_value().is_some() {
+        crate::assets::icons::NETWORK
+    } else {
+        crate::assets::icons::FOLDER
+    }
+}
+
 pub(in crate::ui) fn is_trash_root(location: &Location) -> bool {
     location.uri_value() == Some("trash:///")
 }

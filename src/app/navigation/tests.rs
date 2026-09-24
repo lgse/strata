@@ -940,6 +940,30 @@ fn back_and_forward_restore_committed_paths() {
 }
 
 #[test]
+fn multi_step_jumps_keep_the_whole_chain_on_the_opposite_stack() {
+    let mut state = NavigationState::default();
+    for (index, path) in ["/a", "/b", "/c", "/d"].iter().enumerate() {
+        state.navigate(location(path), RequestId(index as u64 + 1));
+    }
+    assert_eq!(state.back_history().count(), 3);
+
+    let target = state.go_back_to(3).expect("three steps are available");
+    assert_eq!(target.locations(), &[location("/a")]);
+    state.restore(target, [RequestId(5)]);
+    assert!(!state.can_go_back());
+    assert_eq!(state.forward_history().count(), 3);
+
+    let forward = state.go_forward_to(2).expect("forward steps stay in order");
+    assert_eq!(forward.locations(), &[location("/c")]);
+    state.restore(forward, [RequestId(6)]);
+    assert_eq!(state.back_history().count(), 2);
+    assert_eq!(state.forward_history().count(), 1);
+
+    assert!(state.go_back_to(3).is_none());
+    assert!(state.go_forward_to(0).is_none());
+}
+
+#[test]
 fn parent_removes_the_deepest_committed_column() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));

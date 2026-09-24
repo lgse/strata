@@ -112,9 +112,9 @@ fn archive_preparation_and_member_encoding_keep_activity_visible() {
 }
 
 #[test]
-fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
+fn progress_card_keeps_cancel_available_until_terminal_dismissal() {
     crate::test_support::gtk_test(
-        "ui::browser::progress::tests::backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal",
+        "ui::browser::progress::tests::progress_card_keeps_cancel_available_until_terminal_dismissal",
         || {
             let view = crate::ui::browser::BrowserView::new(
                 Rc::new(crate::adapters::LocalFileSource),
@@ -139,7 +139,6 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
                     16,
                     crate::assets::icons::FILE_ARCHIVE,
                     title,
-                    "Cancelling will not undo completed changes",
                     Rc::new(move || cancelled.set(cancelled.get() + 1)),
                 );
                 let (layer, status, progress) = {
@@ -152,15 +151,10 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
                     )
                 };
                 let controllers = layer.observe_controllers();
-                let click = (0..controllers.n_items())
-                    .find_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
-                    .expect("backdrop gesture");
                 let before = cancellations.get();
-                click.emit_by_name::<()>("pressed", &[&1i32, &0.0f64, &0.0f64]);
                 assert!(!layer.has_css_class("dismissing"), "{title}");
                 assert!(layer.is_sensitive());
-                assert_eq!(layer.parent().as_ref(), Some(overlay.upcast_ref()));
-                assert_eq!(cancellations.get(), before, "backdrop must not cancel");
+                assert_eq!(layer.parent().as_ref(), Some(view.overlay().upcast_ref()));
 
                 state.update_archive_progress(4, 16);
                 assert_eq!(status.text(), "4 / 16 files");
@@ -173,11 +167,12 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
                 state.update_empty_trash_progress(12);
                 assert_eq!(status.text(), "12 items deleted");
 
-                let cancel = gtk::prelude::GtkWindowExt::focus(&window)
-                    .and_downcast::<gtk::Button>()
-                    .expect("Cancel has focus");
-                assert_eq!(cancel.label().as_deref(), Some("Cancel"));
-                assert!(cancel.is_visible() && cancel.is_sensitive());
+                let cancel = descendants(layer.upcast_ref())
+                    .into_iter()
+                    .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+                    .find(|button| button.has_css_class("job-action"))
+                    .expect("Cancel button");
+                assert!(cancel.is_sensitive());
                 cancel.emit_clicked();
                 assert_eq!(cancellations.get(), before + 1);
                 let escape = (0..controllers.n_items())
@@ -187,13 +182,10 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
                             .and_downcast::<gtk::EventControllerKey>()
                     })
                     .expect("Escape controller");
+                let key = gtk::gdk::Key::Escape;
                 assert!(escape.emit_by_name::<bool>(
                     "key-pressed",
-                    &[
-                        &gtk::gdk::Key::Escape,
-                        &0u32,
-                        &gtk::gdk::ModifierType::empty()
-                    ],
+                    &[&key, &0u32, &gtk::gdk::ModifierType::empty()],
                 ));
                 assert_eq!(cancellations.get(), before + 2);
                 assert!(
@@ -217,8 +209,12 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
                 }
                 assert!(dismissed.get());
             }
-            let ordinary =
-                modal_layer(&gtk::Label::new(Some("Confirmation")), &overlay, None, None);
+            let ordinary = crate::ui::modal::modal_layer(
+                &gtk::Label::new(Some("Confirmation")),
+                &overlay,
+                None,
+                None,
+            );
             overlay.add_overlay(&ordinary);
             let controllers = ordinary.observe_controllers();
             let click = (0..controllers.n_items())
@@ -326,4 +322,14 @@ fn spin_until(mut ready: impl FnMut() -> bool) {
         while glib::MainContext::default().iteration(false) {}
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
+}
+
+fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
+    let mut widgets = vec![widget.clone()];
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        widgets.extend(descendants(&current));
+        child = current.next_sibling();
+    }
+    widgets
 }

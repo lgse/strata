@@ -158,12 +158,52 @@ impl NavigationState {
         Some(target)
     }
 
+    /// Pops `steps` entries at once; the skipped paths land on the forward stack
+    /// in order, so stepping forward still walks the whole chain.
+    pub fn go_back_to(&mut self, steps: usize) -> Option<NavigationPath> {
+        if steps == 0 || steps > self.back_history.len() {
+            return None;
+        }
+        if let Some(current) = self.current_path() {
+            self.forward_history.push(current);
+        }
+        let mut skipped: Vec<NavigationPath> =
+            (0..steps).filter_map(|_| self.back_history.pop()).collect();
+        let target = skipped.pop()?;
+        self.forward_history.extend(skipped);
+        Some(target)
+    }
+
     pub fn go_forward(&mut self) -> Option<NavigationPath> {
         let target = self.forward_history.pop()?;
         if let Some(current) = self.current_path() {
             self.back_history.push(current);
         }
         Some(target)
+    }
+
+    pub fn go_forward_to(&mut self, steps: usize) -> Option<NavigationPath> {
+        if steps == 0 || steps > self.forward_history.len() {
+            return None;
+        }
+        if let Some(current) = self.current_path() {
+            self.back_history.push(current);
+        }
+        let mut skipped: Vec<NavigationPath> = (0..steps)
+            .filter_map(|_| self.forward_history.pop())
+            .collect();
+        let target = skipped.pop()?;
+        self.back_history.extend(skipped);
+        Some(target)
+    }
+
+    /// Most recent first -- the order the history menu presents them.
+    pub fn back_history(&self) -> impl Iterator<Item = &NavigationPath> {
+        self.back_history.iter().rev()
+    }
+
+    pub fn forward_history(&self) -> impl Iterator<Item = &NavigationPath> {
+        self.forward_history.iter().rev()
     }
 
     pub fn go_parent(&mut self) -> Option<NavigationPath> {
