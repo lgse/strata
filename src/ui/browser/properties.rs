@@ -632,10 +632,10 @@ impl ViewState {
         let restore_focus = remember_properties_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
         let metadata_load = entry.as_ref().filter(|_| !is_directory).and_then(|entry| {
-            if crate::sandbox::raw_metadata::is_raw(std::path::Path::new(&entry.native_name)) {
+            if crate::ui::raw_details::supports(entry) {
                 Some(crate::ui::raw_details::load(
                     &media_section,
-                    entry.location.native_path().map(ToOwned::to_owned),
+                    entry.local_thumbnail_path().map(ToOwned::to_owned),
                 ))
             } else {
                 entry

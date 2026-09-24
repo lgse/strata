@@ -39,4 +39,17 @@ fn raw_rows_format_capture_settings_and_keep_missing_fields() {
     assert_eq!(values[4].1, "2.5 s");
     assert_eq!(values[6].1, "0.000000, 0.000000");
     assert_eq!(values[1].1, "N/A");
+    for (exposure, expected) in [
+        (0.3, "0.3 s"),
+        (0.0003, "0.0003 s"),
+        (1.0 / 8000.0, "1/8000 s"),
+        (1.0 / 3.0, "1/3 s"),
+        (1.0, "1 s"),
+    ] {
+        let metadata = RawMetadata {
+            shutter_speed: Some(exposure),
+            ..Default::default()
+        };
+        assert_eq!(rows(&metadata)[4].1, expected);
+    }
 }

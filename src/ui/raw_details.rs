@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gtk::{gio, glib, prelude::*};
 
-use crate::sandbox::{
-    self, Cancellation, MediaPreviewBackend, ParseOperation, raw_metadata::RawMetadata,
+use crate::{
+    model::FileEntry,
+    sandbox::{self, Cancellation, MediaPreviewBackend, ParseOperation, raw_metadata::RawMetadata},
 };
+
+pub(super) fn supports(entry: &FileEntry) -> bool {
+    !entry.is_directory()
+        && (sandbox::raw_metadata::is_raw(Path::new(&entry.native_name))
+            || sandbox::raw_metadata::is_raw(Path::new(&entry.display_name)))
+}
 
 pub(super) struct MetadataLoad(pub(super) Cancellation);
 
@@ -53,10 +60,12 @@ fn rows(metadata: &RawMetadata) -> [(&'static str, String); 7] {
         (
             "SHUTTER SPEED",
             available(metadata.shutter_speed.map(|value| {
-                if value < 1.0 {
-                    format!("1/{} s", decimal(1.0 / value))
+                let reciprocal = value.recip();
+                if value < 1.0 && (reciprocal - reciprocal.round()).abs() < 1e-6 {
+                    format!("1/{reciprocal:.0} s")
                 } else {
-                    format!("{} s", decimal(value))
+                    let seconds = format!("{value:.9}");
+                    format!("{} s", seconds.trim_end_matches('0').trim_end_matches('.'))
                 }
             })),
         ),

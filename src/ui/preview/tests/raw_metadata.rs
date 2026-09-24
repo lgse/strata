@@ -18,7 +18,10 @@ fn selection_changes_and_close_cancel_raw_metadata() {
                     .0
                     .clone()
             };
-            let entry = media_size::entry("missing-metadata.NEF");
+            let mut entry = media_size::entry("missing-metadata.NEF.2");
+            entry.display_name = "missing-metadata.NEF".into();
+            entry.thumbnail_path = entry.location.native_path().map(ToOwned::to_owned);
+            entry.location = Location::uri("trash:///missing-metadata.NEF.2");
             drawer.show(entry.clone(), None);
             let first_load = cancellation();
             assert!(drawer.state.raw_details_scroll.is_visible());

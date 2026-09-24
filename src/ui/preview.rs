@@ -1051,12 +1051,10 @@ impl PreviewState {
         archive_password: Option<SecretString>,
     ) {
         self.raw_metadata_load.borrow_mut().take();
-        if !entry.is_directory()
-            && crate::sandbox::raw_metadata::is_raw(Path::new(&entry.native_name))
-        {
+        if super::raw_details::supports(&entry) {
             let load = self
                 .raw_details
-                .load(entry.location.native_path().map(ToOwned::to_owned));
+                .load(entry.local_thumbnail_path().map(ToOwned::to_owned));
             self.raw_metadata_load.replace(Some(load));
             self.raw_details_scroll.set_visible(true);
         } else {

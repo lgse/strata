@@ -121,7 +121,6 @@ def test_raw_details_match_in_preview_and_properties_and_clear_on_selection(stra
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview() is not None, "RAW preview panel")
     assert_details(strata.preview(), initial)
-    # Native-menu dispatch is covered by the quarantined #1154 regressions.
     strata.keyboard.press("alt+Return")
     dialog = strata.wait_for_dialog()
     assert_details(dialog, initial)

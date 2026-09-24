@@ -247,7 +247,9 @@ Shutter speed, ISO, and GPS coordinates**, in that order, in both the preview
 panel and Properties. All seven fields remain visible; missing or unreadable
 values show `N/A`. Dimensions describe the original image, account for orientation,
 and never use an embedded thumbnail's size. GPS is signed decimal latitude,
-then longitude; there is no reverse geocoding or network request.
+then longitude; there is no reverse geocoding or network request. Shutter speeds
+use `1/N s` for integer reciprocals and decimal seconds otherwise (for example,
+`0.3 s`, not `1/3.333 s`).
 
 RAW inspection reuses LibRaw's `raw-identify -v` or classic `dcraw -i -v` when
 installed, with a three-second limit per identification attempt. The bundled
@@ -261,8 +263,11 @@ RAW containers remain `N/A`.
 Both parsers run only inside a short-lived, software-only sandbox with the
 existing 512 MiB input limit, memory/CPU/wall-time limits, and a 64 KiB output
 budget. Only the seven validated properties reach the UI; camera/lens strings
-are bounded plain text. Remote RAW files are not downloaded for metadata and
-show `N/A`. Selection changes and closing either surface cancel pending work.
+are bounded plain text. Locally backed Trash entries use their existing local
+thumbnail source, recognizing the original display-name extension even when the
+stored filename has a collision suffix. Remote RAW files are not downloaded for
+metadata and show `N/A`. Selection changes and closing either surface cancel
+pending work.
 RAW preview labels remain in place during selection debounce and metadata loading;
 only their values reset to `N/A` and update when inspection completes.
 Detailed RAW inspection does not run for browser thumbnails.

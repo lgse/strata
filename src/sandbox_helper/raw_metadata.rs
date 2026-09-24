@@ -92,7 +92,8 @@ fn parse_identify(output: &str) -> RawMetadata {
                 metadata.camera = text(match camera.split_once(' ') {
                     Some((make, model))
                         if model
-                            .strip_prefix(make)
+                            .to_lowercase()
+                            .strip_prefix(&make.to_lowercase())
                             .is_some_and(|rest| rest.starts_with(' ')) =>
                     {
                         model

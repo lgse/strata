@@ -22,6 +22,18 @@ fn libraw_and_dcraw_identification_ignore_thumbnail_sizes() {
     assert_eq!(metadata.dimensions, Some((4000, 6000)));
     assert_eq!(metadata.shutter_speed, Some(2.0));
     assert_eq!(metadata.camera.as_deref(), Some("Nikon D850"));
+    for (camera, expected) in [
+        ("NIKON Nikon D850", "Nikon D850"),
+        ("Nikon NIKON D850", "NIKON D850"),
+        ("Nikon NikonX D850", "Nikon NikonX D850"),
+    ] {
+        assert_eq!(
+            parse_identify(&format!("Camera: {camera}\n"))
+                .camera
+                .as_deref(),
+            Some(expected)
+        );
+    }
 }
 
 fn ascii(value: &str) -> Value {
