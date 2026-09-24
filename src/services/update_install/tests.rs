@@ -2,16 +2,85 @@
 
 use std::{
     fs,
+    os::unix::fs::symlink,
     path::{Path, PathBuf},
 };
 
 use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, aur_repository_version_from_response,
-    desktop_entry_with_exec, file_sha256_hex, find_binaries, first_hash_token,
+    desktop_entry_with_exec, file_sha256_hex, find_binaries, first_hash_token, is_old_instance,
     package_repository_version_for, parse_aur_package_version, parse_package_version,
-    refresh_desktop_metadata, repository_database_version, stage_binary_path, stage_workdir,
-    update_method_for, verify_archive_checksum,
+    refresh_desktop_metadata, repository_database_version, retire_old_instances, stage_binary_path,
+    stage_workdir, update_method_for, verify_archive_checksum,
 };
+
+#[test]
+fn old_instance_selection_retires_chooser_and_file_manager_not_helpers_or_other_binaries() {
+    let root = tempfile::tempdir().expect("process fixture");
+    let binary = root.path().join("old-strata");
+    let other = root.path().join("other-strata");
+    fs::write(&binary, b"old").expect("old binary");
+    fs::write(&other, b"other").expect("unrelated binary");
+    let old = fs::metadata(&binary).expect("old metadata");
+    let proc_entry = root.path().join("12345");
+    fs::create_dir(&proc_entry).expect("process directory");
+    symlink(&binary, proc_entry.join("exe")).expect("process executable");
+    for arguments in [
+        b"strata\0".as_slice(),
+        b"strata\0/home/user\0".as_slice(),
+        b"strata\0--portal\0".as_slice(),
+    ] {
+        fs::write(proc_entry.join("cmdline"), arguments).expect("process arguments");
+        assert!(is_old_instance(&proc_entry, &binary, &old));
+    }
+    for arguments in [
+        b"strata\0--browser-worker\0".as_slice(),
+        b"strata\0--preview-helper\0".as_slice(),
+        b"strata\0--install-portal\0".as_slice(),
+    ] {
+        fs::write(proc_entry.join("cmdline"), arguments).expect("helper arguments");
+        assert!(!is_old_instance(&proc_entry, &binary, &old));
+    }
+    fs::write(proc_entry.join("cmdline"), b"strata\0--portal\0").expect("chooser arguments");
+    fs::remove_file(proc_entry.join("exe")).expect("remove old executable link");
+    symlink(&other, proc_entry.join("exe")).expect("unrelated executable link");
+    assert!(!is_old_instance(&proc_entry, &binary, &old));
+    fs::remove_file(proc_entry.join("exe")).expect("remove unrelated link");
+    let deleted = root.path().join("old-strata (deleted)");
+    fs::write(&deleted, b"older").expect("earlier binary");
+    symlink(&deleted, proc_entry.join("exe")).expect("earlier executable link");
+    assert!(is_old_instance(&proc_entry, &binary, &old));
+}
+
+#[test]
+fn in_place_retirement_signals_and_waits_for_an_owned_process() {
+    let sleep = crate::trusted_command::resolve("sleep").expect("trusted sleep");
+    let root = tempfile::tempdir().expect("private proc fixture");
+    let mut child = std::process::Command::new(&sleep)
+        .arg("30")
+        .spawn()
+        .expect("start owned process");
+    let pid = child.id();
+    symlink(format!("/proc/{pid}"), root.path().join(pid.to_string()))
+        .expect("fixture process link");
+    let old = fs::metadata(&sleep).expect("old executable metadata");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !is_old_instance(&root.path().join(pid.to_string()), &sleep, &old)
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    retire_old_instances(root.path(), &sleep, &old);
+    let status = child.try_wait().expect("inspect retired process");
+    if status.is_none() {
+        child.kill().expect("clean up process after failure");
+        child.wait().expect("reap process after failure");
+    }
+    assert!(
+        status.is_some(),
+        "retirement must wait until the old process exits"
+    );
+}
 
 const PACKAGED_ENTRY: &str =
     "[Desktop Entry]\nType=Application\nName=Strata\nExec=strata %U\nIcon=io.github.lgse.Strata\n";

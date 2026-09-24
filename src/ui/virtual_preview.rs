@@ -314,11 +314,9 @@ fn virtual_preview(
         .child(&list)
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .overlay_scrolling(false)
         .hexpand(true)
         .vexpand(true)
         .build();
-    scroll.add_css_class("fixed-scrollbar");
     if !source {
         let weak_state = Rc::downgrade(&state);
         let measured_width = Cell::new(0);

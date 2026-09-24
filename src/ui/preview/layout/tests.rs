@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod compact;
+mod filtered;
 mod visibility;
 
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
@@ -14,7 +16,6 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
         start_minimum: 500,
         separator: 2,
         columns: true,
-        icons: false,
     };
     assert_eq!(geometry.position(None), geometry.occupied);
     let overflow = Geometry {
@@ -36,14 +37,14 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
     assert_eq!(narrow.position(Some(900)), narrow.start_minimum);
     assert!(
         !Geometry {
-            available: 800,
+            available: 0,
             ..geometry
         }
         .can_show_preview()
     );
     assert!(
         Geometry {
-            available: 802,
+            available: 1,
             ..geometry
         }
         .can_show_preview()
@@ -74,14 +75,22 @@ struct Fixture {
     preview: PreviewDrawer,
     requests: Rc<RefCell<Vec<PreviewRequest>>>,
     root: tempfile::TempDir,
+    _sidebar: SidebarView,
 }
 
 impl Fixture {
     fn new(chooser: bool) -> Self {
+        Self::with_files(chooser, &[])
+    }
+
+    fn with_files(chooser: bool, files: &[&str]) -> Self {
         crate::ui::prepare_portal_ui();
         let root = tempfile::tempdir().expect("column fixture");
         std::fs::create_dir_all(root.path().join("child/grandchild/g3/g4/g5"))
             .expect("nested folders");
+        for name in files {
+            std::fs::write(root.path().join(name), name).expect("file");
+        }
         let browser = if chooser {
             BrowserView::new_chooser(Rc::new(crate::adapters::LocalFileSource), false)
         } else {
@@ -92,12 +101,15 @@ impl Fixture {
         };
         let requests = Rc::new(RefCell::new(Vec::new()));
         let preview = PreviewDrawer::new(Rc::new(RecordingProvider(requests.clone())), !chooser);
-        let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        sidebar.set_width_request(180);
+        let sidebar =
+            crate::ui::window::build_sidebar(browser.clone(), PreferenceManager::shared(), true);
+        sidebar
+            .widget
+            .set_size_request(crate::ui::window::MIN_SIDEBAR_WIDTH, -1);
         let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-        content.set_start_child(Some(&sidebar));
+        content.set_start_child(Some(&sidebar.widget));
         content.set_end_child(Some(&browser.widget()));
-        content.set_position(180);
+        content.set_position(crate::ui::window::SIDEBAR_WIDTH);
         content.set_resize_start_child(false);
         content.set_shrink_start_child(false);
         let split = gtk::Paned::new(gtk::Orientation::Horizontal);
@@ -107,7 +119,7 @@ impl Fixture {
         split.set_resize_end_child(false);
         split.set_shrink_start_child(false);
         split.set_shrink_end_child(true);
-        preview.attach_split(&split, &content, &browser);
+        preview.attach_split(&split, &content, &browser, Some(&sidebar));
         let window = gtk::Window::builder()
             .child(&split)
             .default_width(1800)
@@ -131,6 +143,7 @@ impl Fixture {
             preview,
             requests,
             root,
+            _sidebar: sidebar,
         }
     }
 

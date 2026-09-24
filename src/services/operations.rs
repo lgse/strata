@@ -247,6 +247,8 @@ pub struct ExtractRequest {
     pub id: OperationRequestId,
     pub entry: FileEntry,
     pub destination: Location,
+    /// Caller-reserved destinations are eligible for empty-folder cleanup.
+    pub created_destination: bool,
     pub password: Option<String>,
 }
 
@@ -279,6 +281,9 @@ pub enum OperationEvent {
     Pasted {
         request_id: OperationRequestId,
         locations: Vec<Location>,
+    },
+    FlushingToDevice {
+        request_id: OperationRequestId,
     },
     /// A folder merge finished (or staged its backups): `created` are paths
     /// the merge wrote fresh, `overwritten` are paths whose originals now

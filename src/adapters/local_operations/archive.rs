@@ -9,9 +9,20 @@ mod compression;
 mod decoders;
 mod destination;
 mod extraction;
+mod listing;
+
+#[cfg(test)]
+pub(crate) use listing::ArchiveListing;
+pub(crate) use listing::{
+    ARCHIVE_PREVIEW_FAILED_MESSAGE, ARCHIVE_TOO_LARGE_MESSAGE, ARCHIVE_UNSUPPORTED_MESSAGE,
+    ArchiveListingStatus, INVALID_ARCHIVE, MAX_ARCHIVE_PASSWORD_BYTES, archive_payload_valid,
+    decode_archive_listing, encode_archive_result, list_archive_entries_direct,
+};
 
 #[cfg(test)]
 mod fixtures;
+#[cfg(test)]
+pub(crate) use fixtures::write_compression_fixture;
 #[cfg(test)]
 mod tests;
 
@@ -187,7 +198,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
 /// Emits [`ArchiveStarted`] immediately, [`ArchiveProgress`] while running,
 /// then [`Extracted`], [`Failed`], or [`Cancelled`]. A cancel after some
 /// members have been written reports completed, failed, and not-attempted
-/// locations through [`CancelledOperation`].
+/// locations through [`CancelledOperation`]. Completed extractions spilling
+/// more than one top-level entry are bundled into a folder named after the
+/// archive stem; [`Extracted::first_name`] then selects that folder.
 ///
 /// # Concurrency
 ///
@@ -220,7 +233,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
-        let created_dest = !dest_dir.exists();
+        let created_dest = request.created_destination || !dest_dir.exists();
         if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
             emit(OperationEvent::Failed {
                 request_id: request.id,
@@ -242,51 +255,67 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             archive_progress_timer(request.id, &progress, &total, &task_cancelled, &emit);
         let work_progress = progress.clone();
         let work_total = total.clone();
-        let result = gio::spawn_blocking(move || match format {
-            Some(ArchiveFormat::Zip) => {
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
-                work_total.store(archive.len(), Ordering::Relaxed);
-                extract_zip_from_archive(
-                    &mut archive,
+        let result = gio::spawn_blocking(move || {
+            let outcome = match format {
+                Some(ArchiveFormat::Zip) => {
+                    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                    let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
+                    work_total.store(archive.len(), Ordering::Relaxed);
+                    extract_zip_from_archive(
+                        &mut archive,
+                        &dest_dir,
+                        password.as_deref(),
+                        &work_progress,
+                        &work_cancelled,
+                    )
+                }
+                Some(ArchiveFormat::SevenZ) => {
+                    let pw = password
+                        .as_deref()
+                        .map(sevenz_rust2::Password::from)
+                        .unwrap_or_default();
+                    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress, &work_cancelled)
+                }
+                Some(ArchiveFormat::TarGz) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    true,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                Some(ArchiveFormat::Tar) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    false,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                Some(ArchiveFormat::Rar) => extract_rar(
+                    &archive_path,
                     &dest_dir,
                     password.as_deref(),
                     &work_progress,
                     &work_cancelled,
-                )
+                ),
+                None => Err(archive_failed(format!(
+                    "Unsupported archive format: {display_name}"
+                ))),
+            };
+            match outcome? {
+                ArchiveOutcome::Completed(roots) => {
+                    Ok(ArchiveOutcome::Completed(roots.bundle(&display_name)?))
+                }
+                ArchiveOutcome::Cancelled {
+                    completed,
+                    failed,
+                    not_attempted,
+                } => Ok(ArchiveOutcome::Cancelled {
+                    completed,
+                    failed,
+                    not_attempted,
+                }),
             }
-            Some(ArchiveFormat::SevenZ) => {
-                let pw = password
-                    .as_deref()
-                    .map(sevenz_rust2::Password::from)
-                    .unwrap_or_default();
-                let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                extract_7z_from_reader(file, &dest_dir, pw, &work_progress, &work_cancelled)
-            }
-            Some(ArchiveFormat::TarGz) => extract_tar(
-                &archive_path,
-                &dest_dir,
-                true,
-                &work_progress,
-                &work_cancelled,
-            ),
-            Some(ArchiveFormat::Tar) => extract_tar(
-                &archive_path,
-                &dest_dir,
-                false,
-                &work_progress,
-                &work_cancelled,
-            ),
-            Some(ArchiveFormat::Rar) => extract_rar(
-                &archive_path,
-                &dest_dir,
-                password.as_deref(),
-                &work_progress,
-                &work_cancelled,
-            ),
-            None => Err(archive_failed(format!(
-                "Unsupported archive format: {display_name}"
-            ))),
         })
         .await;
         timer_id.remove();

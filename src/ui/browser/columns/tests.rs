@@ -117,14 +117,6 @@ fn deferred_pointer_activation_remembers_prior_drag_motion() {
 }
 
 #[test]
-fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
-    assert!(should_preserve_drag_selection(true, 2));
-    assert!(should_preserve_drag_selection(true, 8));
-    assert!(!should_preserve_drag_selection(true, 1));
-    assert!(!should_preserve_drag_selection(false, 4));
-}
-
-#[test]
 fn reveal_target_scrolls_only_enough_to_show_the_new_column() {
     assert_eq!(
         ColumnSpan {

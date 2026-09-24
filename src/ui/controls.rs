@@ -163,6 +163,18 @@ pub(super) struct ModalLayout {
     pub icon: gtk::Image,
 }
 
+pub(super) fn focus_button(button: &gtk::Button) {
+    let weak = button.downgrade();
+    glib::idle_add_local_once(move || {
+        if let Some(button) = weak.upgrade() {
+            button.grab_focus();
+            if let Some(window) = button.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(false);
+            }
+        }
+    });
+}
+
 impl ModalLayout {
     pub fn set_loading(&self, loading: bool, tooltip: Option<&str>) {
         if loading {
@@ -232,8 +244,8 @@ pub(super) fn modal_layout_with_tone(
     if tone == ModalTone::Danger {
         symbol.add_css_class("danger");
     }
-    symbol.set_size_request(40, 40);
     symbol.set_hexpand(false);
+    symbol.set_valign(gtk::Align::Fill);
     let icon = match tone {
         ModalTone::Accent => crate::assets::primary_icon(icon, 21),
         ModalTone::Danger => crate::assets::danger_icon(icon, 21),
@@ -320,14 +332,6 @@ pub(super) fn segmented_control(
         let button = gtk::ToggleButton::with_label(label);
         button.add_css_class("segmented-control-option");
         button.set_hexpand(true);
-        if index == 0 {
-            button.add_css_class("first");
-        } else {
-            button.add_css_class("not-first");
-        }
-        if index + 1 == labels.len() {
-            button.add_css_class("last");
-        }
         if let Some(first) = buttons.first() {
             button.set_group(Some(first));
         }

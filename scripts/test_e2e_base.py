@@ -43,7 +43,7 @@ class LocalBaseTests(unittest.TestCase):
         self.assertIn("-1001-1001", run.call_args_list[0].args[0][-1])
         self.assertEqual(run.call_args_list[1].args[0][2], valid_image()["Id"])
 
-    def test_missing_publication_never_silently_builds_from_ubuntu(self):
+    def test_missing_publication_never_silently_builds_from_the_distribution(self):
         with patch("e2e_base.inspect", return_value=None), \
              patch("e2e_base.subprocess.run", return_value=Mock(returncode=1)) as run, \
              patch("builtins.print"), self.assertRaisesRegex(ValueError, "explicit local environment build"):

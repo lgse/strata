@@ -34,7 +34,11 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for ThumbnailSlot {}
+    impl ObjectImpl for ThumbnailSlot {
+        fn dispose(&self) {
+            super::super::forget_slot(self.obj().as_ptr() as usize);
+        }
+    }
 
     impl WidgetImpl for ThumbnailSlot {
         fn request_mode(&self) -> gtk::SizeRequestMode {
@@ -145,7 +149,13 @@ glib::wrapper! {
 impl ThumbnailSlot {
     pub(crate) fn new(slot: i32) -> Self {
         let widget: Self = glib::Object::new();
-        widget.connect_map(|_| super::viewport::schedule_refresh());
+        widget.connect_map(|slot| {
+            // Mapping can precede allocation and leave visible requests deferred.
+            slot.add_tick_callback(|_, _| {
+                super::viewport::schedule_refresh();
+                glib::ControlFlow::Break
+            });
+        });
         widget.set_overflow(gtk::Overflow::Hidden);
         widget.imp().fallback_scale.set(1.0);
         widget.imp().base_opacity.set(1.0);

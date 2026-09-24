@@ -37,20 +37,42 @@ mod progress;
 mod renames;
 mod replacement;
 mod restore_safety;
+mod sync;
 mod trash_capabilities;
 mod undo;
 
+fn copy_recursively_fat_family(
+    source: gio::File,
+    target: gio::File,
+    overwrite_existing: bool,
+    cancellable: gio::Cancellable,
+    created_root: Option<Rc<super::CreatedCopyRoot>>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    copy_recursively_with_progress(
+        source,
+        target,
+        overwrite_existing,
+        cancellable,
+        created_root,
+        None,
+        true,
+    )
+}
+
 use super::{
-    LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider, MergeHooks, MergePlan,
+    LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider, MergeHooks, MergePlan, MountTable,
     RestoreEntry, StageCopy, StageOverwrite, StagedOriginalLookup, TransferProgressTracker,
     await_cancellable, bounded_local_delete_worker_count, copy_failure_after_cleanup,
-    copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
-    deletion_error_summary, duplicate_candidate_name, home_trash_entries_at, io_error,
+    copy_new_recursively, copy_new_remote_file_with, copy_recursively,
+    copy_recursively_with_progress, deletion_error_message, deletion_error_summary,
+    duplicate_candidate_name, fat_sanitized_name, home_trash_entries_at, io_error,
     is_trash_unsupported_failure, local_file_identity, merge_local, merge_local_with, move_local,
     move_local_with, open_local_parent_directory, operation_error_summary, parallel_delete_local,
     parse_copy_suffix, permanently_delete_local, permanently_delete_local_path_if_unchanged,
-    replace_local, replace_local_with, run_merge_undo, transfer_is_noop, trash_stage_overwrite,
-    validated_child, was_cancelled,
+    replace_local, replace_local_with, run_merge_undo, set_force_cross_volume_for_test,
+    set_removable_roots_for_test, set_sync_observer, sync_probe_observations, target_is_fat_family,
+    transfer_is_noop, trash_stage_overwrite, unique_fat_sibling_name, validated_child,
+    was_cancelled,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -61,6 +83,65 @@ use crate::{
         UndoMoveItem, UndoMoveRequest, UndoRenameRequest,
     },
 };
+
+struct RemovableFlushGuard;
+
+impl RemovableFlushGuard {
+    fn install(root: &Path, fail: Option<io::ErrorKind>, cross_volume: bool) -> Self {
+        set_removable_roots_for_test(Some(vec![root.to_path_buf()]));
+        set_force_cross_volume_for_test(cross_volume);
+        super::install_sync_probe(fail, false);
+        Self
+    }
+}
+
+impl Drop for RemovableFlushGuard {
+    fn drop(&mut self) {
+        super::release_sync_probe();
+        super::clear_sync_probe();
+        set_sync_observer(None);
+        set_removable_roots_for_test(None);
+        set_force_cross_volume_for_test(false);
+    }
+}
+
+fn terminal_transfer(events: &[OperationEvent]) -> Option<&OperationEvent> {
+    events.iter().rev().find(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    })
+}
+
+fn pump_until_transfer(events: &RefCell<Vec<OperationEvent>>) {
+    let start = Instant::now();
+    while terminal_transfer(&events.borrow()).is_none() {
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "timed out waiting for the transfer to finish: {:?}",
+            events.borrow()
+        );
+        // Own the default context for the whole wait. Releasing it between
+        // polls lets a GIO copy worker run a progress callback inline.
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+fn watch_source_during_sync(source: &Path) -> Arc<std::sync::Mutex<Vec<bool>>> {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let record = Arc::clone(&seen);
+    let source = source.to_path_buf();
+    set_sync_observer(Some(Arc::new(move |_| {
+        record
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .push(source.exists());
+    })));
+    seen
+}
 
 fn file_entry(path: &std::path::Path) -> FileEntry {
     FileEntry {

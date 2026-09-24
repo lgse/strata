@@ -193,10 +193,38 @@ fn audio_only_and_attached_cover_art_do_not_require_a_hardware_video_decoder() {
     );
     let info = probe(&attached, MediaPreviewSize::new(520, 800), 0).expect("cover metadata");
     assert!(info.cover);
-    let (header, frames, _) = decoded(&attached, "520x800", 0);
-    assert!(header.audio);
-    assert_eq!((header.width, header.height), (64, 48));
-    assert_eq!(frames.len(), 30);
+    let mp3 = directory.path().join("cover.mp3");
+    success(
+        Command::new("ffmpeg")
+            .args(["-v", "error", "-i"])
+            .arg(&audio)
+            .arg("-i")
+            .arg(&cover)
+            .args([
+                "-map",
+                "0:a",
+                "-map",
+                "1:v",
+                "-c:a",
+                "libmp3lame",
+                "-c:v",
+                "copy",
+                "-disposition:v",
+                "attached_pic",
+            ])
+            .arg(&mp3),
+    );
+    for attached in [&attached, &mp3] {
+        let (header, frames, _) = decoded(attached, "520x800", 0);
+        assert!(header.audio);
+        assert_eq!((header.width, header.height), (64, 48));
+        assert_eq!(frames.len(), 30);
+        let pixel = &frames[0].pixels[..4];
+        assert!(
+            pixel[2] > pixel[0] && pixel[2] > pixel[1],
+            "cover frame: {pixel:?}"
+        );
+    }
 }
 
 #[test]

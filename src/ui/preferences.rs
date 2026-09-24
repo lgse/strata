@@ -17,6 +17,8 @@ use crate::{
     services::{Channel, CrossVolumeDropStrategy},
 };
 
+use super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
+
 mod bindings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
@@ -28,6 +30,14 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<PreferenceManager>> = const { RefCell::new(std::rc::Weak::new()) };
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum InterfaceRenderer {
+    Cairo,
+    #[default]
+    System,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
@@ -36,6 +46,8 @@ pub(in crate::ui) struct Preferences {
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default = "default_enabled")]
+    columns_mirror_selection: bool,
     #[serde(default = "default_enabled")]
     render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -98,6 +110,8 @@ pub(in crate::ui) struct Preferences {
     show_hidden: bool,
     #[serde(default)]
     text_size: TextSize,
+    #[serde(default)]
+    interface_renderer: InterfaceRenderer,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -118,10 +132,14 @@ pub(in crate::ui) struct Preferences {
     auto_refresh_interval: u32,
     #[serde(default = "crate::sandbox::browser::default_worker_limit")]
     thumbnail_workers: usize,
+    #[serde(default = "default_icons_thumbnail_size")]
+    icons_thumbnail_size: i32,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
     #[serde(default)]
     open_folder_after_drop: bool,
+    #[serde(default = "default_date_format")]
+    date_format: String,
     #[serde(default = "default_release_channel")]
     release_channel: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -139,6 +157,7 @@ impl Default for Preferences {
             theme: "tokyo-night".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            columns_mirror_selection: true,
             render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
@@ -170,6 +189,7 @@ impl Default for Preferences {
             sidebar_show_videos: true,
             show_hidden: false,
             text_size: TextSize::default(),
+            interface_renderer: InterfaceRenderer::default(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
@@ -180,8 +200,10 @@ impl Default for Preferences {
             preview_autoplay: false,
             auto_refresh_interval: 0,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
+            icons_thumbnail_size: default_icons_thumbnail_size(),
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
+            date_format: default_date_format(),
             release_channel: default_release_channel(),
             default_directory: None,
             folder_colors: HashMap::new(),
@@ -240,6 +262,10 @@ fn default_double_clicks() -> u8 {
 
 fn default_sidebar_order() -> Vec<String> {
     vec![
+        "home".to_owned(),
+        "trash".to_owned(),
+        "network".to_owned(),
+        "recent".to_owned(),
         "desktop".to_owned(),
         "documents".to_owned(),
         "downloads".to_owned(),
@@ -260,6 +286,14 @@ fn default_full_volume() -> f64 {
     1.0
 }
 
+fn default_icons_thumbnail_size() -> i32 {
+    64
+}
+
+fn default_date_format() -> String {
+    crate::util::DateFormat::default().as_str().to_owned()
+}
+
 fn default_cross_volume_drop_strategy() -> String {
     CrossVolumeDropStrategy::Ask.as_str().to_owned()
 }
@@ -274,6 +308,7 @@ fn normalized_volume(volume: f64) -> f64 {
 
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
+    startup_interface_renderer: InterfaceRenderer,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
     persistence_enabled: bool,
@@ -303,9 +338,14 @@ impl PreferenceManager {
         preferences.thumbnail_workers = preferences
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
+        preferences.icons_thumbnail_size = preferences
+            .icons_thumbnail_size
+            .clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         super::motion::set_reduce_motion(preferences.reduce_motion);
+        crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
         Rc::new(Self {
+            startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
             persistence_enabled,
@@ -466,6 +506,15 @@ impl PreferenceManager {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.preferences.borrow_mut().single_click_previews = enabled;
+        self.save_preferences();
+    }
+
+    pub fn columns_mirror_selection(&self) -> bool {
+        self.preferences.borrow().columns_mirror_selection
+    }
+
+    pub fn set_columns_mirror_selection(&self, enabled: bool) {
+        self.preferences.borrow_mut().columns_mirror_selection = enabled;
         self.save_preferences();
     }
 
@@ -654,6 +703,16 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
+    pub fn icons_thumbnail_size(&self) -> i32 {
+        self.preferences.borrow().icons_thumbnail_size
+    }
+
+    pub fn set_icons_thumbnail_size(&self, size: i32) {
+        self.preferences.borrow_mut().icons_thumbnail_size =
+            size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
+        self.save_preferences();
+    }
+
     pub fn auto_refresh_interval(&self) -> u32 {
         self.preferences.borrow().auto_refresh_interval
     }
@@ -678,6 +737,19 @@ impl PreferenceManager {
 
     pub fn set_open_folder_after_drop(&self, enabled: bool) {
         self.preferences.borrow_mut().open_folder_after_drop = enabled;
+        self.save_preferences();
+    }
+
+    pub fn date_format(&self) -> crate::util::DateFormat {
+        crate::util::DateFormat::parse(&self.preferences.borrow().date_format)
+    }
+
+    pub fn set_date_format(&self, format: crate::util::DateFormat) {
+        if self.date_format() == format {
+            return;
+        }
+        self.preferences.borrow_mut().date_format = format.as_str().to_owned();
+        crate::util::set_date_format(format);
         self.save_preferences();
     }
 
@@ -747,6 +819,19 @@ impl PreferenceManager {
         }
         .to_owned();
         self.save_preferences();
+    }
+
+    pub fn interface_renderer(&self) -> InterfaceRenderer {
+        self.preferences.borrow().interface_renderer
+    }
+
+    pub fn set_interface_renderer(&self, renderer: InterfaceRenderer) {
+        self.preferences.borrow_mut().interface_renderer = renderer;
+        self.save_preferences();
+    }
+
+    pub fn interface_renderer_restart_required(&self) -> bool {
+        self.interface_renderer() != self.startup_interface_renderer
     }
 
     pub fn text_size(&self) -> TextSize {
@@ -1126,7 +1211,7 @@ pub(in crate::ui) fn snapped_root_font_px(root_font_px: u32, scale_factor: f64) 
 }
 
 pub(in crate::ui) fn config_directory() -> PathBuf {
-    glib::user_config_dir().join("strata")
+    crate::storage::config_directory()
 }
 
 fn settings_path() -> PathBuf {

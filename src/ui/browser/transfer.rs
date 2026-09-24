@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::adapters::gio_file_for_location;
+use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::services::{
     DropCommit, MoveRecord, PasteItem, RenameBatchRecord, TransferConflict, UndoMoveItem,
@@ -15,7 +16,7 @@ use crate::ui::browser::paths::{
     can_remove_location, compact_display_path, compact_native_path, is_trash_location,
 };
 use crate::ui::controls::{
-    ModalTone, form_check_button, form_entry, form_label, message_dialog_description,
+    ModalTone, focus_button, form_check_button, form_entry, form_label, message_dialog_description,
     message_dialog_layout, modal_layout,
 };
 use crate::ui::modal::{
@@ -398,13 +399,48 @@ impl ViewState {
     /// Moves the latest completed transfer back, confirming any item that would
     /// overwrite something created since the move.
     pub(super) fn undo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
+        self.replay_move(false, generation, records)
+    }
+
+    pub(super) fn redo_trash(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
+        self.replay_existing_locations(true, generation, locations, Browser::redo_trash)
+    }
+
+    pub(super) fn redo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
+        self.replay_move(true, generation, records)
+    }
+
+    fn replay_existing_locations(
+        self: &Rc<Self>,
+        redo: bool,
+        generation: u64,
+        locations: Vec<Location>,
+        dispatch: fn(&Rc<Browser>, u64, Vec<Location>) -> bool,
+    ) -> bool {
+        let existing = locations
+            .into_iter()
+            .filter(location_exists)
+            .collect::<Vec<_>>();
+        if existing.is_empty() {
+            self.browser.discard_pending_replay(redo, generation);
+            return false;
+        }
+        dispatch(&self.browser, generation, existing)
+    }
+
+    fn replay_move(self: &Rc<Self>, redo: bool, generation: u64, records: Vec<MoveRecord>) -> bool {
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
         for record in records {
-            if !location_exists(&record.current) {
+            let (item_at, destination) = if redo {
+                (&record.original, &record.current)
+            } else {
+                (&record.current, &record.original)
+            };
+            if !location_exists(item_at) {
                 continue;
             }
-            if location_exists(&record.original) {
+            if location_exists(destination) {
                 collisions.push(record);
             } else {
                 accepted.push(UndoMoveItem {
@@ -414,43 +450,63 @@ impl ViewState {
             }
         }
         if accepted.is_empty() && collisions.is_empty() {
-            self.browser.discard_pending_undo(generation);
+            self.browser.discard_pending_replay(redo, generation);
             return false;
         }
-        self.resolve_undo_collisions(generation, collisions, accepted);
+        self.resolve_replay_collisions(redo, generation, collisions, accepted);
         true
     }
 
     pub(super) fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
-        let existing = locations
-            .into_iter()
-            .filter(location_exists)
-            .collect::<Vec<_>>();
-        if existing.is_empty() {
-            self.browser.discard_pending_undo(generation);
-            return false;
-        }
-        self.browser.undo_copy(generation, existing)
+        self.replay_existing_locations(false, generation, locations, Browser::undo_copy)
     }
 
-    /// Replays rename records back to their original names. Records whose
-    /// current name is already gone are dropped; collisions with names taken
-    /// since the rename fail safely in the provider and surface in its
-    /// summary instead of overwriting.
-    pub(super) fn undo_rename(
+    /// Replays rename records toward or away from their original names.
+    /// Records whose source location is already gone are dropped; collisions
+    /// with names taken since the rename fail safely in the provider and
+    /// surface in its summary instead of overwriting.
+    fn replay_rename(
         self: &Rc<Self>,
+        redo: bool,
         generation: u64,
         records: Vec<RenameBatchRecord>,
     ) -> bool {
         let existing = records
             .into_iter()
-            .filter(|record| location_exists(&record.current))
+            .filter(|record| {
+                let source = if redo {
+                    &record.original
+                } else {
+                    &record.current
+                };
+                location_exists(source)
+            })
             .collect::<Vec<_>>();
         if existing.is_empty() {
-            self.browser.discard_pending_undo(generation);
+            self.browser.discard_pending_replay(redo, generation);
             return false;
         }
-        self.browser.undo_rename_batch(generation, existing)
+        if redo {
+            self.browser.redo_rename_batch(generation, existing)
+        } else {
+            self.browser.undo_rename_batch(generation, existing)
+        }
+    }
+
+    pub(super) fn undo_rename(
+        self: &Rc<Self>,
+        generation: u64,
+        records: Vec<RenameBatchRecord>,
+    ) -> bool {
+        self.replay_rename(false, generation, records)
+    }
+
+    pub(super) fn redo_rename(
+        self: &Rc<Self>,
+        generation: u64,
+        records: Vec<RenameBatchRecord>,
+    ) -> bool {
+        self.replay_rename(true, generation, records)
     }
 
     pub(super) fn undo_merge(
@@ -466,34 +522,40 @@ impl ViewState {
         // Overwritten entries stay even when the incoming copy is gone: the
         // staged original may still be sitting in Trash waiting to restore.
         if created.is_empty() && overwritten.is_empty() {
-            self.browser.discard_pending_undo(generation);
+            self.browser.discard_pending_replay(false, generation);
             return false;
         }
         self.browser.undo_merge(generation, created, overwritten)
     }
 
-    fn resolve_undo_collisions(
+    fn resolve_replay_collisions(
         self: &Rc<Self>,
+        redo: bool,
         generation: u64,
         mut collisions: Vec<MoveRecord>,
         accepted: Vec<UndoMoveItem>,
     ) {
         if collisions.is_empty() {
             if accepted.is_empty() {
-                self.browser.discard_pending_undo(generation);
+                self.browser.discard_pending_replay(redo, generation);
+            } else if redo {
+                self.browser.redo_move(generation, accepted);
             } else {
                 self.browser.undo_move(generation, accepted);
             }
             return;
         }
         let record = collisions.remove(0);
-        let name = record.original.display_name();
-        let parent = record
-            .original
-            .parent()
-            .unwrap_or_else(|| record.original.clone());
+        let destination = if redo {
+            &record.current
+        } else {
+            &record.original
+        };
+        let name = destination.display_name();
+        let parent = destination.parent().unwrap_or_else(|| destination.clone());
+        let action = if redo { "Redoing" } else { "Undoing" };
         let explanation = format!(
-            "An item named \u{201c}{name}\u{201d} already exists in {}. Undoing the move will overwrite its contents.",
+            "An item named \u{201c}{name}\u{201d} already exists in {}. {action} the move will overwrite its contents.",
             compact_display_path(&parent)
         );
         let state = self.clone();
@@ -522,12 +584,12 @@ impl ViewState {
                         }
                     }
                     ConflictChoice::Merge | ConflictChoice::KeepBoth => {
-                        unreachable!("merge and keep-both are not offered for undo conflicts")
+                        unreachable!("merge and keep-both are not offered for replay conflicts")
                     }
                     ConflictChoice::Skip if apply_to_all => remaining.clear(),
                     ConflictChoice::Skip => {}
                 }
-                state.resolve_undo_collisions(generation, remaining, accepted);
+                state.resolve_replay_collisions(redo, generation, remaining, accepted);
             }),
         );
     }
@@ -648,13 +710,7 @@ impl ViewState {
             }
         });
         layer.add_controller(escape);
-        let initial_focus = replace.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
-            }
-        });
+        focus_button(&replace);
     }
 
     pub(super) fn show_transfer_dialog(

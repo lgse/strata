@@ -32,6 +32,30 @@ impl super::ModeViews {
             self.list_click_activation.get(),
             manager.click_activation(BrowserMode::List)
         );
+        assert_eq!(
+            self.icons_thumbnail_size.get(),
+            manager.icons_thumbnail_size()
+        );
+        for pane in &self.icons_panes {
+            assert_eq!(
+                pane.thumbnail_scale
+                    .as_ref()
+                    .expect("Icons size control")
+                    .value(),
+                f64::from(manager.icons_thumbnail_size())
+            );
+        }
+    }
+
+    pub(in crate::ui) fn active_filter_placeholder(&self) -> Option<String> {
+        let pane = self
+            .browser
+            .active_depth()
+            .and_then(|depth| self.panes_at(depth).into_iter().next())?;
+        pane.filter_entry
+            .as_ref()?
+            .placeholder_text()
+            .map(|text| text.to_string())
     }
 }
 
@@ -499,6 +523,29 @@ fn run_source_index_map_checks() {
         "the range anchor follows its entry through a re-sort"
     );
 
+    let sorted_index = SourceIndexMap::watch(&sorted);
+    let visible_index = SourceIndexMap::watch(&visible);
+    let removed = source.item(0).expect("removed item");
+    source.remove(0);
+    assert_eq!(sorted_index.of_item(&removed), None);
+    assert_eq!(visible_index.of_item(&removed), None);
+    source.append("fh\t.hidden");
+    let hidden = source.item(source.n_items() - 1).expect("hidden item");
+    assert_eq!(visible_index.of_item(&hidden), None);
+    visible.set_filter(None::<&gtk::Filter>);
+    sorted.set_sorter(None::<&gtk::Sorter>);
+    for (model, index) in [
+        (sorted.upcast_ref::<gio::ListModel>(), &sorted_index),
+        (visible.upcast_ref::<gio::ListModel>(), &visible_index),
+    ] {
+        for position in 0..model.n_items() {
+            assert_eq!(
+                index.of_item(&model.item(position).expect("view item")),
+                Some(position as usize)
+            );
+        }
+    }
+
     let source = gtk::StringList::new(&["fv\talpha"]);
     let weak = source.downgrade();
     let map = SourceIndexMap::watch(&source);
@@ -701,7 +748,7 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
             let details = crate::ui::icons_cell::details_label(&card).expect("details label");
 
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
-            assert!(!details.is_visible());
+            assert!(details.text().is_empty());
 
             entry.image_dimensions = MetadataValue::Known((1920, 1080));
             super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, false, None);
@@ -745,6 +792,13 @@ fn icons_entry_displays_item_info_for_images_folders_and_files() {
             folder_entry.child_count = MetadataValue::Known(0);
             super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, false, None);
             assert_eq!(details.text().as_str(), "No items");
+
+            folder_entry.child_count = MetadataValue::Unknown;
+            super::apply_icons_entry(None, &card, &folder_entry, &HashSet::new(), 64, true, None);
+            assert!(
+                details.text().is_empty(),
+                "recycled cards clear old details"
+            );
         },
     );
 }

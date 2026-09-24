@@ -16,7 +16,7 @@ use super::{
     effective_update_channel, force_due_update_check,
     general::{video_preview_backend_label, video_preview_control_state},
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
-    managed_install_summary, offer_still_eligible, omarchy_update_command,
+    managed_install_summary, offer_still_eligible, omarchy_update_command, process_start_time,
     resolve_update_method_async, responsive_dialog_size, restart_waiter,
     shows_available_release_notes,
     theme::{theme_background_is_light, theme_name_matches},
@@ -541,6 +541,16 @@ fn update_method_resolves_and_caches() {
 }
 
 #[test]
+fn restart_waiter_records_process_identity_not_just_pid() {
+    let start = process_start_time(std::process::id()).expect("current process start time");
+    assert!(start.bytes().all(|byte| byte.is_ascii_digit()));
+    assert!(process_start_time(u32::MAX).is_none());
+    let command = restart_waiter(Path::new("/tmp/strata"), std::process::id())
+        .expect("trusted restart helpers");
+    assert!(command.get_args().any(|arg| arg == start.as_str()));
+}
+
+#[test]
 fn restart_waiter_uses_absolute_sh() {
     let command = restart_waiter(Path::new("/tmp/strata"), 1).expect("trusted restart helpers");
     let program = Path::new(command.get_program());
@@ -581,7 +591,18 @@ fn restart_waiter_ignores_path_shadowing_and_preserves_application_path() {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).expect("executable fixture");
     }
 
-    let status = restart_waiter(&application, u32::MAX)
+    // Bash can wrap an out-of-range PID into kill's process-group semantics.
+    let gone_pid = {
+        let mut child = crate::trusted_command::command("true")
+            .expect("trusted true")
+            .spawn()
+            .expect("spawn a short-lived process");
+        let pid = child.id();
+        child.wait().expect("reap the short-lived process");
+        pid
+    };
+
+    let status = restart_waiter(&application, gone_pid)
         .expect("trusted restart helpers")
         .env("PATH", dir.path())
         .env("HIJACK_MARKER", &hijacked)

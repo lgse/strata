@@ -43,6 +43,56 @@ def test_the_entry_context_menu_offers_named_actions_and_accelerators(strata):
     strata.dismiss_menu()
 
 
+@pytest.mark.preferences(browser_mode="list", single_click_previews=False)
+def test_secondary_click_retargets_an_open_context_menu(strata):
+    root = strata.fixture.root.name
+    strata.select_entry("todo.txt", root)
+    strata.click_entry_with("readme.md", ["ctrl"], directory=root)
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
+
+    strata.pointer.right_click(strata.entry("todo.txt", root))
+    strata.wait(strata.context_menu, "the grouped context menu")
+    assert "Rename" not in strata.menu_items()
+
+    strata.pointer.right_click(strata.entry("archive", root))
+    strata.wait_for_selection(["archive"], root)
+    strata.wait(lambda: "Rename" in strata.menu_items(), "the retargeted item menu")
+    strata.dismiss_menu()
+
+
+@pytest.fixture
+def context_actions(test_environment):
+    applications = test_environment.data_home / "applications"
+    applications.mkdir()
+    (applications / "strata-context-viewer.desktop").write_text(
+        "[Desktop Entry]\nType=Application\nName=Context Viewer\n"
+        "Exec=true %U\nMimeType=text/plain;text/markdown;\n"
+    )
+    (test_environment.config_home / "mimeapps.list").write_text(
+        "[Default Applications]\n"
+        "text/plain=strata-context-viewer.desktop;\n"
+        "text/markdown=strata-context-viewer.desktop;\n"
+        "[Added Associations]\n"
+        "text/plain=strata-context-viewer.desktop;\n"
+        "text/markdown=strata-context-viewer.desktop;\n"
+    )
+    for name in ("First action", "Second action"):
+        action_id = name.lower().replace(" ", "-")
+        directory = test_environment.config_home / "strata/actions" / action_id
+        directory.mkdir(parents=True)
+        (directory / "action.toml").write_text(f'''schema_version = 1
+id = "{action_id}"
+name = "{name}"
+menu = "submenu"
+[when]
+[run]
+runtime = "command"
+program = "true"
+args = ["{{paths}}"]
+''')
+
+
+@pytest.mark.usefixtures("context_actions")
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("shortcut,activation", [("Menu", "Return"), ("shift+F10", "space")])
 @pytest.mark.preferences(show_hidden=False, single_click_previews=False)
@@ -55,16 +105,11 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
     strata.wait(strata.context_menu, "the keyboard item menu")
     assert ENTRY_MENU_ITEMS <= set(strata.menu_items())
     assert "New Folder" not in strata.menu_items()
-
-    strata.keyboard.press("Home")
-    strata.wait(lambda: "focused" in strata.menu_item("Open").states, "Home to focus Open")
-    strata.keyboard.press("Up")
     strata.wait(
-        lambda: "focused" in strata.menu_item("Permanently delete").states,
-        "Up to wrap to the last action",
+        lambda: "focused" in strata.menu_item("Open").states,
+        "the first item to receive focus",
     )
-    strata.keyboard.press("Down")
-    strata.wait(lambda: "focused" in strata.menu_item("Open").states, "Down to wrap to Open")
+
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.context_menu() is None, "Escape to dismiss the menu")
     strata.wait_for_selection(["todo.txt"], root)
@@ -76,6 +121,11 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
     strata.keyboard.press(shortcut)
     strata.wait(strata.context_menu, "the multi-selection menu")
     assert "Rename" not in strata.menu_items()
+    assert "Actions" in strata.menu_items()
+    strata.wait(
+        lambda: strata.menu_item("Open").has_state("focused"),
+        "Open to receive initial focus with multiple files and custom actions",
+    )
     strata.keyboard.press("ctrl+a")
     assert strata.context_menu() is not None
     strata.keyboard.press("Escape")
@@ -96,6 +146,59 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
     strata.keyboard.press(activation)
     strata.wait(lambda: strata.context_menu() is None, f"{activation} to activate Select All")
     strata.wait_for_selection([entry.name for entry in strata.entries(root)], root)
+
+
+@pytest.mark.usefixtures("context_actions")
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.preferences(single_click_previews=False)
+def test_submenu_arrows_return_keyboard_control_to_the_parent(strata, mode):
+    root = strata.fixture.root.name
+    strata.select_entry("todo.txt", root)
+    strata.click_entry_with("readme.md", ["ctrl"], directory=root)
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
+    strata.keyboard.press("shift+F10")
+    strata.wait(strata.context_menu, "multi-selection context menu")
+    strata.keyboard.press("Home")
+    for _ in strata.menu_items():
+        if strata.menu_item("Actions").has_state("focused"):
+            break
+        strata.keyboard.press("Down")
+    strata.wait(lambda: strata.menu_item("Actions").has_state("focused"), "Actions focus")
+
+    for opener in ("Right", "space", "Return"):
+        strata.keyboard.press(opener)
+        strata.wait(
+            lambda: strata.menu_item("First action").has_state("focused"),
+            "first submenu action focus",
+        )
+        strata.keyboard.press("Down")
+        strata.wait(
+            lambda: strata.menu_item("Second action").has_state("focused"),
+            "navigation inside the submenu",
+        )
+        strata.keyboard.press("Left")
+        strata.wait(
+            lambda: strata.window.find(role="menu item", name="Second action") is None,
+            "Left to close only the submenu",
+        )
+        strata.wait(lambda: strata.menu_item("Actions").has_state("focused"), "owner focus")
+        strata.keyboard.press("Down")
+        strata.wait(lambda: strata.menu_item("Cut").has_state("focused"), "parent Down navigation")
+        strata.keyboard.press("Up")
+        strata.wait(lambda: strata.menu_item("Actions").has_state("focused"), "parent Up navigation")
+        strata.wait_for_selection(["readme.md", "todo.txt"], root)
+
+    strata.keyboard.press("Down")
+    strata.keyboard.press("Down")
+    strata.wait(lambda: strata.menu_item("Copy").has_state("focused"), "Copy focus after submenu return")
+    strata.keyboard.press("Return")
+    strata.wait_for_menu_closed()
+    strata.open_directory("archive")
+    strata.paste_into("archive")
+    for name in ("readme.md", "todo.txt"):
+        copied = strata.fixture.path(f"archive/{name}")
+        strata.wait(copied.exists, f"{name} copied from the parent menu")
+        assert copied.read_bytes() == strata.fixture.path(name).read_bytes()
 
 
 def test_the_pane_context_menu_offers_directory_actions(strata):
@@ -157,8 +260,8 @@ def test_executable_without_handler_requires_confirmation(executable_file, strat
     dialog = strata.wait_for_dialog()
     assert "Run this program?" in dialog.dump()
     strata.wait(
-        lambda: "focused" in strata.dialog_button("Cancel").states,
-        "Cancel to receive initial focus",
+        lambda: "focused" in strata.dialog_button("Run").states,
+        "Run to receive initial focus",
     )
     assert strata.dialog_button("Close dialog").activate()
     strata.wait(lambda: strata.dialog() is None, "the close button to dismiss the dialog")
@@ -192,7 +295,7 @@ def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
     pin = dialog.find(role="button", name="Pin")
     assert pin is not None, dialog.dump()
     assert "sensitive" in pin.states
-    strata.pointer.click(pin)
+    assert pin.activate()
     strata.wait(lambda: strata.dialog() is None, "the dialog to close after pinning")
     strata.wait(
         lambda: strata.window.find(role="button", name="documents"),
@@ -207,7 +310,7 @@ def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
     assert "sensitive" in unpin.states, "the Unpin control must stay readable"
     assert dialog.find(role="button", name="Pin") is None
 
-    strata.pointer.click(unpin)
+    assert unpin.activate()
     strata.wait(lambda: strata.dialog() is None, "the dialog to close after unpinning")
     strata.wait(
         lambda: strata.window.find(role="button", name="documents") is None,

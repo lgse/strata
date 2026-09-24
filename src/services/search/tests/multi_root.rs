@@ -25,6 +25,7 @@ fn global_results_combine_roots_and_rank_depth_relative_to_each_root() {
         items,
         indexing,
         coverage,
+        ..
     } = wait_for_results(&events).expect("results");
     assert_eq!(query, "NEEDLE");
     assert!(!indexing);

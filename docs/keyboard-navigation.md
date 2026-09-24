@@ -6,7 +6,7 @@ Columns have three independent signals:
 - **Keyboard cursor:** a text-contrast outline identifies the current item in the keyboard-focused list. Only that list shows a cursor; range selections can contain several filled rows.
 - **Open path:** the chevron identifies the folder whose child column is open, without an extra border. This is navigation context, not another keyboard cursor.
 
-The destination column has an accent rule across its header and a **Keyboard · Paste here** or **Pointer · Paste here** footer. The indication remains useful in an empty directory, where there is no row to highlight. When panes overflow, the horizontal scrollbar gets its own track below these labels rather than covering them. No track is reserved when the panes fit.
+The destination column has an accent rule across its header, including when the directory is empty. Columns no longer reserve a separate bottom margin for the horizontal scrollbar.
 
 ## Input precedence
 
@@ -65,8 +65,15 @@ original item and report an error.
 
 ## Filename patterns while filtering
 
-Use **Ctrl+F** to filter a pane. Plain text keeps its existing matching behavior.
-Add `*` to match a whole filename, ignoring case:
+Use **Ctrl+F** to filter a pane. Plain text matches a substring of the filename,
+ignoring case. Queries of at least four letters or digits also allow one inserted,
+missing, substituted, or adjacent swapped character within a whole filename word.
+Words are separated by punctuation or spaces. For example, `trahs` finds
+`strata-trash.svg`, but `trash` does not find `strata-search.svg`. Shorter queries
+and queries containing punctuation remain literal. Indexed results rank literal
+matches ahead of typo matches; parent paths do not qualify a result.
+
+Add `*` for a whole-filename pattern without typo tolerance:
 
 - `*.MOV` matches `clip.MOV`, but not `clip.MOV.bak`.
 - `IMG*` matches names beginning with `IMG`.
@@ -88,6 +95,19 @@ In the browser and file chooser, **Down** from the Ctrl+F input focuses the sele
 **Menu/Shift+F10** on a focused result opens its file menu. While the input itself is focused, its text-editing menu remains available. **Space** toggles quick preview for the selected result in Columns, Icons, and List, including after returning to the query. The query, selection, and current directory stay intact.
 
 While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Folders and unsupported files do not open a preview.
+
+## Navigating an archive preview
+
+Quick Look on a local ZIP, 7z, TAR, or TAR.GZ opens the archive's member tree
+instead of extracting it. The preview starts at the archive root with its first
+member highlighted. The listing keeps its selection, but drops the
+keyboard-cursor outline so only one cursor is visible.
+
+Inside the preview, **Up/Down** (or **k/j**) move the highlight, **Right/l/Enter**
+opens the highlighted folder, and **Left/h** returns to the parent. Left at the
+archive root and Right/Enter on a member file do nothing. Navigating never
+extracts anything or touches the filesystem; **Space** and **Escape** still
+close the preview.
 
 ## Shortcut footer
 
@@ -112,11 +132,13 @@ In Icons and List, plain arrows move interface focus rather than changing direct
 
 Up from the first Icons row or first List item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
-From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
+From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it, or if you entered the sidebar from the header rather than from a file). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
 
 **Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
+
+In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents without moving focus, onto a previewable file opens Quick Preview, and onto any other file closes the child pane. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring.
 
 ## Opening and navigating the context menu
 
@@ -143,7 +165,7 @@ control; choosing Rename hands focus to the editor instead.
 Create `Fonts/` (empty), `Scripts/example.txt`, and `LICENSE` under a temporary directory.
 
 - Select LICENSE with the pointer, copy, leave the pointer there, then navigate to Fonts with the keyboard and paste. LICENSE should appear only in Fonts.
-- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent must visibly become the paste destination before Ctrl+V.
+- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent header must gain the destination accent before Ctrl+V.
 - Focus the parent, select several items, then click blank child and parent content. The open child and parent selection must remain intact. Ctrl+A must affect the parent only.
 - Enter an empty directory and try Delete/Shift+Delete. No confirmation targeting its parent should appear.
 - Repeat with a light theme, with filters, and with enough files to scroll. The cursor must remain distinguishable from selection and path markers.

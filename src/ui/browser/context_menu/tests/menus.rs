@@ -72,6 +72,35 @@ impl FileSource for MenuSource {
 }
 
 #[test]
+fn columns_navigation_releases_retired_item_menus() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::columns_navigation_releases_retired_item_menus",
+        || {
+            let first = tempfile::tempdir().expect("first folder");
+            let second = tempfile::tempdir().expect("second folder");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(650)
+                .build();
+            window.present();
+            browser.navigate(Location::local(first.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+            let menu = open_menu(&view, Some("notes.txt"));
+            let retired = menu.downgrade();
+            menu.popdown();
+            drop(menu);
+            browser.navigate(Location::local(second.path()));
+            wait_until(|| retired.upgrade().is_none());
+            browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn run_is_only_offered_for_one_regular_executable_file() {
     crate::test_support::gtk_test(
         "ui::browser::context_menu::tests::menus::run_is_only_offered_for_one_regular_executable_file",
@@ -91,26 +120,26 @@ fn run_is_only_offered_for_one_regular_executable_file() {
 
                 let menu = open_menu(&view, Some("run-me"));
                 assert_actions(&menu, &["Open", "Open With…", "Run"], &[]);
-                button_with_label(menu.upcast_ref(), "Run").emit_clicked();
+                button_with_label(menu.upcast_ref(), "Run").activate();
                 wait_until(|| label(&view.widget(), "Run this program?").is_some());
-                button_with_label(&view.widget(), "Cancel").emit_clicked();
+                button_with_label(&view.widget(), "Cancel").activate();
                 wait_until(|| label(&view.widget(), "Run this program?").is_none());
 
                 let menu = open_menu(&view, Some("notes.txt"));
                 assert_actions(&menu, &[], &["Run", "Open file location"]);
                 menu.popdown();
-                wait_until(|| menu.parent().is_none());
+                wait_until(|| !menu.is_mapped());
 
                 let menu = open_menu(&view, Some("folder"));
                 assert_actions(&menu, &[], &["Run", "Open file location"]);
                 menu.popdown();
-                wait_until(|| menu.parent().is_none());
+                wait_until(|| !menu.is_mapped());
 
                 view.select_all();
                 let menu = open_menu(&view, Some("run-me"));
                 assert_actions(&menu, &[], &["Run", "Open file location"]);
                 menu.popdown();
-                wait_until(|| menu.parent().is_none());
+                wait_until(|| !menu.is_mapped());
             }
         },
     );
@@ -154,7 +183,7 @@ fn run_is_offered_for_an_executable_inline_search_result() {
                 let menu = open_menu(&view, Some("run-search-result"));
                 assert_actions(&menu, &["Run"], &[]);
                 menu.popdown();
-                wait_until(|| menu.parent().is_none());
+                wait_until(|| !menu.is_mapped());
                 view.browser().clear_observer();
                 window.destroy();
             }
@@ -241,14 +270,15 @@ pub(super) fn open_menu(view: &BrowserView, name: Option<&str>) -> gtk::Popover 
                 } else {
                     "folder-context-menu"
                 };
-                if descendants(popover.upcast_ref())
-                    .iter()
-                    .any(|widget| widget.has_css_class(expected))
+                if popover.is::<gtk::PopoverMenu>()
+                    || descendants(popover.upcast_ref())
+                        .iter()
+                        .any(|widget| widget.has_css_class(expected))
                 {
                     return popover;
                 }
                 popover.popdown();
-                wait_until(|| popover.parent().is_none());
+                wait_until(|| !popover.is_mapped());
             }
         }
     }
@@ -259,8 +289,11 @@ fn menu_labels(popover: &gtk::Popover) -> Vec<String> {
     descendants(popover.upcast_ref())
         .iter()
         .filter_map(|widget| {
-            let button = widget.downcast_ref::<gtk::Button>()?;
-            if !button.is_visible() || !button.is_mapped() {
+            if !(widget.is::<gtk::Button>()
+                || widget.accessible_role() == gtk::AccessibleRole::MenuItem)
+                || !widget.is_visible()
+                || !widget.is_mapped()
+            {
                 return None;
             }
             descendants(widget).iter().find_map(|widget| {
@@ -272,12 +305,14 @@ fn menu_labels(popover: &gtk::Popover) -> Vec<String> {
         .collect()
 }
 
-fn button_with_label(widget: &gtk::Widget, text: &str) -> gtk::Button {
+fn button_with_label(widget: &gtk::Widget, text: &str) -> gtk::Widget {
     descendants(widget)
         .into_iter()
-        .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
+        .filter(|widget| {
+            widget.is::<gtk::Button>() || widget.accessible_role() == gtk::AccessibleRole::MenuItem
+        })
         .find(|button| {
-            descendants(button.upcast_ref()).iter().any(|widget| {
+            descendants(button).iter().any(|widget| {
                 widget
                     .downcast_ref::<gtk::Label>()
                     .is_some_and(|label| label.text() == text)
@@ -439,13 +474,13 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         }
                     }
                     menu.popdown();
-                    wait_until(|| menu.parent().is_none());
+                    wait_until(|| !menu.is_mapped());
                     view.select_all();
                     let menu = open_menu(&view, Some("notes.txt"));
                     capture_menu(&menu, &format!("{mode:?}-{place}-multiple"));
                     assert_actions(
                         &menu,
-                        &["Copy", "Duplicate", "Copy paths", "Copy to…"],
+                        &["Copy", "Duplicate", "Copy paths", "Copy to…", "Properties"],
                         &["Rename", "Print", "Open file location"],
                     );
                     if in_trash {
@@ -465,7 +500,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         }
                     }
                     menu.popdown();
-                    wait_until(|| menu.parent().is_none());
+                    wait_until(|| !menu.is_mapped());
                     view.browser().select(0, 0);
                     let menu = open_menu(&view, Some("picture.png"));
                     if in_trash {
@@ -474,7 +509,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         assert_actions(&menu, &["Print", "Quick preview"], &[]);
                     }
                     menu.popdown();
-                    wait_until(|| menu.parent().is_none());
+                    wait_until(|| !menu.is_mapped());
                     let menu = open_menu(&view, Some("archive.zip"));
                     if in_trash {
                         assert_actions(&menu, &[], &["Extract here", "Extract to…"]);
@@ -482,7 +517,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         assert_actions(&menu, &["Extract here", "Extract to…"], &[]);
                     }
                     menu.popdown();
-                    wait_until(|| menu.parent().is_none());
+                    wait_until(|| !menu.is_mapped());
                     let menu = open_menu(&view, Some("archive.rar"));
                     if in_trash {
                         assert_actions(&menu, &[], &["Extract here", "Extract to…"]);
@@ -490,7 +525,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         assert_actions(&menu, &["Extract here", "Extract to…"], &[]);
                     }
                     menu.popdown();
-                    wait_until(|| menu.parent().is_none());
+                    wait_until(|| !menu.is_mapped());
                     let menu = open_menu(&view, None);
                     capture_menu(&menu, &format!("{mode:?}-{place}-blank"));
                     assert_actions(&menu, &["Select All", "Refresh", "Properties"], &[]);
@@ -522,7 +557,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         );
                     }
                     menu.popdown();
-                    wait_until(|| menu.parent().is_none());
+                    wait_until(|| !menu.is_mapped());
                     view.create_new_folder();
                     if in_trash {
                         assert!(!view.new_entry_is_active());
@@ -533,7 +568,6 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     view.keyboard_navigation();
                     if mode == BrowserMode::Columns {
                         let columns = view.state.columns.borrow();
-                        assert_eq!(columns[0].destination_hint.label().is_empty(), in_trash);
                         assert_eq!(
                             columns[0].shell.has_css_class("destination-column"),
                             !in_trash
@@ -588,13 +622,12 @@ fn recent_background_menu_rejects_physical_directory_actions() {
                 );
                 assert_separators_divide_actions(&menu);
                 menu.popdown();
-                wait_until(|| menu.parent().is_none());
+                wait_until(|| !menu.is_mapped());
 
                 view.create_new_folder();
                 assert!(!view.new_entry_is_active());
                 if mode == BrowserMode::Columns {
                     let columns = view.state.columns.borrow();
-                    assert!(columns[0].destination_hint.label().is_empty());
                     assert!(!columns[0].shell.has_css_class("destination-column"));
                 }
                 view.browser().clear_observer();
@@ -630,8 +663,8 @@ fn recent_item_open_file_location_uses_the_target_parent() {
 
                 let menu = open_menu(&view, Some("notes.txt"));
                 assert_actions(&menu, &["Open file location"], &[]);
-                button_with_label(menu.upcast_ref(), "Open file location").emit_clicked();
-                wait_until(|| menu.parent().is_none());
+                button_with_label(menu.upcast_ref(), "Open file location").activate();
+                wait_until(|| !menu.is_mapped());
                 wait_until(|| {
                     view.browser().active_location().as_ref() == Some(&Location::local("/fixture"))
                 });
@@ -682,12 +715,12 @@ fn assert_remote_menu_separates_rename_from_properties() {
     );
 
     menu.popdown();
-    wait_until(|| menu.parent().is_none());
+    wait_until(|| !menu.is_mapped());
 
     let menu = open_menu(&view, None);
     assert_actions(&menu, &["Properties"], &["Customize…"]);
     menu.popdown();
-    wait_until(|| menu.parent().is_none());
+    wait_until(|| !menu.is_mapped());
     view.browser().clear_observer();
     window.destroy();
 }
@@ -730,7 +763,7 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
                 let menu = open_menu(&view, Some("direct.txt"));
                 assert_actions(&menu, &[], &["Open file location"]);
                 menu.popdown();
-                wait_until(|| menu.parent().is_none());
+                wait_until(|| !menu.is_mapped());
 
                 assert!(view.show_filter_with_query("direct"));
                 wait_until(|| label(&view.widget(), "direct.txt").is_some());
@@ -739,8 +772,8 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
                 assert_actions(&menu, &["Open file location"], &[]);
 
                 let open_button = button_with_label(menu.upcast_ref(), "Open file location");
-                open_button.emit_clicked();
-                wait_until(|| menu.parent().is_none());
+                open_button.activate();
+                wait_until(|| !menu.is_mapped());
                 wait_until(|| label(&view.widget(), "nested_folder").is_some());
 
                 wait_until(|| {
@@ -753,6 +786,19 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
                         .is_some_and(|(_, _, entry)| entry.display_name == "direct.txt")
                 });
 
+                wait_until(|| match mode {
+                    BrowserMode::Columns => view.state.columns.borrow()[0]
+                        .filter_entry
+                        .text()
+                        .is_empty(),
+                    BrowserMode::Icons | BrowserMode::List => view
+                        .state
+                        .mode_views
+                        .borrow()
+                        .capture_active_filter()
+                        .query
+                        .is_empty(),
+                });
                 assert!(view.show_filter_with_query("target.pdf"));
                 wait_until(|| label(&view.widget(), "target.pdf").is_some());
 
@@ -760,8 +806,8 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
                 assert_actions(&menu, &["Open file location"], &[]);
 
                 let open_button = button_with_label(menu.upcast_ref(), "Open file location");
-                open_button.emit_clicked();
-                wait_until(|| menu.parent().is_none());
+                open_button.activate();
+                wait_until(|| !menu.is_mapped());
 
                 wait_until(|| {
                     view.browser().active_location().as_ref() == Some(&Location::local(&sub))

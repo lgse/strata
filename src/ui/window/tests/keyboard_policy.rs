@@ -153,6 +153,27 @@ fn undo_shortcut_requires_control_without_shift_or_alt() {
 }
 
 #[test]
+fn redo_shortcut_accepts_control_shift_z_and_control_y() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
+    let alt = gtk::gdk::ModifierType::ALT_MASK;
+
+    assert!(is_redo_shortcut(gtk::gdk::Key::z, control | shift));
+    assert!(is_redo_shortcut(gtk::gdk::Key::Z, control | shift));
+    assert!(is_redo_shortcut(gtk::gdk::Key::y, control));
+    assert!(is_redo_shortcut(gtk::gdk::Key::Y, control));
+    assert!(!is_redo_shortcut(gtk::gdk::Key::z, control));
+    assert!(!is_redo_shortcut(gtk::gdk::Key::z, control | shift | alt));
+    assert!(!is_redo_shortcut(gtk::gdk::Key::y, control | shift));
+    assert!(!is_redo_shortcut(gtk::gdk::Key::y, control | alt));
+    assert!(!is_redo_shortcut(gtk::gdk::Key::z, shift));
+    assert!(!is_redo_shortcut(
+        gtk::gdk::Key::z,
+        gtk::gdk::ModifierType::empty()
+    ));
+}
+
+#[test]
 fn page_keys_map_to_a_scroll_direction() {
     assert_eq!(page_direction(gtk::gdk::Key::Page_Up), Some(-1));
     assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Up), Some(-1));

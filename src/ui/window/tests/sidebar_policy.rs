@@ -73,22 +73,29 @@ fn invalid_place_reorders_leave_the_order_unchanged() {
 }
 
 #[test]
-fn every_reorderable_place_id_is_a_known_standard_place() {
+fn every_reorderable_place_id_is_rendered_by_the_sidebar() {
     for id in STANDARD_PLACE_IDS {
         assert!(
-            standard_place(id).is_some(),
-            "{id} must be a standard place"
+            standard_place(id).is_some() || matches!(*id, "home" | "trash" | "network" | "recent"),
+            "{id} must be a standard place or a special destination"
         );
     }
 }
 
 #[test]
 fn a_persisted_place_order_is_restored_exactly() {
-    let order = resolve_place_order(&persisted_order(&["videos", "downloads", "desktop"]));
-    assert_eq!(
-        order,
-        vec!["videos", "downloads", "desktop", "documents", "pictures"]
-    );
+    let saved = [
+        "recent",
+        "videos",
+        "home",
+        "downloads",
+        "trash",
+        "desktop",
+        "network",
+        "documents",
+        "pictures",
+    ];
+    assert_eq!(resolve_place_order(&persisted_order(&saved)), saved);
 }
 
 #[test]
@@ -96,16 +103,42 @@ fn unknown_persisted_place_ids_are_dropped() {
     let order = resolve_place_order(&persisted_order(&["desktop", "archive", "videos"]));
     assert_eq!(
         order,
-        vec!["desktop", "videos", "documents", "downloads", "pictures"]
+        vec![
+            "home",
+            "trash",
+            "network",
+            "recent",
+            "desktop",
+            "documents",
+            "downloads",
+            "pictures",
+            "videos",
+        ]
     );
 }
 
 #[test]
-fn missing_places_are_appended_in_default_order() {
-    let order = resolve_place_order(&persisted_order(&["pictures"]));
+fn missing_places_keep_their_default_neighbours() {
+    let order = resolve_place_order(&persisted_order(&[
+        "desktop",
+        "documents",
+        "downloads",
+        "pictures",
+        "videos",
+    ]));
     assert_eq!(
         order,
-        vec!["pictures", "desktop", "documents", "downloads", "videos"]
+        vec![
+            "home",
+            "trash",
+            "network",
+            "recent",
+            "desktop",
+            "documents",
+            "downloads",
+            "pictures",
+            "videos",
+        ]
     );
 }
 
@@ -114,7 +147,17 @@ fn duplicate_persisted_place_ids_are_deduplicated() {
     let order = resolve_place_order(&persisted_order(&["desktop", "desktop", "videos"]));
     assert_eq!(
         order,
-        vec!["desktop", "videos", "documents", "downloads", "pictures"]
+        vec![
+            "home",
+            "trash",
+            "network",
+            "recent",
+            "desktop",
+            "documents",
+            "downloads",
+            "pictures",
+            "videos",
+        ]
     );
 }
 
@@ -241,12 +284,11 @@ fn recent_available() -> RecentAvailability {
 }
 
 #[test]
-fn recent_sidebar_requires_preference_platform_backend_and_nonlocal_context() {
-    assert!(should_show_recent_place(true, false, recent_available()));
-    assert!(!should_show_recent_place(false, false, recent_available()));
+fn recent_sidebar_requires_preference_platform_and_backend() {
+    assert!(should_show_recent_place(true, recent_available()));
+    assert!(!should_show_recent_place(false, recent_available()));
     assert!(!should_show_recent_place(
         true,
-        false,
         RecentAvailability {
             platform_tracking_enabled: false,
             ..recent_available()
@@ -254,11 +296,9 @@ fn recent_sidebar_requires_preference_platform_backend_and_nonlocal_context() {
     ));
     assert!(!should_show_recent_place(
         true,
-        false,
         RecentAvailability {
             runtime_backend_supported: false,
             ..recent_available()
         },
     ));
-    assert!(!should_show_recent_place(true, true, recent_available()));
 }

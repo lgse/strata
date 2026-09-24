@@ -7,11 +7,11 @@ use crate::model::{FileEntry, Location};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::entry::{
-    entry_icon, entry_kind_summary, format_file_size, item_count_label,
+    aggregate_directory_summary, entry_icon, entry_kind_summary, format_file_size, item_count_label,
 };
 use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
-    ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
+    ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
@@ -485,13 +485,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&empty);
     }
 
     pub(super) fn request_restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
@@ -561,7 +555,7 @@ impl ViewState {
 
         let count = resolved.len();
         let layout = message_dialog_layout(
-            crate::assets::icons::FOLDER,
+            crate::assets::icons::UNDO_2,
             &restore_confirmation_title(count),
             &entry_kind_summary(
                 &resolved
@@ -643,6 +637,7 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
+        let confirmed_state = Rc::downgrade(self);
         let items = resolved
             .into_iter()
             .map(|(entry, destination)| RestoreTrashItem { entry, destination })
@@ -653,6 +648,18 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
+            if let Some(state) = confirmed_state.upgrade()
+                && let Some(trash_button) = state.trash_button.borrow().as_ref()
+            {
+                let entries = items
+                    .iter()
+                    .map(|item| item.entry.clone())
+                    .collect::<Vec<_>>();
+                let source = state
+                    .delete_animation_source()
+                    .unwrap_or_else(|| state.overlay.clone().upcast());
+                super::fly_to_trash::fly_from_trash(&source, &entries, trash_button, || {});
+            }
             browser.restore(items.clone());
             browser.focus_active();
         });
@@ -679,13 +686,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&confirm);
     }
 
     pub(super) fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -699,24 +700,14 @@ impl ViewState {
             self.show_delete_confirmation(entries);
         } else {
             self.pending_delete_entries.replace(entries.clone());
-            let weak = Rc::downgrade(self);
-            let entries_for_anim = Rc::new(entries.clone());
-            let run_delete = move || {
-                if let Some(state) = weak.upgrade() {
-                    state.browser.delete((*entries_for_anim).clone(), false);
-                    state.browser.focus_active();
-                }
-            };
             if let Some(trash_button) = self.trash_button.borrow().as_ref() {
-                super::fly_to_trash::fly_to_trash(
-                    self.overlay.upcast_ref(),
-                    &entries,
-                    trash_button,
-                    run_delete,
-                );
-            } else {
-                run_delete();
+                let source = self
+                    .delete_animation_source()
+                    .unwrap_or_else(|| self.overlay.clone().upcast());
+                super::fly_to_trash::fly_to_trash(&source, &entries, trash_button, || {});
             }
+            self.browser.delete(entries, false);
+            self.browser.focus_active();
         }
     }
 
@@ -739,6 +730,7 @@ impl ViewState {
             &confirm_label,
             ModalTone::Danger,
         );
+        layout.set_loading(true, Some("Calculating total size…"));
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         let (visible, hidden) = delete_confirmation_rows(&entries);
@@ -784,7 +776,6 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
-        file_scroller.add_css_class("fixed-scrollbar");
         layout.body.append(&file_scroller);
         let explanation = message_dialog_description(
             "These items will be permanently deleted. This action cannot be undone.",
@@ -794,6 +785,9 @@ impl ViewState {
         let close = layout.close;
         let cancel = layout.cancel;
         let confirm = layout.confirm;
+        let subtitle = layout.subtitle;
+        let spinner = layout.loading;
+        confirm.set_sensitive(false);
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
@@ -885,13 +879,40 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = confirm.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
+        focus_button(&confirm);
+
+        let weak_subtitle = subtitle.downgrade();
+        let weak_confirm = confirm.downgrade();
+        let weak_spinner = spinner.downgrade();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let summary = aggregate_directory_summary(&entries).await;
+            let (Some(subtitle), Some(confirm), Some(spinner)) = (
+                weak_subtitle.upgrade(),
+                weak_confirm.upgrade(),
+                weak_spinner.upgrade(),
+            ) else {
+                return;
+            };
+            subtitle.set_label(&format!(
+                "{}{} · {}{} will be permanently deleted",
+                if summary.truncated() { "At least " } else { "" },
+                item_count_label(summary.item_count),
+                if summary.truncated() { "at least " } else { "" },
+                format_file_size(summary.total_size)
+            ));
+            confirm.set_sensitive(true);
+            spinner.stop();
+            spinner.set_visible(false);
+            confirm.grab_focus();
+        });
+        let task = Rc::new(task);
+        let closing_task = task.clone();
+        layer.connect_sensitive_notify(move |layer| {
+            if !layer.is_sensitive() {
+                closing_task.abort();
             }
         });
+        layer.connect_unrealize(move |_| task.abort());
     }
 }
 
