@@ -129,12 +129,23 @@ def test_slow_click_rename_respects_escape_and_selects_the_stem(strata, mode):
     assert strata.fixture.path("todo.txt").exists()
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("target", ["icon", "name-padding"])
+@pytest.mark.parametrize(
+    "mode,target",
+    [
+        pytest.param(
+            mode.values[0], target,
+            marks=mode.marks,
+            id=f"{target}-{mode.id}",
+        )
+        for target in ["icon", "name-padding"]
+        for mode in ALL_MODES
+        # The icons caption band is the name label, so name-padding+Icons is
+        # not a meaningful combination; exclude it from collection.
+        if not (target == "name-padding" and mode.id == "icons")
+    ],
+)
 def test_slow_click_away_from_the_name_does_not_rename(strata, mode, target):
     """Only the name text arms rename; the icon and row padding just re-select."""
-    if target == "name-padding" and mode == "Icons":
-        pytest.skip("the icons caption band is the name label")
     strata.select_entry_with_keyboard("todo.txt")
     entry = strata.entry("todo.txt")
     if target == "icon":

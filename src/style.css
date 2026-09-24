@@ -4425,7 +4425,7 @@ textview > popover.menu button.model:focus-visible,
 
 .keyboard-navigation .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
 .keyboard-navigation .file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
-  background: alpha(@theme_accent, 0.14);
+  background: alpha(@theme_accent, 0.08);
 }
 
 .keyboard-navigation .file-list row:hover:not(:selected),
