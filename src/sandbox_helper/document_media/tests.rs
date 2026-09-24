@@ -108,3 +108,33 @@ fn svg_font_families_reads_attributes_styles_and_css() {
     );
     assert!(svg_font_families("<svg/>").is_empty());
 }
+
+#[test]
+fn sniffed_svg_rejected_by_resvg_reaches_the_raster_loaders() {
+    let directory = tempfile::tempdir().expect("fixture");
+    let input = directory.path().join("broken.svg");
+    // Sniffs as SVG but is not well-formed XML, so resvg rejects it.
+    fs::write(
+        &input,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect"#,
+    )
+    .expect("fixture");
+    let source = crate::sandbox_helper::svg_source(&input).expect("sniffed as SVG");
+    let resvg_error = svg(&source, 256)
+        .err()
+        .expect("resvg rejects it");
+    // The raster chain decides the outcome; the resvg error must not
+    // short-circuit the other loaders.
+    if let Err(error) = image(&input, 256) {
+        assert_ne!(error, resvg_error);
+    }
+}
+
+#[test]
+fn numeric_character_references_keep_the_full_font_scan() {
+    assert!(needs_full_font_scan(
+        r#"<svg><text>&#x1F600;</text></svg>"#
+    ));
+    assert!(needs_full_font_scan("<svg><text>caf\u{e9}</text></svg>"));
+    assert!(!needs_full_font_scan("<svg><text>plain</text></svg>"));
+}

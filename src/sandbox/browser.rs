@@ -44,6 +44,7 @@ pub(crate) fn worker_limit() -> usize {
 
 pub(crate) fn set_worker_limit(limit: usize) {
     pool().set_limit(limit);
+    preview_pool().set_limit(limit);
     if let Some(Ok(launcher)) = LAUNCHER.get() {
         let _ = launcher.send(LauncherMessage::Idle);
     }
@@ -103,16 +104,13 @@ struct Cached {
 }
 
 // The operation distinguishes render sizes: thumbnails and previews of one file
-// produce different output and must not share an entry.
+// produce different output and must not share an entry. Each pool keeps its own
+// cache so document renders cannot evict directory thumbnails.
 type Cache = VecDeque<((FileKey, Operation), Arc<Mutex<Cached>>)>;
 
-fn cache_entry(key: FileKey, operation: Operation) -> Arc<Mutex<Cached>> {
-    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+fn cache_entry(cache: &Mutex<Cache>, key: FileKey, operation: Operation) -> Arc<Mutex<Cached>> {
     let key = (key, operation);
-    let mut cache = CACHE
-        .get_or_init(Mutex::default)
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(index) = cache.iter().position(|(candidate, _)| candidate == &key) {
         let entry = cache.remove(index).expect("existing cache entry");
         let result = entry.1.clone();
@@ -201,6 +199,16 @@ pub(crate) fn preview(
     )
 }
 
+fn invalid_output_label(operation: Operation) -> &'static str {
+    match operation {
+        Operation::PreviewImage
+        | Operation::DocumentMermaid
+        | Operation::DocumentMath
+        | Operation::DocumentMathInline => "Invalid preview render",
+        _ => "Invalid browser thumbnail",
+    }
+}
+
 fn parse_operation(operation: Operation) -> ParseOperation {
     match operation {
         Operation::Image => ParseOperation::ThumbnailImage,
@@ -238,7 +246,7 @@ fn request(
     if !metadata_only && operation != Operation::Video && key.size > super::MAX_RASTER_INPUT_BYTES {
         return Err("Browser input exceeds the supported size limit".into());
     }
-    let entry = cache_entry(key.clone(), operation);
+    let entry = cache_entry(&pool.cache, key.clone(), operation);
     let mut cached = loop {
         if cancellation.is_cancelled() {
             return Err("Browser request cancelled".into());
@@ -268,7 +276,7 @@ fn request(
             return Err("Browser request cancelled".into());
         }
         let started = Instant::now();
-        let response = lease.execute(&file, operation)?;
+        let response = lease.execute(&file, operation, cancellation)?;
         if FileKey::read(path, &file).map_err(|e| e.to_string())? != key {
             return Err("Browser input changed while rendering".into());
         }
@@ -277,7 +285,7 @@ fn request(
                 || !super::valid_output(parse_operation(operation), &response.png)
             {
                 lease.discard();
-                return Err("Invalid browser thumbnail".into());
+                return Err(invalid_output_label(operation).into());
             }
             cached.png = Some(response.png);
         } else if !metadata_only {
@@ -336,6 +344,7 @@ struct Pool {
     changed: Condvar,
     limit: AtomicUsize,
     idle_timeout: Duration,
+    cache: Mutex<Cache>,
 }
 
 struct IdleWorker {
@@ -365,6 +374,7 @@ fn pool() -> &'static Pool {
                 .ok()
                 .as_deref(),
         ),
+        cache: Mutex::default(),
     })
 }
 
@@ -381,6 +391,7 @@ fn preview_pool() -> &'static Pool {
                 .ok()
                 .as_deref(),
         ),
+        cache: Mutex::default(),
     })
 }
 
@@ -551,12 +562,17 @@ struct Lease<'a> {
 }
 
 impl Lease<'_> {
-    fn execute(&mut self, file: &File, operation: Operation) -> Result<Response, String> {
+    fn execute(
+        &mut self,
+        file: &File,
+        operation: Operation,
+        cancellation: &Cancellation,
+    ) -> Result<Response, String> {
         let mut result = self
             .worker
             .as_mut()
             .ok_or("Missing browser worker")?
-            .execute(file, operation);
+            .execute(file, operation, cancellation);
         if result.as_ref().is_err_and(|error| {
             matches!(
                 error.kind(),
@@ -571,7 +587,7 @@ impl Lease<'_> {
                 .worker
                 .as_mut()
                 .expect("replacement worker")
-                .execute(file, operation);
+                .execute(file, operation, cancellation);
         }
         if result.is_err() {
             self.discard();
@@ -624,9 +640,14 @@ impl Worker {
         }
     }
 
-    fn execute(&mut self, file: &File, operation: Operation) -> io::Result<Response> {
+    fn execute(
+        &mut self,
+        file: &File,
+        operation: Operation,
+        cancellation: &Cancellation,
+    ) -> io::Result<Response> {
         match self {
-            Self::Persistent(worker) => worker.execute(file, operation),
+            Self::Persistent(worker) => worker.execute(file, operation, cancellation),
             Self::OneShot => {
                 use std::os::fd::AsRawFd;
                 let operation = parse_operation(operation);
@@ -635,7 +656,7 @@ impl Worker {
                     operation.clone(),
                     256,
                     super::MediaPreviewBackend::Software,
-                    &Cancellation::default(),
+                    cancellation,
                 )
                 .map_err(io::Error::other)?;
                 Ok(if operation == ParseOperation::MediaMetadata {
@@ -758,7 +779,12 @@ impl ProcessWorker {
         })
     }
 
-    fn execute(&mut self, file: &File, operation: Operation) -> io::Result<Response> {
+    fn execute(
+        &mut self,
+        file: &File,
+        operation: Operation,
+        cancellation: &Cancellation,
+    ) -> io::Result<Response> {
         use io::Read;
         let (read, write) = rustix::pipe::pipe_with(rustix::pipe::PipeFlags::CLOEXEC)?;
         let deadline = Instant::now() + super::WALL_TIME_LIMIT;
@@ -768,6 +794,7 @@ impl ProcessWorker {
         let mut reader = DeadlineReader {
             reader: &mut output,
             deadline,
+            cancellation,
         };
         let response = Response::read(&mut reader);
         if response
@@ -780,6 +807,7 @@ impl ProcessWorker {
         DeadlineReader {
             reader: &mut self.socket,
             deadline,
+            cancellation,
         }
         .read_exact(&mut status)?;
         match status[0] {
@@ -799,6 +827,7 @@ impl ProcessWorker {
 struct DeadlineReader<'a, R> {
     reader: &'a mut R,
     deadline: Instant,
+    cancellation: &'a Cancellation,
 }
 impl<R: io::Read + std::os::fd::AsFd> io::Read for DeadlineReader<'_, R> {
     fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
@@ -807,6 +836,9 @@ impl<R: io::Read + std::os::fd::AsFd> io::Read for DeadlineReader<'_, R> {
             return Ok(0);
         }
         loop {
+            if self.cancellation.is_cancelled() {
+                return Err(io::Error::other("Browser request cancelled"));
+            }
             let remaining = self.deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Err(io::Error::new(
@@ -814,9 +846,12 @@ impl<R: io::Read + std::os::fd::AsFd> io::Read for DeadlineReader<'_, R> {
                     "Browser renderer timed out",
                 ));
             }
+            // Poll in quanta so a cancelled preview releases its worker
+            // instead of waiting out the absolute deadline.
+            let wait = remaining.min(WAIT_QUANTUM);
             let timeout = Timespec {
-                tv_sec: remaining.as_secs() as i64,
-                tv_nsec: i64::from(remaining.subsec_nanos()),
+                tv_sec: wait.as_secs() as i64,
+                tv_nsec: i64::from(wait.subsec_nanos()),
             };
             let mut fds = [PollFd::new(&*self.reader, PollFlags::IN)];
             match poll(&mut fds, Some(&timeout)) {

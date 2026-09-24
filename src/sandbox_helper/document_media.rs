@@ -9,8 +9,12 @@ use std::{
 };
 
 pub(super) fn image(path: &Path, edge: u32) -> Result<Vec<u8>, String> {
-    if let Some(source) = super::svg_source(path) {
-        return svg(&source, edge).map(|rendered| rendered.png);
+    // An SVG resvg rejects still reaches the raster loaders, which decode some
+    // dialects resvg does not.
+    if let Some(source) = super::svg_source(path)
+        && let Ok(rendered) = svg(&source, edge)
+    {
+        return Ok(rendered.png);
     }
     super::render_raw(path, edge as i32)
 }
@@ -161,9 +165,14 @@ const GENERIC_FAMILIES: &[&[&str]] = &[
 
 // fontconfig's cache resolves family names to files in tens of milliseconds,
 // while fontdb's scan parses every installed face. Non-ASCII documents keep the
-// full scan so glyph fallback can reach every installed script.
+// full scan so glyph fallback can reach every installed script; `&#…;`
+// references can encode non-ASCII glyphs inside otherwise-ASCII sources.
+fn needs_full_font_scan(source: &str) -> bool {
+    !source.is_ascii() || source.contains("&#")
+}
+
 fn load_text_fonts(source: &str, options: &mut usvg::Options) {
-    if source.is_ascii()
+    if !needs_full_font_scan(source)
         && let Some(paths) = resolve_font_files(source)
     {
         for path in paths {
