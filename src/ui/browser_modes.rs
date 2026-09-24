@@ -417,7 +417,6 @@ impl ModeViews {
             .hexpand(true)
             .vexpand(true)
             .build();
-        icons_scroll.add_css_class("fixed-scrollbar");
         icons_scroll.add_css_class("mode-scroll");
 
         let list_root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1805,7 +1804,7 @@ struct IconsControls {
 
 pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButton) {
     let entry = gtk::Entry::builder()
-        .placeholder_text("Filter items…")
+        .placeholder_text(super::browser::filter_placeholder(0))
         .tooltip_text("Filter by name. Use * for any characters: *.png, IMG*, or IMG*.png.")
         .has_frame(false)
         .hexpand(true)
@@ -2095,7 +2094,6 @@ fn build_icons_pane(
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vexpand(true)
         .build();
-    scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
     super::scrolling::popover::dismiss_on_outside_scroll(&controls.thumbnail_popover);
     let browser_for_settle = Rc::downgrade(&context.browser);
@@ -3076,7 +3074,6 @@ fn build_list_pane(
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
-    scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
     scroll.add_css_class("list-listing-scroll");
     let browser_for_settle = Rc::downgrade(&browser);
@@ -3116,7 +3113,6 @@ fn build_list_pane(
         .hexpand(true)
         .vexpand(true)
         .build();
-    table_scroll.add_css_class("fixed-scrollbar");
     table_scroll.add_css_class("mode-scroll");
     if let Some(viewport) = table_scroll.child().and_downcast::<gtk::Viewport>() {
         // The outer viewport must not horizontally reveal oversized metadata rows; the inner
@@ -4385,6 +4381,9 @@ fn reconnect_pane_model(pane: &Pane) {
 
 fn show_count(pane: &Pane) {
     let count = pane.model.n_items();
+    if let Some(entry) = &pane.filter_entry {
+        entry.set_placeholder_text(Some(&super::browser::filter_placeholder(count as usize)));
+    }
     if count == 0 {
         pane.status.remove_css_class("error");
         pane.status.set_label("This directory is empty");

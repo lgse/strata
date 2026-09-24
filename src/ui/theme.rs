@@ -393,6 +393,7 @@ impl ThemeManager {
         apply_interface_font(root_font_px);
         crate::assets::set_interface_icon_scale(root_font_px / 13.0);
         crate::assets::set_primary_icon_color(&tokens.accent);
+        crate::assets::set_text_icon_color(&tokens.text);
         crate::assets::set_danger_icon_color(&tokens.danger);
         super::thumbnail::refresh_all_customized_icons();
         stage_source_style_scheme(tokens, source_palette);

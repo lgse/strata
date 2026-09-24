@@ -7,9 +7,9 @@ use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
     ActivePaneFilter, ViewMap, activate_recursive_search_result, apply_filter_query,
     apply_selection_plan, bind_filter_query, bitset_positions, cancel_source,
-    deactivate_recursive_search, detach_collection_view, recursive_search_activation_key,
-    restore_filter_controls, scroll_collection_when_allocated, search_result_navigation_position,
-    set_filter_entry_query,
+    deactivate_recursive_search, detach_collection_view, filter_placeholder,
+    recursive_search_activation_key, restore_filter_controls, scroll_collection_when_allocated,
+    search_result_navigation_position, set_filter_entry_query,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
@@ -68,6 +68,112 @@ pub(super) fn install_horizontal_scroll(state: &Rc<ViewState>) {
     state.scroller.add_controller(controller);
 }
 
+const RESIZE_EDGE_RIGHT: f64 = 6.0;
+
+fn resize_edge(state: &ViewState, x: f64, y: f64) -> Option<gtk::Box> {
+    state.columns.borrow().iter().find_map(|column| {
+        let bounds = column.shell.compute_bounds(&state.scroller)?;
+        let right = f64::from(bounds.x() + bounds.width());
+        (x >= right - 1.0
+            && x < right + RESIZE_EDGE_RIGHT
+            && y >= f64::from(bounds.y())
+            && y < f64::from(bounds.y() + bounds.height()))
+        .then(|| column.shell.clone())
+    })
+}
+
+pub(super) fn install_resize_edges(state: &Rc<ViewState>) {
+    let motion = gtk::EventControllerMotion::new();
+    motion.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(state);
+    motion.connect_motion(move |_, x, y| {
+        if let Some(state) = weak.upgrade() {
+            let hovered = resize_edge(&state, x, y);
+            for column in state.columns.borrow().iter() {
+                if hovered.as_ref() == Some(&column.shell) {
+                    column.resize_handle.add_css_class("resize-hover");
+                } else {
+                    column.resize_handle.remove_css_class("resize-hover");
+                }
+            }
+            state
+                .scroller
+                .set_cursor_from_name(hovered.map(|_| "col-resize"));
+        }
+    });
+    let weak = Rc::downgrade(state);
+    motion.connect_leave(move |_| {
+        if let Some(state) = weak.upgrade() {
+            for column in state.columns.borrow().iter() {
+                column.resize_handle.remove_css_class("resize-hover");
+            }
+            state.scroller.set_cursor(None);
+        }
+    });
+    state.scroller.add_controller(motion);
+
+    let resize = gtk::GestureDrag::new();
+    resize.set_button(1);
+    resize.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let active = Rc::new(RefCell::new(None::<(gtk::Box, i32, f64)>));
+    let last_press = Rc::new(RefCell::new(None::<(gtk::Box, u64)>));
+    let weak = Rc::downgrade(state);
+    let active_for_begin = active.clone();
+    resize.connect_drag_begin(move |gesture, x, y| {
+        active_for_begin.borrow_mut().take();
+        let Some(state) = weak.upgrade() else {
+            gesture.set_state(gtk::EventSequenceState::Denied);
+            return;
+        };
+        let Some(shell) = resize_edge(&state, x, y) else {
+            gesture.set_state(gtk::EventSequenceState::Denied);
+            return;
+        };
+        let now = glib::monotonic_time() as u64;
+        let autofit = last_press
+            .borrow()
+            .as_ref()
+            .is_some_and(|(previous, time)| {
+                *previous == shell && now.wrapping_sub(*time) <= 400_000
+            });
+        *last_press.borrow_mut() = Some((shell.clone(), now));
+        if autofit {
+            let max_natural = shell
+                .first_child()
+                .and_downcast::<gtk::Overlay>()
+                .and_then(|overlay| overlay.child())
+                .map(|column| max_child_natural_width(&column))
+                .unwrap_or(COLUMN_WIDTH);
+            shell.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            return;
+        }
+        let pointer_x = gesture
+            .current_event()
+            .and_then(|event| event.position())
+            .map_or(x, |(pointer_x, _)| pointer_x);
+        *active_for_begin.borrow_mut() =
+            Some((shell.clone(), shell.width().max(COLUMN_WIDTH), pointer_x));
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+    });
+    let active_for_update = active.clone();
+    resize.connect_drag_update(move |gesture, fallback_offset_x, _| {
+        let active = active_for_update.borrow();
+        let Some((shell, initial, start)) = active.as_ref() else {
+            return;
+        };
+        let offset_x = gesture
+            .current_event()
+            .and_then(|event| event.position())
+            .map_or(fallback_offset_x, |(current, _)| current - start);
+        shell.set_size_request(resized_column_width(*initial, offset_x), -1);
+    });
+    resize.connect_drag_end(move |_, _, _| {
+        active.borrow_mut().take();
+    });
+    state.scroller.add_controller(resize);
+}
+
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
@@ -108,8 +214,8 @@ impl PendingPointerActivation {
 #[derive(Clone)]
 pub(super) struct ColumnView {
     pub(super) shell: gtk::Box,
+    pub(super) resize_handle: gtk::Box,
     pub(super) reveal_button: gtk::Button,
-    pub(super) destination_hint: gtk::Label,
     pub(super) animation_generation: Rc<Cell<u64>>,
     pub(super) presentation: LoadPresentation,
     pub(super) model: EntryListModel,
@@ -280,10 +386,9 @@ pub(super) fn prune_missing_search_results(column: &ColumnView) -> bool {
 }
 
 pub(super) fn set_filter_placeholder(column: &ColumnView, count: usize) {
-    let noun = if count == 1 { "item" } else { "items" };
     column
         .filter_entry
-        .set_placeholder_text(Some(&format!("Filter {count} {noun}…")));
+        .set_placeholder_text(Some(&filter_placeholder(count)));
 }
 
 pub(super) fn touch_source_model(column: &ColumnView) {
@@ -742,7 +847,6 @@ impl ViewState {
 
         let (filter_entry, filter_revealer, filter_button) =
             crate::ui::browser_modes::filter_controls("Filter this pane (Ctrl+F)");
-        filter_entry.set_placeholder_text(Some("Filter 0 items…"));
         let weak_self = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
             if button.is_active()
@@ -1220,7 +1324,6 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         scroll.add_css_class("browser-listing-scroll");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
         let retry = gtk::Button::with_label("Retry");
@@ -1348,13 +1451,6 @@ impl ViewState {
             )
         };
         column.append(&presentation.stack);
-        let destination_hint = gtk::Label::new(None);
-        destination_hint.add_css_class("column-destination-hint");
-        destination_hint.set_xalign(0.0);
-        destination_hint.set_tooltip_text(Some(
-            "Ctrl+V pastes into this directory. Move the pointer to target another column, or navigate with the keyboard to return control to keyboard focus.",
-        ));
-        column.append(&destination_hint);
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
@@ -1415,65 +1511,17 @@ impl ViewState {
         column_overlay.set_child(Some(&column));
         column_overlay.set_hexpand(true);
         column_overlay.set_vexpand(true);
+        // The column paints an opaque background, so a drop highlight needs an
+        // overlay on top of it; picking falls through to the column's targets.
+        let drop_veil = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        drop_veil.add_css_class("column-drop-veil");
+        drop_veil.set_can_target(false);
+        column_overlay.add_overlay(&drop_veil);
         shell.append(&column_overlay);
         let resize_handle = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         resize_handle.add_css_class("column-resize-handle");
-        resize_handle.set_width_request(7);
-        resize_handle.set_cursor_from_name(Some("col-resize"));
-        let resize = gtk::GestureDrag::new();
-        resize.set_button(1);
-        let resize_start = Rc::new(Cell::new(COLUMN_WIDTH));
-        let pointer_start = Rc::new(Cell::new(None));
-        let last_press = Rc::new(Cell::new(0u64));
-        let shell_for_resize_start = shell.downgrade();
-        let shell_for_autofit = shell.downgrade();
-        let column_for_autofit = column.downgrade();
-        let resize_start_for_begin = resize_start.clone();
-        let pointer_start_for_begin = pointer_start.clone();
-        let last_press_for_begin = last_press.clone();
-        resize.connect_drag_begin(move |gesture, _, _| {
-            let now = glib::monotonic_time() as u64;
-            let prev = last_press_for_begin.get();
-            last_press_for_begin.set(now);
-            let Some(shell_for_autofit) = shell_for_autofit.upgrade() else {
-                return;
-            };
-            let Some(shell_for_resize_start) = shell_for_resize_start.upgrade() else {
-                return;
-            };
-            if now.wrapping_sub(prev) <= 400_000 {
-                let max_natural = column_for_autofit
-                    .upgrade()
-                    .map(|column| max_child_natural_width(column.upcast_ref::<gtk::Widget>()))
-                    .unwrap_or(COLUMN_WIDTH);
-                shell_for_autofit.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
-                gesture.set_state(gtk::EventSequenceState::Denied);
-                return;
-            }
-            resize_start_for_begin.set(shell_for_resize_start.width().max(COLUMN_WIDTH));
-            if let Some((pointer_x, _)) = gesture.current_event().and_then(|event| event.position())
-            {
-                pointer_start_for_begin.set(Some(pointer_x));
-            }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-        });
-        let shell_for_resize = shell.downgrade();
-        resize.connect_drag_update(move |gesture, fallback_offset_x, _| {
-            let Some(shell_for_resize) = shell_for_resize.upgrade() else {
-                return;
-            };
-            let pointer_x = gesture
-                .current_event()
-                .and_then(|event| event.position())
-                .map(|(pointer_x, _)| pointer_x);
-            let offset_x = pointer_start
-                .get()
-                .zip(pointer_x)
-                .map_or(fallback_offset_x, |(start, current)| current - start);
-            shell_for_resize
-                .set_size_request(resized_column_width(resize_start.get(), offset_x), -1);
-        });
-        resize_handle.add_controller(resize);
+        resize_handle.set_width_request(1);
+        resize_handle.set_can_target(false);
         resize_handle.set_halign(gtk::Align::End);
         resize_handle.set_valign(gtk::Align::Fill);
         column_overlay.add_overlay(&resize_handle);
@@ -1529,8 +1577,8 @@ impl ViewState {
             .insert_child_after(&shell, previous.as_ref());
         self.columns.borrow_mut().push(ColumnView {
             shell: shell.clone(),
+            resize_handle: resize_handle.clone(),
             reveal_button,
-            destination_hint,
             animation_generation: animation_generation.clone(),
             presentation,
             model,

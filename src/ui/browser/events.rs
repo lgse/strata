@@ -21,6 +21,7 @@ use crate::ui::browser_modes::BrowserMode;
 use crate::ui::modal::{
     show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
 };
+use crate::ui::preview::{FOCUS_PREVIEW_DELAY, preview_target};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::collections::HashMap;
@@ -580,11 +581,12 @@ impl ViewState {
                         self.reveal_column(column.shell);
                     }
                 }
+                self.mirror_focused_folder(*depth, *position);
             }
             BrowserEvent::PreviewRequested { .. } => {}
             BrowserEvent::ExtractRequested { entry } => {
                 if self.interactive {
-                    self.extract_entry_to_subfolder(entry.clone());
+                    self.extract_entry(entry.clone());
                 }
             }
             BrowserEvent::OpenRequested { location } => {
@@ -1129,6 +1131,69 @@ impl ViewState {
             self.notify_search_selection_changed();
         }
         self.mode_views.borrow().prune_stale_search_results();
+    }
+
+    fn mirror_focused_folder(self: &Rc<Self>, depth: usize, position: Option<usize>) {
+        if let Some(source) = self.pending_mirror.borrow_mut().take() {
+            source.remove();
+        }
+        let Some(position) = position else {
+            return;
+        };
+        if self.browser.child_mirror_suppressed()
+            || !self.columns_mirror_selection.get()
+            || self.active_rename.borrow().is_some()
+            || self.pending_new_entry.borrow().is_some()
+            || self.mode_views.borrow().mode() != BrowserMode::Columns
+            || self.input_ownership.borrow().last_navigation
+                != crate::ui::input_ownership::NavigationInput::Keyboard
+        {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_mirror.borrow_mut().take();
+            state.apply_child_mirror(depth, position);
+        });
+        self.pending_mirror.replace(Some(source));
+    }
+
+    fn apply_child_mirror(self: &Rc<Self>, depth: usize, position: usize) {
+        let filtered = self
+            .columns
+            .borrow()
+            .get(depth)
+            .is_some_and(|column| column.map.has_query());
+        if filtered
+            || self.browser.child_mirror_suppressed()
+            || !self.columns_mirror_selection.get()
+            || self.active_rename.borrow().is_some()
+            || self.pending_new_entry.borrow().is_some()
+            || self.mode_views.borrow().mode() != BrowserMode::Columns
+            || self.input_ownership.borrow().last_navigation
+                != crate::ui::input_ownership::NavigationInput::Keyboard
+        {
+            return;
+        }
+        let Some((focused_depth, focused_position, entry)) = self.browser.focused_item() else {
+            return;
+        };
+        if (focused_depth, focused_position) != (depth, position) {
+            return;
+        }
+        if entry.is_directory() {
+            self.browser.show_child(depth, entry.location);
+        } else {
+            self.browser.close_column(depth + 1);
+            if self.single_click_previews.get()
+                && let Some(entry) = preview_target(Some(entry))
+            {
+                self.browser.request_preview(entry);
+            }
+        }
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {

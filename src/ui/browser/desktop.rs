@@ -4,7 +4,9 @@ use crate::adapters::gio_file_for_location;
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::paths::is_trash_location;
-use crate::ui::controls::{ModalTone, message_dialog_description, message_dialog_layout};
+use crate::ui::controls::{
+    ModalTone, focus_button, message_dialog_description, message_dialog_layout,
+};
 use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use crate::ui::terminal;
 use gtk::gio;
@@ -282,12 +284,7 @@ pub(super) fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Wi
 
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
     window_overlay.add_overlay(&layer);
-    let weak_cancel = cancel.downgrade();
-    gtk::glib::idle_add_local_once(move || {
-        if let Some(cancel) = weak_cancel.upgrade() {
-            cancel.grab_focus();
-        }
-    });
+    focus_button(&run);
     for button in [close, cancel] {
         let dismiss_layer = layer.clone();
         let dismiss_overlay = window_overlay.clone();

@@ -173,9 +173,18 @@ fn peek_horizontal_placement(
     }
 
     let left = source_x - PEEK_GAP - PEEK_WIDTH as f32;
-    (left >= 0.0).then_some(PeekPlacement {
-        x: left,
-        side: PeekSide::Left,
+    if left >= 0.0 {
+        return Some(PeekPlacement {
+            x: left,
+            side: PeekSide::Left,
+        });
+    }
+
+    // No free side: first column or a full-width row in a narrow window.
+    // Overlay the viewport's trailing edge instead of dropping the peek.
+    (viewport_width >= PEEK_WIDTH as f32).then_some(PeekPlacement {
+        x: (viewport_width - PEEK_WIDTH as f32).max(0.0),
+        side: PeekSide::Right,
     })
 }
 

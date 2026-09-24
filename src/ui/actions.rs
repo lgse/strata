@@ -6,7 +6,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gtk::{gio, prelude::*};
 
 use crate::{
     adapters::LocalActionStore,
@@ -14,7 +14,7 @@ use crate::{
     model::{ActionInput, FOLDER_CONTENT_TYPE, FileEntry, InputKind, Location},
     services::{ActionHandle, ActionRegistry, InvocationSource, JobRequest, MatchedAction},
     ui::{
-        controls::{ModalTone, message_dialog_description, message_dialog_layout},
+        controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
         modal::{
             ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer,
             show_error_dialog,
@@ -214,12 +214,7 @@ fn confirm_and_run(
     let run = layout.confirm;
     let layer = modal_layer(&content, &overlay, blurred_root.clone(), None);
     overlay.add_overlay(&layer);
-    let weak_cancel = cancel.downgrade();
-    glib::idle_add_local_once(move || {
-        if let Some(cancel) = weak_cancel.upgrade() {
-            cancel.grab_focus();
-        }
-    });
+    focus_button(&run);
     for button in [close, cancel] {
         let dismiss_layer = layer.clone();
         let dismiss_overlay = overlay.clone();

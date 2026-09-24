@@ -11,7 +11,7 @@ use crate::ui::browser::entry::{
 };
 use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
-    ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
+    ModalTone, focus_button, message_dialog_description, message_dialog_layout, modal_layout,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
@@ -511,13 +511,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&empty);
     }
 
     pub(super) fn request_restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
@@ -718,13 +712,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = cancel.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(true);
-            }
-        });
+        focus_button(&confirm);
     }
 
     pub(super) fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -845,7 +833,6 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
-        file_scroller.add_css_class("fixed-scrollbar");
         layout.body.append(&file_scroller);
         let explanation = message_dialog_description(delete_confirmation_explanation(permanent));
         layout.body.append(&explanation);
@@ -955,17 +942,8 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = if prefer_cancel {
-            cancel.clone()
-        } else {
-            confirm.clone()
-        };
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
-            }
-        });
+        let initial_focus = if prefer_cancel { &cancel } else { &confirm };
+        focus_button(initial_focus);
 
         let weak_subtitle = subtitle.downgrade();
         let weak_confirm = confirm.downgrade();
@@ -993,6 +971,7 @@ impl ViewState {
             confirm.set_sensitive(true);
             spinner.stop();
             spinner.set_visible(false);
+            confirm.grab_focus();
         });
         let task = Rc::new(task);
         let closing_task = task.clone();

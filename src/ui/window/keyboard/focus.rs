@@ -94,7 +94,7 @@ impl Dispatcher<'_> {
             return None;
         }
         if self.top_bar.sidebar_toggle().is_active() {
-            self.sidebar.enter(&event.focused);
+            self.enter_sidebar(event);
         }
         Some(Propagation::Stop)
     }

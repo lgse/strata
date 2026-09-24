@@ -6,7 +6,7 @@ Columns have three independent signals:
 - **Keyboard cursor:** a text-contrast outline identifies the current item in the keyboard-focused list. Only that list shows a cursor; range selections can contain several filled rows.
 - **Open path:** the chevron identifies the folder whose child column is open, without an extra border. This is navigation context, not another keyboard cursor.
 
-The destination column has an accent rule across its header and a **Keyboard · Paste here** or **Pointer · Paste here** footer. The indication remains useful in an empty directory, where there is no row to highlight. When panes overflow, the horizontal scrollbar gets its own track below these labels rather than covering them. No track is reserved when the panes fit.
+The destination column has an accent rule across its header, including when the directory is empty. Columns no longer reserve a separate bottom margin for the horizontal scrollbar.
 
 ## Input precedence
 
@@ -164,11 +164,13 @@ In Icons and List, plain arrows move interface focus rather than changing direct
 
 Up from the first Icons row or first List item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
-From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
+From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it, or if you entered the sidebar from the header rather than from a file). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
 
 **Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. In the default map, List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; with **Type to search** off, `l` still activates. Backspace and the existing `h` / `l` directory shortcuts remain available. In [minimal mode](minimal-mode.md), arrows stay in the file list. List and Columns **l** / **→** open a directory or enter a file's preview when possible. Icons **h** / **j** / **k** / **l** and arrows move among tiles and never preview or change location; **i** toggles preview without taking focus.
+
+In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents without moving focus, onto a previewable file opens Quick Preview, and onto any other file closes the child pane. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring.
 
 ## Opening and navigating the context menu
 
@@ -195,7 +197,7 @@ control; choosing Rename hands focus to the editor instead.
 Create `Fonts/` (empty), `Scripts/example.txt`, and `LICENSE` under a temporary directory.
 
 - Select LICENSE with the pointer, copy, leave the pointer there, then navigate to Fonts with the keyboard and paste. LICENSE should appear only in Fonts.
-- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent must visibly become the paste destination before Ctrl+V.
+- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent header must gain the destination accent before Ctrl+V.
 - Focus the parent, select several items, then click blank child and parent content. The open child and parent selection must remain intact. Ctrl+A must affect the parent only.
 - Enter an empty directory and try Delete/Shift+Delete. No confirmation targeting its parent should appear.
 - Repeat with a light theme, with filters, and with enough files to scroll. The cursor must remain distinguishable from selection and path markers.

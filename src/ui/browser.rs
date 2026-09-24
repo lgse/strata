@@ -66,10 +66,10 @@ pub(crate) use crate::ui::browser::clipboard::{
 };
 pub(crate) use crate::ui::browser::collection::{
     ActivePaneFilter, FILTER_DEBOUNCE_DELAY, debounce_filter_entry, detach_collection_view,
-    focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
-    prepare_collection_inline_edit, restore_filter_controls, reveal_collection_after_layout,
-    scroll_collection_when_allocated, search_result_entry, search_result_navigation_position,
-    set_filter_entry_query,
+    filter_placeholder, focus_collection_item_when_allocated, focus_filter_entry,
+    notify_filter_query, prepare_collection_inline_edit, restore_filter_controls,
+    reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
+    search_result_navigation_position, set_filter_entry_query,
 };
 pub(in crate::ui) use crate::ui::browser::collection::{FilterQueryBinding, bind_filter_query};
 pub(super) use crate::ui::browser::context_menu::{
@@ -155,7 +155,7 @@ pub(super) struct ViewState {
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
     mode_views: RefCell<ModeViews>,
-    view_mode: Cell<BrowserMode>,
+    mode: Cell<BrowserMode>,
     columns: RefCell<Vec<ColumnView>>,
     hovered_column: Cell<Option<usize>>,
     context_menu_column: Cell<Option<usize>>,
@@ -164,6 +164,7 @@ pub(super) struct ViewState {
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     suppress_focus_scroll: Cell<bool>,
+    pending_mirror: RefCell<Option<glib::SourceId>>,
     source_generation: Rc<Cell<u64>>,
     refreshing_source_filter: Cell<bool>,
     peek: RefCell<Option<PeekView>>,
@@ -173,6 +174,7 @@ pub(super) struct ViewState {
     peek_behavior: PeekBehavior,
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
+    columns_mirror_selection: Cell<bool>,
     multiple_selection: Rc<Cell<bool>>,
     interactive: bool,
     columns_click_activation: Cell<ClickActivation>,
@@ -305,11 +307,9 @@ impl BrowserView {
             .child(&columns_widget)
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vscrollbar_policy(gtk::PolicyType::Never)
-            .overlay_scrolling(false)
             .hexpand(true)
             .vexpand(true)
             .build();
-        scroller.add_css_class("fixed-scrollbar");
         scroller.add_css_class("mode-scroll");
         scroller.add_css_class("columns-scroll");
         if let Some(viewport) = scroller.child().and_downcast::<gtk::Viewport>() {
@@ -538,8 +538,8 @@ impl BrowserView {
             path_completion,
             columns_widget,
             scroller,
+            mode: Cell::new(mode_views.mode()),
             mode_views: RefCell::new(mode_views),
-            view_mode: Cell::new(BrowserMode::Columns),
             columns: RefCell::new(Vec::new()),
             hovered_column: Cell::new(None),
             context_menu_column: Cell::new(None),
@@ -548,6 +548,7 @@ impl BrowserView {
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             suppress_focus_scroll: Cell::new(false),
+            pending_mirror: RefCell::new(None),
             source_generation,
             refreshing_source_filter: Cell::new(false),
             peek: RefCell::new(None),
@@ -557,6 +558,7 @@ impl BrowserView {
             peek_behavior,
             peek_enabled: Cell::new(true),
             single_click_previews: Cell::new(true),
+            columns_mirror_selection: Cell::new(true),
             multiple_selection,
             interactive,
             columns_click_activation: Cell::new(ClickActivation::default()),
@@ -619,6 +621,9 @@ impl BrowserView {
         state.install_input_ownership();
         state.install_column_peek_targets();
         state.install_drag_autoscroll();
+        if interactive {
+            columns::install_resize_edges(&state);
+        }
 
         let weak_state = Rc::downgrade(&state);
         columns::install_horizontal_scroll(&state);
@@ -966,6 +971,10 @@ impl BrowserView {
             || self.state.mode_views.borrow().rename_is_active()
     }
 
+    pub(in crate::ui) fn cancel_pending_click_rename(&self) {
+        self.state.cancel_click_rename();
+    }
+
     pub fn active_rename_field(&self) -> Option<gtk::Entry> {
         self.state
             .active_rename
@@ -990,7 +999,7 @@ impl BrowserView {
             // Sidebar-origin events do not reach the browser's pointer controllers.
             state.hovered_column.set(None);
             state.pointer_navigation();
-            let mode = state.mode_views.borrow().mode();
+            let mode = state.mode.get();
             if mode == BrowserMode::Columns {
                 let columns = state.columns.borrow();
                 let column = match edge {
@@ -1004,10 +1013,11 @@ impl BrowserView {
     }
 
     pub fn view_mode(&self) -> BrowserMode {
-        self.state.view_mode.get()
+        self.state.mode.get()
     }
 
     pub fn connect_view_mode_changed(&self, handler: impl Fn(BrowserMode) + 'static) {
+        let state = Rc::downgrade(&self.state);
         self.state
             .mode_views
             .borrow()
@@ -1018,12 +1028,15 @@ impl BrowserView {
                     Some("list") => BrowserMode::List,
                     _ => BrowserMode::Columns,
                 };
+                if let Some(state) = state.upgrade() {
+                    state.mode.set(mode);
+                }
                 handler(mode);
             });
     }
 
     pub fn set_view_mode(&self, mode: BrowserMode) {
-        let previous = self.state.view_mode.get();
+        let previous = self.state.mode.get();
         if mode == previous {
             return;
         }
@@ -1033,7 +1046,7 @@ impl BrowserView {
                 self.state.mode_views.borrow().capture_active_filter()
             }
         };
-        self.state.view_mode.set(mode);
+        self.state.mode.set(mode);
         self.state.mode_views.borrow().show_mode(mode);
         self.state.mode_views.borrow_mut().prepare_mode(mode);
         if mode == BrowserMode::Columns {
@@ -1064,6 +1077,16 @@ impl BrowserView {
         }
         self.state.notify_visible_listing();
         self.schedule_find_highlights();
+    }
+
+    // Columns grabs the collection view itself; item-level focus lands on
+    // editable cells that would swallow navigation keys.
+    pub(in crate::ui) fn focus_file_view(&self) {
+        if self.view_mode() == BrowserMode::Columns {
+            self.state.focus_rebuilt_active_column();
+        } else {
+            self.state.browser.focus_active();
+        }
     }
 
     pub fn set_density(&self, density: BrowserDensity) {
@@ -1364,6 +1387,15 @@ impl BrowserView {
                 .mode_views
                 .borrow()
                 .single_click_previews_enabled()
+    }
+
+    pub fn set_columns_mirror_selection(&self, enabled: bool) {
+        self.state.columns_mirror_selection.set(enabled);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn columns_mirror_selection_enabled(&self) -> bool {
+        self.state.columns_mirror_selection.get()
     }
 
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
@@ -2983,7 +3015,7 @@ impl ViewState {
     }
 
     fn refresh_browser(&self) {
-        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+        if self.mode.get() == BrowserMode::Columns {
             self.browser.refresh_all();
         } else {
             self.browser.reload_active();
@@ -2991,7 +3023,7 @@ impl ViewState {
     }
 
     fn sync_mode_selection(&self) {
-        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+        if self.mode.get() == BrowserMode::Columns {
             if let Some(depth) = self.focused_column_depth() {
                 self.browser.set_active_column(depth);
             }
@@ -3072,7 +3104,7 @@ impl ViewState {
     }
 
     fn destination_depth(&self) -> Option<usize> {
-        if self.view_mode.get() != BrowserMode::Columns {
+        if self.mode.get() != BrowserMode::Columns {
             return self.browser.active_depth();
         }
         if let Some(depth) = self.context_menu_column.get()
@@ -3090,10 +3122,6 @@ impl ViewState {
 
     fn refresh_destination_style(&self) {
         let destination = self.destination_depth();
-        let pointer = self.input_ownership.borrow().last_navigation
-            == super::input_ownership::NavigationInput::Pointer
-            && (self.hovered_column.get() == destination
-                || self.context_menu_column.get().is_some());
         let focused_column = self.focused_column_depth();
         let focused_item = self
             .browser
@@ -3148,13 +3176,6 @@ impl ViewState {
             } else {
                 column.shell.remove_css_class("destination-column");
             }
-            column.destination_hint.set_label(if !active {
-                ""
-            } else if pointer {
-                "Pointer · Paste here"
-            } else {
-                "Keyboard · Paste here"
-            });
         }
     }
 
@@ -3167,7 +3188,7 @@ impl ViewState {
     }
 
     fn select_all(&self, depth: usize) {
-        if self.mode_views.borrow().mode() != BrowserMode::Columns {
+        if self.mode.get() != BrowserMode::Columns {
             self.browser.select_all(depth);
             return;
         }

@@ -18,7 +18,7 @@ use crate::{
 
 use super::super::{
     MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView, animate_sidebar, build_appearance_menu,
-    pin_status,
+    pin_status, preferred_sidebar_width, sidebar_rail_width,
 };
 
 pub(super) struct Header {
@@ -127,7 +127,7 @@ pub(super) fn browser_layout(
             preview.print_entry(entry);
         }
     }));
-    let content = browser_split(browser, sidebar, &header.sidebar_toggle);
+    let content = browser_split(browser, sidebar, &header.sidebar_toggle, preview);
     let preview_split = gtk::Paned::new(gtk::Orientation::Horizontal);
     preview_split.add_css_class("preview-split");
     preview_split.set_wide_handle(false);
@@ -139,7 +139,7 @@ pub(super) fn browser_layout(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    preview.attach_split(&preview_split, &content, browser);
+    preview.attach_split(&preview_split, &content, browser, Some(sidebar));
     browser.add_marquee_origin(&preview.widget(), gtk::PackType::End);
     root.append(&preview_split);
     root
@@ -168,6 +168,7 @@ fn browser_split(
     browser: &BrowserView,
     sidebar: &SidebarView,
     toggle: &gtk::ToggleButton,
+    preview: &PreviewDrawer,
 ) -> gtk::Paned {
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
     content.add_css_class("sidebar-split");
@@ -181,38 +182,128 @@ fn browser_split(
     browser.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
-    bind_sidebar_toggle(&content, &sidebar.widget, toggle);
-    super::super::bind_sidebar_text_size(&content);
+    bind_sidebar_toggle(&content, sidebar, toggle, preview);
+    bind_sidebar_layout(&content, sidebar, toggle, preview);
+    super::super::bind_sidebar_text_size(&content, sidebar);
     content
 }
 
-fn bind_sidebar_toggle(content: &gtk::Paned, sidebar: &gtk::Widget, toggle: &gtk::ToggleButton) {
+fn bind_sidebar_layout(
+    content: &gtk::Paned,
+    sidebar: &SidebarView,
+    toggle: &gtk::ToggleButton,
+    preview: &PreviewDrawer,
+) {
+    let weak_sidebar = Rc::downgrade(&sidebar.state);
+    let weak_toggle = toggle.downgrade();
+    let weak_preview = preview.downgrade();
+    content.add_tick_callback(move |content, _| {
+        let (Some(toggle), Some(sidebar), Some(preview)) = (
+            weak_toggle.upgrade(),
+            weak_sidebar.upgrade(),
+            weak_preview.upgrade(),
+        ) else {
+            return glib::ControlFlow::Break;
+        };
+        if !toggle.is_active() || preview.is_open() {
+            return glib::ControlFlow::Continue;
+        }
+        let available = content
+            .root()
+            .map_or_else(|| content.width(), |r| r.width());
+        if available <= 0 {
+            return glib::ControlFlow::Continue;
+        }
+        let needs_full = preferred_sidebar_width() + crate::ui::browser::COLUMN_WIDTH + 1;
+        let is_railed = sidebar.rail.get();
+        if is_railed && available >= needs_full {
+            let restore = sidebar
+                .saved_width
+                .get()
+                .unwrap_or_else(preferred_sidebar_width);
+            sidebar.set_rail(false);
+            content.set_position(restore);
+        } else if !is_railed && available < needs_full {
+            sidebar.set_rail(true);
+            content.set_position(sidebar_rail_width());
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
+fn bind_sidebar_toggle(
+    content: &gtk::Paned,
+    sidebar: &SidebarView,
+    toggle: &gtk::ToggleButton,
+    preview: &PreviewDrawer,
+) {
     let generation = Rc::new(Cell::new(0));
     let animating = Rc::new(Cell::new(false));
     let constrained_toggle = toggle.downgrade();
     let constrained_animation = animating.clone();
+    let constrained_sidebar = Rc::downgrade(&sidebar.state);
     content.connect_position_notify(move |content| {
-        if constrained_toggle
+        if !constrained_toggle
             .upgrade()
             .is_some_and(|toggle| toggle.is_active())
-            && !constrained_animation.get()
-            && content.position() < MIN_SIDEBAR_WIDTH
+            || constrained_animation.get()
         {
+            return;
+        }
+        let Some(state) = constrained_sidebar.upgrade() else {
+            return;
+        };
+        let railed = state.rail.get();
+        if railed {
+            if content.position() != sidebar_rail_width() {
+                content.set_position(sidebar_rail_width());
+            }
+        } else if content.position() < MIN_SIDEBAR_WIDTH {
             content.set_position(MIN_SIDEBAR_WIDTH);
+        } else {
+            state.saved_width.set(Some(content.position()));
         }
     });
     let content = content.downgrade();
-    let sidebar = sidebar.downgrade();
+    let sidebar_widget = sidebar.widget.downgrade();
+    let toggled_sidebar = Rc::downgrade(&sidebar.state);
+    let toggled_preview = preview.downgrade();
     toggle.connect_toggled(move |toggle| {
-        let (Some(content), Some(sidebar)) = (content.upgrade(), sidebar.upgrade()) else {
+        let (Some(content), Some(sidebar_widget), Some(state), Some(preview)) = (
+            content.upgrade(),
+            sidebar_widget.upgrade(),
+            toggled_sidebar.upgrade(),
+            toggled_preview.upgrade(),
+        ) else {
             return;
         };
+        let open = toggle.is_active();
+        let window_width = content
+            .root()
+            .and_downcast::<gtk::Window>()
+            .map(|w| w.default_width())
+            .unwrap_or(0);
+        let allocated = content
+            .root()
+            .map_or_else(|| content.width(), |r| r.width());
+        let available = if allocated > 0 {
+            allocated
+        } else if window_width > 0 {
+            window_width
+        } else {
+            content.width()
+        };
+        if open && !preview.is_open() {
+            let needs = preferred_sidebar_width() + crate::ui::browser::COLUMN_WIDTH + 1;
+            state.set_rail(available > 0 && available < needs);
+        }
         animate_sidebar(
             &content,
-            &sidebar,
+            &sidebar_widget,
+            &state,
             &generation,
             &animating,
-            toggle.is_active(),
+            open,
         );
     });
 }

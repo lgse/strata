@@ -5,7 +5,7 @@ use super::{
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
         compression_stages, extract_zip, never_cancelled, test_file_entry, trash_supported,
-        write_zip_stored,
+        write_7z_entries, write_tar_entries, write_zip_stored,
     },
 };
 use crate::{
@@ -24,6 +24,7 @@ use std::{
     error::Error,
     fs,
     os::unix::fs::PermissionsExt,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{
         Arc,
@@ -162,7 +163,7 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
         fs::create_dir(&extracted)?;
         assert_eq!(
             extract_zip(&archive, &extracted)?,
-            Some("source.txt".to_owned())
+            vec![PathBuf::from("source.txt")]
         );
     } else {
         assert!(
@@ -641,15 +642,18 @@ fn extraction_provider_sanitizes_parent_paths_without_failure() -> Result<(), Bo
 
     assert!(events.iter().any(|event| matches!(
         event,
-        OperationEvent::Extracted { first_name: Some(name), .. } if name == "escaped.txt"
+        OperationEvent::Extracted { first_name: Some(name), .. } if name == "unsafe"
     )));
     assert!(
         !events
             .iter()
             .any(|event| matches!(event, OperationEvent::Failed { .. }))
     );
-    assert_eq!(fs::read(destination.join("escaped.txt"))?, b"escaped");
-    assert_eq!(fs::read(destination.join("after.txt"))?, b"after");
+    assert_eq!(
+        fs::read(destination.join("unsafe/escaped.txt"))?,
+        b"escaped"
+    );
+    assert_eq!(fs::read(destination.join("unsafe/after.txt"))?, b"after");
     assert!(!root.path().join("escaped.txt").exists());
     Ok(())
 }
@@ -738,6 +742,195 @@ fn failed_extraction_removes_a_caller_created_destination() -> Result<(), Box<dy
     assert!(
         !destination.exists(),
         "caller-created destination was not cleaned up"
+    );
+    Ok(())
+}
+
+#[test]
+fn spilled_members_bundle_under_the_archive_stem() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archives = [
+        root.path().join("bundle.zip"),
+        root.path().join("bundle.tar"),
+        root.path().join("bundle.tar.gz"),
+        root.path().join("bundle.7z"),
+    ];
+    write_7z_entries(&archives[3], &[("a.txt", b"a"), ("dir/b.txt", b"b")])?;
+    write_zip_stored(&archives[0], &[("a.txt", b"a"), ("dir/b.txt", b"b")])?;
+    for (archive, gzip) in [(&archives[1], false), (&archives[2], true)] {
+        write_tar_entries(
+            archive,
+            &[
+                (tar::EntryType::Regular, "a.txt", b"a"),
+                (tar::EntryType::Regular, "dir/b.txt", b"b"),
+            ],
+            gzip,
+        )?;
+    }
+
+    for archive in &archives {
+        let destination = tempfile::tempdir()?;
+        let events = run_extraction(ExtractRequest {
+            id: OperationRequestId(1),
+            entry: test_file_entry(archive),
+            destination: Location::local(destination.path()),
+            created_destination: false,
+            password: None,
+        });
+
+        assert!(
+            matches!(
+                events.last(),
+                Some(OperationEvent::Extracted {
+                    first_name: Some(name),
+                    ..
+                }) if name == "bundle"
+            ),
+            "{archive:?}: {:?}",
+            events
+        );
+        assert_eq!(
+            fs::read(destination.path().join("bundle/a.txt"))?,
+            b"a",
+            "{archive:?}"
+        );
+        assert_eq!(
+            fs::read(destination.path().join("bundle/dir/b.txt"))?,
+            b"b",
+            "{archive:?}"
+        );
+        assert!(!destination.path().join("a.txt").exists(), "{archive:?}");
+        assert!(!destination.path().join("dir").exists(), "{archive:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn single_root_extraction_lands_verbatim() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+
+    let archive = root.path().join("note.zip");
+    write_zip_stored(&archive, &[("readme.txt", b"hi")])?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(2),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+    assert!(matches!(
+        events.last(),
+        Some(OperationEvent::Extracted {
+            first_name: Some(name),
+            ..
+        }) if name == "readme.txt"
+    ));
+    assert_eq!(fs::read(destination.join("readme.txt"))?, b"hi");
+    assert!(!destination.join("note").exists());
+
+    let archive = root.path().join("foldered.zip");
+    write_zip_stored(&archive, &[("folder/a.txt", b"a"), ("folder/b.txt", b"b")])?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(3),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+    assert!(matches!(
+        events.last(),
+        Some(OperationEvent::Extracted {
+            first_name: Some(name),
+            ..
+        }) if name == "folder"
+    ));
+    assert_eq!(fs::read(destination.join("folder/a.txt"))?, b"a");
+    assert!(!destination.join("foldered").exists());
+    Ok(())
+}
+
+#[test]
+fn a_bundle_name_colliding_with_an_extracted_root_is_suffixed() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let archive = root.path().join("photos.zip");
+    write_zip_stored(
+        &archive,
+        &[("photos/inner.txt", b"inner"), ("extra.txt", b"extra")],
+    )?;
+
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(4),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+
+    assert!(matches!(
+        events.last(),
+        Some(OperationEvent::Extracted {
+            first_name: Some(name),
+            ..
+        }) if name == "photos (1)"
+    ));
+    assert_eq!(
+        fs::read(destination.join("photos (1)/photos/inner.txt"))?,
+        b"inner"
+    );
+    assert_eq!(
+        fs::read(destination.join("photos (1)/extra.txt"))?,
+        b"extra"
+    );
+    Ok(())
+}
+
+#[test]
+fn bundled_extraction_reserves_a_fresh_name_against_existing_entries() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    fs::write(destination.join("bundle"), b"existing file")?;
+    std::os::unix::fs::symlink("missing", destination.join("bundle (1)"))?;
+    let archive = root.path().join("bundle.zip");
+    write_zip_stored(&archive, &[("a.txt", b"a"), ("b.txt", b"b")])?;
+
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(5),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        created_destination: false,
+        password: None,
+    });
+
+    assert!(matches!(
+        events.last(),
+        Some(OperationEvent::Extracted {
+            first_name: Some(name),
+            ..
+        }) if name == "bundle (2)"
+    ));
+    assert_eq!(fs::read(destination.join("bundle"))?, b"existing file");
+    assert_eq!(fs::read(destination.join("bundle (2)/a.txt"))?, b"a");
+    assert_eq!(
+        fs::read_link(destination.join("bundle (1)"))?,
+        Path::new("missing")
     );
     Ok(())
 }

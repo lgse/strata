@@ -508,8 +508,18 @@ fn sidebar_toggle_preserves_split_constraints() {
             fixture.content.header.sidebar_toggle.set_active(true);
             assert_eq!(content.position(), super::super::SIDEBAR_WIDTH);
             assert!(fixture.content.sidebar.widget.is_visible());
+            assert!(!fixture.content.sidebar.state.rail.get());
             content.set_position(1);
             assert_eq!(content.position(), super::super::MIN_SIDEBAR_WIDTH);
+
+            fixture.window.set_default_size(450, 760);
+            fixture.window.set_size_request(450, 760);
+            fixture.content.header.sidebar_toggle.set_active(false);
+            assert_eq!(content.position(), 0);
+            fixture.content.header.sidebar_toggle.set_active(true);
+            assert_eq!(content.position(), super::super::sidebar_rail_width());
+            assert!(fixture.content.sidebar.state.rail.get());
+
             fixture.close();
         },
     );

@@ -28,13 +28,13 @@ mod layout;
 mod media_layout;
 mod session;
 
-const DEFAULT_WIDTH: i32 = 520;
-const MIN_WIDTH: i32 = 560;
+pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
+pub(in crate::ui) const MIN_WIDTH: i32 = 240;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;
 const SOURCE_INSERT_CHUNK_LINES: usize = 64;
-const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
+pub(crate) const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
@@ -185,6 +185,9 @@ struct PreviewState {
     print_request: Cell<Option<PreviewRequestId>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
+    // Only explicit opens claim keyboard focus; implicit preview updates must not steal it.
+    focus_archive_on_ready: Cell<bool>,
+    focus_archive_request: Cell<Option<PreviewRequestId>>,
     enabled_action: gio::SimpleAction,
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
@@ -362,6 +365,8 @@ impl PreviewDrawer {
             print_request: Cell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
+            focus_archive_on_ready: Cell::new(false),
+            focus_archive_request: Cell::new(None),
             enabled_action: gio::SimpleAction::new_stateful(
                 "preview-panel",
                 None,
@@ -636,6 +641,10 @@ impl PreviewDrawer {
         self.state.archive_key(key)
     }
 
+    pub fn close_archive(&self) -> bool {
+        self.state.close_archive()
+    }
+
     pub fn archive_list_has_focus(&self, focused: Option<&gtk::Widget>) -> bool {
         self.state.archive_list_has_focus(focused)
     }
@@ -796,6 +805,7 @@ impl PreviewState {
             self.show(entry, depth);
             return;
         }
+        self.focus_archive_on_ready.set(false);
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
@@ -866,8 +876,28 @@ impl PreviewState {
     }
 
     fn close(self: &Rc<Self>) {
+        let tree_focused = self
+            .archive_browser
+            .borrow()
+            .as_ref()
+            .is_some_and(|browser| {
+                self.pane
+                    .root()
+                    .and_then(|root| root.focus())
+                    .is_some_and(|focused| {
+                        browser.root().upcast_ref::<gtk::Widget>() == &focused
+                            || focused.is_ancestor(browser.root())
+                    })
+            });
         self.stop();
         self.pane.set_size_request(MIN_WIDTH, -1);
+        if tree_focused {
+            if self.sizing.is_compact() {
+                self.close_button.grab_focus();
+            } else if let Some(browser) = self.sizing.browser() {
+                browser.browser().focus_active();
+            }
+        }
     }
 
     fn print(self: &Rc<Self>) {
@@ -1196,6 +1226,9 @@ impl PreviewState {
         self.next_request
             .set(self.next_request.get().saturating_add(1));
         self.current_request.set(Some(request_id));
+        if self.focus_archive_on_ready.replace(false) {
+            self.focus_archive_request.set(Some(request_id));
+        }
         self.show_loading(request_id);
         let weak = Rc::downgrade(self);
         let emit = Rc::new(move |event| {
@@ -1305,6 +1338,7 @@ impl PreviewState {
                         .map(|entry| entry.text().to_string())
                         .unwrap_or_default(),
                 );
+                state.focus_archive_on_ready.set(true);
                 state.load_with_password(unlock_entry.clone(), 0, Some(password));
             }
         });
@@ -1313,6 +1347,7 @@ impl PreviewState {
         password.connect_activate(move |entry| {
             if let Some(state) = weak.upgrade() {
                 let password = SecretString::new(entry.text().to_string());
+                state.focus_archive_on_ready.set(true);
                 state.load_with_password(activate_entry.clone(), 0, Some(password));
             }
         });
@@ -1460,7 +1495,9 @@ impl PreviewState {
                 self.render_pdf_viewer(preview.entry, png, page, pages);
             }
             PreviewContent::Archive { tree } => {
-                self.render_archive(tree);
+                let focus = self.focus_archive_request.get() == Some(preview.request_id);
+                self.focus_archive_request.set(None);
+                self.render_archive(tree, focus);
             }
             PreviewContent::Unsupported => {
                 self.show_message(
@@ -1471,7 +1508,7 @@ impl PreviewState {
         }
     }
 
-    fn render_archive(self: &Rc<Self>, tree: ArchivePreviewTree) {
+    fn render_archive(self: &Rc<Self>, tree: ArchivePreviewTree, focus_tree: bool) {
         self.set_archive_preview_active(true);
         let weak = Rc::downgrade(self);
         let navigate = Rc::new(move |depth: usize| {
@@ -1489,6 +1526,9 @@ impl PreviewState {
             }
         });
         self.archive_browser.replace(Some(browser));
+        if focus_tree {
+            list.grab_focus();
+        }
     }
 
     fn navigate_archive(self: &Rc<Self>, depth: usize) {
@@ -1536,6 +1576,15 @@ impl PreviewState {
                         || focused.is_ancestor(browser.list())
                 })
             })
+    }
+
+    fn close_archive(self: &Rc<Self>) -> bool {
+        if self.archive_browser.borrow().is_some() {
+            self.close();
+            true
+        } else {
+            false
+        }
     }
 
     fn open_archive_row(self: &Rc<Self>, position: u32) {
@@ -2586,11 +2635,9 @@ impl SourcePreviewView {
             .child(&self.view)
             .hscrollbar_policy(text_hscroll_policy(wrapped))
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .hexpand(true)
             .vexpand(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         self.scroll.replace(Some(scroll.clone()));
         (scroll.upcast(), false)
     }

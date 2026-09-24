@@ -387,7 +387,6 @@ class Strata:
             pane = self.pane(directory)
         container = self._entry_container_in(pane)
         if container is None:
-            # The bottom edge can be Columns' paste-target footer, not its content.
             return pane.screen_bounds().center
         bounds = container.screen_bounds()
         entries = self._entries_in(pane)
@@ -405,24 +404,10 @@ class Strata:
         self.pointer.move_to(*self.empty_point(directory))
         return pane
 
-    def paste_target(self) -> str | None:
-        """The pane Strata says Ctrl+V would paste into."""
-
-        for pane in self.containers():
-            if pane.find(role="label", name_matches="Paste here"):
-                return pane.name
-        return None
-
     def paste_into(self, directory: str | None = None) -> None:
         """Aim the paste at a pane, then paste into it."""
 
-        pane = self.hover_pane(directory)
-        # Columns marks the pane Ctrl+V would target; the single-pane views
-        # have only one candidate and show no marker.
-        self.wait(
-            lambda: self.paste_target() in (pane.name, None),
-            f"the paste target to become {pane.name!r}",
-        )
+        self.hover_pane(directory)
         self.keyboard.press("ctrl+v")
 
     # Enough steps to cross any fixture directory in the suite.

@@ -3,7 +3,10 @@
 use super::super::*;
 use crate::sandbox::MediaPreviewBackend;
 use crate::test_support::gtk_test;
-use crate::ui::{preferences::TextSize, theme::ThemeManager};
+use crate::ui::{
+    preferences::{InterfaceRenderer, TextSize},
+    theme::ThemeManager,
+};
 
 fn descendants<T: IsA<gtk::Widget> + Clone>(root: &gtk::Widget) -> Vec<T> {
     let mut widgets = Vec::new();
@@ -71,7 +74,7 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             assert_eq!(
                 active_switches(&first),
                 vec![
-                    false, false, true, false, true, true, false, false, true, true, false
+                    false, false, true, false, true, true, false, false, false, true, true, false
                 ]
             );
             assert_eq!(active_switches(&first), active_switches(&second));
@@ -264,6 +267,35 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
             let themes = ThemeManager::shared();
             let first = theme_page(manager.clone(), themes.clone()).widget;
             let second = theme_page(manager.clone(), themes.clone()).widget;
+            let renderer_control = |page: &gtk::Widget| {
+                descendants::<gtk::MenuButton>(page)
+                    .into_iter()
+                    .find(|button| button.tooltip_text().as_deref() == Some("Interface renderer"))
+                    .expect("renderer choice")
+            };
+            let restart_button = |page: &gtk::Widget| {
+                descendants::<gtk::Button>(page)
+                    .into_iter()
+                    .find(|button| button.label().as_deref() == Some("Restart now"))
+                    .expect("renderer restart")
+            };
+            assert_eq!(manager.interface_renderer(), InterfaceRenderer::Cairo);
+            for page in [&first, &second] {
+                assert_eq!(renderer_control(page).label().as_deref(), Some("Cairo"));
+                assert!(!restart_button(page).is_visible());
+            }
+            manager.set_interface_renderer(InterfaceRenderer::System);
+            for page in [&first, &second] {
+                assert_eq!(
+                    renderer_control(page).label().as_deref(),
+                    Some("GTK default")
+                );
+                assert!(restart_button(page).is_visible());
+            }
+            manager.set_interface_renderer(InterfaceRenderer::Cairo);
+            for page in [&first, &second] {
+                assert!(!restart_button(page).is_visible());
+            }
             let first_hints = keybindings_page(manager.clone());
             let second_hints = keybindings_page(manager.clone());
             let first_channel = channel_option(manager.clone(), None);

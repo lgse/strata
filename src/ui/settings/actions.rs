@@ -52,15 +52,18 @@ pub(super) fn actions_page() -> gtk::Widget {
     description.add_css_class("settings-section-description");
     content.append(&description);
 
-    let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    toolbar.add_css_class("settings-integration-actions");
+    let toolbar = super::wrap::WrapRow::new(8);
+    toolbar.set_end_align(true);
+    toolbar.set_hexpand(true);
     toolbar.set_margin_top(8);
     toolbar.set_margin_bottom(8);
     let new_action = gtk::Button::with_label("New action…");
     new_action.add_css_class("settings-action-button");
+    new_action.add_css_class("settings-actions-create-button");
     search::tag(&new_action, "New custom action");
     let import = gtk::Button::with_label("Import…");
     import.add_css_class("settings-action-button");
+    import.add_css_class("settings-actions-create-button");
     search::tag(&import, "Import custom action");
     toolbar.append(&new_action);
     toolbar.append(&import);
@@ -148,7 +151,7 @@ impl PageState {
         let heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         heading.set_hexpand(true);
         heading.set_valign(gtk::Align::Center);
-        let icon = crate::assets::primary_icon(action_icon(action.definition.icon.as_deref()), 20);
+        let icon = crate::assets::text_icon(action_icon(action.definition.icon.as_deref()), 20);
         icon.set_valign(gtk::Align::Start);
         heading.append(&icon);
 
@@ -199,7 +202,7 @@ impl PageState {
             let image = if handler == ActionRowAction::Delete {
                 assets::danger_icon(icon, assets::CHROME_ICON_PX)
             } else {
-                assets::primary_icon(icon, assets::CHROME_ICON_PX)
+                assets::text_icon(icon, assets::CHROME_ICON_PX)
             };
             image.set_halign(gtk::Align::Center);
             image.set_valign(gtk::Align::Center);
@@ -780,8 +783,11 @@ impl EditorForm {
                 .unwrap_or_default(),
         );
         max_items.set_placeholder_text(Some("No limit"));
-        max_items.set_width_chars(10);
+        max_items.set_width_chars(18);
         max_items.set_input_purpose(gtk::InputPurpose::Digits);
+        let entry_widths = gtk::SizeGroup::new(gtk::SizeGroupMode::Horizontal);
+        entry_widths.add_widget(&extensions);
+        entry_widths.add_widget(&max_items);
 
         id.set_tooltip_text(Some(if mode == EditorMode::Create {
             "Folder name: lowercase letters, digits, and dashes. Leave blank to use the name."

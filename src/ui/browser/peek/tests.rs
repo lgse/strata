@@ -39,7 +39,29 @@ fn folder_peek_uses_the_left_only_when_it_fits_outside_the_source_column() {
             side: PeekSide::Left,
         })
     );
-    assert_eq!(peek_horizontal_placement(200.0, 300.0, 700.0), None);
+    assert_eq!(
+        peek_horizontal_placement(200.0, 300.0, 700.0),
+        Some(PeekPlacement {
+            x: 444.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
+fn folder_peek_overlays_the_trailing_edge_when_no_side_fits() {
+    assert_eq!(
+        peek_horizontal_placement(0.0, 300.0, 358.0),
+        Some(PeekPlacement {
+            x: 102.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
+fn folder_peek_stays_hidden_when_the_viewport_is_narrower_than_the_popover() {
+    assert_eq!(peek_horizontal_placement(0.0, 300.0, 200.0), None);
 }
 
 #[test]

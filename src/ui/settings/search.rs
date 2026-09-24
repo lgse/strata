@@ -72,6 +72,12 @@ const TARGETS: &[Target] = &[
         aliases: "yazi vim ranger lf vifm hjkl keyboard experimental",
     },
     Target {
+        id: "columns-mirror",
+        page: "general",
+        title: "Mirror columns selection",
+        aliases: "browsing columns keyboard selection next pane folders",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",
@@ -178,6 +184,12 @@ const TARGETS: &[Target] = &[
         page: "theme",
         title: "Reduce motion",
         aliases: "appearance disable animations",
+    },
+    Target {
+        id: "renderer",
+        page: "theme",
+        title: "Interface renderer",
+        aliases: "appearance graphics cairo gtk gpu text artifacts performance restart",
     },
     Target {
         id: "hints",

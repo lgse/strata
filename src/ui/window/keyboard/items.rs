@@ -73,6 +73,7 @@ impl Dispatcher<'_> {
                 .preview
                 .archive_key(event.key)
                 .then_some(Propagation::Stop),
+            Key::space => self.preview.close_archive().then_some(Propagation::Stop),
             _ => None,
         }
     }
@@ -114,7 +115,7 @@ impl Dispatcher<'_> {
             SinglePaneArrow::Native => self.native_selection(event),
             SinglePaneArrow::Stay => Propagation::Stop,
             SinglePaneArrow::Sidebar => {
-                self.sidebar.enter(&event.focused);
+                self.enter_sidebar(event);
                 Propagation::Stop
             }
         })
@@ -170,13 +171,18 @@ impl Dispatcher<'_> {
                 self.view.copy_path();
             }
             Key::p | Key::P => self.view.pin_focused(),
-            Key::space
-                if event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
-                    && self.view.activate_directory_column() => {}
-            Key::space => self.preview.toggle(
-                preview_target(browser.focused_entry()),
-                browser.active_depth(),
-            ),
+            Key::space => {
+                self.view.cancel_pending_click_rename();
+                let activated_directory = event
+                    .without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+                    && self.view.activate_directory_column();
+                if !activated_directory {
+                    self.preview.toggle(
+                        preview_target(browser.focused_entry()),
+                        browser.active_depth(),
+                    );
+                }
+            }
             Key::BackSpace => self.view.navigate_up(),
             _ => return None,
         }
@@ -229,7 +235,7 @@ impl Dispatcher<'_> {
             && self.top_bar.sidebar_toggle().is_active()
             && !self.arrows_scoped_to_content()
         {
-            self.sidebar.enter(&event.focused);
+            self.enter_sidebar(event);
         } else {
             self.view.navigate_left();
         }

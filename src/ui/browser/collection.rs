@@ -405,6 +405,11 @@ pub(crate) fn set_filter_entry_query(entry: &gtk::Entry, query: &str, rescope: b
     }
 }
 
+pub(crate) fn filter_placeholder(count: usize) -> String {
+    let noun = if count == 1 { "item" } else { "items" };
+    format!("Filter {count} {noun}…")
+}
+
 pub(crate) fn notify_filter_query(
     filter: &gtk::CustomFilter,
     query: &RefCell<String>,

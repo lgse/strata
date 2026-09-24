@@ -47,6 +47,17 @@ impl super::ModeViews {
             );
         }
     }
+
+    pub(in crate::ui) fn active_filter_placeholder(&self) -> Option<String> {
+        let pane = self
+            .browser
+            .active_depth()
+            .and_then(|depth| self.panes_at(depth).into_iter().next())?;
+        pane.filter_entry
+            .as_ref()?
+            .placeholder_text()
+            .map(|text| text.to_string())
+    }
 }
 
 /// Model values as the panes store them: kind, hidden flag, then the display name.

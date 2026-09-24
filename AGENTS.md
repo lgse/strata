@@ -198,6 +198,10 @@ pass before merge.
 - Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
 - Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.
 
+## UI controls
+
+- Reuse existing control builders, shared bindings, and CSS classes for dropdowns, buttons, toggles, and segmented controls before creating new ones. Match their hover, active, focus, disabled, and theme states; do not style a new control as a generic form field when an existing button style applies.
+
 ## Comments
 
 - Prefer self-explanatory names and structure. Do not add comments that narrate obvious code or restate a test's setup, actions, or assertions.

@@ -74,11 +74,9 @@ impl ArchiveBrowser {
         let crumb_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vscrollbar_policy(gtk::PolicyType::Never)
-            .overlay_scrolling(false)
             .child(&crumbs)
             .build();
         crumb_scroll.add_css_class("preview-archive-crumbs-scroll");
-        crumb_scroll.add_css_class("fixed-scrollbar");
         root.append(&crumb_scroll);
 
         let count = gtk::Label::new(None);
@@ -165,11 +163,9 @@ impl ArchiveBrowser {
         let list_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .child(&list)
             .vexpand(true)
             .build();
-        list_scroll.add_css_class("fixed-scrollbar");
         root.append(&list_scroll);
 
         let empty = gtk::Label::new(Some("This folder is empty"));
@@ -282,6 +278,8 @@ impl ArchiveBrowser {
     }
 
     fn refresh(&self) {
+        // Replacing rows can leave focus on a detached widget.
+        let had_focus = self.tree_has_focus();
         self.rebuild_crumbs();
         let directory = directory_at(&self.tree.root, &self.path.borrow());
         let count = directory.children.len();
@@ -301,6 +299,9 @@ impl ArchiveBrowser {
             _ => format!("{files} files, {folders} folders"),
         };
         self.count.set_text(&summary);
+        if had_focus {
+            self.list.grab_focus();
+        }
     }
 
     fn rebuild_crumbs(&self) {
@@ -377,6 +378,15 @@ impl ArchiveBrowser {
         if count > 0 {
             self.cursor.set((selected as usize).min(count - 1));
         }
+    }
+
+    fn tree_has_focus(&self) -> bool {
+        self.list
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focused| {
+                self.list.upcast_ref::<gtk::Widget>() == &focused || focused.is_ancestor(&self.list)
+            })
     }
 }
 
