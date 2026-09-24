@@ -63,6 +63,11 @@ fn selection_runs_merge_per_line_and_skip_empty_ranges() {
         "ay",
         vec![[10.0, 10.0, 20.0, 22.0], [20.0, 10.0, 30.0, 22.0]],
     );
+    // Non-ASCII descenders (ç) keep the full box too rather than clipping.
+    let cedilla = layer(
+        "aç",
+        vec![[10.0, 10.0, 20.0, 22.0], [20.0, 10.0, 30.0, 22.0]],
+    );
     let layer = two_line_layer();
     assert!(selection_runs(&layer, 0, 0).is_empty());
     // "ab\ncd" has no descenders, so each band stops just past the baseline.
@@ -78,6 +83,10 @@ fn selection_runs_merge_per_line_and_skip_empty_ranges() {
     assert_eq!(selection_runs(&layer, 4, 1), selection_runs(&layer, 1, 4));
     // A run containing a descender keeps the line's full bottom edge.
     assert_eq!(selection_runs(&tails, 0, 2), vec![[10.0, 10.0, 30.0, 22.0]]);
+    assert_eq!(
+        selection_runs(&cedilla, 0, 2),
+        vec![[10.0, 10.0, 30.0, 22.0]]
+    );
 }
 
 #[test]

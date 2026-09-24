@@ -138,13 +138,29 @@ pub(super) fn caret_at(layer: &PdfTextLayer, x: f32, y: f32) -> usize {
 
 /// Latin glyphs whose ink crosses the baseline. Runs without them have empty
 /// descent space below the baseline, so the band stops early — covering the
-/// full font box there reads as a bottom-heavy highlight.
+/// full font box there reads as a bottom-heavy highlight. Non-ASCII chars take
+/// the full box: missing a descender (ç, ţ, ς) clips ink, while a false
+/// positive only shows the taller band Preview.app draws anyway.
 fn has_descender(layer: &PdfTextLayer, start: usize, end: usize) -> bool {
     layer.text.chars().skip(start).take(end - start).any(|ch| {
-        matches!(
-            ch,
-            'g' | 'j' | 'p' | 'q' | 'y' | 'Q' | ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}' | '_'
-        )
+        !ch.is_ascii()
+            || matches!(
+                ch,
+                'g' | 'j'
+                    | 'p'
+                    | 'q'
+                    | 'y'
+                    | 'Q'
+                    | ','
+                    | ';'
+                    | '('
+                    | ')'
+                    | '['
+                    | ']'
+                    | '{'
+                    | '}'
+                    | '_'
+            )
     })
 }
 

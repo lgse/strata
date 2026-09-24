@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use super::super::{PdfTextLayer, pdf_desired_ranges};
+use super::super::{PdfTextLayer, pdf_desired_ranges, pdf_shortcut_modifiers};
 
 fn layer(text: &str) -> Arc<PdfTextLayer> {
     let glyphs = text
@@ -65,4 +65,14 @@ fn line_granularity_snaps_to_whole_lines() {
 fn same_page_backward_drag_selects_upward() {
     let desired = pdf_desired_ranges(&layers(), (1, 9), (1, 1), 1);
     assert_eq!(desired, HashMap::from([(1, (1, 9))]));
+}
+
+#[test]
+fn pdf_shortcuts_ignore_latch_bits_but_reject_shift_and_alt() {
+    use gtk::gdk::ModifierType as M;
+    assert!(pdf_shortcut_modifiers(M::CONTROL_MASK));
+    assert!(pdf_shortcut_modifiers(M::CONTROL_MASK | M::LOCK_MASK));
+    assert!(!pdf_shortcut_modifiers(M::empty()));
+    assert!(!pdf_shortcut_modifiers(M::CONTROL_MASK | M::SHIFT_MASK));
+    assert!(!pdf_shortcut_modifiers(M::CONTROL_MASK | M::ALT_MASK));
 }

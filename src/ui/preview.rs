@@ -1829,11 +1829,15 @@ impl PreviewState {
 
         let loads = self.pdf_loads.clone();
         let visible_pages_for_unbind = visible_pages.clone();
+        let layers_for_unbind = text_layers.clone();
         factory.connect_unbind(move |_, item| {
             if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
                 let page = item.position() as i32;
                 loads.borrow_mut().remove(&page);
                 visible_pages_for_unbind.borrow_mut().remove(&page);
+                // Drop the multi-megabyte text layer; keep the selection
+                // range so a rebound page restores it once the layer refetches.
+                layers_for_unbind.borrow_mut().remove(&page);
             }
         });
 
@@ -2069,7 +2073,7 @@ impl PreviewState {
         let layers_for_keys = text_layers.clone();
         let ranges_for_keys = pdf_ranges.clone();
         keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if modifiers != gtk::gdk::ModifierType::CONTROL_MASK {
+            if !pdf_shortcut_modifiers(modifiers) {
                 return glib::Propagation::Proceed;
             }
             let Some(scroll) = weak_scroll.upgrade() else {
@@ -3170,6 +3174,15 @@ fn pdf_selected_text(
         text.push_str(&part);
     }
     text
+}
+
+/// Ctrl+key on PDF text matches the window's native-editing pass-through:
+/// Caps Lock and other latch bits ride along in the mask and must not
+/// suppress the shortcut.
+fn pdf_shortcut_modifiers(modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
 }
 
 fn pdf_selection_color() -> Option<gtk::gdk::RGBA> {
