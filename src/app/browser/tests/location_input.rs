@@ -68,7 +68,10 @@ fn typed_paths_drop_trailing_slashes_so_files_reveal() {
     );
 
     let root = location_from_input_with_home("/", home).expect("the root stays the root");
-    assert_eq!(root.native_path().map(Path::as_os_str), Some(OsStr::new("/")));
+    assert_eq!(
+        root.native_path().map(Path::as_os_str),
+        Some(OsStr::new("/"))
+    );
 }
 
 #[test]
