@@ -13,7 +13,7 @@ use rustix::net::{
 
 use super::super::metadata::MAX_METADATA_BYTES;
 
-pub(super) const MAX_OUTPUT_BYTES: u64 = 1024 * 1024;
+pub(super) const MAX_OUTPUT_BYTES: u64 = super::super::MAX_OUTPUT_BYTES;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -24,6 +24,10 @@ pub(crate) enum Operation {
     Video = 4,
     ImageMetadata = 5,
     MediaMetadata = 6,
+    PreviewImage = 7,
+    DocumentMermaid = 8,
+    DocumentMath = 9,
+    DocumentMathInline = 10,
 }
 
 impl Operation {
@@ -35,6 +39,10 @@ impl Operation {
             4 => Ok(Self::Video),
             5 => Ok(Self::ImageMetadata),
             6 => Ok(Self::MediaMetadata),
+            7 => Ok(Self::PreviewImage),
+            8 => Ok(Self::DocumentMermaid),
+            9 => Ok(Self::DocumentMath),
+            10 => Ok(Self::DocumentMathInline),
             _ => Err(io::Error::other("Unknown browser operation")),
         }
     }

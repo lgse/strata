@@ -130,12 +130,20 @@ fn file_versions_invalidate_cached_work_after_replacement() {
     let path = directory.path().join("file");
     std::fs::write(&path, b"one").expect("source");
     let first = FileKey::read(&path, &File::open(&path).expect("open")).expect("version");
-    let gate = cache_entry(first.clone());
-    assert!(Arc::ptr_eq(&gate, &cache_entry(first)));
+    let gate = cache_entry(first.clone(), Operation::Image);
+    assert!(Arc::ptr_eq(&gate, &cache_entry(first, Operation::Image)));
     std::fs::rename(&path, directory.path().join("old")).expect("move");
     std::fs::write(&path, b"two").expect("replacement");
     let second = FileKey::read(&path, &File::open(&path).expect("open")).expect("version");
-    assert!(!Arc::ptr_eq(&gate, &cache_entry(second)));
+    assert!(!Arc::ptr_eq(
+        &gate,
+        &cache_entry(second.clone(), Operation::Image)
+    ));
+    // A thumbnail render never satisfies a preview of the same file version.
+    assert!(!Arc::ptr_eq(
+        &cache_entry(second.clone(), Operation::PreviewImage),
+        &cache_entry(second, Operation::Image)
+    ));
 }
 
 #[test]
@@ -576,4 +584,37 @@ fn worker_configuration_is_bounded_and_invalid_values_use_the_default() {
     ] {
         assert_eq!(configured_limit(input, 3), expected);
     }
+}
+
+#[test]
+fn preview_operations_render_inside_the_decoder() {
+    let directory = tempfile::tempdir().expect("fixture");
+    let path = directory.path().join("icon.svg");
+    std::fs::write(
+        &path,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#336699"/></svg>"##,
+    )
+    .expect("fixture");
+    let cancellation = Cancellation::default();
+    // Thumbnail parse operations belong to the thumbnail pool entry point.
+    assert!(preview(&path, &ParseOperation::ThumbnailImage, &cancellation).is_none());
+    let response = crate::sandbox_helper::browser_render(&path, Operation::PreviewImage);
+    assert!(super::super::valid_output(
+        ParseOperation::PreviewImage,
+        &response.png
+    ));
+    let tex = directory.path().join("equation.tex");
+    std::fs::write(&tex, "x^2").expect("fixture");
+    let response = crate::sandbox_helper::browser_render(&tex, Operation::DocumentMath);
+    assert!(super::super::valid_output(
+        ParseOperation::DocumentMath { display: true },
+        &response.png
+    ));
+    let mmd = directory.path().join("diagram.mmd");
+    std::fs::write(&mmd, "graph TD; A-->B").expect("fixture");
+    let response = crate::sandbox_helper::browser_render(&mmd, Operation::DocumentMermaid);
+    assert!(super::super::valid_output(
+        ParseOperation::DocumentMermaid,
+        &response.png
+    ));
 }

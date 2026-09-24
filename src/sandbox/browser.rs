@@ -102,10 +102,13 @@ struct Cached {
     completed: Option<Instant>,
 }
 
-type Cache = VecDeque<(FileKey, Arc<Mutex<Cached>>)>;
+// The operation distinguishes render sizes: thumbnails and previews of one file
+// produce different output and must not share an entry.
+type Cache = VecDeque<((FileKey, Operation), Arc<Mutex<Cached>>)>;
 
-fn cache_entry(key: FileKey) -> Arc<Mutex<Cached>> {
+fn cache_entry(key: FileKey, operation: Operation) -> Arc<Mutex<Cached>> {
     static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+    let key = (key, operation);
     let mut cache = CACHE
         .get_or_init(Mutex::default)
         .lock()
@@ -149,7 +152,7 @@ pub(crate) fn thumbnail(
         ParseOperation::ThumbnailVideo => Operation::Video,
         _ => return Err("Not a browser thumbnail operation".into()),
     };
-    let result = request(path, operation, cancellation)?;
+    let result = request(pool(), path, operation, cancellation)?;
     Ok(Thumbnail {
         png: result.png.ok_or("Thumbnail unavailable")?,
         metadata: result.metadata,
@@ -162,6 +165,7 @@ pub(crate) fn metadata(
     cancellation: &Cancellation,
 ) -> Result<MediaMetadata, String> {
     request(
+        pool(),
         path,
         if image {
             Operation::ImageMetadata
@@ -174,12 +178,50 @@ pub(crate) fn metadata(
     .ok_or_else(|| "Media details unavailable".into())
 }
 
+/// Quick previews and document media reuse the pooled workers instead of
+/// spawning a one-shot sandbox per render. `None` keeps the caller's fallback.
+pub(crate) fn preview(
+    path: &Path,
+    operation: &ParseOperation,
+    cancellation: &Cancellation,
+) -> Option<Result<Vec<u8>, String>> {
+    let operation = match operation {
+        ParseOperation::PreviewImage | ParseOperation::DocumentImage => Operation::PreviewImage,
+        ParseOperation::DocumentMermaid => Operation::DocumentMermaid,
+        ParseOperation::DocumentMath { display: true } => Operation::DocumentMath,
+        ParseOperation::DocumentMath { display: false } => Operation::DocumentMathInline,
+        _ => return None,
+    };
+    if !workers_supported() {
+        return None;
+    }
+    Some(
+        request(preview_pool(), path, operation, cancellation)
+            .and_then(|parts| parts.png.ok_or_else(|| "Preview unavailable".to_owned())),
+    )
+}
+
+fn parse_operation(operation: Operation) -> ParseOperation {
+    match operation {
+        Operation::Image => ParseOperation::ThumbnailImage,
+        Operation::Raw => ParseOperation::ThumbnailRaw,
+        Operation::Pdf => ParseOperation::ThumbnailPdf,
+        Operation::Video => ParseOperation::ThumbnailVideo,
+        Operation::ImageMetadata | Operation::MediaMetadata => ParseOperation::MediaMetadata,
+        Operation::PreviewImage => ParseOperation::PreviewImage,
+        Operation::DocumentMermaid => ParseOperation::DocumentMermaid,
+        Operation::DocumentMath => ParseOperation::DocumentMath { display: true },
+        Operation::DocumentMathInline => ParseOperation::DocumentMath { display: false },
+    }
+}
+
 struct ResultParts {
     png: Option<Vec<u8>>,
     metadata: Option<MediaMetadata>,
 }
 
 fn request(
+    pool: &Pool,
     path: &Path,
     operation: Operation,
     cancellation: &Cancellation,
@@ -193,14 +235,10 @@ fn request(
         operation,
         Operation::ImageMetadata | Operation::MediaMetadata
     );
-    if matches!(
-        operation,
-        Operation::Image | Operation::Raw | Operation::Pdf
-    ) && key.size > super::MAX_RASTER_INPUT_BYTES
-    {
+    if !metadata_only && operation != Operation::Video && key.size > super::MAX_RASTER_INPUT_BYTES {
         return Err("Browser input exceeds the supported size limit".into());
     }
-    let entry = cache_entry(key.clone());
+    let entry = cache_entry(key.clone(), operation);
     let mut cached = loop {
         if cancellation.is_cancelled() {
             return Err("Browser request cancelled".into());
@@ -224,7 +262,7 @@ fn request(
     };
     if !hit {
         let queued = Instant::now();
-        let mut lease = pool().acquire(operation, cancellation)?;
+        let mut lease = pool.acquire(operation, cancellation)?;
         let queue_ms = queued.elapsed().as_millis() as u64;
         if cancellation.is_cancelled() {
             return Err("Browser request cancelled".into());
@@ -236,7 +274,7 @@ fn request(
         }
         if !response.png.is_empty() {
             if response.png.len() as u64 > wire::MAX_OUTPUT_BYTES
-                || !super::valid_output(ParseOperation::ThumbnailImage, &response.png)
+                || !super::valid_output(parse_operation(operation), &response.png)
             {
                 lease.discard();
                 return Err("Invalid browser thumbnail".into());
@@ -330,6 +368,33 @@ fn pool() -> &'static Pool {
     })
 }
 
+// Preview renders share the worker implementation but not the thumbnail pool:
+// a scrolled directory flood must not delay an interactive Space preview.
+fn preview_pool() -> &'static Pool {
+    static POOL: OnceLock<Pool> = OnceLock::new();
+    POOL.get_or_init(|| Pool {
+        state: Mutex::default(),
+        changed: Condvar::new(),
+        limit: AtomicUsize::new(default_worker_limit()),
+        idle_timeout: configured_idle_timeout(
+            std::env::var("STRATA_THUMBNAIL_IDLE_SECONDS")
+                .ok()
+                .as_deref(),
+        ),
+    })
+}
+
+fn workers_supported() -> bool {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        let supported = worker::supported();
+        if !supported {
+            tracing::warn!("Landlock ABI 3 unavailable; retaining one-shot sandboxes");
+        }
+        supported
+    })
+}
+
 impl Pool {
     fn set_limit(&self, limit: usize) {
         let _state = self.state.lock().unwrap_or_else(|p| p.into_inner());
@@ -401,7 +466,14 @@ impl Pool {
             operation,
             Operation::ImageMetadata | Operation::MediaMetadata
         );
-        let slow = operation != Operation::Image;
+        let slow = matches!(
+            operation,
+            Operation::Raw
+                | Operation::Pdf
+                | Operation::Video
+                | Operation::ImageMetadata
+                | Operation::MediaMetadata
+        );
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if metadata {
             state.metadata_waiters += 1;
@@ -545,14 +617,7 @@ enum Worker {
 
 impl Worker {
     fn spawn() -> io::Result<Self> {
-        static SUPPORTED: OnceLock<bool> = OnceLock::new();
-        if *SUPPORTED.get_or_init(|| {
-            let supported = worker::supported();
-            if !supported {
-                tracing::warn!("Landlock ABI 3 unavailable; retaining one-shot browser sandboxes");
-            }
-            supported
-        }) {
+        if workers_supported() {
             ProcessWorker::spawn().map(Self::Persistent)
         } else {
             Ok(Self::OneShot)
@@ -564,24 +629,16 @@ impl Worker {
             Self::Persistent(worker) => worker.execute(file, operation),
             Self::OneShot => {
                 use std::os::fd::AsRawFd;
-                let parse_operation = match operation {
-                    Operation::Image => ParseOperation::ThumbnailImage,
-                    Operation::Raw => ParseOperation::ThumbnailRaw,
-                    Operation::Pdf => ParseOperation::ThumbnailPdf,
-                    Operation::Video => ParseOperation::ThumbnailVideo,
-                    Operation::ImageMetadata | Operation::MediaMetadata => {
-                        ParseOperation::MediaMetadata
-                    }
-                };
+                let operation = parse_operation(operation);
                 let output = super::parse(
                     Path::new(&format!("/proc/self/fd/{}", file.as_raw_fd())),
-                    parse_operation.clone(),
+                    operation.clone(),
                     256,
                     super::MediaPreviewBackend::Software,
                     &Cancellation::default(),
                 )
                 .map_err(io::Error::other)?;
-                Ok(if parse_operation == ParseOperation::MediaMetadata {
+                Ok(if operation == ParseOperation::MediaMetadata {
                     Response {
                         png: Vec::new(),
                         metadata: output.data,
@@ -623,8 +680,14 @@ impl ProcessWorker {
                     .spawn(move || {
                         use std::sync::mpsc::RecvTimeoutError;
                         loop {
-                            pool().retire_idle(Instant::now());
-                            let message = match pool().next_expiration(Instant::now()) {
+                            let now = Instant::now();
+                            pool().retire_idle(now);
+                            preview_pool().retire_idle(now);
+                            let expiration = [pool(), preview_pool()]
+                                .into_iter()
+                                .filter_map(|pool| pool.next_expiration(Instant::now()))
+                                .min();
+                            let message = match expiration {
                                 Some(timeout) => receiver.recv_timeout(timeout),
                                 None => receiver.recv().map_err(|_| RecvTimeoutError::Disconnected),
                             };

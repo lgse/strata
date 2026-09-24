@@ -273,6 +273,13 @@ fn parse_sandboxed(
     {
         return Err("Preview input exceeds the supported size limit".to_owned());
     }
+    if let Some(result) = browser::preview(&input, &operation, cancellation) {
+        return result.map(|data| ParseOutput {
+            data,
+            page: 0,
+            pages: 0,
+        });
+    }
 
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
     let secret = if let ParseOperation::ArchiveList {
@@ -484,6 +491,9 @@ fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
         "--ro-bind-try",
         "/etc/fonts",
         "/etc/fonts",
+        "--ro-bind-try",
+        "/var/cache/fontconfig",
+        "/var/cache/fontconfig",
         "--ro-bind-try",
         "/etc/ld.so.cache",
         "/etc/ld.so.cache",

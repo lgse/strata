@@ -29,8 +29,8 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
   cannot initiate filesystem access, network access, JavaScript execution, or
   subresource loading. Relative Markdown images are separately confined to the
   document directory and staged as bounded private files. Their decoders and the
-  native Mermaid renderer and bundled MathJax equation renderer run in sandbox
-  helpers with a three-second deadline. QuickJS has no host APIs or module loader,
+  native Mermaid renderer and bundled MathJax equation renderer run as jobs in
+  the pooled sandbox supervisors described below. QuickJS has no host APIs or module loader,
   and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
 
@@ -136,6 +136,15 @@ not a wall-clock guarantee: long probes, source I/O, and the existing fill budge
 can still delay details; a one-worker configuration must serialize decoding and
 probing.
 
+Quick previews and document media (images, Mermaid diagrams, equations) reuse
+the same supervisor implementation through a **second pool**, so an interactive
+Space preview never queues behind a scrolled directory's thumbnail flood. Both
+pools share the launcher thread, idle retirement, per-job isolation, and cache
+machinery; the cache keys results by source version *and* operation so a
+256-pixel thumbnail can never satisfy an 800-pixel preview of the same file.
+Each preview still runs in a freshly forked, Landlock/seccomp-confined decoder
+with per-job resource limits — only the supervisor process is reused.
+
 `RUST_LOG=strata::sandbox::browser=debug` records supervisor starts and operation
 latencies and idle retirements without source paths. It is useful for verifying
 reuse: repeated cold files within the idle timeout should produce jobs, not a new
@@ -152,10 +161,11 @@ raster images. Emoji icons retain Pango/Cairo rendering
 but pass raw pixels to GTK instead of encoding and decoding an intermediate PNG.
 
 This in-process icon path is not used for user SVGs, phone photos, or thumbnails
-of originals; those keep their sandbox boundary. Markdown SVGs, Mermaid diagrams, and equation
-output use a separate `resvg` path inside the sandbox, with font loading enabled
-there and image references disabled. No toolkit libraries or private media
-runtime patches are updated by this change.
+of originals; those keep their sandbox boundary. User SVG previews and
+thumbnails, Markdown SVGs, Mermaid diagrams, and equation output use a separate
+`resvg` path inside the sandbox, with image references disabled and system font
+loading enabled only when the document contains text. No toolkit libraries or
+private media runtime patches are updated by this change.
 
 ## Remote still-image previews
 
