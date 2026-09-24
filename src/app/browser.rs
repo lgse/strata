@@ -1543,6 +1543,10 @@ impl Browser {
         self.state.borrow().selected_entries()
     }
 
+    pub fn selected_count(&self) -> usize {
+        self.state.borrow().selected_count()
+    }
+
     pub fn selection_is_load_cursor(&self) -> bool {
         self.state.borrow().selection_is_load_cursor()
     }
@@ -3438,11 +3442,20 @@ impl Browser {
 
 fn location_or_ancestor_is_affected(location: &Location, roots: &HashSet<Location>) -> bool {
     let mut current = Some(location.clone());
-    while let Some(location) = current {
-        if roots.contains(&location) {
+    while let Some(loc) = current {
+        if roots.contains(&loc) {
             return true;
         }
-        current = location.parent();
+        current = loc.parent();
+    }
+    for root in roots {
+        let mut curr = root.parent();
+        while let Some(p) = curr {
+            if &p == location {
+                return true;
+            }
+            curr = p.parent();
+        }
     }
     false
 }

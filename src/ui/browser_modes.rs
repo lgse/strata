@@ -4054,18 +4054,24 @@ fn connect_selection(
 }
 
 fn set_selections(pane: &Pane, positions: &[usize]) {
+    let all_selected = positions.len() == pane.model.n_items() as usize;
     for section in pane.item_sections() {
-        let selected = gtk::Bitset::new_empty();
-        for position in positions {
-            if let Some(position) = section.source_to_view(&pane.model, *position) {
-                selected.add(position);
+        let total_items = section.selection.n_items();
+        let selected = if all_selected && section.view_model.n_items() == pane.model.n_items() {
+            gtk::Bitset::new_range(0, total_items)
+        } else {
+            let selected = gtk::Bitset::new_empty();
+            for position in positions {
+                if let Some(position) = section.source_to_view(&pane.model, *position) {
+                    selected.add(position);
+                }
             }
-        }
+            selected
+        };
         section.syncing.set(true);
-        section.selection.set_selection(
-            &selected,
-            &gtk::Bitset::new_range(0, section.selection.n_items()),
-        );
+        section
+            .selection
+            .set_selection(&selected, &gtk::Bitset::new_range(0, total_items));
         section.syncing.set(false);
     }
 }

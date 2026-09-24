@@ -60,13 +60,18 @@ pub(super) fn collect_entry_targets(
     source: &gtk::Widget,
     entries: &[FileEntry],
 ) -> Vec<EntryAnimationTarget> {
+    if entries.is_empty() || entries.len() > 64 {
+        return Vec::new();
+    }
+    let names: HashSet<&str> = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect();
     let mut candidates = Vec::new();
     walk_widgets(source, &mut |widget| {
         if widget.is_mapped()
             && is_entry_row(widget)
-            && entries
-                .iter()
-                .any(|entry| row_matches_name(widget, &entry.display_name))
+            && row_name(widget).is_some_and(|name| names.contains(name.as_str()))
         {
             candidates.push(widget.clone());
         }

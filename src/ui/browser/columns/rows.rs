@@ -45,6 +45,7 @@ fn anchor_at(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap, row:
 pub(super) struct ColumnRows {
     pub(super) factory: gtk::SignalListItemFactory,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
+    pub(super) scrolling: Rc<Cell<bool>>,
 }
 
 pub(super) fn column_rows(
@@ -56,6 +57,7 @@ pub(super) fn column_rows(
     recursive_search_active: &Rc<Cell<bool>>,
     search_results: &Rc<RefCell<Vec<SearchItem>>>,
 ) -> ColumnRows {
+    let scrolling = Rc::new(Cell::new(false));
     let factory = gtk::SignalListItemFactory::new();
     let bound_rows: Rc<RefCell<Vec<BoundRow>>> = Rc::new(RefCell::new(Vec::new()));
     let rows_for_setup = bound_rows.clone();
@@ -672,6 +674,7 @@ pub(super) fn column_rows(
     let search_active_for_bind = recursive_search_active.clone();
     let search_results_for_bind = search_results.clone();
     let rows_for_bind = bound_rows.clone();
+    let scrolling_for_bind = scrolling.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -825,6 +828,7 @@ pub(super) fn column_rows(
             icon.set_base_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
             chevron.set_visible(entry.is_directory());
             if mode_active
+                && !scrolling_for_bind.get()
                 && let Some(state) = state.as_ref()
                 && let Some(position) = source_position
                 && metadata_needs_fill(entry)
@@ -882,5 +886,6 @@ pub(super) fn column_rows(
     ColumnRows {
         factory,
         bound_rows,
+        scrolling,
     }
 }

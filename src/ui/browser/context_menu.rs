@@ -1828,8 +1828,9 @@ fn prepare_open_with(
                 set_open_with_explanation(button, Some(reason));
             }
         };
+        const MAX_OPEN_WITH_SAMPLE: usize = 16;
         let mut content_types = Vec::<String>::new();
-        for file in &files {
+        for file in files.iter().take(MAX_OPEN_WITH_SAMPLE) {
             if generation.get() != expected_generation {
                 return;
             }
@@ -1865,7 +1866,8 @@ fn prepare_open_with(
         if generation.get() != expected_generation {
             return;
         }
-        let requires_uris = crate::ui::open_with::requires_uri_handlers(&files);
+        let sample_slice = &files[..files.len().min(MAX_OPEN_WITH_SAMPLE)];
+        let requires_uris = crate::ui::open_with::requires_uri_handlers(sample_slice);
         let (recommended_apps, other_apps, default) =
             common_applications(&content_types, requires_uris);
         let available = !recommended_apps.is_empty() || !other_apps.is_empty();

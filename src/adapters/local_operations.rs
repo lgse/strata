@@ -37,7 +37,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -634,13 +634,142 @@ fn transfer_size(
     })
 }
 
+fn native_path_size(path: &Path, deadline: Instant, cancelled: &AtomicBool) -> Option<u64> {
+    if cancelled.load(Ordering::Relaxed) || Instant::now() >= deadline {
+        return None;
+    }
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if !metadata.is_dir() {
+        return Some(metadata.len());
+    }
+    let mut total = 0_u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        if cancelled.load(Ordering::Relaxed) || Instant::now() >= deadline {
+            return None;
+        }
+        let read_dir = std::fs::read_dir(dir).ok()?;
+        for entry in read_dir {
+            if cancelled.load(Ordering::Relaxed) || Instant::now() >= deadline {
+                return None;
+            }
+            let entry = entry.ok()?;
+            let file_type = entry.file_type().ok()?;
+            if file_type.is_dir() {
+                stack.push(entry.path());
+            } else if file_type.is_symlink() {
+                if let Ok(meta) = std::fs::symlink_metadata(entry.path()) {
+                    total = total.checked_add(meta.len())?;
+                }
+            } else if let Ok(meta) = entry.metadata() {
+                total = total.checked_add(meta.len())?;
+            }
+        }
+    }
+    Some(total)
+}
+
+const BULK_TRANSFER_SIZES_THRESHOLD: usize = 64;
+const PRE_FLIGHT_DEADLINE: Duration = Duration::from_millis(250);
+
+async fn parallel_local_transfer_sizes(
+    paths: Vec<PathBuf>,
+    cancellable: &gio::Cancellable,
+) -> Result<(Vec<Option<u64>>, Option<u64>), glib::Error> {
+    cancellable.set_error_if_cancelled()?;
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancellation_flag = cancelled.clone();
+    let cancellation_handler = cancellable.connect_cancelled(move |_| {
+        cancellation_flag.store(true, Ordering::Release);
+    });
+
+    let paths_count = paths.len();
+    let outcome = gio::spawn_blocking(move || {
+        let deadline = Instant::now() + PRE_FLIGHT_DEADLINE;
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
+            .clamp(1, 8);
+
+        let chunk_size = paths.len().div_ceil(num_threads);
+        let mut results = vec![None; paths.len()];
+
+        std::thread::scope(|s| {
+            let mut threads = Vec::with_capacity(num_threads);
+            for chunk in paths.chunks(chunk_size) {
+                let cancelled = &cancelled;
+                threads.push(s.spawn(move || {
+                    let mut chunk_sizes = Vec::with_capacity(chunk.len());
+                    for path in chunk {
+                        if cancelled.load(Ordering::Relaxed) || Instant::now() >= deadline {
+                            return None;
+                        }
+                        chunk_sizes.push(native_path_size(path, deadline, cancelled));
+                    }
+                    Some(chunk_sizes)
+                }));
+            }
+
+            let mut all_completed = true;
+            for (chunk_idx, handle) in threads.into_iter().enumerate() {
+                let start = chunk_idx * chunk_size;
+                match handle.join().ok().flatten() {
+                    Some(chunk_sizes) => {
+                        let end = (start + chunk_sizes.len()).min(results.len());
+                        results[start..end].copy_from_slice(&chunk_sizes);
+                    }
+                    None => {
+                        all_completed = false;
+                    }
+                }
+            }
+            (results, all_completed)
+        })
+    })
+    .await;
+
+    if let Some(id) = cancellation_handler {
+        cancellable.disconnect_cancelled(id);
+    }
+    cancellable.set_error_if_cancelled()?;
+
+    let (sizes, all_completed) = outcome.unwrap_or_else(|_| (vec![None; paths_count], false));
+    let total = if all_completed {
+        let mut total = Some(0_u64);
+        for size in &sizes {
+            total = total.and_then(|t| size.and_then(|s| t.checked_add(s)));
+        }
+        total
+    } else {
+        None
+    };
+
+    Ok((sizes, total))
+}
+
 async fn transfer_sizes(
     files: &[gio::File],
     cancellable: &gio::Cancellable,
 ) -> Result<(Vec<Option<u64>>, Option<u64>), glib::Error> {
+    cancellable.set_error_if_cancelled()?;
+    if files.is_empty() {
+        return Ok((Vec::new(), Some(0)));
+    }
+
+    if files.len() > BULK_TRANSFER_SIZES_THRESHOLD
+        && let Some(paths) = files.iter().map(|f| f.path()).collect::<Option<Vec<_>>>()
+    {
+        return parallel_local_transfer_sizes(paths, cancellable).await;
+    }
+
+    let deadline = Instant::now() + PRE_FLIGHT_DEADLINE;
     let mut sizes = Vec::with_capacity(files.len());
     let mut total = Some(0_u64);
     for file in files {
+        if Instant::now() >= deadline {
+            sizes.resize(files.len(), None);
+            return Ok((sizes, None));
+        }
         let size = match transfer_size(file.clone(), cancellable.clone()).await {
             Ok(size) => size,
             Err(error) if was_cancelled(&error) => return Err(error),
@@ -1193,24 +1322,58 @@ fn copy_recursively_local(
                     record_created_copy_root(&created_root, &target).await?;
                 }
                 let mut used_names = HashSet::with_capacity(children.len());
-                for child_name in children {
+                let batch_size = if children.len() > 16 { 16 } else { 1 };
+                for chunk in children.chunks(batch_size) {
                     if cancellable.is_cancelled() {
                         return Err(cancelled_local_operation());
                     }
-                    let child_parent = handle.try_clone().map_err(io_error)?;
-                    let target_name =
-                        fat_family_child_name(&child_name, options.fat_family, &mut used_names);
-                    let child_target = target.child(&target_name);
-                    copy_recursively_local(
-                        child_parent,
-                        child_name,
-                        child_target,
-                        options,
-                        cancellable.clone(),
-                        None,
-                        progress.clone(),
-                    )
-                    .await?;
+                    if batch_size == 1 {
+                        let child_name = &chunk[0];
+                        let child_parent = handle.try_clone().map_err(io_error)?;
+                        let target_name =
+                            fat_family_child_name(child_name, options.fat_family, &mut used_names);
+                        let child_target = target.child(&target_name);
+                        copy_recursively_local(
+                            child_parent,
+                            child_name.clone(),
+                            child_target,
+                            options,
+                            cancellable.clone(),
+                            None,
+                            progress.clone(),
+                        )
+                        .await?;
+                    } else {
+                        let context = glib::MainContext::default();
+                        let mut tasks = Vec::with_capacity(chunk.len());
+                        for child_name in chunk {
+                            let child_parent = handle.try_clone().map_err(io_error)?;
+                            let target_name = fat_family_child_name(
+                                child_name,
+                                options.fat_family,
+                                &mut used_names,
+                            );
+                            let child_target = target.child(&target_name);
+                            let cancellable = cancellable.clone();
+                            let progress = progress.clone();
+                            let child_name = child_name.clone();
+                            tasks.push(context.spawn_local(async move {
+                                copy_recursively_local(
+                                    child_parent,
+                                    child_name,
+                                    child_target,
+                                    options,
+                                    cancellable,
+                                    None,
+                                    progress,
+                                )
+                                .await
+                            }));
+                        }
+                        for task in tasks {
+                            task.await.map_err(|_| io_error("Copy worker failed"))??;
+                        }
+                    }
                 }
                 Ok(())
             }
@@ -3788,6 +3951,7 @@ fn cancellation_handle(cancellable: gio::Cancellable) -> LoadHandle {
     LoadHandle::new(move || cancellable.cancel())
 }
 
+#[derive(Clone)]
 struct DeletionTarget {
     location: Location,
     display_name: String,
@@ -3848,13 +4012,17 @@ async fn run_deletion(
         affected_locations.insert(Location::uri("trash:///"));
     }
     let total = targets.len();
-    for (index, target) in targets.iter().enumerate() {
+    let mut last_progress_emit = std::time::Instant::now();
+    let batch_size = if total > 32 { 16 } else { 1 };
+    let mut completed_count = 0;
+
+    for chunk in targets.chunks(batch_size) {
         if cancellable.is_cancelled() {
             emit(cancelled_event(
                 request_id,
                 deleted_locations,
                 failed_locations,
-                targets[index..]
+                targets[completed_count..]
                     .iter()
                     .map(|target| target.location.clone())
                     .collect(),
@@ -3862,65 +4030,102 @@ async fn run_deletion(
             ));
             return;
         }
-        let file = gio_file_for_location(&target.location);
-        let result = if permanent {
-            if target
-                .location
-                .uri_value()
-                .is_some_and(|uri| uri.starts_with("trash:"))
-            {
-                await_cancellable(&file, &cancellable, |file, cancellable, result| {
-                    file.delete_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
-                        result.resolve(output)
-                    });
+
+        let context = glib::MainContext::default();
+        let tasks: Vec<_> = chunk
+            .iter()
+            .map(|target| {
+                let target = target.clone();
+                let cancellable = cancellable.clone();
+                context.spawn_local(async move {
+                    let file = gio_file_for_location(&target.location);
+                    let result = if permanent {
+                        if target
+                            .location
+                            .uri_value()
+                            .is_some_and(|uri| uri.starts_with("trash:"))
+                        {
+                            await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                                file.delete_async(
+                                    glib::Priority::DEFAULT,
+                                    Some(cancellable),
+                                    move |output| result.resolve(output),
+                                );
+                            })
+                            .await
+                        } else {
+                            permanently_delete_maybe_local(
+                                file,
+                                target.is_directory,
+                                cancellable.clone(),
+                            )
+                            .await
+                        }
+                    } else {
+                        await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                            file.trash_async(
+                                glib::Priority::DEFAULT,
+                                Some(cancellable),
+                                move |output| result.resolve(output),
+                            );
+                        })
+                        .await
+                    };
+                    (target, result)
                 })
-                .await
-            } else {
-                permanently_delete_maybe_local(file, target.is_directory, cancellable.clone()).await
-            }
-        } else {
-            await_cancellable(&file, &cancellable, |file, cancellable, result| {
-                file.trash_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
-                    result.resolve(output)
-                });
             })
-            .await
-        };
-        let deleted_location = if let Err(error) = result {
-            if was_cancelled(&error) {
-                failed_locations.push(target.location.clone());
-                emit(cancelled_event(
-                    request_id,
-                    deleted_locations,
-                    failed_locations,
-                    targets[index + 1..]
-                        .iter()
-                        .map(|target| target.location.clone())
-                        .collect(),
-                    affected_locations,
+            .collect();
+
+        for task in tasks {
+            let (target, result) = match task.await {
+                Ok(res) => res,
+                Err(_) => continue,
+            };
+            completed_count += 1;
+            let deleted_location = if let Err(error) = result {
+                if was_cancelled(&error) {
+                    failed_locations.push(target.location.clone());
+                    emit(cancelled_event(
+                        request_id,
+                        deleted_locations,
+                        failed_locations,
+                        targets[completed_count..]
+                            .iter()
+                            .map(|target| target.location.clone())
+                            .collect(),
+                        affected_locations,
+                    ));
+                    return;
+                }
+                if is_trash_unsupported_failure(permanent, &error) {
+                    retryable_locations.push(target.location.clone());
+                }
+                errors.push(deletion_error_message(
+                    &target.display_name,
+                    permanent,
+                    &error,
                 ));
-                return;
+                failed_locations.push(target.location.clone());
+                None
+            } else {
+                deleted_locations.push(target.location.clone());
+                Some(target.location.clone())
+            };
+            let is_last = completed_count == total;
+            let now = std::time::Instant::now();
+            if total <= 32
+                || is_last
+                || now.duration_since(last_progress_emit) >= std::time::Duration::from_millis(33)
+            {
+                last_progress_emit = now;
+                emit(OperationEvent::DeleteProgress {
+                    request_id,
+                    completed: completed_count,
+                    total,
+                    deleted_location,
+                });
             }
-            if is_trash_unsupported_failure(permanent, &error) {
-                retryable_locations.push(target.location.clone());
-            }
-            errors.push(deletion_error_message(
-                &target.display_name,
-                permanent,
-                &error,
-            ));
-            failed_locations.push(target.location.clone());
-            None
-        } else {
-            deleted_locations.push(target.location.clone());
-            Some(target.location.clone())
-        };
-        emit(OperationEvent::DeleteProgress {
-            request_id,
-            completed: index + 1,
-            total,
-            deleted_location,
-        });
+        }
     }
     if errors.is_empty() {
         emit(OperationEvent::Deleted {

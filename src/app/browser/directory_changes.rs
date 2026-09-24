@@ -47,7 +47,10 @@ impl Browser {
         let removed = (!watched.is_recent_root())
             .then(|| removed_location(&change).cloned())
             .flatten();
-        if self.deletion_operation.get() || self.restoration_operation.get() {
+        if self.deletion_operation.get()
+            || self.restoration_operation.get()
+            || self.transfer_operation.get().is_some()
+        {
             self.deferred_file_operation_changes
                 .borrow_mut()
                 .entry(depth)

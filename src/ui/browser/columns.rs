@@ -938,11 +938,8 @@ impl ViewState {
                 .map(|(_, source_position)| *source_position)
                 .collect();
             focused_filtered_changed.set(focused);
-            let focused_source = focused.and_then(|position| {
-                mapped_positions
-                    .iter()
-                    .find_map(|(filtered, source)| (*filtered == position).then_some(*source))
-            });
+            let focused_source =
+                focused.and_then(|position| map_for_selection.source_position(position));
             if let Some(state) = weak_selection_state.upgrade() {
                 state
                     .browser
@@ -1084,6 +1081,7 @@ impl ViewState {
         let rows::ColumnRows {
             factory,
             bound_rows,
+            scrolling: column_scrolling,
         } = rows::column_rows(
             self,
             depth,
@@ -1272,6 +1270,23 @@ impl ViewState {
             .build();
         scroll.add_css_class("browser-listing-scroll");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
+        {
+            let timer_source: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+            scroll.vadjustment().connect_value_changed(move |_| {
+                column_scrolling.set(true);
+                if let Some(source) = timer_source.borrow_mut().take() {
+                    source.remove();
+                }
+                let scrolling_reset = column_scrolling.clone();
+                let timer_holder = timer_source.clone();
+                let source_id =
+                    glib::timeout_add_local_once(Duration::from_millis(150), move || {
+                        timer_holder.borrow_mut().take();
+                        scrolling_reset.set(false);
+                    });
+                *timer_source.borrow_mut() = Some(source_id);
+            });
+        }
         let retry = gtk::Button::with_label("Retry");
         retry.add_css_class("retry-button");
         let weak_browser = Rc::downgrade(&self.browser);

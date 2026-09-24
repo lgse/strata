@@ -9,11 +9,13 @@ use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
 
 const INDETERMINATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
+const PROGRESS_THROTTLE_INTERVAL: Duration = Duration::from_millis(33);
 
 const IMMEDIATE_PROGRESS_ITEM_COUNT: usize = 16;
 
@@ -30,6 +32,7 @@ pub(super) struct FileProgressView {
     archive_activity: gtk::Spinner,
     indeterminate: Rc<Cell<bool>>,
     pulse_source: Rc<RefCell<Option<glib::SourceId>>>,
+    last_transfer_render: Cell<Option<Instant>>,
 }
 
 fn transfer_progress_status(
@@ -158,6 +161,7 @@ impl ViewState {
             archive_activity,
             indeterminate,
             pulse_source,
+            last_transfer_render: Cell::new(None),
         }));
         let cancel_action = on_cancel.clone();
         cancel.connect_clicked(move |_| cancel_action());
@@ -209,6 +213,36 @@ impl ViewState {
         let total_items = self.file_operation_progress.get().1;
         let (status, fraction) =
             transfer_progress_status(completed_items, total_items, transferred_bytes, total_bytes);
+
+        let current_text = view.status.text();
+        let current_fraction = view.progress.fraction();
+        let fraction_jump = fraction.is_some_and(|f| (f - current_fraction).abs() >= 0.05);
+        let fraction_changed = match fraction {
+            Some(f) => (f - current_fraction).abs() >= 0.01,
+            None => !view.indeterminate.get(),
+        };
+        let text_changed = current_text.as_str() != status.as_str();
+
+        if !text_changed && !fraction_changed {
+            return;
+        }
+
+        let is_terminal = (total_items > 0 && completed_items >= total_items)
+            || total_bytes.is_some_and(|total| total > 0 && transferred_bytes >= total);
+        let is_initial = completed_items == 0 && transferred_bytes == 0;
+        let now = Instant::now();
+        if !is_terminal
+            && !is_initial
+            && !fraction_jump
+            && view
+                .last_transfer_render
+                .get()
+                .is_some_and(|last| now.duration_since(last) < PROGRESS_THROTTLE_INTERVAL)
+        {
+            return;
+        }
+        view.last_transfer_render.set(Some(now));
+
         view.status.set_text(&status);
         view.indeterminate.set(fraction.is_none());
         if let Some(fraction) = fraction {
@@ -243,10 +277,14 @@ impl ViewState {
         } else {
             0
         };
-        view.status.set_text(&format!("{pct}%"));
+        let new_status = format!("{pct}%");
+        let new_fraction = completed as f64 / total.max(1) as f64;
+        if view.status.text() == new_status && view.progress.fraction() == new_fraction {
+            return;
+        }
+        view.status.set_text(&new_status);
         view.indeterminate.set(false);
-        view.progress
-            .set_fraction(completed as f64 / total.max(1) as f64);
+        view.progress.set_fraction(new_fraction);
     }
 
     pub(super) fn update_archive_progress(&self, completed: usize, total: usize) {
