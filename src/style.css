@@ -2952,21 +2952,6 @@ entry.preview-command-entry selection {
   border-top-color: @theme_accent;
 }
 
-.column-destination-hint {
-  min-height: 24px;
-  padding: 0 12px;
-  font-size: 0.85em;
-  color: @theme_dim_text;
-  background: @theme_bg;
-  border-top: 1px solid transparent;
-}
-
-.destination-column .column-destination-hint {
-  color: @theme_text;
-  background: @theme_surface;
-  border-top-color: @theme_accent;
-}
-
 .directory-column scrolledwindow,
 .directory-column viewport,
 .directory-column listview {

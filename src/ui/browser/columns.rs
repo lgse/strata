@@ -216,7 +216,6 @@ pub(super) struct ColumnView {
     pub(super) shell: gtk::Box,
     pub(super) resize_handle: gtk::Box,
     pub(super) reveal_button: gtk::Button,
-    pub(super) destination_hint: gtk::Label,
     pub(super) animation_generation: Rc<Cell<u64>>,
     pub(super) presentation: LoadPresentation,
     pub(super) model: EntryListModel,
@@ -1398,13 +1397,6 @@ impl ViewState {
             )
         };
         column.append(&presentation.stack);
-        let destination_hint = gtk::Label::new(None);
-        destination_hint.add_css_class("column-destination-hint");
-        destination_hint.set_xalign(0.0);
-        destination_hint.set_tooltip_text(Some(
-            "Ctrl+V pastes into this directory. Move the pointer to target another column, or navigate with the keyboard to return control to keyboard focus.",
-        ));
-        column.append(&destination_hint);
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
@@ -1460,8 +1452,6 @@ impl ViewState {
             },
         );
         shell.set_vexpand(true);
-        // Keep the destination hint clear of the horizontal overlay indicator.
-        shell.set_margin_bottom(12);
         shell.set_overflow(gtk::Overflow::Hidden);
         let column_overlay = gtk::Overlay::new();
         column_overlay.set_child(Some(&column));
@@ -1535,7 +1525,6 @@ impl ViewState {
             shell: shell.clone(),
             resize_handle: resize_handle.clone(),
             reveal_button,
-            destination_hint,
             animation_generation: animation_generation.clone(),
             presentation,
             model,

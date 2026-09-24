@@ -4,12 +4,11 @@
 import pytest
 
 
-def wait_for_visible_commit(strata, name, mode="Columns"):
+def wait_for_visible_commit(strata, name):
     def visible():
         pane = strata.pane("rename-target")
         entry = pane.find(role="list item", name=name)
-        footer = pane.find(role="label", name_matches="Paste here")
-        if entry is None or (mode == "Columns" and footer is None) or not entry.has_state("selected"):
+        if entry is None or not entry.has_state("selected"):
             return False
         panel = entry.find(role="panel")
         if panel is None:
@@ -20,10 +19,7 @@ def wait_for_visible_commit(strata, name, mode="Columns"):
             bounds.width > 0 and bounds.height > 0
             and bounds.x >= viewport.x and bounds.y >= viewport.y
             and bounds.x + bounds.width <= viewport.x + viewport.width
-            and bounds.y + bounds.height <= min(
-                viewport.y + viewport.height,
-                footer.screen_bounds().y if mode == "Columns" else viewport.y + viewport.height
-            )
+            and bounds.y + bounds.height <= viewport.y + viewport.height
         )
 
     strata.wait(visible, f"{name} selected and fully inside the viewport")
@@ -67,12 +63,10 @@ def begin_long_directory_rename(strata, kind, new, mode="Columns"):
     strata.wait(lambda: field.text == original, "the original name in the editor")
     def editor_visible():
         viewport = strata.entry_container("rename-target").screen_bounds()
-        footer = strata.pane("rename-target").find(role="label", name_matches="Paste here")
         bounds = field.screen_bounds()
         return (bounds.height > 0 and bounds.width > 0
                 and bounds.y >= viewport.y
-                and bounds.y + bounds.height <= (footer.screen_bounds().y
-                    if mode == "Columns" else viewport.y + viewport.height))
+                and bounds.y + bounds.height <= viewport.y + viewport.height)
 
     strata.wait(editor_visible, "the initial editor inside the viewport without scrolling")
     strata.settle(field)
@@ -95,7 +89,7 @@ def test_committed_rename_visibility(strata, new, final_name, mode):
     strata.wait_for_entry_gone(original, "rename-target")
     assert destination.read_text() == ("" if new else "body\n")
     assert not strata.fixture.path("rename-target/" + original).exists()
-    wait_for_visible_commit(strata, final_name, mode)
+    wait_for_visible_commit(strata, final_name)
     names = sorted(path.name for path in strata.fixture.path("rename-target").iterdir())
     position = names.index(final_name)
     key, neighbor = ("Down", names[position + 1]) if position == 0 else ("Up", names[position - 1])
@@ -103,7 +97,7 @@ def test_committed_rename_visibility(strata, new, final_name, mode):
     strata.wait_for_selection([neighbor], "rename-target")
     strata.keyboard.press("Up" if key == "Down" else "Down")
     strata.wait_for_selection([final_name], "rename-target")
-    wait_for_visible_commit(strata, final_name, mode)
+    wait_for_visible_commit(strata, final_name)
 
 
 @pytest.mark.preferences(browser_density="airy")
@@ -119,7 +113,7 @@ def test_airy_committed_rename_stays_visible(strata, mode):
         "the renamed item on disk",
     )
     strata.wait_for_entry_gone(original, "rename-target")
-    wait_for_visible_commit(strata, final_name, mode)
+    wait_for_visible_commit(strata, final_name)
 
 
 @pytest.mark.preferences(single_click_previews=False)
@@ -137,7 +131,7 @@ def test_already_visible_rename_preserves_scroll(strata, mode):
     anchor = strata.entry(anchor_name, "rename-target").find(role="panel")
     strata.settle(anchor)
     before = anchor.screen_bounds()
-    wait_for_visible_commit(strata, original, mode)
+    wait_for_visible_commit(strata, original)
 
     strata.keyboard.press("F2")
     field = strata.editable_field()
@@ -152,7 +146,7 @@ def test_already_visible_rename_preserves_scroll(strata, mode):
     strata.wait_for_entry_gone(original, "rename-target")
     assert not strata.fixture.path("rename-target/" + original).exists()
     assert destination.read_text() == "body\n"
-    wait_for_visible_commit(strata, final_name, mode)
+    wait_for_visible_commit(strata, final_name)
     anchor = strata.entry(anchor_name, "rename-target").find(role="panel")
     strata.settle(anchor)
     assert anchor.screen_bounds() == before
@@ -206,7 +200,7 @@ def test_already_visible_created_item_preserves_scroll(strata, mode):
     strata.keyboard.press("Return")
     strata.wait(strata.fixture.path("rename-target/" + original + " renamed").exists,
                 "the created item renamed on disk")
-    wait_for_visible_commit(strata, original + " renamed", mode)
+    wait_for_visible_commit(strata, original + " renamed")
     anchor = strata.entry("a-anchor", "rename-target").find(role="panel")
     strata.settle(anchor)
     assert anchor.screen_bounds() == before

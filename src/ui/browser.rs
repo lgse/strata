@@ -2156,10 +2156,6 @@ impl ViewState {
 
     fn refresh_destination_style(&self) {
         let destination = self.destination_depth();
-        let pointer = self.input_ownership.borrow().last_navigation
-            == super::input_ownership::NavigationInput::Pointer
-            && (self.hovered_column.get() == destination
-                || self.context_menu_column.get().is_some());
         let focused_column = self.focused_column_depth();
         let focused_item = self
             .browser
@@ -2214,13 +2210,6 @@ impl ViewState {
             } else {
                 column.shell.remove_css_class("destination-column");
             }
-            column.destination_hint.set_label(if !active {
-                ""
-            } else if pointer {
-                "Pointer · Paste here"
-            } else {
-                "Keyboard · Paste here"
-            });
         }
     }
 

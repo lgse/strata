@@ -6,7 +6,7 @@ Columns have three independent signals:
 - **Keyboard cursor:** a text-contrast outline identifies the current item in the keyboard-focused list. Only that list shows a cursor; range selections can contain several filled rows.
 - **Open path:** the chevron identifies the folder whose child column is open, without an extra border. This is navigation context, not another keyboard cursor.
 
-The destination column has an accent rule across its header and a **Keyboard · Paste here** or **Pointer · Paste here** footer. The indication remains useful in an empty directory, where there is no row to highlight. When panes overflow, the horizontal scrollbar gets its own track below these labels rather than covering them. No track is reserved when the panes fit.
+The destination column has an accent rule across its header, including when the directory is empty. Columns no longer reserve a separate bottom margin for the horizontal scrollbar.
 
 ## Input precedence
 
@@ -165,7 +165,7 @@ control; choosing Rename hands focus to the editor instead.
 Create `Fonts/` (empty), `Scripts/example.txt`, and `LICENSE` under a temporary directory.
 
 - Select LICENSE with the pointer, copy, leave the pointer there, then navigate to Fonts with the keyboard and paste. LICENSE should appear only in Fonts.
-- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent must visibly become the paste destination before Ctrl+V.
+- Select a file in Scripts, copy, and move the pointer onto blank space in the parent column. The parent header must gain the destination accent before Ctrl+V.
 - Focus the parent, select several items, then click blank child and parent content. The open child and parent selection must remain intact. Ctrl+A must affect the parent only.
 - Enter an empty directory and try Delete/Shift+Delete. No confirmation targeting its parent should appear.
 - Repeat with a light theme, with filters, and with enough files to scroll. The cursor must remain distinguishable from selection and path markers.

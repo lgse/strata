@@ -14,7 +14,6 @@ struct ColumnsRenameTarget {
     spacer: gtk::Box,
     size: gtk::Label,
     scroll: gtk::ScrolledWindow,
-    footer: gtk::Label,
 }
 
 enum PendingRenameState {
@@ -312,12 +311,7 @@ impl ViewState {
                     .filter(|row| row.is_mapped() && row.is_ancestor(&column.list))
                     .map(|row| row.upcast::<gtk::Widget>())
             });
-            (
-                column.list.clone().upcast(),
-                position,
-                row,
-                Some(column.destination_hint.clone().upcast::<gtk::Widget>()),
-            )
+            (column.list.clone().upcast(), position, row, None)
         } else if context.mode == BrowserMode::Icons {
             let Some((collection, position, row)) = self
                 .mode_views
@@ -1126,7 +1120,6 @@ impl ViewState {
             spacer: bound.spacer.clone(),
             size: bound.size.clone(),
             scroll: column.listing_scroll.clone(),
-            footer: column.destination_hint.clone(),
         })
     }
 
@@ -1137,7 +1130,6 @@ impl ViewState {
             spacer,
             size,
             scroll,
-            footer,
         } = target;
         spacer.set_visible(false);
         size.set_visible(false);
@@ -1145,7 +1137,6 @@ impl ViewState {
         let viewport = self.scroller.downgrade();
         let row = row.downgrade();
         let scroll = scroll.downgrade();
-        let footer = footer.downgrade();
         let weak = Rc::downgrade(self);
         let reveal_generation = self.rename_reveal_generation.get();
         let mut target = crate::ui::collection_edit::EditTarget::from(edit.clone());
@@ -1159,10 +1150,8 @@ impl ViewState {
             {
                 return;
             }
-            if let (Some(row), Some(scroll), Some(footer)) =
-                (row.upgrade(), scroll.upgrade(), footer.upgrade())
-            {
-                reveal_rename_row(&row, &scroll, Some(footer.upcast_ref()));
+            if let (Some(row), Some(scroll)) = (row.upgrade(), scroll.upgrade()) {
+                reveal_rename_row(&row, &scroll, None);
             }
         }));
         let field = edit.field.downgrade();

@@ -850,9 +850,10 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     view.state.refresh_destination_style();
     assert_eq!(view.state.destination_depth(), Some(0));
     assert_column_header_actions(&view, 0);
-    assert_eq!(
-        view.state.columns.borrow()[0].destination_hint.text(),
-        "Pointer · Paste here"
+    assert!(
+        view.state.columns.borrow()[0]
+            .shell
+            .has_css_class("destination-column")
     );
     view.keyboard_navigation();
     assert_column_header_actions(&view, 1);
@@ -896,9 +897,10 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
         .sum::<usize>();
     assert_eq!(cursors, 1);
     assert_eq!(view.state.destination_depth(), Some(1));
-    assert_eq!(
-        view.state.columns.borrow()[1].destination_hint.text(),
-        "Keyboard · Paste here"
+    assert!(
+        view.state.columns.borrow()[1]
+            .shell
+            .has_css_class("destination-column")
     );
 
     let surface = gtk::Box::new(gtk::Orientation::Vertical, 0);
