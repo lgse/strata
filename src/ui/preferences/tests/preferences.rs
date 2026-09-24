@@ -47,6 +47,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
     saved.remove("filter_include_subfolders");
     saved.remove("open_folder_after_drop");
     saved.remove("date_format");
+    saved.remove("omastrata_mode");
     let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
     assert_eq!(
         restored,
@@ -54,6 +55,7 @@ fn older_preferences_keep_backward_compatible_behavior_defaults() {
             filter_include_subfolders: true,
             open_folder_after_drop: false,
             date_format: "relative".into(),
+            omastrata_mode: false,
             ..non_default_preferences()
         }
     );
@@ -305,6 +307,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.search_open_files_directly());
             assert!(!manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
+            assert!(manager.omastrata_mode());
             assert!(!manager.filter_include_subfolders());
             assert!(!manager.show_keybinding_hints());
             assert!(manager.reduce_motion());
@@ -473,6 +476,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_search_open_files_directly(false),
                 |m| m.set_type_to_search(true),
                 |m| m.set_arrow_navigation_scoped(false),
+                |m| m.set_omastrata_mode(false),
                 |m| m.set_filter_include_subfolders(true),
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_reduce_motion(false),

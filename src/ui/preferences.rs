@@ -60,6 +60,8 @@ pub(in crate::ui) struct Preferences {
     type_to_search: bool,
     #[serde(default)]
     arrow_navigation_scoped: bool,
+    #[serde(default)]
+    omastrata_mode: bool,
     #[serde(default = "default_enabled")]
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
@@ -164,6 +166,7 @@ impl Default for Preferences {
             search_open_files_directly: false,
             type_to_search: true,
             arrow_navigation_scoped: false,
+            omastrata_mode: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             reduce_motion: false,
@@ -598,6 +601,25 @@ impl PreferenceManager {
     pub fn set_arrow_navigation_scoped(&self, scoped: bool) {
         self.preferences.borrow_mut().arrow_navigation_scoped = scoped;
         self.save_preferences();
+    }
+
+    pub fn omastrata_mode(&self) -> bool {
+        self.preferences.borrow().omastrata_mode
+    }
+
+    pub fn set_omastrata_mode(&self, enabled: bool) {
+        self.preferences.borrow_mut().omastrata_mode = enabled;
+        self.save_preferences();
+    }
+
+    /// Saved type-to-search is ignored while Omastrata mode is on.
+    pub fn type_to_search_active(&self) -> bool {
+        self.type_to_search() && !self.omastrata_mode()
+    }
+
+    /// Saved arrow scoping is ignored while Omastrata mode is on.
+    pub fn arrow_navigation_scoped_active(&self) -> bool {
+        self.arrow_navigation_scoped() && !self.omastrata_mode()
     }
 
     pub fn show_keybinding_hints(&self) -> bool {

@@ -98,6 +98,31 @@ impl WindowContent {
         notice
     }
 
+    #[cfg(test)]
+    pub(super) fn search_button(&self) -> &gtk::Button {
+        &self.header.search
+    }
+
+    #[cfg(test)]
+    pub(super) fn settings_button(&self) -> &gtk::Button {
+        &self.header.settings
+    }
+
+    #[cfg(test)]
+    pub(super) fn close_button(&self) -> &gtk::Button {
+        &self.header.close
+    }
+
+    #[cfg(test)]
+    pub(super) fn footer(&self) -> &crate::ui::shortcut_footer::ShortcutFooter {
+        &self.footer.shortcuts
+    }
+
+    #[cfg(test)]
+    pub(super) fn overlay(&self) -> &gtk::Overlay {
+        &self.overlay
+    }
+
     pub(super) fn connect_cleanup(self, window: &gtk::ApplicationWindow) {
         let browser = self.browser.browser();
         let sidebar = self.sidebar;

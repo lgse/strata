@@ -29,14 +29,14 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
-## Returning to a List directory
+## Returning to an Icons or List directory
 
-List mode remembers the selection, keyboard cursor, and scroll position of the
+Icons and List remember the selection, keyboard cursor, and scroll position of the
 last 128 directories left in that browser. Back, Forward, and Up restore each
 visited directory after its entries load, including nested parents. Arrow-key
 navigation continues from the restored row. Entries are matched by location,
 not their previous row numbers; deleted entries are not selected accidentally.
-This is temporary browsing state, not a saved preference. New input in the list
+This is temporary browsing state, not a saved preference. New input in the file view
 cancels an in-progress restoration.
 
 ## Creating files and folders
@@ -111,11 +111,44 @@ close the preview.
 
 ## Shortcut footer
 
-Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open.
+Every mode has a compact footer with **F1 · Shortcuts** on the left and clipboard status and the item count on the right. **Settings → Keybindings → Show F1 Shortcuts button** controls the button's visibility (on by default). The preference is saved and updates all open windows immediately. Item counts and clipboard status remain visible when the button is hidden. F1 always opens the complete, mode-specific reference; closing it restores the button's configured visibility. F1 or Escape closes the reference, which blocks file-operation shortcuts while open. **Settings → Keybindings** lists only the currently active map and live-updates when Omastrata mode changes.
 
-With no selection, the footer shows the directory's item count. Selections show a folder/file breakdown, such as **1 folder, 2 files selected (64 MB)**. Sizes sum available metadata for selected files only; folder contents are not scanned or included. Missing file sizes are marked incomplete or unavailable.
+## Omastrata mode
 
-After copying or cutting files, a highlighted **Files on clipboard** pill appears to the left of the item count. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. The clipboard status and paste shortcut remain available when the F1 Shortcuts button is hidden.
+**Settings → General → Browsing → Omastrata mode** (off by default,
+toggle with **Ctrl+Shift+M**, leave with **q**) hides window Search and
+pane Close/filter/refresh/sort chrome and installs Yazi-style keys. **q** leaves
+the mode and does not close the window. While the mode is on, the footer shows
+**OMA** at the right, immediately before the item count.
+Typed input uses the footer prompt, never the pane filter revealer or the
+global search dialog. See [Omastrata mode](omastrata-mode.md) for the keymap.
+
+**Ctrl+Shift+M** also works while a browser text field has focus. Modal dialogs
+retain their own input handling. Leaving Omastrata mode clears retained footer
+filters/search and forced recursion in all windows, so default **Ctrl+F** obeys
+**Include subfolders** again. It ends visual/preview keyboard ownership without
+clearing the ordinary listing's fill or closing the preview. **Esc** dismisses
+one interaction at a time, including an open preview; recursive results have a
+separate order described in [Escape precedence](omastrata-mode.md#escape-precedence).
+
+The F1 / `~` popover and **Settings → Keybindings** share the active map's
+presentation data and live-update when the mode changes. Default F1 navigation
+is specific to the current view; Settings includes the all-view overview.
+Context-menu shortcut hints follow
+that map (`x` cut, `y` yank, `p` paste, `d` / `D` trash / delete, `r` rename,
+`i` next column or folder peek). Default-map hints that are unbound or remapped (`Y` for copy
+path, `Space` for preview, `Ctrl+R` for rename) are hidden.
+
+While a pane shows its search-results page (including filtered results), the footer
+shows the displayed result total in both default and Omastrata mode, including
+**0 items** on a miss.
+Selecting results does not replace that total with the hidden directory's selection;
+its tooltip gives the result file/folder breakdown. Dismissing results restores the
+ordinary directory count or selection summary.
+
+With no selection in the ordinary listing, the footer shows the directory's item count. Selections show a folder/file breakdown, such as **1 folder, 2 files selected (64 MB)**. Sizes sum available metadata for selected files only; folder contents are not scanned or included. Missing file sizes are marked incomplete or unavailable.
+
+After copying or cutting files, a highlighted **Files on clipboard** pill appears to the left of the item count. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. The clipboard status and paste shortcut remain available when the F1 Shortcuts button is hidden. Copied listing items show the Lucide copy icon in place of their thumbnail; cut items keep scissors, which wins if both would apply. Clearing the clipboard or unyank removes the copy overlay.
 
 The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
 
@@ -136,9 +169,9 @@ From the sidebar, Right returns to the item you left (or the current file view i
 
 **Settings → General → Browsing → Keep arrows in file list** (off by default) stops arrow keys from leaving the file list. Use **Ctrl+Shift+B** to focus the sidebar, or use the mouse. **Ctrl+\\** toggles it live. The file chooser respects the same preference.
 
-**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
+**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. In the default map, List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; with **Type to search** off, `l` still activates. Backspace and the existing `h` / `l` directory shortcuts remain available. In [Omastrata mode](omastrata-mode.md), arrows stay in the file list. List and Columns **l** / **→** open a directory or enter a file's preview when possible. Icons **h** / **j** / **k** / **l** and arrows always move to the next icon in that direction, including across search-result icons; they never preview or change location. **i** opens the next Miller column without focusing it, or toggles the folder-peek popover in List and Icons. It does not preview a file.
 
-In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents without moving focus, onto a previewable file opens Quick Preview, and onto any other file closes the child pane. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring.
+In Columns, the pane to the right mirrors keyboard selection like Finder: **Up/Down** onto a folder shows its contents without moving focus, onto a previewable file opens Quick Preview, and onto any other file closes the child pane. Pointer selection keeps the configured click behavior. **Settings → General → Browsing → Mirror columns selection** (on by default) toggles the mirroring. Omastrata mode leaves that preference saved and does not mirror: cursor movement does not open a child column or a preview. **l** / **→** enters a directory or a file preview, and **i** opens the next column or toggles folder peek. The saved value applies again after leaving the mode.
 
 ## Opening and navigating the context menu
 

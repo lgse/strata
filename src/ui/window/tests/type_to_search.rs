@@ -39,6 +39,8 @@ fn exercise_type_to_search() {
     PreferenceManager::seed_saved_preferences_for_test();
     load_styles();
     let preferences = PreferenceManager::shared();
+    // The exhaustive fixture enables Omastrata, which ignores type-to-search.
+    preferences.set_omastrata_mode(false);
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("notes.txt"), b"preview fixture").expect("fixture file");
     std::fs::create_dir(fixture.path().join("folder")).expect("fixture directory");

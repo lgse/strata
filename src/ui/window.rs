@@ -123,7 +123,7 @@ pub(super) enum TypeToSearchQuery {
 
 impl TypeToSearch {
     fn show(&self, query: TypeToSearchQuery) -> bool {
-        self.preferences.type_to_search()
+        self.preferences.type_to_search_active()
             && match query {
                 TypeToSearchQuery::Empty => self.view.show_filter(),
                 TypeToSearchQuery::Character(character) => {

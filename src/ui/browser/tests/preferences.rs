@@ -54,6 +54,8 @@ fn camera_device_order_overrides_saved_sort_without_changing_other_windows_or_re
             use crate::ui::preferences::PreferenceManager;
             PreferenceManager::seed_saved_preferences_for_test();
             let manager = PreferenceManager::shared();
+            // The exhaustive fixture enables Omastrata, which suppresses sort chrome.
+            manager.set_omastrata_mode(false);
             let saved = manager.sort_preferences();
             assert_eq!(saved.sort_key, SortKey::Size);
             let wait = |done: &dyn Fn() -> bool| {
@@ -211,7 +213,9 @@ impl BrowserView {
         );
         assert_eq!(
             self.columns_mirror_selection_enabled(),
-            manager.columns_mirror_selection()
+            self.state.interactive
+                && manager.columns_mirror_selection()
+                && !manager.omastrata_mode()
         );
         assert_eq!(
             self.state.columns_click_activation.get(),

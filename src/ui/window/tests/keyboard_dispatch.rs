@@ -76,6 +76,8 @@ impl KeyboardFixture {
         let preferences = PreferenceManager::shared();
         // Keyboard focus-return scenarios need a place to focus; the saved fixture hides all places.
         preferences.set_sidebar_show_home(true);
+        // The exhaustive fixture enables Omastrata, which replaces this default map.
+        preferences.set_omastrata_mode(false);
         let directory = tempfile::tempdir().expect("fixture");
         for name in ["a.txt", "b.txt", "c.txt"] {
             std::fs::write(directory.path().join(name), b"preview").expect("fixture file");

@@ -86,6 +86,8 @@ fn saved_filter_scope_updates_two_windows_and_rebuilt_views_without_settings() {
         || {
             PreferenceManager::seed_saved_preferences_for_test();
             let manager = PreferenceManager::shared();
+            // The exhaustive fixture enables Omastrata, which suppresses the pane filter.
+            manager.set_omastrata_mode(false);
             assert!(!manager.filter_include_subfolders());
             let fixture = tempfile::tempdir().expect("fixture");
             std::fs::create_dir(fixture.path().join("needle-folder")).expect("folder");

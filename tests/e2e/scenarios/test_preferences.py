@@ -87,3 +87,22 @@ def test_preferences_sync_across_windows_and_restart(strata):
         "Include subfolders", "Open folder after dropping files",
     ]:
         assert not _switch(strata.window, label).has_state("checked")
+
+
+def _search_button(window):
+    return window.find(role="button", name="Search (Ctrl+K)")
+
+
+def _close_button(window):
+    return window.find(role="button", name="Close window")
+
+
+@pytest.mark.preferences(omastrata_mode=True)
+def test_enabled_omastrata_applies_before_settings_and_survives_restart(strata):
+    assert _search_button(strata.window) is None
+    assert _close_button(strata.window) is not None
+    strata.application.stop()
+    strata.application.start()
+    assert _search_button(strata.window) is None
+    assert _close_button(strata.window) is not None
+    assert strata.environment.read_preferences().get("omastrata_mode") == "true"

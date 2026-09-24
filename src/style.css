@@ -2830,7 +2830,8 @@ entry.preview-command-entry selection {
   font-size: 0.85em;
 }
 
-.shortcut-footer-count {
+.shortcut-footer-count,
+.omastrata-tag {
   color: @theme_text;
   font-weight: normal;
 }

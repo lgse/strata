@@ -68,6 +68,7 @@ pub(super) struct ShortcutFooter {
     reference: gtk::Box,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
+    tag: gtk::Label,
 }
 
 impl ShortcutFooter {
@@ -81,7 +82,13 @@ impl ShortcutFooter {
         paste.add_css_class("shortcut-footer-paste");
         paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
+        let tag = gtk::Label::new(Some(crate::ui::omastrata_mode::TAG_TEXT));
+        tag.add_css_class("omastrata-tag");
+        tag.set_tooltip_text(Some(crate::ui::omastrata_mode::TAG_NAME));
+        super::accessibility::set_label(&tag, crate::ui::omastrata_mode::TAG_NAME);
+        tag.set_visible(false);
         root.append(&paste);
+        root.append(&tag);
         root.append(&count);
         let show_hints = Rc::new(Cell::new(true));
         let pending_popup = Rc::new(Cell::new(false));
@@ -208,6 +215,7 @@ impl ShortcutFooter {
             reference,
             focus_before,
             status_widgets,
+            tag,
         };
         footer.set_mode(mode);
         footer
@@ -225,6 +233,16 @@ impl ShortcutFooter {
     }
 
     pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
+        let tag = self.tag.downgrade();
+        manager.bind_preference(
+            &self.root,
+            super::preferences::PreferenceManager::omastrata_mode,
+            move |_, enabled| {
+                if let Some(tag) = tag.upgrade() {
+                    tag.set_visible(enabled);
+                }
+            },
+        );
         let show_hints = self.show_hints.clone();
         let pending = self.pending_popup.clone();
         let weak_popover = self.popover.downgrade();
@@ -265,6 +283,11 @@ impl ShortcutFooter {
                 update_item_count(&label, &browser);
             }
         });
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn tag_visible(&self) -> bool {
+        self.tag.is_visible()
     }
 
     pub fn set_mode(&self, mode: BrowserMode) {

@@ -68,6 +68,8 @@ fn present_filtered_view(
     Rc<crate::app::Browser>,
 ) {
     crate::ui::preferences::PreferenceManager::seed_saved_preferences_for_test();
+    // The exhaustive fixture enables Omastrata, which suppresses the pane filter.
+    crate::ui::preferences::PreferenceManager::shared().set_omastrata_mode(false);
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("needle.txt"), b"needle").expect("needle");
     std::fs::write(fixture.path().join("other.txt"), b"other").expect("other");

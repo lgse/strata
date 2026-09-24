@@ -255,6 +255,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             read: PreferenceManager::columns_mirror_selection,
             write: PreferenceManager::set_columns_mirror_selection,
         },
+        PreferenceSwitch {
+            title: "Omastrata mode",
+            description: crate::ui::omastrata_mode::MODE_DESCRIPTION,
+            read: PreferenceManager::omastrata_mode,
+            write: PreferenceManager::set_omastrata_mode,
+        },
     ] {
         append_preference_switch(&browsing, manager, switch);
     }
@@ -290,10 +296,41 @@ fn append_preference_switch(
 ) {
     let (row, toggle) = settings_option(switch.title, switch.description, (switch.read)(manager));
     bind_switch(manager, &toggle, switch.read, switch.write);
+    if matches!(
+        switch.title,
+        "Type to search" | "Keep arrows in file list" | "Mirror columns selection"
+    ) {
+        bind_omastrata_unused_subtitle(&row, manager, switch.description);
+    }
     if switch.title == "Include subfolders" {
         super::indent_row(&row);
     }
     content.append(&row);
+}
+
+fn bind_omastrata_unused_subtitle(
+    row: &gtk::Box,
+    manager: &Rc<PreferenceManager>,
+    normal: &'static str,
+) {
+    let Some(description) = row
+        .first_child()
+        .and_then(|copy| copy.last_child())
+        .and_downcast::<gtk::Label>()
+    else {
+        return;
+    };
+    let unused = crate::ui::omastrata_mode::UNUSED_SUBTITLE;
+    manager.bind_preference(
+        &description,
+        PreferenceManager::omastrata_mode,
+        move |widget, enabled| {
+            if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+                label.set_text(if enabled { unused } else { normal });
+                label.set_visible(true);
+            }
+        },
+    );
 }
 
 fn append_default_directory_option(content: &gtk::Box, manager: &Rc<PreferenceManager>) {

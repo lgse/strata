@@ -27,6 +27,8 @@ pub(super) struct Header {
     pub(super) sidebar_toggle: gtk::ToggleButton,
     pub(super) search: gtk::Button,
     pub(super) settings: gtk::Button,
+    #[cfg(test)]
+    pub(super) close: gtk::Button,
 }
 
 impl Header {
@@ -48,6 +50,7 @@ impl Header {
         let location = browser.location_widget();
         location.set_hexpand(true);
         let search = header_action(icons::SEARCH, "Search (Ctrl+K)");
+        crate::ui::omastrata_mode::hide_while_enabled(&search);
         let appearance =
             build_appearance_menu(browser, &browser.browser(), preferences.clone(), preview);
         let settings = header_action(icons::SETTINGS, "Settings");
@@ -73,6 +76,8 @@ impl Header {
             sidebar_toggle,
             search,
             settings,
+            #[cfg(test)]
+            close,
         }
     }
 }

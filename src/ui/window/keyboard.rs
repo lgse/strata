@@ -232,11 +232,14 @@ impl Dispatcher {
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
+        if let Some(result) = self.omastrata_keys(key, modifiers) {
+            return result;
+        }
         let focused = gtk::prelude::RootExt::focus(&self.window);
         let navigation_key = crate::ui::focus_navigation::navigation_key(
             key,
             modifiers,
-            self.type_to_search.preferences.type_to_search(),
+            self.type_to_search.preferences.type_to_search_active(),
             focused.as_ref(),
         );
         let mut event = KeyEvent {
@@ -326,8 +329,42 @@ impl Dispatcher {
         self.view.rename_is_active() || self.view.new_entry_is_active()
     }
 
+    fn omastrata_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+        if visible_modal_layer(&self.window).is_some() {
+            return None;
+        }
+        let preferences = &self.type_to_search.preferences;
+        if crate::ui::omastrata_mode::is_toggle_shortcut(key, modifiers) {
+            preferences.set_omastrata_mode(!preferences.omastrata_mode());
+            return Some(Propagation::Stop);
+        }
+        if !preferences.omastrata_mode() {
+            return None;
+        }
+        let text_focused = gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
+            focused.is::<gtk::Text>() || focused.is::<gtk::TextView>() || focused.is::<gtk::Entry>()
+        });
+        if text_focused
+            || modifiers
+                .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        {
+            return None;
+        }
+        if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) {
+            preferences.set_omastrata_mode(false);
+            return Some(Propagation::Stop);
+        }
+        if key == Key::Q && modifiers.contains(Modifiers::SHIFT_MASK) {
+            self.window.close();
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
     fn arrows_scoped_to_content(&self) -> bool {
-        self.type_to_search.preferences.arrow_navigation_scoped()
+        self.type_to_search
+            .preferences
+            .arrow_navigation_scoped_active()
     }
 
     fn enter_sidebar(&self, event: &KeyEvent) {

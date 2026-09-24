@@ -17,6 +17,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         search_open_files_directly: true,
         type_to_search: false,
         arrow_navigation_scoped: true,
+        omastrata_mode: true,
         filter_include_subfolders: false,
         show_keybinding_hints: false,
         reduce_motion: true,

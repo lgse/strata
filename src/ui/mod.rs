@@ -24,6 +24,7 @@ mod marquee;
 mod media;
 mod modal;
 mod motion;
+mod omastrata_mode;
 mod open_with;
 mod pointer;
 mod portal_preferences;
