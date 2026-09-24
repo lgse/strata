@@ -124,6 +124,8 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "book.ods",
         "memo.rtf",
         "report.docx",
+        "config.yaml",
+        "config.toml",
     ] {
         assert!(
             crate::ui::preview::entry_supports_quick_preview(&entry(

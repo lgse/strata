@@ -649,6 +649,86 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
 }
 
 #[test]
+fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
+    use crate::{
+        model::{EntryKind, FileEntry, Location, MetadataValue},
+        services::PreviewRequestId,
+    };
+
+    let _main_context = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main context lock");
+    let directory = tempfile::tempdir().expect("preview fixture directory");
+    let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+    let context = glib::MainContext::default();
+    let _owner = context.acquire().expect("main context owner");
+
+    for (name, bytes, expected) in [
+        ("config.yaml", &b"key: value\n"[..], "key: value\n"),
+        (
+            "config.toml",
+            &b"[section]\nkey = 1\n"[..],
+            "[section]\nkey = 1\n",
+        ),
+    ] {
+        let path = directory.path().join(name);
+        fs::write(&path, bytes).expect("preview fixture");
+        let request = PreviewRequest {
+            id: PreviewRequestId(1),
+            entry: FileEntry {
+                location: Location::local(&path),
+                thumbnail_path: None,
+                native_name: name.into(),
+                display_name: name.into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                mode: MetadataValue::Unknown,
+                image_dimensions: MetadataValue::Unknown,
+                child_count: MetadataValue::Unknown,
+                duration_seconds: MetadataValue::Unknown,
+                recent_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+            },
+            text_byte_limit: 1024,
+            render_document: false,
+            pdf_page: 0,
+            media_size: MediaPreviewSize::new(640, 800),
+            archive_password: None,
+        };
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let events_for_emit = events.clone();
+        let _handle = provider.load_with_renderer(
+            request,
+            Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+            |_, _, _, _, _| -> Result<crate::sandbox::ParseOutput, String> {
+                panic!("text files must not reach the sandbox")
+            },
+        );
+        context.block_on(async {
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while events.borrow().is_empty() && std::time::Instant::now() < deadline {
+                glib::timeout_future(Duration::from_millis(1)).await;
+            }
+        });
+
+        let events = events.borrow();
+        assert_eq!(events.len(), 1, "{name}");
+        let PreviewEvent::Ready(preview) = &events[0] else {
+            panic!("{name} preview failed");
+        };
+        assert_eq!(
+            preview.content,
+            PreviewContent::Text {
+                content: expected.to_owned(),
+                truncated: false,
+            },
+            "{name}"
+        );
+    }
+}
+
+#[test]
 fn archives_list_member_trees_as_preview_content() {
     crate::test_support::gtk_test(
         "adapters::local_preview::tests::archives_list_member_trees_as_preview_content",
