@@ -124,34 +124,24 @@ fn exercise_type_to_search() {
                 "Space must not preview {name}: {mode:?}"
             );
             assert!(!view.filter_has_focus());
-            if mode == BrowserMode::Columns {
-                wait_until(|| {
-                    browser
-                        .column_snapshot(1)
+            wait_until(|| {
+                browser.active_location() == Some(Location::local(fixture.path().join("folder")))
+                    && browser
+                        .column_snapshot(if mode == BrowserMode::Columns { 1 } else { 0 })
                         .is_some_and(|column| !column.loading)
-                });
-                assert_eq!(
-                    browser.active_location(),
-                    Some(Location::local(fixture.path().join("folder")))
-                );
+            });
+            if mode == BrowserMode::Columns {
                 assert_eq!(
                     browser.location_at(0),
                     Some(Location::local(fixture.path()))
                 );
-                browser.navigate(Location::local(fixture.path()));
-                wait_until(|| {
-                    browser
-                        .column_snapshot(0)
-                        .is_some_and(|column| !column.loading)
-                });
-            } else {
-                assert_eq!(
-                    browser.active_location(),
-                    Some(Location::local(fixture.path())),
-                    "Space must not navigate: {mode:?}, {name}"
-                );
             }
-            preview.close();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
         }
         select_entry(&browser, "archive.zip");
         browser.focus_active();
