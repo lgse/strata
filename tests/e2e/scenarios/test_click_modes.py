@@ -126,9 +126,6 @@ def test_two_slow_clicks_do_not_open(strata, mode):
 @DOUBLE_CLICK
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_click_then_double_click_opens_without_renaming(strata, mode):
-    """The pair's first click may schedule a pending rename; its second press
-    must cancel it before it ever surfaces."""
-
     strata.pointer.click(strata.entry("documents"))
     strata.wait(
         lambda: strata.selected_names() == ["documents"],

@@ -69,8 +69,6 @@ pub(super) fn hits_icon_card_content(card: &gtk::Widget, x: f64, y: f64) -> bool
             .is_some_and(|widget| widget.has_css_class("icons-card-icon-frame"))
 }
 
-/// Slow-click rename only arms on the name itself, matching Finder: the icon and
-/// other columns just select. A hexpanding label's hit zone ends at its text.
 pub(super) fn hits_name_label(surface: &gtk::Widget, label: &gtk::Widget, x: f64, y: f64) -> bool {
     let Some(point) = surface.compute_point(label, &gtk::graphene::Point::new(x as f32, y as f32))
     else {
@@ -135,8 +133,6 @@ struct PendingClick {
 
 /// A recycled row or a gesture that crossed the drag threshold cannot activate on
 /// release, even if the pointer returned to its original position or DnD was cancelled.
-/// The callback receives the press point so callers can hit-test what the click
-/// started on; the release stays within the drag threshold by construction.
 pub(super) fn connect_click_release(
     click: &gtk::GestureClick,
     item: &gtk::ListItem,

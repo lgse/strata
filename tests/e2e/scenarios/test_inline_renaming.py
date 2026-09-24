@@ -102,7 +102,6 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
 
 
 def name_text_point(strata, name, mode):
-    """A point on the rendered name text — the only spot a slow click renames."""
     label = strata.entry(name).find(role="label", name=name)
     assert label is not None, f"no name label on {name!r}"
     bounds = label.screen_bounds()
@@ -145,7 +144,6 @@ def test_slow_click_rename_respects_escape_and_selects_the_stem(strata, mode):
     ],
 )
 def test_slow_click_away_from_the_name_does_not_rename(strata, mode, target):
-    """Only the name text arms rename; the icon and row padding just re-select."""
     strata.select_entry_with_keyboard("todo.txt")
     entry = strata.entry("todo.txt")
     if target == "icon":
@@ -162,15 +160,12 @@ def test_slow_click_away_from_the_name_does_not_rename(strata, mode, target):
 
 @pytest.mark.preferences(browser_mode="columns")
 def test_columns_reclick_open_folder_name_renames_and_empty_space_closes(strata):
-    """An open folder's column does not collapse on re-click: its name arms
-    slow-click rename, and empty space is what closes the child column."""
     root = strata.fixture.root.name
     strata.pointer.click(strata.entry("documents"))
     strata.wait(
         lambda: strata.pane().name == "documents",
         "one click to open the folder column",
     )
-    # Outlast the double-click interval so the re-click is a lone slow click.
     time.sleep(0.6)
 
     strata.pointer.click(

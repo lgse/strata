@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""Column background clicks focus the parent and close its descendants."""
-
 import pytest
 
 

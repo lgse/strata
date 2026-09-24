@@ -512,8 +512,6 @@ pub(super) fn column_rows(
             {
                 let entry = state.browser.entry_at(depth, source_position);
                 if let Some(entry) = entry.as_ref() {
-                    // Re-clicking the open folder must not collapse its column;
-                    // its name stays eligible for slow-click rename instead.
                     let activate = should_activate_single_click(
                         press_count,
                         entry.is_directory(),

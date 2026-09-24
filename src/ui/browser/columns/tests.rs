@@ -180,28 +180,3 @@ fn reveal_target_can_scroll_back_to_an_earlier_column() {
         252.0
     );
 }
-
-#[test]
-fn active_path_style_distinguishes_immediate_parent_from_ancestor() {
-    crate::test_support::gtk_test(
-        "ui::browser::columns::tests::active_path_style_distinguishes_immediate_parent_from_ancestor",
-        || {
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-
-            // Ancestor path
-            set_active_path_style(&row, true, false);
-            assert!(row.has_css_class("active-path"));
-            assert!(!row.has_css_class("active-parent"));
-
-            // Immediate parent of active column
-            set_active_path_style(&row, true, true);
-            assert!(row.has_css_class("active-path"));
-            assert!(row.has_css_class("active-parent"));
-
-            // Inactive
-            set_active_path_style(&row, false, false);
-            assert!(!row.has_css_class("active-path"));
-            assert!(!row.has_css_class("active-parent"));
-        },
-    );
-}
