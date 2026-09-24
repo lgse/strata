@@ -264,6 +264,100 @@ fn wait_until(condition: impl Fn() -> bool) {
 }
 
 #[test]
+fn space_opens_folders_without_toggling_preview_in_every_mode() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::space_opens_folders_without_toggling_preview_in_every_mode",
+        || {
+            let fixture = KeyboardFixture::new();
+            std::fs::create_dir(fixture._directory.path().join("folder")).expect("fixture folder");
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                fixture.view.set_view_mode(mode);
+                fixture
+                    .view
+                    .browser()
+                    .navigate(Location::local(fixture._directory.path()));
+                wait_until(|| {
+                    fixture
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 4)
+                });
+                let position = (0..4)
+                    .find(|&position| {
+                        fixture
+                            .view
+                            .browser()
+                            .entry_at(0, position)
+                            .is_some_and(|entry| {
+                                entry.location
+                                    == Location::local(fixture._directory.path().join("folder"))
+                            })
+                    })
+                    .expect("folder entry");
+                fixture.view.browser().select(0, position);
+                fixture.view.browser().focus_active();
+                wait_until(|| fixture.view.item_view_has_focus());
+                assert!(fixture.press(Key::space, ModifierType::empty()), "{mode:?}");
+                wait_until(|| {
+                    fixture.view.browser().active_location()
+                        == Some(Location::local(fixture._directory.path().join("folder")))
+                });
+                assert!(!fixture.preview.is_open(), "{mode:?}");
+            }
+        },
+    );
+}
+
+#[test]
+fn space_opens_filtered_folders_without_toggling_preview() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::space_opens_filtered_folders_without_toggling_preview",
+        || {
+            let fixture = KeyboardFixture::new();
+            let folder = fixture._directory.path().join("folder");
+            std::fs::create_dir(&folder).expect("fixture folder");
+            for mode in [BrowserMode::Icons, BrowserMode::List] {
+                fixture.view.set_view_mode(mode);
+                fixture
+                    .view
+                    .browser()
+                    .navigate(Location::local(fixture._directory.path()));
+                wait_until(|| {
+                    fixture
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 4)
+                });
+                assert!(fixture.view.show_filter_with_query("folder"));
+                let field = gtk::prelude::RootExt::focus(&fixture.window)
+                    .expect("filter focus")
+                    .ancestor(gtk::Entry::static_type())
+                    .and_downcast::<gtk::Entry>()
+                    .expect("filter entry");
+                wait_until(|| {
+                    press_on(field.upcast_ref(), Key::Down, ModifierType::empty());
+                    fixture.view.selected_search_result().is_some()
+                });
+                assert_eq!(
+                    fixture
+                        .view
+                        .selected_search_result()
+                        .map(|entry| entry.location),
+                    Some(Location::local(&folder))
+                );
+                assert!(fixture.press(Key::space, ModifierType::empty()), "{mode:?}");
+                wait_until(|| {
+                    fixture.view.browser().active_location() == Some(Location::local(&folder))
+                });
+                assert!(!fixture.preview.is_open(), "{mode:?}");
+            }
+        },
+    );
+}
+
+#[test]
 fn escape_closes_archive_preview_with_password_focus() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::escape_closes_archive_preview_with_password_focus",

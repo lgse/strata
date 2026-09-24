@@ -243,6 +243,15 @@ def test_list_preview_keyboard_navigation_preserves_horizontal_scroll(strata, fi
 
 @pytest.mark.preferences(single_click_previews=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
+def test_space_enters_folder_without_opening_preview(strata, mode):
+    strata.select_entry_with_keyboard("folder")
+    strata.keyboard.press("space")
+    strata.wait(lambda: "inner.txt" in strata.entry_names(), "Space to enter the folder")
+    assert strata.preview() is None
+
+
+@pytest.mark.preferences(single_click_previews=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_preview_follows_extended_selection_without_collapsing_it(strata, mode):
     strata.select_entry_with_keyboard("notes.txt")
     strata.keyboard.press("space")

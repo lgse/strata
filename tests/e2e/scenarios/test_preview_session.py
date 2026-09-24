@@ -68,12 +68,11 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     strata.wait(lambda: strata.preview_shows("alpha preview"), "preview after directory navigation")
     strata.select_entry_with_keyboard("Beta")
     strata.keyboard.press("space")
-    if mode == "Columns":
-        strata.wait_for_directory("Beta")
+    strata.wait_for_directory("Beta")
     option = preview_option(strata)
-    assert option.has_state("pressed") == (mode == "Columns")
+    assert option.has_state("pressed")
     strata.dismiss_menu()
-    assert strata.current_directory() == ("Beta" if mode == "Columns" else "Alpha")
+    assert strata.current_directory() == "Beta"
 
 
 @pytest.mark.preferences(browser_mode="icons", single_click_previews=False)

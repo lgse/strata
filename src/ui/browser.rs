@@ -1044,10 +1044,7 @@ impl BrowserView {
         }
     }
 
-    pub(in crate::ui) fn activate_directory_column(&self) -> bool {
-        if self.view_mode() != BrowserMode::Columns {
-            return false;
-        }
+    pub(in crate::ui) fn activate_directory_on_space(&self) -> bool {
         if let Some(entry) = self.selected_search_result() {
             if entry.is_directory() {
                 self.state.browser.navigate(entry.location);
