@@ -927,6 +927,71 @@ fn background_move_without_reveal_restores_the_source_column() {
 }
 
 #[test]
+fn redo_move_replays_the_undone_transfer() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::redo_move_replays_the_undone_transfer",
+        || {
+            let fixture = tempfile::tempdir().expect("redo fixture");
+            let original = fixture.path().join("original");
+            let current = fixture.path().join("current");
+            std::fs::create_dir_all(&original).expect("original dir");
+            std::fs::create_dir_all(&current).expect("current dir");
+            std::fs::write(original.join("a.txt"), b"moved").expect("moved file");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let browser_widget = view.widget();
+            let root = crate::ui::blur::BlurBin::new(&browser_widget);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.state.start_transfer(
+                Location::local(&current),
+                vec![Location::local(original.join("a.txt"))],
+                true,
+            );
+            wait_until(
+                || current.join("a.txt").exists() && !original.join("a.txt").exists(),
+                "the move to complete",
+            );
+
+            let browser = view.browser();
+            wait_until(
+                || browser.pending_undo_move().is_some(),
+                "the move undo to become pending",
+            );
+            let (generation, records) = browser.pending_undo_move().expect("pending move undo");
+            assert!(view.state.undo_move(generation, records));
+            wait_until(
+                || original.join("a.txt").exists() && !current.join("a.txt").exists(),
+                "the undo to move the item back",
+            );
+
+            wait_until(
+                || browser.pending_redo_move().is_some(),
+                "the redo of the undone move to become pending",
+            );
+            let (generation, records) = browser.pending_redo_move().expect("pending move redo");
+            assert!(view.state.redo_move(generation, records));
+            wait_until(
+                || current.join("a.txt").exists() && !original.join("a.txt").exists(),
+                "the redo to move the item forward again",
+            );
+            wait_until(
+                || browser.pending_undo_move().is_some(),
+                "the completed redo to regenerate the move undo",
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn drop_open_preference_applies_before_settings_and_live_across_views() {
     crate::test_support::gtk_test(
         "ui::browser::transfer::tests::drop_open_preference_applies_before_settings_and_live_across_views",

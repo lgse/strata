@@ -380,8 +380,18 @@ fn sidebar_toggle_preserves_split_constraints() {
             fixture.content.header.sidebar_toggle.set_active(true);
             assert_eq!(content.position(), super::super::SIDEBAR_WIDTH);
             assert!(fixture.content.sidebar.widget.is_visible());
+            assert!(!fixture.content.sidebar.state.rail.get());
             content.set_position(1);
             assert_eq!(content.position(), super::super::MIN_SIDEBAR_WIDTH);
+
+            fixture.window.set_default_size(450, 760);
+            fixture.window.set_size_request(450, 760);
+            fixture.content.header.sidebar_toggle.set_active(false);
+            assert_eq!(content.position(), 0);
+            fixture.content.header.sidebar_toggle.set_active(true);
+            assert_eq!(content.position(), super::super::sidebar_rail_width());
+            assert!(fixture.content.sidebar.state.rail.get());
+
             fixture.close();
         },
     );
@@ -398,29 +408,8 @@ fn sidebar_toggle_animated_expand_restores_visibility() {
             if let Some(settings) = gtk::Settings::default() {
                 settings.set_gtk_enable_animations(true);
             }
-            let root = fixture
-                .content
-                .blurred_root
-                .first_child()
-                .expect("window root");
-            let preview_split = root
-                .first_child()
-                .expect("header")
-                .next_sibling()
-                .expect("preview split")
-                .downcast::<gtk::Paned>()
-                .expect("preview paned");
-            let content = preview_split
-                .start_child()
-                .expect("navigation wrapper")
-                .first_child()
-                .expect("sidebar/browser split")
-                .downcast::<gtk::Paned>()
-                .expect("sidebar/browser paned");
             fixture.content.header.sidebar_toggle.set_active(false);
-            settle_sidebar(600);
-            assert_eq!(content.position(), 0);
-            assert!(!fixture.content.sidebar.widget.is_visible());
+            wait_until_hidden(&fixture.content.sidebar.widget);
             fixture.content.header.sidebar_toggle.set_active(true);
             settle_sidebar(600);
             assert!(fixture.content.sidebar.widget.is_visible());

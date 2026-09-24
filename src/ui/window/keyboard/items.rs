@@ -46,13 +46,36 @@ impl Dispatcher {
         None
     }
 
-    fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
+    pub(super) fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
         if self.preview.is_enabled() {
             self.preview.close();
+            browser.focus_active();
             return Some(Propagation::Stop);
         }
         // Transient surfaces may return focus to pane chrome rather than an item.
         (browser.close_peek() || browser.clear_active_selection()).then_some(Propagation::Stop)
+    }
+
+    pub(super) fn archive_navigation(&self, event: &KeyEvent) -> KeyResult {
+        if !event.without(
+            Modifiers::CONTROL_MASK
+                | Modifiers::ALT_MASK
+                | Modifiers::SUPER_MASK
+                | Modifiers::SHIFT_MASK,
+        ) || event.text_has_focus()
+            || (!self.view.item_view_has_focus()
+                && !self.preview.archive_list_has_focus(event.focused.as_ref()))
+        {
+            return None;
+        }
+        match event.key {
+            Key::Up | Key::Down | Key::Left | Key::Right | Key::Return | Key::KP_Enter => self
+                .preview
+                .archive_key(event.key)
+                .then_some(Propagation::Stop),
+            Key::space => self.preview.close_archive().then_some(Propagation::Stop),
+            _ => None,
+        }
     }
 
     pub(super) fn item_navigation(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {
@@ -92,7 +115,7 @@ impl Dispatcher {
             SinglePaneArrow::Native => self.native_selection(event),
             SinglePaneArrow::Stay => Propagation::Stop,
             SinglePaneArrow::Sidebar => {
-                self.sidebar.enter(&event.focused);
+                self.enter_sidebar(event);
                 Propagation::Stop
             }
         })
@@ -148,13 +171,18 @@ impl Dispatcher {
                 self.view.copy_path();
             }
             Key::p | Key::P => self.view.pin_focused(),
-            Key::space
-                if event.without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
-                    && self.view.activate_directory_column() => {}
-            Key::space => self.preview.toggle(
-                preview_target(browser.focused_entry()),
-                browser.active_depth(),
-            ),
+            Key::space => {
+                self.view.cancel_pending_click_rename();
+                let activated_directory = event
+                    .without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+                    && self.view.activate_directory_column();
+                if !activated_directory {
+                    self.preview.toggle(
+                        preview_target(browser.focused_entry()),
+                        browser.active_depth(),
+                    );
+                }
+            }
             Key::BackSpace => self.view.navigate_up(),
             _ => return None,
         }
@@ -207,7 +235,7 @@ impl Dispatcher {
             && self.top_bar.sidebar_toggle().is_active()
             && !self.arrows_scoped_to_content()
         {
-            self.sidebar.enter(&event.focused);
+            self.enter_sidebar(event);
         } else {
             self.view.navigate_left();
         }

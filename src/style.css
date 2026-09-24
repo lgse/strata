@@ -93,7 +93,12 @@ headerbar {
   min-height: 40px;
 }
 
+headerbar > windowhandle {
+  padding: 0;
+}
+
 headerbar > windowhandle > box {
+  border-spacing: 0;
   min-height: 40px;
   padding: 0;
 }
@@ -116,6 +121,8 @@ headerbar menubutton {
 
 headerbar .sidebar-toggle {
   color: @theme_accent;
+  margin-left: 5px;
+  min-width: 36px;
 }
 
 headerbar .sidebar-toggle,
@@ -149,7 +156,7 @@ headerbar menubutton.header-action > button:checked {
 
 .header-actions {
   margin: 0;
-  padding: 0;
+  padding: 0 6px 0 0;
 }
 
 headerbar image {
@@ -334,11 +341,6 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -2px;
 }
 
-.column-peek-target.file-drop-zone:drop(active) {
-  background: alpha(@theme_accent, 0.18);
-  box-shadow: inset 0 0 0 2px @theme_accent;
-}
-
 .location-entry,
 .location-entry:focus,
 .location-entry:focus-visible,
@@ -419,13 +421,8 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .breadcrumb-scrollbar {
-  min-height: 4px;
-  padding: 0;
   margin: 1px 0 0 0;
-  background: transparent;
-  border: none;
   opacity: 0;
-  transition: opacity 180ms ease-out;
 }
 
 .breadcrumb-container:hover .breadcrumb-scrollbar,
@@ -436,34 +433,6 @@ headerbar menubutton.header-action > button:focus-visible {
 .breadcrumb-scrollbar:focus,
 .breadcrumb-scrollbar:active {
   opacity: 1;
-}
-
-.breadcrumb-scrollbar > range > trough {
-  min-height: 4px;
-  padding: 0;
-  margin: 0;
-  background: alpha(@theme_border, 0.25);
-  border: none;
-  border-radius: 2px;
-}
-
-.breadcrumb-scrollbar:hover > range > trough {
-  background: alpha(@theme_border, 0.45);
-}
-
-.breadcrumb-scrollbar > range > trough > slider {
-  min-height: 4px;
-  min-width: 32px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  border-radius: 2px;
-  background: @theme_accent;
-}
-
-.breadcrumb-scrollbar > range > trough > slider:hover,
-.breadcrumb-scrollbar > range > trough > slider:active {
-  background: @theme_accent;
 }
 
 .breadcrumb {
@@ -742,26 +711,6 @@ headerbar menubutton.header-action > button:focus-visible {
   background: transparent;
 }
 
-.delete-confirmation-list scrollbar {
-  padding: 0;
-}
-
-.delete-confirmation-list scrollbar.vertical {
-  min-width: 6px;
-}
-
-.delete-confirmation-list scrollbar.vertical > range > trough {
-  background: transparent;
-  border: none;
-  padding: 0;
-  margin: 0;
-}
-
-.delete-confirmation-list scrollbar.vertical > range > trough > slider {
-  margin: 0;
-  min-width: 6px;
-}
-
 .delete-confirmation-files {
   background: transparent;
   padding: 8px 10px;
@@ -987,7 +936,9 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 24px 12px;
 }
 
-.action-dialog-cancel {
+.action-dialog-cancel,
+.settings-action-button,
+.settings-action-library-button > button {
   background: transparent;
   border: 1px solid alpha(@theme_border, 0.54);
   border-radius: 5px;
@@ -998,19 +949,26 @@ headerbar menubutton.header-action > button:focus-visible {
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
-.action-dialog-cancel:hover {
+.action-dialog-cancel:hover,
+.settings-action-button:hover,
+.settings-action-library-button > button:hover {
   background: alpha(@theme_accent, 0.15);
   border-color: @theme_text;
 }
 
-.action-dialog-cancel:active {
+.action-dialog-cancel:active,
+.settings-action-button:active,
+.settings-action-library-button > button:active,
+.settings-action-library-button > button:checked {
   background: alpha(@theme_accent, 0.22);
   border-color: @theme_accent;
   color: @theme_accent;
   transform: scale(0.97);
 }
 
-.action-dialog-cancel:focus-visible {
+.action-dialog-cancel:focus-visible,
+.settings-action-button:focus-visible,
+.settings-action-library-button > button:focus-visible {
   border-color: @theme_accent;
   outline: 2px solid alpha(@theme_accent, 0.5);
   outline-offset: 1px;
@@ -1057,10 +1015,12 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .action-dialog-confirm.danger:focus-visible {
-  outline-color: @theme_accent;
+  outline-color: @theme_danger;
 }
 
 .action-dialog-cancel:disabled,
+.settings-action-button:disabled,
+.settings-action-library-button > button:disabled,
 .action-dialog-confirm:disabled,
 .action-dialog-close:disabled {
   background: alpha(@theme_muted, 0.3);
@@ -1534,11 +1494,6 @@ menubutton.form-control:disabled > button {
   padding-top: 4px;
 }
 
-.click-activation-control .segmented-control-option {
-  min-height: 28px;
-  padding: 2px 8px;
-}
-
 .release-notes-card {
   background: alpha(@theme_bg, 0.55);
   border: 1px solid alpha(@theme_border, 0.24);
@@ -1806,79 +1761,76 @@ switch:checked slider {
   border-right: 1px solid alpha(@theme_border, 0.6);
 }
 
-.fixed-scrollbar scrollbar,
-.fixed-scrollbar scrollbar:hover,
-.fixed-scrollbar scrollbar.hovering,
-.fixed-scrollbar scrollbar.dragging {
+/* Every scrollbar is the path-bar indicator: a thin accent thumb on a faint
+   trough, overlaid on content and faded by GTK until hover or scrolling. */
+scrollbar,
+scrollbar:hover,
+scrollbar.hovering,
+scrollbar.dragging {
   background: transparent;
   border: none;
   padding: 0;
-  transition: none;
+  margin: 0;
+  transition: opacity 180ms ease-out;
 }
 
-/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
-.mode-scroll scrollbar.horizontal > range > trough,
+scrollbar.vertical,
+scrollbar.vertical > range > trough,
+scrollbar.vertical > range > trough > slider {
+  min-width: 4px;
+}
+
+scrollbar.horizontal,
+scrollbar.horizontal > range > trough,
+scrollbar.horizontal > range > trough > slider {
+  min-height: 4px;
+}
+
+scrollbar > range > trough {
+  background: alpha(@theme_border, 0.25);
+  border: none;
+  border-radius: 2px;
+}
+
+scrollbar:hover > range > trough,
+scrollbar.hovering > range > trough,
+scrollbar.dragging > range > trough {
+  background: alpha(@theme_border, 0.45);
+}
+
+scrollbar > range > trough > slider {
+  background: @theme_accent;
+  border: none;
+  border-radius: 2px;
+  margin: 0;
+}
+
+scrollbar.vertical > range > trough > slider {
+  min-height: 32px;
+}
+
+scrollbar.horizontal > range > trough > slider {
+  min-width: 32px;
+}
+
+/* The mode scrollers need an opaque base to conceal the sidebar paned handle.
+   Layer the path bar's faint track over it instead of losing the bezel. */
+.mode-scroll scrollbar.horizontal {
+  background: @theme_bg;
+}
+
+.mode-scroll scrollbar.horizontal > range > trough {
+  margin-top: 3px;
+  margin-bottom: 3px;
+  background-color: @theme_bg;
+  background-image: linear-gradient(alpha(@theme_border, 0.25), alpha(@theme_border, 0.25));
+  box-shadow: inset 0 0 0 1px alpha(@theme_border, 0.45);
+}
+
 .mode-scroll scrollbar.horizontal:hover > range > trough,
 .mode-scroll scrollbar.horizontal.hovering > range > trough,
 .mode-scroll scrollbar.horizontal.dragging > range > trough {
-  background: @theme_bg;
-  border: none;
-}
-
-/* The trough is widened to a practical grab target while slider margins keep the
-   visible bar as narrow as before. */
-.fixed-scrollbar scrollbar.vertical {
-  min-width: 14px;
-}
-
-.fixed-scrollbar scrollbar.horizontal {
-  min-height: 14px;
-  border-top: 1px solid alpha(@theme_border, 0.6);
-}
-
-scrollbar slider:active {
-  background: @theme_accent;
-}
-
-.fixed-scrollbar scrollbar > range > trough > slider {
-  border-width: 1px;
-}
-
-.fixed-scrollbar scrollbar.vertical > range > trough > slider {
-  margin: 0 4px;
-  min-width: 6px;
-}
-
-.fixed-scrollbar scrollbar.horizontal > range > trough > slider {
-  margin: 4px 0;
-  min-height: 6px;
-}
-
-.sidebar-scroll scrollbar.vertical {
-  min-width: 5px;
-}
-
-.sidebar-scroll scrollbar.vertical > range > trough > slider {
-  min-width: 3px;
-  margin: 0 1px;
-  border: none;
-  background: alpha(@theme_text, 0.35);
-}
-
-.sidebar-scroll scrollbar.vertical:hover > range > trough > slider {
-  background: alpha(@theme_accent, 0.65);
-}
-
-.sidebar-scroll scrollbar.vertical > range > trough > slider:active {
-  background: @theme_accent;
-}
-
-.columns-scroll scrollbar.horizontal {
-  background: @theme_bg;
-}
-
-.columns-scroll scrollbar.horizontal > range > trough > slider {
-  margin: 4px;
+  background-image: linear-gradient(alpha(@theme_border, 0.45), alpha(@theme_border, 0.45));
 }
 
 .autoscroll-anchor {
@@ -1892,7 +1844,7 @@ scrollbar slider:active {
 
 .sidebar {
   background: @theme_surface;
-  padding: 8px 7px;
+  padding: 5px;
 }
 
 .sidebar-update {
@@ -1931,25 +1883,6 @@ scrollbar slider:active {
   color: @theme_accent;
   font-size: 0.88em;
   font-weight: 650;
-}
-
-.sidebar-update.preview {
-  color: @theme_danger;
-}
-
-.sidebar-update.preview:hover {
-  background: alpha(@theme_danger, 0.16);
-  color: @theme_danger;
-}
-
-.sidebar-update.preview:active {
-  background: alpha(@theme_danger, 0.24);
-  color: @theme_danger;
-}
-
-.sidebar-update.preview .sidebar-update-dot,
-.sidebar-update.preview .sidebar-update-label {
-  color: @theme_danger;
 }
 
 .sidebar-row {
@@ -2052,6 +1985,10 @@ scrollbar slider:active {
   padding: 2px;
 }
 
+.sidebar-device-spinner {
+  color: @theme_accent;
+}
+
 .sidebar-eject:hover,
 .sidebar-device-action:hover {
   background: alpha(@theme_accent, 0.15);
@@ -2077,6 +2014,45 @@ scrollbar slider:active {
 
 .sidebar-update-separator {
   margin: 0;
+}
+
+.sidebar-rail .sidebar {
+  padding: 5px;
+}
+
+.sidebar-rail .sidebar-row {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 4px;
+}
+
+.sidebar-rail .sidebar-device {
+  padding-right: 0;
+}
+
+.sidebar-rail .sidebar-row > box > label,
+.sidebar-rail .sidebar-heading,
+.sidebar-rail .sidebar-device-actions,
+.sidebar-rail .sidebar-update-label {
+  opacity: 0;
+  min-width: 0;
+  min-height: 0;
+  font-size: 0;
+}
+
+.sidebar-rail .sidebar-separator {
+  margin: 6px 2px;
+}
+
+.sidebar-rail .sidebar-update-separator {
+  margin: 0;
+}
+
+.sidebar-rail .sidebar-update {
+  margin: 0;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 4px;
 }
 
 .sidebar-heading {
@@ -2465,8 +2441,9 @@ paned > separator {
   background: alpha(@theme_muted, 0.35);
 }
 
-.preview-archive-row:selected {
-  background: alpha(@theme_accent, 0.28);
+/* The shared selected-row fill stays visible when the pointer rests on it. */
+.preview-archive-list row:selected .preview-archive-row:hover {
+  background: transparent;
 }
 
 .preview-archive-name {
@@ -2975,25 +2952,16 @@ entry.preview-command-entry selection {
   border-top-color: @theme_accent;
 }
 
-.column-destination-hint {
-  min-height: 24px;
-  padding: 0 12px;
-  font-size: 0.85em;
-  color: @theme_dim_text;
-  background: @theme_bg;
-  border-top: 1px solid transparent;
-}
-
-.destination-column .column-destination-hint {
-  color: @theme_text;
-  background: @theme_surface;
-  border-top-color: @theme_accent;
-}
-
 .directory-column scrolledwindow,
 .directory-column viewport,
 .directory-column listview {
   background: @theme_bg;
+}
+
+/* Keep the column flush; inset only its scrollbar from the resize target and header. */
+.directory-column scrollbar.vertical {
+  margin-right: 6px;
+  margin-top: 5px;
 }
 
 .column-resize-handle {
@@ -3001,7 +2969,8 @@ entry.preview-command-entry selection {
   border-right: 1px solid alpha(@theme_border, 0.6);
 }
 
-.column-resize-handle:hover {
+.column-resize-handle:hover,
+.column-resize-handle.resize-hover {
   border-right-color: @theme_accent;
 }
 
@@ -3180,63 +3149,55 @@ menubutton.column-header-action > button:active {
 }
 
 .segmented-control {
-  border-radius: 5px;
+  background: alpha(@theme_bg, 0.25);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 6px;
+  padding: 2px;
 }
 
 .segmented-control-option {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.54);
-  border-radius: 0;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
   box-shadow: none;
   color: @theme_dim_text;
-  min-height: 32px;
-  padding: 3px 12px;
-  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
-}
-
-.segmented-control-option.first {
-  border-radius: 5px 0 0 5px;
-}
-
-.segmented-control-option.not-first {
-  border-left: none;
-}
-
-.segmented-control-option.last {
-  border-radius: 0 5px 5px 0;
+  min-height: 26px;
+  padding: 2px 10px;
 }
 
 .segmented-control-option:hover {
-  background: alpha(@theme_accent, 0.15);
+  background: alpha(@theme_highlight, 0.65);
   color: @theme_text;
 }
 
 .segmented-control-option:checked {
-  background: alpha(@theme_highlight, 0.82);
-  border-color: @theme_accent;
+  background: alpha(@theme_accent, 0.22);
   color: @theme_accent;
 }
 
-.segmented-control-option.not-first:checked {
-  border-left: 1px solid @theme_accent;
+.segmented-control-option:checked:hover {
+  background: alpha(@theme_accent, 0.28);
 }
 
 .segmented-control-option:active {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_accent;
-  transform: scale(0.97);
+  background: alpha(@theme_accent, 0.28);
 }
 
 .segmented-control-option:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-.authentication-fields .form-control:disabled,
-.segmented-control-option:disabled {
+.authentication-fields .form-control:disabled {
   background: alpha(@theme_muted, 0.3);
   border-color: alpha(@theme_border, 0.38);
   color: @theme_dim_text;
+}
+
+.segmented-control-option:disabled {
+  background: transparent;
+  color: @theme_dim_text;
+  opacity: 0.4;
 }
 
 
@@ -3287,37 +3248,81 @@ menubutton.column-header-action > button:active {
   font-size: 0.85em;
 }
 
+.path-completion-popover contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.55);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.16), 0 8px 24px alpha(@theme_shadow, 0.32);
+  padding: 4px;
+}
+
+.path-completion-scroll,
+.path-completion-scroll viewport {
+  background: transparent;
+}
+
+.path-completion-list {
+  background: transparent;
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_text;
+  font-size: 0.9em;
+  margin: 1px 0;
+  min-height: 32px;
+  outline: none;
+  padding: 0;
+}
+
+.path-completion-row-content {
+  padding: 5px 9px;
+}
+
+.path-completion-list row.path-completion-row:hover:not(:selected) {
+  background: alpha(@theme_highlight, 0.72);
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row:selected {
+  background: alpha(@theme_accent, 0.22);
+  box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
+  color: @theme_text;
+}
+
+.path-completion-list row.path-completion-row:active {
+  background: alpha(@theme_accent, 0.28);
+  color: @theme_text;
+}
+
+.path-completion-parent {
+  color: @theme_dim_text;
+  font-size: 0.82em;
+}
+
+.path-completion-list row.path-completion-row:selected .path-completion-parent {
+  color: @theme_text;
+  opacity: 0.72;
+}
+
+.path-completion-shortcuts {
+  border-top: 1px solid alpha(@theme_border, 0.28);
+  color: @theme_dim_text;
+  font-size: 0.76em;
+  margin-top: 3px;
+  padding: 6px 9px 4px;
+}
+
 .properties-content {
   min-width: 382px;
 }
 
 .properties-content .action-dialog-body {
   padding: 0;
-}
-
-.media-details-scroll scrollbar,
-.media-details-scroll scrollbar range,
-.media-details-scroll scrollbar trough {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
-.media-details-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 2px solid transparent;
-  border-radius: 6px;
-  min-width: 6px;
-  min-height: 32px;
-}
-
-.media-details-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.media-details-scroll scrollbar slider:active,
-.media-details-scroll scrollbar slider:focus {
-  background: @theme_accent;
 }
 
 .properties-row-label,
@@ -3506,6 +3511,11 @@ textview > popover.menu > contents {
   padding: 0;
 }
 
+.folder-context-popover label {
+  opacity: 1;
+  font-size: 1em;
+}
+
 .context-menu-scroll,
 .context-menu-scroll > viewport,
 .context-menu-scroll overshoot,
@@ -3521,26 +3531,6 @@ textview > popover.menu undershoot {
   background: transparent;
   border: none;
   box-shadow: none;
-}
-
-.context-menu-scroll scrollbar,
-.context-menu-scroll scrollbar:hover,
-.context-menu-scroll scrollbar.hovering,
-.context-menu-scroll scrollbar.dragging {
-  background: transparent;
-  border: none;
-  padding: 0;
-  transition: none;
-}
-
-.context-menu-scroll scrollbar.vertical {
-  min-width: 14px;
-}
-
-.context-menu-scroll scrollbar.vertical > range > trough > slider {
-  border-width: 1px;
-  margin: 0 2px 0 4px;
-  min-width: 6px;
 }
 
 .actions-context-popover,
@@ -3966,9 +3956,11 @@ textview > popover.menu accelerator {
 text > popover.menu modelbutton:focus-visible,
 textview > popover.menu modelbutton:focus-visible,
 text > popover.menu button.model:focus-visible,
-textview > popover.menu button.model:focus-visible {
-  outline: 2px solid @theme_accent;
-  outline-offset: -2px;
+textview > popover.menu button.model:focus-visible,
+.item-context-option:focus-visible,
+.folder-context-option:focus-visible {
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
 }
 
 .actions-context-popover modelbutton.danger,
@@ -4003,7 +3995,7 @@ textview > popover.menu button.model:focus-visible {
 
 .item-context-option.danger:focus-visible,
 .folder-context-option.danger:focus-visible {
-  outline-color: @theme_accent;
+  outline-color: @theme_danger;
 }
 
 .file-list {
@@ -4019,13 +4011,18 @@ textview > popover.menu button.model:focus-visible {
 }
 
 .file-list row,
-.file-list-mode row {
+.file-list-mode row,
+.preview-archive-list row {
   background: transparent;
   color: @theme_text;
   border-radius: 6px;
+  transition: color 160ms ease-out;
+}
+
+.file-list row,
+.file-list-mode row {
   margin: 1px 8px;
   padding: 0;
-  transition: background 160ms ease-out, color 160ms ease-out;
 }
 
 .file-list row {
@@ -4034,10 +4031,11 @@ textview > popover.menu button.model:focus-visible {
 }
 
 .file-row,
-.list-row {
+.list-row,
+.preview-archive-row {
   outline: 1px solid transparent;
   outline-offset: -1px;
-  transition: background 220ms ease-out, color 180ms ease-out, outline-color 220ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
+  transition: color 180ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
 }
 
 .icons-card {
@@ -4045,8 +4043,12 @@ textview > popover.menu button.model:focus-visible {
   outline-offset: -1px;
 }
 
-.file-row {
+.file-row,
+.preview-archive-row {
   border-radius: 6px;
+}
+
+.file-row {
   color: @theme_text;
   min-height: 26px;
   padding: 0 4px;
@@ -4258,6 +4260,12 @@ textview > popover.menu button.model:focus-visible {
   box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
 }
 
+.column-peek-target.file-drop-zone:drop(active),
+.columns > .drop-destination .column-drop-veil {
+  background: alpha(@theme_accent, 0.18);
+  box-shadow: inset 0 0 0 2px @theme_accent;
+}
+
 .file-list row:hover:not(:selected),
 .file-list-mode row:hover:not(:selected) {
   background: alpha(@theme_accent, 0.15);
@@ -4360,7 +4368,8 @@ textview > popover.menu button.model:focus-visible {
 }
 
 .file-list row:selected,
-.file-list-mode row:selected {
+.file-list-mode row:selected,
+.preview-archive-list row:selected {
   background: alpha(@theme_accent, 0.22);
   color: @theme_text;
   outline: none;
@@ -4371,14 +4380,24 @@ textview > popover.menu button.model:focus-visible {
   color: @theme_text;
 }
 
-.file-list row:focus-visible {
+/* Archive selection already draws a cursor; suppress GTK's second focus ring. */
+.file-list row:focus-visible,
+.file-list-mode row:focus-visible,
+.preview-archive-list row:focus-visible {
   outline: none;
 }
 
 .keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
-.file-list row:focus-within .file-row.filter-result {
+.file-list row:focus-within .file-row.filter-result,
+.preview-archive-list row:selected .preview-archive-row {
   outline: 1px solid @theme_accent;
   outline-offset: -1px;
+}
+
+/* The archive preview shows its own cursor; the listing keeps only the selection fill. */
+.keyboard-navigation.archive-preview .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
+.keyboard-navigation.archive-preview .file-list row:focus-within .file-row.filter-result {
+  outline: none;
 }
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
@@ -4586,32 +4605,6 @@ entry.theme-search {
   background: @theme_bg;
 }
 
-.theme-catalog-scroll scrollbar,
-.theme-catalog-scroll scrollbar:hover,
-.theme-catalog-scroll scrollbar range,
-.theme-catalog-scroll scrollbar trough {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  outline: none;
-}
-
-.theme-catalog-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 3px solid transparent;
-  border-radius: 6px;
-  min-width: 8px;
-  min-height: 32px;
-}
-
-.theme-catalog-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.theme-catalog-scroll scrollbar slider:active {
-  background: @theme_accent;
-}
-
 .theme-icons > flowboxchild,
 .theme-color-fields > flowboxchild {
   background: transparent;
@@ -4762,26 +4755,6 @@ entry.theme-search {
 .settings-content-scroll,
 .settings-content-scroll viewport {
   background: transparent;
-}
-
-.settings-content-scroll scrollbar {
-  background: transparent;
-}
-
-.settings-content-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 3px solid transparent;
-  border-radius: 6px;
-  min-width: 8px;
-  min-height: 32px;
-}
-
-.settings-content-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.settings-content-scroll scrollbar slider:active {
-  background: @theme_accent;
 }
 
 .keybinding-row {
@@ -4971,8 +4944,12 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .file-icons > child:focus-visible .icons-card-icon-frame {
-  outline: 1px solid @theme_accent;
-  outline-offset: -1px;
+  outline: none;
+}
+
+.keyboard-navigation .file-icons > child:focus-visible .icons-card-icon-frame {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .icons-card {
@@ -5163,6 +5140,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   opacity: 0.52;
 }
 
+.file-list-mode row:focus-visible,
 .keyboard-navigation .file-list-mode row:focus-within {
   outline: 1px solid @theme_accent;
   outline-offset: -1px;
@@ -5473,24 +5451,6 @@ two-column presentation. */
   opacity: 1;
 }
 
-.settings-dialog .segmented-control-option {
-  min-height: 20px;
-  padding: 7px 12px;
-  background: @theme_muted;
-  color: @theme_dim_text;
-  border-color: alpha(@theme_border, 0.8);
-}
-
-.settings-dialog .segmented-control-option:checked {
-  background: @theme_highlight;
-  color: @theme_accent;
-}
-
-.settings-dialog .segmented-control-option:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
-}
-
 .settings-library-toolbar {
   margin-top: 36px;
   margin-bottom: 10px;
@@ -5701,11 +5661,6 @@ two-column presentation. */
   border-top: 1px solid alpha(@theme_border, 0.55);
 }
 
-.settings-content-scroll scrollbar slider {
-  min-width: 6px;
-  border-width: 2px;
-}
-
 .settings-dialog.compact .settings-preferences {
   padding: 18px 20px;
 }
@@ -5728,23 +5683,12 @@ two-column presentation. */
   margin-right: 0;
 }
 
-.settings-dialog.compact .activation-option {
+.click-activation-row.compact .activation-option {
   margin-bottom: 8px;
 }
 
-.settings-dialog.compact .click-activation-row {
+.click-activation-row.compact {
   padding: 10px;
-}
-
-.settings-dialog .click-activation-control .segmented-control-option {
-  font-size: 0.9375em;
-  min-width: 56px;
-  min-height: 20px;
-  padding: 7px 12px;
-}
-
-.settings-dialog .click-activation-control .segmented-control-option label {
-  min-height: 0;
 }
 
 .settings-dialog .activation-header label {
@@ -5760,14 +5704,6 @@ two-column presentation. */
 
 .settings-dialog .settings-nav-active image {
   -gtk-icon-filter: none;
-}
-
-.settings-content-scroll scrollbar,
-.settings-content-scroll scrollbar range,
-.settings-content-scroll scrollbar trough {
-  background: transparent;
-  border: none;
-  box-shadow: none;
 }
 
 .settings-dialog .theme-page > .menu-heading:not(:first-child) {
@@ -5806,10 +5742,6 @@ two-column presentation. */
 
 .settings-dialog .settings-navigation.compact > button {
   border: 1px solid transparent;
-}
-
-.settings-dialog .segmented-control-option.not-first:checked {
-  border-left-color: alpha(@theme_border, 0.8);
 }
 
 .settings-release-expander {
@@ -5858,10 +5790,6 @@ two-column presentation. */
 
 .settings-search-icon {
   -gtk-icon-filter: saturate(0) opacity(0.65);
-}
-
-.settings-dialog .segmented-control-option:checked {
-  font-weight: 600;
 }
 
 .settings-dialog .settings-library-toolbar .menu-heading {
@@ -6118,14 +6046,12 @@ popover.jobs-popover.background {
 
 .settings-action-button,
 .settings-action-library-button > button {
-  background: alpha(@theme_highlight, 0.35);
-  border: 1px solid alpha(@theme_border, 0.4);
-  border-radius: 4px;
-  box-shadow: none;
-  color: @theme_text;
-  min-height: 26px;
   min-width: 0;
   padding: 0 8px;
+}
+
+.settings-actions-create-button {
+  padding: 4px 10px;
 }
 
 .settings-action-button.settings-action-icon-button {
@@ -6133,32 +6059,21 @@ popover.jobs-popover.background {
   padding: 0;
 }
 
-.settings-action-button:hover,
-.settings-action-library-button > button:hover {
-  background: @theme_highlight;
-  border-color: @theme_accent;
-}
-
-.settings-action-button:active,
-.settings-action-library-button > button:active,
-.settings-action-library-button > button:checked {
-  background: alpha(@theme_accent, 0.22);
-}
-
-.settings-action-button:focus-visible,
-.settings-action-library-button > button:focus-visible {
-  outline: 2px solid @theme_accent;
-  outline-offset: -2px;
-}
-
 .settings-action-button.danger {
   color: @theme_danger;
   border-color: alpha(@theme_danger, 0.4);
 }
 
-.settings-action-button.danger:hover {
+.settings-action-button.danger:hover,
+.settings-action-button.danger:active {
   background: alpha(@theme_danger, 0.14);
   border-color: @theme_danger;
+  color: @theme_danger;
+}
+
+.settings-action-button.danger:focus-visible {
+  border-color: @theme_danger;
+  outline-color: @theme_danger;
 }
 
 .settings-action-problem {
@@ -6390,40 +6305,6 @@ popover.settings-action-library > contents {
   opacity: 0.4;
 }
 
-.settings-action-dialog .segmented-control {
-  background: alpha(@theme_bg, 0.25);
-  border: 1px solid alpha(@theme_border, 0.4);
-  border-radius: 6px;
-  padding: 2px;
-}
-
-.settings-action-dialog .segmented-control-option {
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  min-height: 26px;
-  padding: 2px 10px;
-  color: @theme_dim_text;
-}
-
-.settings-action-dialog .segmented-control-option.not-first:checked {
-  border-left: none;
-}
-
-.settings-action-dialog .segmented-control-option:hover {
-  background: alpha(@theme_highlight, 0.65);
-  color: @theme_text;
-}
-
-.settings-action-dialog .segmented-control-option:checked {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_text;
-}
-
-.settings-action-dialog .segmented-control-option:active {
-  background: alpha(@theme_accent, 0.3);
-}
-
 .settings-action-icon-popover > contents {
   padding: 8px;
 }
@@ -6489,27 +6370,6 @@ popover.settings-action-library > contents {
 .settings-action-script textview text selection {
   background: alpha(@theme_accent, 0.3);
   color: @theme_text;
-}
-
-.settings-action-script scrollbar,
-.settings-action-script scrollbar trough {
-  background: transparent;
-}
-
-.settings-action-script scrollbar slider {
-  min-width: 6px;
-  min-height: 6px;
-  background: alpha(@theme_dim_text, 0.5);
-  border: none;
-  border-radius: 6px;
-}
-
-.settings-action-script scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.settings-action-script scrollbar slider:active {
-  background: @theme_accent;
 }
 
 .action-dialog.modal-constrained,

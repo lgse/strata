@@ -16,7 +16,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use ashpd::{
@@ -45,6 +45,7 @@ const MAX_SAVE_FILES: usize = 256;
 const MAX_STRING_BYTES: usize = 4_096;
 const MAX_FILENAME_BYTES: usize = 255;
 const PATH_IO_TIMEOUT: Duration = Duration::from_secs(3);
+const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug)]
 pub(crate) enum ChooserKind {
@@ -68,31 +69,65 @@ pub(crate) struct ChooserRequest {
     pub choices: Vec<Choice>,
 }
 
+struct RequestState {
+    active: HashMap<String, Arc<AtomicBool>>,
+    last_activity: Instant,
+    shutting_down: bool,
+}
+
+impl Default for RequestState {
+    fn default() -> Self {
+        Self {
+            active: HashMap::new(),
+            last_activity: Instant::now(),
+            shutting_down: false,
+        }
+    }
+}
+
 #[derive(Default)]
 struct RequestTracker {
-    active: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    state: Mutex<RequestState>,
 }
 
 impl RequestTracker {
+    fn begin_shutdown_if_idle(&self, now: Instant) -> bool {
+        let mut state = self.state.lock().expect("request tracker poisoned");
+        if state.active.is_empty()
+            && now.saturating_duration_since(state.last_activity) >= IDLE_TIMEOUT
+        {
+            state.shutting_down = true;
+            true
+        } else {
+            false
+        }
+    }
+
     fn begin(self: &Arc<Self>, token: String) -> ashpd::backend::Result<TrackedRequest> {
         if token.len() > MAX_STRING_BYTES {
             return Err(PortalError::InvalidArgument(
                 "file chooser request token is too long".into(),
             ));
         }
-        let mut active = self.active.lock().expect("request tracker poisoned");
-        if active.contains_key(&token) {
+        let mut active = self.state.lock().expect("request tracker poisoned");
+        if active.shutting_down {
+            return Err(PortalError::Failed(
+                "file chooser backend is shutting down".into(),
+            ));
+        }
+        if active.active.contains_key(&token) {
             return Err(PortalError::InvalidArgument(
                 "file chooser request token is already active".into(),
             ));
         }
-        if active.len() >= MAX_ACTIVE_REQUESTS {
+        if active.active.len() >= MAX_ACTIVE_REQUESTS {
             return Err(PortalError::Failed(
                 "too many active file chooser requests".into(),
             ));
         }
         let cancelled = Arc::new(AtomicBool::new(false));
-        active.insert(token.clone(), cancelled.clone());
+        active.active.insert(token.clone(), cancelled.clone());
+        active.last_activity = Instant::now();
         Ok(TrackedRequest {
             tracker: self.clone(),
             token,
@@ -102,9 +137,10 @@ impl RequestTracker {
 
     fn cancel(&self, token: &str) -> bool {
         let Some(cancelled) = self
-            .active
+            .state
             .lock()
             .expect("request tracker poisoned")
+            .active
             .get(token)
             .cloned()
         else {
@@ -114,12 +150,14 @@ impl RequestTracker {
     }
 
     fn finish(&self, token: &str, cancelled: &Arc<AtomicBool>) {
-        let mut active = self.active.lock().expect("request tracker poisoned");
-        if active
+        let mut state = self.state.lock().expect("request tracker poisoned");
+        if state
+            .active
             .get(token)
             .is_some_and(|current| Arc::ptr_eq(current, cancelled))
         {
-            active.remove(token);
+            state.active.remove(token);
+            state.last_activity = Instant::now();
         }
     }
 }
@@ -175,6 +213,17 @@ pub(crate) fn run() -> glib::ExitCode {
     let _owner = context.acquire().expect("portal main context is available");
     let main_loop = glib::MainLoop::new(None, false);
     let service_loop = main_loop.clone();
+    let backend = FileChooserBackend::default();
+    let requests = backend.requests.clone();
+    let idle_loop = main_loop.clone();
+    glib::timeout_add_local(Duration::from_secs(10), move || {
+        if requests.begin_shutdown_if_idle(Instant::now()) {
+            idle_loop.quit();
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
     let service_failed = Arc::new(AtomicBool::new(false));
     let failed = service_failed.clone();
     std::thread::spawn(move || {
@@ -184,7 +233,7 @@ pub(crate) fn run() -> glib::ExitCode {
             let connection = zbus::connection::Builder::session()?
                 .serve_at(
                     "/org/freedesktop/portal/desktop",
-                    dbus::FileChooserInterface::new(),
+                    dbus::FileChooserInterface::new(backend),
                 )?
                 .name(BACKEND_NAME)?
                 .build()

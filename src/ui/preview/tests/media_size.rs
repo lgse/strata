@@ -302,7 +302,7 @@ fn media_requests_use_the_opening_target_and_each_windows_resized_pane() {
                 content.set_end_child(Some(&browser.widget()));
                 let split = gtk::Paned::new(gtk::Orientation::Horizontal);
                 split.set_start_child(Some(&content));
-                drawer.attach_split(&split, &content, &browser);
+                drawer.attach_split(&split, &content, &browser, None);
                 let window = gtk::Window::builder()
                     .default_width(window_width)
                     .default_height(800)

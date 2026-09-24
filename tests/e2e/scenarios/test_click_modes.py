@@ -70,11 +70,12 @@ def test_keyboard_selection_still_works_in_single_click_mode(strata, mode):
     strata.wait(lambda: strata.focused_name() is not None, "keyboard focus")
     focused = strata.focused_name()
 
+    root = strata.fixture.root.name
     strata.wait(
-        lambda: strata.selected_names() == [focused],
+        lambda: strata.selected_names(root) == [focused],
         "the keyboard to select without opening anything",
     )
-    assert strata.pane().name == strata.fixture.root.name, (
+    assert strata.current_directory() == root, (
         "moving the keyboard cursor must not navigate in single-click mode"
     )
 

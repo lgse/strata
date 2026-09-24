@@ -24,7 +24,13 @@ pub(in crate::ui) fn build_sidebar(
     local_only: bool,
 ) -> SidebarView {
     let shell = SidebarShell::new();
-    let state = SidebarState::new(shell.places, view, preferences, local_only);
+    let state = SidebarState::new(
+        shell.places,
+        view,
+        preferences,
+        local_only,
+        shell.update_label.clone(),
+    );
     state.bind_order();
     state.observe_navigation_and_trash();
     let (handlers, mount_handler) = connect_device_changes(&state);
@@ -32,6 +38,14 @@ pub(in crate::ui) fn build_sidebar(
     // Device discovery remains deferred to the window's first-paint callback.
     state.append_static_places();
     state.sync_active_place();
+    let release_watch = {
+        let weak = Rc::downgrade(&state);
+        super::device_release::watch_sidebars(move || {
+            if let Some(state) = weak.upgrade() {
+                state.rebuild();
+            }
+        })
+    };
     SidebarView {
         widget: shell.widget.upcast(),
         state,
@@ -41,6 +55,7 @@ pub(in crate::ui) fn build_sidebar(
         handlers: RefCell::new(handlers),
         mount_handler: RefCell::new(Some(mount_handler)),
         recent_setting_handler: RefCell::new(recent_setting_handler),
+        release_watch,
     }
 }
 
@@ -76,12 +91,10 @@ impl SidebarShell {
             .child(&places)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .width_request(SIDEBAR_WIDTH)
             .vexpand(true)
             .build();
         scroller.add_css_class("sidebar-scroll");
-        scroller.add_css_class("fixed-scrollbar");
         let (update_area, update_notice, update_label) = update_notice();
         let widget = gtk::Box::new(gtk::Orientation::Vertical, 0);
         widget.add_css_class("sidebar-shell");
@@ -131,6 +144,7 @@ impl SidebarState {
         view: BrowserView,
         preference_manager: Rc<PreferenceManager>,
         local_only: bool,
+        update_label: gtk::Label,
     ) -> Rc<Self> {
         let volume_monitor = gio::VolumeMonitor::get();
         let place_order = resolve_place_order(&preference_manager.sidebar_order());
@@ -156,6 +170,9 @@ impl SidebarState {
             pending_scroll: Cell::new(None),
             rebuild_queued: Cell::new(false),
             scroll_restore_queued: Cell::new(false),
+            rail: Cell::new(false),
+            saved_width: Cell::new(None),
+            update_label,
         })
     }
 

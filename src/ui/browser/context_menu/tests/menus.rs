@@ -480,7 +480,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     capture_menu(&menu, &format!("{mode:?}-{place}-multiple"));
                     assert_actions(
                         &menu,
-                        &["Copy", "Duplicate", "Copy paths", "Copy to…"],
+                        &["Copy", "Duplicate", "Copy paths", "Copy to…", "Properties"],
                         &["Rename", "Print", "Open file location"],
                     );
                     if in_trash {
@@ -568,7 +568,6 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     view.keyboard_navigation();
                     if mode == BrowserMode::Columns {
                         let columns = view.state.columns.borrow();
-                        assert_eq!(columns[0].destination_hint.label().is_empty(), in_trash);
                         assert_eq!(
                             columns[0].shell.has_css_class("destination-column"),
                             !in_trash
@@ -629,7 +628,6 @@ fn recent_background_menu_rejects_physical_directory_actions() {
                 assert!(!view.new_entry_is_active());
                 if mode == BrowserMode::Columns {
                     let columns = view.state.columns.borrow();
-                    assert!(columns[0].destination_hint.label().is_empty());
                     assert!(!columns[0].shell.has_css_class("destination-column"));
                 }
                 view.browser().clear_observer();

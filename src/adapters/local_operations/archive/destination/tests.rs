@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{ExtractNameResolver, ExtractionDestination, validated_archive_path};
+use super::{ExtractNameResolver, ExtractionDestination, sanitized_archive_path};
 use std::{
     error::Error,
     ffi::OsString,
@@ -11,14 +11,15 @@ use std::{
 };
 
 #[test]
-fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dyn Error>> {
-    for path in [
+fn archive_paths_are_sanitized_to_confined_relative_paths() -> Result<(), Box<dyn Error>> {
+    for name in [
         "",
         ".",
         "./",
         "././",
-        "../marker",
-        "safe/../marker",
+        "..",
+        "safe/..",
+        "safe/../..",
         "/tmp/marker",
         "\\tmp\\marker",
         "C:\\tmp\\marker",
@@ -27,12 +28,43 @@ fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dy
         "\\\\server\\share\\marker",
         "//server/share/marker",
     ] {
-        assert!(validated_archive_path(path).is_err(), "accepted {path:?}");
+        assert!(sanitized_archive_path(name).is_err(), "accepted {name:?}");
     }
-    assert_eq!(
-        validated_archive_path("folder/./nested//item.txt")?,
-        Path::new("folder/nested/item.txt")
+    for (name, expected) in [
+        ("../marker", "marker"),
+        ("safe/../marker", "marker"),
+        ("safe/../../marker", "marker"),
+        ("safe\\..\\..\\marker", "marker"),
+        ("folder/./nested//item.txt", "folder/nested/item.txt"),
+    ] {
+        assert_eq!(
+            sanitized_archive_path(name)?,
+            Path::new(expected),
+            "{name:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn bundling_reports_failures_without_discarding_extracted_files() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = ExtractionDestination::open(root.path())?;
+    fs::write(root.path().join("first.txt"), b"first")?;
+    let roots = [PathBuf::from("first.txt"), PathBuf::from("missing.txt")];
+    let error = destination
+        .bundle_roots(&format!("{}.zip", "a".repeat(256)), &roots)
+        .expect_err("overlong bundle name must fail");
+    assert!(
+        error.contains("Could not create extraction folder"),
+        "{error}"
     );
+    assert_eq!(fs::read(root.path().join("first.txt"))?, b"first");
+    let error = destination
+        .bundle_roots("bundle.zip", &roots)
+        .expect_err("missing extracted root must fail");
+    assert!(error.contains("Could not bundle `missing.txt`"), "{error}");
+    assert_eq!(fs::read(root.path().join("bundle/first.txt"))?, b"first");
     Ok(())
 }
 
@@ -55,6 +87,19 @@ fn pinned_destination_survives_path_replacement() -> Result<(), Box<dyn Error>> 
     assert!(external.read_dir()?.next().is_none());
     destination.remove_file(&created)?;
     assert!(!moved.join(&created).exists());
+    let (mut second, _) = destination.create_file(Path::new("second.txt"))?;
+    second.write_all(b"second")?;
+    drop(second);
+    assert_eq!(
+        destination.bundle_roots(
+            "bundle.zip",
+            &[PathBuf::from("nested"), PathBuf::from("second.txt")]
+        )?,
+        Some("bundle".to_owned())
+    );
+    assert!(moved.join("bundle/nested").is_dir());
+    assert_eq!(fs::read(moved.join("bundle/second.txt"))?, b"second");
+    assert!(external.read_dir()?.next().is_none());
     Ok(())
 }
 

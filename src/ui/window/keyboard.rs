@@ -252,6 +252,7 @@ impl Dispatcher {
             .or_else(|| self.video_controls(&event))
             .or_else(|| self.sidebar_commands(browser, &event))
             .or_else(|| self.context_menu_command(&event))
+            .or_else(|| self.properties_command(&event))
             .or_else(|| {
                 // Search rows own navigation; directory commands must not act on hidden selections.
                 if self.view.selected_search_results().is_some()
@@ -273,8 +274,21 @@ impl Dispatcher {
                     None
                 }
             })
+            .or_else(|| {
+                if event.key == Key::Escape
+                    && event.without(
+                        Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK,
+                    )
+                    && self.preview.password_has_focus(event.focused.as_ref())
+                {
+                    self.dismiss_preview_or_selection(browser)
+                } else {
+                    None
+                }
+            })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
+            .or_else(|| self.archive_navigation(&event))
             .or_else(|| self.focus_navigation(browser, &mut event))
             .or_else(|| self.dismissal(browser, &event))
             .or_else(|| self.item_navigation(browser, &event))
@@ -314,6 +328,15 @@ impl Dispatcher {
 
     fn arrows_scoped_to_content(&self) -> bool {
         self.type_to_search.preferences.arrow_navigation_scoped()
+    }
+
+    fn enter_sidebar(&self, event: &KeyEvent) {
+        let previous = self
+            .view
+            .item_view_has_focus()
+            .then(|| event.focused.clone())
+            .flatten();
+        self.sidebar.enter(&previous);
     }
 }
 

@@ -306,7 +306,6 @@ impl TableState {
             .propagate_natural_height(!fill_height)
             .vexpand(fill_height)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         text_selection.install(&view, &scroll);
         let weak = Rc::downgrade(self);
         let weak_columns = columns

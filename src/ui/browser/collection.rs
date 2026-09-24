@@ -367,6 +367,11 @@ pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterCha
     }
 }
 
+pub(crate) fn filter_placeholder(count: usize) -> String {
+    let noun = if count == 1 { "item" } else { "items" };
+    format!("Filter {count} {noun}…")
+}
+
 pub(crate) fn notify_filter_query(
     filter: &gtk::CustomFilter,
     query: &RefCell<String>,
@@ -637,10 +642,11 @@ pub(crate) fn apply_selection_plan(
             selection.select_range(position, count, true);
         }
         SelectionPlan::Items(items) => {
-            selection.unselect_all();
+            let selected = gtk::Bitset::new_empty();
             for position in items {
-                selection.select_item(*position, false);
+                selected.add(*position);
             }
+            selection.set_selection(&selected, &gtk::Bitset::new_range(0, n_items));
         }
     }
 }

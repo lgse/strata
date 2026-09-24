@@ -40,7 +40,8 @@ use super::{
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::BrowserMode,
     controls::{
-        ModalTone, form_check_button, form_entry, form_label, menu_option, message_dialog_layout,
+        ModalTone, focus_button, form_check_button, form_entry, form_label, menu_option,
+        message_dialog_layout,
     },
     preferences::PreferenceManager,
     preview::{PreviewDrawer, preview_target},
@@ -738,7 +739,7 @@ impl ChooserState {
             }
         });
         layer.add_controller(escape);
-        layout.cancel.grab_focus();
+        focus_button(&layout.confirm);
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {
@@ -966,7 +967,7 @@ fn build_chooser_with_source(
     content.set_wide_handle(false);
     content.set_position(SIDEBAR_WIDTH);
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
-    super::window::bind_sidebar_text_size(&content);
+    super::window::bind_sidebar_text_size(&content, &sidebar);
     content.set_shrink_start_child(false);
     content.set_resize_start_child(false);
     content.set_start_child(Some(&sidebar.widget));
@@ -988,7 +989,9 @@ fn build_chooser_with_source(
     preview_split.set_end_child(Some(&preview.widget()));
     preview_split.set_position(i32::MAX);
     preview_split.set_vexpand(true);
-    preview.attach_split(&preview_split, &content, &view);
+    preview.attach_split(&preview_split, &content, &view, Some(&sidebar));
+    view.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
+    view.add_marquee_origin(&preview.widget(), gtk::PackType::End);
 
     let details = gtk::Box::new(gtk::Orientation::Vertical, 8);
     details.add_css_class("chooser-details");
@@ -1856,6 +1859,18 @@ fn install_shortcuts(
             && key == gtk::gdk::Key::Down
         {
             browser.extend_selection(1);
+            return glib::Propagation::Stop;
+        }
+        if state.view.item_view_has_focus()
+            && let Some(query) = super::window::type_to_search_query(key, modifiers)
+            && preferences.type_to_search()
+            && match query {
+                super::window::TypeToSearchQuery::Empty => state.view.show_filter(),
+                super::window::TypeToSearchQuery::Character(character) => {
+                    state.view.show_filter_with_query(&character.to_string())
+                }
+            }
+        {
             return glib::Propagation::Stop;
         }
         if !shift
