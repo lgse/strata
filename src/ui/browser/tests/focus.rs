@@ -21,6 +21,34 @@ fn settle() {
     }
 }
 
+fn mapped_popover(widget: &gtk::Widget) -> Option<gtk::Popover> {
+    if let Some(popover) = widget.downcast_ref::<gtk::Popover>()
+        && popover.is_mapped()
+    {
+        return Some(popover.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(popover) = mapped_popover(&widget) {
+            return Some(popover);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+fn wait_for_mapped_popover(root: &gtk::Widget) -> gtk::Popover {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(popover) = mapped_popover(root) {
+            return popover;
+        }
+        assert!(Instant::now() < deadline, "context menu did not open");
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 #[test]
 fn background_splices_preserve_column_multiselection_and_pending_properties() {
     crate::test_support::gtk_test(
@@ -459,7 +487,6 @@ fn hovering_another_column_preserves_keyboard_navigation_from_header() {
 }
 
 #[test]
-#[ignore = "Native-menu ownership regression: https://github.com/lgse/strata/issues/1154"]
 fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
     crate::test_support::gtk_test(
         "ui::browser::tests::focus::context_menu_keeps_its_column_target_through_focus_and_hover_changes",
@@ -534,17 +561,7 @@ fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
                             .find(|gesture| gesture.button() == 3)
                             .expect("context gesture");
                         gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
-                        let popover = {
-                            let mut child = overlay.first_child();
-                            loop {
-                                let widget = child.unwrap_or_else(|| panic!("open context menu: chooser={chooser}, previous={previous}, item={item}"));
-                                child = widget.next_sibling();
-                                if let Ok(popover) = widget.downcast::<gtk::Popover>() {
-                                    break popover;
-                                }
-                            }
-                        };
-                        wait_until(|| popover.is_mapped());
+                        let popover = wait_for_mapped_popover(overlay.upcast_ref());
                         for hovered in [None, Some(previous)] {
                             view.state.hovered_column.set(hovered);
                             view.state.refresh_destination_style();
@@ -720,105 +737,6 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
 
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
-fn horizontal_scrollbar_stays_below_destination_hints() {
-    const CHILD: &str = "STRATA_DESTINATION_SCROLLBAR_GTK_CHILD";
-    if std::env::var_os(CHILD).is_none() {
-        let sandbox = tempfile::tempdir().expect("isolated preferences");
-        let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
-            .args([
-                "--exact",
-                "ui::browser::tests::focus::horizontal_scrollbar_stays_below_destination_hints",
-                "--nocapture",
-                "--ignored",
-            ])
-            .env(CHILD, "1")
-            .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
-            .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
-            .env("XDG_DATA_HOME", sandbox.path().join("data"))
-            .status()
-            .expect("GTK test starts");
-        assert!(status.success());
-        return;
-    }
-    if gtk::init().is_err() {
-        return;
-    }
-    crate::assets::prepare().expect("bundled assets");
-    crate::assets::register_icon_theme();
-    let fixture = tempfile::tempdir().expect("directory fixture");
-    std::fs::create_dir_all(fixture.path().join("Child/Grandchild")).expect("nested folders");
-    let view = BrowserView::new(
-        Rc::new(crate::adapters::LocalFileSource),
-        PeekBehavior::default(),
-    );
-    let browser = view.browser();
-    let window = gtk::Window::builder()
-        .child(&view.widget())
-        .default_width(640)
-        .default_height(500)
-        .resizable(false)
-        .build();
-    window.present();
-    browser.navigate(Location::local(fixture.path()));
-    let scroller = &view.state.scroller;
-    let scrollbar = scroller.hscrollbar();
-    let adjustment = scroller.hadjustment();
-    wait_until(|| {
-        browser.column_snapshot(0).is_some_and(|s| !s.loading) && adjustment.page_size() > 0.0
-    });
-    assert!(!scroller.is_overlay_scrolling());
-    assert!(
-        !scrollbar.is_mapped(),
-        "no scrollbar is needed for a single fitting pane"
-    );
-    for depth in 0..2 {
-        browser.select(depth, 0);
-        browser.enter_focused_directory();
-        wait_until(|| {
-            browser
-                .column_snapshot(depth + 1)
-                .is_some_and(|s| !s.loading)
-        });
-    }
-    view.keyboard_navigation();
-    browser.focus_active();
-    wait_until(|| {
-        scrollbar.is_mapped()
-            && scrollbar.height() > 0
-            && view.state.columns.borrow()[2].destination_hint.height() > 0
-    });
-    assert_eq!(
-        view.state.columns.borrow()[2].destination_hint.text(),
-        "Keyboard · Paste here"
-    );
-    scrollbar.add_css_class("hovering");
-    scrollbar.add_css_class("dragging");
-    let extent = adjustment.upper() - adjustment.page_size();
-    assert!(extent > 0.0);
-    for value in [adjustment.lower(), extent / 2.0, extent] {
-        adjustment.set_value(value);
-        let bar = scrollbar
-            .compute_bounds(scroller)
-            .expect("scrollbar bounds");
-        for column in view.state.columns.borrow().iter() {
-            let hint = column
-                .destination_hint
-                .compute_bounds(scroller)
-                .expect("hint bounds");
-            assert!(
-                hint.y() + hint.height() <= bar.y() + 0.5,
-                "the scrollbar must not overlap a destination label"
-            );
-        }
-    }
-    browser.close_column(1);
-    wait_until(|| !scrollbar.is_mapped());
-    window.destroy();
-    browser.clear_observer();
-}
-
-#[test]
-#[ignore = "requires a mapped GTK window; run this test alone"]
 fn pane_ownership_routes_commands_and_preserves_selection() {
     const CHILD: &str = "STRATA_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -932,9 +850,10 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     view.state.refresh_destination_style();
     assert_eq!(view.state.destination_depth(), Some(0));
     assert_column_header_actions(&view, 0);
-    assert_eq!(
-        view.state.columns.borrow()[0].destination_hint.text(),
-        "Pointer · Paste here"
+    assert!(
+        view.state.columns.borrow()[0]
+            .shell
+            .has_css_class("destination-column")
     );
     view.keyboard_navigation();
     assert_column_header_actions(&view, 1);
@@ -978,9 +897,10 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
         .sum::<usize>();
     assert_eq!(cursors, 1);
     assert_eq!(view.state.destination_depth(), Some(1));
-    assert_eq!(
-        view.state.columns.borrow()[1].destination_hint.text(),
-        "Keyboard · Paste here"
+    assert!(
+        view.state.columns.borrow()[1]
+            .shell
+            .has_css_class("destination-column")
     );
 
     let surface = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1049,6 +969,135 @@ fn background_click_keeps_the_scrolled_column_in_place() {
                 adjustment.value()
             );
             window.destroy();
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
+fn entering_mirrored_column_selects_first_visible_entry() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::entering_mirrored_column_selects_first_visible_entry",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("folder")).expect("folder");
+            std::fs::create_dir(fixture.path().join("folder/.hidden")).expect("hidden directory");
+            std::fs::write(fixture.path().join("folder/visible.txt"), "visible")
+                .expect("visible file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            view.keyboard_navigation();
+            browser.select(0, 0);
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            assert_eq!(browser.active_depth(), Some(0));
+
+            browser.enter_focused_directory();
+            assert_eq!(browser.active_depth(), Some(1));
+            assert_eq!(
+                browser
+                    .focused_item()
+                    .map(|(_, _, entry)| entry.display_name),
+                Some("visible.txt".into())
+            );
+            assert_eq!(browser.selected_entries().len(), 1);
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
+fn column_keyboard_selection_mirrors_folder_and_closes_on_file() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::column_keyboard_selection_mirrors_folder_and_closes_on_file",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("AFolder")).expect("folder a");
+            std::fs::create_dir(fixture.path().join("BFolder")).expect("folder b");
+            std::fs::write(fixture.path().join("x.txt"), "x").expect("fixture file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let previews = Rc::new(RefCell::new(Vec::new()));
+            let added = Rc::new(RefCell::new(Vec::new()));
+            browser.observe({
+                let previews = previews.clone();
+                let added = added.clone();
+                move |event| match event {
+                    BrowserEvent::PreviewRequested { entry } => {
+                        previews.borrow_mut().push(entry.location.clone());
+                    }
+                    BrowserEvent::ColumnAdded { depth, location } => {
+                        added.borrow_mut().push((*depth, location.clone()));
+                    }
+                    _ => {}
+                }
+            });
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            view.keyboard_navigation();
+            let position = |name: &str| {
+                browser
+                    .with_entries(
+                        0,
+                        0..browser.column_snapshot(0).expect("root column").count,
+                        |entries| entries.iter().position(|entry| entry.display_name == name),
+                    )
+                    .flatten()
+                    .expect("fixture entry")
+            };
+
+            browser.select(0, position("AFolder"));
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            assert_eq!(
+                browser.location_at(1),
+                Some(Location::local(fixture.path().join("AFolder")))
+            );
+            assert_eq!(
+                browser.active_depth(),
+                Some(0),
+                "mirroring must keep the parent column active"
+            );
+
+            browser.select(0, position("BFolder"));
+            wait_until(|| {
+                browser.location_at(1) == Some(Location::local(fixture.path().join("BFolder")))
+            });
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+
+            browser.select(0, position("x.txt"));
+            wait_until(|| !previews.borrow().is_empty());
+            assert_eq!(
+                previews.borrow().as_slice(),
+                &[Location::local(fixture.path().join("x.txt"))],
+                "a focused file opens Quick Preview"
+            );
+            wait_until(|| browser.column_snapshot(1).is_none());
+
+            browser.select(0, position("AFolder"));
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            browser.close_column(1);
+            settle();
+            assert!(
+                browser.column_snapshot(1).is_none(),
+                "closing a pane must not reopen it through the mirror"
+            );
+
+            added.borrow_mut().clear();
+            browser.select(0, position("BFolder"));
+            browser.select(0, position("AFolder"));
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            assert_eq!(
+                added.borrow().as_slice(),
+                &[(1, Location::local(fixture.path().join("AFolder")))],
+                "fast selection changes must coalesce into the landing folder"
+            );
             browser.clear_observer();
         },
     );

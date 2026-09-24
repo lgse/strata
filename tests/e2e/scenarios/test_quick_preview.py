@@ -19,6 +19,11 @@ PREVIEW_FIXTURE = {
 
 
 @pytest.fixture
+def root(strata) -> str:
+    return strata.fixture.root.name
+
+
+@pytest.fixture
 def fixture_tree(request):
     """Replaces the shared fixture with file types the preview can render."""
 
@@ -62,6 +67,7 @@ def fixture_tree(request):
         ),
     ],
 )
+@pytest.mark.preferences(single_click_previews=False)
 def test_space_opens_and_closes_the_quick_preview(strata, mode, selection):
     before = strata.entry_names()
     if selection == "keyboard":
@@ -93,14 +99,16 @@ def test_space_opens_and_closes_the_quick_preview(strata, mode, selection):
     bounds = strata.window_bounds()
     strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 320, 320)
     strata.wait(lambda: strata.preview() is None, "the constrained preview to stay hidden")
+    strata.wait_for_focused_entry("notes.txt")
     strata.keyboard.press("End")
     strata.wait_for_selection(["third.txt"])
     bounds = strata.window_bounds()
     strata.keyboard.connection.resize_surface(bounds.width, bounds.height, original.width, original.height)
     strata.wait(lambda: strata.preview_shows("third preview fixture"), "the latest preview to resume")
     bounds = strata.window_bounds()
-    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 640, 480)
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 480, 480)
     strata.wait(lambda: strata.preview() is None, "the preview to suspend again")
+    strata.wait_for_focused_entry("third.txt")
     strata.keyboard.press("space")
     bounds = strata.window_bounds()
     strata.keyboard.connection.resize_surface(bounds.width, bounds.height, original.width, original.height)
@@ -111,6 +119,38 @@ def test_space_opens_and_closes_the_quick_preview(strata, mode, selection):
     strata.pointer.click(strata.preview().find(role="button", name="Close preview (Space)"))
     strata.wait(lambda: strata.preview() is None, "the close button to return to browsing")
     assert strata.selected_names() == ["third.txt"]
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=True)
+def test_columns_keyboard_selection_opens_the_preview(strata, fixture_tree):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.wait(
+        lambda: strata.preview_shows("alpha"),
+        "keyboard selection to open the preview without Space",
+    )
+    strata.keyboard.press(PREVIOUS_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["folder"])
+    strata.wait(lambda: strata.preview() is None, "the folder to hide the preview")
+    strata.keyboard.press(NEXT_ENTRY_KEY["Columns"])
+    strata.wait_for_selection(["data.csv"])
+    strata.wait(lambda: strata.preview_shows("alpha"), "the preview to resume")
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_columns_keyboard_selection_respects_disabled_previews(strata, fixture_tree):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.settle(strata.entry("data.csv"))
+    assert strata.preview() is None
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("alpha"), "Space to open the preview")
+
+
+@pytest.mark.preferences(browser_mode="columns", columns_mirror_selection=False)
+def test_columns_keyboard_selection_stays_put_when_mirror_is_disabled(strata, fixture_tree):
+    strata.select_entry_with_keyboard("folder")
+    strata.wait_for_selection(["folder"])
+    strata.settle(strata.entry("folder"))
+    assert len(strata.containers()) == 1
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -127,9 +167,12 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
     if selection == "keyboard":
         strata.keyboard.press("Down")
     else:
-        result = strata.window.find(name="nested-notes.txt", role="list item")
+        result = strata.search_result("nested-notes.txt")
         assert result is not None
-        strata.pointer.click(result, modifiers=("ctrl",))
+        strata.pointer.right_click(result)
+        strata.wait(strata.context_menu, "the pointer-selected search result menu")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: result.has_state("selected"), "pointer-selected search result")
 
     strata.keyboard.press("space")
     strata.wait(
@@ -144,6 +187,7 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
     assert strata.matches() == ["nested-notes.txt"]
 
 
+@pytest.mark.preferences(single_click_previews=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("selection", ["keyboard", "pointer"])
 def test_preview_follows_the_selection(strata, mode, selection):
@@ -197,6 +241,7 @@ def test_list_preview_keyboard_navigation_preserves_horizontal_scroll(strata, fi
         assert list_scroll_origin() == origin, (origin, list_scroll_origin())
 
 
+@pytest.mark.preferences(single_click_previews=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_preview_follows_extended_selection_without_collapsing_it(strata, mode):
     strata.select_entry_with_keyboard("notes.txt")
@@ -210,21 +255,22 @@ def test_preview_follows_extended_selection_without_collapsing_it(strata, mode):
     assert strata.focused_name() == "page.md"
 
 
+@pytest.mark.preferences(single_click_previews=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode):
+def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode, root):
     strata.select_entry_with_keyboard("data.csv")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("alpha"), "the file preview")
 
     strata.keyboard.press(PREVIOUS_ENTRY_KEY[mode])
 
-    strata.wait_for_selection(["folder"])
+    strata.wait_for_selection(["folder"], root)
     if mode == "Icons":
         strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the folder's reserved preview space")
     else:
         strata.wait(lambda: strata.preview() is None, "the folder to dismiss the preview")
     strata.keyboard.press(NEXT_ENTRY_KEY[mode])
-    strata.wait_for_selection(["data.csv"])
+    strata.wait_for_selection(["data.csv"], root)
     strata.wait(lambda: strata.preview_shows("alpha"), "the still-enabled preview to resume")
 
 
@@ -274,6 +320,7 @@ def test_preview_hides_on_shift_range_folder_focus(strata):
     strata.wait(lambda: strata.preview_shows("alpha"), "preview to resume after the folder")
 
 
+@pytest.mark.preferences(single_click_previews=False)
 def test_preview_renders_markdown(strata, fixture_tree):
     from PIL import Image
 
@@ -314,6 +361,7 @@ def test_preview_renders_markdown(strata, fixture_tree):
     assert strata.preview().find(role="image", description="Mermaid diagram") is None
 
 
+@pytest.mark.preferences(single_click_previews=False)
 def test_markdown_equations_preserve_inline_prose_source_and_fallbacks(strata, fixture_tree):
     fixture_tree.path("page.md").write_text(
         "# Equations\n\nEnergy $E=mc^2$ in prose.\n\n"
@@ -402,7 +450,15 @@ def test_large_table_header_sort_reaches_rows_beyond_old_limits(strata, filename
     preview = strata.preview().screen_bounds()
     strata.pointer.drag_points(start, (end[0], preview.y + preview.height - 12), release=False)
     try:
-        strata.wait(lambda: strata.preview_shows("record-950"), "selection drag to autoscroll through recycled rows")
+        strata.wait(
+            lambda: any(
+                (text := node.text).startswith("record-")
+                and text.removeprefix("record-").isdigit()
+                and int(text.removeprefix("record-")) <= 950
+                for node in strata.preview().find_all(role="label")
+            ),
+            "selection drag to autoscroll through recycled rows",
+        )
     finally:
         strata.pointer.connection.button(1, False)
     strata.keyboard.press("ctrl+c")
@@ -547,7 +603,7 @@ def test_narrow_window_prioritizes_the_last_column_and_restores_the_latest_previ
     strata.wait(last_column_visible, "the entire last column to stay visible")
     column = strata.pane("folder").screen_bounds()
     assert column.x + column.width <= strata.preview().screen_bounds().x
-    resize(640)
+    resize(480)
     strata.wait(lambda: strata.preview() is None, "the preview to yield to browsing")
     strata.keyboard.press("Down")
     strata.wait_for_selection(["nested-notes.txt"])

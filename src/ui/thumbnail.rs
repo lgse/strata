@@ -1423,6 +1423,10 @@ fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
         "mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v" | "mpeg" | "mpg" | "ogv" => {
             Some(ThumbnailKind::Video)
         }
+        // FFmpeg exposes no art stream for tag-only Ogg, Opus or WAV covers.
+        "mp3" | "flac" | "m4a" | "m4b" | "mka" | "aiff" | "aif" | "wma" => {
+            Some(ThumbnailKind::Video)
+        }
         _ => None,
     }
 }

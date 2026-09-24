@@ -94,12 +94,16 @@ fn columns_setup_resets_validation_and_cancel_restores_widgets() {
 
             let field = open_columns_rename(&view, 0);
             let (label, spacer, size) = {
-                let active = view.state.active_rename.borrow();
-                let active = active.as_ref().expect("active Columns rename");
+                let columns = view.state.columns.borrow();
+                let rows = columns[0].bound_rows.borrow();
+                let bound = rows
+                    .iter()
+                    .find(|bound| bound.edit.field == field)
+                    .expect("bound editor");
                 (
-                    active.label.clone(),
-                    active.spacer.clone(),
-                    active.size.clone(),
+                    bound.rename_label.upgrade().expect("label"),
+                    bound.spacer.clone(),
+                    bound.size.clone(),
                 )
             };
             size.set_label("1 KB");

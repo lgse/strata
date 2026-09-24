@@ -35,6 +35,7 @@ fn scrolling_out_of_bound_rows_preserves_and_retracts_their_selection() {
                 }])),
                 is_item: Rc::new(|_, _, _| false),
                 clear_selection: Rc::new(|| {}),
+                allow_drag: Rc::new(Cell::new(true)),
             });
             let window = gtk::Window::builder()
                 .child(&overlay)

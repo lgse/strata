@@ -14,17 +14,8 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-/// Converts an archive member name into a relative path that cannot escape the destination.
-///
-/// Normalizes backslashes to slashes, skips empty and `.` components, and
-/// rejects absolute paths, `..`, Windows drive prefixes (`C:`), and names
-/// that collapse to empty.
-///
-/// # Errors
-///
-/// Returns an error if `name` is empty, absolute, contains `..`, includes a
-/// drive prefix, or has no remaining components after normalization.
-pub(super) fn validated_archive_path(name: &str) -> Result<PathBuf, String> {
+/// Clamp parent traversal at the extraction root so one such member does not abort the archive.
+pub(super) fn sanitized_archive_path(name: &str) -> Result<PathBuf, String> {
     let normalized = name.replace('\\', "/");
     if normalized.is_empty() || normalized.starts_with('/') {
         return Err(format!("Refusing unsafe archive path: {name}"));
@@ -34,7 +25,9 @@ pub(super) fn validated_archive_path(name: &str) -> Result<PathBuf, String> {
     for component in normalized.split('/') {
         match component.as_bytes() {
             b"" | b"." => {}
-            b".." => return Err(format!("Refusing unsafe archive path: {name}")),
+            b".." => {
+                path.pop();
+            }
             bytes if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' => {
                 return Err(format!("Refusing unsafe archive path: {name}"));
             }
@@ -66,6 +59,7 @@ fn suffixed_name(name: &OsStr, index: u64) -> OsString {
 ///
 /// All member creates go through this root with `NOFOLLOW`, so a symlink
 /// swapped into the destination tree cannot redirect writes outside it.
+#[derive(Debug)]
 pub(super) struct ExtractionDestination {
     root: OwnedFd,
 }
@@ -105,6 +99,63 @@ impl ExtractionDestination {
         )
         .map_err(|error| format!("Could not open extraction destination: {error}"))?;
         Ok(Self { root })
+    }
+
+    /// Bundles multiple roots without reopening the destination by pathname.
+    /// On failure, leave completed moves intact and report where the output remains.
+    pub(super) fn bundle_roots(
+        &self,
+        archive_name: &str,
+        roots: &[PathBuf],
+    ) -> Result<Option<String>, String> {
+        let first = || {
+            roots
+                .first()
+                .map(|root| root.to_string_lossy().into_owned())
+        };
+        if roots.len() <= 1 {
+            return Ok(first());
+        }
+        let lower = archive_name.to_ascii_lowercase();
+        let stem = [".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"]
+            .iter()
+            .find_map(|suffix| {
+                lower
+                    .ends_with(suffix)
+                    .then(|| &archive_name[..archive_name.len() - suffix.len()])
+            })
+            .unwrap_or(archive_name);
+        if stem.trim_matches('.').is_empty() || stem.contains('/') {
+            return Ok(first());
+        }
+        for suffix in 0_u64.. {
+            let name = if suffix == 0 {
+                stem.to_owned()
+            } else {
+                format!("{stem} ({suffix})")
+            };
+            match rustix::fs::mkdirat(&self.root, &name, rustix::fs::Mode::from_raw_mode(0o777)) {
+                Ok(()) => {}
+                Err(rustix::io::Errno::EXIST) => continue,
+                Err(error) => {
+                    return Err(format!(
+                        "Could not create extraction folder `{name}`: {error}. Extracted entries remain in the destination."
+                    ));
+                }
+            }
+            let wrapper = rustix::fs::openat(
+                &self.root,
+                &name,
+                rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            ).map_err(|error| format!("Could not open extraction folder `{name}`: {error}. Extracted entries remain in the destination."))?;
+            for root in roots {
+                rustix::fs::renameat_with(&self.root, root, &wrapper, root, rustix::fs::RenameFlags::NOREPLACE)
+                    .map_err(|error| format!("Could not bundle `{}` into `{name}`: {error}. Extracted entries remain in the destination or `{name}`.", root.display()))?;
+            }
+            return Ok(Some(name));
+        }
+        Err("No available extraction folder name".to_owned())
     }
 
     /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect

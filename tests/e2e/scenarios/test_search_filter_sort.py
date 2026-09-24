@@ -147,7 +147,7 @@ def assert_filtered_result_opens(strata):
     strata.keyboard.type_text("doc*ments")
     strata.wait(lambda: field.text == "doc*ments", "the filter query")
     result = strata.wait(
-        lambda: strata.window.find(role="list item", name="documents"),
+        lambda: strata.search_result("documents"),
         "the filtered folder result",
     )
     strata.pointer.click(result)
@@ -175,7 +175,7 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata):
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")
     result = strata.wait(
-        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        lambda: strata.search_result("spreadsheet.csv"),
         "the recursive file result",
     )
 
@@ -184,11 +184,13 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata):
         lambda: launch_counter.exists() and len(launch_counter.read_text().splitlines()) >= 1,
         "the file launch",
     )
+    strata.keyboard.press("ctrl+f")
+    strata.wait(lambda: field.has_state("focused"), "focus to return to the filter")
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("photo")
     strata.wait(lambda: field.text == "photo", "the follow-up query")
     strata.wait(
-        lambda: strata.window.find(role="list item", name="photo.txt") is not None,
+        lambda: strata.search_result("photo.txt") is not None,
         "the follow-up results",
     )
     assert len(launch_counter.read_text().splitlines()) == 1
@@ -201,7 +203,7 @@ def test_filtered_result_waits_for_release_before_launching(launch_counter, stra
     strata.keyboard.type_text("spreadsheet")
     strata.wait(lambda: field.text == "spreadsheet", "the filter query")
     result = strata.wait(
-        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        lambda: strata.search_result("spreadsheet.csv"),
         "the filtered file result",
     )
 

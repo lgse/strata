@@ -66,6 +66,12 @@ const TARGETS: &[Target] = &[
         aliases: "browsing keyboard navigation focus sidebar toolbar",
     },
     Target {
+        id: "columns-mirror",
+        page: "general",
+        title: "Mirror columns selection",
+        aliases: "browsing columns keyboard selection next pane folders",
+    },
+    Target {
         id: "type-search",
         page: "general",
         title: "Type to search",
@@ -174,6 +180,12 @@ const TARGETS: &[Target] = &[
         aliases: "appearance disable animations",
     },
     Target {
+        id: "renderer",
+        page: "theme",
+        title: "Interface renderer",
+        aliases: "appearance graphics cairo gtk gpu text artifacts performance restart",
+    },
+    Target {
         id: "hints",
         page: "keybindings",
         title: "Show F1 Shortcuts button",
@@ -183,7 +195,7 @@ const TARGETS: &[Target] = &[
         id: "shortcuts",
         page: "keybindings",
         title: "Shortcut reference",
-        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo terminal refresh",
+        aliases: "keyboard keys navigation selection files view application copy paste cut rename delete trash undo redo terminal refresh",
     },
     Target {
         id: "check",

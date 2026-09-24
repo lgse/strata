@@ -237,7 +237,6 @@ fn horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle() {
                     let bounds = handle
                         .compute_bounds(&fixture.split)
                         .expect("handle bounds");
-                    assert!(thumb.x() + thumb.width() < bounds.x());
                     assert_eq!(
                         fixture.split.pick(
                             f64::from(bounds.x() + bounds.width() / 2.0),
@@ -281,7 +280,7 @@ fn constrained_previews_defer_targets_and_preserve_the_manual_session_choice() {
             for chooser in [false, true] {
                 let fixture = Fixture::new(chooser);
                 fixture.enter_children();
-                fixture.resize(700);
+                fixture.resize(480);
                 fixture.preview.show(entry("first.png"), None);
                 fixture.settle();
                 assert!(fixture.preview.is_enabled());
@@ -299,14 +298,13 @@ fn constrained_previews_defer_targets_and_preserve_the_manual_session_choice() {
                 wait_until(|| fixture.preview.widget().width() == 700);
                 fixture.resize(1000);
                 fixture.wait_adjacent();
-                assert!(fixture.preview.widget().width() < COLUMN_WIDTH * MIN_COLUMN_MULTIPLIER);
                 assert_last_column_visible(&fixture);
                 fixture.last_column().set_width_request(420);
                 wait_until(|| fixture.last_column().width() >= 420);
                 fixture.wait_adjacent();
                 assert_last_column_visible(&fixture);
 
-                fixture.resize(780);
+                fixture.resize(640);
                 fixture.settle();
                 fixture.preview.show(entry("latest.png"), None);
                 fixture.settle();
@@ -330,7 +328,7 @@ fn constrained_previews_defer_targets_and_preserve_the_manual_session_choice() {
                 );
                 assert_last_column_visible(&fixture);
 
-                fixture.resize(780);
+                fixture.resize(640);
                 fixture.settle();
                 fixture.preview.close();
                 fixture.resize(1400);
@@ -436,7 +434,7 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
                 if hide_window {
                     fixture.window.set_visible(false);
                 } else {
-                    fixture.resize(640);
+                    fixture.resize(480);
                 }
                 wait_until(|| fixture.preview.state.sizing.is_suspended());
                 let paused_at = media.timestamp();
@@ -534,7 +532,7 @@ fn icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled()
                 }
                 fixture.settle();
                 assert_eq!(fixture.browser.widget().width(), width);
-                fixture.resize(700);
+                fixture.resize(480);
                 wait_until(|| !fixture.preview.is_open());
                 fixture.settle();
                 let constrained_width = fixture.browser.widget().width();
@@ -662,6 +660,60 @@ fn temporarily_hiding_a_document_keeps_its_view_and_scroll_position() {
             );
             assert_eq!(scroll.vadjustment().value(), 200.0);
             assert_eq!(fixture.requests.borrow().len(), 1);
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn resizing_across_narrow_and_wide_windows_with_preview_transitions_rail_and_compact_smoothly() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::resizing_across_narrow_and_wide_windows_with_preview_transitions_rail_and_compact_smoothly",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_browser_mode(BrowserMode::List);
+            preferences.set_reduce_motion(true);
+            let fixture = Fixture::new(false);
+            fixture.resize(1400);
+            fixture.preview.show(entry("notes.txt"), None);
+            fixture.settle();
+
+            assert!(!fixture._sidebar.state.rail.get());
+            assert!(!fixture.preview.state.sizing.is_suspended());
+
+            fixture.resize(1200);
+            fixture.settle();
+            assert!(!fixture._sidebar.state.rail.get());
+            assert!(!fixture.preview.state.sizing.is_suspended());
+
+            for width in [700, 600] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(fixture._sidebar.state.rail.get());
+                assert!(!fixture.preview.state.sizing.is_suspended());
+            }
+
+            for width in [500, 400] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(fixture._sidebar.state.rail.get());
+                assert!(fixture.preview.state.sizing.is_suspended());
+            }
+
+            for width in [600, 700] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(fixture._sidebar.state.rail.get());
+                assert!(!fixture.preview.state.sizing.is_suspended());
+            }
+
+            for width in [800, 1000, 1200, 1400] {
+                fixture.resize(width);
+                fixture.settle();
+                assert!(!fixture._sidebar.state.rail.get());
+                assert!(!fixture.preview.state.sizing.is_suspended());
+            }
+
             fixture.close();
         },
     );

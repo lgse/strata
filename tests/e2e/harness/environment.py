@@ -38,6 +38,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "theme": "azure-glow",
     "folder_peeking": False,
     "single_click_previews": False,
+    "columns_mirror_selection": True,
     "search_open_files_directly": False,
     "type_to_search": True,
     "filter_include_subfolders": True,

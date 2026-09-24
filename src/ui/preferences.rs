@@ -30,6 +30,14 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<PreferenceManager>> = const { RefCell::new(std::rc::Weak::new()) };
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum InterfaceRenderer {
+    Cairo,
+    #[default]
+    System,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub(in crate::ui) struct Preferences {
     mode: String,
@@ -38,6 +46,8 @@ pub(in crate::ui) struct Preferences {
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default = "default_enabled")]
+    columns_mirror_selection: bool,
     #[serde(default = "default_enabled")]
     render_documents_by_default: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -100,6 +110,8 @@ pub(in crate::ui) struct Preferences {
     show_hidden: bool,
     #[serde(default)]
     text_size: TextSize,
+    #[serde(default)]
+    interface_renderer: InterfaceRenderer,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -145,6 +157,7 @@ impl Default for Preferences {
             theme: "tokyo-night".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            columns_mirror_selection: true,
             render_documents_by_default: true,
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
@@ -176,6 +189,7 @@ impl Default for Preferences {
             sidebar_show_videos: true,
             show_hidden: false,
             text_size: TextSize::default(),
+            interface_renderer: InterfaceRenderer::default(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
@@ -248,6 +262,10 @@ fn default_double_clicks() -> u8 {
 
 fn default_sidebar_order() -> Vec<String> {
     vec![
+        "home".to_owned(),
+        "trash".to_owned(),
+        "network".to_owned(),
+        "recent".to_owned(),
         "desktop".to_owned(),
         "documents".to_owned(),
         "downloads".to_owned(),
@@ -290,6 +308,7 @@ fn normalized_volume(volume: f64) -> f64 {
 
 pub struct PreferenceManager {
     preferences: RefCell<Preferences>,
+    startup_interface_renderer: InterfaceRenderer,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
     persistence_enabled: bool,
@@ -326,6 +345,7 @@ impl PreferenceManager {
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
         Rc::new(Self {
+            startup_interface_renderer: preferences.interface_renderer,
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
             persistence_enabled,
@@ -486,6 +506,15 @@ impl PreferenceManager {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.preferences.borrow_mut().single_click_previews = enabled;
+        self.save_preferences();
+    }
+
+    pub fn columns_mirror_selection(&self) -> bool {
+        self.preferences.borrow().columns_mirror_selection
+    }
+
+    pub fn set_columns_mirror_selection(&self, enabled: bool) {
+        self.preferences.borrow_mut().columns_mirror_selection = enabled;
         self.save_preferences();
     }
 
@@ -790,6 +819,19 @@ impl PreferenceManager {
         }
         .to_owned();
         self.save_preferences();
+    }
+
+    pub fn interface_renderer(&self) -> InterfaceRenderer {
+        self.preferences.borrow().interface_renderer
+    }
+
+    pub fn set_interface_renderer(&self, renderer: InterfaceRenderer) {
+        self.preferences.borrow_mut().interface_renderer = renderer;
+        self.save_preferences();
+    }
+
+    pub fn interface_renderer_restart_required(&self) -> bool {
+        self.interface_renderer() != self.startup_interface_renderer
     }
 
     pub fn text_size(&self) -> TextSize {

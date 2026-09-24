@@ -249,6 +249,109 @@ fn rename_undo_refuses_an_occupied_destination_and_can_retry() -> Result<(), Box
     Ok(())
 }
 
+fn undo_one(
+    id: u64,
+    original: &Path,
+    current: &Path,
+    conflict: TransferConflict,
+) -> (LoadHandle, Rc<RefCell<Vec<OperationEvent>>>) {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let operation = LocalOperationProvider.undo_move(
+        UndoMoveRequest {
+            id: OperationRequestId(id),
+            items: vec![UndoMoveItem {
+                record: MoveRecord {
+                    original: Location::local(original),
+                    current: Location::local(current),
+                },
+                conflict,
+            }],
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    (operation, events)
+}
+
+#[test]
+fn undoing_a_cross_volume_move_keeps_the_item_when_the_removable_flush_fails()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("usb");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let current = archive.join("report.txt");
+    fs::write(&current, b"contents")?;
+    let _guard = RemovableFlushGuard::install(root.path(), Some(io::ErrorKind::Other), true);
+
+    let (_operation, events) = undo_one(
+        97,
+        &origin.join("report.txt"),
+        &current,
+        TransferConflict::FailIfExists,
+    );
+    pump_until_transfer(&events);
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::TransferFailed { .. })
+    ));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Pasted { .. }))
+    );
+    assert_eq!(fs::read(&current)?, b"contents");
+    assert_eq!(fs::read(origin.join("report.txt"))?, b"contents");
+    Ok(())
+}
+
+#[test]
+fn undoing_a_cross_volume_move_flushes_before_deleting_the_moved_item() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("usb");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let current = archive.join("report.txt");
+    fs::write(&current, b"contents")?;
+    let during = watch_source_during_sync(&current);
+    let _guard = RemovableFlushGuard::install(root.path(), None, true);
+
+    let (_operation, events) = undo_one(
+        98,
+        &origin.join("report.txt"),
+        &current,
+        TransferConflict::FailIfExists,
+    );
+    pump_until_transfer(&events);
+    assert_eq!(
+        during
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .first()
+            .copied(),
+        Some(true)
+    );
+
+    assert!(matches!(
+        terminal_transfer(&events.borrow()),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!current.exists());
+    assert_eq!(fs::read(origin.join("report.txt"))?, b"contents");
+    Ok(())
+}
+
 #[test]
 fn cancelled_rename_undo_reports_cancellation_without_moving_the_item() -> Result<(), Box<dyn Error>>
 {

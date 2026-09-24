@@ -2,6 +2,7 @@
 
 mod multi_root;
 mod performance;
+mod refresh;
 
 use std::{
     collections::HashSet,

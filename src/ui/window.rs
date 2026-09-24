@@ -29,13 +29,14 @@ use super::{
         show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
-    controls::{ModalTone, message_dialog_description, message_dialog_layout},
+    controls::{ModalTone, focus_button, message_dialog_description, message_dialog_layout},
     modal::{ModalHost, dismiss_modal_layer, modal_layer},
     motion::{animations_enabled, emphasized_deceleration},
     preferences::PreferenceManager,
 };
 
 mod composition;
+mod device_release;
 mod devices;
 mod keyboard;
 mod open_argument;
@@ -51,9 +52,27 @@ pub(super) use sidebar::build_sidebar;
 
 pub(super) const SIDEBAR_WIDTH: i32 = 201;
 pub(super) const MIN_SIDEBAR_WIDTH: i32 = 169;
+pub(super) fn sidebar_rail_button_size() -> i32 {
+    // Match the header toggle's scaled content plus 4px padding on each side.
+    (24.0 * PreferenceManager::shared().interface_scale()).round() as i32 + 8
+}
+
+pub(super) fn sidebar_rail_width() -> i32 {
+    sidebar_rail_button_size() + 10
+}
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
-const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
+const STANDARD_PLACE_IDS: &[&str] = &[
+    "home",
+    "trash",
+    "network",
+    "recent",
+    "desktop",
+    "documents",
+    "downloads",
+    "pictures",
+    "videos",
+];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RecentAvailability {
@@ -97,7 +116,7 @@ struct TypeToSearch {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum TypeToSearchQuery {
+pub(super) enum TypeToSearchQuery {
     Empty,
     Character(char),
 }
@@ -250,13 +269,31 @@ fn schedule_after_first_paint(
     });
 }
 
-pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned) {
-    PreferenceManager::shared().bind_interface_scale(paned, |widget, scale| {
+pub(super) fn bind_sidebar_text_size(paned: &gtk::Paned, sidebar: &SidebarView) {
+    let sidebar = Rc::downgrade(&sidebar.state);
+    PreferenceManager::shared().bind_interface_scale(paned, move |widget, scale| {
         let paned = widget.downcast_ref::<gtk::Paned>().expect("sidebar split");
         if paned.position() > 0 {
-            paned.set_position(scaled_sidebar_width(paned, scale));
+            let Some(shell) = paned.start_child() else {
+                return;
+            };
+            let target = if shell.has_css_class("sidebar-rail") {
+                if let Some(sidebar) = sidebar.upgrade() {
+                    sidebar.set_rail(true);
+                }
+                sidebar_rail_width()
+            } else {
+                scaled_sidebar_width(paned, scale).max(sidebar_minimum_width(&shell))
+            };
+            paned.set_position(target);
         }
     });
+}
+
+pub(super) fn preferred_sidebar_width() -> i32 {
+    (f64::from(SIDEBAR_WIDTH) * PreferenceManager::shared().interface_scale())
+        .round()
+        .max(f64::from(SIDEBAR_WIDTH)) as i32
 }
 
 fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
@@ -269,9 +306,34 @@ fn scaled_sidebar_width(paned: &gtk::Paned, scale: f64) -> i32 {
     preferred.min(available).max(MIN_SIDEBAR_WIDTH)
 }
 
+fn sidebar_animation_target(
+    paned: &gtk::Paned,
+    sidebar: &gtk::Widget,
+    state: &SidebarState,
+    expanded: bool,
+) -> i32 {
+    if !expanded {
+        0
+    } else if state.rail.get() {
+        sidebar_rail_width()
+    } else if let Some(saved) = state.saved_width.get() {
+        saved.max(sidebar_minimum_width(sidebar))
+    } else {
+        scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
+            .max(sidebar_minimum_width(sidebar))
+    }
+}
+
+// Below this minimum, GTK can allocate more width than the divider position allows.
+fn sidebar_minimum_width(sidebar: &gtk::Widget) -> i32 {
+    let (minimum, _, _, _) = sidebar.measure(gtk::Orientation::Horizontal, -1);
+    minimum
+}
+
 fn animate_sidebar(
     paned: &gtk::Paned,
     sidebar: &gtk::Widget,
+    state: &Rc<SidebarState>,
     generation: &Rc<Cell<u64>>,
     animating: &Rc<Cell<bool>>,
     expanded: bool,
@@ -280,15 +342,11 @@ fn animate_sidebar(
     generation.set(animation_id);
     animating.set(true);
     paned.set_shrink_start_child(true);
-    let target = if expanded {
-        scaled_sidebar_width(paned, PreferenceManager::shared().interface_scale())
-    } else {
-        0
-    };
-    let start = paned.position();
     if expanded {
         sidebar.set_visible(true);
     }
+    let target = sidebar_animation_target(paned, sidebar, state, expanded);
+    let start = paned.position();
 
     if !animations_enabled() || start == target {
         paned.set_position(target);
@@ -303,11 +361,16 @@ fn animate_sidebar(
     let sidebar = sidebar.clone();
     let generation = generation.clone();
     let animating = animating.clone();
+    let state = Rc::downgrade(state);
     let _tick = paned.clone().add_tick_callback(move |_, _| {
         if generation.get() != animation_id {
             return glib::ControlFlow::Break;
         }
+        let Some(state) = state.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
 
+        let target = sidebar_animation_target(&paned, &sidebar, &state, expanded);
         let progress =
             (started.elapsed().as_secs_f64() / SIDEBAR_TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
         let eased = emphasized_deceleration(progress);
@@ -315,12 +378,14 @@ fn animate_sidebar(
         paned.set_position(position.round() as i32);
 
         if progress >= 1.0 {
+            // Clear before the final set_position so the position clamp sees
+            // the settled state, including an engaged icon rail.
+            animating.set(false);
             paned.set_position(target);
             if !expanded {
                 sidebar.set_visible(false);
             }
             paned.set_shrink_start_child(!expanded);
-            animating.set(false);
             glib::ControlFlow::Break
         } else {
             glib::ControlFlow::Continue
@@ -421,6 +486,17 @@ fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bo
         && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
+fn is_redo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    let modifiers = modifiers
+        & (gtk::gdk::ModifierType::CONTROL_MASK
+            | gtk::gdk::ModifierType::SHIFT_MASK
+            | gtk::gdk::ModifierType::ALT_MASK);
+    (modifiers == gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK
+        && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z))
+        || (modifiers == gtk::gdk::ModifierType::CONTROL_MASK
+            && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y))
+}
+
 fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         && !modifiers
@@ -431,7 +507,7 @@ fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierT
         )
 }
 
-fn type_to_search_query(
+pub(super) fn type_to_search_query(
     key: gtk::gdk::Key,
     modifiers: gtk::gdk::ModifierType,
 ) -> Option<TypeToSearchQuery> {
@@ -669,6 +745,8 @@ pub(super) fn build_appearance_menu(
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
+            let browser = view.browser();
+            glib::idle_add_local_once(move || browser.focus_active());
         });
     }
     {
@@ -946,6 +1024,9 @@ pub(super) struct SidebarState {
     pending_scroll: Cell<Option<f64>>,
     rebuild_queued: Cell<bool>,
     scroll_restore_queued: Cell<bool>,
+    pub(in crate::ui) rail: Cell<bool>,
+    pub(in crate::ui) saved_width: Cell<Option<i32>>,
+    update_label: gtk::Label,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -959,7 +1040,7 @@ enum TrashContents {
     /// Not probed yet, or the probe failed.
     Unknown,
     Empty,
-    NonEmpty(u32),
+    NonEmpty,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -971,7 +1052,7 @@ struct TrashMenuVisibility {
 /// Destructive actions stay hidden until Trash is confirmed to hold something, and the
 /// separator goes with them so Properties is not left above an empty gap.
 fn trash_menu_visibility(contents: TrashContents) -> TrashMenuVisibility {
-    let visible = matches!(contents, TrashContents::NonEmpty(_));
+    let visible = contents == TrashContents::NonEmpty;
     TrashMenuVisibility {
         separator: visible,
         empty: visible,
@@ -984,19 +1065,10 @@ fn sync_trash_menu_rows(rows: &TrashMenuRows, contents: TrashContents) {
     rows.empty.set_visible(visibility.empty);
 }
 
-fn trash_icon(contents: TrashContents) -> &'static str {
-    match contents {
-        TrashContents::NonEmpty(1..=4) => crate::assets::icons::TRASH_LOW,
-        TrashContents::NonEmpty(5..=14) => crate::assets::icons::TRASH_HALF,
-        TrashContents::NonEmpty(_) => crate::assets::icons::TRASH_FULL,
-        _ => crate::assets::icons::TRASH,
-    }
-}
-
-fn trash_contents_from_probe(probe: Result<u32, glib::Error>) -> TrashContents {
+fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents {
     match probe {
-        Ok(0) => TrashContents::Empty,
-        Ok(count) => TrashContents::NonEmpty(count),
+        Ok(false) => TrashContents::Empty,
+        Ok(true) => TrashContents::NonEmpty,
         Err(_) => TrashContents::Unknown,
     }
 }
@@ -1021,6 +1093,11 @@ pub(super) struct SidebarView {
     handlers: RefCell<Vec<glib::SignalHandlerId>>,
     mount_handler: RefCell<Option<glib::SignalHandlerId>>,
     recent_setting_handler: RefCell<Option<(gtk::Settings, glib::SignalHandlerId)>>,
+    #[expect(
+        dead_code,
+        reason = "held so Drop keeps this window registered for pending-release rebuilds"
+    )]
+    release_watch: device_release::SidebarWatch,
 }
 
 impl SidebarView {
@@ -1111,8 +1188,142 @@ impl SidebarState {
         self.append_devices();
         self.sync_active_place();
         self.schedule_scroll_restore();
+        self.sync_rail_rows();
     }
 
+    pub(in crate::ui) fn set_rail(&self, rail: bool) {
+        if self.rail.replace(rail) == rail && !rail {
+            return;
+        }
+        if let Some(scroller) = self.sidebar_scroller()
+            && let Some(shell) = scroller.parent()
+        {
+            scroller.set_overlay_scrolling(rail);
+            if rail {
+                shell.add_css_class("sidebar-rail");
+            } else {
+                shell.remove_css_class("sidebar-rail");
+            }
+            if let Some(paned) = shell.parent().and_downcast::<gtk::Paned>() {
+                paned.set_wide_handle(!rail);
+                if let Some(handle) = paned_separator(&paned) {
+                    handle.set_cursor_from_name(if rail {
+                        Some("default")
+                    } else {
+                        Some("col-resize")
+                    });
+                }
+            }
+            scroller.set_width_request(if rail {
+                sidebar_rail_width()
+            } else {
+                MIN_SIDEBAR_WIDTH
+            });
+            shell.set_size_request(
+                if rail {
+                    sidebar_rail_width()
+                } else {
+                    MIN_SIDEBAR_WIDTH
+                },
+                -1,
+            );
+        }
+        self.update_label.set_visible(!rail);
+        if let Some(content) = self.update_label.parent().and_downcast::<gtk::Box>() {
+            content.set_spacing(if rail { 0 } else { 8 });
+            content.set_halign(if rail {
+                gtk::Align::Center
+            } else {
+                gtk::Align::Fill
+            });
+            if let Some(dot) = content.first_child() {
+                dot.set_visible(!rail);
+            }
+        }
+        self.sync_rail_rows();
+    }
+
+    fn sync_rail_rows(&self) {
+        let rail = self.rail.get();
+        let size = if rail { sidebar_rail_button_size() } else { -1 };
+        if let Some(notice) = self
+            .update_label
+            .ancestor(gtk::Button::static_type())
+            .and_downcast::<gtk::Button>()
+        {
+            notice.set_size_request(if rail { sidebar_rail_width() } else { -1 }, size);
+        }
+        let mut widget_child = self.widget.first_child();
+        while let Some(child) = widget_child {
+            widget_child = child.next_sibling();
+            if let Ok(heading) = child.clone().downcast::<gtk::Label>() {
+                heading.set_visible(!rail);
+            } else if let Ok(button) = child.clone().downcast::<gtk::Button>() {
+                sync_sidebar_button(&button, rail);
+            } else if child.has_css_class("sidebar-device") {
+                let mut dev_child = child.first_child();
+                while let Some(w) = dev_child {
+                    dev_child = w.next_sibling();
+                    if let Ok(button) = w.clone().downcast::<gtk::Button>() {
+                        sync_sidebar_button(&button, rail);
+                    } else if w.has_css_class("sidebar-device-actions") {
+                        w.set_visible(!rail);
+                    }
+                }
+            }
+        }
+        if !rail {
+            for (location, row) in self.place_rows.borrow().iter() {
+                row.set_tooltip_text(Some(&location.display_path()));
+            }
+        }
+    }
+}
+
+fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
+    let size = if rail { sidebar_rail_button_size() } else { -1 };
+    button.set_size_request(size, size);
+    let is_pinned = button.has_css_class("sidebar-pinned-row");
+    if let Some(content) = button.child() {
+        let mut child = content.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+                if rail {
+                    button.set_tooltip_text(Some(label.label().as_str()));
+                }
+                label.set_visible(!rail);
+            } else if is_pinned && let Some(image) = widget.downcast_ref::<gtk::Image>() {
+                crate::assets::set_primary_icon(
+                    image,
+                    if rail {
+                        crate::assets::icons::PIN
+                    } else {
+                        crate::assets::icons::FOLDER
+                    },
+                );
+            }
+        }
+        content.set_halign(if rail {
+            gtk::Align::Center
+        } else {
+            gtk::Align::Fill
+        });
+    }
+}
+
+fn paned_separator(paned: &gtk::Paned) -> Option<gtk::Widget> {
+    let mut child = paned.first_child();
+    while let Some(widget) = child {
+        if widget.css_name() == "separator" {
+            return Some(widget);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+impl SidebarState {
     fn sidebar_scroller(&self) -> Option<gtk::ScrolledWindow> {
         self.widget
             .ancestor(gtk::ScrolledWindow::static_type())
@@ -1159,70 +1370,72 @@ impl SidebarState {
     }
 
     fn append_static_places(self: &Rc<Self>) {
-        if self.preference_manager.sidebar_show_home() {
-            let location = Location::local(home_directory());
-            let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
-            if !self.local_only {
-                self.attach_place_context_menu(&row, location, |state| {
-                    state.preference_manager.set_sidebar_show_home(false);
-                });
-            }
+        for place in self.place_order.borrow().clone() {
+            self.append_ordered_place(place);
         }
-        if !self.local_only {
-            if self.preference_manager.sidebar_show_trash() {
-                self.append_trash_place();
+        self.append_pinned_places();
+    }
+
+    fn append_ordered_place(self: &Rc<Self>, place: &'static str) {
+        match place {
+            "home" => {
+                if !self.preference_manager.sidebar_show_home() {
+                    return;
+                }
+                let location = Location::local(home_directory());
+                let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
+                if !self.local_only {
+                    self.attach_place_context_menu(&row, location, |state| {
+                        state.preference_manager.set_sidebar_show_home(false);
+                    });
+                    self.make_place_reorderable(&row, place);
+                }
             }
-            if self.preference_manager.sidebar_show_network() {
+            "trash" => {
+                if !self.local_only && self.preference_manager.sidebar_show_trash() {
+                    self.append_trash_place();
+                }
+            }
+            "network" => {
+                if self.local_only || !self.preference_manager.sidebar_show_network() {
+                    return;
+                }
                 let location = Location::uri("network:///");
                 let row =
                     self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
+                self.make_place_reorderable(&row, place);
             }
+            "recent" => {
+                if should_show_recent_place(
+                    self.preference_manager.sidebar_show_recent(),
+                    self.recent_availability.get(),
+                ) {
+                    self.append_recent_place();
+                }
+            }
+            _ => self.append_standard_place(place),
         }
-        if should_show_recent_place(
-            self.preference_manager.sidebar_show_recent(),
-            self.recent_availability.get(),
-        ) {
-            self.append_recent_place();
-        }
-        if self.has_visible_standard_places() && self.widget.first_child().is_some() {
-            self.append_separator();
-        }
-        self.append_standard_places();
-        self.append_pinned_places();
-    }
-
-    fn has_visible_standard_places(&self) -> bool {
-        self.place_order.borrow().iter().copied().any(|place| {
-            self.standard_place_visible(place)
-                && standard_place(place).is_some_and(|(_, _, directory)| {
-                    glib::user_special_dir(directory).is_some_and(|path| {
-                        should_show_standard_place(place, &path, &home_directory())
-                    })
-                })
-        })
     }
 
     fn standard_place_visible(&self, id: &str) -> bool {
         sidebar_standard_place_visible(&self.preference_manager, id)
     }
 
-    fn append_standard_places(self: &Rc<Self>) {
-        for place in self.place_order.borrow().clone() {
-            if !self.standard_place_visible(place) {
-                continue;
-            }
-            if let Some((icon, name, directory)) = standard_place(place)
-                && let Some(path) = glib::user_special_dir(directory)
-                    .filter(|path| should_show_standard_place(place, path, &home_directory()))
-            {
-                if self.local_only {
-                    self.append_place(icon, name, Location::local(path));
-                } else {
-                    self.append_reorderable_place(place, icon, name, Location::local(path));
-                }
+    fn append_standard_place(self: &Rc<Self>, place: &'static str) {
+        if !self.standard_place_visible(place) {
+            return;
+        }
+        if let Some((icon, name, directory)) = standard_place(place)
+            && let Some(path) = glib::user_special_dir(directory)
+                .filter(|path| should_show_standard_place(place, path, &home_directory()))
+        {
+            if self.local_only {
+                self.append_place(icon, name, Location::local(path));
+            } else {
+                self.append_reorderable_place(place, icon, name, Location::local(path));
             }
         }
     }
@@ -1244,7 +1457,8 @@ impl SidebarState {
             self.append_heading("PINNED");
             for (index, location, name) in pinned {
                 if self.local_only {
-                    self.append_place(crate::assets::icons::FOLDER, &name, location);
+                    let row = self.append_place(crate::assets::icons::FOLDER, &name, location);
+                    row.add_css_class("sidebar-pinned-row");
                 } else {
                     self.append_pinned_place(index, &name, location);
                 }
@@ -1257,21 +1471,35 @@ impl SidebarState {
         let mounts = self.mounts_without_volumes(&volumes);
         let password_drives =
             orphaned_password_drives(&volumes, &self.volume_monitor.connected_drives());
-        if volumes.is_empty() && mounts.is_empty() && password_drives.is_empty() {
+        if volumes.is_empty()
+            && mounts.is_empty()
+            && password_drives.is_empty()
+            && !device_release::any_pending()
+        {
             return;
         }
         if self.widget.first_child().is_some() {
             self.append_separator();
         }
         self.append_heading("DEVICES");
+        let mut shown = Vec::new();
         for volume in volumes {
-            self.append_volume(volume);
+            if let Some(ids) = self.append_volume(volume) {
+                shown.push(ids);
+            }
         }
         for drive in password_drives {
-            self.append_password_drive(drive);
+            if let Some(ids) = self.append_password_drive(drive) {
+                shown.push(ids);
+            }
         }
         for (name, location, mount) in mounts {
-            self.append_mount(&name, location, mount);
+            if let Some(ids) = self.append_mount(&name, location, mount) {
+                shown.push(ids);
+            }
+        }
+        for key in device_release::unmatched_pending(&shown) {
+            self.append_release_ghost(&key);
         }
     }
 
@@ -1299,13 +1527,24 @@ impl SidebarState {
             .collect()
     }
 
-    fn append_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
+    fn append_mount(
+        self: &Rc<Self>,
+        name: &str,
+        location: Location,
+        mount: gio::Mount,
+    ) -> Option<device_release::DeviceIds> {
         if is_smb_location(&location) {
             self.append_smb_mount(name, location, mount);
-            return;
+            return None;
         }
+        let ids = device_release::ids_for_mount(&mount);
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, name);
         row.set_tooltip_text(Some(&location.display_path()));
+        if device_release::is_pending(&ids) {
+            self.widget
+                .append(&device_release::pending_device_shell(&row));
+            return Some(ids);
+        }
         self.bind_place_row(&row, location, PlaceNavigation::Validate);
         let encrypted = gio_mount_is_encrypted(&mount);
         let actions = device_row_actions(
@@ -1316,10 +1555,27 @@ impl SidebarState {
             mount.can_unmount(),
         );
         let in_flight = Rc::new(Cell::new(false));
+        let on_crypto = actions.encrypted.map(|_| {
+            let crypto_mount = mount.clone();
+            let crypto_parent = self.view.widget();
+            let crypto_browser = self.browser.clone();
+            let crypto_view = self.view.clone();
+            let crypto_in_flight = in_flight.clone();
+            Rc::new(move || {
+                lock_encrypted_mount(
+                    &crypto_mount,
+                    &crypto_parent,
+                    &crypto_browser,
+                    &crypto_view,
+                    &crypto_in_flight,
+                );
+            }) as Rc<dyn Fn()>
+        });
         let on_release = actions.release.map(|action| {
             let release_mount = mount.clone();
             let release_browser = self.browser.clone();
             let release_parent = self.view.widget();
+            let release_view = self.view.clone();
             let release_in_flight = in_flight.clone();
             Rc::new(move || {
                 release_device_mount(
@@ -1327,25 +1583,13 @@ impl SidebarState {
                     action,
                     &release_parent,
                     &release_browser,
+                    &release_view,
                     &release_in_flight,
                 );
             }) as Rc<dyn Fn()>
         });
-        let on_crypto = actions.encrypted.map(|_| {
-            let crypto_mount = mount.clone();
-            let crypto_parent = self.view.widget();
-            let crypto_browser = self.browser.clone();
-            let crypto_in_flight = in_flight.clone();
-            Rc::new(move || {
-                lock_encrypted_mount(
-                    &crypto_mount,
-                    &crypto_parent,
-                    &crypto_browser,
-                    &crypto_in_flight,
-                );
-            }) as Rc<dyn Fn()>
-        });
         self.append_device_chrome(&row, actions, on_crypto, on_release);
+        Some(ids)
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
@@ -1425,20 +1669,6 @@ impl SidebarState {
         if let Some(rows) = self.trash_menu_rows.borrow().as_ref() {
             sync_trash_menu_rows(rows, self.trash_contents.get());
         }
-        let image = self
-            .place_rows
-            .borrow()
-            .iter()
-            .find(|(location, _)| crate::ui::browser::paths::is_trash_root(location))
-            .and_then(|(_, row)| row.child())
-            .and_then(|content| content.first_child())
-            .and_then(|widget| widget.downcast::<gtk::Image>().ok());
-        if let Some(image) = image {
-            crate::ui::browser::fly_to_trash::set_trash_icon(
-                &image,
-                trash_icon(self.trash_contents.get()),
-            );
-        }
     }
 
     fn set_trash_contents(&self, contents: TrashContents) {
@@ -1462,7 +1692,7 @@ impl SidebarState {
         self.trash_probe_running.set(true);
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let probe = trash_item_count(&gio::File::for_uri("trash:///")).await;
+            let probe = trash_has_items(&gio::File::for_uri("trash:///")).await;
             if let Err(error) = &probe {
                 tracing::warn!(
                     error_domain = ?error.domain(),
@@ -1505,6 +1735,7 @@ impl SidebarState {
         let row = sidebar_button(crate::assets::icons::CLOCK, "Recent");
         row.set_tooltip_text(Some("recent:///"));
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
+        self.make_place_reorderable(&row, "recent");
         self.widget.append(&row);
     }
 
@@ -1587,6 +1818,7 @@ impl SidebarState {
             popover.popup();
         });
         row.add_controller(context);
+        self.make_place_reorderable(&row, "trash");
         self.widget.append(&row);
     }
 
@@ -1663,10 +1895,16 @@ impl SidebarState {
             }
         });
 
+        self.make_place_reorderable(&row, id);
+        self.widget.append(&row);
+    }
+
+    fn make_place_reorderable(self: &Rc<Self>, row: &gtk::Button, id: &'static str) {
+        if self.local_only {
+            return;
+        }
         self.make_reorderable(
-            &row,
-            // Standard rows drag their stable id, so a pinned row's numeric
-            // payload is rejected by the standard-place drop handler.
+            row,
             move || id.to_string(),
             move |state, source, after| {
                 if source.starts_with(PINNED_DRAG_PREFIX) {
@@ -1676,7 +1914,6 @@ impl SidebarState {
                 true
             },
         );
-        self.widget.append(&row);
     }
 
     fn reorder_place(self: &Rc<Self>, source: &str, target: &str, after: bool) {
@@ -1726,27 +1963,37 @@ impl SidebarState {
         self.widget.append(&heading);
     }
 
-    fn append_volume(self: &Rc<Self>, volume: gio::Volume) {
+    fn append_volume(self: &Rc<Self>, volume: gio::Volume) -> Option<device_release::DeviceIds> {
         let name = volume.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
         row.set_tooltip_text(Some(&name));
-        if let Some(mount) = volume.get_mount()
-            && let Some(location) = location_for_file(&mount.root())
-        {
+        let mounted_location = volume
+            .get_mount()
+            .as_ref()
+            .and_then(|mount| location_for_file(&mount.root()));
+        if let Some(location) = mounted_location.as_ref() {
             if self.local_only && location.native_path().is_none() {
-                return;
+                return None;
             }
-            self.place_rows
-                .borrow_mut()
-                .push((location.clone(), row.clone()));
-            install_sidebar_file_drop(&self.view, &row, location);
         } else if self.local_only
             && (gio_volume_unix_device(&volume).is_none()
                 || volume
                     .activation_root()
                     .is_some_and(|root| root.path().is_none()))
         {
-            return;
+            return None;
+        }
+        let ids = device_release::ids_for_volume(&volume);
+        if device_release::is_pending(&ids) {
+            self.widget
+                .append(&device_release::pending_device_shell(&row));
+            return Some(ids);
+        }
+        if let Some(location) = mounted_location {
+            self.place_rows
+                .borrow_mut()
+                .push((location.clone(), row.clone()));
+            install_sidebar_file_drop(&self.view, &row, location);
         }
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
@@ -1784,6 +2031,7 @@ impl SidebarState {
             let release_volume = volume.clone();
             let release_browser = self.browser.clone();
             let release_parent = self.view.widget();
+            let release_view = self.view.clone();
             let release_in_flight = in_flight.clone();
             Rc::new(move || {
                 release_device_volume(
@@ -1791,6 +2039,7 @@ impl SidebarState {
                     action,
                     &release_parent,
                     &release_browser,
+                    &release_view,
                     &release_in_flight,
                 );
             }) as Rc<dyn Fn()>
@@ -1807,17 +2056,31 @@ impl SidebarState {
                     &crypto_volume,
                     &crypto_parent,
                     &crypto_browser,
+                    &crypto_view,
                     &crypto_in_flight,
                 ),
             }) as Rc<dyn Fn()>
         });
         self.append_device_chrome(&row, actions, on_crypto, on_release);
+        Some(ids)
     }
 
-    fn append_password_drive(&self, drive: gio::Drive) {
+    fn append_release_ghost(&self, key: &device_release::ReleaseKey) {
+        let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &key.display_name);
+        self.widget
+            .append(&device_release::pending_device_shell(&row));
+    }
+
+    fn append_password_drive(&self, drive: gio::Drive) -> Option<device_release::DeviceIds> {
+        let ids = device_release::ids_for_drive(&drive);
         let name = drive.name().to_string();
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
         row.set_tooltip_text(Some(&name));
+        if device_release::is_pending(&ids) {
+            self.widget
+                .append(&device_release::pending_device_shell(&row));
+            return Some(ids);
+        }
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
         let clicked_drive = drive.clone();
@@ -1835,12 +2098,20 @@ impl SidebarState {
         let on_release = actions.release.map(|action| {
             let release_drive = drive.clone();
             let release_parent = self.view.widget();
+            let release_view = self.view.clone();
             let release_in_flight = Rc::new(Cell::new(false));
             Rc::new(move || {
-                eject_password_drive(&release_drive, action, &release_parent, &release_in_flight);
+                eject_password_drive(
+                    &release_drive,
+                    action,
+                    &release_parent,
+                    &release_view,
+                    &release_in_flight,
+                );
             }) as Rc<dyn Fn()>
         });
         self.append_device_chrome(&row, actions, on_crypto, on_release);
+        Some(ids)
     }
 
     fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
@@ -1913,6 +2184,7 @@ impl SidebarState {
 
     fn append_pinned_place(self: &Rc<Self>, index: usize, name: &str, location: Location) {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
+        row.add_css_class("sidebar-pinned-row");
         self.make_pinned_row_reorderable(&row, index);
         let unpinned_location = location.clone();
         self.attach_place_context_menu(&row, location, move |state| {
@@ -2333,6 +2605,48 @@ fn media_release_error_title(action: MediaRelease) -> &'static str {
     }
 }
 
+fn release_kind(action: MediaRelease) -> device_release::ReleaseKind {
+    match action {
+        MediaRelease::UnmountMount => device_release::ReleaseKind::Unmount,
+        MediaRelease::EjectVolume | MediaRelease::EjectMount => device_release::ReleaseKind::Eject,
+    }
+}
+
+fn drive_can_unplug(drive: &gio::Drive) -> bool {
+    drive.is_removable() || drive.is_media_removable() || drive.can_eject()
+}
+
+fn mount_can_unplug(mount: &gio::Mount) -> bool {
+    if mount.can_eject() {
+        return true;
+    }
+    mount
+        .drive()
+        .or_else(|| mount.volume().and_then(|volume| volume.drive()))
+        .is_some_and(|drive| drive_can_unplug(&drive))
+}
+
+fn volume_can_unplug(volume: &gio::Volume) -> bool {
+    if volume.can_eject() {
+        return true;
+    }
+    volume.drive().is_some_and(|drive| drive_can_unplug(&drive))
+        || volume.get_mount().is_some_and(|mount| mount.can_eject())
+}
+
+fn release_unplug(
+    action: &MediaRelease,
+    mount: Option<&gio::Mount>,
+    volume: Option<&gio::Volume>,
+) -> bool {
+    match action {
+        MediaRelease::EjectVolume | MediaRelease::EjectMount => true,
+        MediaRelease::UnmountMount => {
+            mount.is_some_and(mount_can_unplug) || volume.is_some_and(volume_can_unplug)
+        }
+    }
+}
+
 fn navigate_home_if_within(browser: &Rc<Browser>, root: &gio::File) {
     let Some(device) = location_for_file(root) else {
         return;
@@ -2355,40 +2669,63 @@ fn release_device_volume(
     action: MediaRelease,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
+    view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
     if !begin_media_release(in_flight) {
         return;
     }
     let mount = volume.get_mount();
+    if matches!(
+        action,
+        MediaRelease::EjectMount | MediaRelease::UnmountMount
+    ) && mount.is_none()
+    {
+        in_flight.set(false);
+        return;
+    }
+    let key = device_release::key_for_volume(volume);
+    let sync_root = mount.as_ref().and_then(|mount| mount.root().path());
     let away_root = mount.as_ref().map(gio::Mount::root);
-    let window = parent.root().and_downcast::<gtk::Window>();
-    let operation = gtk::MountOperation::new(window.as_ref());
-    let error_parent = parent.clone();
-    let browser = browser.clone();
+    let unplug = release_unplug(&action, mount.as_ref(), Some(volume));
     let volume = volume.clone();
-    let in_flight = in_flight.clone();
-    let title = media_release_error_title(action);
-    glib::MainContext::default().spawn_local(async move {
-        let result = match action {
-            MediaRelease::EjectVolume => {
-                volume
-                    .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                    .await
-            }
-            MediaRelease::EjectMount => match mount {
-                Some(mount) => {
+    let mount = mount.clone();
+    let in_flight_for_settle = in_flight.clone();
+    let started = device_release::start_release(
+        parent,
+        Some(browser.clone()),
+        Some(view),
+        key,
+        release_kind(action),
+        unplug,
+        sync_root,
+        away_root,
+        move || in_flight_for_settle.set(false),
+        move |operation| async move {
+            match action {
+                MediaRelease::EjectVolume => {
+                    volume
+                        .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                        .await
+                }
+                MediaRelease::EjectMount => {
+                    let Some(mount) = mount else {
+                        return Err(glib::Error::new(
+                            gio::IOErrorEnum::Failed,
+                            "The volume is not mounted.",
+                        ));
+                    };
                     mount
                         .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
                         .await
                 }
-                None => {
-                    in_flight.set(false);
-                    return;
-                }
-            },
-            MediaRelease::UnmountMount => match mount {
-                Some(mount) => {
+                MediaRelease::UnmountMount => {
+                    let Some(mount) = mount else {
+                        return Err(glib::Error::new(
+                            gio::IOErrorEnum::Failed,
+                            "The volume is not mounted.",
+                        ));
+                    };
                     mount
                         .unmount_with_operation_future(
                             gio::MountUnmountFlags::NONE,
@@ -2396,23 +2733,12 @@ fn release_device_volume(
                         )
                         .await
                 }
-                None => {
-                    in_flight.set(false);
-                    return;
-                }
-            },
-        };
-        in_flight.set(false);
-        match result {
-            Ok(()) => {
-                if let Some(root) = away_root {
-                    navigate_home_if_within(&browser, &root);
-                }
             }
-            Err(error) if error.matches(gio::IOErrorEnum::Cancelled) => {}
-            Err(error) => show_error_dialog(&error_parent, title, &error.to_string()),
-        }
-    });
+        },
+    );
+    if !started {
+        in_flight.set(false);
+    }
 }
 
 fn release_device_mount(
@@ -2420,54 +2746,66 @@ fn release_device_mount(
     action: MediaRelease,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
+    view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
     if !begin_media_release(in_flight) {
         return;
     }
+    let key = device_release::key_for_mount(mount);
+    let sync_root = mount.root().path();
     let away_root = mount.root();
-    let window = parent.root().and_downcast::<gtk::Window>();
-    let operation = gtk::MountOperation::new(window.as_ref());
-    let error_parent = parent.clone();
-    let browser = browser.clone();
+    let unplug = release_unplug(&action, Some(mount), None);
     let mount = mount.clone();
-    let in_flight = in_flight.clone();
-    let title = media_release_error_title(action);
-    glib::MainContext::default().spawn_local(async move {
-        let result = match action {
-            MediaRelease::EjectVolume | MediaRelease::EjectMount => {
-                mount
-                    .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                    .await
+    let in_flight_for_settle = in_flight.clone();
+    let started = device_release::start_release(
+        parent,
+        Some(browser.clone()),
+        Some(view),
+        key,
+        release_kind(action),
+        unplug,
+        sync_root,
+        Some(away_root),
+        move || in_flight_for_settle.set(false),
+        move |operation| async move {
+            match action {
+                MediaRelease::EjectVolume | MediaRelease::EjectMount => {
+                    mount
+                        .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                        .await
+                }
+                MediaRelease::UnmountMount => {
+                    mount
+                        .unmount_with_operation_future(
+                            gio::MountUnmountFlags::NONE,
+                            Some(&operation),
+                        )
+                        .await
+                }
             }
-            MediaRelease::UnmountMount => {
-                mount
-                    .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                    .await
-            }
-        };
+        },
+    );
+    if !started {
         in_flight.set(false);
-        match result {
-            Ok(()) => navigate_home_if_within(&browser, &away_root),
-            Err(error) if error.matches(gio::IOErrorEnum::Cancelled) => {}
-            Err(error) => show_error_dialog(&error_parent, title, &error.to_string()),
-        }
-    });
+    }
 }
 
 fn lock_encrypted_volume(
     volume: &gio::Volume,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
+    view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
-    request_encrypted_lock(
+    request_encrypted_lock_showing(
         parent,
         &volume.name(),
         crypto_password_uuid_for_volume(volume),
         volume.get_mount(),
         password_stop_drive(volume.drive()),
         browser,
+        Some(view),
         in_flight,
     );
 }
@@ -2476,15 +2814,17 @@ fn lock_encrypted_mount(
     mount: &gio::Mount,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
+    view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
-    request_encrypted_lock(
+    request_encrypted_lock_showing(
         parent,
         &mount.name(),
         crypto_password_uuid_for_mount(mount),
         Some(mount.clone()),
         password_stop_drive(mount.drive()),
         browser,
+        Some(view),
         in_flight,
     );
 }
@@ -2517,6 +2857,7 @@ fn crypto_password_uuid_for_mount(mount: &gio::Mount) -> Option<String> {
     devices::crypto_password_uuid(None, unix.as_deref(), hint.as_ref(), false)
 }
 
+#[cfg(test)]
 fn request_encrypted_lock(
     parent: &gtk::Widget,
     volume_name: &str,
@@ -2524,6 +2865,32 @@ fn request_encrypted_lock(
     mount: Option<gio::Mount>,
     drive: Option<gio::Drive>,
     browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    request_encrypted_lock_showing(
+        parent,
+        volume_name,
+        luks_uuid,
+        mount,
+        drive,
+        browser,
+        None,
+        in_flight,
+    );
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "lock confirmation needs the volume, its mount, and the window that shows progress"
+)]
+fn request_encrypted_lock_showing(
+    parent: &gtk::Widget,
+    volume_name: &str,
+    luks_uuid: Option<String>,
+    mount: Option<gio::Mount>,
+    drive: Option<gio::Drive>,
+    browser: &Rc<Browser>,
+    view: Option<&BrowserView>,
     in_flight: &Rc<Cell<bool>>,
 ) {
     if mount.is_none() && drive.is_none() {
@@ -2540,6 +2907,7 @@ fn request_encrypted_lock(
     let parent = parent.clone();
     let volume_name = volume_name.to_owned();
     let browser = browser.clone();
+    let view = view.cloned();
     let in_flight = in_flight.clone();
     glib::MainContext::default().spawn_local(async move {
         let cached = if let Some(uuid) = luks_uuid.clone() {
@@ -2560,6 +2928,7 @@ fn request_encrypted_lock(
                 drive,
                 &parent_for_lock,
                 &browser_for_lock,
+                view,
                 &in_flight_for_lock,
             );
         };
@@ -2714,7 +3083,7 @@ fn confirm_forget_cached_password(
         glib::Propagation::Stop
     });
     layer.add_controller(escape);
-    cancel.grab_focus();
+    focus_button(&confirm);
 }
 
 fn password_stop_drive(drive: Option<gio::Drive>) -> Option<gio::Drive> {
@@ -2728,56 +3097,72 @@ fn lock_cleartext_then_stop(
     drive: Option<gio::Drive>,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
+    view: Option<BrowserView>,
     in_flight: &Rc<Cell<bool>>,
 ) {
+    let key = match mount.as_ref() {
+        Some(mount) => device_release::key_for_mount(mount),
+        None => drive.as_ref().map(device_release::key_for_drive).unwrap_or(
+            device_release::ReleaseKey {
+                unix_device: None,
+                uuid: None,
+                mount_root: None,
+                display_name: String::new(),
+            },
+        ),
+    };
+    let sync_root = mount.as_ref().and_then(|mount| mount.root().path());
     let away_root = mount.as_ref().map(gio::Mount::root);
-    let window = parent.root().and_downcast::<gtk::Window>();
-    let unmount_operation = gtk::MountOperation::new(window.as_ref());
-    let stop_operation = gtk::MountOperation::new(window.as_ref());
-    let error_parent = parent.clone();
-    let browser = browser.clone();
-    let in_flight = in_flight.clone();
-    glib::MainContext::default().spawn_local(async move {
-        let unmount_result = match mount {
-            Some(mount) => {
-                mount
-                    .unmount_with_operation_future(
-                        gio::MountUnmountFlags::NONE,
-                        Some(&unmount_operation),
-                    )
-                    .await
-            }
-            None => Ok(()),
-        };
-        let result = match unmount_result {
-            Ok(()) => {
-                if let Some(root) = away_root {
-                    navigate_home_if_within(&browser, &root);
+    let in_flight_for_settle = in_flight.clone();
+    let parent_for_stop = parent.clone();
+    let key_for_stop = key.clone();
+    let started = device_release::start_release(
+        parent,
+        Some(browser.clone()),
+        view.as_ref(),
+        key,
+        device_release::ReleaseKind::Lock,
+        false,
+        sync_root,
+        away_root,
+        move || in_flight_for_settle.set(false),
+        move |unmount_operation| async move {
+            let unmount_result = match mount {
+                Some(mount) => {
+                    mount
+                        .unmount_with_operation_future(
+                            gio::MountUnmountFlags::NONE,
+                            Some(&unmount_operation),
+                        )
+                        .await
                 }
-                match drive {
+                None => Ok(()),
+            };
+            match unmount_result {
+                Ok(()) => match drive {
                     Some(drive) => {
+                        let stop_operation =
+                            device_release::mount_operation(&parent_for_stop, &key_for_stop);
                         drive
                             .stop_future(gio::MountUnmountFlags::NONE, Some(&stop_operation))
                             .await
                     }
                     None => Ok(()),
-                }
+                },
+                Err(error) => Err(error),
             }
-            Err(error) => Err(error),
-        };
+        },
+    );
+    if !started {
         in_flight.set(false);
-        if let Err(error) = result
-            && !error.matches(gio::IOErrorEnum::Cancelled)
-        {
-            show_error_dialog(&error_parent, "Unable to lock device", &error.to_string());
-        }
-    });
+    }
 }
 
 fn eject_password_drive(
     drive: &gio::Drive,
     action: MediaRelease,
     parent: &gtk::Widget,
+    view: &BrowserView,
     in_flight: &Rc<Cell<bool>>,
 ) {
     if !matches!(action, MediaRelease::EjectVolume | MediaRelease::EjectMount) {
@@ -2786,26 +3171,29 @@ fn eject_password_drive(
     if !begin_media_release(in_flight) {
         return;
     }
-    let window = parent.root().and_downcast::<gtk::Window>();
-    let operation = gtk::MountOperation::new(window.as_ref());
-    let error_parent = parent.clone();
+    let key = device_release::key_for_drive(drive);
+    let unplug = release_unplug(&action, None, None);
     let drive = drive.clone();
-    let in_flight = in_flight.clone();
-    glib::MainContext::default().spawn_local(async move {
-        let result = drive
-            .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-            .await;
+    let in_flight_for_settle = in_flight.clone();
+    let started = device_release::start_release(
+        parent,
+        None,
+        Some(view),
+        key,
+        release_kind(action),
+        unplug,
+        None,
+        None,
+        move || in_flight_for_settle.set(false),
+        move |operation| async move {
+            drive
+                .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                .await
+        },
+    );
+    if !started {
         in_flight.set(false);
-        match result {
-            Ok(()) => {}
-            Err(error) if error.matches(gio::IOErrorEnum::Cancelled) => {}
-            Err(error) => show_error_dialog(
-                &error_parent,
-                media_release_error_title(action),
-                &error.to_string(),
-            ),
-        }
-    });
+    }
 }
 
 fn gio_icon_names(icon: &gio::Icon) -> Vec<String> {
@@ -2968,10 +3356,22 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
             order.push(*canonical);
         }
     }
-    for &id in STANDARD_PLACE_IDS {
-        if !order.contains(&id) {
-            order.push(id);
+    for (index, &id) in STANDARD_PLACE_IDS.iter().enumerate() {
+        if order.contains(&id) {
+            continue;
         }
+        // Preserve the old sidebar layout when upgrading orders without special places.
+        let position = STANDARD_PLACE_IDS[..index]
+            .iter()
+            .rev()
+            .find_map(|earlier| {
+                order
+                    .iter()
+                    .position(|place| place == earlier)
+                    .map(|position| position + 1)
+            })
+            .unwrap_or(0);
+        order.insert(position, id);
     }
     order
 }
@@ -3007,8 +3407,7 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
     }
 }
 
-async fn trash_item_count(root: &gio::File) -> Result<u32, glib::Error> {
-    const CAP: u32 = 32;
+async fn trash_has_items(root: &gio::File) -> Result<bool, glib::Error> {
     let enumerator = root
         .enumerate_children_future(
             gio::FILE_ATTRIBUTE_STANDARD_NAME,
@@ -3016,17 +3415,10 @@ async fn trash_item_count(root: &gio::File) -> Result<u32, glib::Error> {
             glib::Priority::DEFAULT,
         )
         .await?;
-    let mut count = 0u32;
-    while count < CAP {
-        let children = enumerator
-            .next_files_future((CAP - count) as i32, glib::Priority::DEFAULT)
-            .await?;
-        if children.is_empty() {
-            break;
-        }
-        count += children.len() as u32;
-    }
-    Ok(count)
+    Ok(!enumerator
+        .next_files_future(1, glib::Priority::DEFAULT)
+        .await?
+        .is_empty())
 }
 
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {

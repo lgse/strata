@@ -4,6 +4,8 @@ Strata can serve the XDG Desktop Portal FileChooser interface for portal-aware a
 
 The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Icons/List views, List type grouping, filters, metadata, previews, and themed controls. Recent appears when enabled in sidebar preferences and supported by the desktop's recent-files backend; only local targets are listed. Overwrite confirmation uses the same in-window modal as the app.
 
+Folder-only requests hide regular files in both directory listings and recursive results. File requests keep folders available for navigation. Changing a file-type filter refreshes the current results without clearing the search query; selection and acceptance follow the new filter.
+
 In Save dialogs, selecting a file copies its name into the name input without accepting the dialog. The automatic initial selection does not change the suggested name or destination. Selecting a folder changes the destination without changing the name. In Recent, select a file to save in its containing folder, or navigate to a local folder first.
 
 Wayland applications can provide an exported parent handle. X11 parent handles are not attached; these requests appear as standalone windows.
@@ -80,6 +82,8 @@ strata --install-portal
 ```
 
 This installs the portal metadata and D-Bus activation service below `$XDG_DATA_HOME`, makes Strata the preferred FileChooser while retaining the active backends as fallbacks, reloads D-Bus, and restarts the portal frontend. If no user portal configuration exists, Strata copies the active desktop configuration before changing the FileChooser preference. The command records whether that user override was created or modified so it can be removed safely later.
+
+The chooser backend is activated on demand and exits after about two minutes without an active request (checked every 10 seconds). An open dialog (including a pending request) keeps it running; closing the last dialog starts the idle countdown again. In-app updates stop old Strata windows and chooser backends, then automatically relaunch the updating window with the replacement binary. External package-manager updates and manual binary replacements do not invoke the in-app retirement step; restart remaining Strata processes or log out after those updates.
 
 The generated D-Bus service contains the absolute path of the command being run. Move Strata to its permanent location before installing the portal. For safe activation, every component of the canonical executable path must be owned by the current user or root and must not be writable by other users. D-Bus service-file argument parsing is not shell quoting, so the installer also rejects executable paths containing whitespace, quotes, or backslashes.
 

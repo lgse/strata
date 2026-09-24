@@ -295,6 +295,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(themes.selected_id(), "nord");
             assert!(!manager.folder_peeking());
             assert!(!manager.single_click_previews());
+            assert!(!manager.columns_mirror_selection());
             assert!(!manager.hardware_accelerated_video_previews());
             assert_eq!(manager.video_preview_backend(), MediaPreviewBackend::Vulkan);
             assert_eq!(
@@ -465,6 +466,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
             let preference_setters: &[fn(&PreferenceManager)] = &[
                 |m| m.set_folder_peeking(true),
                 |m| m.set_single_click_previews(true),
+                |m| m.set_columns_mirror_selection(true),
                 |m| m.set_render_documents_by_default(true),
                 |m| m.set_hardware_accelerated_video_previews(true),
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
@@ -510,6 +512,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_sidebar_show_videos(true),
                 |m| m.set_sort_preferences(ViewPreferences::default()),
                 |m| m.set_text_size(TextSize::new(11)),
+                |m| m.set_interface_renderer(InterfaceRenderer::System),
                 |m| m.set_checks_for_updates(true),
                 |m| m.set_release_channel(Channel::Stable),
                 |m| m.set_preview_muted(false),

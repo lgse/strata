@@ -447,12 +447,12 @@ fn columns_rename_hides_and_restores_the_size_badge() {
             });
             browser.select(0, 0);
             wait_until(|| view.state.begin_rename());
-            let size = view
-                .state
-                .active_rename
+            let size = view.state.columns.borrow()[0]
+                .bound_rows
                 .borrow()
-                .as_ref()
-                .map(|rename| rename.size.clone())
+                .iter()
+                .find(|bound| bound.edit.is_editing())
+                .map(|bound| bound.size.clone())
                 .expect("a Columns rename is open");
 
             wait_until(|| !size.label().is_empty());

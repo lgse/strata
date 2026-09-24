@@ -75,6 +75,7 @@ struct Fixture {
     preview: PreviewDrawer,
     requests: Rc<RefCell<Vec<PreviewRequest>>>,
     root: tempfile::TempDir,
+    _sidebar: SidebarView,
 }
 
 impl Fixture {
@@ -100,12 +101,15 @@ impl Fixture {
         };
         let requests = Rc::new(RefCell::new(Vec::new()));
         let preview = PreviewDrawer::new(Rc::new(RecordingProvider(requests.clone())), !chooser);
-        let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        sidebar.set_width_request(180);
+        let sidebar =
+            crate::ui::window::build_sidebar(browser.clone(), PreferenceManager::shared(), true);
+        sidebar
+            .widget
+            .set_size_request(crate::ui::window::MIN_SIDEBAR_WIDTH, -1);
         let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-        content.set_start_child(Some(&sidebar));
+        content.set_start_child(Some(&sidebar.widget));
         content.set_end_child(Some(&browser.widget()));
-        content.set_position(180);
+        content.set_position(crate::ui::window::SIDEBAR_WIDTH);
         content.set_resize_start_child(false);
         content.set_shrink_start_child(false);
         let split = gtk::Paned::new(gtk::Orientation::Horizontal);
@@ -115,7 +119,7 @@ impl Fixture {
         split.set_resize_end_child(false);
         split.set_shrink_start_child(false);
         split.set_shrink_end_child(true);
-        preview.attach_split(&split, &content, &browser);
+        preview.attach_split(&split, &content, &browser, Some(&sidebar));
         let window = gtk::Window::builder()
             .child(&split)
             .default_width(1800)
@@ -139,6 +143,7 @@ impl Fixture {
             preview,
             requests,
             root,
+            _sidebar: sidebar,
         }
     }
 

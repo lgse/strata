@@ -231,3 +231,99 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
         },
     );
 }
+
+#[test]
+fn known_size_copy_keeps_writing_to_device_until_the_dialog_can_show_it() {
+    crate::test_support::gtk_test(
+        "ui::browser::progress::tests::known_size_copy_keeps_writing_to_device_until_the_dialog_can_show_it",
+        || {
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&view.widget()));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let state = &view.state;
+
+            state.handle(&crate::app::BrowserEvent::TransferStarted {
+                total: 16,
+                moving: false,
+            });
+            state.handle(&crate::app::BrowserEvent::TransferProgress {
+                completed_items: 16,
+                transferred_bytes: 1_000,
+                total_bytes: Some(1_000),
+            });
+            spin_until(|| {
+                flush_dialog(state)
+                    .is_some_and(|(_, indeterminate, pulsing)| !indeterminate && !pulsing)
+            });
+            state.handle(&crate::app::BrowserEvent::FlushingToDevice);
+            assert_eq!(
+                flush_dialog(state).expect("open flush"),
+                ("Writing to device…".to_owned(), true, true)
+            );
+            state.handle(&crate::app::BrowserEvent::TransferProgress {
+                completed_items: 16,
+                transferred_bytes: 1_000,
+                total_bytes: Some(1_000),
+            });
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            while glib::MainContext::default().iteration(false) {}
+            assert_eq!(
+                flush_dialog(state).expect("flush survives a later byte update"),
+                ("Writing to device…".to_owned(), true, true)
+            );
+
+            state.handle(&crate::app::BrowserEvent::TransferFinished {
+                moved_locations: Vec::new(),
+            });
+            spin_until(|| state.file_progress_view.borrow().is_none());
+
+            state.handle(&crate::app::BrowserEvent::TransferStarted {
+                total: 1,
+                moving: false,
+            });
+            state.handle(&crate::app::BrowserEvent::TransferProgress {
+                completed_items: 1,
+                transferred_bytes: 1_000,
+                total_bytes: Some(1_000),
+            });
+            assert!(state.file_progress_view.borrow().is_none());
+            state.handle(&crate::app::BrowserEvent::FlushingToDevice);
+            assert!(state.file_progress_view.borrow().is_none());
+            spin_until(|| state.file_progress_view.borrow().is_some());
+            assert_eq!(
+                flush_dialog(state).expect("delayed flush"),
+                ("Writing to device…".to_owned(), true, true)
+            );
+
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+fn flush_dialog(state: &crate::ui::browser::ViewState) -> Option<(String, bool, bool)> {
+    let view = state.file_progress_view.borrow();
+    let view = view.as_ref()?;
+    Some((
+        view.status.text().to_string(),
+        view.indeterminate.get(),
+        view.pulse_source.borrow().is_some(),
+    ))
+}
+
+fn spin_until(mut ready: impl FnMut() -> bool) {
+    let start = std::time::Instant::now();
+    while !ready() {
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "timed out waiting for the copy dialog"
+        );
+        while glib::MainContext::default().iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}

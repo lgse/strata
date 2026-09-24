@@ -37,6 +37,7 @@ impl PreviewState {
             self.close();
         } else {
             self.set_enabled(true);
+            self.focus_archive_on_ready.set(true);
             if let Some(entry) = entry.and_then(|entry| preview_target(Some(entry))) {
                 self.show(entry, depth);
             } else {
@@ -47,6 +48,7 @@ impl PreviewState {
 
     pub(super) fn clear_target(&self) {
         self.cancel_pending_show();
+        self.focus_archive_on_ready.set(false);
         self.animating.set(false);
         self.sizing.close();
         self.animation_generation

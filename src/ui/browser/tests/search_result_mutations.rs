@@ -90,6 +90,76 @@ fn renaming_a_filtered_result_clears_the_stale_hit_in_every_view_mode() {
 }
 
 #[test]
+fn matching_rename_refreshes_the_result_and_subsequent_queries_in_every_view_mode() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::search_result_mutations::matching_rename_refreshes_the_result_and_subsequent_queries_in_every_view_mode",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                with_filtered_result(mode, |view, path, entry| {
+                    view.browser()
+                        .rename(entry, "needle-renamed.txt".to_owned());
+                    wait_until(|| shows_match(&view.widget(), "needle-renamed.txt"));
+                    assert!(!shows_match(&view.widget(), "needle.txt"));
+                    assert!(!path.join("needle.txt").exists());
+                    assert_eq!(
+                        std::fs::read(path.join("needle-renamed.txt")).expect("renamed file"),
+                        b"body"
+                    );
+                    assert!(view.show_filter_with_query("nothing-matches"));
+                    wait_until(|| !shows_match(&view.widget(), "needle-renamed.txt"));
+                    assert!(view.show_filter_with_query("renamed"));
+                    wait_until(|| shows_match(&view.widget(), "needle-renamed.txt"));
+                });
+            }
+        },
+    );
+}
+
+#[test]
+fn undo_after_navigation_refreshes_an_existing_search_session() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::search_result_mutations::undo_after_navigation_refreshes_an_existing_search_session",
+        || {
+            with_filtered_result(BrowserMode::List, |view, path, entry| {
+                let (search, events) =
+                    crate::services::index_filter(path.to_path_buf(), false, true);
+                search.query("needle");
+                let await_result = |name: &str| {
+                    wait_until(|| {
+                        events.try_iter().any(
+                            |crate::services::SearchEvent::Results {
+                                 items, indexing, ..
+                             }| {
+                                !indexing && items.len() == 1 && items[0].path == path.join(name)
+                            },
+                        )
+                    });
+                };
+                await_result("needle.txt");
+                view.browser()
+                    .rename(entry, "needle-renamed.txt".to_owned());
+                await_result("needle-renamed.txt");
+                let elsewhere = tempfile::tempdir().expect("another directory");
+                view.browser().navigate(Location::local(elsewhere.path()));
+                wait_until(|| {
+                    view.browser().column_snapshot(0).is_some_and(|snapshot| {
+                        !snapshot.loading && snapshot.location == Location::local(elsewhere.path())
+                    })
+                });
+                let (generation, _, _) = view.browser().pending_undo_rename().expect("rename undo");
+                assert!(view.browser().undo_rename(generation));
+                await_result("needle.txt");
+                assert!(!path.join("needle-renamed.txt").exists());
+                assert_eq!(
+                    std::fs::read(path.join("needle.txt")).expect("restored file"),
+                    b"body"
+                );
+            });
+        },
+    );
+}
+
+#[test]
 fn deleting_a_filtered_result_clears_the_stale_hit_in_every_view_mode() {
     crate::test_support::gtk_test(
         "ui::browser::tests::search_result_mutations::deleting_a_filtered_result_clears_the_stale_hit_in_every_view_mode",

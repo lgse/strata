@@ -22,10 +22,10 @@ use crate::ui::browser::destination::{
     folder_input_path, resolve_destination_path, setup_transfer_search,
 };
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
-use crate::ui::browser::inline_edit::update_basename_validation;
 use crate::ui::browser::paths::compact_display_path;
+use crate::ui::collection_edit::update_basename_validation;
 use crate::ui::controls::{
-    ModalTone, form_entry, form_error_label, form_label, form_password_entry,
+    ModalTone, focus_button, form_entry, form_error_label, form_label, form_password_entry,
     message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
     set_form_field_error,
 };
@@ -47,35 +47,6 @@ fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
     name.strip_suffix(&format!(".{}", format.extension()))
         .unwrap_or(name)
         .to_owned()
-}
-
-fn archive_stem(name: &str) -> &str {
-    const SUFFIXES: &[&str] = &[".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"];
-    let lower = name.to_ascii_lowercase();
-    for suffix in SUFFIXES {
-        if lower.ends_with(suffix) {
-            return &name[..name.len() - suffix.len()];
-        }
-    }
-    name
-}
-
-fn create_extraction_subfolder(parent: &Path, stem: &str) -> std::io::Result<Location> {
-    for suffix in 0_u64.. {
-        let name = if suffix == 0 {
-            stem.to_owned()
-        } else {
-            format!("{stem} ({suffix})")
-        };
-        let path = parent.join(name);
-        // Reserve the directory atomically, including collisions with dangling symlinks.
-        match std::fs::create_dir(&path) {
-            Ok(()) => return Ok(Location::local(path)),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::other("No available extraction folder name"))
 }
 
 /// Whether `destination` already contains a child named `archive_name`.
@@ -288,13 +259,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = replace.clone();
-        glib::idle_add_local_once(move || {
-            initial_focus.grab_focus();
-            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
-                window.set_focus_visible(false);
-            }
-        });
+        focus_button(&replace);
     }
 
     /// Opens the compress dialog for the selected `entries`.
@@ -476,10 +441,12 @@ impl ViewState {
 
     /// Extracts `entry` into its parent directory ("Extract here").
     ///
-    /// Returns immediately when the archive is not a native path. Archives
-    /// without a parent show an error instead of extracting. Password-capable
-    /// formats record a retry so a later password or encryption failure can
-    /// reopen [`Self::show_extract_password_dialog`]. The first attempt is sent
+    /// An archive spilling multiple top-level entries is bundled into a folder
+    /// named after it; a single-root archive lands as-is. Returns immediately
+    /// when the archive is not a native path. Archives without a parent show an
+    /// error instead of extracting. Password-capable formats record a retry so
+    /// a later password or encryption failure can reopen
+    /// [`Self::show_extract_password_dialog`]. The first attempt is sent
     /// without a password.
     pub(super) fn extract_entry(self: &Rc<Self>, entry: FileEntry) {
         if entry.location.native_path().is_none() {
@@ -498,42 +465,7 @@ impl ViewState {
             self.pending_extract_retry
                 .replace(Some((entry.clone(), parent.clone())));
         }
-        self.browser.extract(entry, parent, None);
-    }
-
-    pub(super) fn extract_entry_to_subfolder(self: &Rc<Self>, entry: FileEntry) {
-        if entry.location.native_path().is_none() {
-            return;
-        }
-        let Some(parent) = entry.location.parent() else {
-            show_error_dialog(
-                &self.overlay,
-                "Cannot extract",
-                "This archive has no parent directory.",
-            );
-            return;
-        };
-        let stem = archive_stem(&entry.display_name);
-        if stem.is_empty() || stem == "." || stem == ".." || stem.contains('/') {
-            self.extract_entry(entry);
-            return;
-        }
-        let Some(parent_path) = parent.native_path() else {
-            return;
-        };
-        let destination = match create_extraction_subfolder(parent_path, stem) {
-            Ok(destination) => destination,
-            Err(error) => {
-                show_error_dialog(&self.overlay, "Cannot extract", &error.to_string());
-                return;
-            }
-        };
-        let format = ArchiveFormat::from_extension(&entry.display_name);
-        if format.map(|f| f.supports_password()).unwrap_or(false) {
-            self.pending_extract_retry
-                .replace(Some((entry.clone(), destination.clone())));
-        }
-        self.browser.extract(entry, destination, None);
+        self.browser.extract(entry, parent, false, None);
     }
 
     /// Opens the "Extract to" folder picker for `entry`.
@@ -629,7 +561,7 @@ impl ViewState {
             extract_state.pending_navigate.replace(Some(dest.clone()));
             extract_state
                 .browser
-                .extract(extract_entry.clone(), dest, None);
+                .extract(extract_entry.clone(), dest, false, None);
             dismiss_for_confirm();
         });
 
@@ -699,7 +631,7 @@ impl ViewState {
                 .pending_navigate
                 .replace(navigate_after_extract.clone());
             dismiss_for_confirm();
-            browser.extract(entry.clone(), destination.clone(), Some(pw));
+            browser.extract(entry.clone(), destination.clone(), false, Some(pw));
         });
         submit_on_enter(&body, &confirm);
         password_entry.grab_focus();

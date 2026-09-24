@@ -11,8 +11,17 @@ use super::*;
 use crate::{
     services::{BuildKind, ReleaseMetadata, UpdateMethod},
     test_support::gtk_test,
-    ui::browser_modes::BrowserMode,
+    ui::{browser_modes::BrowserMode, preferences::TextSize},
 };
+
+fn settle_sidebar(millis: u64) {
+    let main_loop = glib::MainLoop::new(None, false);
+    let stop = main_loop.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_millis(millis), move || {
+        stop.quit()
+    });
+    main_loop.run();
+}
 
 struct Fixture {
     window: gtk::ApplicationWindow,
@@ -358,8 +367,6 @@ fn sidebar_toggle_preserves_split_constraints() {
                 .expect("preview paned");
             let content = preview_split
                 .start_child()
-                .expect("navigation wrapper")
-                .first_child()
                 .expect("sidebar/browser split")
                 .downcast::<gtk::Paned>()
                 .expect("sidebar/browser paned");
@@ -371,8 +378,44 @@ fn sidebar_toggle_preserves_split_constraints() {
             fixture.content.header.sidebar_toggle.set_active(true);
             assert_eq!(content.position(), super::super::SIDEBAR_WIDTH);
             assert!(fixture.content.sidebar.widget.is_visible());
+            assert!(!fixture.content.sidebar.state.rail.get());
             content.set_position(1);
             assert_eq!(content.position(), super::super::MIN_SIDEBAR_WIDTH);
+
+            fixture.window.set_default_size(450, 760);
+            fixture.window.set_size_request(450, 760);
+            fixture.content.header.sidebar_toggle.set_active(false);
+            assert_eq!(content.position(), 0);
+            fixture.content.header.sidebar_toggle.set_active(true);
+            assert_eq!(content.position(), super::super::sidebar_rail_width());
+            assert!(fixture.content.sidebar.state.rail.get());
+
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn sidebar_toggle_animated_expand_restores_visibility() {
+    gtk_test(
+        "ui::window::composition::tests::sidebar_toggle_animated_expand_restores_visibility",
+        || {
+            let fixture = Fixture::new();
+            fixture.preferences.set_reduce_motion(false);
+            fixture.preferences.set_text_size(TextSize::new(10));
+            if let Some(settings) = gtk::Settings::default() {
+                settings.set_gtk_enable_animations(true);
+            }
+            fixture.content.header.sidebar_toggle.set_active(false);
+            wait_until_hidden(&fixture.content.sidebar.widget);
+            fixture.content.header.sidebar_toggle.set_active(true);
+            settle_sidebar(600);
+            assert!(fixture.content.sidebar.widget.is_visible());
+            fixture.content.header.sidebar_toggle.set_active(false);
+            settle_sidebar(50);
+            fixture.content.header.sidebar_toggle.set_active(true);
+            settle_sidebar(600);
+            assert!(fixture.content.sidebar.widget.is_visible());
             fixture.close();
         },
     );

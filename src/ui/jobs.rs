@@ -203,7 +203,6 @@ impl JobsIndicator {
             .max_content_height(420)
             .width_request(500)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         body.append(&scroll);
         popover.set_child(Some(&body));
         root.set_popover(Some(&popover));

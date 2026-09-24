@@ -205,14 +205,28 @@ class Strata:
     def matches(self, directory: str | None = None) -> list[str]:
         """What a recursive query currently lists.
 
-        Columns replaces the pane's own listing with the matches; the
-        single-pane views show them in a separate results list.
+        Columns replaces the pane's own listing with the matches; each
+        single-pane view shows them in a mode-consistent results collection.
         """
 
         results = self.window.find(role="list", name=SEARCH_RESULTS_LABEL)
+        result_role = "list item"
+        if results is None:
+            results = self.window.find(role="table", name=SEARCH_RESULTS_LABEL)
+            result_role = "table cell"
         if results is not None:
-            return [row.name for row in results.find_all(role="list item") if row.name]
+            return [row.name for row in results.find_all(role=result_role) if row.name]
         return self.entry_names(directory)
+
+    def search_result(self, name: str) -> Node | None:
+        results = self.window.find(role="list", name=SEARCH_RESULTS_LABEL)
+        role = "list item"
+        if results is None:
+            results = self.window.find(role="table", name=SEARCH_RESULTS_LABEL)
+            role = "table cell"
+        if results is not None:
+            return results.find(role=role, name=name)
+        return self.window.find(role="list item", name=name)
 
     def entry_names(self, directory: str | None = None) -> list[str]:
         return [node.name for node in self.entries(directory)]
@@ -373,7 +387,6 @@ class Strata:
             pane = self.pane(directory)
         container = self._entry_container_in(pane)
         if container is None:
-            # The bottom edge can be Columns' paste-target footer, not its content.
             return pane.screen_bounds().center
         bounds = container.screen_bounds()
         entries = self._entries_in(pane)
@@ -391,24 +404,10 @@ class Strata:
         self.pointer.move_to(*self.empty_point(directory))
         return pane
 
-    def paste_target(self) -> str | None:
-        """The pane Strata says Ctrl+V would paste into."""
-
-        for pane in self.containers():
-            if pane.find(role="label", name_matches="Paste here"):
-                return pane.name
-        return None
-
     def paste_into(self, directory: str | None = None) -> None:
         """Aim the paste at a pane, then paste into it."""
 
-        pane = self.hover_pane(directory)
-        # Columns marks the pane Ctrl+V would target; the single-pane views
-        # have only one candidate and show no marker.
-        self.wait(
-            lambda: self.paste_target() in (pane.name, None),
-            f"the paste target to become {pane.name!r}",
-        )
+        self.hover_pane(directory)
         self.keyboard.press("ctrl+v")
 
     # Enough steps to cross any fixture directory in the suite.

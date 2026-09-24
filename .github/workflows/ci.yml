@@ -49,8 +49,8 @@ jobs:
             docker pull --platform=linux/amd64 "${reference#environment_image=}"
           else
             git cat-file -e "$BASE_REF^{commit}"
-            if git diff --quiet "$BASE_REF" HEAD -- tests/e2e/Dockerfile tests/e2e/requirements.txt tests/e2e/install-packages.sh; then
-              echo 'The unchanged environment is unavailable. Restore public access; ordinary quality runs do not bootstrap Ubuntu.' >&2
+            if git diff --quiet "$BASE_REF" HEAD -- tests/e2e/Dockerfile tests/e2e/requirements.txt tests/e2e/install-packages.sh tests/e2e/gtk; then
+              echo 'The unchanged environment is unavailable. Restore public access; ordinary quality runs do not bootstrap distribution packages.' >&2
               exit 1
             else
               status=$?

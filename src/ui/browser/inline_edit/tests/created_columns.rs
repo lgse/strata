@@ -243,7 +243,12 @@ fn folder_rename_completion_does_not_restore_selection_or_reopen_a_closed_path()
                         );
                         assert_eq!(view.browser().location_at(1), None);
                     } else {
-                        wait_for_renamed(view, path, true);
+                        wait_until(|| view.browser().location_at(1).is_none());
+                        assert_eq!(
+                            view.browser().location_at(1),
+                            None,
+                            "rename completion must not reopen the closed child path"
+                        );
                         assert_eq!(
                             view.browser().selected_entries()[0].display_name,
                             "sibling.txt"

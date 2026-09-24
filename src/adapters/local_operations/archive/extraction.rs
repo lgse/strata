@@ -6,8 +6,9 @@
 //! names only on cancellation. The session validates and maps destination reports
 //! without scanning ahead, probing the filesystem or reserving pending names.
 use std::{
+    collections::HashSet,
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
@@ -15,7 +16,7 @@ use crate::model::Location;
 
 use super::{
     ArchiveError, COPY_BUF, archive_failed, check_archive_cancelled,
-    destination::{ExtractNameResolver, ExtractionDestination, validated_archive_path},
+    destination::{ExtractNameResolver, ExtractionDestination, sanitized_archive_path},
 };
 
 #[cfg(test)]
@@ -41,6 +42,20 @@ pub(super) enum ArchiveOutcome<T> {
     },
 }
 
+#[derive(Debug)]
+pub(super) struct ExtractedRoots {
+    pub(super) roots: Vec<PathBuf>,
+    directory: ExtractionDestination,
+}
+
+impl ExtractedRoots {
+    pub(super) fn bundle(self, archive_name: &str) -> Result<Option<String>, ArchiveError> {
+        self.directory
+            .bundle_roots(archive_name, &self.roots)
+            .map_err(archive_failed)
+    }
+}
+
 enum InterruptedMember {
     NotAttempted(Location),
     Failed(Location),
@@ -52,7 +67,8 @@ pub(super) struct ExtractionSession<'a> {
     resolver: ExtractNameResolver,
     progress: &'a AtomicUsize,
     cancelled: &'a AtomicBool,
-    first_name: Option<String>,
+    roots: Vec<PathBuf>,
+    seen_roots: HashSet<PathBuf>,
     completed: Vec<Location>,
     interrupted: Option<InterruptedMember>,
     written: u64,
@@ -89,7 +105,8 @@ impl<'a> ExtractionSession<'a> {
             resolver: ExtractNameResolver::new(),
             progress,
             cancelled,
-            first_name: None,
+            roots: Vec::new(),
+            seen_roots: HashSet::new(),
             completed: Vec::new(),
             interrupted: None,
             written: 0,
@@ -149,7 +166,7 @@ impl<'a> ExtractionSession<'a> {
         name: &str,
         content: MemberContent<'_>,
     ) -> Result<(), ArchiveError> {
-        let path = validated_archive_path(name)?;
+        let path = sanitized_archive_path(name)?;
         if let Err(error) = self.check_cancelled() {
             self.interrupted = Some(InterruptedMember::NotAttempted(extract_entry_location(
                 self.destination,
@@ -163,12 +180,6 @@ impl<'a> ExtractionSession<'a> {
             self.ensure_member_fits(name, *declared)?;
         }
         let outpath = self.resolver.resolve(&self.directory, &path)?;
-        if self.first_name.is_none() {
-            self.first_name = outpath
-                .components()
-                .next()
-                .map(|component| component.as_os_str().to_string_lossy().into_owned());
-        }
         let created = match content {
             MemberContent::Directory => {
                 self.directory.create_directories(&outpath)?;
@@ -216,6 +227,12 @@ impl<'a> ExtractionSession<'a> {
                 }
             }
         };
+        if let Some(root) = created.components().next() {
+            let root = PathBuf::from(root.as_os_str());
+            if self.seen_roots.insert(root.clone()) {
+                self.roots.push(root);
+            }
+        }
         self.completed
             .push(extract_entry_location(self.destination, &created));
         self.progress.fetch_add(1, Ordering::Relaxed);
@@ -225,13 +242,19 @@ impl<'a> ExtractionSession<'a> {
     /// Pending names exclude members already passed to `extract_member`.
     /// Reports apply established top-level renames, but cannot predict final leaf
     /// conflicts for unattempted members. Invalid names are omitted, not errors.
+    ///
+    /// A completed extraction reports the distinct resolved top-level names it
+    /// wrote, in archive order, so the caller can bundle a spilled archive.
     pub(super) fn finish(
         self,
         result: Result<(), ArchiveError>,
         remaining: impl FnOnce() -> Vec<String>,
-    ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    ) -> Result<ArchiveOutcome<ExtractedRoots>, ArchiveError> {
         match result {
-            Ok(()) => Ok(ArchiveOutcome::Completed(self.first_name)),
+            Ok(()) => Ok(ArchiveOutcome::Completed(ExtractedRoots {
+                roots: self.roots,
+                directory: self.directory,
+            })),
             Err(ArchiveError::Cancelled) => {
                 let mut failed = Vec::new();
                 let mut not_attempted = Vec::new();
@@ -241,7 +264,7 @@ impl<'a> ExtractionSession<'a> {
                     None => {}
                 }
                 not_attempted.extend(remaining().into_iter().filter_map(|name| {
-                    let path = validated_archive_path(&name).ok()?;
+                    let path = sanitized_archive_path(&name).ok()?;
                     Some(extract_entry_location(
                         self.destination,
                         &self.resolver.apply_known_rename(&path),

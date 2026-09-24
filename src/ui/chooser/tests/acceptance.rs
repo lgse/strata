@@ -20,17 +20,70 @@ pub(super) fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
-pub(super) fn search_results_list(widget: &gtk::Widget) -> Option<gtk::ListBox> {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListBox>()
+#[derive(Clone)]
+pub(super) enum SearchResults {
+    Rows(gtk::ListBox),
+    Collection(gtk::SelectionModel),
+}
+
+impl SearchResults {
+    pub(super) fn n_items(&self) -> u32 {
+        match self {
+            Self::Rows(list) => list.observe_children().n_items(),
+            Self::Collection(selection) => selection.n_items(),
+        }
+    }
+
+    pub(super) fn select(&self, position: u32, exclusive: bool) {
+        match self {
+            Self::Rows(list) => {
+                if exclusive {
+                    list.unselect_all();
+                }
+                list.select_row(list.row_at_index(position as i32).as_ref());
+            }
+            Self::Collection(selection) => {
+                selection.select_item(position, exclusive);
+            }
+        }
+    }
+
+    fn unselect_all(&self) {
+        match self {
+            Self::Rows(list) => list.unselect_all(),
+            Self::Collection(selection) => {
+                selection.unselect_all();
+            }
+        }
+    }
+}
+
+pub(super) fn search_results(widget: &gtk::Widget) -> Option<SearchResults> {
+    if let Some(list) = widget.downcast_ref::<gtk::ListBox>()
         && list.has_css_class("file-list")
+        && list.is_mapped()
         && list.row_at_index(0).is_some()
     {
-        return Some(list);
+        return Some(SearchResults::Rows(list.clone()));
+    }
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
+        && list.has_css_class("search-results")
+        && list.is_mapped()
+        && let Some(selection) = list.model()
+    {
+        return Some(SearchResults::Collection(selection));
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("search-results")
+        && grid.is_mapped()
+        && let Some(selection) = grid.model()
+    {
+        return Some(SearchResults::Collection(selection));
     }
     let mut child = widget.first_child();
     while let Some(current) = child {
-        if let Some(list) = search_results_list(&current) {
-            return Some(list);
+        if let Some(results) = search_results(&current) {
+            return Some(results);
         }
         child = current.next_sibling();
     }
@@ -38,9 +91,17 @@ pub(super) fn search_results_list(widget: &gtk::Widget) -> Option<gtk::ListBox> 
 }
 
 fn select_first_two_file_list_items(widget: &gtk::Widget) {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
         && list.has_css_class("file-list")
         && let Some(selection) = list.model()
+        && selection.n_items() >= 2
+    {
+        selection.select_item(0, true);
+        selection.select_item(1, false);
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("file-icons")
+        && let Some(selection) = grid.model()
         && selection.n_items() >= 2
     {
         selection.select_item(0, true);
@@ -54,10 +115,18 @@ fn select_first_two_file_list_items(widget: &gtk::Widget) {
 }
 
 fn select_first_file_list_item(widget: &gtk::Widget) {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
         && list.has_css_class("file-list")
         && list.is_mapped()
         && let Some(selection) = list.model()
+        && selection.n_items() >= 1
+    {
+        selection.select_item(0, true);
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("file-icons")
+        && grid.is_mapped()
+        && let Some(selection) = grid.model()
         && selection.n_items() >= 1
     {
         selection.select_item(0, true);
@@ -77,10 +146,19 @@ fn select_first_file_list_item(widget: &gtk::Widget) {
 }
 
 fn select_first_file_list_item_in_first_list(widget: &gtk::Widget) -> bool {
-    if let Ok(list) = widget.clone().downcast::<gtk::ListView>()
+    if let Some(list) = widget.downcast_ref::<gtk::ListView>()
         && list.has_css_class("file-list")
         && list.is_mapped()
         && let Some(selection) = list.model()
+        && selection.n_items() >= 1
+    {
+        selection.select_item(0, true);
+        return true;
+    }
+    if let Some(grid) = widget.downcast_ref::<gtk::GridView>()
+        && grid.has_css_class("file-icons")
+        && grid.is_mapped()
+        && let Some(selection) = grid.model()
         && selection.n_items() >= 1
     {
         selection.select_item(0, true);
@@ -180,6 +258,8 @@ fn directory_confirmation_distinguishes_load_cursor_from_explicit_selection() {
                     let root = tempfile::tempdir().expect("fixture");
                     let child = root.path().join("child");
                     std::fs::create_dir(&child).expect("child folder");
+                    std::fs::write(root.path().join("hidden-by-folder-policy.txt"), "file")
+                        .expect("file");
                     let result = Rc::new(RefCell::new(None));
                     let received = result.clone();
                     let mut chooser_request = request(root.path().to_path_buf());
@@ -303,6 +383,266 @@ fn filter_dropdown_select_file_click_open_accepts_filtered_file() {
                     "{mode:?}"
                 );
                 state.window.close();
+            }
+        },
+    );
+}
+
+#[test]
+fn type_filter_refresh_preserves_recursive_query_and_replaces_eligible_results() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::type_filter_refresh_preserves_recursive_query_and_replaces_eligible_results",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_filter_include_subfolders(true);
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                std::fs::create_dir(root.path().join("nested")).expect("folder");
+                std::fs::write(root.path().join("other.txt"), "unrelated").expect("file");
+                for name in ["needle.txt", "needle.png"] {
+                    std::fs::write(root.path().join("nested").join(name), "fixture").expect("file");
+                }
+                let mut request = request(root.path().to_path_buf());
+                request.filters = vec![
+                    FileFilter::new("Text").glob("*.txt"),
+                    FileFilter::new("Images").mimetype("image/png"),
+                ];
+                let result = Rc::new(RefCell::new(None));
+                let received = result.clone();
+                let state =
+                    build_chooser(request, Arc::new(AtomicBool::new(false)), move |value| {
+                        received.replace(Some(value));
+                    })
+                    .expect("chooser");
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 2)
+                });
+                assert!(state.view.show_filter_with_query("needle"));
+                let query = nth_filter_entry(&state.view.widget(), 0).expect("query");
+                let select_result = |name: &str| {
+                    wait_until(|| {
+                        let Some(results) = visible_collection_selection(&state.view.widget())
+                        else {
+                            return false;
+                        };
+                        if state.view.selected_search_results().is_none() || results.n_items() != 1
+                        {
+                            return false;
+                        }
+                        results.select_item(0, true);
+                        state.view.selected_search_results().is_some_and(|entries| {
+                            entries.len() == 1
+                                && entries[0].location
+                                    == Location::local(root.path().join("nested").join(name))
+                        })
+                    });
+                };
+                select_result("needle.txt");
+                let dropdown = state.filter_dropdown.as_ref().expect("type filter");
+                for (index, name, count) in [
+                    (1, "needle.png", 1),
+                    (0, "needle.txt", 2),
+                    (1, "needle.png", 1),
+                ] {
+                    dropdown.selected.set(index);
+                    dropdown.changed.borrow().as_ref().expect("callback")(index);
+                    assert_eq!(query.text(), "needle", "{mode:?}");
+                    state.accept_button.emit_clicked();
+                    assert!(
+                        result.borrow().is_none(),
+                        "a removed selection must not be accepted: {mode:?}"
+                    );
+                    wait_until(|| {
+                        browser
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading && column.count == count)
+                    });
+                    assert_eq!(query.text(), "needle", "{mode:?}");
+                    assert!(
+                        browser
+                            .entry_at(0, 0)
+                            .is_some_and(|entry| entry.is_directory()),
+                        "normal listing retains folder identity: {mode:?}"
+                    );
+                    select_result(name);
+                }
+                state.accept_button.emit_clicked();
+                wait_until(|| result.borrow().is_some());
+                let selected = result
+                    .borrow_mut()
+                    .take()
+                    .expect("result")
+                    .expect("accepted");
+                assert_eq!(
+                    selected
+                        .uris()
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>(),
+                    vec![
+                        gio::File::for_path(root.path().join("nested/needle.png"))
+                            .uri()
+                            .to_string()
+                    ]
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn type_filtered_search_finds_eligible_entries_beyond_the_first_ranked_candidates() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::type_filtered_search_finds_eligible_entries_beyond_the_first_ranked_candidates",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_filter_include_subfolders(true);
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                std::fs::create_dir(root.path().join("nested")).expect("directory");
+                let target = root.path().join("nested/needle-picture-with-long-name.png");
+                std::fs::write(&target, "fixture").expect("image filename");
+                for index in 0..120 {
+                    std::fs::write(root.path().join(format!("needle-{index:03}.txt")), "file")
+                        .expect("file");
+                }
+                let mut request = request(root.path().to_path_buf());
+                request.filters = vec![FileFilter::new("Images").mimetype("image/png")];
+                let result = Rc::new(RefCell::new(None));
+                let received = result.clone();
+                let state =
+                    build_chooser(request, Arc::new(AtomicBool::new(false)), move |value| {
+                        received.replace(Some(value));
+                    })
+                    .expect("chooser");
+                wait_until(|| {
+                    state
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading && column.count == 1)
+                });
+                assert!(state.view.show_filter_with_query("needle"));
+                wait_until(|| {
+                    let Some(selection) = visible_collection_selection(&state.view.widget()) else {
+                        return false;
+                    };
+                    if state.view.selected_search_results().is_none() || selection.n_items() != 1 {
+                        return false;
+                    }
+                    selection.select_item(0, true);
+                    state.view.selected_search_results().is_some_and(|entries| {
+                        entries.len() == 1 && entries[0].location == Location::local(&target)
+                    })
+                });
+                state.accept_button.emit_clicked();
+                wait_until(|| result.borrow().is_some());
+                let selected = result
+                    .borrow_mut()
+                    .take()
+                    .expect("result")
+                    .expect("accepted");
+                assert_eq!(
+                    selected
+                        .uris()
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>(),
+                    vec![gio::File::for_path(&target).uri().to_string()]
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn folder_only_requests_filter_recursive_results_for_single_and_multiple_selection() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::folder_only_requests_filter_recursive_results_for_single_and_multiple_selection",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_filter_include_subfolders(true);
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                for multiple in [false, true] {
+                    let root = tempfile::tempdir().expect("fixture");
+                    for name in ["needle-directory-a", "needle-directory-b"] {
+                        std::fs::create_dir(root.path().join(name)).expect("folder");
+                    }
+                    for index in 0..120 {
+                        std::fs::write(root.path().join(format!("needle-{index:03}.txt")), "file")
+                            .expect("file");
+                    }
+                    let mut request = request(root.path().to_path_buf());
+                    request.kind = ChooserKind::Open {
+                        directory: true,
+                        multiple,
+                    };
+                    let result = Rc::new(RefCell::new(None));
+                    let received = result.clone();
+                    let state =
+                        build_chooser(request, Arc::new(AtomicBool::new(false)), move |value| {
+                            received.replace(Some(value));
+                        })
+                        .expect("chooser");
+                    let browser = state.view.browser();
+                    wait_until(|| {
+                        browser
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading && column.count == 2)
+                    });
+                    assert!((0..2).all(|position| {
+                        browser
+                            .entry_at(0, position)
+                            .is_some_and(|entry| entry.is_directory())
+                    }));
+                    assert!(state.view.show_filter_with_query("needle"));
+                    wait_until(|| {
+                        state.view.selected_search_results().is_some()
+                            && visible_collection_selection(&state.view.widget())
+                                .is_some_and(|results| results.n_items() == 2)
+                    });
+                    let results =
+                        visible_collection_selection(&state.view.widget()).expect("results");
+                    results.select_item(0, true);
+                    if multiple {
+                        results.select_item(1, false);
+                    }
+                    let entries = state
+                        .view
+                        .selected_search_results()
+                        .expect("search selection");
+                    assert_eq!(entries.len(), if multiple { 2 } else { 1 });
+                    assert!(entries.iter().all(|entry| entry.is_directory()));
+                    let mut expected = entries
+                        .iter()
+                        .map(|entry| {
+                            gio::File::for_path(entry.location.native_path().expect("local"))
+                                .uri()
+                                .to_string()
+                        })
+                        .collect::<Vec<_>>();
+                    expected.sort();
+                    state.accept_button.emit_clicked();
+                    wait_until(|| result.borrow().is_some());
+                    let selected = result
+                        .borrow_mut()
+                        .take()
+                        .expect("result")
+                        .expect("accepted");
+                    let mut actual = selected
+                        .uris()
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>();
+                    actual.sort();
+                    assert_eq!(actual, expected, "{mode:?}, multiple={multiple}");
+                }
             }
         },
     );
@@ -585,11 +925,10 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
 
             state.view.show_filter_with_query("nested*.TXT");
             wait_until(|| {
-                search_results_list(&state.view.widget())
-                    .is_some_and(|list| list.row_at_index(1).is_some())
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 1)
             });
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             let first_selected = state
                 .view
                 .selected_search_results()
@@ -602,8 +941,8 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
                 first_selected == Location::local(&first)
                     || first_selected == Location::local(&nested)
             );
-            list.unselect_all();
-            list.select_row(list.row_at_index(1).as_ref());
+            results.unselect_all();
+            results.select(1, true);
             wait_until(|| {
                 state.view.selected_search_results().is_some_and(|entries| {
                     entries
@@ -680,9 +1019,11 @@ fn dismissing_recursive_results_then_extending_widget_selection_accepts_current_
             });
 
             state.view.show_filter_with_query("nested");
-            wait_until(|| search_results_list(&state.view.widget()).is_some());
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            wait_until(|| {
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 0)
+            });
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             wait_until(|| {
                 state
                     .view
@@ -759,16 +1100,18 @@ fn active_recursive_search_without_selection_does_not_accept_hidden_browser_sele
             });
 
             state.view.show_filter_with_query("nested");
-            wait_until(|| search_results_list(&state.view.widget()).is_some());
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            wait_until(|| {
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 0)
+            });
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             wait_until(|| {
                 state
                     .view
                     .selected_search_results()
                     .is_some_and(|entries| entries.len() == 1)
             });
-            list.unselect_all();
+            results.unselect_all();
             wait_until(|| state.view.selected_search_results() == Some(Vec::new()));
 
             state.accept_button.emit_clicked();
@@ -777,8 +1120,7 @@ fn active_recursive_search_without_selection_does_not_accept_hidden_browser_sele
 
             state.view.show_filter_with_query("no-matches");
             wait_until(|| {
-                list.row_at_index(0).is_none()
-                    && state.view.selected_search_results() == Some(Vec::new())
+                results.n_items() == 0 && state.view.selected_search_results() == Some(Vec::new())
             });
             state.accept_button.emit_clicked();
             assert!(result.borrow().is_none(), "no results must not accept");
@@ -834,9 +1176,9 @@ fn recursive_multi_selection_accepts_every_selected_file_in_all_modes() {
                 state.view.show_filter_with_query("nested");
                 wait_until(|| state.view.selected_search_results().is_some());
                 wait_until(|| {
-                    if let Some(list) = search_results_list(&state.view.widget()) {
-                        list.select_row(list.row_at_index(0).as_ref());
-                        list.select_row(list.row_at_index(1).as_ref());
+                    if let Some(results) = search_results(&state.view.widget()) {
+                        results.select(0, true);
+                        results.select(1, false);
                     } else {
                         select_first_two_file_list_items(&state.view.widget());
                     }
@@ -1179,9 +1521,11 @@ fn save_file_with_search_results_accepts_selected_folder_without_navigating_into
             });
 
             state.view.show_filter_with_query("target");
-            wait_until(|| search_results_list(&state.view.widget()).is_some());
-            let list = search_results_list(&state.view.widget()).expect("search results");
-            list.select_row(list.row_at_index(0).as_ref());
+            wait_until(|| {
+                search_results(&state.view.widget()).is_some_and(|results| results.n_items() > 0)
+            });
+            let results = search_results(&state.view.widget()).expect("search results");
+            results.select(0, true);
             wait_until(|| {
                 state.view.selected_search_results().is_some_and(|entries| {
                     entries
@@ -1245,6 +1589,19 @@ fn save_file_with_selected_file_saves_to_active_folder() {
             browser.set_selection(0, &[0], Some(0));
             assert!(!browser.selection_is_load_cursor());
             wait_until(|| filename.text() == "existing.txt");
+            for (invalid, message) in [("", "Enter a name"), ("bad/name", "Names cannot contain /")]
+            {
+                filename.set_text(invalid);
+                state.accept_button.emit_clicked();
+                assert!(result.borrow().is_none());
+                assert!(filename.has_css_class("error"));
+                assert_eq!(filename.tooltip_text().as_deref(), Some(message));
+                assert!(
+                    !state.error.is_visible(),
+                    "filename errors belong to the field, not a second banner"
+                );
+                assert!(!root.path().join("bad").exists());
+            }
             filename.set_text("new_file.txt");
             state.accept_button.emit_clicked();
             wait_until(|| result.borrow().is_some());

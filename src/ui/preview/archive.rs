@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::prelude::*;
 
@@ -49,6 +52,8 @@ pub(super) struct ArchiveBrowser {
     path: Rc<RefCell<Vec<usize>>>,
     navigate: Rc<dyn Fn(usize)>,
     model: gtk::gio::ListStore,
+    selection: gtk::SingleSelection,
+    cursor: Cell<usize>,
     root: gtk::Box,
     crumbs: gtk::Box,
     count: gtk::Label,
@@ -69,11 +74,9 @@ impl ArchiveBrowser {
         let crumb_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Automatic)
             .vscrollbar_policy(gtk::PolicyType::Never)
-            .overlay_scrolling(false)
             .child(&crumbs)
             .build();
         crumb_scroll.add_css_class("preview-archive-crumbs-scroll");
-        crumb_scroll.add_css_class("fixed-scrollbar");
         root.append(&crumb_scroll);
 
         let count = gtk::Label::new(None);
@@ -83,7 +86,8 @@ impl ArchiveBrowser {
         root.append(&count);
 
         let model = gtk::gio::ListStore::new::<gtk::StringObject>();
-        let selection = gtk::NoSelection::new(Some(model.clone()));
+        let selection = gtk::SingleSelection::new(Some(model.clone()));
+        selection.set_autoselect(false);
         let factory = gtk::SignalListItemFactory::new();
         factory.connect_setup(|_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -153,17 +157,15 @@ impl ArchiveBrowser {
                 }
             }
         });
-        let list = gtk::ListView::new(Some(selection), Some(factory));
+        let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
         list.add_css_class("preview-archive-list");
         list.set_single_click_activate(true);
         let list_scroll = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .child(&list)
             .vexpand(true)
             .build();
-        list_scroll.add_css_class("fixed-scrollbar");
         root.append(&list_scroll);
 
         let empty = gtk::Label::new(Some("This folder is empty"));
@@ -179,6 +181,8 @@ impl ArchiveBrowser {
             path,
             navigate,
             model,
+            selection,
+            cursor: Cell::new(0),
             root,
             crumbs,
             count,
@@ -197,6 +201,55 @@ impl ArchiveBrowser {
         &self.list
     }
 
+    #[cfg(test)]
+    pub(super) fn cursor_index(&self) -> usize {
+        self.cursor.get()
+    }
+
+    #[cfg(test)]
+    pub(super) fn selected_index(&self) -> Option<usize> {
+        let selected = self.selection.selected();
+        (selected != gtk::INVALID_LIST_POSITION).then_some(selected as usize)
+    }
+
+    pub(super) fn move_cursor(&self, delta: isize) -> bool {
+        let count = self.model.n_items() as usize;
+        if count == 0 {
+            return false;
+        }
+        self.sync_cursor_to_selection();
+        let current = self.cursor.get().min(count - 1);
+        let next = (current as isize + delta).clamp(0, count as isize - 1) as usize;
+        if next == current {
+            return false;
+        }
+        self.cursor.set(next);
+        self.apply_selection();
+        true
+    }
+
+    pub(super) fn open_cursor(&mut self) -> bool {
+        self.sync_cursor_to_selection();
+        let directory = directory_at(&self.tree.root, &self.path.borrow());
+        if !matches!(
+            directory.children.get(self.cursor.get()),
+            Some(ArchiveNode::Directory(_))
+        ) {
+            return false;
+        }
+        self.open_child(self.cursor.get());
+        true
+    }
+
+    pub(super) fn go_up(&mut self) -> bool {
+        let depth = self.path.borrow().len();
+        if depth == 0 {
+            return false;
+        }
+        self.navigate_to(depth - 1);
+        true
+    }
+
     pub(super) fn open_child(&mut self, index: usize) {
         if matches!(
             directory_at(&self.tree.root, &self.path.borrow())
@@ -205,20 +258,37 @@ impl ArchiveBrowser {
             Some(ArchiveNode::Directory(_))
         ) {
             self.path.borrow_mut().push(index);
+            self.cursor.set(0);
             self.refresh();
+        } else {
+            self.sync_cursor_to_selection();
         }
     }
 
     pub(super) fn navigate_to(&mut self, depth: usize) {
-        let depth = depth.min(self.path.borrow().len());
+        let current = self.path.borrow().clone();
+        let depth = depth.min(current.len());
+        self.cursor.set(if depth < current.len() {
+            current[depth]
+        } else {
+            0
+        });
         self.path.borrow_mut().truncate(depth);
         self.refresh();
     }
 
     fn refresh(&self) {
+        // Replacing rows can leave focus on a detached widget.
+        let had_focus = self.tree_has_focus();
         self.rebuild_crumbs();
-        self.rebuild_rows();
         let directory = directory_at(&self.tree.root, &self.path.borrow());
+        let count = directory.children.len();
+        if count == 0 {
+            self.cursor.set(0);
+        } else if self.cursor.get() >= count {
+            self.cursor.set(count - 1);
+        }
+        self.rebuild_rows();
         let (files, folders) = child_summary(directory);
         let summary = match (files, folders) {
             (0, 0) => "Empty folder".to_owned(),
@@ -229,6 +299,9 @@ impl ArchiveBrowser {
             _ => format!("{files} files, {folders} folders"),
         };
         self.count.set_text(&summary);
+        if had_focus {
+            self.list.grab_focus();
+        }
     }
 
     fn rebuild_crumbs(&self) {
@@ -281,6 +354,39 @@ impl ArchiveBrowser {
             .collect();
         self.model.splice(0, self.model.n_items(), &items);
         self.empty.set_visible(directory.children.is_empty());
+        self.apply_selection();
+    }
+
+    fn apply_selection(&self) {
+        let count = self.model.n_items();
+        if count == 0 {
+            self.selection.set_selected(gtk::INVALID_LIST_POSITION);
+            return;
+        }
+        let index = self.cursor.get().min(count as usize - 1) as u32;
+        self.selection.set_selected(index);
+        // Scrolling without FOCUS keeps the drawer's focus in the browser list.
+        self.list.scroll_to(index, gtk::ListScrollFlags::NONE, None);
+    }
+
+    fn sync_cursor_to_selection(&self) {
+        let selected = self.selection.selected();
+        if selected == gtk::INVALID_LIST_POSITION {
+            return;
+        }
+        let count = self.model.n_items() as usize;
+        if count > 0 {
+            self.cursor.set((selected as usize).min(count - 1));
+        }
+    }
+
+    fn tree_has_focus(&self) -> bool {
+        self.list
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focused| {
+                self.list.upcast_ref::<gtk::Widget>() == &focused || focused.is_ancestor(&self.list)
+            })
     }
 }
 

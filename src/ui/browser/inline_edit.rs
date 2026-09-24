@@ -4,27 +4,16 @@ use crate::model::{FileEntry, Location};
 use crate::services::{OperationRequestId, RequestId, validate_basename};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::paths::is_trash_location;
-use crate::ui::browser_modes::{BrowserMode, finish_mode_rename};
+use crate::ui::browser_modes::BrowserMode;
 use gtk::prelude::*;
 use std::rc::Rc;
 
-pub(super) struct ActiveRename {
-    pub(super) entry: FileEntry,
-    pub(super) field: gtk::Entry,
-    pub(super) label: gtk::Label,
-    pub(super) spacer: gtk::Box,
-    pub(super) size: gtk::Label,
-    viewport_tick: gtk::TickCallbackId,
-}
-
 struct ColumnsRenameTarget {
     row: gtk::Box,
-    field: gtk::Entry,
-    label: gtk::Label,
+    edit: crate::ui::collection_edit::EditWidgets,
     spacer: gtk::Box,
     size: gtk::Label,
     scroll: gtk::ScrolledWindow,
-    footer: gtk::Label,
 }
 
 enum PendingRenameState {
@@ -141,15 +130,6 @@ pub(super) struct PendingEntryRename {
     reveal_generation: u64,
 }
 
-// Empty fields are an ordinary editing state, although they cannot be submitted.
-fn basename_field_error(name: &str) -> Option<&'static str> {
-    if name.is_empty() {
-        None
-    } else {
-        validate_basename(name).err()
-    }
-}
-
 pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
     if let Some(label) = label.downcast_ref::<gtk::Inscription>() {
         label.set_text(Some(name));
@@ -158,29 +138,8 @@ pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
     }
 }
 
-pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
-    let text = field.text();
-    match basename_field_error(text.as_str()) {
-        None => {
-            field.remove_css_class("error");
-            field.set_tooltip_text(None);
-            !text.is_empty()
-        }
-        Some(message) => {
-            field.add_css_class("error");
-            field.set_tooltip_text(Some(message));
-            false
-        }
-    }
-}
-
-pub(in crate::ui) fn rename_stem_end(name: &str) -> i32 {
-    let end = name
-        .rfind('.')
-        .filter(|position| *position > 0)
-        .unwrap_or(name.len());
-    name[..end].chars().count().min(i32::MAX as usize) as i32
-}
+#[cfg(test)]
+use crate::ui::collection_edit::{basename_field_error, rename_stem_end};
 
 fn pending_rename_matches(pending: &PendingRename, location: &Location) -> bool {
     pending.old_location == *location
@@ -352,12 +311,7 @@ impl ViewState {
                     .filter(|row| row.is_mapped() && row.is_ancestor(&column.list))
                     .map(|row| row.upcast::<gtk::Widget>())
             });
-            (
-                column.list.clone().upcast(),
-                position,
-                row,
-                Some(column.destination_hint.clone().upcast::<gtk::Widget>()),
-            )
+            (column.list.clone().upcast(), position, row, None)
         } else if context.mode == BrowserMode::Icons {
             let Some((collection, position, row)) = self
                 .mode_views
@@ -1024,6 +978,67 @@ impl ViewState {
             .set(self.click_rename_generation.get() + 1);
     }
 
+    pub(in crate::ui) fn begin_entry_rename(
+        self: &Rc<Self>,
+        depth: usize,
+        entry: &FileEntry,
+    ) -> bool {
+        if self.begin_search_result_rename(depth, entry) {
+            return true;
+        }
+        self.sync_mode_selection();
+        if !self
+            .browser
+            .rename_item()
+            .is_some_and(|(_, _, selected)| selected.location == entry.location)
+        {
+            return false;
+        }
+        self.begin_rename()
+    }
+
+    pub(in crate::ui) fn begin_search_result_rename(
+        self: &Rc<Self>,
+        depth: usize,
+        entry: &FileEntry,
+    ) -> bool {
+        self.cancel_click_rename();
+        if self.rename_operation_pending() || is_trash_location(&entry.location) {
+            return false;
+        }
+        self.cancel_new_entry();
+        if self.mode_views.borrow().mode() != BrowserMode::Columns {
+            return self.mode_views.borrow().begin_search_rename(depth, entry);
+        }
+        let Some(path) = entry.location.native_path() else {
+            return false;
+        };
+        let position = {
+            let columns = self.columns.borrow();
+            let Some(column) = columns.get(depth) else {
+                return false;
+            };
+            if !column.recursive_search_active.get() {
+                return false;
+            }
+            column
+                .search_results
+                .borrow()
+                .iter()
+                .position(|item| item.path == path)
+        };
+        let Some(position) = position.and_then(|position| u32::try_from(position).ok()) else {
+            return false;
+        };
+        self.cancel_rename();
+        let Some(target) = self.resolve_columns_rename_target_at_view_position(depth, position)
+        else {
+            return false;
+        };
+        self.activate_columns_rename(target, entry.clone());
+        true
+    }
+
     pub(super) fn begin_rename(self: &Rc<Self>) -> bool {
         self.cancel_click_rename();
         if self.rename_operation_pending() {
@@ -1065,126 +1080,108 @@ impl ViewState {
         depth: usize,
         source_position: usize,
     ) -> Option<ColumnsRenameTarget> {
+        let filtered_position = self
+            .columns
+            .borrow()
+            .get(depth)?
+            .map
+            .view_position(source_position)?;
+        self.resolve_columns_rename_target_at_view_position(depth, filtered_position)
+    }
+
+    fn resolve_columns_rename_target_at_view_position(
+        &self,
+        depth: usize,
+        filtered_position: u32,
+    ) -> Option<ColumnsRenameTarget> {
         let columns = self.columns.borrow();
         let column = columns.get(depth)?;
-        let filtered_position = column.map.view_position(source_position)?;
         // Prepare before checking allocation: it cancels deferred scrolling and lets GTK bind
         // the row needed by the editor.
         super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);
-        let row = column.bound_rows.borrow().iter().find_map(|bound| {
-            let item = bound.item.upgrade()?;
-            (item.position() == filtered_position)
-                .then(|| bound.row.upgrade())?
-                .filter(|row| row.is_mapped() && row.is_ancestor(&column.list))
+        let bound_rows = column.bound_rows.borrow();
+        let bound = bound_rows.iter().find(|bound| {
+            bound
+                .item
+                .upgrade()
+                .is_some_and(|item| item.position() == filtered_position)
         })?;
-        if !row.is_mapped() || row.width() <= 0 || column.presentation.stack.is_transition_running()
+        let row = bound.row.upgrade()?;
+        if !row.is_mapped()
+            || row.width() <= 0
+            || !row.is_ancestor(&column.list)
+            || column.presentation.stack.is_transition_running()
         {
             return None;
         }
-        let icon = row.first_child()?;
-        let middle = icon.next_sibling().and_downcast::<gtk::Overlay>()?;
-        let editor = middle
-            .child()
-            .and_then(|content| content.first_child())
-            .and_downcast::<gtk::Box>()?;
-        let label = editor.first_child().and_downcast::<gtk::Label>()?;
-        let field = label.next_sibling().and_downcast::<gtk::Entry>()?;
-        let spacer = field.next_sibling().and_downcast::<gtk::Box>()?;
-        let size = middle.last_child().and_downcast::<gtk::Label>()?;
         Some(ColumnsRenameTarget {
             row,
-            field,
-            label,
-            spacer,
-            size,
+            edit: bound.edit.clone(),
+            spacer: bound.spacer.clone(),
+            size: bound.size.clone(),
             scroll: column.listing_scroll.clone(),
-            footer: column.destination_hint.clone(),
         })
     }
 
     fn activate_columns_rename(self: &Rc<Self>, target: ColumnsRenameTarget, entry: FileEntry) {
         let ColumnsRenameTarget {
             row,
-            field,
-            label,
+            edit,
             spacer,
             size,
             scroll,
-            footer,
         } = target;
-        field.remove_css_class("error");
-        field.set_tooltip_text(None);
-        field.set_sensitive(true);
-        field.set_text(&entry.display_name);
-        label.set_visible(false);
         spacer.set_visible(false);
         size.set_visible(false);
-        field.set_visible(true);
-        constrain_rename_to_viewport(&field, &self.scroller);
+        constrain_rename_to_viewport(&edit.field, &self.scroller);
         let viewport = self.scroller.downgrade();
         let row = row.downgrade();
         let scroll = scroll.downgrade();
-        let footer = footer.downgrade();
         let weak = Rc::downgrade(self);
         let reveal_generation = self.rename_reveal_generation.get();
-        let viewport_tick = field.add_tick_callback(move |field, _| {
-            let Some(viewport) = viewport.upgrade() else {
-                return gtk::glib::ControlFlow::Break;
-            };
-            constrain_rename_to_viewport(field, &viewport);
+        let mut target = crate::ui::collection_edit::EditTarget::from(edit.clone());
+        target.reveal = Some(Rc::new(move |field| {
+            if let Some(viewport) = viewport.upgrade() {
+                constrain_rename_to_viewport(field, &viewport);
+            }
             if !weak
                 .upgrade()
                 .is_some_and(|state| state.rename_reveal_generation.get() == reveal_generation)
             {
-                return gtk::glib::ControlFlow::Continue;
+                return;
             }
-            if let (Some(row), Some(scroll), Some(footer)) =
-                (row.upgrade(), scroll.upgrade(), footer.upgrade())
-            {
-                reveal_rename_row(&row, &scroll, Some(footer.upcast_ref()));
+            if let (Some(row), Some(scroll)) = (row.upgrade(), scroll.upgrade()) {
+                reveal_rename_row(&row, &scroll, None);
             }
-            gtk::glib::ControlFlow::Continue
-        });
-        field.grab_focus();
-        field.select_region(
-            0,
-            if entry.is_directory() {
-                -1
-            } else {
-                rename_stem_end(&entry.display_name)
-            },
-        );
-        self.active_rename.replace(Some(ActiveRename {
-            entry,
-            field,
-            label,
-            spacer,
-            size,
-            viewport_tick,
         }));
+        let field = edit.field.downgrade();
+        target.finish = Some(Rc::new(move || {
+            if let Some(field) = field.upgrade() {
+                field.set_margin_start(0);
+                field.set_margin_end(0);
+            }
+            spacer.set_visible(true);
+            size.set_visible(!size.label().is_empty());
+        }));
+        let state = Rc::downgrade(self);
+        crate::ui::collection_edit::begin(
+            &self.active_rename,
+            entry,
+            target,
+            Rc::new(move |field| {
+                if let Some(state) = state.upgrade() {
+                    state.submit_rename(field);
+                }
+            }),
+        );
     }
 
     pub(super) fn cancel_rename(&self) -> bool {
         self.cancel_click_rename();
         let mode_rename = self.mode_views.borrow().take_rename();
-        if let Some(mode_rename) = mode_rename {
-            finish_mode_rename(mode_rename);
-            return true;
-        }
-        let Some(rename) = self.active_rename.take() else {
-            return false;
-        };
-        rename.viewport_tick.remove();
-        rename.field.set_margin_start(0);
-        rename.field.set_margin_end(0);
-        rename.field.remove_css_class("error");
-        rename.field.set_tooltip_text(None);
-        rename.field.set_visible(false);
-        rename.field.set_sensitive(true);
-        rename.label.set_visible(true);
-        rename.spacer.set_visible(true);
-        rename.size.set_visible(!rename.size.label().is_empty());
-        true
+        let cancelled = mode_rename.is_some();
+        drop(mode_rename);
+        crate::ui::collection_edit::cancel(&self.active_rename) || cancelled
     }
 
     fn submit_rename_entry(self: &Rc<Self>, entry: FileEntry, name: String) {
@@ -1203,10 +1200,9 @@ impl ViewState {
             .try_borrow_mut()
             .ok()
             .and_then(|mode_views| mode_views.take_active_rename(field));
-        let Some((mode_rename, entry, name)) = active_rename else {
+        let Some((entry, name)) = active_rename else {
             return;
         };
-        finish_mode_rename(mode_rename);
         self.submit_rename_entry(entry, name);
     }
 
@@ -1222,15 +1218,11 @@ impl ViewState {
             self.submit_mode_rename(field);
             return;
         }
-        let entry = self
-            .active_rename
-            .borrow()
-            .as_ref()
-            .filter(|active| active.field == *field)
-            .map(|active| active.entry.clone());
-        let Some(entry) = entry else { return };
-        let name = field.text().to_string();
-        self.cancel_rename();
+        let Some((entry, name)) =
+            crate::ui::collection_edit::take_submission(&self.active_rename, field)
+        else {
+            return;
+        };
         self.submit_rename_entry(entry, name);
     }
 }

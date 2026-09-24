@@ -52,7 +52,8 @@ def open_panel(strata, panel):
         strata.open_appearance_menu()
         label = "Compact"
     else:
-        strata.pointer.click(strata.header_button("Thumbnail size"))
+        toggle = strata.window.find(role="toggle button", name="Thumbnail size")
+        assert toggle is not None and toggle.activate(), "thumbnail menu must be actionable"
         label = "Small"
     role = "label" if panel == "thumbnail" else "button"
     return strata.wait(

@@ -3,7 +3,7 @@
 use super::{
     BoundRow, PendingActivationKind, PendingPointerActivation, column_size_text,
     set_active_path_style, set_cut_path_style, should_activate_single_click,
-    should_preserve_drag_selection, should_preview_pointer_press,
+    should_preview_pointer_press,
 };
 use crate::ui::{
     browser::{
@@ -17,7 +17,6 @@ use crate::ui::{
         entry::{
             entry_icon, entry_responds_to_preview_click, metadata_needs_fill, model_display_name,
         },
-        inline_edit::update_basename_validation,
         paths::is_trash_location,
     },
     browser_modes::BrowserMode,
@@ -88,25 +87,6 @@ pub(super) fn column_rows(
         rename.set_hexpand(true);
         rename.set_width_chars(1);
         rename.set_visible(false);
-        rename.connect_changed(|field| {
-            update_basename_validation(field);
-        });
-        let weak_state_for_rename = weak_state.clone();
-        rename.connect_activate(move |field| {
-            if let Some(state) = weak_state_for_rename.upgrade() {
-                state.submit_rename(field);
-            }
-        });
-        let focus = gtk::EventControllerFocus::new();
-        let weak_state_for_leave = weak_state.clone();
-        focus.connect_leave(move |controller| {
-            if let Some(state) = weak_state_for_leave.upgrade()
-                && let Some(field) = controller.widget().and_downcast::<gtk::Entry>()
-            {
-                state.submit_rename(&field);
-            }
-        });
-        rename.add_controller(focus);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.add_css_class("file-row-spacer");
         let editor = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -371,6 +351,8 @@ pub(super) fn column_rows(
         let was_selected = Rc::new(Cell::new(false));
         let was_selected_for_press = was_selected.clone();
         let was_selected_for_release = was_selected.clone();
+        let sequence = crate::ui::collection_interaction::PointerSequence::default();
+        sequence.install(&selection_click);
         let press_moved = Rc::new(Cell::new(false));
         let press_moved_for_press = press_moved.clone();
         let press_moved_for_update = press_moved.clone();
@@ -407,40 +389,34 @@ pub(super) fn column_rows(
             let modifiers = gesture.current_event_state();
             let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
             let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+            sequence.press(modifiers);
             let selected_before = selection_for_click.is_selected(position);
             let selected_count_before = selection_for_click.selection().size();
             was_selected_for_press.set(selected_before);
-            let preserve_group = !control
-                && !shift
-                && should_preserve_drag_selection(selected_before, selected_count_before);
+            let change = crate::ui::collection_interaction::pointer_selection(
+                &selection_for_click.selection(),
+                position,
+                anchored_row(&weak_state_for_click, depth, &map_for_click),
+                weak_state_for_click
+                    .upgrade()
+                    .is_none_or(|state| state.multiple_selection.get()),
+                modifiers,
+            );
+            let preserve_group = change.preserved_group;
             modified_for_click.set(control || shift);
-            if shift {
-                let anchor =
-                    anchored_row(&weak_state_for_click, depth, &map_for_click).unwrap_or(position);
-                let start = anchor.min(position);
-                let count = anchor.max(position).saturating_sub(start) + 1;
-                selection_for_click.select_range(start, count, true);
-            } else if control {
-                anchor_at(&weak_state_for_click, depth, &map_for_click, position);
-                if selection_for_click.is_selected(position) {
-                    selection_for_click.unselect_item(position);
-                } else {
-                    selection_for_click.select_item(position, false);
-                }
-            } else {
-                anchor_at(&weak_state_for_click, depth, &map_for_click, position);
-                if !preserve_group {
-                    selection_for_click.select_item(position, true);
-                }
+            if !shift && let Some(anchor) = change.anchor {
+                anchor_at(&weak_state_for_click, depth, &map_for_click, anchor);
             }
-            if control || shift {
-                if let Some(widget) = gesture.widget()
-                    && crate::ui::pointer::hits_item_content(&widget, x, y)
-                    && let Some(item_widget) = widget.parent()
-                {
-                    item_widget.grab_focus();
-                }
-                gesture.set_state(gtk::EventSequenceState::Claimed);
+            selection_for_click.set_selection(
+                &change.selected,
+                &gtk::Bitset::new_range(0, selection_for_click.n_items()),
+            );
+            if (control || shift)
+                && let Some(widget) = gesture.widget()
+                && crate::ui::pointer::hits_item_content(&widget, x, y)
+                && let Some(item_widget) = widget.parent()
+            {
+                item_widget.grab_focus();
             }
             modified_for_click.set(false);
 
@@ -582,11 +558,6 @@ pub(super) fn column_rows(
         let weak_state_for_release = weak_state.clone();
         let search_results_for_release = search_results_for_factory.clone();
         selection_click.connect_released(move |gesture, count, x, y| {
-            if gesture.current_event_state().intersects(
-                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
-            ) {
-                gesture.set_state(gtk::EventSequenceState::Claimed);
-            }
             let pending = pending_activation_for_release.take();
             if pending.is_none()
                 && count == 1
@@ -691,12 +662,16 @@ pub(super) fn column_rows(
             item: weak_item,
             row: weak_row,
             rename_label: weak_rename_label,
+            edit: crate::ui::collection_edit::EditWidgets::new(&rename, &label),
+            spacer,
+            size,
         });
     });
     let map_for_bind = map.clone();
     let weak_state_for_bind = Rc::downgrade(state);
     let search_active_for_bind = recursive_search_active.clone();
     let search_results_for_bind = search_results.clone();
+    let rows_for_bind = bound_rows.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -754,9 +729,6 @@ pub(super) fn column_rows(
             row.add_css_class("keyboard-cursor");
         }
         label.set_label(model_display_name(&value.string()));
-        rename.set_visible(false);
-        label.set_visible(true);
-        spacer.set_visible(true);
         let searching = search_active_for_bind.get();
         if searching {
             row.add_css_class("filter-result");
@@ -776,6 +748,22 @@ pub(super) fn column_rows(
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
+        let edit = rows_for_bind
+            .borrow()
+            .iter()
+            .find(|bound| bound.item.upgrade().as_ref() == Some(item))
+            .map(|bound| bound.edit.clone());
+        if let Some(edit) = &edit {
+            if let Some(entry) = &entry {
+                edit.bind(&entry.location);
+            } else {
+                edit.unbind();
+            }
+        }
+        let editing = edit.as_ref().is_some_and(|edit| edit.is_editing());
+        rename.set_visible(editing);
+        label.set_visible(!editing);
+        spacer.set_visible(!editing);
         if let Some(entry) = entry.as_ref() {
             let pending_name = state
                 .as_ref()
@@ -860,10 +848,37 @@ pub(super) fn column_rows(
         }
         let size_text = column_size_text(entry.as_ref());
         size.set_label(&size_text);
-        size.set_visible(!size_text.is_empty());
+        size.set_visible(!editing && !size_text.is_empty());
         crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
     });
-    factory.connect_unbind(|_, item| crate::ui::thumbnail::cancel_list_item_thumbnails(item));
+    let rows_for_unbind = bound_rows.clone();
+    factory.connect_unbind(move |_, object| {
+        let edit = rows_for_unbind
+            .borrow()
+            .iter()
+            .find(|bound| {
+                bound
+                    .item
+                    .upgrade()
+                    .as_ref()
+                    .map(|item| item.upcast_ref::<glib::Object>())
+                    == Some(object)
+            })
+            .map(|bound| bound.edit.clone());
+        if let Some(edit) = edit {
+            edit.unbind();
+        }
+        crate::ui::thumbnail::cancel_list_item_thumbnails(object);
+    });
+    let rows_for_teardown = bound_rows.clone();
+    factory.connect_teardown(move |_, object| {
+        rows_for_teardown.borrow_mut().retain(|bound| {
+            bound
+                .item
+                .upgrade()
+                .is_some_and(|item| item.upcast_ref::<glib::Object>() != object)
+        });
+    });
     ColumnRows {
         factory,
         bound_rows,

@@ -19,7 +19,10 @@ const FILES: &[Shortcut] = &[
     ("Ctrl+D", "Duplicate selected items"),
     ("Delete", "Move selected items to Trash, when supported"),
     ("Shift+Delete", "Permanently delete selected items"),
-    ("Ctrl+Z", "Undo the last file operation"),
+    (
+        "Ctrl+Z / Ctrl+Shift+Z",
+        "Undo / redo the last file operation",
+    ),
     ("F2 / Ctrl+R", "Rename"),
     ("Ctrl+Shift+N", "Create a folder"),
     ("Ctrl+A", "Select all items in the focused pane"),
@@ -126,13 +129,11 @@ impl ShortcutFooter {
             .child(&reference)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .overlay_scrolling(false)
             .propagate_natural_height(true)
             .max_content_height(440)
             .width_request(420)
             .focusable(true)
             .build();
-        scroll.add_css_class("fixed-scrollbar");
         content.append(&scroll);
         popover.set_child(Some(&content));
         let weak_scroll = scroll.downgrade();

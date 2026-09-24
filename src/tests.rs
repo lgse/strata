@@ -7,8 +7,21 @@ use gtk::gio;
 use super::{
     CommandLineAction, LaunchMode, classify_command_line, classify_udiskie_hook,
     encode_daemon_pids, gvfs_daemon_pids, gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in,
-    launch_mode, run_preview_helper, version_line,
+    launch_mode, run_preview_helper, should_select_cairo, version_line,
 };
+use crate::ui::preferences::InterfaceRenderer;
+
+#[test]
+fn application_renderer_respects_saved_choice_and_explicit_environment() {
+    assert!(should_select_cairo(None, InterfaceRenderer::Cairo));
+    assert!(!should_select_cairo(None, InterfaceRenderer::System));
+    for supplied in ["cairo", "gl", ""] {
+        assert!(!should_select_cairo(
+            Some(supplied.as_ref()),
+            InterfaceRenderer::Cairo,
+        ));
+    }
+}
 
 #[test]
 fn launch_mode_treats_non_utf8_arguments_as_an_ordinary_launch() {

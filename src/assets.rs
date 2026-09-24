@@ -80,9 +80,6 @@ pub mod icons {
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";
-    pub const TRASH_LOW: &str = "strata-trash-low";
-    pub const TRASH_HALF: &str = "strata-trash-half";
-    pub const TRASH_FULL: &str = "strata-trash-full";
     pub const TRIANGLE_ALERT: &str = "strata-triangle-alert";
     pub const UNDO_2: &str = "strata-undo-2";
     pub const UNPLUG: &str = "strata-unplug";
@@ -142,6 +139,8 @@ thread_local! {
     static INTERFACE_ICONS: RefCell<Vec<(glib::WeakRef<gtk::Image>, i32)>> = const { RefCell::new(Vec::new()) };
     static PRIMARY_ICON_COLOR: RefCell<String> = RefCell::new("#8bc9eb".to_owned());
     static PRIMARY_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
+    static TEXT_ICON_COLOR: RefCell<String> = RefCell::new("#e6edf3".to_owned());
+    static TEXT_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
     static DANGER_ICON_COLOR: RefCell<String> = RefCell::new("#e5484d".to_owned());
     static DANGER_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
     static ICON_TEXTURES: RefCell<HashMap<(String, String, i32), gdk::Texture>> =
@@ -209,6 +208,10 @@ fn register_interface_icon(image: &gtk::Image, base: i32) {
         for (registry, color) in [
             (&PRIMARY_ICONS, primary_icon_color()),
             (
+                &TEXT_ICONS,
+                TEXT_ICON_COLOR.with(|color| color.borrow().clone()),
+            ),
+            (
                 &DANGER_ICONS,
                 DANGER_ICON_COLOR.with(|color| color.borrow().clone()),
             ),
@@ -226,6 +229,20 @@ fn register_interface_icon(image: &gtk::Image, base: i32) {
             }
         }
     });
+}
+
+pub fn text_icon(name: &str, pixel_size: i32) -> gtk::Image {
+    let image = gtk::Image::new();
+    register_interface_icon(&image, pixel_size);
+    let color = TEXT_ICON_COLOR.with(|color| color.borrow().clone());
+    apply_primary_icon(&image, name, &color);
+    TEXT_ICONS.with(|icons| register_icon(icons, &image, name));
+    image
+}
+
+pub fn set_text_icon_color(color: &str) {
+    TEXT_ICON_COLOR.with(|current| current.replace(color.to_owned()));
+    TEXT_ICONS.with(|icons| recolor_registered_icons(icons, color));
 }
 
 pub fn chrome_icon(name: &str) -> gtk::Image {
@@ -264,16 +281,6 @@ pub fn set_primary_icon(image: &gtk::Image, name: &str) {
 pub fn set_primary_icon_color(color: &str) {
     PRIMARY_ICON_COLOR.with(|current| current.replace(color.to_owned()));
     PRIMARY_ICONS.with(|icons| recolor_registered_icons(icons, color));
-}
-
-pub fn primary_icon_name(image: &gtk::Image) -> Option<String> {
-    PRIMARY_ICONS.with(|icons| {
-        icons
-            .borrow()
-            .iter()
-            .find(|icon| icon.image.upgrade().as_ref() == Some(image))
-            .map(|icon| icon.name.clone())
-    })
 }
 
 pub fn remove_primary_icon(image: &gtk::Image) {

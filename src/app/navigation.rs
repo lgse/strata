@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    cell::Cell,
     cmp::Ordering,
     collections::{HashMap, HashSet},
 };
@@ -43,6 +44,8 @@ pub struct ColumnEntryCounts {
 pub struct ColumnState {
     pub location: Location,
     pub entries: Vec<FileEntry>,
+    entry_counts: Cell<Option<(bool, ColumnEntryCounts)>>,
+    metadata_positions: Option<HashMap<Location, usize>>,
     pub selected: Option<usize>,
     selected_locations: HashSet<Location>,
     selection_anchor: Option<Location>,
@@ -185,6 +188,8 @@ impl NavigationState {
                 preferences: preferences_for_location(preferences, &location),
                 location,
                 entries: Vec::new(),
+                entry_counts: Cell::new(None),
+                metadata_positions: None,
                 selected: None,
                 selected_locations: HashSet::new(),
                 selection_anchor: None,
@@ -257,6 +262,8 @@ impl NavigationState {
             preferences: preferences_for_location(self.preferences, &location),
             location,
             entries: Vec::new(),
+            entry_counts: Cell::new(None),
+            metadata_positions: None,
             selected: None,
             selected_locations: HashSet::new(),
             selection_anchor: None,
@@ -292,6 +299,7 @@ impl NavigationState {
         let (merged, insertions) =
             merge_entries(std::mem::take(&mut column.entries), entries, preferences);
         column.entries = merged;
+        column.invalidate_entry_indexes();
         if let Some(selected_location) =
             selected_location.or_else(|| column.selection_target.clone())
         {
@@ -331,6 +339,7 @@ impl NavigationState {
     ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.entries = entries;
+        column.invalidate_entry_indexes();
         if let Some(selected_location) = column.selection_target.clone() {
             column.selected = column
                 .entries
@@ -377,18 +386,49 @@ impl NavigationState {
             .iter()
             .map(|update| (&update.location, update))
             .collect();
-        let mut positions = Vec::new();
-        for (position, entry) in column.entries.iter_mut().enumerate() {
-            if let Some(update) = updates.get(&entry.location)
-                && apply_metadata_update(entry, update)
-            {
-                positions.push(position);
+        if updates.is_empty() {
+            return None;
+        }
+        // Full-sort fills arrive in small chunks. Build routing once, not a directory scan
+        // per chunk; structural changes invalidate it and the sort terminal releases it.
+        let index = column.metadata_positions.get_or_insert_with(|| {
+            column
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(position, entry)| (entry.location.clone(), position))
+                .collect()
+        });
+        let mut positions = Vec::with_capacity(updates.len());
+        if index.len() == column.entries.len() {
+            for (location, update) in updates {
+                if let Some(&position) = index.get(location)
+                    && apply_metadata_update(&mut column.entries[position], update)
+                {
+                    positions.push(position);
+                }
+            }
+        } else {
+            // Providers may repeat a location; keep updating every matching entry.
+            for (position, entry) in column.entries.iter_mut().enumerate() {
+                if let Some(update) = updates.get(&entry.location)
+                    && apply_metadata_update(entry, update)
+                {
+                    positions.push(position);
+                }
             }
         }
         if positions.is_empty() {
             return None;
         }
+        positions.sort_unstable();
         Some((depth, positions))
+    }
+
+    pub(super) fn clear_metadata_positions(&mut self, depth: usize) {
+        if let Some(column) = self.columns.get_mut(depth) {
+            column.metadata_positions = None;
+        }
     }
 
     /// Stale rows keep their placeholders and retry on the next bind.
@@ -520,12 +560,8 @@ impl NavigationState {
                 .iter()
                 .position(|entry| entry.location == location)
         });
-        column.selected_locations.retain(|location| {
-            column
-                .entries
-                .iter()
-                .any(|entry| &entry.location == location)
-        });
+        column.invalidate_entry_indexes();
+        column.retain_selected_locations(false);
         column.load_state = if column.entries.is_empty() {
             LoadState::Empty
         } else {
@@ -542,7 +578,8 @@ impl NavigationState {
             .map(|entry| entry.location.clone())
             .or_else(|| column.selection_target.clone());
         column.pending_selection = column.selected_locations.clone();
-        column.entries.clear();
+        column.entries = Vec::new();
+        column.invalidate_entry_indexes();
         column.selected = None;
         column.load_state = LoadState::Loading;
         column.truncated = false;
@@ -600,12 +637,7 @@ impl NavigationState {
                         column.selection_anchor = None;
                     }
                 }
-                column.selected_locations.retain(|loc| {
-                    column
-                        .entries
-                        .iter()
-                        .any(|entry| &entry.location == loc && !entry.is_hidden)
-                });
+                column.retain_selected_locations(true);
             }
         }
     }
@@ -652,6 +684,7 @@ impl NavigationState {
             .and_then(|position| column.entries.get(position))
             .map(|entry| entry.location.clone());
         column.preferences = preferences;
+        column.metadata_positions = None;
         if preferences.sort_key != SortKey::DeviceOrder {
             column
                 .entries
@@ -1172,7 +1205,23 @@ impl NavigationState {
 
     pub fn focus_child(&mut self) -> Option<(usize, Option<usize>)> {
         let child_depth = self.active_column?.checked_add(1)?;
-        let position = self.columns.get(child_depth)?.selected;
+        let column = self.columns.get_mut(child_depth)?;
+        let position = column.selected.or_else(|| {
+            column
+                .entries
+                .iter()
+                .position(|entry| column.preferences.show_hidden || !entry.is_hidden)
+        });
+        if column.selected.is_none() {
+            if let Some(position) = position {
+                let location = column.entries[position].location.clone();
+                adopt_selected_locations(column, HashSet::from([location.clone()]), true);
+                column.selected = Some(position);
+                column.selection_anchor = Some(location);
+            } else if column.load_state == LoadState::Loading {
+                column.select_first_on_load = true;
+            }
+        }
         self.active_column = Some(child_depth);
         Some((child_depth, position))
     }
@@ -1201,6 +1250,11 @@ impl NavigationState {
     pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
         let column = self.columns.get(depth)?;
         let show_hidden = column.preferences.show_hidden;
+        if let Some((cached_visibility, counts)) = column.entry_counts.get()
+            && cached_visibility == show_hidden
+        {
+            return Some(counts);
+        }
         let mut folders = 0;
         let mut files = 0;
         let mut total = 0;
@@ -1214,11 +1268,13 @@ impl NavigationState {
                 }
             }
         }
-        Some(ColumnEntryCounts {
+        let counts = ColumnEntryCounts {
             total,
             files,
             folders,
-        })
+        };
+        column.entry_counts.set(Some((show_hidden, counts)));
+        Some(counts)
     }
 
     pub fn active_child_position(&self, depth: usize) -> Option<usize> {
@@ -1291,6 +1347,26 @@ fn focus_only(column: &mut ColumnState, position: usize) {
 }
 
 impl ColumnState {
+    fn invalidate_entry_indexes(&mut self) {
+        self.entry_counts.set(None);
+        self.metadata_positions = None;
+    }
+
+    fn retain_selected_locations(&mut self, hide_hidden: bool) {
+        if self.selected_locations.is_empty() {
+            return;
+        }
+        // Move the retained keys rather than cloning paths or scanning the directory
+        // separately for every selected item after Select All.
+        let mut previous = std::mem::take(&mut self.selected_locations);
+        self.selected_locations = self
+            .entries
+            .iter()
+            .filter(|entry| !hide_hidden || !entry.is_hidden)
+            .filter_map(|entry| previous.take(&entry.location))
+            .collect();
+    }
+
     fn single_selected_position(&self) -> Option<usize> {
         let position = self.selected?;
         (self.selected_locations.len() == 1
