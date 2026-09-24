@@ -451,10 +451,12 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
             "fake.tar.gz",
             "This file is not a valid archive or is damaged.",
         ),
-        (
-            "fake.rar",
-            "This file is not a valid archive or is damaged.",
-        ),
+        // RAR extraction now always spawns the sandboxed helper (see
+        // sandbox::archive::stream_rar), which cannot run inside the cargo
+        // test harness binary; a "fake.rar" case here would just fail to
+        // spawn, not exercise UnRAR's own corrupt-archive handling. That
+        // real-UnRAR path is covered directly (in-process, no spawn needed)
+        // by sandbox_helper::archive_rar::tests::run_reports_a_corrupt_archive.
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a directory"),

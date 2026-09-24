@@ -17,6 +17,7 @@ use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::services::{ArchiveFormat, MediaPreviewSize, SecretString};
 
+pub(crate) mod archive;
 pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
@@ -140,6 +141,13 @@ impl ParseOperation {
 
     fn is_media(&self) -> bool {
         matches!(self, Self::PreviewMedia(_))
+    }
+
+    fn needs_media_libraries(&self) -> bool {
+        matches!(
+            self,
+            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata
+        )
     }
 
     fn output_name(&self) -> &'static str {
@@ -444,7 +452,7 @@ fn wait_for_renderer(
     }
 }
 
-fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
+fn runtime_command(bwrap: &Path, needs_media_libraries: bool) -> Command {
     let mut command = Command::new(bwrap);
     command.args([
         "--unshare-all",
@@ -494,12 +502,7 @@ fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
-    if matches!(
-        operation,
-        ParseOperation::ThumbnailVideo
-            | ParseOperation::PreviewMedia(_)
-            | ParseOperation::MediaMetadata
-    ) {
+    if needs_media_libraries {
         // Debian-family FFmpeg libraries resolve BLAS/LAPACK through these links.
         // Expose only the runtime files, not the system alternatives directory.
         for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
@@ -526,7 +529,7 @@ fn sandbox_command(
     media_backend: MediaPreviewBackend,
     devices: &[PathBuf],
 ) -> Command {
-    let mut command = runtime_command(bwrap, operation.clone());
+    let mut command = runtime_command(bwrap, operation.needs_media_libraries());
     let sandbox_input = sandbox_input_path(input);
     command.arg("--ro-bind").arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);

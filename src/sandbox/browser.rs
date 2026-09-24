@@ -661,7 +661,7 @@ impl ProcessWorker {
         socket.set_read_timeout(Some(super::WALL_TIME_LIMIT))?;
         socket.set_write_timeout(Some(super::WALL_TIME_LIMIT))?;
         let bwrap = crate::trusted_command::resolve("bwrap").map_err(io::Error::other)?;
-        let mut command = super::runtime_command(&bwrap, ParseOperation::MediaMetadata);
+        let mut command = super::runtime_command(&bwrap, true);
         command
             .args(["--ro-bind"])
             .arg(executable)

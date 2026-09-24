@@ -21,12 +21,42 @@ use crate::{
 };
 
 mod appimage;
+mod archive_rar;
 mod document_media;
 mod media;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
+    // Streams to its own stdout pipe instead of a bound `/output` file, so it
+    // does not fit the fixed [operation, input, output, value, media_backend]
+    // shape every other operation below shares.
+    if let [operation, input, rest @ ..] = arguments
+        && operation == "extract-rar"
+    {
+        let password = match rest {
+            [] => None,
+            [descriptor] => {
+                let descriptor = descriptor
+                    .parse::<RawFd>()
+                    .ok()
+                    .filter(|fd| *fd >= 0)
+                    .ok_or_else(|| "Invalid preview helper secret descriptor".to_owned())?;
+                let secret = read_secret_fd(descriptor)?;
+                if secret.len() > crate::adapters::MAX_ARCHIVE_PASSWORD_BYTES {
+                    return Err("Archive password is too long.".to_owned());
+                }
+                Some(
+                    String::from_utf8(secret)
+                        .map_err(|_| "Archive password is not valid text.".to_owned())?,
+                )
+            }
+            _ => return Err("Invalid preview helper arguments".to_owned()),
+        };
+        let stdout = io::stdout();
+        let mut stdout = stdout.lock();
+        return archive_rar::run(Path::new(input), password.as_deref(), &mut stdout);
+    }
     let (arguments, start_tick) = match arguments {
         [operation, ..] if operation == "preview-media" && arguments.len() == 6 => (
             &arguments[..5],

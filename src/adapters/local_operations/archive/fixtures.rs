@@ -265,12 +265,3 @@ pub(super) fn write_zip_stored(
     writer.finish()?;
     Ok(())
 }
-
-pub(super) const RAR_VERSION_FIXTURE: &[u8] =
-    include_bytes!("../../../../tests/fixtures/rar/version.rar");
-pub(super) const RAR_ENCRYPTED_FIXTURE: &[u8] =
-    include_bytes!("../../../../tests/fixtures/rar/encrypted.rar");
-pub(super) const RAR_COMMENT_HPW_FIXTURE: &[u8] =
-    include_bytes!("../../../../tests/fixtures/rar/comment-hpw-password.rar");
-pub(super) const RAR_UNICODE_FIXTURE: &[u8] =
-    include_bytes!("../../../../tests/fixtures/rar/unicode.rar");
