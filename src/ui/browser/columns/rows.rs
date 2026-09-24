@@ -229,6 +229,7 @@ pub(super) fn column_rows(
                     row.add_css_class("dragging");
                 }
                 if let Some(state) = weak_state_for_begin.upgrade() {
+                    state.drag_source_depth.set(Some(depth));
                     state.cancel_peek();
                 }
             });
@@ -266,18 +267,43 @@ pub(super) fn column_rows(
             let highlighted_row = row.downgrade();
             let state_for_enter = drop_state.clone();
             drop.connect_enter(move |target, _, _| {
+                let action = file_drop_action(target, &state_for_enter);
                 if let Some(row) = highlighted_row.upgrade() {
-                    row.add_css_class("drop-destination");
+                    if action.is_empty() {
+                        row.remove_css_class("drop-destination");
+                    } else {
+                        row.add_css_class("drop-destination");
+                    }
                 }
-                file_drop_action(target, &state_for_enter)
+                action
             });
             let highlighted_row = row.downgrade();
             let state_for_motion = drop_state.clone();
             drop.connect_motion(move |target, _, _| {
+                let action = file_drop_action(target, &state_for_motion);
                 if let Some(row) = highlighted_row.upgrade() {
-                    row.add_css_class("drop-destination");
+                    if action.is_empty() {
+                        row.remove_css_class("drop-destination");
+                    } else {
+                        row.add_css_class("drop-destination");
+                    }
                 }
-                file_drop_action(target, &state_for_motion)
+                action
+            });
+            let highlighted_row = row.downgrade();
+            let state_for_value = drop_state.clone();
+            drop.connect_value_notify(move |target| {
+                if target.current_drop().is_none() {
+                    return;
+                }
+                let action = file_drop_action(target, &state_for_value);
+                if let Some(row) = highlighted_row.upgrade() {
+                    if action.is_empty() {
+                        row.remove_css_class("drop-destination");
+                    } else {
+                        row.add_css_class("drop-destination");
+                    }
+                }
             });
             let highlighted_row = row.downgrade();
             drop.connect_leave(move |_| {

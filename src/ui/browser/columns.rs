@@ -1230,6 +1230,7 @@ impl ViewState {
                     .context_menu_column
                     .get()
                     .is_none_or(|owner| owner == depth)
+                && state.drop_active_depths.get().is_none()
             {
                 state.browser.set_active_column(depth);
                 state.refresh_destination_style();
@@ -1555,6 +1556,9 @@ impl ViewState {
             let Some(state) = weak.upgrade() else {
                 return;
             };
+            if state.drop_active_depths.get().is_some() {
+                return;
+            }
             state.suppress_focus_scroll.set(true);
             state.browser.set_active_column(depth);
             state.browser.focus_active();

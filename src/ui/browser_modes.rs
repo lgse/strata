@@ -3562,18 +3562,43 @@ fn install_list_drag_drop(
     let highlighted_row = row.downgrade();
     let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| {
+        let action = super::browser::file_drop_action(target, &state_for_enter);
         if let Some(row) = highlighted_row.upgrade() {
-            row.add_css_class("drop-destination");
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
         }
-        super::browser::file_drop_action(target, &state_for_enter)
+        action
     });
     let highlighted_row = row.downgrade();
     let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| {
+        let action = super::browser::file_drop_action(target, &state_for_motion);
         if let Some(row) = highlighted_row.upgrade() {
-            row.add_css_class("drop-destination");
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
         }
-        super::browser::file_drop_action(target, &state_for_motion)
+        action
+    });
+    let highlighted_row = row.downgrade();
+    let state_for_value = drop_state.clone();
+    drop.connect_value_notify(move |target| {
+        if target.current_drop().is_none() {
+            return;
+        }
+        let action = super::browser::file_drop_action(target, &state_for_value);
+        if let Some(row) = highlighted_row.upgrade() {
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
+        }
     });
     let highlighted_row = row.downgrade();
     drop.connect_leave(move |_| {

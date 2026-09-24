@@ -101,6 +101,7 @@ pub struct NavigationState {
     preferences: ViewPreferences,
     // GTK focus/rebuild selection echoes must not arm paste-into.
     selection_commit: bool,
+    selectionless_removals: HashSet<Location>,
 }
 
 impl NavigationState {
@@ -417,16 +418,34 @@ impl NavigationState {
         Some((depth, positions, stale))
     }
 
+    pub fn set_selectionless_removals(&mut self, locations: impl IntoIterator<Item = Location>) {
+        self.selectionless_removals = locations.into_iter().collect();
+    }
+
+    pub fn retain_selectionless_removals(&mut self, locations: impl IntoIterator<Item = Location>) {
+        let locations: HashSet<_> = locations.into_iter().collect();
+        self.selectionless_removals
+            .retain(|location| locations.contains(location));
+    }
+
     pub fn apply_directory_change(
         &mut self,
         depth: usize,
         watched: &Location,
         change: DirectoryChange,
     ) -> Option<(Vec<EntrySplice>, Option<usize>)> {
-        let column = self
+        if !self
             .columns
-            .get_mut(depth)
-            .filter(|column| &column.location == watched)?;
+            .get(depth)
+            .is_some_and(|column| &column.location == watched)
+        {
+            return None;
+        }
+        let replace_selection = match &change {
+            DirectoryChange::Remove(location) => !self.selectionless_removals.remove(location),
+            _ => true,
+        };
+        let column = self.columns.get_mut(depth).expect("column checked");
         let preferences = column.preferences;
         let mut selected_location = column
             .selected
@@ -454,7 +473,7 @@ impl NavigationState {
                 let selected_was_removed = selected_location.as_ref() == Some(&location);
                 column.selected_locations.remove(&location);
                 remove_monitored_entry(&mut column.entries, &location, &mut splices);
-                if selected_was_removed {
+                if selected_was_removed && replace_selection {
                     selected_location = removed_position.and_then(|position| {
                         column
                             .entries

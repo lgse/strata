@@ -302,6 +302,9 @@ impl Browser {
         } else {
             Vec::new()
         };
+        self.state
+            .borrow_mut()
+            .retain_selectionless_removals(moved.iter().cloned());
         completion.record_transfer_undo(&moved, created, self.merged_undo.take());
         self.emit(BrowserEvent::TransferFinished {
             moved_locations: if completion.undoing {

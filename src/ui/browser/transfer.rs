@@ -121,6 +121,7 @@ impl ViewState {
         commit: DropCommit,
     ) {
         self.stop_drag_autoscroll();
+        self.drop_active_depths.set(None);
         self.horizontal_scroll_generation
             .set(self.horizontal_scroll_generation.get().saturating_add(1));
         let sources = transferable_drop_sources(&destination, &sources);
@@ -299,8 +300,20 @@ impl ViewState {
         reveal: bool,
     ) {
         if collisions.is_empty() {
+            let source_depth = self
+                .drag_source_depth
+                .replace(None)
+                .or_else(|| self.browser.active_depth());
+            self.drop_active_depths.set(None);
             if !accepted.is_empty() {
                 self.suppress_scroll_after_drop.set(!reveal);
+                if !reveal {
+                    let destination_depth = (0..).find(|depth| {
+                        self.browser.location_at(*depth).as_ref() == Some(&destination)
+                    });
+                    self.drop_active_depths
+                        .set(source_depth.zip(destination_depth));
+                }
             }
             self.browser
                 .transfer(destination, accepted, move_sources, reveal);

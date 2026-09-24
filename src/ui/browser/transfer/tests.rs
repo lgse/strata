@@ -847,6 +847,86 @@ fn undo_move_keeps_skip_visible_for_a_partial_restore() {
 }
 
 #[test]
+fn background_move_without_reveal_restores_the_source_column() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::background_move_without_reveal_restores_the_source_column",
+        || {
+            crate::ui::preferences::PreferenceManager::seed_saved_preferences_for_test();
+            let manager = crate::ui::preferences::PreferenceManager::shared();
+            manager.set_open_folder_after_drop(false);
+            let fixture = tempfile::tempdir().expect("drop fixture");
+            let source_dir = fixture.path().join("source");
+            let child_dir = source_dir.join("child");
+            let destination = fixture.path().to_path_buf();
+            std::fs::create_dir_all(&child_dir).expect("source directories");
+            let source = child_dir.join("file.txt");
+            std::fs::write(&source, b"dropped").expect("drop source");
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            view.set_view_mode(crate::ui::browser_modes::BrowserMode::Columns);
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(
+                || {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                },
+                "root load",
+            );
+            assert!(browser.select_entries_by_name_at(0, &[String::from("source")]));
+            browser.descend(0, Location::local(&source_dir));
+            wait_until(
+                || {
+                    browser
+                        .column_snapshot(1)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                },
+                "source load",
+            );
+            assert!(browser.select_entries_by_name_at(1, &[String::from("child")]));
+            browser.descend(1, Location::local(&child_dir));
+            wait_until(
+                || {
+                    browser
+                        .column_snapshot(2)
+                        .is_some_and(|snapshot| !snapshot.loading)
+                },
+                "child load",
+            );
+            assert_eq!(browser.active_depth(), Some(2));
+            let completed = Rc::new(Cell::new(false));
+            let observed = completed.clone();
+            browser.observe(move |event| {
+                if matches!(event, crate::app::BrowserEvent::TransferCompleted) {
+                    observed.set(true);
+                }
+            });
+            view.state.drag_source_depth.set(Some(2));
+            browser.set_active_column(0);
+            view.state.commit_file_drop(
+                Location::local(&destination),
+                vec![Location::local(&source)],
+                DropCommit::Move,
+            );
+            assert_eq!(view.state.drop_active_depths.get(), Some((2, 0)));
+
+            wait_until(
+                || {
+                    glib::MainContext::default().iteration(false);
+                    completed.get() && browser.active_depth() == Some(2)
+                },
+                "source focus restoration",
+            );
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
 fn drop_open_preference_applies_before_settings_and_live_across_views() {
     crate::test_support::gtk_test(
         "ui::browser::transfer::tests::drop_open_preference_applies_before_settings_and_live_across_views",
