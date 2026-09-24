@@ -16,12 +16,18 @@ fn descriptor_transport_preserves_the_open_file_not_its_replacement() {
     let (parent, child) = UnixStream::pair().expect("socket");
     let (read, write) =
         rustix::pipe::pipe_with(rustix::pipe::PipeFlags::CLOEXEC).expect("reply pipe");
-    wire::send(&parent, &input, &write, Operation::Image).expect("send");
+    wire::send(
+        &parent,
+        &input,
+        &write,
+        Operation::Code(super::super::CodeLanguage::Rust),
+    )
+    .expect("send");
     drop(write);
     std::fs::remove_file(&path).expect("unlink");
     std::fs::write(&path, b"replacement").expect("replacement");
     let (operation, fd, output) = wire::receive(&child).expect("receive").expect("request");
-    assert_eq!(operation, Operation::Image);
+    assert_eq!(operation, Operation::Code(super::super::CodeLanguage::Rust));
     assert!(
         rustix::io::fcntl_getfd(fd.as_fd())
             .expect("flags")
@@ -51,7 +57,8 @@ fn descriptor_transport_rejects_missing_descriptors_and_unknown_operations() {
         parent.write_all(&[operation]).expect("send");
         assert!(wire::receive(&child).is_err());
     }
-    assert!(Operation::parse(0).is_err());
+    assert!(Operation::parse(0, 0).is_err());
+    assert!(Operation::parse(10, 0).is_err());
 }
 
 #[test]

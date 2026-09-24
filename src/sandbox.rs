@@ -92,6 +92,154 @@ impl PdfRenderSize {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub(crate) enum CodeLanguage {
+    Rust = 1,
+    Python = 2,
+    JavaScript = 3,
+    TypeScript = 4,
+    C = 5,
+    Cpp = 6,
+    Java = 7,
+    Kotlin = 8,
+    Swift = 9,
+    Go = 10,
+    Ruby = 11,
+    Php = 12,
+    Shell = 13,
+    Html = 14,
+    Css = 15,
+    Scss = 16,
+    Lua = 17,
+    R = 18,
+    Julia = 19,
+    Elixir = 20,
+    Erlang = 21,
+    Clojure = 22,
+    Scala = 23,
+    Haskell = 24,
+    Ocaml = 25,
+    FSharp = 26,
+    CSharp = 27,
+    Zig = 28,
+    Solidity = 29,
+    Vue = 30,
+    Svelte = 31,
+    Dart = 32,
+    Elm = 33,
+    Astro = 34,
+    Less = 35,
+    Tex = 36,
+    Groovy = 37,
+    Cmake = 38,
+    PowerShell = 39,
+    Perl = 40,
+    Generic = 41,
+}
+
+impl CodeLanguage {
+    pub(crate) fn from_path(path: &Path) -> Option<Self> {
+        let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+        Some(match extension.as_str() {
+            "rs" => Self::Rust,
+            "py" => Self::Python,
+            "js" | "mjs" | "jsx" => Self::JavaScript,
+            "ts" | "tsx" => Self::TypeScript,
+            "c" | "h" => Self::C,
+            "cpp" | "cxx" | "cc" | "hpp" => Self::Cpp,
+            "java" => Self::Java,
+            "kt" | "kts" => Self::Kotlin,
+            "swift" => Self::Swift,
+            "go" => Self::Go,
+            "rb" => Self::Ruby,
+            "php" => Self::Php,
+            "sh" | "bash" | "zsh" => Self::Shell,
+            "html" | "htm" => Self::Html,
+            "css" => Self::Css,
+            "scss" => Self::Scss,
+            "lua" => Self::Lua,
+            "r" | "rmd" => Self::R,
+            "jl" => Self::Julia,
+            "ex" | "exs" => Self::Elixir,
+            "erl" | "hrl" => Self::Erlang,
+            "clj" | "cljs" => Self::Clojure,
+            "scala" => Self::Scala,
+            "hs" => Self::Haskell,
+            "ml" => Self::Ocaml,
+            "fs" | "fsx" => Self::FSharp,
+            "cs" => Self::CSharp,
+            "zig" => Self::Zig,
+            "sol" => Self::Solidity,
+            "vue" => Self::Vue,
+            "svelte" => Self::Svelte,
+            "dart" => Self::Dart,
+            "elm" => Self::Elm,
+            "astro" => Self::Astro,
+            "less" => Self::Less,
+            "tex" => Self::Tex,
+            "groovy" | "gradle" => Self::Groovy,
+            "cmake" => Self::Cmake,
+            "ps1" => Self::PowerShell,
+            "pl" | "pm" => Self::Perl,
+            "vb" | "d" | "nim" | "v" | "ada" | "f" | "f90" | "f95" | "for" | "pas" | "pp"
+            | "asm" | "s" | "coffee" | "purs" => Self::Generic,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn from_id(id: u8) -> Option<Self> {
+        Some(match id {
+            1 => Self::Rust,
+            2 => Self::Python,
+            3 => Self::JavaScript,
+            4 => Self::TypeScript,
+            5 => Self::C,
+            6 => Self::Cpp,
+            7 => Self::Java,
+            8 => Self::Kotlin,
+            9 => Self::Swift,
+            10 => Self::Go,
+            11 => Self::Ruby,
+            12 => Self::Php,
+            13 => Self::Shell,
+            14 => Self::Html,
+            15 => Self::Css,
+            16 => Self::Scss,
+            17 => Self::Lua,
+            18 => Self::R,
+            19 => Self::Julia,
+            20 => Self::Elixir,
+            21 => Self::Erlang,
+            22 => Self::Clojure,
+            23 => Self::Scala,
+            24 => Self::Haskell,
+            25 => Self::Ocaml,
+            26 => Self::FSharp,
+            27 => Self::CSharp,
+            28 => Self::Zig,
+            29 => Self::Solidity,
+            30 => Self::Vue,
+            31 => Self::Svelte,
+            32 => Self::Dart,
+            33 => Self::Elm,
+            34 => Self::Astro,
+            35 => Self::Less,
+            36 => Self::Tex,
+            37 => Self::Groovy,
+            38 => Self::Cmake,
+            39 => Self::PowerShell,
+            40 => Self::Perl,
+            41 => Self::Generic,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn id(self) -> u8 {
+        self as u8
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
     ThumbnailImage,
@@ -99,6 +247,10 @@ pub(crate) enum ParseOperation {
     ThumbnailPdf,
     ThumbnailVideo,
     ThumbnailAppImage,
+    ThumbnailEmbedded,
+    ThumbnailAudioArt,
+    ThumbnailText,
+    ThumbnailCode(CodeLanguage),
     PreviewImage,
     DocumentImage,
     DocumentMermaid,
@@ -124,6 +276,10 @@ impl ParseOperation {
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
             Self::ThumbnailAppImage => "thumbnail-appimage",
+            Self::ThumbnailEmbedded => "thumbnail-embedded",
+            Self::ThumbnailAudioArt => "thumbnail-audio",
+            Self::ThumbnailText => "thumbnail-text",
+            Self::ThumbnailCode(_) => "thumbnail-code",
             Self::PreviewImage => "preview-image",
             Self::DocumentImage => "document-image",
             Self::DocumentMermaid => "document-mermaid",
@@ -163,7 +319,11 @@ impl ParseOperation {
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::ThumbnailVideo
-            | Self::ThumbnailAppImage => Some((256, 256, 256 * 256)),
+            | Self::ThumbnailAppImage
+            | Self::ThumbnailEmbedded
+            | Self::ThumbnailAudioArt
+            | Self::ThumbnailText
+            | Self::ThumbnailCode(_) => Some((256, 256, 256 * 256)),
             Self::PreviewImage
             | Self::DocumentImage
             | Self::DocumentMermaid
@@ -195,6 +355,10 @@ impl ParseOperation {
             }
             Self::ThumbnailVideo
             | Self::ThumbnailAppImage
+            | Self::ThumbnailEmbedded
+            | Self::ThumbnailAudioArt
+            | Self::ThumbnailText
+            | Self::ThumbnailCode(_)
             | Self::PreviewMedia(_)
             | Self::MediaMetadata
             | Self::ArchiveList { .. } => None,
@@ -583,6 +747,9 @@ fn sandbox_command(
         command.arg(value);
     }
     command.arg(media_backend.argument());
+    if let ParseOperation::ThumbnailCode(language) = operation {
+        command.arg(language.id().to_string());
+    }
     command
 }
 

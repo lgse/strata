@@ -21,20 +21,33 @@ use crate::{
 };
 
 mod appimage;
+mod audio;
+mod books;
 mod document_media;
+mod embedded;
 mod media;
+mod text;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
-    let (arguments, start_tick) = match arguments {
+    let (arguments, start_tick, code_language) = match arguments {
         [operation, ..] if operation == "preview-media" && arguments.len() == 6 => (
             &arguments[..5],
             arguments[5]
                 .parse::<u32>()
                 .map_err(|_| "Invalid media seek position".to_owned())?,
+            None,
         ),
-        _ => (arguments, 0),
+        [operation, ..] if operation == "thumbnail-code" && arguments.len() == 6 => (
+            &arguments[..5],
+            0,
+            arguments[5]
+                .parse::<u8>()
+                .ok()
+                .and_then(crate::sandbox::CodeLanguage::from_id),
+        ),
+        _ => (arguments, 0, None),
     };
     let secret_fd = match arguments {
         [operation, ..] if operation == "archive-list" && arguments.len() == 6 => Some(
@@ -97,6 +110,20 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
         "thumbnail-appimage" => (
             appimage::render(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
+        "thumbnail-embedded" => (
+            embedded::render(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
+        "thumbnail-audio" => (audio::render(input, numeric_value()?.clamp(16, 256))?, None),
+        "thumbnail-text" => (text::render(input, numeric_value()?.clamp(16, 256))?, None),
+        "thumbnail-code" => (
+            text::render_code(
+                input,
+                numeric_value()?.clamp(16, 256),
+                code_language.ok_or("Invalid code language")?,
+            )?,
             None,
         ),
         "preview-image" => (render_raw(input, 800)?, None),
@@ -230,6 +257,12 @@ pub(crate) fn browser_render(
         Operation::Raw => response.png = render_raw_thumbnail(input, 256).unwrap_or_default(),
         Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
         Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
+        Operation::Embedded => response.png = embedded::render(input, 256).unwrap_or_default(),
+        Operation::AudioArt => response.png = audio::render(input, 256).unwrap_or_default(),
+        Operation::Text => response.png = text::render(input, 256).unwrap_or_default(),
+        Operation::Code(language) => {
+            response.png = text::render_code(input, 256, language).unwrap_or_default()
+        }
         Operation::ImageMetadata => {
             response.metadata = dimensions()
                 .map(encode_dimensions)
@@ -340,13 +373,19 @@ fn render_simple_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
 
 fn scale_embedded_thumbnail(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
     let loader = gdk_pixbuf::PixbufLoader::new();
-    loader
+    let pixbuf = loader
         .write(data)
         .and_then(|()| loader.close())
-        .map_err(|error| error.to_string())?;
-    let pixbuf = loader
-        .pixbuf()
-        .ok_or_else(|| "Unable to decode embedded RAW thumbnail".to_owned())?;
+        .ok()
+        .and_then(|()| loader.pixbuf());
+    // gdk-pixbuf 2.44 decodes through glycin, whose nested bwrap cannot run
+    // inside the browser worker. Decode through the ImageMagick fallback there.
+    let Some(pixbuf) = pixbuf else {
+        let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+        let staged = directory.path().join("embedded-thumb");
+        fs::write(&staged, data).map_err(|error| error.to_string())?;
+        return render_imagemagick(&staged, size);
+    };
     let width = pixbuf.width().max(1);
     let height = pixbuf.height().max(1);
     let scale = (f64::from(size) / f64::from(width))

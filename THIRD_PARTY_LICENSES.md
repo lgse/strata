@@ -31,10 +31,10 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 - Version: 1.35.0
 - Copyright: Lucide Contributors and Feather Icons contributors
 - License: ISC
-- Included assets: curated and namespaced SVG icons under `data/icons/scalable/actions/`
+- Included assets: curated and namespaced SVG icons under `data/icons/scalable/actions/` and theme-recolorable category artwork under `data/thumbnails/`
 - Full license: [`data/licenses/Lucide-ISC.txt`](data/licenses/Lucide-ISC.txt)
 
-The SVGs retain Lucide geometry. The table sort caret uses the Lucide triangle with a filled foreground, rotated by GTK for descending order. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
+The SVGs retain Lucide geometry. The table sort caret uses the Lucide triangle with a filled foreground, rotated by GTK for descending order. Interface icons use GTK's symbolic foreground color, while category artwork uses semantic palette placeholders so GTK can recolor it according to the active theme.
 
 ## Tinted Theming schemes
 
