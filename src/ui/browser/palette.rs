@@ -32,7 +32,7 @@ impl BrowserView {
                     .borrow()
                     .get(depth)
                     .is_some_and(|column| {
-                        column.search_handle.borrow().is_some() || column.map.has_query()
+                        column.recursive_search_active.get() || column.map.has_query()
                     })
             });
         filtered.then(|| self.selected_search_results()).flatten()

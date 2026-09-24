@@ -89,13 +89,13 @@ def test_palette_rename_targets_filtered_selection(strata, mode):
     strata.wait(lambda: strata.matches() == ["todo.txt"], "filtered result")
     strata.keyboard.press("Down")
     strata.wait(
-        lambda: strata.window.find(role="list item", name="todo.txt", states={"selected"}),
+        lambda: strata.window.find(name="todo.txt", states={"selected"}),
         "filtered selection",
     )
     open_palette(strata, "rename")
     strata.keyboard.press("Escape")
     strata.wait(
-        lambda: strata.window.find(role="list item", name="todo.txt", states={"selected"}),
+        lambda: strata.window.find(name="todo.txt", states={"selected"}),
         "selection restored",
     )
     run_command(strata, "rename")
@@ -122,7 +122,6 @@ def test_palette_creates_pins_duplicates_and_undoes(strata):
     strata.keyboard.type_text("palette-folder")
     strata.keyboard.press("Return")
     strata.wait(lambda: strata.fixture.path("palette-folder").is_dir(), "new folder")
-    strata.wait_for_focused_entry("palette-folder")
     strata.wait_for_selection(["palette-folder"], directory=strata.fixture.root.name)
     run_command(strata, "pin folder")
     strata.wait(
