@@ -1360,6 +1360,17 @@ impl BrowserView {
         }
     }
 
+    pub(in crate::ui) fn record_pointer_hover(&self, surface: (f64, f64), column: Option<usize>) {
+        if self
+            .state
+            .input_ownership
+            .borrow_mut()
+            .pointer_motion(surface)
+        {
+            self.state.adopt_pointer(column);
+        }
+    }
+
     pub fn keyboard_navigation(&self) {
         self.state
             .input_ownership
@@ -1371,6 +1382,9 @@ impl BrowserView {
         }
         cancel_source(&self.state.pending_peek);
         self.state.browser.close_peek();
+        // Capture-phase keys run before the pane sees the event that would cancel
+        // an in-progress history restore, so the command has to cancel it first.
+        self.state.mode_views.borrow_mut().cancel_list_restore();
         self.state.sync_mode_selection();
         self.state.refresh_destination_style();
     }
@@ -1817,6 +1831,62 @@ impl BrowserView {
         true
     }
 
+    /// Moves the keyboard cursor `steps` entries in displayed listing order.
+    /// Columns fall back to source order, which already follows the column sort.
+    pub fn move_displayed_cursor(&self, direction: i32, steps: usize) {
+        if direction == 0 {
+            return;
+        }
+        self.keyboard_navigation();
+        let steps = steps.max(1);
+        let focused = self.state.overlay.root().and_then(|root| root.focus());
+        let collection = focused
+            .as_ref()
+            .and_then(super::scrolling::focused_collection);
+        self.state.mode_views.borrow().suppress_focus_scroll();
+        let target = self.state.browser.active_depth().and_then(|depth| {
+            self.state
+                .mode_views
+                .borrow()
+                .page_target(depth, direction, steps)
+                .map(|position| (depth, position))
+        });
+        if let Some((depth, position)) = target {
+            self.state.browser.select(depth, position);
+        } else {
+            let order = self
+                .state
+                .browser
+                .active_depth()
+                .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+                .filter(|order| !order.is_empty());
+            self.state
+                .browser
+                .page_along(direction, steps, order.as_deref());
+        }
+        if let Some((view, scroll)) = collection {
+            if steps == usize::MAX {
+                super::scrolling::reveal_jump(&view, &scroll, direction);
+            } else {
+                let page = super::scrolling::page(&view, &scroll);
+                super::scrolling::reveal_selection(&view, &scroll, direction, &page);
+            }
+        }
+    }
+
+    /// `half` moves half of one full page. Both ends stay inside the listing.
+    pub fn page_displayed_cursor(&self, direction: i32, half: bool) {
+        let focused = self.state.overlay.root().and_then(|root| root.focus());
+        let items = focused
+            .as_ref()
+            .and_then(super::scrolling::focused_collection)
+            .map(|(view, scroll)| super::scrolling::page(&view, &scroll).items)
+            .unwrap_or(1)
+            .max(1);
+        let steps = if half { (items / 2).max(1) } else { items };
+        self.move_displayed_cursor(direction, steps);
+    }
+
     /// Moves the focus to the first or last visible entry of the active pane, for
     /// `Ctrl+Up` and `Ctrl+Down`.
     pub fn jump_selection(&self, direction: i32) -> bool {
@@ -2093,12 +2163,8 @@ impl ViewState {
             let Some(position) = event.position() else {
                 return;
             };
-            if !state.input_ownership.borrow_mut().pointer_motion(position) {
-                return;
-            }
-            state.hovered_column.set(state.column_depth_at(x, y));
-            state.overlay.remove_css_class("keyboard-navigation");
-            state.refresh_destination_style();
+            let hovered = state.column_depth_at(x, y);
+            BrowserView { state }.record_pointer_hover(position, hovered);
         });
         self.overlay.add_controller(motion);
         let click = gtk::GestureClick::new();
@@ -2132,10 +2198,15 @@ impl ViewState {
         })
     }
 
-    fn pointer_navigation(&self) {
-        self.input_ownership.borrow_mut().pointer_action();
+    fn adopt_pointer(&self, hovered: Option<usize>) {
+        self.hovered_column.set(hovered);
         self.overlay.remove_css_class("keyboard-navigation");
         self.refresh_destination_style();
+    }
+
+    fn pointer_navigation(&self) {
+        self.input_ownership.borrow_mut().pointer_action();
+        self.adopt_pointer(self.hovered_column.get());
     }
 
     fn destination_depth(&self) -> Option<usize> {

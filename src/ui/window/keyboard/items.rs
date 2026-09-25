@@ -240,4 +240,133 @@ impl Dispatcher {
             self.view.navigate_left();
         }
     }
+
+    /// List and Columns movement, directory entry, history, and column inspect.
+    /// Icons keep their current map. Returns false when this key is not one of those chords.
+    pub(super) fn omastrata_listing(
+        &self,
+        browser: &Rc<Browser>,
+        key: Key,
+        modifiers: Modifiers,
+    ) -> bool {
+        if self.view.view_mode() == BrowserMode::Icons || !self.view.item_view_has_focus() {
+            return false;
+        }
+        let mods = super::command_modifiers(modifiers);
+        if mods == Modifiers::CONTROL_MASK {
+            return self.omastrata_control_page(key);
+        }
+        if mods == Modifiers::ALT_MASK {
+            return self.omastrata_alt_navigation(browser, key);
+        }
+        if mods == Modifiers::SHIFT_MASK {
+            return self.omastrata_shifted(browser, key);
+        }
+        if !mods.is_empty() {
+            return false;
+        }
+        self.omastrata_plain(browser, key)
+    }
+
+    fn omastrata_control_page(&self, key: Key) -> bool {
+        let (direction, half) = match key {
+            Key::u | Key::U => (-1, true),
+            Key::d | Key::D => (1, true),
+            Key::b | Key::B | Key::Page_Up | Key::KP_Page_Up => (-1, false),
+            Key::f | Key::F | Key::Page_Down | Key::KP_Page_Down => (1, false),
+            _ => return false,
+        };
+        self.view.page_displayed_cursor(direction, half);
+        true
+    }
+
+    fn omastrata_alt_navigation(&self, browser: &Rc<Browser>, key: Key) -> bool {
+        match key {
+            Key::Left | Key::KP_Left => self.go_back(browser),
+            Key::Right | Key::KP_Right => self.go_forward(browser),
+            Key::Up | Key::KP_Up => self.go_parent(),
+            _ => return false,
+        }
+        true
+    }
+
+    fn omastrata_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
+        match key {
+            Key::G => self.jump_displayed(1),
+            Key::H => self.go_back(browser),
+            Key::L => self.go_forward(browser),
+            _ => return false,
+        }
+        true
+    }
+
+    fn omastrata_plain(&self, browser: &Rc<Browser>, key: Key) -> bool {
+        match key {
+            Key::j | Key::Down | Key::KP_Down => self.view.move_displayed_cursor(1, 1),
+            Key::k | Key::Up | Key::KP_Up => self.view.move_displayed_cursor(-1, 1),
+            Key::Home | Key::KP_Home => self.jump_displayed(-1),
+            Key::End | Key::KP_End | Key::G => self.jump_displayed(1),
+            Key::H => self.go_back(browser),
+            Key::L => self.go_forward(browser),
+            Key::h | Key::Left | Key::KP_Left | Key::BackSpace => self.go_parent(),
+            Key::l | Key::Right | Key::KP_Right => self.enter_focused_directory(browser),
+            Key::o | Key::Return | Key::KP_Enter => self.activate_focused(),
+            Key::i => {
+                if self.view.view_mode() != BrowserMode::Columns {
+                    return false;
+                }
+                self.open_miller_child(browser);
+            }
+            Key::Page_Up | Key::KP_Page_Up => self.view.page_displayed_cursor(-1, false),
+            Key::Page_Down | Key::KP_Page_Down => self.view.page_displayed_cursor(1, false),
+            _ => return false,
+        }
+        true
+    }
+
+    fn jump_displayed(&self, direction: i32) {
+        self.view.move_displayed_cursor(direction, usize::MAX);
+    }
+
+    fn go_parent(&self) {
+        self.view.keyboard_navigation();
+        self.view.navigate_up();
+    }
+
+    fn go_back(&self, browser: &Rc<Browser>) {
+        self.view.keyboard_navigation();
+        browser.back();
+    }
+
+    fn go_forward(&self, browser: &Rc<Browser>) {
+        self.view.keyboard_navigation();
+        browser.forward();
+    }
+
+    fn activate_focused(&self) {
+        self.view.keyboard_navigation();
+        self.view.activate_focused();
+    }
+
+    /// Opens a directory. A file is left alone so plain l / Right does not launch it.
+    fn enter_focused_directory(&self, browser: &Rc<Browser>) {
+        self.view.keyboard_navigation();
+        if browser
+            .focused_entry()
+            .is_some_and(|entry| entry.is_directory())
+        {
+            self.view.activate_focused();
+        }
+    }
+
+    /// Opens the next Miller column and leaves focus in the current column.
+    fn open_miller_child(&self, browser: &Rc<Browser>) {
+        self.view.keyboard_navigation();
+        let Some((depth, _, entry)) = browser.focused_item() else {
+            return;
+        };
+        if entry.is_directory() {
+            browser.show_child(depth, entry.location);
+        }
+    }
 }

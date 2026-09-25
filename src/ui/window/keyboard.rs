@@ -307,7 +307,7 @@ impl Dispatcher {
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
-        if let Some(result) = self.omastrata_keys(key, modifiers) {
+        if let Some(result) = self.omastrata_keys(browser, key, modifiers) {
             return result;
         }
         let focused = gtk::prelude::RootExt::focus(&self.window);
@@ -420,7 +420,7 @@ impl Dispatcher {
         visible_popover_menu(self.window.upcast_ref())
     }
 
-    fn omastrata_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+    fn omastrata_keys(&self, browser: &Rc<Browser>, key: Key, modifiers: Modifiers) -> KeyResult {
         if visible_modal_layer(&self.window).is_some() {
             return None;
         }
@@ -437,8 +437,9 @@ impl Dispatcher {
         if self.text_focused() || self.focus_in_popover() {
             return None;
         }
-        // Ctrl/Alt/Super belong to the default command map. Only a plain q
-        // leaves the mode, and only Shift+Q closes the window.
+        // Plain q leaves the mode. Shift+Q closes the window. List and Columns
+        // claim their own chords, including paging keys that otherwise filter,
+        // toggle the sidebar, or duplicate.
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
         if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
@@ -449,8 +450,11 @@ impl Dispatcher {
             self.window.close();
             return Some(Propagation::Stop);
         }
+        if self.omastrata_listing(browser, key, modifiers) {
+            return Some(Propagation::Stop);
+        }
         // Claim the conflicting default map. Still-bound shortcuts fall through
-        // to the existing commands. Later stories add the replacement verbs.
+        // to the existing commands.
         if claims_unbound_command(key, modifiers)
             || (self.view.item_view_has_focus() && claims_file_list_typing(key, modifiers))
         {
