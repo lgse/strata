@@ -1043,6 +1043,29 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 .expect("menu")
                 .popdown();
             focus_files(&fixture);
+            let names_before_quit = directory_names(fixture._directory.path());
+            for modifier in [
+                ModifierType::CONTROL_MASK,
+                ModifierType::ALT_MASK,
+                ModifierType::SUPER_MASK,
+            ] {
+                fixture.press(Key::q, modifier);
+                assert!(
+                    preferences.omastrata_mode(),
+                    "{modifier:?}+q must not leave the mode"
+                );
+                assert!(fixture.window.is_visible());
+                fixture.press(Key::Q, modifier | ModifierType::SHIFT_MASK);
+                assert!(
+                    fixture.window.is_visible(),
+                    "{modifier:?}+Shift+Q must not close the window"
+                );
+                assert!(preferences.omastrata_mode());
+            }
+            assert_eq!(
+                directory_names(fixture._directory.path()),
+                names_before_quit
+            );
             assert!(fixture.press(Key::q, ModifierType::empty()));
             assert!(!preferences.omastrata_mode());
             assert!(fixture.window.is_visible());

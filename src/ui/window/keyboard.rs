@@ -431,11 +431,15 @@ impl Dispatcher {
         if self.text_focused() || self.focus_in_popover() {
             return None;
         }
-        if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) {
+        // Ctrl/Alt/Super belong to the default command map. Only a plain q
+        // leaves the mode, and only Shift+Q closes the window.
+        let command = modifiers
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
+        if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
             preferences.set_omastrata_mode(false);
             return Some(Propagation::Stop);
         }
-        if key == Key::Q && modifiers.contains(Modifiers::SHIFT_MASK) {
+        if key == Key::Q && modifiers.contains(Modifiers::SHIFT_MASK) && !command {
             self.window.close();
             return Some(Propagation::Stop);
         }
