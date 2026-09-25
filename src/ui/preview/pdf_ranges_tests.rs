@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
-use super::{PdfTextLayer, pdf_desired_ranges, pdf_shortcut_modifiers};
+use super::{
+    PdfTextLayer, pdf_apply_ranges, pdf_desired_ranges, pdf_drop_unselected_layer,
+    pdf_selected_text, pdf_shortcut_modifiers,
+};
 
 fn layer(text: &str) -> Arc<PdfTextLayer> {
     let glyphs = text
@@ -63,6 +66,42 @@ fn line_granularity_snaps_to_whole_lines() {
 fn same_page_backward_drag_selects_upward() {
     let desired = pdf_desired_ranges(&layers(), (1, 9), (1, 1), 1);
     assert_eq!(desired, HashMap::from([(1, (1, 9))]));
+}
+
+#[test]
+fn selected_unbound_page_remains_copyable_until_selection_changes() {
+    let layers = RefCell::new(layers());
+    let ranges = RefCell::new(HashMap::from([(1, (0, 3)), (2, (0, 4))]));
+    let visible = HashMap::new();
+
+    pdf_drop_unselected_layer(&layers, &ranges, 1);
+    assert_eq!(
+        pdf_selected_text(&layers.borrow(), &ranges.borrow()),
+        "one\nfour"
+    );
+
+    pdf_apply_ranges(&ranges, &layers, &visible, HashMap::from([(2, (0, 4))]));
+    assert!(!layers.borrow().contains_key(&1));
+    assert_eq!(
+        pdf_selected_text(&layers.borrow(), &ranges.borrow()),
+        "four"
+    );
+
+    pdf_apply_ranges(&ranges, &layers, &visible, HashMap::new());
+    assert!(!layers.borrow().contains_key(&2));
+}
+
+#[test]
+fn select_all_replaces_stale_unbound_ranges() {
+    let layers = RefCell::new(layers());
+    let ranges = RefCell::new(HashMap::from([(4, (0, 5))]));
+    let desired = layers
+        .borrow()
+        .iter()
+        .map(|(page, layer)| (*page, (0, layer.glyphs.len())))
+        .collect();
+    pdf_apply_ranges(&ranges, &layers, &HashMap::new(), desired);
+    assert!(!ranges.borrow().contains_key(&4));
 }
 
 #[test]

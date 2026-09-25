@@ -285,6 +285,7 @@ fn parse_sandboxed(
             data,
             page: 0,
             pages: 0,
+            text_layer: None,
         });
     }
 

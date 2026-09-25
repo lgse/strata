@@ -2,12 +2,10 @@
 
 use crate::services::PdfTextLayer;
 
-/// One line of page text: vertical bounds and char range, in rendered pixels.
 pub(super) struct PdfLine {
     pub(super) top: f32,
     pub(super) bottom: f32,
     pub(super) start: usize,
-    /// Exclusive char index; includes the line's trailing '\n' when present.
     pub(super) end: usize,
 }
 
@@ -16,8 +14,6 @@ fn solid(layer: &PdfTextLayer, index: usize) -> Option<[f32; 4]> {
     (rect[2] > rect[0] && rect[3] > rect[1]).then_some(*rect)
 }
 
-/// Splits `text` at newlines and unions the glyph bounds of each line.
-/// Glyphs follow char order, so `glyphs[i]` belongs to the line holding char `i`.
 pub(super) fn lines(layer: &PdfTextLayer) -> Vec<PdfLine> {
     let len = len(layer);
     let mut lines = Vec::new();
@@ -74,7 +70,6 @@ pub(super) fn image_bounds(layer: &PdfTextLayer, width: f64, height: f64) -> (f6
     (x, y, scale)
 }
 
-/// Selectable char count: `glyphs` and `text` are kept in lockstep.
 pub(super) fn len(layer: &PdfTextLayer) -> usize {
     layer.text.chars().count().min(layer.glyphs.len())
 }
@@ -99,9 +94,6 @@ pub(super) fn hit_text(layer: &PdfTextLayer, x: f32, y: f32) -> bool {
     })
 }
 
-/// Caret position (a char boundary, 0..=len) nearest the point, in PNG pixels.
-/// Horizontal snaps to glyph centers on the nearest line; points off the text
-/// snap to the line's start/end, like a document viewer.
 pub(super) fn caret_at(layer: &PdfTextLayer, x: f32, y: f32) -> usize {
     let lines = lines(layer);
     let len = len(layer);
@@ -128,7 +120,6 @@ pub(super) fn caret_at(layer: &PdfTextLayer, x: f32, y: f32) -> usize {
             return index;
         }
     }
-    // Past the last glyph: caret sits before the trailing newline, if any.
     let mut end = line.end;
     if end > line.start && layer.text.chars().nth(end - 1) == Some('\n') {
         end -= 1;
@@ -164,8 +155,6 @@ fn has_descender(layer: &PdfTextLayer, start: usize, end: usize) -> bool {
     })
 }
 
-/// Merged highlight rectangles for the char range `start..end`, in PNG pixels.
-/// Runs merge per line so a selected line draws as one block.
 pub(super) fn selection_runs(layer: &PdfTextLayer, start: usize, end: usize) -> Vec<[f32; 4]> {
     let (start, end) = (start.min(end), start.max(end));
     lines(layer)
@@ -183,8 +172,6 @@ pub(super) fn selection_runs(layer: &PdfTextLayer, start: usize, end: usize) -> 
                     x2 = x2.max(rect[2]);
                 }
             }
-            // Baseline sits ~4/5 down the font box; runs without descenders
-            // stop just past it instead of covering empty descent space.
             let bottom = if has_descender(layer, first, last) {
                 line.bottom
             } else {
@@ -195,8 +182,6 @@ pub(super) fn selection_runs(layer: &PdfTextLayer, start: usize, end: usize) -> 
         .collect()
 }
 
-/// The whitespace-delimited word holding `index`; empty when `index` lands on
-/// whitespace or at the end of the text.
 pub(super) fn word_range(layer: &PdfTextLayer, index: usize) -> (usize, usize) {
     let len = len(layer);
     let index = index.min(len);
@@ -215,7 +200,6 @@ pub(super) fn word_range(layer: &PdfTextLayer, index: usize) -> (usize, usize) {
     (start, end)
 }
 
-/// The visual line holding `index`, excluding its trailing newline.
 pub(super) fn line_range(layer: &PdfTextLayer, index: usize) -> (usize, usize) {
     let index = index.min(len(layer));
     let all = lines(layer);
@@ -229,7 +213,6 @@ pub(super) fn line_range(layer: &PdfTextLayer, index: usize) -> (usize, usize) {
     (line.start, end)
 }
 
-/// The selected text, preserving the page's own newlines.
 pub(super) fn selection_text(layer: &PdfTextLayer, start: usize, end: usize) -> String {
     let (start, end) = (start.min(end), start.max(end).min(len(layer)));
     layer.text.chars().skip(start).take(end - start).collect()

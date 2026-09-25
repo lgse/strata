@@ -460,7 +460,6 @@ fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     render_pdf_surface(&page, width, height, scale)
 }
 
-/// PNG bytes, clamped page index, page count, and the serialized text layer.
 type PdfPageRender = (Vec<u8>, i32, i32, Option<Vec<u8>>);
 
 fn render_pdf_page(
