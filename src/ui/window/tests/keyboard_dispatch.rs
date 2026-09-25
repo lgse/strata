@@ -1228,6 +1228,49 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
 }
 
 #[test]
+fn appearance_menu_hides_space_preview_while_omastrata_is_on() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::appearance_menu_hides_space_preview_while_omastrata_is_on",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_omastrata_mode(false);
+            let view = browser_for_window();
+            let preview = PreviewDrawer::new(Rc::new(super::type_to_search::TextPreview), false);
+            let menu = build_appearance_menu(&view, &view.browser(), preferences.clone(), &preview);
+            let window = gtk::Window::builder().child(&menu).build();
+            window.present();
+            menu.popup();
+            wait_until(|| menu.popover().is_some_and(|popover| popover.is_visible()));
+            let popover = menu.popover().expect("appearance popover");
+            let toggle = widget_with_class(popover.upcast_ref(), "preview-panel-option")
+                .expect("preview panel option");
+            assert_eq!(preview_shortcut(&toggle), "Space");
+            assert_eq!(
+                toggle.tooltip_text().as_deref(),
+                Some("Toggle preview panel while browsing (Space)")
+            );
+            preferences.set_omastrata_mode(true);
+            assert_eq!(preview_shortcut(&toggle), "");
+            assert_eq!(
+                toggle.tooltip_text().as_deref(),
+                Some("Toggle preview panel while browsing")
+            );
+            preferences.set_omastrata_mode(false);
+            assert_eq!(preview_shortcut(&toggle), "Space");
+            window.destroy();
+        },
+    );
+}
+
+fn preview_shortcut(toggle: &gtk::Widget) -> String {
+    widget_with_class(toggle, "folder-context-shortcut")
+        .and_then(|widget| widget.downcast::<gtk::Label>().ok())
+        .filter(|label| label.is_visible())
+        .map(|label| label.text().to_string())
+        .unwrap_or_default()
+}
+
+#[test]
 fn hidden_shortcut_button_keeps_prompt_chord_and_feedback_usable() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::hidden_shortcut_button_keeps_prompt_chord_and_feedback_usable",

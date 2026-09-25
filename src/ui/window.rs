@@ -790,9 +790,13 @@ pub(super) fn build_appearance_menu(
     let (row, check, _) = appearance_row(
         crate::assets::icons::EYE,
         "Preview panel",
-        "Space",
+        "",
         preview.is_enabled(),
     );
+    let preview_shortcut = gtk::Label::new(None);
+    preview_shortcut.add_css_class("folder-context-shortcut");
+    row.append(&preview_shortcut);
+    row.reorder_child_after(&check, Some(&preview_shortcut));
     let preview_toggle = gtk::ToggleButton::builder()
         .child(&row)
         .has_frame(false)
@@ -800,7 +804,25 @@ pub(super) fn build_appearance_menu(
     preview_toggle.add_css_class("appearance-option");
     preview_toggle.add_css_class("preview-panel-option");
     super::accessibility::set_label(&preview_toggle, "Preview panel");
-    preview_toggle.set_tooltip_text(Some("Toggle preview panel while browsing (Space)"));
+    let shortcut_label = preview_shortcut.clone();
+    let tooltip_toggle = preview_toggle.clone();
+    preferences.bind_preference(
+        &preview_shortcut,
+        PreferenceManager::omastrata_mode,
+        move |_, enabled| {
+            let text = crate::ui::shortcut_reference::context_hint_for(
+                crate::ui::shortcut_reference::ContextHint::Preview,
+                enabled,
+            );
+            shortcut_label.set_text(text);
+            shortcut_label.set_visible(!text.is_empty());
+            tooltip_toggle.set_tooltip_text(Some(if text.is_empty() {
+                "Toggle preview panel while browsing"
+            } else {
+                "Toggle preview panel while browsing (Space)"
+            }));
+        },
+    );
     let actions = gio::SimpleActionGroup::new();
     actions.add_action(&preview.action());
     preview_toggle.insert_action_group("preview", Some(&actions));
