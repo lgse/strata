@@ -67,9 +67,8 @@ def test_omastrata_context_hints_match_commands_that_run(strata):
         lambda: strata.window.find(role="label", name=EXPERIMENTAL) is not None,
         "the experimental label in the shortcut reference",
     )
-    tag = strata.window.find(role="label", name="Omastrata mode")
-    assert tag is not None
-    assert EXPERIMENTAL in tag.description
+    tag = strata.window.find(role="label", name=f"Omastrata mode {EXPERIMENTAL}")
+    assert tag is not None, "the footer tag should carry the experimental label"
     strata.keyboard.press("Escape")
     strata.wait(
         lambda: strata.window.find(role="label", name="Keyboard shortcuts") is None,

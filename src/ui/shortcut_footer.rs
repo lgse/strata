@@ -509,14 +509,14 @@ fn apply_experimental_label(
     tag_note.set_visible(enabled);
     reference_note.set_text(if enabled { phrase } else { "" });
     reference_note.set_visible(enabled);
-    let tooltip = if enabled {
+    let announced = if enabled {
         format!("{} {phrase}", crate::ui::omastrata_mode::TAG_NAME)
     } else {
         crate::ui::omastrata_mode::TAG_NAME.to_owned()
     };
-    tag.set_tooltip_text(Some(&tooltip));
+    tag.set_tooltip_text(Some(&announced));
     tag.update_property(&[
-        gtk::accessible::Property::Label(crate::ui::omastrata_mode::TAG_NAME),
+        gtk::accessible::Property::Label(&announced),
         gtk::accessible::Property::Description(if enabled { phrase } else { "" }),
     ]);
 }
