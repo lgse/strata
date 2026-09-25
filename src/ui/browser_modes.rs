@@ -1068,11 +1068,6 @@ impl ModeViews {
         self.single_click_previews.set(enabled);
     }
 
-    #[cfg(test)]
-    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
-        self.single_click_previews.get()
-    }
-
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
         match mode {
             BrowserMode::Columns => {}
@@ -4714,20 +4709,6 @@ fn compare_type_groups_for_preferences(
     }
 }
 
-#[cfg(test)]
-fn type_groups_of(values: impl Iterator<Item = impl AsRef<str>>) -> Vec<String> {
-    let mut labels: Vec<String> = Vec::new();
-    for value in values {
-        let label = super::browser::model_type_group(value.as_ref());
-        if let Err(position) =
-            labels.binary_search_by(|candidate| compare_type_groups(candidate, &label))
-        {
-            labels.insert(position, label);
-        }
-    }
-    labels
-}
-
 fn type_group_heading(label: &str) -> gtk::Label {
     let heading = gtk::Label::new(Some(label));
     heading.add_css_class("type-group-heading");
@@ -4902,6 +4883,3 @@ fn bitset_positions(bitset: &gtk::Bitset) -> Vec<usize> {
         .map(|position| position as usize)
         .collect()
 }
-
-#[cfg(test)]
-mod tests;

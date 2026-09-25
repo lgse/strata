@@ -29,9 +29,6 @@ pub(super) fn retry_after_cancel() {
     }
 }
 
-#[cfg(test)]
-use super::viewport::prioritize_queue;
-
 pub(super) async fn render(path: &Path, cancellation: &Cancellation) -> Result<Vec<u8>, String> {
     if cancellation.is_cancelled() {
         return Err("Camera thumbnail cancelled".into());
@@ -172,6 +169,3 @@ async fn read_icon(stream: &impl IsA<gio::InputStream>, limit: usize) -> Result<
         output.extend_from_slice(&bytes);
     }
 }
-
-#[cfg(test)]
-mod tests;

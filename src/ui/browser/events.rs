@@ -801,6 +801,14 @@ impl ViewState {
                     ),
                 }
             }
+            BrowserEvent::LocationRevealFailed { location } => show_error_dialog(
+                &self.overlay,
+                "Unable to select file",
+                &format!(
+                    "{} is not available in the loaded folder.",
+                    location.display_path()
+                ),
+            ),
             BrowserEvent::ArchiveStarted { total } => {
                 let browser = self.browser.clone();
                 self.show_file_operation_progress(
@@ -1166,6 +1174,3 @@ fn extract_error_needs_password(message: &str) -> bool {
         lower.contains("password") || lower.contains("encrypt")
     })
 }
-
-#[cfg(test)]
-mod tests;

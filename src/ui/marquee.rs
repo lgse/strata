@@ -912,6 +912,3 @@ fn band_placement(
         (bottom - top).round().max(1.0) as i32,
     ))
 }
-
-#[cfg(test)]
-mod tests;

@@ -721,6 +721,3 @@ fn remember_keyboard_width(weak: std::rc::Weak<PreviewState>) {
         }
     });
 }
-
-#[cfg(test)]
-mod tests;

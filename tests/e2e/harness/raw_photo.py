@@ -63,8 +63,6 @@ def write_raw_photo(path):
                 data.extend((x * 255 // width, y * 255 // height, 100))
 
     pixels(root, tags, width, height)
-    # The ordinary RGB preview is intentionally smaller than the RAW SubIFD.
-    # Dimensions must come from the original image, not this preview directory.
     preview_width, preview_height = 300, 200
     preview_tags = [
         long(254, 1), long(256, preview_width), long(257, preview_height),

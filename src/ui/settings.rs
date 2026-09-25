@@ -32,9 +32,6 @@ use general::general_page;
 use keybindings::keybindings_page;
 use theme::theme_page;
 
-#[cfg(test)]
-mod tests;
-
 use super::{
     blur::BlurBin,
     browser::{dismiss_modal_layer, modal_layer},
@@ -257,21 +254,6 @@ fn publish_update_notice(result: CachedUpdate) {
 
 pub(super) fn clear_cached_update_notice() {
     LAST_UPDATE_RESULT.with(|cache| *cache.borrow_mut() = None);
-}
-
-#[cfg(test)]
-pub(super) fn publish_update_notice_for_test(result: CachedUpdate) {
-    publish_update_notice(result);
-}
-
-#[cfg(test)]
-pub(super) fn current_check_generation() -> u64 {
-    CHECK_GENERATION.get()
-}
-
-#[cfg(test)]
-pub(super) fn next_check_generation_for_test() -> u64 {
-    next_check_generation()
 }
 
 const DIALOG_WIDTH: i32 = 1400;

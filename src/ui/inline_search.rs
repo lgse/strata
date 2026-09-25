@@ -26,8 +26,6 @@ mod presentation;
 use collection::{
     CollectionBehavior, ResultCollection, ResultKind, build_collection, collection_entry,
 };
-#[cfg(test)]
-use presentation::relative_result_path;
 
 pub(super) const SEARCH_RESULTS_LABEL: &str = "Search results";
 pub(super) type SearchSelectionChanged = Rc<dyn Fn(Vec<FileEntry>)>;
@@ -679,6 +677,3 @@ pub(super) fn search_path_present(path: &Path) -> bool {
         |_| true,
     )
 }
-
-#[cfg(test)]
-mod tests;

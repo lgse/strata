@@ -83,6 +83,7 @@ fn nightly_suffix_does_not_collide_with_the_next_days_date() {
 
 #[test]
 fn accepts_canonical_forms() {
+    assert!(Version::parse("0.0.0").is_some());
     assert!(Version::parse("v0.5.0").is_some());
     assert!(Version::parse("0.5.0").is_some());
     assert!(Version::parse("v0.5.0-alpha.1").is_some());
