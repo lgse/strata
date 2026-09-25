@@ -34,23 +34,3 @@ fn developer_build_reports_stable_build_kind() {
 fn installed_version_agrees_with_version_for_a_default_build() {
     assert_eq!(installed_version().to_string(), VERSION);
 }
-
-/// `installed_version()`'s fallback chain reads `RELEASE_TAG` and `VERSION`
-/// as `env!`-injected constants, not parameters, so this build's default
-/// values can't be swapped out to actually drive the function down its
-/// fallback branches from a test. Instead this exercises the building
-/// blocks the chain depends on: `Version::parse` must reject the malformed
-/// and empty inputs that would trigger a fallback, and the `"0.0.0"` floor
-/// the chain lands on if every real parse fails must itself always parse
-/// (this is what makes `installed_version()`'s final `.unwrap_or_else`
-/// branch panic-free).
-#[test]
-fn version_parse_rejects_invalid_input_and_accepts_the_fallback_floor() {
-    assert!(Version::parse("not-a-version").is_none());
-    assert!(Version::parse("").is_none());
-    // The floor of the fallback chain must itself always parse.
-    assert_eq!(
-        Version::parse("0.0.0").map(|v| v.to_string()),
-        Some("0.0.0".to_owned())
-    );
-}

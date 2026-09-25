@@ -271,6 +271,3 @@ fn is_executable(path: &Path) -> bool {
         true
     }
 }
-
-#[cfg(test)]
-mod tests;

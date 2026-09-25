@@ -13,6 +13,12 @@ from harness.modes import ALL_MODES
 ENTRY_MENU_ITEMS = {"Open", "Cut", "Copy", "Rename", "Move to Trash", "Properties"}
 
 
+def assert_menu_order(strata, expected):
+    items = strata.menu_items()
+    positions = [items.index(action) for action in expected]
+    assert positions == sorted(positions), f"unexpected action order: {items}"
+
+
 @pytest.fixture
 def executable_file(fixture_tree):
     program = fixture_tree.path("run-me")
@@ -40,6 +46,20 @@ def test_the_entry_context_menu_offers_named_actions_and_accelerators(strata):
     assert strata.menu_item("Copy").description == "Ctrl+C", (
         "the accelerator belongs in the description, not the name"
     )
+    assert_menu_order(strata, [
+        "Open", "Open With…", "Quick preview", "Print", "Cut", "Copy", "Duplicate",
+        "Rename", "Move to…", "Copy to…", "Compress…", "Customize…", "Copy path",
+        "Copy name", "Properties", "Move to Trash", "Permanently delete",
+    ])
+    strata.dismiss_menu()
+
+    strata.open_context_menu("documents")
+    assert_menu_order(strata, [
+        "Open", "Open With…", "Open in Terminal", "Cut", "Copy", "Duplicate",
+        "Rename", "Move to…", "Copy to…", "Compress…", "Pin to sidebar",
+        "Customize…", "Copy path", "Copy name", "Properties", "Move to Trash",
+        "Permanently delete",
+    ])
     strata.dismiss_menu()
 
 
@@ -122,6 +142,11 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
     strata.wait(strata.context_menu, "the multi-selection menu")
     assert "Rename" not in strata.menu_items()
     assert "Actions" in strata.menu_items()
+    assert_menu_order(strata, [
+        "Open With…", "Cut", "Copy", "Duplicate", "Move to…", "Copy to…",
+        "Compress…", "Copy paths", "Copy names", "Properties", "Move to Trash",
+        "Permanently delete",
+    ])
     strata.wait(
         lambda: strata.menu_item("Open").has_state("focused"),
         "Open to receive initial focus with multiple files and custom actions",
@@ -209,6 +234,10 @@ def test_the_pane_context_menu_offers_directory_actions(strata):
     assert {"New Folder", "Select All", "Refresh"} <= offered, (
         f"unexpected pane menu {sorted(offered)}"
     )
+    assert_menu_order(strata, [
+        "New Folder", "New File", "Paste", "Open With…", "Open in Terminal",
+        "Select All", "Refresh", "Customize…", "Properties",
+    ])
     strata.dismiss_menu()
 
 
@@ -451,6 +480,12 @@ def test_enter_submits_compress_and_extract_to_dialogs(strata):
 
     destination = strata.fixture.path("unpacked")
     strata.open_context_menu("bundle.zip")
+    assert_menu_order(strata, [
+        "Open", "Open With…", "Extract here", "Extract to…", "Cut", "Copy",
+        "Duplicate", "Rename", "Move to…", "Copy to…", "Compress…",
+        "Customize…", "Copy path", "Copy name", "Properties", "Move to Trash",
+        "Permanently delete",
+    ])
     strata.choose_menu_item("Extract to…")
     field = strata.editable_field()
     strata.keyboard.press("ctrl+a")

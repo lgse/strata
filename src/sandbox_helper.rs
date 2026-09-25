@@ -23,6 +23,7 @@ use crate::{
 mod appimage;
 mod document_media;
 mod media;
+mod raw_metadata;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
@@ -76,6 +77,9 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if operation == "media-metadata" {
         return write_media_metadata(input, output);
     }
+    if operation == "raw-metadata" {
+        return fs::write(output, raw_metadata::read(input)?).map_err(|error| error.to_string());
+    }
     if operation == "archive-list" {
         return run_archive_list(input, output, value, secret_fd);
     }
@@ -84,6 +88,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             .parse::<i32>()
             .map_err(|_| "Invalid preview helper size or page".to_owned())
     };
+    let mut text_layer_bytes = None;
     let (png, metadata) = match operation.as_str() {
         "thumbnail-image" => (render_raw(input, numeric_value()?.clamp(16, 256))?, None),
         "thumbnail-raw" => (
@@ -99,14 +104,14 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             appimage::render(input, numeric_value()?.clamp(16, 256))?,
             None,
         ),
-        "preview-image" => (render_raw(input, 800)?, None),
-        "document-image" => (document_media::image(input)?, None),
+        "preview-image" | "document-image" => (document_media::image(input, 800)?, None),
         "document-mermaid" => (document_media::mermaid(input)?, None),
         "document-math" => (document_media::math(input, true)?, None),
         "document-inline-math" => (document_media::math(input, false)?, None),
         "preview-pdf" => {
             let (page, size) = pdf_render_request(value)?;
-            let (png, page, pages) = render_pdf_page(input, page, size)?;
+            let (png, page, pages, text_layer) = render_pdf_page(input, page, size)?;
+            text_layer_bytes = text_layer;
             (png, Some(format!("{page} {pages}")))
         }
         _ => return Err("Unknown preview helper operation".to_owned()),
@@ -114,6 +119,10 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     fs::write(output, png).map_err(|error| error.to_string())?;
     if let Some(metadata) = metadata {
         fs::write(output.with_file_name("result.meta"), metadata)
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(text_layer) = text_layer_bytes {
+        fs::write(output.with_file_name("result.text"), text_layer)
             .map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -170,7 +179,59 @@ fn write_media_metadata(input: &Path, output: &Path) -> Result<(), String> {
     fs::write(output, read_media_metadata(input)?).map_err(|error| error.to_string())
 }
 
+fn svg_source(input: &Path) -> Option<String> {
+    let mut file = fs::File::open(input).ok()?;
+    let mut bytes = Vec::new();
+    (&mut file).take(8192).read_to_end(&mut bytes).ok()?;
+    let limit = crate::services::document_media::IMAGE_INPUT_LIMIT;
+    if bytes.starts_with(b"\x1f\x8b") {
+        let mut decompressed = Vec::new();
+        flate2::read::GzDecoder::new(fs::File::open(input).ok()?)
+            .take(limit + 1)
+            .read_to_end(&mut decompressed)
+            .ok()?;
+        bytes = decompressed;
+    } else if is_svg_head(&bytes) {
+        (&mut file)
+            .take(limit.saturating_sub(bytes.len() as u64) + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+    }
+    if bytes.len() as u64 > limit || !is_svg_head(&bytes) {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
+}
+
+fn is_svg_head(head: &[u8]) -> bool {
+    let head = head.strip_prefix(b"\xef\xbb\xbf").unwrap_or(head);
+    let Some(first) = head.iter().position(|byte| !byte.is_ascii_whitespace()) else {
+        return false;
+    };
+    if head[first] != b'<' {
+        return false;
+    }
+    head.windows(4).enumerate().any(|(index, window)| {
+        window == b"<svg"
+            && matches!(
+                head.get(index + 4),
+                None | Some(b' ' | b'\t' | b'\r' | b'\n' | b'>' | b'/')
+            )
+    })
+}
+
+fn video_stream_metadata(width: i32, height: i32) -> serde_json::Result<Vec<u8>> {
+    serde_json::to_vec(&serde_json::json!({
+        "streams": [{"codec_type": "video", "width": width, "height": height}]
+    }))
+}
+
 fn read_media_metadata(input: &Path) -> Result<Vec<u8>, String> {
+    if let Some(source) = svg_source(input)
+        && let Some((width, height)) = document_media::svg_dimensions(&source)
+    {
+        return video_stream_metadata(width, height).map_err(|error| error.to_string());
+    }
     let probe = bounded_output_with_timeout(
         Command::new("ffprobe")
             .args([
@@ -188,10 +249,7 @@ fn read_media_metadata(input: &Path) -> Result<Vec<u8>, String> {
             let (_, width, height) = gdk_pixbuf::Pixbuf::file_info(input)
                 .filter(|(_, width, height)| *width > 0 && *height > 0)
                 .ok_or("Unable to inspect media")?;
-            serde_json::to_vec(&serde_json::json!({
-                "streams": [{"codec_type": "video", "width": width, "height": height}]
-            }))
-            .map_err(|error| error.to_string())?
+            video_stream_metadata(width, height).map_err(|error| error.to_string())?
         }
     };
     Ok(bytes)
@@ -208,36 +266,55 @@ pub(crate) fn browser_render(
             .filter(|(_, width, height)| *width > 0 && *height > 0)
             .map(|(_, width, height)| (width, height))
     };
-    let encode_dimensions = |(width, height)| {
-        serde_json::to_vec(&serde_json::json!({
-            "streams": [{"codec_type": "video", "width": width, "height": height}]
-        }))
-        .unwrap_or_default()
-    };
+    let encode_dimensions =
+        |(width, height)| video_stream_metadata(width, height).unwrap_or_default();
     match operation {
         Operation::Image => {
-            if let Some(size) = dimensions() {
-                response.metadata = encode_dimensions(size);
-                response.png =
-                    render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+            // glycin's nested sandbox cannot run here; use resvg first.
+            if let Some(source) = svg_source(input)
+                && let Ok(rendered) = document_media::svg(&source, 256)
+            {
+                response.metadata = encode_dimensions((rendered.width, rendered.height));
+                response.png = rendered.png;
             }
             if response.png.is_empty() {
-                response.png = render_imagemagick(input, 256)
-                    .or_else(|_| render_dcraw(input, 256))
-                    .unwrap_or_default();
+                if let Some(size) = dimensions() {
+                    response.metadata = encode_dimensions(size);
+                    response.png =
+                        render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+                }
+                if response.png.is_empty() {
+                    response.png = render_imagemagick(input, 256)
+                        .or_else(|_| render_dcraw(input, 256))
+                        .unwrap_or_default();
+                }
             }
         }
         Operation::Raw => response.png = render_raw_thumbnail(input, 256).unwrap_or_default(),
         Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
         Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
         Operation::ImageMetadata => {
-            response.metadata = dimensions()
+            response.metadata = svg_source(input)
+                .and_then(|source| document_media::svg_dimensions(&source))
                 .map(encode_dimensions)
+                .or_else(|| dimensions().map(encode_dimensions))
                 .or_else(|| read_media_metadata(input).ok())
                 .unwrap_or_default();
         }
         Operation::MediaMetadata => {
             response.metadata = read_media_metadata(input).unwrap_or_default()
+        }
+        Operation::PreviewImage => {
+            response.png = document_media::image(input, 800).unwrap_or_default();
+        }
+        Operation::DocumentMermaid => {
+            response.png = document_media::mermaid(input).unwrap_or_default();
+        }
+        Operation::DocumentMath => {
+            response.png = document_media::math(input, true).unwrap_or_default();
+        }
+        Operation::DocumentMathInline => {
+            response.png = document_media::math(input, false).unwrap_or_default();
         }
     }
     response
@@ -369,19 +446,27 @@ fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     let page = document
         .page(0)
         .ok_or_else(|| "This PDF has no pages".to_owned())?;
-    render_pdf_surface(
-        &page,
+    let (page_width, page_height) = page.size();
+    if page_width <= 0.0 || page_height <= 0.0 {
+        return Err("The PDF page has invalid dimensions".to_owned());
+    }
+    let (width, height, scale) = bounded_surface_dimensions(
+        page_width,
+        page_height,
         f64::from(size),
         f64::from(size),
         f64::from(size * size),
-    )
+    );
+    render_pdf_surface(&page, width, height, scale)
 }
+
+type PdfPageRender = (Vec<u8>, i32, i32, Option<Vec<u8>>);
 
 fn render_pdf_page(
     path: &Path,
     requested_page: i32,
     size: PdfRenderSize,
-) -> Result<(Vec<u8>, i32, i32), String> {
+) -> Result<PdfPageRender, String> {
     let uri = gio::File::for_path(path).uri();
     let document = poppler::Document::from_file(&uri, None).map_err(|error| error.to_string())?;
     let pages = document.n_pages();
@@ -394,27 +479,79 @@ fn render_pdf_page(
         .ok_or_else(|| "Unable to load that PDF page".to_owned())?;
     let size = PdfRenderSize::new(size.width, size.height);
     let (_, _, max_pixels) = size.image_limits();
-    let png = render_pdf_surface(
-        &page,
-        f64::from(size.width),
-        f64::from(size.height),
-        max_pixels as f64,
-    )?;
-    Ok((png, page_index, pages))
-}
-
-fn render_pdf_surface(
-    page: &poppler::Page,
-    max_width: f64,
-    max_height: f64,
-    max_pixels: f64,
-) -> Result<Vec<u8>, String> {
     let (page_width, page_height) = page.size();
     if page_width <= 0.0 || page_height <= 0.0 {
         return Err("The PDF page has invalid dimensions".to_owned());
     }
-    let (width, height, scale) =
-        bounded_surface_dimensions(page_width, page_height, max_width, max_height, max_pixels);
+    let (width, height, scale) = bounded_surface_dimensions(
+        page_width,
+        page_height,
+        f64::from(size.width),
+        f64::from(size.height),
+        max_pixels as f64,
+    );
+    let png = render_pdf_surface(&page, width, height, scale)?;
+    let text_layer = pdf_text_layer(&page, width, height, scale);
+    Ok((png, page_index, pages, text_layer))
+}
+
+// poppler-rs does not bind poppler_page_get_text_layout, so the glyph boxes come
+// through FFI; the returned array is g_malloc'd and freed here.
+#[expect(
+    unsafe_code,
+    reason = "poppler-rs exposes no safe binding for poppler_page_get_text_layout"
+)]
+fn pdf_text_layer(page: &poppler::Page, width: i32, height: i32, scale: f64) -> Option<Vec<u8>> {
+    use glib::translate::ToGlibPtr;
+
+    let text = page.text()?;
+    if text.is_empty() {
+        return None;
+    }
+    let mut rects = std::ptr::null_mut();
+    let mut count = 0u32;
+    // SAFETY: page is a valid PopplerPage; rects/count are valid out-pointers.
+    let ok = unsafe {
+        poppler::ffi::poppler_page_get_text_layout(page.to_glib_none().0, &mut rects, &mut count)
+    };
+    if ok == glib::ffi::GFALSE || rects.is_null() {
+        return None;
+    }
+    // SAFETY: on success poppler returned a g_malloc'd array of count rectangles.
+    let layout = unsafe { std::slice::from_raw_parts(rects, count as usize) };
+    let glyphs: Vec<[f32; 4]> = layout
+        .iter()
+        .map(|rect| {
+            [
+                (rect.x1 * scale) as f32,
+                (rect.y1 * scale) as f32,
+                (rect.x2 * scale) as f32,
+                (rect.y2 * scale) as f32,
+            ]
+        })
+        .collect();
+    // SAFETY: rects came from g_malloc and is freed exactly once here.
+    unsafe { glib::ffi::g_free(rects.cast()) };
+    if glyphs.len() != text.chars().count() {
+        return None;
+    }
+    let layer = crate::services::PdfTextLayer {
+        width: width as f32,
+        height: height as f32,
+        text: text.to_string(),
+        glyphs,
+    };
+    serde_json::to_vec(&layer)
+        .ok()
+        .filter(|bytes| bytes.len() as u64 <= crate::sandbox::MAX_TEXT_LAYER_BYTES)
+}
+
+fn render_pdf_surface(
+    page: &poppler::Page,
+    width: i32,
+    height: i32,
+    scale: f64,
+) -> Result<Vec<u8>, String> {
     let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, width, height)
         .map_err(|error| error.to_string())?;
     let context = cairo::Context::new(&surface).map_err(|error| error.to_string())?;

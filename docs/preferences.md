@@ -77,7 +77,7 @@ control that might be midway through synchronization.
 | Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. |
 | Sidebar order | Existing sidebars bind to the shared order. |
 | Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when GTK recent-file tracking or the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
-| Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. |
+| Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. Properties uses full absolute local timestamps for Relative, while preserving ISO 8601 and Long. |
 | Folder colors/custom icons | Icon resolution reads the manager; existing customization refreshes notify rendered icons. |
 
 Location, selection, history, each column's sort, filter query, transient theme
@@ -180,15 +180,31 @@ Paste and **Move/Copy to…** continue to reveal their destination independently
 
 In **Settings → General → Date & time**, **Modified date format** selects how file
 modified times appear; each choice lists a live example rendered from the
-current time. **Relative** (default) renders elapsed buckets: "just
-now"/"5m ago" under an hour, "3h ago" for the same day, "Yesterday, 23:59", then
-"Sep 1, 23:30"-style fallbacks. Sub-hour buckets follow elapsed time, so a file
-saved just before midnight still reads "2m ago" after the clock rolls over, and
-timestamps up to a minute in the future read "just now" as clock skew.
+current time. **Relative** (default) uses these buckets in lists and previews:
+
+- Under a minute: "Just now"; under an hour: whole minutes such as "5m ago".
+- Under 24 elapsed hours: whole hours such as "3h ago", even across midnight.
+  On a long daylight-saving fall-back day, timestamps still within the same
+  local calendar day continue to show actual whole elapsed hours, such as
+  "24h ago", without clamping.
+- After that, 1–6 local calendar days ago: full weekday name, such as "Monday".
+- 7–30 local calendar days ago: whole calendar weeks, such as "2w ago".
+- Older dates: "Sep 1, 23:30" in the current local year, or "Sep 1, 2025" in
+  an earlier year.
+
+Timestamps up to a minute in the future read "Just now" as clock skew; further
+future timestamps use an absolute date and time. Calendar boundaries and date
+labels use local time, while minute/hour buckets use elapsed time across DST.
 **ISO 8601** always renders `2026-09-17 14:30`; **Long** renders
 "September 17, 2026, 14:30". Saved as `date_format = "relative"`. Open labels
 re-render immediately when the choice changes, and the 30-second refresh still
 applies for elapsed buckets.
+
+**Properties** always shows an absolute local date, time, and year. With Relative
+selected, it uses "Sep 24, 2026, 9:30 PM"; ISO 8601 and Long retain their selected
+formats. This applies both to cached timestamps shown when the dialog opens and
+to asynchronously loaded file/folder metadata. Open Properties dialogs follow
+format changes live, just like lists and previews.
 
 ## Filter scope
 

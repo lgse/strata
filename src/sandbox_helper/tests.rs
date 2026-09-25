@@ -8,9 +8,9 @@ use std::{
 use gdk_pixbuf::prelude::*;
 
 use super::{
-    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, pdf_render_request,
-    read_limited, render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
-    scale_embedded_thumbnail,
+    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, is_svg_head,
+    pdf_render_request, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
+    render_simple_dcraw, run, scale_embedded_thumbnail, svg_source,
 };
 
 #[test]
@@ -141,6 +141,99 @@ fn image_previews_preserve_small_sources_and_bound_large_decodes() {
         let preview = loader.pixbuf().expect("decoded preview");
         assert_eq!((preview.width(), preview.height()), expected);
     }
+}
+
+#[test]
+fn preview_image_renders_svg_with_resvg() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("icon.svg");
+    std::fs::write(
+        &input,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="#336699"/></svg>"##,
+    )
+    .expect("write svg");
+    let output = directory.path().join("result.png");
+
+    run(&[
+        "preview-image".into(),
+        input.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "0".into(),
+        "software".into(),
+    ])
+    .expect("svg preview renders without pixbuf or image delegates");
+
+    let loader = gdk_pixbuf::PixbufLoader::new();
+    loader
+        .write(&std::fs::read(&output).expect("read result"))
+        .and_then(|()| loader.close())
+        .expect("load rendered png");
+    let preview = loader.pixbuf().expect("decoded preview");
+    assert_eq!((preview.width(), preview.height()), (80, 40));
+}
+
+#[test]
+fn svg_detection_matches_content_not_names() {
+    for (head, expected) in [
+        (
+            b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>" as &[u8],
+            true,
+        ),
+        (b"<?xml version=\"1.0\"?>\n<svg viewBox=\"0 0 1 1\"/>", true),
+        (b"\xef\xbb\xbf<svg width=\"1\"/>", true),
+        (
+            b"<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"svg.dtd\">\n<svg/>",
+            true,
+        ),
+        (b"<svgx/>", false),
+        (b"<text>not svg</text>", false),
+        (b"\x89PNG\r\n\x1a\n<svg", false),
+        (b"", false),
+        (b"   ", false),
+    ] {
+        assert_eq!(is_svg_head(head), expected, "head {head:?}");
+    }
+}
+
+#[test]
+fn svg_source_reads_bounded_utf8_vector_documents() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("vector.bin");
+    std::fs::write(
+        &input,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>"#,
+    )
+    .expect("write svg");
+    assert!(svg_source(&input).is_some());
+
+    std::fs::write(&input, b"\x89PNG\r\n\x1a\nrest").expect("write raster");
+    assert!(svg_source(&input).is_none());
+
+    let oversized = b"<svg ".repeat(2 * 1024 * 1024);
+    std::fs::write(&input, &oversized).expect("write oversized svg");
+    assert!(svg_source(&input).is_none(), "oversized SVG is not loaded");
+}
+
+#[test]
+fn svg_source_inflates_bounded_gzip_vector_documents() {
+    use std::io::Write;
+
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("vector.svgz");
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    encoder
+        .write_all(b"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"/>")
+        .expect("compress svg");
+    std::fs::write(&input, encoder.finish().expect("finish gzip")).expect("write svgz");
+    let source = svg_source(&input).expect("svgz source");
+    assert!(source.contains("<svg"));
+
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+    encoder
+        .write_all(b"\x89PNG not a vector")
+        .expect("compress raster");
+    std::fs::write(&input, encoder.finish().expect("finish gzip")).expect("write gzip raster");
+    assert!(svg_source(&input).is_none(), "gzipped raster is not an SVG");
 }
 
 #[test]
