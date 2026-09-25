@@ -2831,9 +2831,38 @@ entry.preview-command-entry selection {
 }
 
 .shortcut-footer-count,
-.omastrata-tag {
+.omastrata-tag,
+.omastrata-experimental,
+.shortcut-footer-chord,
+.shortcut-footer-feedback {
   color: @theme_text;
   font-weight: normal;
+}
+
+.shortcut-footer-prompt {
+  color: @theme_text;
+  background: @theme_surface;
+  border: 1px solid @theme_border;
+  border-radius: 4px;
+  min-height: 20px;
+  padding: 0 6px;
+}
+
+.shortcut-footer-prompt:hover {
+  border-color: @theme_accent;
+}
+
+.shortcut-footer-prompt:focus,
+.shortcut-footer-prompt:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+  border-color: @theme_accent;
+}
+
+.shortcut-footer-prompt:disabled {
+  color: @theme_dim_text;
+  background: @theme_bg;
+  border-color: @theme_border;
 }
 
 .shortcut-footer-paste {

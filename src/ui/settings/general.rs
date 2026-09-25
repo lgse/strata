@@ -305,7 +305,36 @@ fn append_preference_switch(
     if switch.title == "Include subfolders" {
         super::indent_row(&row);
     }
+    if switch.title == "Omastrata mode" {
+        append_experimental_label(&row, manager);
+    }
     content.append(&row);
+}
+
+fn append_experimental_label(row: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let Some(copy) = row.first_child().and_downcast::<gtk::Box>() else {
+        return;
+    };
+    let experimental = gtk::Label::new(None);
+    experimental.add_css_class("settings-option-description");
+    experimental.add_css_class("omastrata-experimental");
+    experimental.set_xalign(0.0);
+    experimental.set_wrap(true);
+    experimental.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    let label = experimental.clone();
+    manager.bind_preference(
+        &experimental,
+        PreferenceManager::omastrata_mode,
+        move |_, enabled| {
+            label.set_text(if enabled {
+                crate::ui::shortcut_reference::EXPERIMENTAL_LABEL
+            } else {
+                ""
+            });
+            label.set_visible(enabled);
+        },
+    );
+    copy.append(&experimental);
 }
 
 fn bind_omastrata_unused_subtitle(

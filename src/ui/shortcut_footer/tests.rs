@@ -5,14 +5,17 @@ use super::*;
 #[test]
 fn navigation_reference_matches_each_mode() {
     assert!(
-        navigation_shortcuts(BrowserMode::Columns)
+        crate::ui::shortcut_reference::default_navigation(BrowserMode::Columns)
             .contains(&("← / →", "Parent pane / enter folder"))
     );
     assert!(
-        navigation_shortcuts(BrowserMode::Icons)
+        crate::ui::shortcut_reference::default_navigation(BrowserMode::Icons)
             .contains(&("← at left edge", "Focus the visible sidebar"))
     );
-    assert!(navigation_shortcuts(BrowserMode::List).contains(&("←", "Focus the visible sidebar")));
+    assert!(
+        crate::ui::shortcut_reference::default_navigation(BrowserMode::List)
+            .contains(&("←", "Focus the visible sidebar"))
+    );
 }
 
 #[test]
@@ -261,6 +264,164 @@ impl ShortcutFooter {
             visible || self.paste.is_visible() || self.count.is_visible()
         );
         assert_eq!(self.more.is_visible(), visible);
+    }
+}
+
+#[test]
+fn omastrata_reference_follows_the_active_map() {
+    crate::test_support::gtk_test(
+        "ui::shortcut_footer::tests::omastrata_reference_follows_the_active_map",
+        || {
+            let manager = super::super::preferences::PreferenceManager::shared();
+            manager.set_omastrata_mode(false);
+            manager.set_show_keybinding_hints(true);
+            let directory = tempfile::tempdir().expect("reference fixture");
+            std::fs::write(directory.path().join("one.txt"), "one").expect("file");
+            let footer = ShortcutFooter::new(BrowserMode::Columns);
+            footer.bind_preferences(&manager);
+            let entry = gtk::Entry::new();
+            let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            root.append(&entry);
+            root.append(footer.widget());
+            let window = gtk::Window::builder()
+                .child(&root)
+                .default_width(640)
+                .default_height(480)
+                .build();
+            footer.popover.set_autohide(false);
+            window.present();
+            entry.grab_focus();
+            settle();
+            let phrase = crate::ui::shortcut_reference::EXPERIMENTAL_LABEL;
+            assert!(
+                !reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == phrase)
+            );
+            assert!(!footer.tag_note.is_visible());
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Toggle file preview")
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::asciitilde, gdk::ModifierType::empty()),
+                None
+            );
+            assert!(!footer.popover.is_visible());
+
+            manager.set_omastrata_mode(true);
+            settle();
+            assert_eq!(footer.tag.text(), crate::ui::omastrata_mode::TAG_TEXT);
+            assert_eq!(footer.tag_note.text(), phrase);
+            assert!(footer.tag_note.is_visible());
+            assert!(
+                footer
+                    .tag
+                    .tooltip_text()
+                    .is_some_and(|text| text.contains(phrase))
+            );
+            assert_eq!(footer.experimental.text(), phrase);
+            let columns = reference_labels(&footer);
+            assert!(
+                columns
+                    .iter()
+                    .any(|label| label == "Parent pane / enter folder")
+            );
+            assert!(
+                !columns
+                    .iter()
+                    .any(|label| label == "Move spatially between tiles")
+            );
+            assert!(!columns.iter().any(|label| label == "Toggle file preview"));
+            assert!(!columns.iter().any(|label| label == "F2 / Ctrl+R"));
+            assert!(!columns.iter().any(|label| label == "y / p"));
+            assert!(
+                !columns
+                    .iter()
+                    .any(|label| label == "Focus the visible sidebar")
+            );
+            footer.set_mode(BrowserMode::Icons);
+            let icons = reference_labels(&footer);
+            assert!(
+                icons
+                    .iter()
+                    .any(|label| label == "Move spatially between tiles")
+            );
+            assert!(
+                !icons
+                    .iter()
+                    .any(|label| label == "Parent pane / enter folder")
+            );
+
+            let none = gdk::ModifierType::empty();
+            footer.handle_key(gdk::Key::F1, none);
+            settle();
+            assert!(footer.popover.is_visible());
+            footer.handle_key(gdk::Key::F1, none);
+            settle();
+            assert!(!footer.popover.is_visible());
+            assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
+                focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
+            }));
+            footer.handle_key(gdk::Key::asciitilde, none);
+            settle();
+            assert!(footer.popover.is_visible());
+            assert_eq!(
+                footer.handle_key(gdk::Key::Delete, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(directory.path().join("one.txt").exists());
+            footer.handle_key(gdk::Key::Escape, none);
+            settle();
+            assert!(!footer.popover.is_visible());
+
+            let other = ShortcutFooter::new(BrowserMode::List);
+            other.bind_preferences(&manager);
+            assert!(
+                reference_labels(&other)
+                    .iter()
+                    .any(|label| label == "Move between file rows")
+            );
+            assert!(
+                !reference_labels(&other)
+                    .iter()
+                    .any(|label| label == "Move spatially between tiles")
+            );
+            manager.set_omastrata_mode(false);
+            settle();
+            assert!(!footer.experimental.is_visible());
+            assert!(footer.experimental.text().is_empty());
+            assert!(footer.tag_note.text().is_empty());
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Toggle file preview")
+            );
+            assert!(
+                reference_labels(&other)
+                    .iter()
+                    .any(|label| label == "Focus the visible sidebar")
+            );
+            window.destroy();
+        },
+    );
+}
+
+fn reference_labels(footer: &ShortcutFooter) -> Vec<String> {
+    let mut labels = Vec::new();
+    collect_label_text(footer.reference.upcast_ref(), &mut labels);
+    labels
+}
+
+fn collect_label_text(widget: &gtk::Widget, labels: &mut Vec<String>) {
+    if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+        labels.push(label.text().to_string());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        collect_label_text(&current, labels);
+        child = current.next_sibling();
     }
 }
 

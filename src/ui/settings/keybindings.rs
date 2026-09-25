@@ -4,71 +4,22 @@ use super::{
     append_heading, bindings::bind_switch, page_content, scrollable_page, settings_option,
 };
 use crate::ui::preferences::PreferenceManager;
+use crate::ui::shortcut_reference;
 use gtk::prelude::*;
+use std::cell::RefCell;
 use std::rc::Rc;
 
-const SHORTCUTS: &[(&str, &str, &str, &str)] = &[
-    (
-        "Navigation",
-        "Move through items",
-        "← / → in Icons view",
-        "↑ / ↓",
-    ),
-    (
-        "Navigation",
-        "Jump to top / bottom",
-        "",
-        "Ctrl + ↑ / Ctrl + ↓",
-    ),
-    ("Navigation", "Open item", "", "Enter"),
-    ("Navigation", "Go to parent folder", "", "Alt + ↑"),
-    ("Navigation", "Back / forward", "", "Alt + ← / Alt + →"),
-    (
-        "Navigation",
-        "Move between column panes",
-        "Columns view",
-        "← / →",
-    ),
-    ("Navigation", "Focus pane header", "when at top", "↑"),
-    ("Navigation", "Focus sidebar", "when at left edge", "←"),
-    ("Selection", "Select all", "", "Ctrl + A"),
-    ("Selection", "Extend selection", "", "Shift + ↑ / Shift + ↓"),
-    ("Selection", "Toggle item in selection", "", "Ctrl + Space"),
-    ("Selection", "Clear selection", "", "Esc"),
-    ("Files", "Quick preview", "", "Space"),
-    ("Files", "Cut / copy / paste", "", "Ctrl + X / C / V"),
-    ("Files", "Duplicate", "", "Ctrl + D"),
-    ("Files", "Rename", "", "F2 / Ctrl + R"),
-    ("Files", "Create new folder", "", "Ctrl + Shift + N"),
-    ("Files", "Move to Trash", "", "Delete"),
-    ("Files", "Delete permanently", "", "Shift + Delete"),
-    ("Files", "Undo file operation", "", "Ctrl + Z"),
-    ("Files", "Item properties", "", "Alt + Enter"),
-    ("View", "Toggle hidden files", "", "Ctrl + H / Ctrl + ."),
-    (
-        "View",
-        "Switch view",
-        "Columns / Icons / List",
-        "Ctrl + 1 / 2 / 3",
-    ),
-    ("View", "Increase text size", "", "Ctrl + +"),
-    ("View", "Decrease text size", "", "Ctrl + −"),
-    ("View", "Reset text size", "", "Ctrl + 0"),
-    ("View", "Toggle sidebar", "", "Ctrl + B"),
-    ("Application", "Edit location", "", "Ctrl + L"),
-    ("Application", "Filter items", "", "Ctrl + F"),
-    ("Application", "Search", "", "Ctrl + K"),
-    ("Application", "Open terminal", "", "Ctrl + T"),
-    ("Application", "Refresh", "", "F5"),
-    ("Application", "Open settings", "", "Ctrl + ,"),
-    ("Application", "Shortcut reference", "", "F1"),
-    ("Application", "Toggle arrow-key scope", "", "Ctrl + \\"),
-];
+type KeybindingGroups = RefCell<Vec<(gtk::Box, Vec<(gtk::Box, String)>)>>;
 
 pub(super) fn search_text() -> String {
-    SHORTCUTS
+    shortcut_reference::active_settings_bindings()
         .iter()
-        .map(|(category, label, note, keys)| format!("{category} {label} {note} {keys}"))
+        .map(|binding| {
+            format!(
+                "{} {} {} {}",
+                binding.category, binding.action, binding.note, binding.keys
+            )
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -92,10 +43,18 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     let reference = gtk::Box::new(gtk::Orientation::Vertical, 0);
     super::search::tag(&reference, "Shortcut reference");
     content.append(&reference);
+    let experimental = gtk::Label::new(None);
+    experimental.add_css_class("settings-option-description");
+    experimental.add_css_class("omastrata-experimental");
+    experimental.set_xalign(0.0);
+    experimental.set_wrap(true);
+    experimental.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    experimental.set_visible(false);
+    reference.append(&experimental);
     let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     toolbar.add_css_class("settings-library-toolbar");
     append_heading(&toolbar, "SHORTCUT REFERENCE");
-    let count = gtk::Label::new(Some(&format!("{} bindings", SHORTCUTS.len())));
+    let count = gtk::Label::new(Some("0 bindings"));
     count.add_css_class("settings-option-description");
     count.add_css_class("settings-control-label");
     count.set_ellipsize(gtk::pango::EllipsizeMode::End);
@@ -107,8 +66,71 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     crate::ui::accessibility::set_label(&search, "Search actions or keys");
     toolbar.append(&search_overlay);
     reference.append(&toolbar);
-    let mut groups = Vec::new();
-    for category in ["Navigation", "Selection", "Files", "View", "Application"] {
+    let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    reference.append(&list);
+    let empty = gtk::Label::new(Some("No shortcuts match your search."));
+    empty.add_css_class("settings-option-description");
+    empty.set_visible(false);
+    reference.append(&empty);
+    let groups = Rc::new(KeybindingGroups::new(Vec::new()));
+    let apply_filter: Rc<dyn Fn(&str)> = Rc::new({
+        let groups = groups.clone();
+        let count = count.clone();
+        let empty = empty.clone();
+        let clear = clear.clone();
+        move |query: &str| {
+            clear.set_visible(!query.is_empty());
+            let query = query.trim().to_lowercase();
+            let mut matches = 0;
+            for (section, rows) in groups.borrow().iter() {
+                let mut visible = false;
+                for (row, text) in rows {
+                    let matched = text.contains(&query);
+                    row.set_visible(matched);
+                    visible |= matched;
+                    matches += usize::from(matched);
+                }
+                section.set_visible(visible);
+            }
+            count.set_text(&format!("{matches} bindings"));
+            empty.set_visible(matches == 0);
+        }
+    });
+    let filter_on_type = apply_filter.clone();
+    search.connect_changed(move |search| {
+        filter_on_type(&search.text());
+    });
+    let experimental_for_mode = experimental.clone();
+    let list_for_mode = list.clone();
+    let groups_for_mode = groups.clone();
+    let filter_on_mode = apply_filter.clone();
+    let search_for_mode = search.clone();
+    manager.bind_preference(
+        &reference,
+        PreferenceManager::omastrata_mode,
+        move |_, enabled| {
+            experimental_for_mode.set_text(if enabled {
+                shortcut_reference::EXPERIMENTAL_LABEL
+            } else {
+                ""
+            });
+            experimental_for_mode.set_visible(enabled);
+            rebuild_bindings(&list_for_mode, &groups_for_mode, enabled);
+            filter_on_mode(&search_for_mode.text());
+        },
+    );
+    scrollable_page(&content, Some("settings-keybindings-scroll"))
+}
+
+fn rebuild_bindings(list: &gtk::Box, groups: &KeybindingGroups, omastrata: bool) {
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    let bindings = shortcut_reference::settings_bindings(omastrata);
+    let mut built = Vec::new();
+    let mut index = 0;
+    while index < bindings.len() {
+        let category = bindings[index].category;
         let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let title = gtk::Label::new(Some(category));
         title.set_xalign(0.0);
@@ -116,41 +138,21 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
         section.append(&title);
         let group = super::settings_group(&section, "");
         let mut rows = Vec::new();
-        for &(_, label, note, keys) in SHORTCUTS
-            .iter()
-            .filter(|(group, _, _, _)| *group == category)
-        {
-            let row = append_keybinding(&group, label, note, keys);
-            rows.push((
-                row,
-                format!("{category} {label} {note} {keys}").to_lowercase(),
-            ));
+        while index < bindings.len() && bindings[index].category == category {
+            let binding = &bindings[index];
+            let row = append_keybinding(&group, binding.action, binding.note, binding.keys);
+            let text = format!(
+                "{} {} {} {}",
+                binding.category, binding.action, binding.note, binding.keys
+            )
+            .to_lowercase();
+            rows.push((row, text));
+            index += 1;
         }
-        reference.append(&section);
-        groups.push((section, rows));
+        list.append(&section);
+        built.push((section, rows));
     }
-    let empty = gtk::Label::new(Some("No shortcuts match your search."));
-    empty.add_css_class("settings-option-description");
-    empty.set_visible(false);
-    reference.append(&empty);
-    search.connect_changed(move |search| {
-        clear.set_visible(!search.text().is_empty());
-        let query = search.text().trim().to_lowercase();
-        let mut matches = 0;
-        for (section, rows) in &groups {
-            let mut visible = false;
-            for (row, text) in rows {
-                let matched = text.contains(&query);
-                row.set_visible(matched);
-                visible |= matched;
-                matches += usize::from(matched);
-            }
-            section.set_visible(visible);
-        }
-        count.set_text(&format!("{matches} bindings"));
-        empty.set_visible(matches == 0);
-    });
-    scrollable_page(&content, Some("settings-keybindings-scroll"))
+    *groups.borrow_mut() = built;
 }
 
 fn append_keybinding(content: &gtk::Box, label: &str, note: &str, keys: &str) -> gtk::Box {

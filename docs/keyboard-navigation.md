@@ -134,10 +134,11 @@ separate order described in [Escape precedence](omastrata-mode.md#escape-precede
 The F1 / `~` popover and **Settings → Keybindings** share the active map's
 presentation data and live-update when the mode changes. Default F1 navigation
 is specific to the current view; Settings includes the all-view overview.
-Context-menu shortcut hints follow
-that map (`x` cut, `y` yank, `p` paste, `d` / `D` trash / delete, `r` rename,
-`i` next column or folder peek). Default-map hints that are unbound or remapped (`Y` for copy
-path, `Space` for preview, `Ctrl+R` for rename) are hidden.
+Context-menu hints use `x`, `y`, `p`, `d` / `D`, `r`, and `i` only when those
+commands perform the action. `i` is the next column or folder peek, not preview.
+Until those verbs run, the menu keeps the shortcuts that still work and hides
+the unbound defaults (`Y` for copy path, `Space` for preview, and `Ctrl+R` for
+rename). Planned commands are not shown as working.
 
 While a pane shows its search-results page (including filtered results), the footer
 shows the displayed result total in both default and Omastrata mode, including

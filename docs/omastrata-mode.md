@@ -15,7 +15,10 @@ open a peek or an extra Miller column there.
 
 Turn it on in **Settings → General → Browsing → Omastrata mode**, or with
 **Ctrl+Shift+M**. The choice is saved and live-updates every window. **F1** or
-**~** opens the in-app table; **Settings → Keybindings** lists the same map.
+**~** opens the in-app table of commands that currently run; **Settings →
+Keybindings** lists that same active map as an all-view overview. While the mode
+is on, Settings, the reference, and the footer tag show **(experimental feature,
+under active development)**. The tag text stays **OMA**.
 
 Paste destinations, cursor versus filled selection, and pointer ownership stay
 as in [keyboard navigation](keyboard-navigation.md).

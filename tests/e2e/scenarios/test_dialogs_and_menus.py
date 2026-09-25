@@ -43,6 +43,40 @@ def test_the_entry_context_menu_offers_named_actions_and_accelerators(strata):
     strata.dismiss_menu()
 
 
+EXPERIMENTAL = "(experimental feature, under active development)"
+
+
+@pytest.mark.preferences(omastrata_mode=True)
+def test_omastrata_context_hints_match_commands_that_run(strata):
+    strata.open_context_menu("todo.txt")
+    assert strata.menu_item("Quick preview").description == ""
+    assert strata.menu_item("Copy path").description == ""
+    assert strata.menu_item("Rename").description == "F2"
+    assert strata.menu_item("Copy").description == "Ctrl+C"
+    descriptions = {
+        node.description for node in strata.context_menu().find_all(role="menu item")
+    }
+    assert descriptions.isdisjoint({"x", "y", "p", "d", "D", "r", "i"})
+    assert "Y" not in descriptions
+    assert "Space" not in descriptions
+    assert all("Ctrl+R" not in description for description in descriptions)
+    strata.dismiss_menu()
+
+    strata.keyboard.press("F1")
+    strata.wait(
+        lambda: strata.window.find(role="label", name=EXPERIMENTAL) is not None,
+        "the experimental label in the shortcut reference",
+    )
+    tag = strata.window.find(role="label", name="Omastrata mode")
+    assert tag is not None
+    assert EXPERIMENTAL in tag.description
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: strata.window.find(role="label", name="Keyboard shortcuts") is None,
+        "Escape to close the shortcut reference",
+    )
+
+
 @pytest.mark.preferences(browser_mode="list", single_click_previews=False)
 def test_secondary_click_retargets_an_open_context_menu(strata):
     root = strata.fixture.root.name

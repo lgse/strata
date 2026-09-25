@@ -386,6 +386,12 @@ impl Dispatcher {
         if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
         }
+        if self.shortcuts.prompt_has_focus() {
+            if let Some(result) = self.shortcuts.handle_key(key, modifiers) {
+                return Some(result);
+            }
+            return Some(Propagation::Proceed);
+        }
         if !self.inline_editing_active()
             && let Some(result) = self.shortcuts.handle_key(key, modifiers)
         {

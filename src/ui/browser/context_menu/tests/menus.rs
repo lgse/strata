@@ -824,3 +824,63 @@ fn open_file_location_navigates_to_parent_folder_and_selects_file() {
         },
     );
 }
+
+#[test]
+fn context_hints_follow_the_active_map() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::menus::context_hints_follow_the_active_map",
+        || {
+            let manager = crate::ui::preferences::PreferenceManager::shared();
+            manager.set_omastrata_mode(false);
+            let fixture = tempfile::tempdir().expect("menu fixture");
+            let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(1000)
+                .default_height(850)
+                .build();
+            window.present();
+            view.browser()
+                .navigate(crate::model::Location::local(fixture.path()));
+            wait_until(|| label(&view.widget(), "notes.txt").is_some());
+            let menu = open_menu(&view, Some("notes.txt"));
+            let hints = label_texts(&menu);
+            assert!(hints.iter().any(|hint| hint == "Y"), "{hints:?}");
+            assert!(hints.iter().any(|hint| hint == "Space"), "{hints:?}");
+            assert!(hints.iter().any(|hint| hint == "Ctrl+C"), "{hints:?}");
+            menu.popdown();
+            wait_until(|| !menu.is_mapped());
+            manager.set_omastrata_mode(true);
+            let menu = open_menu(&view, Some("notes.txt"));
+            let hints = label_texts(&menu);
+            assert!(!hints.iter().any(|hint| hint == "Y"), "{hints:?}");
+            assert!(!hints.iter().any(|hint| hint == "Space"), "{hints:?}");
+            assert!(
+                !hints.iter().any(|hint| hint.contains("Ctrl+R")),
+                "{hints:?}"
+            );
+            assert!(hints.iter().any(|hint| hint == "F2"), "{hints:?}");
+            assert!(hints.iter().any(|hint| hint == "Ctrl+C"), "{hints:?}");
+            assert!(hints.iter().any(|hint| hint == "Ctrl+X"), "{hints:?}");
+            for planned in ["x", "y", "p", "d", "D", "r", "i"] {
+                assert!(
+                    !hints.iter().any(|hint| hint == planned),
+                    "{planned} is not a working command: {hints:?}"
+                );
+            }
+            menu.popdown();
+            view.browser().clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+fn label_texts(menu: &gtk::Popover) -> Vec<String> {
+    descendants(menu.upcast_ref())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+        .filter(|label| label.is_visible() && !label.text().is_empty())
+        .map(|label| label.text().to_string())
+        .collect()
+}

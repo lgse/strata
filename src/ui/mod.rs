@@ -35,6 +35,7 @@ mod search;
 mod search_session;
 mod settings;
 mod shortcut_footer;
+mod shortcut_reference;
 mod table_view;
 mod terminal;
 mod theme;
