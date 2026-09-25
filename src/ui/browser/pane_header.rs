@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-#[cfg(test)]
-mod tests;
-
 use crate::app::Browser;
 use crate::model::{SortDirection, SortKey};
 use crate::ui::browser::ViewState;

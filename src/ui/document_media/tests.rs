@@ -41,8 +41,9 @@ fn cached_images_rebind_with_alt_text_and_release_cancelled_previews() {
                     .expect("picture");
                 assert_eq!(picture.alternative_text().as_deref(), Some("A test image"));
                 assert_eq!(picture.paintable(), Some(texture.clone().upcast()));
-                assert!(
-                    !cache.running.get(),
+                assert_eq!(
+                    cache.running.get(),
+                    0,
                     "a cached image must not restart the decoder"
                 );
             }
@@ -78,8 +79,9 @@ fn cached_images_rebind_with_alt_text_and_release_cancelled_previews() {
                 .downcast::<gtk::Label>()
                 .expect("source label");
             assert_eq!(fallback.text(), "$y^2$");
-            assert!(
-                !cache.running.get(),
+            assert_eq!(
+                cache.running.get(),
+                0,
                 "excess equations must not start another helper"
             );
             drop(cache);

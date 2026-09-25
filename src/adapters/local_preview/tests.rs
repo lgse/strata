@@ -56,6 +56,52 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
 }
 
 #[test]
+fn pdf_preview_emits_a_text_layer_matching_the_rendered_page() {
+    let path = std::env::temp_dir().join(format!(
+        "strata-preview-text-{}-{}.pdf",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    let surface = cairo::PdfSurface::new(612.0, 792.0, &path).expect("create PDF surface");
+    {
+        let context = cairo::Context::new(&surface).expect("create PDF context");
+        context.set_source_rgb(0.1, 0.1, 0.1);
+        context.set_font_size(24.0);
+        context.move_to(72.0, 96.0);
+        context
+            .show_text("selectable helper text")
+            .expect("draw text");
+        context.show_page().expect("finish PDF page");
+    }
+    surface.finish();
+
+    let output_directory = path.with_extension("output");
+    fs::create_dir(&output_directory).expect("create output directory");
+    let output = output_directory.join("result.png");
+    crate::sandbox_helper::run(&[
+        "preview-pdf".to_owned(),
+        path.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "0:640x800".to_owned(),
+        "software".to_owned(),
+    ])
+    .expect("render PDF page with text");
+    let png = fs::read(&output).expect("read rendered page");
+    let png_width = u32::from_be_bytes(png[16..20].try_into().expect("PNG width bytes"));
+    let sidecar = fs::read(output_directory.join("result.text")).expect("read text layer");
+    let layer: crate::services::PdfTextLayer =
+        serde_json::from_slice(&sidecar).expect("parse text layer");
+    let _removed = fs::remove_file(path);
+    let _removed = fs::remove_dir_all(output_directory);
+
+    assert_eq!(layer.text.trim_end_matches('\n'), "selectable helper text");
+    assert_eq!(layer.glyphs.len(), layer.text.chars().count());
+    assert_eq!(layer.width, png_width as f32);
+    // The text baseline sits near the top of the page in PNG pixels.
+    assert!(layer.glyphs[0][1] > 0.0 && layer.glyphs[0][1] < layer.height * 0.25);
+}
+
+#[test]
 fn pdf_rendering_fits_the_viewport_width_without_clipping_tall_pages() {
     assert_eq!(
         pdf_render_size(MediaPreviewSize::new(640, 480)),
@@ -128,6 +174,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                                 data: rendered,
                                 page: 0,
                                 pages: 40,
+                                text_layer: None,
                             })
                         },
                     );
@@ -149,6 +196,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                                 png: png.clone(),
                                 page: 0,
                                 pages: 40,
+                                text_layer: None,
                             }
                         } else {
                             PreviewContent::Rasterized { png: png.clone() }
@@ -207,11 +255,13 @@ fn preview_cache_stores_and_retrieves_entries() {
         png: vec![10, 20],
         page: 0,
         pages: 2,
+        text_layer: None,
     };
     let page1_content = PreviewContent::Pdf {
         png: vec![30, 40, 50],
         page: 1,
         pages: 2,
+        text_layer: None,
     };
     cache.insert(pdf_page_0.clone(), page0_content.clone());
     cache.insert(pdf_page_1.clone(), page1_content.clone());
@@ -360,6 +410,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                         data: br#"{"rows":[["a"],["1"]],"truncated":false}"#.to_vec(),
                         page: 1,
                         pages: 2,
+                        text_layer: None,
                     })
                 } else {
                     Err("late renderer error".into())
@@ -441,6 +492,7 @@ fn cancelled_archive_listings_emit_no_stale_events() {
                 data: b"{\"status\":\"open\",\"entries\":[],\"message\":null}".to_vec(),
                 page: 0,
                 pages: 0,
+                text_layer: None,
             })
         },
     );
@@ -543,7 +595,8 @@ fn preview_content_size_computes_accurately() {
         preview_content_size(&PreviewContent::Pdf {
             png: vec![0; 80],
             page: 0,
-            pages: 1
+            pages: 1,
+            text_layer: None,
         }),
         80
     );
@@ -718,6 +771,7 @@ fn archives_list_member_trees_as_preview_content() {
                         data: crate::adapters::local_operations::encode_archive_result(&result),
                         page: 0,
                         pages: 0,
+                        text_layer: None,
                     })
                 },
             );
@@ -823,6 +877,7 @@ fn preview_archive_with_password(
                 data: crate::adapters::local_operations::encode_archive_result(&result),
                 page: 0,
                 pages: 0,
+                text_layer: None,
             })
         },
     );
@@ -1117,6 +1172,7 @@ fn unsupported_archive_preview_reports_unsupported_format() {
                         )),
                         page: 0,
                         pages: 0,
+                        text_layer: None,
                     })
                 },
             );

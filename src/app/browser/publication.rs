@@ -91,6 +91,7 @@ impl Browser {
                 retry_metadata,
             } => {
                 self.emit(BrowserEvent::LoadFinished { depth, truncated });
+                self.report_unresolved_location_reveal(depth, plan.request_id);
                 if retry_metadata {
                     self.ensure_sorted_after_load(depth);
                 }

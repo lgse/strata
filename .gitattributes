@@ -1,0 +1,2 @@
+# PDF xref entries are fixed-width and end with a space before LF.
+tests/fixtures/documents/*.pdf whitespace=-blank-at-eol

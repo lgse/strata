@@ -59,9 +59,9 @@ pub use operations::{
     UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
 };
 pub use preview::{
-    ArchiveDirectory, ArchiveFileEntry, ArchiveNode, ArchivePreviewTree, MediaPreviewSize, Preview,
-    PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
-    SandboxedMedia, SecretString, archive_preview_tree,
+    ArchiveDirectory, ArchiveFileEntry, ArchiveNode, ArchivePreviewTree, MediaPreviewSize,
+    PdfTextLayer, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
+    PreviewRequestId, SandboxedMedia, SecretString, archive_preview_tree,
 };
 pub(crate) use preview::{
     INCORRECT_ARCHIVE_PASSWORD, archive_preview_format, content_family, has_plain_text_extension,
