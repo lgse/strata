@@ -554,6 +554,25 @@ const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
 ];
 
+/// Default-map accelerators the Omastrata table leaves unbound. Search and
+/// refresh stay installed; these three are removed while the mode is on.
+const OMASTRATA_SUPPRESSED_ACCELS: &[&str] = &[
+    "win.jump-folder",
+    "win.open-terminal",
+    "win.toggle-arrow-scope",
+];
+
+pub(super) fn install_mode_accelerators(application: &gtk::Application, omastrata: bool) {
+    for (action, accels) in DEFAULT_ACCELS {
+        let accels = if omastrata && OMASTRATA_SUPPRESSED_ACCELS.contains(action) {
+            &[][..]
+        } else {
+            *accels
+        };
+        application.set_accels_for_action(action, accels);
+    }
+}
+
 fn is_refresh_shortcut(key: gtk::gdk::Key) -> bool {
     key == gtk::gdk::Key::F5
 }

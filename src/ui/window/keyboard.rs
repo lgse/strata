@@ -169,6 +169,81 @@ pub(super) fn handle_text_zoom_scroll(
     Propagation::Stop
 }
 
+fn command_modifiers(modifiers: Modifiers) -> Modifiers {
+    modifiers
+        & (Modifiers::CONTROL_MASK
+            | Modifiers::SHIFT_MASK
+            | Modifiers::ALT_MASK
+            | Modifiers::SUPER_MASK)
+}
+
+fn plain_control(modifiers: Modifiers) -> bool {
+    let modifiers = command_modifiers(modifiers);
+    modifiers.contains(Modifiers::CONTROL_MASK)
+        && !modifiers
+            .intersects(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+}
+
+/// Default-map commands the Omastrata table leaves unbound. Still-bound chords
+/// are absent so the existing handlers keep them.
+fn claims_unbound_command(key: Key, modifiers: Modifiers) -> bool {
+    let control_shift = {
+        let modifiers = command_modifiers(modifiers);
+        modifiers.contains(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
+            && !modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+    };
+    match key {
+        Key::d
+        | Key::D
+        | Key::f
+        | Key::F
+        | Key::b
+        | Key::B
+        | Key::r
+        | Key::R
+        | Key::t
+        | Key::T
+        | Key::backslash
+            if plain_control(modifiers) =>
+        {
+            true
+        }
+        Key::k | Key::K if control_shift => true,
+        _ => false,
+    }
+}
+
+/// Home-row letters, type-to-search, and the plain y / p / Space defaults.
+/// q and Q stay available so the file list can leave the mode or close the window.
+fn claims_file_list_typing(key: Key, modifiers: Modifiers) -> bool {
+    if command_modifiers(modifiers)
+        .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+    {
+        return false;
+    }
+    if key == Key::space {
+        return true;
+    }
+    if matches!(key, Key::q | Key::Q) {
+        return false;
+    }
+    super::type_to_search_query(key, modifiers).is_some()
+}
+
+fn visible_popover_menu(widget: &gtk::Widget) -> bool {
+    if widget.is_visible() && widget.is::<gtk::PopoverMenu>() {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if visible_popover_menu(&widget) {
+            return true;
+        }
+        child = widget.next_sibling();
+    }
+    false
+}
+
 fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
     let mut current = Some(widget.clone());
     while let Some(widget) = current {
@@ -308,10 +383,7 @@ impl Dispatcher {
             }
             return Some(Propagation::Proceed);
         }
-        if gtk::prelude::RootExt::focus(&self.window)
-            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
-            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
-        {
+        if self.native_menu_owns_input() {
             return Some(Propagation::Proceed);
         }
         if !self.inline_editing_active()
@@ -329,6 +401,19 @@ impl Dispatcher {
         self.view.rename_is_active() || self.view.new_entry_is_active()
     }
 
+    fn native_menu_owns_input(&self) -> bool {
+        if gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
+            focused.is::<gtk::PopoverMenu>()
+                || focused.ancestor(gtk::PopoverMenu::static_type()).is_some()
+                || focused
+                    .ancestor(gtk::Popover::static_type())
+                    .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        }) {
+            return true;
+        }
+        visible_popover_menu(self.window.upcast_ref())
+    }
+
     fn omastrata_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
         if visible_modal_layer(&self.window).is_some() {
             return None;
@@ -341,13 +426,9 @@ impl Dispatcher {
         if !preferences.omastrata_mode() {
             return None;
         }
-        let text_focused = gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
-            focused.is::<gtk::Text>() || focused.is::<gtk::TextView>() || focused.is::<gtk::Entry>()
-        });
-        if text_focused
-            || modifiers
-                .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
-        {
+        // Entries, menus, and the shortcut reference already returned. A focused
+        // popover or text control still keeps the key, including q / Q.
+        if self.text_focused() || self.focus_in_popover() {
             return None;
         }
         if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) {
@@ -358,7 +439,26 @@ impl Dispatcher {
             self.window.close();
             return Some(Propagation::Stop);
         }
+        // Claim the conflicting default map. Still-bound shortcuts fall through
+        // to the existing commands. Later stories add the replacement verbs.
+        if claims_unbound_command(key, modifiers)
+            || (self.view.item_view_has_focus() && claims_file_list_typing(key, modifiers))
+        {
+            return Some(Propagation::Stop);
+        }
         None
+    }
+
+    fn text_focused(&self) -> bool {
+        gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
+            focused.is::<gtk::Text>() || focused.is::<gtk::TextView>() || focused.is::<gtk::Entry>()
+        })
+    }
+
+    fn focus_in_popover(&self) -> bool {
+        gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
+            focused.is::<gtk::Popover>() || focused.ancestor(gtk::Popover::static_type()).is_some()
+        })
     }
 
     fn arrows_scoped_to_content(&self) -> bool {

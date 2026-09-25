@@ -236,6 +236,23 @@ fn exercise_type_to_search() {
         .expect("entry text");
     focused.emit_by_name::<()>("insert-at-cursor", &[&" "]);
     assert_eq!(focused.text(), "n ");
+    preferences.set_type_to_search(true);
+    preferences.set_omastrata_mode(true);
+    view.set_view_mode(BrowserMode::Columns);
+    select_entry(&browser, "notes.txt");
+    browser.focus_active();
+    wait_until(|| view.item_view_has_focus());
+    let before = browser.selected_positions(0);
+    press(&keys, gtk::gdk::Key::n);
+    assert!(!view.filter_has_focus(), "Omastrata claims type-to-search");
+    assert_eq!(browser.selected_positions(0), before);
+    preferences.set_omastrata_mode(false);
+    press(&keys, gtk::gdk::Key::n);
+    assert!(
+        view.filter_has_focus(),
+        "type-to-search returns when the mode is off"
+    );
+
     browser.clear_observer();
     sidebar.disconnect();
     window.destroy();
