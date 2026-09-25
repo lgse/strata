@@ -52,6 +52,7 @@ impl ViewState {
             BrowserEvent::SelectionSynced { .. } => return,
             BrowserEvent::NavigationStarting => {
                 self.suppress_scroll_after_drop.set(false);
+                self.drop_active_depths.set(None);
             }
             BrowserEvent::Reset => {
                 self.suppress_scroll_after_drop.set(false);
@@ -699,6 +700,7 @@ impl ViewState {
             BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
                 self.suppress_scroll_after_drop.set(false);
+                self.drop_active_depths.set(None);
                 self.pending_new_entry.take();
                 self.clear_delete_animation();
                 self.dismiss_file_operation_progress();
@@ -724,6 +726,8 @@ impl ViewState {
                 retryable_locations,
                 has_non_retryable_failures,
             } => {
+                self.suppress_scroll_after_drop.set(false);
+                self.drop_active_depths.set(None);
                 self.pending_archive_destination.take();
                 let retryable_entries = retryable_delete_entries(
                     self.pending_delete_entries.take(),
@@ -753,6 +757,7 @@ impl ViewState {
                 affected_locations,
             } => {
                 self.suppress_scroll_after_drop.set(false);
+                self.drop_active_depths.set(None);
                 self.pending_archive_destination.take();
                 self.browser.refresh_after_cancellation(affected_locations);
                 let message = format!(
@@ -910,6 +915,22 @@ impl ViewState {
             }
             BrowserEvent::TransferCompleted => {
                 self.suppress_scroll_after_drop.set(false);
+                if let Some((source_depth, destination_depth)) =
+                    self.drop_active_depths.replace(None)
+                {
+                    let weak = Rc::downgrade(self);
+                    glib::idle_add_local_once(move || {
+                        let Some(state) = weak.upgrade() else {
+                            return;
+                        };
+                        if state.browser.active_depth() == Some(destination_depth)
+                            && state.browser.location_at(source_depth).is_some()
+                        {
+                            state.browser.set_active_column(source_depth);
+                            state.browser.focus_active();
+                        }
+                    });
+                }
                 if let Some(dest) = self.pending_navigate.take() {
                     self.browser.navigate(dest);
                 }

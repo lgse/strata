@@ -2146,6 +2146,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
         install_preview_click(
             &card,
             item,
+            &rename_label,
             browser_for_setup.clone(),
             weak_state_for_clicks.clone(),
             previews_for_setup.clone(),
@@ -3596,18 +3597,43 @@ fn install_list_drag_drop(
     let highlighted_row = row.downgrade();
     let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| {
+        let action = super::browser::file_drop_action(target, &state_for_enter);
         if let Some(row) = highlighted_row.upgrade() {
-            row.add_css_class("drop-destination");
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
         }
-        super::browser::file_drop_action(target, &state_for_enter)
+        action
     });
     let highlighted_row = row.downgrade();
     let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| {
+        let action = super::browser::file_drop_action(target, &state_for_motion);
         if let Some(row) = highlighted_row.upgrade() {
-            row.add_css_class("drop-destination");
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
         }
-        super::browser::file_drop_action(target, &state_for_motion)
+        action
+    });
+    let highlighted_row = row.downgrade();
+    let state_for_value = drop_state.clone();
+    drop.connect_value_notify(move |target| {
+        if target.current_drop().is_none() {
+            return;
+        }
+        let action = super::browser::file_drop_action(target, &state_for_value);
+        if let Some(row) = highlighted_row.upgrade() {
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
+        }
     });
     let highlighted_row = row.downgrade();
     drop.connect_leave(move |_| {
@@ -3859,6 +3885,7 @@ fn activate_filtered_item(
 fn install_preview_click(
     widget: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
+    rename_label: &impl IsA<gtk::Widget>,
     browser: Weak<Browser>,
     weak_state: Weak<super::browser::ViewState>,
     enabled: Rc<Cell<bool>>,
@@ -3871,7 +3898,8 @@ fn install_preview_click(
     let click = gtk::GestureClick::new();
     click.set_button(1);
     let clicked_item = item.downgrade();
-    super::pointer::connect_click_release(&click, item, move |gesture, press_count| {
+    let rename_label = rename_label.as_ref().downgrade();
+    super::pointer::connect_click_release(&click, item, move |gesture, press_count, x, y| {
         let modifiers = gesture.current_event_state();
         if modifiers
             .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
@@ -3933,7 +3961,10 @@ fn install_preview_click(
             && !browser.is_chooser_mode()
             && !is_trash_location(&entry.location)
         {
-            if let Some(state) = weak_state.upgrade() {
+            if let (Some(surface), Some(label)) = (gesture.widget(), rename_label.upgrade())
+                && super::pointer::hits_name_label(&surface, &label, x, y)
+                && let Some(state) = weak_state.upgrade()
+            {
                 state.schedule_click_rename(depth, position);
             }
         } else if press_count == 1

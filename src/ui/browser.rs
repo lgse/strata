@@ -213,7 +213,9 @@ pub(super) struct ViewState {
     auto_refresh: RefCell<Option<glib::SourceId>>,
     trash_button: RefCell<Option<gtk::Button>>,
     drag_autoscroll: RefCell<Option<Rc<columns::drag_scroll::DragAutoscroll>>>,
+    drag_source_depth: Cell<Option<usize>>,
     suppress_scroll_after_drop: Cell<bool>,
+    drop_active_depths: Cell<Option<(usize, usize)>>,
     browser: Rc<Browser>,
 }
 
@@ -570,7 +572,9 @@ impl BrowserView {
             auto_refresh: RefCell::new(None),
             trash_button: RefCell::new(None),
             drag_autoscroll: RefCell::new(None),
+            drag_source_depth: Cell::new(None),
             suppress_scroll_after_drop: Cell::new(false),
+            drop_active_depths: Cell::new(None),
             browser,
         });
 

@@ -4272,9 +4272,18 @@ textview > popover.menu button.model:focus-visible,
 }
 
 .file-list row:hover:not(:selected),
-.file-list row:hover .file-row.active-path,
 .file-list-mode row:hover:not(:selected) {
   background: alpha(@theme_accent, 0.15);
+  color: @theme_text;
+}
+
+.file-list row:hover .file-row.active-path {
+  background: alpha(@theme_accent, 0.16);
+  color: @theme_text;
+}
+
+.file-list row:hover .file-row.active-path.active-parent {
+  background: alpha(@theme_accent, 0.35);
   color: @theme_text;
 }
 
@@ -4398,7 +4407,12 @@ textview > popover.menu button.model:focus-visible,
 
 .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
 .file-list-mode:not(:focus-within):not(.context-selection) row:selected {
-  background: alpha(@theme_highlight, 0.55);
+  background: alpha(@theme_accent, 0.08);
+  color: @theme_text;
+}
+
+.directory-column:not(:focus-within) .file-list row:selected .file-row.active-parent {
+  background: alpha(@theme_accent, 0.20);
   color: @theme_text;
 }
 
@@ -4416,7 +4430,7 @@ textview > popover.menu button.model:focus-visible,
 
 .keyboard-navigation .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
 .keyboard-navigation .file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
-  background: alpha(@theme_highlight, 0.55);
+  background: alpha(@theme_accent, 0.08);
 }
 
 .keyboard-navigation .file-list row:hover:not(:selected),
@@ -4440,12 +4454,50 @@ textview > popover.menu button.model:focus-visible,
   border-radius: 4px;
 }
 
+@keyframes active-path-pulse {
+  0% {
+    background: alpha(@theme_accent, 0.52);
+  }
+  35% {
+    background: alpha(@theme_accent, 0.38);
+  }
+  100% {
+    background: alpha(@theme_accent, 0.28);
+  }
+}
+
+.file-list .file-row.flash-active-path {
+  animation: active-path-pulse 420ms ease-out;
+}
+
 .file-list .file-row.active-path {
+  background: alpha(@theme_accent, 0.08);
+  color: @theme_text;
+}
+
+.file-list .file-row.active-path.active-parent {
+  background: alpha(@theme_accent, 0.28);
+  color: @theme_text;
+}
+
+.file-list row:selected .file-row.active-path {
+  background: transparent;
+}
+
+.file-list row:selected .file-row.active-path.active-parent {
+  background: alpha(@theme_accent, 0.20);
   color: @theme_text;
 }
 
 .file-list .file-row.active-path .file-chevron {
   color: @theme_dim_text;
+  opacity: 0.45;
+}
+
+.file-list .file-row.active-path.active-parent .file-chevron,
+.file-list row:selected .file-chevron {
+  color: @theme_accent;
+  opacity: 1;
 }
 
 .loading-skeleton {

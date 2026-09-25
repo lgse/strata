@@ -1802,6 +1802,12 @@ impl Browser {
         };
         let request_id = self.begin_operation();
         self.transfer_operation.set(Some(move_sources));
+        self.state.borrow_mut().set_selectionless_removals(
+            items
+                .iter()
+                .filter(|_| move_sources)
+                .map(|item| item.source.clone()),
+        );
         self.transfer_destination.replace(Some(destination.clone()));
         self.transfer_reveal.set(reveal);
         self.emit(BrowserEvent::TransferStarted {

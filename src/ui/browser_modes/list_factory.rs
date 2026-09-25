@@ -69,6 +69,7 @@ impl ListFactory {
         install_preview_click(
             &row.widget,
             item,
+            &row.name,
             self.browser.clone(),
             self.state.clone().unwrap_or_default(),
             self.previews.clone(),
