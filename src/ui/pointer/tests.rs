@@ -96,6 +96,81 @@ fn icons_have_inert_gutters_beside_the_thumbnail() {
     );
 }
 
+#[test]
+fn rename_click_zone_stops_at_the_name_text() {
+    gtk_test(
+        "ui::pointer::tests::rename_click_zone_stops_at_the_name_text",
+        || {
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            row.add_css_class("file-row");
+            let icon = super::super::thumbnail::ThumbnailSlot::new(18);
+            let name = gtk::Label::new(Some("file.txt"));
+            name.set_xalign(0.0);
+            name.set_hexpand(true);
+            row.append(&icon);
+            row.append(&name);
+            let window = gtk::Window::builder()
+                .child(&row)
+                .default_width(400)
+                .build();
+            window.present();
+            pump_until(|| name.width() > 200);
+            let at = |widget: &gtk::Widget, x: f32| {
+                let point = widget
+                    .compute_point(
+                        &row,
+                        &gtk::graphene::Point::new(x, widget.height() as f32 / 2.0),
+                    )
+                    .expect("point in row");
+                (f64::from(point.x()), f64::from(point.y()))
+            };
+            let (x, y) = at(name.upcast_ref(), 4.0);
+            assert!(hits_name_label(row.upcast_ref(), name.upcast_ref(), x, y));
+            let (x, y) = at(name.upcast_ref(), name.width() as f32 - 4.0);
+            assert!(
+                !hits_name_label(row.upcast_ref(), name.upcast_ref(), x, y),
+                "the label's inert tail past its text must not rename"
+            );
+            let (x, y) = at(icon.upcast_ref(), 9.0);
+            assert!(
+                !hits_name_label(row.upcast_ref(), name.upcast_ref(), x, y),
+                "the icon must not rename"
+            );
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn icons_rename_click_zone_is_the_caption_not_the_thumbnail() {
+    gtk_test(
+        "ui::pointer::tests::icons_rename_click_zone_is_the_caption_not_the_thumbnail",
+        || {
+            let card = super::super::icons_cell::new_card(64);
+            let (icon, label) = super::super::icons_cell::parts(&card).expect("card parts");
+            label.set_text(Some("file.txt"));
+            let window = gtk::Window::builder().child(&card).build();
+            window.present();
+            pump_until(|| icon.width() > 0);
+            let center = |widget: &gtk::Widget| {
+                let bounds = widget.compute_bounds(&card).expect("bounds");
+                (
+                    f64::from(bounds.x() + bounds.width() / 2.0),
+                    f64::from(bounds.y() + bounds.height() / 2.0),
+                )
+            };
+            let (x, y) = center(label.upcast_ref());
+            assert!(hits_name_label(card.upcast_ref(), label.upcast_ref(), x, y));
+            let (x, y) = center(icon.upcast_ref());
+            assert!(
+                !hits_name_label(card.upcast_ref(), label.upcast_ref(), x, y),
+                "the thumbnail must not rename"
+            );
+            window.close();
+        },
+    );
+}
+
 fn pump_until(ready: impl Fn() -> bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
     while !ready() {

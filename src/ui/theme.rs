@@ -608,7 +608,7 @@ fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
         background: blend(&source_background, &shadow, 0.35),
         surface: blend(&source_background, &shadow, 0.65),
         muted: blend(&shadow, &text, 0.10),
-        highlight: blend(&shadow, &selection, 0.10),
+        highlight: selection,
         border: blend(&shadow, &text, 0.36),
         dim_text: blend(&source_background, &text, 0.62),
         text,

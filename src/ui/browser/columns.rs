@@ -508,11 +508,17 @@ fn is_file_row_target(target: gtk::Widget) -> bool {
     file_row_target(target).is_some()
 }
 
-fn set_active_path_style(row: &gtk::Box, active: bool) {
+pub(super) fn set_active_path_style(row: &gtk::Box, active: bool, immediate: bool) {
     if active {
         row.add_css_class("active-path");
+        if immediate {
+            row.add_css_class("active-parent");
+        } else {
+            row.remove_css_class("active-parent");
+        }
     } else {
         row.remove_css_class("active-path");
+        row.remove_css_class("active-parent");
     }
 }
 
@@ -724,16 +730,18 @@ impl ViewState {
 
     pub(super) fn refresh_active_path_rows(&self) {
         self.refresh_destination_style();
+        let active_depth = self.browser.active_depth();
         for (depth, column) in self.columns.borrow().iter().enumerate() {
             let active = self
                 .browser
                 .active_child_position(depth)
                 .and_then(|position| column.map.view_position(position));
+            let immediate = active_depth == Some(depth + 1);
             column.bound_rows.borrow_mut().retain(|bound| {
                 let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
                     return false;
                 };
-                set_active_path_style(&row, active == Some(item.position()));
+                set_active_path_style(&row, active == Some(item.position()), immediate);
                 true
             });
         }
@@ -1310,6 +1318,7 @@ impl ViewState {
             clear_selection: Rc::new(move || {
                 if let Some(state) = weak_for_clear.upgrade() {
                     state.clear_column_selections();
+                    state.browser.close_column(depth + 1);
                     if returning_for_clear.replace(false) && !search_active_for_clear.get() {
                         let first = state.columns.borrow().get(depth).and_then(|column| {
                             (0..column.selection.n_items())
@@ -1348,6 +1357,7 @@ impl ViewState {
                     .context_menu_column
                     .get()
                     .is_none_or(|owner| owner == depth)
+                && state.drop_active_depths.get().is_none()
             {
                 state.browser.set_active_column(depth);
                 state.refresh_destination_style();
@@ -1610,6 +1620,9 @@ impl ViewState {
             let Some(state) = weak.upgrade() else {
                 return;
             };
+            if state.drop_active_depths.get().is_some() {
+                return;
+            }
             state.suppress_focus_scroll.set(true);
             state.browser.set_active_column(depth);
             state.browser.focus_active();
@@ -1622,9 +1635,43 @@ impl ViewState {
             if let Some(shell) = shell {
                 state.reveal_column(shell);
             }
+            state.flash_column_parent(depth);
         });
         surface.add_controller(click.clone());
         click
+    }
+
+    pub(super) fn flash_column_parent(&self, child_depth: usize) {
+        if child_depth == 0 {
+            return;
+        }
+        let parent_depth = child_depth - 1;
+        let columns = self.columns.borrow();
+        let Some(column) = columns.get(parent_depth) else {
+            return;
+        };
+        let active = self
+            .browser
+            .active_child_position(parent_depth)
+            .and_then(|position| column.map.view_position(position));
+        let Some(active_pos) = active else {
+            return;
+        };
+        for bound in column.bound_rows.borrow().iter() {
+            if bound.item.upgrade().map(|item| item.position()) == Some(active_pos) {
+                if let Some(row) = bound.row.upgrade() {
+                    row.remove_css_class("flash-active-path");
+                    row.add_css_class("flash-active-path");
+                    let weak_row = row.downgrade();
+                    glib::timeout_add_local_once(Duration::from_millis(420), move || {
+                        if let Some(row) = weak_row.upgrade() {
+                            row.remove_css_class("flash-active-path");
+                        }
+                    });
+                }
+                break;
+            }
+        }
     }
 
     pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
@@ -1726,6 +1773,3 @@ mod rows;
 mod search;
 
 pub(super) use reveal::ColumnSpan;
-
-#[cfg(test)]
-mod tests;

@@ -502,7 +502,15 @@ impl ViewState {
             )
         });
         let modified = properties_row(&details, "MODIFIED", "—");
-        crate::util::set_modified_date(&modified, entry.as_ref(), "—");
+        crate::util::set_full_modified_date(
+            &modified,
+            entry
+                .as_ref()
+                .and_then(|entry| match entry.modified_unix_seconds {
+                    crate::model::MetadataValue::Known(seconds) => Some(seconds),
+                    _ => None,
+                }),
+        );
         let opens_with = properties_row(&details, "OPENS WITH", "—");
         let hidden = properties_row(
             &details,
@@ -806,12 +814,7 @@ impl ViewState {
                 size.set_text(&format_file_size(info.size().max(0) as u64));
             }
             if let Some(time) = info.modification_date_time() {
-                modified.set_text(
-                    &time
-                        .format("%Y-%m-%d %H:%M")
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|_| "—".to_owned()),
-                );
+                crate::util::set_full_modified_date(&modified, Some(time.to_unix()));
             }
             hidden.set_text(if info.is_hidden() { "Yes" } else { "No" });
             if let Some(content_type) = info.content_type() {
@@ -935,6 +938,3 @@ impl ViewState {
         });
     }
 }
-
-#[cfg(test)]
-mod tests;

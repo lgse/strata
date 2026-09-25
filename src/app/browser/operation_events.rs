@@ -319,6 +319,9 @@ impl Browser {
         } else {
             Vec::new()
         };
+        self.state
+            .borrow_mut()
+            .retain_selectionless_removals(moved.iter().cloned());
         completion.record_transfer_undo(&moved, created, self.merged_undo.take());
         for location in &moved {
             self.retire_recent_target(location);

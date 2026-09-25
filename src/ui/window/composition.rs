@@ -143,6 +143,3 @@ fn install_browser_actions(
         }
     }
 }
-
-#[cfg(test)]
-mod tests;
