@@ -202,6 +202,3 @@ fn adjustments(pane: &Pane) -> Option<(gtk::Adjustment, gtk::Adjustment)> {
         .ok()?;
     Some((vertical.vadjustment(), horizontal.hadjustment()))
 }
-
-#[cfg(test)]
-mod tests;

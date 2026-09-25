@@ -54,6 +54,12 @@ const REMOTE_DIRECTORY_BATCH_SIZE: usize = 128;
 const PEEK_MAX_ENTRIES: usize = 64;
 const PEEK_TIME_BUDGET: Duration = Duration::from_secs(3);
 
+enum LoadSelection {
+    Nothing,
+    FirstEntry,
+    Target(Location),
+}
+
 #[derive(Clone, Debug)]
 pub struct BrowserColumnSnapshot {
     pub location: Location,
@@ -227,6 +233,9 @@ pub enum BrowserEvent {
     },
     LocationNavigationRejected {
         error: LocationValidationError,
+    },
+    LocationRevealFailed {
+        location: Location,
     },
     EmptyTrashRequested,
     ArchiveStarted {
@@ -861,8 +870,14 @@ impl Browser {
             return Err(LocationValidationError::NotAbsolute);
         }
         if location.native_path().is_some() {
-            self.source.validate_location(&location)?;
-            self.navigate(location);
+            match self.source.validate_location(&location) {
+                Ok(()) => self.navigate(location),
+                Err(LocationValidationError::NotDirectory) => match location.parent() {
+                    Some(parent) => self.navigate_validated_revealing(parent, location),
+                    None => return Err(LocationValidationError::NotDirectory),
+                },
+                Err(error) => return Err(error),
+            }
         } else {
             self.navigate_validated(location, true);
         }
@@ -870,6 +885,19 @@ impl Browser {
     }
 
     fn navigate_validated(self: &Rc<Self>, location: Location, select_first: bool) {
+        self.navigate_validated_inner(location, select_first, None);
+    }
+
+    fn navigate_validated_revealing(self: &Rc<Self>, parent: Location, target: Location) {
+        self.navigate_validated_inner(parent, false, Some(target));
+    }
+
+    fn navigate_validated_inner(
+        self: &Rc<Self>,
+        location: Location,
+        select_first: bool,
+        reveal: Option<Location>,
+    ) {
         let generation = self.bump_navigation_generation();
         let weak = Rc::downgrade(self);
         let pending_location = location.clone();
@@ -881,14 +909,29 @@ impl Browser {
                 return;
             }
             match result {
-                Ok(()) => {
-                    browser.navigate_with_selection(pending_location.clone(), select_first);
-                }
+                Ok(()) => match reveal.clone() {
+                    Some(target) => {
+                        browser.navigate_revealing(pending_location.clone(), target);
+                    }
+                    None => {
+                        browser.navigate_with_selection(pending_location.clone(), select_first);
+                    }
+                },
+                Err(LocationValidationError::NotDirectory) => match pending_location.parent() {
+                    Some(parent) => {
+                        browser.navigate_validated_revealing(parent, pending_location.clone());
+                    }
+                    None => browser.emit(BrowserEvent::LocationNavigationRejected {
+                        error: LocationValidationError::NotDirectory,
+                    }),
+                },
                 Err(error) => browser.emit(BrowserEvent::LocationNavigationRejected { error }),
             }
         });
         let load = self.source.validate_location_async(location, emit);
-        self.validation_load.replace(Some(load));
+        if self.validation_generation.get() == generation {
+            self.validation_load.replace(Some(load));
+        }
     }
 
     pub fn active_location(&self) -> Option<Location> {
@@ -981,6 +1024,51 @@ impl Browser {
     }
 
     pub(crate) fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
+        self.navigate_for_selection(
+            location,
+            if select_first {
+                LoadSelection::FirstEntry
+            } else {
+                LoadSelection::Nothing
+            },
+        );
+    }
+
+    fn navigate_revealing(self: &Rc<Self>, parent: Location, target: Location) {
+        if self.active_location().as_ref() == Some(&parent) {
+            self.bump_navigation_generation();
+            if let Some(depth) = self.active_depth()
+                && !self.select_entries_by_location_at(depth, std::slice::from_ref(&target))
+            {
+                self.refresh_column_revealing(depth, target);
+            }
+            return;
+        }
+        self.navigate_for_selection(parent, LoadSelection::Target(target));
+    }
+
+    fn apply_resolved_location_reveal(self: &Rc<Self>, depth: usize, request_id: RequestId) {
+        let revealed_hidden = self
+            .state
+            .borrow_mut()
+            .take_resolved_location_reveal(depth, request_id)
+            == Some(true);
+        if revealed_hidden && !self.preferences.get().show_hidden {
+            self.toggle_hidden();
+        }
+    }
+
+    pub(super) fn report_unresolved_location_reveal(&self, depth: usize, request_id: RequestId) {
+        let location = self
+            .state
+            .borrow_mut()
+            .take_unresolved_location_reveal(depth, request_id);
+        if let Some(location) = location {
+            self.emit(BrowserEvent::LocationRevealFailed { location });
+        }
+    }
+
+    fn navigate_for_selection(self: &Rc<Self>, location: Location, selection: LoadSelection) {
         self.bump_navigation_generation();
         if self.active_location().as_ref() == Some(&location) {
             return;
@@ -996,8 +1084,12 @@ impl Browser {
         self.state
             .borrow_mut()
             .navigate(location.clone(), request_id);
-        if select_first {
-            self.select_first_on_load(0);
+        match selection {
+            LoadSelection::FirstEntry => self.select_first_on_load(0),
+            LoadSelection::Target(target) => {
+                self.state.borrow_mut().select_location_on_load(0, target);
+            }
+            LoadSelection::Nothing => {}
         }
         self.emit(BrowserEvent::Reset);
         self.emit(BrowserEvent::ColumnAdded {
@@ -2780,6 +2872,7 @@ impl Browser {
         );
         let selected = state.columns[depth].selected;
         drop(state);
+        self.apply_resolved_location_reveal(depth, request_id);
         crate::metrics::record_stage(
             "state-install",
             install_started.elapsed().as_millis() as u64,
@@ -3317,8 +3410,25 @@ impl Browser {
     }
 
     fn refresh_column(self: &Rc<Self>, depth: usize) {
+        self.refresh_column_with_reveal(depth, None);
+    }
+
+    fn refresh_column_revealing(self: &Rc<Self>, depth: usize, target: Location) {
+        self.refresh_column_with_reveal(depth, Some(target));
+    }
+
+    fn refresh_column_with_reveal(self: &Rc<Self>, depth: usize, target: Option<Location>) {
         let request_id = self.new_request_id();
-        let location = self.state.borrow_mut().reload_column(depth, request_id);
+        let location = {
+            let mut state = self.state.borrow_mut();
+            let location = state.reload_column(depth, request_id);
+            if location.is_some()
+                && let Some(target) = target
+            {
+                state.select_location_on_load(depth, target);
+            }
+            location
+        };
         let Some(location) = location else {
             return;
         };
@@ -3476,7 +3586,7 @@ fn location_from_input_with_home(
         return Ok(Location::local(home));
     }
     if let Some(relative) = input.strip_prefix("~/") {
-        return Ok(Location::local(home.join(relative.trim_start_matches('/'))));
+        return Ok(Location::local(home.join(relative.trim_matches('/'))));
     }
     if input.starts_with('~') {
         return Err(LocationValidationError::UnsupportedShorthand(
@@ -3484,7 +3594,10 @@ fn location_from_input_with_home(
         ));
     }
     if !is_uri_like(input) {
-        return Ok(Location::local(PathBuf::from(input)));
+        // stat reports ENOTDIR for a file with a trailing slash, bypassing file reveal.
+        let trimmed = input.trim_end_matches('/');
+        let path = if trimmed.is_empty() { "/" } else { trimmed };
+        return Ok(Location::local(PathBuf::from(path)));
     }
     let scheme_end = input.find("://").unwrap_or_default();
     let scheme = &input[..scheme_end];

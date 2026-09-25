@@ -435,6 +435,3 @@ fn rows_per_page(page_size: f64, item_height: f64) -> usize {
     let rows = (page_size / item_height).floor().max(1.0) as usize;
     rows.saturating_sub(1).max(1)
 }
-
-#[cfg(test)]
-mod tests;

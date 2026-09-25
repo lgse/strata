@@ -104,8 +104,4 @@ impl PreferenceManager {
     pub(in crate::ui) fn seed_saved_preferences_for_test() {
         seed_saved_preferences_for_test();
     }
-
-    pub(in crate::ui) fn seed_omarchy_for_test() {
-        seed_omarchy_for_test();
-    }
 }

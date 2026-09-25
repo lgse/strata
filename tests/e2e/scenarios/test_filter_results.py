@@ -326,6 +326,7 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     strata.wait(strata.context_menu, "the restored result menu")
     strata.choose_menu_item("Quick preview")
     strata.wait(lambda: strata.preview_shows("beta source"), "preview of the nested result")
+    assert row.has_state("selected")
     assert field.text == query
     strata.keyboard.press("ctrl+f")
     strata.wait(lambda: field.has_state("focused"), "Ctrl+F to return from the preview")
@@ -455,6 +456,8 @@ def test_matching_rename_stays_searchable_at_the_real_parent(strata, mode):
     strata.keyboard.type_text("renamed")
     row = strata.wait(lambda: result(strata, "beta/match-note-renamed.txt"), "the fresh index result")
     strata.pointer.right_click(row)
+    items = strata.menu_items()
+    assert items.index("Quick preview") < items.index("Open file location")
     strata.choose_menu_item("Open file location")
     strata.wait_for_directory("beta")
     strata.wait_for_selection(["match-note-renamed.txt"], "beta")

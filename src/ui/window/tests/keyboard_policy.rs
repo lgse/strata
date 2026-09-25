@@ -3,6 +3,7 @@
 use gtk::prelude::*;
 
 use super::*;
+use crate::ui::preferences::PreferenceManager;
 
 #[test]
 fn plain_single_pane_arrows_move_focus_not_directories() {

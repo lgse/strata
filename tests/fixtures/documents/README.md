@@ -16,3 +16,9 @@ involved) holding one of each structure the DOCX preview maps:
 The package contains only `[Content_Types].xml`, `_rels/.rels`,
 `word/_rels/document.xml.rels`, `word/document.xml`, `word/numbering.xml`, and
 `word/styles.xml` — the parts `docx-rs` requires plus numbering and styles.
+
+# PDF text-layer fixture
+
+`text.pdf` is a hand-written minimal PDF (single Helvetica text stream, no
+compression) whose two text lines let the quick preview exercise its text
+layer: glyph hit-testing, drag selection, and copy.

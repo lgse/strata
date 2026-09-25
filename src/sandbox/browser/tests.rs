@@ -79,6 +79,7 @@ fn reply_reads_obey_the_absolute_deadline_even_with_a_live_writer() {
     let mut reader = DeadlineReader {
         reader: &mut read,
         deadline: Instant::now() + Duration::from_millis(5),
+        cancellation: &Cancellation::default(),
     };
     assert_eq!(
         reader
@@ -95,6 +96,66 @@ fn reply_reads_obey_the_absolute_deadline_even_with_a_live_writer() {
             .kind(),
         io::ErrorKind::TimedOut
     );
+}
+
+#[test]
+fn cancelled_reply_read_releases_the_worker_before_the_deadline() {
+    let (read, _write) = rustix::pipe::pipe_with(rustix::pipe::PipeFlags::CLOEXEC).expect("pipe");
+    let mut read = File::from(read);
+    let cancellation = Cancellation::default();
+    let flag = cancellation.clone();
+    let canceller = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(50));
+        flag.cancel();
+    });
+    let started = Instant::now();
+    let mut reader = DeadlineReader {
+        reader: &mut read,
+        deadline: Instant::now() + Duration::from_secs(60),
+        cancellation: &cancellation,
+    };
+    assert_eq!(
+        reader
+            .read(&mut [0])
+            .expect_err("cancelled read")
+            .to_string(),
+        "Browser request cancelled"
+    );
+    assert!(started.elapsed() < Duration::from_secs(10));
+    canceller.join().expect("canceller");
+}
+
+#[test]
+fn preview_renders_do_not_evict_thumbnail_cache_entries() {
+    fn key(index: u64) -> FileKey {
+        FileKey {
+            path: PathBuf::from(format!("/fixture/{index}")),
+            device: 0,
+            inode: index,
+            size: 1,
+            modified: (0, 0),
+            changed: (0, 0),
+        }
+    }
+    let thumbnails = Mutex::new(Cache::default());
+    let previews = Mutex::new(Cache::default());
+    let thumbnail = cache_entry(&thumbnails, key(0), Operation::Image);
+    for index in 1..=(CACHE_ENTRIES as u64 + 1) {
+        cache_entry(&previews, key(index), Operation::PreviewImage);
+    }
+    assert!(Arc::ptr_eq(
+        &thumbnail,
+        &cache_entry(&thumbnails, key(0), Operation::Image)
+    ));
+}
+
+#[test]
+fn worker_limit_updates_thumbnail_and_preview_pools() {
+    let original = worker_limit();
+    set_worker_limit(7);
+    assert_eq!(pool().limit.load(Ordering::Relaxed), 7);
+    assert_eq!(preview_pool().limit.load(Ordering::Relaxed), 7);
+    set_worker_limit(original);
 }
 
 #[test]
@@ -130,12 +191,23 @@ fn file_versions_invalidate_cached_work_after_replacement() {
     let path = directory.path().join("file");
     std::fs::write(&path, b"one").expect("source");
     let first = FileKey::read(&path, &File::open(&path).expect("open")).expect("version");
-    let gate = cache_entry(first.clone());
-    assert!(Arc::ptr_eq(&gate, &cache_entry(first)));
+    let cache = Mutex::new(Cache::default());
+    let gate = cache_entry(&cache, first.clone(), Operation::Image);
+    assert!(Arc::ptr_eq(
+        &gate,
+        &cache_entry(&cache, first, Operation::Image)
+    ));
     std::fs::rename(&path, directory.path().join("old")).expect("move");
     std::fs::write(&path, b"two").expect("replacement");
     let second = FileKey::read(&path, &File::open(&path).expect("open")).expect("version");
-    assert!(!Arc::ptr_eq(&gate, &cache_entry(second)));
+    assert!(!Arc::ptr_eq(
+        &gate,
+        &cache_entry(&cache, second.clone(), Operation::Image)
+    ));
+    assert!(!Arc::ptr_eq(
+        &cache_entry(&cache, second.clone(), Operation::PreviewImage),
+        &cache_entry(&cache, second, Operation::Image)
+    ));
 }
 
 #[test]
@@ -145,6 +217,7 @@ fn cancelled_admission_never_starts_a_worker_or_strands_a_waiter() {
         changed: Condvar::new(),
         limit: AtomicUsize::new(2),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+        cache: Mutex::default(),
     };
     let cancellation = Cancellation::default();
     cancellation.cancel();
@@ -183,6 +256,7 @@ fn resizing_preserves_busy_leases_and_wakes_waiters_for_new_capacity() {
         changed: Condvar::new(),
         limit: AtomicUsize::new(3),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+        cache: Mutex::default(),
     };
     let cancellation = Cancellation::default();
     let first = pool
@@ -244,6 +318,7 @@ fn slow_work_preserves_capacity_for_visible_images_and_releases_its_permit() {
         changed: Condvar::new(),
         limit: AtomicUsize::new(2),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+        cache: Mutex::default(),
     };
     let cancellation = Cancellation::default();
     let slow = pool
@@ -274,6 +349,7 @@ fn metadata_gets_a_bounded_turn_during_continuous_thumbnail_work() {
         changed: Condvar::new(),
         limit: AtomicUsize::new(1),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+        cache: Mutex::default(),
     };
     let cancellation = Cancellation::default();
     let first = pool
@@ -358,6 +434,7 @@ fn idle_expiry_releases_only_expired_workers_and_can_empty_the_pool() {
         changed: Condvar::new(),
         limit: AtomicUsize::new(2),
         idle_timeout: timeout,
+        cache: Mutex::default(),
     };
     assert_eq!(pool.next_expiration(now), Some(timeout));
     assert_eq!(pool.retire_idle(now + Duration::from_secs(9)), 0);
@@ -391,6 +468,7 @@ fn idle_expiry_never_interrupts_a_lease_and_returning_it_resets_the_deadline() {
         changed: Condvar::new(),
         limit: AtomicUsize::new(1),
         idle_timeout: timeout,
+        cache: Mutex::default(),
     };
     let lease = pool
         .acquire(Operation::MediaMetadata, &Cancellation::default())
@@ -420,6 +498,7 @@ fn saturated_pool_wait_is_cancellable() {
         changed: Condvar::new(),
         limit: AtomicUsize::new(2),
         idle_timeout: DEFAULT_WORKER_IDLE_TIMEOUT,
+        cache: Mutex::default(),
     };
     let cancellation = Cancellation::default();
     std::thread::scope(|scope| {
@@ -576,4 +655,36 @@ fn worker_configuration_is_bounded_and_invalid_values_use_the_default() {
     ] {
         assert_eq!(configured_limit(input, 3), expected);
     }
+}
+
+#[test]
+fn preview_operations_render_inside_the_decoder() {
+    let directory = tempfile::tempdir().expect("fixture");
+    let path = directory.path().join("icon.svg");
+    std::fs::write(
+        &path,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#336699"/></svg>"##,
+    )
+    .expect("fixture");
+    let cancellation = Cancellation::default();
+    assert!(preview(&path, &ParseOperation::ThumbnailImage, &cancellation).is_none());
+    let response = crate::sandbox_helper::browser_render(&path, Operation::PreviewImage);
+    assert!(super::super::valid_output(
+        ParseOperation::PreviewImage,
+        &response.png
+    ));
+    let tex = directory.path().join("equation.tex");
+    std::fs::write(&tex, "x^2").expect("fixture");
+    let response = crate::sandbox_helper::browser_render(&tex, Operation::DocumentMath);
+    assert!(super::super::valid_output(
+        ParseOperation::DocumentMath { display: true },
+        &response.png
+    ));
+    let mmd = directory.path().join("diagram.mmd");
+    std::fs::write(&mmd, "graph TD; A-->B").expect("fixture");
+    let response = crate::sandbox_helper::browser_render(&mmd, Operation::DocumentMermaid);
+    assert!(super::super::valid_output(
+        ParseOperation::DocumentMermaid,
+        &response.png
+    ));
 }

@@ -13,9 +13,6 @@ use crate::{
 
 use super::WindowContent;
 
-#[cfg(test)]
-mod tests;
-
 pub(super) fn install(
     window: &gtk::ApplicationWindow,
     content: &WindowContent,

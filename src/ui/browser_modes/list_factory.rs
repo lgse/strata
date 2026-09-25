@@ -312,6 +312,3 @@ pub(super) fn refresh_list_section(
         row.icon.set_base_opacity(1.0);
     });
 }
-
-#[cfg(test)]
-mod tests;

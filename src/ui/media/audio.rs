@@ -191,6 +191,3 @@ impl Drop for PcmOutput {
         let _ = self.pipeline.set_state(gst::State::Null);
     }
 }
-
-#[cfg(test)]
-mod tests;

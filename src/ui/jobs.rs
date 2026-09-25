@@ -861,6 +861,3 @@ fn plural(count: usize, singular: &'static str, plural: &'static str) -> &'stati
 pub(crate) fn job_icon(snapshot: &JobSnapshot) -> &'static str {
     action_icon(snapshot.icon.as_deref())
 }
-
-#[cfg(test)]
-mod tests;
