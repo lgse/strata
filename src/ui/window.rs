@@ -2898,28 +2898,6 @@ fn crypto_password_uuid_for_mount(mount: &gio::Mount) -> Option<String> {
     devices::crypto_password_uuid(None, unix.as_deref(), hint.as_ref(), false)
 }
 
-#[cfg(test)]
-fn request_encrypted_lock(
-    parent: &gtk::Widget,
-    volume_name: &str,
-    luks_uuid: Option<String>,
-    mount: Option<gio::Mount>,
-    drive: Option<gio::Drive>,
-    browser: &Rc<Browser>,
-    in_flight: &Rc<Cell<bool>>,
-) {
-    request_encrypted_lock_showing(
-        parent,
-        volume_name,
-        luks_uuid,
-        mount,
-        drive,
-        browser,
-        None,
-        in_flight,
-    );
-}
-
 #[expect(
     clippy::too_many_arguments,
     reason = "lock confirmation needs the volume, its mount, and the window that shows progress"

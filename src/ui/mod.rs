@@ -30,6 +30,7 @@ mod pointer;
 mod portal_preferences;
 pub(crate) mod preferences;
 mod preview;
+mod raw_details;
 mod scrolling;
 mod search;
 mod search_session;

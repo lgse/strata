@@ -1301,16 +1301,6 @@ impl BrowserView {
             .set_single_click_previews(enabled);
     }
 
-    #[cfg(test)]
-    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
-        self.state.single_click_previews.get()
-            && self
-                .state
-                .mode_views
-                .borrow()
-                .single_click_previews_enabled()
-    }
-
     pub fn set_columns_mirror_selection(&self, enabled: bool) {
         self.state.columns_mirror_selection.set(enabled);
     }
@@ -2345,6 +2335,3 @@ fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
 }
 
 mod chooser_context;
-
-#[cfg(test)]
-mod tests;

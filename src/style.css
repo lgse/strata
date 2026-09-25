@@ -3383,6 +3383,11 @@ menubutton.column-header-action > button:active {
   color: @theme_text;
 }
 
+.properties-row-value selection {
+  color: @theme_bg;
+  background: @theme_accent;
+}
+
 .properties-size-value {
   font-variant-numeric: tabular-nums;
 }

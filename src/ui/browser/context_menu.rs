@@ -364,7 +364,7 @@ pub(in crate::ui) fn install_folder_context_menu(
         ContextHint::None,
     );
     let open_with = context_menu_option(
-        crate::assets::icons::EXTERNAL_LINK,
+        crate::assets::icons::APP_WINDOW,
         "Open With…",
         ContextHint::None,
     );
@@ -421,10 +421,11 @@ pub(in crate::ui) fn install_folder_context_menu(
     properties.set_visible(!in_recent);
     content.append(&new_folder);
     content.append(&new_file);
+    content.append(&paste);
+    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&open_with);
     content.append(&open_terminal);
     content.set_visible(directory_actions);
-    remaining.append(&paste);
     remaining.append(&select_all);
     remaining.append(&refresh);
     remaining.append(&toggle_hidden);
@@ -800,7 +801,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ContextHint::Open,
     );
     let open_with = item_context_option(
-        crate::assets::icons::EXTERNAL_LINK,
+        crate::assets::icons::APP_WINDOW,
         "Open With…",
         ContextHint::None,
     );
@@ -830,18 +831,30 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     );
     let copy = item_context_option(crate::assets::icons::COPY, "Copy", ContextHint::Copy);
     let duplicate = item_context_option(
-        crate::assets::icons::COPY,
+        crate::assets::icons::COPY_PLUS,
         "Duplicate",
         ContextHint::Duplicate,
     );
     let copy_path = item_context_option(
-        crate::assets::icons::COPY,
+        crate::assets::icons::ROUTE,
         "Copy path",
         ContextHint::CopyPath,
     );
-    let copy_name = item_context_option(crate::assets::icons::COPY, "Copy name", ContextHint::None);
-    let move_to = item_context_option(crate::assets::icons::FOLDER, "Move to…", ContextHint::None);
-    let copy_to = item_context_option(crate::assets::icons::COPY, "Copy to…", ContextHint::None);
+    let copy_name = item_context_option(
+        crate::assets::icons::FILE_TYPE,
+        "Copy name",
+        ContextHint::None,
+    );
+    let move_to = item_context_option(
+        crate::assets::icons::FOLDER_INPUT,
+        "Move to…",
+        ContextHint::None,
+    );
+    let copy_to = item_context_option(
+        crate::assets::icons::FOLDER_OUTPUT,
+        "Copy to…",
+        ContextHint::None,
+    );
     let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", ContextHint::Rename);
     let cut = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
     let delete_label = if in_trash {
@@ -851,7 +864,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     };
     let move_to_trash = if in_trash {
         let option = item_context_danger_option(
-            crate::assets::icons::TRASH,
+            crate::assets::icons::CIRCLE_X,
             delete_label,
             ContextHint::Trash,
         );
@@ -865,7 +878,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         )
     };
     let permanent_delete = item_context_danger_option(
-        crate::assets::icons::TRASH,
+        crate::assets::icons::CIRCLE_X,
         "Permanently delete",
         ContextHint::PermanentDelete,
     );
@@ -881,49 +894,47 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ContextHint::None,
     );
     let compress = item_context_option(
-        crate::assets::icons::FILE_ARCHIVE,
+        crate::assets::icons::PACKAGE_PLUS,
         "Compress…",
         ContextHint::None,
     );
     let extract = item_context_option(
-        crate::assets::icons::FILE_ARCHIVE,
+        crate::assets::icons::PACKAGE_OPEN,
         "Extract here",
         ContextHint::None,
     );
     let extract_to = item_context_option(
-        crate::assets::icons::FILE_ARCHIVE,
+        crate::assets::icons::FOLDER_ARCHIVE,
         "Extract to…",
         ContextHint::None,
     );
     single_open.append(&open);
     single_open.append(&open_with);
+    single_open.append(&preview);
     single_open.append(&open_file_location);
     single_open.append(&run);
     single_open.append(&open_terminal);
-    single_open.append(&preview);
     single_open.append(&restore);
+    single_open.append(&print);
     single_open.append(&extract);
     single_open.append(&extract_to);
-    single_open.append(&pin);
-    single_open.append(&print);
     content.append(&single_open);
     single.append(&cut);
     single.append(&copy);
     single.append(&duplicate);
-    single.append(&copy_path);
-    single.append(&copy_name);
+    single.append(&rename);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to);
     single.append(&copy_to);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    let archive_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    single.append(&rename);
     single.append(&compress);
-    single.append(&archive_separator);
+    single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    single.append(&pin);
     single.append(&customize);
+    single.append(&copy_path);
+    single.append(&copy_name);
     single.append(&properties);
-    let delete_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    single.append(&delete_separator);
+    single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to_trash);
     single.append(&permanent_delete);
     remaining.append(&single);
@@ -940,7 +951,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         ContextHint::OpenMultiple,
     );
     let open_with_multiple = item_context_option(
-        crate::assets::icons::EXTERNAL_LINK,
+        crate::assets::icons::APP_WINDOW,
         "Open With…",
         ContextHint::None,
     );
@@ -952,25 +963,34 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", ContextHint::Copy);
     let duplicate_multiple = item_context_option(
-        crate::assets::icons::COPY,
+        crate::assets::icons::COPY_PLUS,
         "Duplicate",
         ContextHint::Duplicate,
     );
     let copy_paths = item_context_option(
-        crate::assets::icons::COPY,
+        crate::assets::icons::ROUTE,
         "Copy paths",
         ContextHint::CopyPaths,
     );
-    let copy_names_button =
-        item_context_option(crate::assets::icons::COPY, "Copy names", ContextHint::None);
-    let move_multiple =
-        item_context_option(crate::assets::icons::FOLDER, "Move to…", ContextHint::None);
-    let copy_to_multiple =
-        item_context_option(crate::assets::icons::COPY, "Copy to…", ContextHint::None);
+    let copy_names_button = item_context_option(
+        crate::assets::icons::FILE_TYPE,
+        "Copy names",
+        ContextHint::None,
+    );
+    let move_multiple = item_context_option(
+        crate::assets::icons::FOLDER_INPUT,
+        "Move to…",
+        ContextHint::None,
+    );
+    let copy_to_multiple = item_context_option(
+        crate::assets::icons::FOLDER_OUTPUT,
+        "Copy to…",
+        ContextHint::None,
+    );
     let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
     let trash_multiple = if in_trash {
         let option = item_context_danger_option(
-            crate::assets::icons::TRASH,
+            crate::assets::icons::CIRCLE_X,
             delete_label,
             ContextHint::Trash,
         );
@@ -984,13 +1004,13 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         )
     };
     let permanent_delete_multiple = item_context_danger_option(
-        crate::assets::icons::TRASH,
+        crate::assets::icons::CIRCLE_X,
         "Permanently delete",
         ContextHint::PermanentDelete,
     );
     permanent_delete_multiple.add_css_class("danger");
     let compress_multiple = item_context_option(
-        crate::assets::icons::FILE_ARCHIVE,
+        crate::assets::icons::PACKAGE_PLUS,
         "Compress…",
         ContextHint::None,
     );
@@ -1006,16 +1026,14 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
     multiple.append(&duplicate_multiple);
-    multiple.append(&copy_paths);
-    multiple.append(&copy_names_button);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&move_multiple);
     multiple.append(&copy_to_multiple);
-    let multiple_transfer_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    multiple.append(&multiple_transfer_separator);
-    let multiple_archive_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&compress_multiple);
-    multiple.append(&multiple_archive_separator);
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    multiple.append(&copy_paths);
+    multiple.append(&copy_names_button);
     multiple.append(&properties_multiple);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
@@ -1210,17 +1228,26 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let preview_target = target.clone();
     let preview_popover = popover.downgrade();
     preview.connect_clicked(move |_| {
-        if let Some(popover) = preview_popover.upgrade() {
-            popover.popdown();
-        }
-        let Some((position, entry)) = preview_target.borrow().clone() else {
-            return;
-        };
-        if let Some(state) = weak.upgrade()
-            && !entry.is_directory()
-        {
-            preview_context_entry(&state, depth, position, entry);
-        }
+        let target = preview_target.borrow().clone();
+        let popover = preview_popover.clone();
+        let weak = weak.clone();
+        // Dismiss after the click finishes so it cannot select a result beneath the menu.
+        glib::idle_add_local_once(move || {
+            if let Some(popover) = popover.upgrade() {
+                popover.popdown();
+            }
+            let Some((position, entry)) = target else {
+                return;
+            };
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade()
+                    && !entry.is_directory()
+                {
+                    focus_context_entry(&state, depth, position, &entry);
+                    preview_context_entry(&state, depth, position, entry);
+                }
+            });
+        });
     });
     let weak = Rc::downgrade(state);
     let print_target = target.clone();
@@ -1513,8 +1540,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 .all(|entry| entry.location.native_path().is_some());
             compress.set_visible(can_compress);
             compress_multiple.set_visible(can_compress);
-            archive_separator.set_visible(rename_visible || can_compress);
-            multiple_archive_separator.set_visible(can_compress);
             preview.set_visible(crate::ui::preview::entry_supports_quick_preview(&entry));
             print.set_visible(entry_supports_printing(&entry));
             open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
@@ -1535,9 +1560,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 permanently_delete_is_visible(in_trash, state.browser.can_delete_at(depth));
             permanent_delete.set_visible(permanent_delete_visible);
             permanent_delete_multiple.set_visible(permanent_delete_visible);
-            delete_separator.set_visible(trash_visible || permanent_delete_visible);
-            multiple_transfer_separator
-                .set_visible(can_compress || trash_visible || permanent_delete_visible);
             pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
             pin.set_sensitive(
                 state
@@ -1613,6 +1635,9 @@ pub(super) fn preview_context_entry(
     if let Some(position) = current_context_position(state, depth, position, &entry) {
         state.browser.preview(depth, position);
     } else {
+        if let Some(path) = entry.location.native_path() {
+            state.mode_views.borrow().select_search_result(path);
+        }
         state.browser.request_preview(entry);
     }
 }

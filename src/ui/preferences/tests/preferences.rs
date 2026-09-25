@@ -644,7 +644,7 @@ fn saved_date_format_renders_before_settings_and_updates_bound_labels() {
             manager.set_date_format(crate::util::DateFormat::Relative);
             assert_eq!(labels[0].label(), "unknown");
             let text = labels[1].label();
-            assert!(text == "just now" || text.ends_with(" ago"), "{text}");
+            assert!(text == "Just now" || text.ends_with(" ago"), "{text}");
             let mut rebound = entry.clone();
             rebound.modified_unix_seconds = MetadataValue::Known(seconds - 86400);
             crate::util::set_modified_date(&labels[0], Some(&rebound), "—");

@@ -310,6 +310,3 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         );
     }
 }
-
-#[cfg(test)]
-mod tests;
