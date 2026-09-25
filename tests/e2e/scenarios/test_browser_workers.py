@@ -92,11 +92,17 @@ def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mod
     persistent = "Landlock ABI 3 unavailable" not in strata.application.log()
     assert 1 <= initial <= 2 if persistent else initial == 0
     if mode == "Icons":
-        strata.wait(lambda: strata.window.find(role="label", name="320×180"), "original image dimensions")
+        for width in range(320, 326):
+            strata.wait(lambda width=width: strata.window.find(role="label", name=f"{width}×180"),
+                        "original image dimensions")
     strata.keyboard.press("alt+Left")
     strata.wait(lambda: strata.entry("photos-b"), "parent folder")
     strata.open_directory("photos-b")
     strata.wait(lambda: cached("photos-b"), "second folder thumbnails persisted")
+    if mode == "Icons":
+        for width in range(320, 326):
+            strata.wait(lambda width=width: strata.window.find(role="label", name=f"{width}×180"),
+                        "second folder image dimensions")
     assert starts() <= 2, "navigation must reuse the process-wide pool"
     assert strata.application.log().count("browser worker completed") >= 12
     if persistent:

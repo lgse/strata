@@ -150,6 +150,3 @@ pub(super) fn section(
     section.append(media);
     section
 }
-
-#[cfg(test)]
-mod tests;

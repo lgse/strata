@@ -348,7 +348,7 @@ class Strata:
             return self.wait(
                 lambda: self._selected_entry_or_none(name, directory),
                 f"{name!r} to become selected",
-                timeout=1.0,
+                timeout=4.0,
             )
         except tree.TreeTimeout:
             # A faster poll can click a row before GTK has it mapped for

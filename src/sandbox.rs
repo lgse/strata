@@ -20,6 +20,7 @@ use crate::services::{ArchiveFormat, MediaPreviewSize, SecretString};
 pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
+pub(crate) mod raw_metadata;
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -107,6 +108,7 @@ pub(crate) enum ParseOperation {
         display: bool,
     },
     MediaMetadata,
+    RawMetadata,
     PreviewWorkbook,
     PreviewDocument,
     PreviewPdf(PdfRenderSize),
@@ -131,6 +133,7 @@ impl ParseOperation {
             Self::DocumentMath { display: true } => "document-math",
             Self::DocumentMath { display: false } => "document-inline-math",
             Self::MediaMetadata => "media-metadata",
+            Self::RawMetadata => "raw-metadata",
             Self::PreviewWorkbook => "preview-workbook",
             Self::PreviewDocument => "preview-document",
             Self::PreviewPdf(_) => "preview-pdf",
@@ -146,7 +149,7 @@ impl ParseOperation {
     fn output_name(&self) -> &'static str {
         if matches!(
             self,
-            Self::MediaMetadata | Self::PreviewWorkbook | Self::PreviewDocument
+            Self::MediaMetadata | Self::RawMetadata | Self::PreviewWorkbook | Self::PreviewDocument
         ) {
             "result.json"
         } else if self.is_media() {
@@ -172,6 +175,7 @@ impl ParseOperation {
             Self::PreviewPdf(size) => Some(size.image_limits()),
             Self::PreviewMedia(_)
             | Self::MediaMetadata
+            | Self::RawMetadata
             | Self::PreviewWorkbook
             | Self::PreviewDocument
             | Self::ArchiveList { .. } => None,
@@ -184,6 +188,7 @@ impl ParseOperation {
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::PreviewImage
+            | Self::RawMetadata
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
             Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
             Self::PreviewDocument => Some(crate::services::docx::DOCX_BYTE_LIMIT),
@@ -275,6 +280,13 @@ fn parse_sandboxed(
     {
         return Err("Preview input exceeds the supported size limit".to_owned());
     }
+    if let Some(result) = browser::preview(&input, &operation, cancellation) {
+        return result.map(|data| ParseOutput {
+            data,
+            page: 0,
+            pages: 0,
+        });
+    }
 
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
     let secret = if let ParseOperation::ArchiveList {
@@ -330,7 +342,10 @@ fn parse_sandboxed(
     }
 
     let result_path = output.path().join(operation.output_name());
-    let limit = if operation == ParseOperation::MediaMetadata {
+    let limit = if matches!(
+        operation,
+        ParseOperation::MediaMetadata | ParseOperation::RawMetadata
+    ) {
         metadata::MAX_METADATA_BYTES
     } else {
         MAX_OUTPUT_BYTES
@@ -500,6 +515,9 @@ fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
         "--ro-bind-try",
         "/etc/fonts",
         "/etc/fonts",
+        "--ro-bind-try",
+        "/var/cache/fontconfig",
+        "/var/cache/fontconfig",
         "--ro-bind-try",
         "/etc/ld.so.cache",
         "/etc/ld.so.cache",
@@ -685,6 +703,9 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
     }
     if matches!(operation, ParseOperation::PreviewDocument) {
         return crate::services::docx::RichTextData::from_json(data).is_ok();
+    }
+    if matches!(operation, ParseOperation::RawMetadata) {
+        return raw_metadata::RawMetadata::from_json(data).is_ok();
     }
     if matches!(operation, ParseOperation::MediaMetadata) {
         data.len() as u64 <= metadata::MAX_METADATA_BYTES

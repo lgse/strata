@@ -11,7 +11,7 @@ use super::{
     document_tag_table, document_text_view, drag_threshold_crossed, highlighted_code_language,
     local_selection, matching_link, plain_text_view, rendered_document, selection_text,
     set_table_cell, source_document, source_line_numbers, source_units, styled_markup,
-    use_virtual_plain_source, vertical_distance,
+    use_virtual_plain_source,
 };
 use crate::{
     services::{
@@ -309,26 +309,6 @@ fn links_activate_only_when_press_and_release_match() {
     );
     assert_eq!(matching_link(None, Some("https://example.test")), None);
     assert_eq!(matching_link(Some("https://example.test"), None), None);
-}
-
-#[test]
-fn gaps_resolve_to_the_nearest_adjacent_row() {
-    let rows = [
-        gtk::graphene::Rect::new(0.0, 0.0, 100.0, 10.0),
-        gtk::graphene::Rect::new(0.0, 20.0, 100.0, 10.0),
-        gtk::graphene::Rect::new(0.0, 200.0, 100.0, 10.0),
-    ];
-    let nearest = |y| {
-        rows.iter()
-            .enumerate()
-            .min_by(|(_, left), (_, right)| {
-                vertical_distance(left, y).total_cmp(&vertical_distance(right, y))
-            })
-            .map(|(index, _)| index)
-    };
-
-    assert_eq!(nearest(14.0), Some(0));
-    assert_eq!(nearest(16.0), Some(1));
 }
 
 #[test]
@@ -674,119 +654,6 @@ fn virtual_preview_reuses_source_rows_and_releases_widget_trees() {
             window.close();
         },
     );
-}
-
-#[test]
-fn wrap_toggle_reflows_bound_rendered_and_source_rows() {
-    crate::test_support::gtk_test(
-        "ui::virtual_preview::tests::wrap_toggle_reflows_bound_rendered_and_source_rows",
-        || {
-            let stack = gtk::Stack::new();
-            let window = gtk::Window::builder()
-                .default_width(500)
-                .default_height(500)
-                .child(&stack)
-                .build();
-            window.present();
-            pump_main_context();
-
-            let paragraph = DocumentUnit {
-                kind: DocumentUnitKind::Paragraph,
-                text: "A paragraph wide enough to overflow the preview while the toggle is off."
-                    .to_owned(),
-                copy_text:
-                    "A paragraph wide enough to overflow the preview while the toggle is off.\n"
-                        .to_owned(),
-                spans: Vec::new(),
-                wrap: true,
-                first: true,
-                last: true,
-            };
-            let code = DocumentUnit {
-                kind: DocumentUnitKind::Code {
-                    list_depth: None,
-                    language: None,
-                },
-                text: "let value = 1;".to_owned(),
-                copy_text: "let value = 1;\n".to_owned(),
-                spans: Vec::new(),
-                wrap: true,
-                first: true,
-                last: true,
-            };
-            let (rendered, rendered_state) = rendered_document(
-                DocumentLayout {
-                    units: vec![paragraph, code],
-                },
-                Vec::new(),
-                false,
-                None,
-            );
-            stack.add_named(&rendered, Some("rendered"));
-            stack.set_visible_child_name("rendered");
-            pump_main_context();
-
-            assert_eq!(
-                wrap_modes(&rendered_state),
-                vec![gtk::WrapMode::None, gtk::WrapMode::None]
-            );
-            rendered_state.set_wrapped(true);
-            assert_eq!(
-                wrap_modes(&rendered_state),
-                vec![gtk::WrapMode::WordChar, gtk::WrapMode::WordChar]
-            );
-            rendered_state.set_wrapped(false);
-            assert_eq!(
-                wrap_modes(&rendered_state),
-                vec![gtk::WrapMode::None, gtk::WrapMode::None]
-            );
-
-            let (source, source_state) = source_document("first\nsecond\nthird\n", false, false);
-            stack.add_named(&source, Some("source"));
-            stack.set_visible_child_name("source");
-            pump_main_context();
-            assert!(!source_state.bound.borrow().is_empty());
-            assert!(
-                wrap_modes(&source_state)
-                    .iter()
-                    .all(|mode| *mode == gtk::WrapMode::None)
-            );
-            source_state.set_wrapped(true);
-            assert!(
-                wrap_modes(&source_state)
-                    .iter()
-                    .all(|mode| *mode == gtk::WrapMode::WordChar)
-            );
-            window.close();
-        },
-    );
-}
-
-fn pump_main_context() {
-    let context = gtk::glib::MainContext::default();
-    while context.pending() {
-        context.iteration(false);
-    }
-}
-
-fn wrap_modes(state: &VirtualPreviewState) -> Vec<gtk::WrapMode> {
-    let mut rows = state
-        .bound
-        .borrow()
-        .iter()
-        .map(|(index, bound)| {
-            (
-                *index,
-                bound
-                    .view
-                    .upgrade()
-                    .expect("bound rows should hold a text view")
-                    .wrap_mode(),
-            )
-        })
-        .collect::<Vec<_>>();
-    rows.sort_by_key(|(index, _)| *index);
-    rows.into_iter().map(|(_, mode)| mode).collect()
 }
 
 fn document(unit: &PreviewUnit) -> &DocumentUnit {

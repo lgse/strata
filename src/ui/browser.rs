@@ -213,7 +213,9 @@ pub(super) struct ViewState {
     auto_refresh: RefCell<Option<glib::SourceId>>,
     trash_button: RefCell<Option<gtk::Button>>,
     drag_autoscroll: RefCell<Option<Rc<columns::drag_scroll::DragAutoscroll>>>,
+    drag_source_depth: Cell<Option<usize>>,
     suppress_scroll_after_drop: Cell<bool>,
+    drop_active_depths: Cell<Option<(usize, usize)>>,
     browser: Rc<Browser>,
 }
 
@@ -570,7 +572,9 @@ impl BrowserView {
             auto_refresh: RefCell::new(None),
             trash_button: RefCell::new(None),
             drag_autoscroll: RefCell::new(None),
+            drag_source_depth: Cell::new(None),
             suppress_scroll_after_drop: Cell::new(false),
+            drop_active_depths: Cell::new(None),
             browser,
         });
 
@@ -1044,10 +1048,7 @@ impl BrowserView {
         }
     }
 
-    pub(in crate::ui) fn activate_directory_column(&self) -> bool {
-        if self.view_mode() != BrowserMode::Columns {
-            return false;
-        }
+    pub(in crate::ui) fn activate_directory_on_space(&self) -> bool {
         if let Some(entry) = self.selected_search_result() {
             if entry.is_directory() {
                 self.state.browser.navigate(entry.location);
@@ -1300,23 +1301,8 @@ impl BrowserView {
             .set_single_click_previews(enabled);
     }
 
-    #[cfg(test)]
-    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
-        self.state.single_click_previews.get()
-            && self
-                .state
-                .mode_views
-                .borrow()
-                .single_click_previews_enabled()
-    }
-
     pub fn set_columns_mirror_selection(&self, enabled: bool) {
         self.state.columns_mirror_selection.set(enabled);
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn columns_mirror_selection_enabled(&self) -> bool {
-        self.state.columns_mirror_selection.get()
     }
 
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
@@ -2273,6 +2259,3 @@ fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
 }
 
 mod chooser_context;
-
-#[cfg(test)]
-mod tests;

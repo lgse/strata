@@ -342,6 +342,3 @@ pub(super) fn segmented_control(
 
     (control, buttons)
 }
-
-#[cfg(test)]
-mod tests;

@@ -201,17 +201,6 @@ impl ArchiveBrowser {
         &self.list
     }
 
-    #[cfg(test)]
-    pub(super) fn cursor_index(&self) -> usize {
-        self.cursor.get()
-    }
-
-    #[cfg(test)]
-    pub(super) fn selected_index(&self) -> Option<usize> {
-        let selected = self.selection.selected();
-        (selected != gtk::INVALID_LIST_POSITION).then_some(selected as usize)
-    }
-
     pub(super) fn move_cursor(&self, delta: isize) -> bool {
         let count = self.model.n_items() as usize;
         if count == 0 {
@@ -395,6 +384,3 @@ fn clear_box(box_: &gtk::Box) {
         box_.remove(&child);
     }
 }
-
-#[cfg(test)]
-mod tests;

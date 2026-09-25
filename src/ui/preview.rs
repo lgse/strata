@@ -28,6 +28,8 @@ mod archive;
 mod layout;
 mod media_layout;
 mod pdf_text;
+#[cfg(test)]
+mod pdf_ranges_tests;
 mod session;
 
 pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
@@ -136,8 +138,10 @@ struct PreviewState {
     document_preview: RefCell<Option<DocumentPreview>>,
     source_preview: SourcePreviewView,
     metadata: gtk::Box,
+    raw_details: super::raw_details::RawDetails,
+    raw_details_scroll: gtk::ScrolledWindow,
+    raw_metadata_load: RefCell<Option<super::raw_details::MetadataLoad>>,
     open: gtk::Button,
-    close_button: gtk::Button,
     print: gtk::Button,
     wrap: gtk::ToggleButton,
     text_view: RefCell<Option<sourceview5::View>>,
@@ -275,6 +279,21 @@ impl PreviewDrawer {
         content.set_vexpand(true);
         pane.append(&content);
 
+        let raw_details = super::raw_details::RawDetails::new();
+        raw_details.section.set_margin_start(16);
+        raw_details.section.set_margin_end(16);
+        raw_details.section.set_margin_bottom(12);
+        let raw_details_scroll = gtk::ScrolledWindow::builder()
+            .child(&raw_details.section)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
+            .max_content_height(240)
+            .visible(false)
+            .build();
+        raw_details_scroll.add_css_class("media-details-scroll");
+        pane.append(&raw_details_scroll);
+
         let revealer = gtk::Revealer::builder()
             .child(&pane)
             .transition_duration(0)
@@ -299,8 +318,10 @@ impl PreviewDrawer {
             document_preview: RefCell::new(None),
             source_preview: SourcePreviewView::new(),
             metadata,
+            raw_details,
+            raw_details_scroll,
+            raw_metadata_load: RefCell::new(None),
             open: open.clone(),
-            close_button: close.clone(),
             print: print.clone(),
             wrap: wrap.clone(),
             text_view: RefCell::new(None),
@@ -641,6 +662,8 @@ impl PreviewState {
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
+        self.raw_metadata_load.borrow_mut().take();
+        self.raw_details.reset();
         // Keep the displayed target during debounce: split synchronization must
         // not mistake a replacement request for an empty, closed drawer.
 
@@ -673,6 +696,7 @@ impl PreviewState {
                 self.load.borrow_mut().take();
                 self.cancel_loading();
                 self.pdf_loads.borrow_mut().clear();
+                self.clear_raw_details();
                 self.clear_content();
                 self.sizing.defer_load();
             }
@@ -714,12 +738,8 @@ impl PreviewState {
             });
         self.stop();
         self.pane.set_size_request(MIN_WIDTH, -1);
-        if tree_focused {
-            if self.sizing.is_compact() {
-                self.close_button.grab_focus();
-            } else if let Some(browser) = self.sizing.browser() {
-                browser.browser().focus_active();
-            }
+        if tree_focused && let Some(browser) = self.sizing.browser() {
+            browser.focus_file_view();
         }
     }
 
@@ -1023,6 +1043,12 @@ impl PreviewState {
         self.load_request(entry, pdf_page, render_document, archive_password);
     }
 
+    fn clear_raw_details(&self) {
+        self.raw_metadata_load.borrow_mut().take();
+        self.raw_details_scroll.set_visible(false);
+        self.raw_details.reset();
+    }
+
     fn load_request(
         self: &Rc<Self>,
         entry: FileEntry,
@@ -1030,6 +1056,16 @@ impl PreviewState {
         render_document: bool,
         archive_password: Option<SecretString>,
     ) {
+        self.raw_metadata_load.borrow_mut().take();
+        if super::raw_details::supports(&entry) {
+            let load = self
+                .raw_details
+                .load(entry.local_thumbnail_path().map(ToOwned::to_owned));
+            self.raw_metadata_load.replace(Some(load));
+            self.raw_details_scroll.set_visible(true);
+        } else {
+            self.clear_raw_details();
+        }
         self.metadata.set_visible(true);
         self.icon.set_visible(true);
         self.open.set_sensitive(true);
@@ -3340,6 +3376,3 @@ fn install_preview_drag(widget: &impl IsA<gtk::Widget>, state: &Rc<PreviewState>
     });
     widget.add_controller(drag);
 }
-
-#[cfg(test)]
-mod tests;
