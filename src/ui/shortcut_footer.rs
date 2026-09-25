@@ -21,6 +21,7 @@ pub(super) struct ShortcutFooter {
     more: gtk::MenuButton,
     popover: gtk::Popover,
     reference: gtk::Box,
+    scroll: gtk::ScrolledWindow,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
     tag: gtk::Label,
@@ -91,24 +92,20 @@ impl ShortcutFooter {
             .build();
         popover.add_css_class("shortcut-popover");
         let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         let title = gtk::Label::builder()
             .label("Keyboard shortcuts")
             .xalign(0.0)
             .hexpand(true)
             .build();
         title.add_css_class("shortcut-reference-title");
-        let close = gtk::Button::with_label("Close");
-        close.add_css_class("shortcut-reference-close");
-        let weak = popover.downgrade();
-        close.connect_clicked(move |_| {
-            if let Some(popover) = weak.upgrade() {
-                popover.popdown();
-            }
-        });
-        header.append(&title);
-        header.append(&close);
-        content.append(&header);
+        content.append(&title);
+        let dismiss_note = gtk::Label::builder()
+            .label("Press F1 again to close.")
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        dismiss_note.add_css_class("shortcut-reference-note");
+        content.append(&dismiss_note);
         let note = gtk::Label::builder()
             .label("Media controls use Ctrl+Alt. Plain keys keep browsing; text fields and dialogs keep native controls.")
             .xalign(0.0).wrap(true).build();
@@ -131,17 +128,32 @@ impl ShortcutFooter {
             .width_request(420)
             .focusable(true)
             .build();
+        scroll.add_css_class("shortcut-reference-scroll");
         content.append(&scroll);
         popover.set_child(Some(&content));
         let weak_scroll = scroll.downgrade();
+        let weak_popover = popover.downgrade();
         popover.connect_show(move |popover| {
-            if let Some(scroll) = weak_scroll.upgrade()
-                && let Some(window) = popover.root().and_downcast::<gtk::Window>()
-            {
+            let Some(scroll) = weak_scroll.upgrade() else {
+                return;
+            };
+            if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
                 scroll.vadjustment().set_value(scroll.vadjustment().lower());
                 scroll.set_max_content_height((window.height() - 150).clamp(100, 440));
                 scroll.set_width_request((window.width() - 60).clamp(260, 420));
             }
+            let scroll = scroll.downgrade();
+            let popover = weak_popover.clone();
+            // Show runs before the popover can take focus; grab it once mapped.
+            glib::idle_add_local_once(move || {
+                if popover
+                    .upgrade()
+                    .is_some_and(|popover| popover.is_visible())
+                    && let Some(scroll) = scroll.upgrade()
+                {
+                    scroll.grab_focus();
+                }
+            });
         });
         more.set_popover(Some(&popover));
         let focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>> =
@@ -208,6 +220,7 @@ impl ShortcutFooter {
             more,
             popover,
             reference,
+            scroll,
             focus_before,
             status_widgets,
             tag,
@@ -218,6 +231,15 @@ impl ShortcutFooter {
             chord,
             view_mode: Rc::new(Cell::new(mode)),
         };
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let shortcuts = footer.clone();
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            shortcuts
+                .handle_key(key, modifiers)
+                .unwrap_or(glib::Propagation::Proceed)
+        });
+        footer.popover.add_controller(keys);
         footer.set_mode(mode);
         footer
     }
@@ -438,6 +460,10 @@ impl ShortcutFooter {
             self.more.popdown();
             return Some(glib::Propagation::Stop);
         }
+        // The reference only scrolls vertically, so Left and Right move it too.
+        if !command_modifiers && self.scroll_reference(key) {
+            return Some(glib::Propagation::Stop);
+        }
         // The reference is read-only: never let a shortcut operate on files behind it.
         Some(
             if !command_modifiers
@@ -445,12 +471,6 @@ impl ShortcutFooter {
                     key,
                     gdk::Key::Tab
                         | gdk::Key::ISO_Left_Tab
-                        | gdk::Key::Up
-                        | gdk::Key::Down
-                        | gdk::Key::Left
-                        | gdk::Key::Right
-                        | gdk::Key::Page_Up
-                        | gdk::Key::Page_Down
                         | gdk::Key::Home
                         | gdk::Key::End
                         | gdk::Key::Return
@@ -463,6 +483,31 @@ impl ShortcutFooter {
                 glib::Propagation::Stop
             },
         )
+    }
+
+    fn scroll_reference(&self, key: gdk::Key) -> bool {
+        let adjustment = self.scroll.vadjustment();
+        let page = adjustment.page_size().max(1.0);
+        let step = if adjustment.step_increment() >= 1.0 {
+            adjustment.step_increment()
+        } else {
+            page / 10.0
+        };
+        let page_step = if adjustment.page_increment() >= 1.0 {
+            adjustment.page_increment()
+        } else {
+            page
+        };
+        let delta = match key {
+            gdk::Key::Up | gdk::Key::KP_Up | gdk::Key::Left | gdk::Key::KP_Left => -step,
+            gdk::Key::Down | gdk::Key::KP_Down | gdk::Key::Right | gdk::Key::KP_Right => step,
+            gdk::Key::Page_Up | gdk::Key::KP_Page_Up => -page_step,
+            gdk::Key::Page_Down | gdk::Key::KP_Page_Down => page_step,
+            _ => return false,
+        };
+        let limit = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+        adjustment.set_value((adjustment.value() + delta).clamp(adjustment.lower(), limit));
+        true
     }
 
     fn tilde_toggles(

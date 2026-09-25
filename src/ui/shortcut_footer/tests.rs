@@ -358,6 +358,68 @@ fn omastrata_reference_follows_the_active_map() {
             footer.handle_key(gdk::Key::F1, none);
             settle();
             assert!(footer.popover.is_visible());
+            assert_eq!(
+                footer
+                    .popover
+                    .child()
+                    .and_then(|child| child.first_child())
+                    .and_then(|title| title.next_sibling())
+                    .and_downcast::<gtk::Label>()
+                    .expect("dismiss note")
+                    .text(),
+                "Press F1 again to close."
+            );
+            assert!(
+                footer
+                    .popover
+                    .child()
+                    .is_none_or(|child| !subtree_has_button(&child)),
+                "the shortcut reference has no close button"
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
+                    focus == *footer.scroll.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.scroll)
+                }),
+                "the open reference takes keyboard focus"
+            );
+            let adjustment = footer.scroll.vadjustment();
+            assert!(
+                adjustment.upper() > adjustment.lower() + adjustment.page_size() + 1.0,
+                "the reference should overflow so scrolling can move"
+            );
+            let top = adjustment.value();
+            press_reference(&footer, gdk::Key::Down);
+            assert!(adjustment.value() > top, "Down scrolls the reference");
+            let stepped = adjustment.value();
+            press_reference(&footer, gdk::Key::Right);
+            assert!(adjustment.value() > stepped, "Right scrolls the reference");
+            press_reference(&footer, gdk::Key::Up);
+            press_reference(&footer, gdk::Key::Left);
+            assert!(
+                adjustment.value() <= top + 0.5,
+                "Up and Left return toward the start"
+            );
+            press_reference(&footer, gdk::Key::Page_Down);
+            assert!(
+                adjustment.value() > top + adjustment.step_increment().max(1.0),
+                "Page Down scrolls a page"
+            );
+            let paged = adjustment.value();
+            press_reference(&footer, gdk::Key::Page_Up);
+            assert!(adjustment.value() < paged, "Page Up scrolls back");
+            press_reference(&footer, gdk::Key::F1);
+            settle();
+            assert!(
+                !footer.popover.is_visible(),
+                "F1 from the open reference closes it"
+            );
+            assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
+                focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
+            }));
+            footer.handle_key(gdk::Key::F1, none);
+            settle();
+            assert!(footer.popover.is_visible());
             footer.handle_key(gdk::Key::F1, none);
             settle();
             assert!(!footer.popover.is_visible());
@@ -406,6 +468,36 @@ fn omastrata_reference_follows_the_active_map() {
             window.destroy();
         },
     );
+}
+
+fn press_reference(footer: &ShortcutFooter, key: gdk::Key) {
+    let controllers = footer.popover.observe_controllers();
+    let controller = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .next()
+        .expect("reference key controller");
+    assert!(
+        controller.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &gdk::ModifierType::empty()]),
+        "{key:?} should be handled by the open reference"
+    );
+}
+
+fn subtree_has_button(widget: &gtk::Widget) -> bool {
+    if widget.is::<gtk::Button>() || widget.is::<gtk::MenuButton>() {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if subtree_has_button(&current) {
+            return true;
+        }
+        child = current.next_sibling();
+    }
+    false
 }
 
 fn reference_labels(footer: &ShortcutFooter) -> Vec<String> {
