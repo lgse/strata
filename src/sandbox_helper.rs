@@ -23,6 +23,7 @@ use crate::{
 mod appimage;
 mod document_media;
 mod media;
+mod model;
 mod raw_metadata;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -103,6 +104,16 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             appimage::render(input, numeric_value()?.clamp(16, 256))?,
             None,
         ),
+        "thumbnail-model" => (
+            model::thumbnail(
+                input,
+                crate::services::ModelFormat::from_argument(value).ok_or("Invalid model format")?,
+                256,
+                256,
+                &|_| {},
+            )?,
+            None,
+        ),
         "preview-image" | "document-image" => (document_media::image(input, 800)?, None),
         "document-mermaid" => (document_media::mermaid(input)?, None),
         "document-math" => (document_media::math(input, true)?, None),
@@ -111,6 +122,24 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             let (page, size) = pdf_render_request(value)?;
             let (png, page, pages) = render_pdf_page(input, page, size)?;
             (png, Some(format!("{page} {pages}")))
+        }
+        "preview-model" => {
+            let progress = |stage| {
+                if let Ok(bytes) = serde_json::to_vec(&stage) {
+                    let pending = output.with_file_name("result.progress.tmp");
+                    if fs::write(&pending, bytes).is_ok() {
+                        let _ = fs::rename(pending, output.with_file_name("result.progress"));
+                    }
+                }
+            };
+            let png = match model::render_reporting(input, value, &progress) {
+                Ok(result) => result,
+                Err(message) => {
+                    let _ = fs::write(output.with_file_name("result.error"), message.as_bytes());
+                    return Err(message);
+                }
+            };
+            (png, None)
         }
         _ => return Err("Unknown preview helper operation".to_owned()),
     };
@@ -287,6 +316,14 @@ pub(crate) fn browser_render(
         Operation::Raw => response.png = render_raw_thumbnail(input, 256).unwrap_or_default(),
         Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
         Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
+        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail => {
+            let format = if operation == Operation::ThreeMfThumbnail {
+                crate::services::ModelFormat::ThreeMf
+            } else {
+                crate::services::ModelFormat::FreeCad
+            };
+            response.png = model::thumbnail(input, format, 256, 256, &|_| {}).unwrap_or_default();
+        }
         Operation::ImageMetadata => {
             response.metadata = svg_source(input)
                 .and_then(|source| document_media::svg_dimensions(&source))

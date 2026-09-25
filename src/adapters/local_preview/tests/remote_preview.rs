@@ -28,6 +28,7 @@ fn request(path: &Path, name: &str) -> PreviewRequest {
         render_document: false,
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
+        model_palette: crate::services::ModelPalette::default(),
         archive_password: None,
     }
 }
@@ -200,6 +201,7 @@ fn uri_images_stage_private_inputs_and_remove_them_after_rendering() {
                             assert_eq!(message, "decoder failure");
                         }
                         PreviewEvent::NeedsPassword { .. } => panic!("no password prompt expected"),
+                        PreviewEvent::Progress { .. } => panic!("no model progress expected"),
                     }
                     let path = staged_path
                         .lock()
@@ -286,6 +288,21 @@ fn unsupported_and_oversized_remote_inputs_fail_before_transfer_or_render() {
             let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
             for (name, size, message) in [
                 ("remote.pdf", MetadataValue::Unknown, "Remote PDF previews"),
+                (
+                    "remote.stl",
+                    MetadataValue::Unknown,
+                    "Remote model previews are not supported; copy the file locally first",
+                ),
+                (
+                    "remote.3mf",
+                    MetadataValue::Unknown,
+                    "Remote model previews are not supported; copy the file locally first",
+                ),
+                (
+                    "remote.FCStd",
+                    MetadataValue::Unknown,
+                    "Remote model previews are not supported; copy the file locally first",
+                ),
                 (
                     "photo.jpg",
                     MetadataValue::Known(65 * 1024 * 1024),

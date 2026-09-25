@@ -28,6 +28,8 @@ pub(crate) enum Operation {
     DocumentMermaid = 8,
     DocumentMath = 9,
     DocumentMathInline = 10,
+    ThreeMfThumbnail = 11,
+    FreeCadThumbnail = 12,
 }
 
 impl Operation {
@@ -43,6 +45,8 @@ impl Operation {
             8 => Ok(Self::DocumentMermaid),
             9 => Ok(Self::DocumentMath),
             10 => Ok(Self::DocumentMathInline),
+            11 => Ok(Self::ThreeMfThumbnail),
+            12 => Ok(Self::FreeCadThumbnail),
             _ => Err(io::Error::other("Unknown browser operation")),
         }
     }

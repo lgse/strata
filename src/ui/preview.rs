@@ -52,6 +52,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
         return false;
     }
+    if crate::services::is_model(&entry.native_name) {
+        return entry.location.native_path().is_some();
+    }
 
     let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
@@ -156,6 +159,7 @@ struct PreviewState {
     pending_show: RefCell<Option<glib::SourceId>>,
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
+    loading_label: RefCell<Option<gtk::Label>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
     print_load: RefCell<Option<LoadHandle>>,
     print_progress: RefCell<Option<PrintProgress>>,
@@ -169,6 +173,9 @@ struct PreviewState {
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
 }
+
+#[cfg(test)]
+mod tests;
 
 pub(super) const PREVIEW_LABEL: &str = "Preview";
 
@@ -336,6 +343,7 @@ impl PreviewDrawer {
             pending_show: RefCell::new(None),
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
+            loading_label: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
             print_load: RefCell::new(None),
             print_progress: RefCell::new(None),
@@ -413,6 +421,24 @@ impl PreviewDrawer {
                 preferences.set_preview_text_wrap(button.is_active());
             }
         });
+        let weak = Rc::downgrade(&state);
+        super::theme::ThemeManager::shared().bind_theme_preference(
+            &state.pane,
+            |manager| manager.active_model_palette(),
+            move |_, _| {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                let entry = state.current.borrow().clone();
+                if let Some(entry) = entry
+                    && crate::services::is_model(&entry.native_name)
+                    && state.revealer.reveals_child()
+                    && state.current_request.get().is_some()
+                {
+                    state.load(entry, 0);
+                }
+            },
+        );
         let weak = Rc::downgrade(&state);
         close.connect_clicked(move |_| {
             if let Some(state) = weak.upgrade() {
@@ -891,6 +917,7 @@ impl PreviewState {
                 render_document: false,
                 pdf_page,
                 media_size: self.media_preview_size(),
+                model_palette: super::theme::ThemeManager::shared().active_model_palette(),
                 archive_password: None,
             },
             emit,
@@ -955,6 +982,7 @@ impl PreviewState {
                         }
                     }
                     PreviewContent::Image
+                    | PreviewContent::Model { .. }
                     | PreviewContent::Media
                     | PreviewContent::SandboxedMedia { .. }
                     | PreviewContent::Archive { .. }
@@ -975,7 +1003,8 @@ impl PreviewState {
                 self.dismiss_print_progress();
                 show_print_error(parent.as_ref(), &message);
             }
-            PreviewEvent::Ready(_)
+            PreviewEvent::Progress { .. }
+            | PreviewEvent::Ready(_)
             | PreviewEvent::Failed { .. }
             | PreviewEvent::NeedsPassword { .. } => {}
         }
@@ -1100,6 +1129,7 @@ impl PreviewState {
                 render_document,
                 pdf_page,
                 media_size: self.media_preview_size(),
+                model_palette: super::theme::ThemeManager::shared().active_model_palette(),
                 archive_password,
             },
             emit,
@@ -1109,6 +1139,7 @@ impl PreviewState {
 
     fn handle_event(self: &Rc<Self>, expected: PreviewRequestId, event: PreviewEvent) {
         let response = match &event {
+            PreviewEvent::Progress { request_id, .. } => *request_id,
             PreviewEvent::Ready(preview) => preview.request_id,
             PreviewEvent::Failed { request_id, .. } => *request_id,
             PreviewEvent::NeedsPassword { request_id, .. } => *request_id,
@@ -1117,6 +1148,11 @@ impl PreviewState {
             return;
         }
         match event {
+            PreviewEvent::Progress { stage, .. } => {
+                if let Some(label) = self.loading_label.borrow().as_ref() {
+                    label.set_text(&stage.label());
+                }
+            }
             PreviewEvent::Ready(preview) if preview.request_id == expected => {
                 self.cancel_loading();
                 self.render(preview);
@@ -1277,12 +1313,16 @@ impl PreviewState {
                     super::virtual_preview::rendered_document(document, warnings, false, None);
                 self.content.append(&view);
             }
-            PreviewContent::Rasterized { png } => {
-                self.print.set_visible(true);
+            PreviewContent::Rasterized { png } | PreviewContent::Model { png, .. } => {
+                self.print
+                    .set_visible(!crate::services::is_model(&preview.entry.native_name));
                 let bytes = glib::Bytes::from_owned(png);
                 match gtk::gdk::Texture::from_bytes(&bytes) {
                     Ok(texture) => {
                         let picture = gtk::Picture::for_paintable(&texture);
+                        if crate::services::is_model(&preview.entry.native_name) {
+                            super::accessibility::set_label(&picture, "Model preview");
+                        }
                         picture.add_css_class("preview-image");
                         picture.set_can_shrink(true);
                         picture.set_content_fit(gtk::ContentFit::Contain);
@@ -1740,7 +1780,8 @@ impl PreviewState {
                     } if response_id == request_id => {
                         overlay.set_tooltip_text(Some("Unable to render this PDF page"));
                     }
-                    PreviewEvent::Ready(_)
+                    PreviewEvent::Progress { .. }
+                    | PreviewEvent::Ready(_)
                     | PreviewEvent::Failed { .. }
                     | PreviewEvent::NeedsPassword { .. } => return,
                 }
@@ -1757,6 +1798,7 @@ impl PreviewState {
                     render_document: false,
                     pdf_page: page_index,
                     media_size: render_size,
+                    model_palette: super::theme::ThemeManager::shared().active_model_palette(),
                     archive_password: None,
                 },
                 emit,
@@ -2141,6 +2183,17 @@ impl PreviewState {
         self.clear_content();
         self.cancel_loading();
         let weak = Rc::downgrade(self);
+        if self
+            .current
+            .borrow()
+            .as_ref()
+            .is_some_and(|entry| crate::services::is_model(&entry.native_name))
+        {
+            let label = gtk::Label::new(Some("Waiting for preview…"));
+            label.add_css_class("preview-feedback-detail");
+            label.set_wrap(true);
+            self.loading_label.replace(Some(label));
+        }
         let source = glib::timeout_add_local_once(PREVIEW_SPINNER_DELAY, move || {
             let Some(state) = weak.upgrade() else {
                 return;
@@ -2153,14 +2206,25 @@ impl PreviewState {
             spinner.add_css_class("preview-spinner");
             spinner.set_halign(gtk::Align::Center);
             spinner.set_valign(gtk::Align::Center);
-            spinner.set_vexpand(true);
             spinner.start();
-            state.content.append(&spinner);
+            if let Some(label) = state.loading_label.borrow().as_ref() {
+                let loading = gtk::Box::new(gtk::Orientation::Vertical, 12);
+                loading.set_halign(gtk::Align::Center);
+                loading.set_valign(gtk::Align::Center);
+                loading.set_vexpand(true);
+                loading.append(&spinner);
+                loading.append(label);
+                state.content.append(&loading);
+            } else {
+                spinner.set_vexpand(true);
+                state.content.append(&spinner);
+            }
         });
         self.loading_delay.replace(Some(source));
     }
 
     fn cancel_loading(&self) {
+        self.loading_label.borrow_mut().take();
         if let Some(source) = self.loading_delay.borrow_mut().take() {
             source.remove();
         }

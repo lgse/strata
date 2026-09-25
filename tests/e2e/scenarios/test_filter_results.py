@@ -309,11 +309,13 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
                 break
             strata.keyboard.press("Down")
         assert strata.menu_item("Properties").has_state("focused")
+        assert row.has_state("selected"), "menu navigation changed selection"
         strata.keyboard.press("Return")
     else:
         strata.choose_menu_item("Properties")
     dialog = strata.wait_for_dialog()
     assert target in dialog.dump()
+    assert row.has_state("selected"), "selection changed while Properties was opening"
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "result Properties to close")
     strata.wait(lambda: row.has_state("focused"), "Properties to restore the actual search result")

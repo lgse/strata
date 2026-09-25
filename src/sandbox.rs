@@ -15,7 +15,10 @@ use std::{
 
 use rustix::process::{Pid, Signal, kill_process_group};
 
-use crate::services::{ArchiveFormat, MediaPreviewSize, SecretString};
+use crate::services::{
+    ArchiveFormat, MediaPreviewSize, ModelFormat, ModelRender, SecretString,
+    model_preview::MAX_MODEL_INPUT_BYTES,
+};
 
 pub(crate) mod browser;
 pub(crate) mod media;
@@ -100,6 +103,7 @@ pub(crate) enum ParseOperation {
     ThumbnailPdf,
     ThumbnailVideo,
     ThumbnailAppImage,
+    ThumbnailModel(ModelFormat),
     PreviewImage,
     DocumentImage,
     DocumentMermaid,
@@ -111,6 +115,7 @@ pub(crate) enum ParseOperation {
     PreviewWorkbook,
     PreviewDocument,
     PreviewPdf(PdfRenderSize),
+    PreviewModel(ModelRender),
     PreviewMedia(MediaPreviewSize),
     ArchiveList {
         format: ArchiveFormat,
@@ -126,6 +131,7 @@ impl ParseOperation {
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
             Self::ThumbnailAppImage => "thumbnail-appimage",
+            Self::ThumbnailModel(_) => "thumbnail-model",
             Self::PreviewImage => "preview-image",
             Self::DocumentImage => "document-image",
             Self::DocumentMermaid => "document-mermaid",
@@ -136,6 +142,7 @@ impl ParseOperation {
             Self::PreviewWorkbook => "preview-workbook",
             Self::PreviewDocument => "preview-document",
             Self::PreviewPdf(_) => "preview-pdf",
+            Self::PreviewModel(_) => "preview-model",
             Self::PreviewMedia(_) => "preview-media",
             Self::ArchiveList { .. } => "archive-list",
         }
@@ -166,12 +173,17 @@ impl ParseOperation {
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::ThumbnailVideo
-            | Self::ThumbnailAppImage => Some((256, 256, 256 * 256)),
+            | Self::ThumbnailAppImage
+            | Self::ThumbnailModel(_) => Some((256, 256, 256 * 256)),
             Self::PreviewImage
             | Self::DocumentImage
             | Self::DocumentMermaid
             | Self::DocumentMath { .. } => Some((800, 800, 800 * 800)),
             Self::PreviewPdf(size) => Some(size.image_limits()),
+            Self::PreviewModel(render) => {
+                let size = MediaPreviewSize::new(render.size.width, render.size.height);
+                Some((size.width as u32, size.height as u32, 1280 * 1280))
+            }
             Self::PreviewMedia(_)
             | Self::MediaMetadata
             | Self::RawMetadata
@@ -189,6 +201,7 @@ impl ParseOperation {
             | Self::PreviewImage
             | Self::RawMetadata
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
+            Self::PreviewModel(_) | Self::ThumbnailModel(_) => Some(MAX_MODEL_INPUT_BYTES),
             Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
             Self::PreviewDocument => Some(crate::services::docx::DOCX_BYTE_LIMIT),
             Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
@@ -233,8 +246,33 @@ pub(crate) fn parse(
     media_backend: MediaPreviewBackend,
     cancellation: &Cancellation,
 ) -> Result<ParseOutput, String> {
+    parse_with_progress(
+        input,
+        operation,
+        value,
+        media_backend,
+        cancellation,
+        &|_| {},
+    )
+}
+
+pub(crate) fn parse_with_progress(
+    input: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    cancellation: &Cancellation,
+    progress: &dyn Fn(crate::services::ModelPreviewStage),
+) -> Result<ParseOutput, String> {
     let archive = matches!(operation, ParseOperation::ArchiveList { .. });
-    let result = parse_sandboxed(input, operation, value, media_backend, cancellation);
+    let result = parse_sandboxed(
+        input,
+        operation,
+        value,
+        media_backend,
+        cancellation,
+        progress,
+    );
     match result {
         Err(error)
             if archive && !cancellation.is_cancelled() && !is_archive_contract_message(&error) =>
@@ -257,6 +295,7 @@ fn parse_sandboxed(
     value: i32,
     media_backend: MediaPreviewBackend,
     cancellation: &Cancellation,
+    progress: &dyn Fn(crate::services::ModelPreviewStage),
 ) -> Result<ParseOutput, String> {
     if cancellation.is_cancelled() {
         return Err("Preview cancelled".to_owned());
@@ -276,7 +315,14 @@ fn parse_sandboxed(
         .input_size_limit()
         .is_some_and(|limit| input_metadata.len() > limit)
     {
-        return Err("Preview input exceeds the supported size limit".to_owned());
+        return Err(if matches!(operation, ParseOperation::PreviewModel(_)) {
+            format!(
+                "This model file exceeds the {} MiB preview limit. Try a smaller or lower-detail version.",
+                MAX_MODEL_INPUT_BYTES / (1024 * 1024)
+            )
+        } else {
+            "Preview input exceeds the supported size limit".to_owned()
+        });
     }
     if let Some(result) = browser::preview(&input, &operation, cancellation) {
         return result.map(|data| ParseOutput {
@@ -334,8 +380,27 @@ fn parse_sandboxed(
     } else {
         WALL_TIME_LIMIT
     };
-    let status = wait_for_renderer(&mut child, cancellation, timeout)?;
+    let mut previous = None;
+    let mut poll_progress = || {
+        if matches!(operation, ParseOperation::PreviewModel(_))
+            && let Ok(bytes) = read_private_output(&output.path().join("result.progress"), 128)
+            && let Ok(stage) = serde_json::from_slice::<crate::services::ModelPreviewStage>(&bytes)
+            && !matches!(stage, crate::services::ModelPreviewStage::Rendering { triangles } if triangles > crate::services::model_preview::MAX_MODEL_TRIANGLES)
+            && previous != Some(stage)
+        {
+            previous = Some(stage);
+            progress(stage);
+        }
+    };
+    let status =
+        wait_for_renderer_reporting(&mut child, cancellation, timeout, &mut poll_progress)?;
     if !status.success() {
+        if matches!(operation, ParseOperation::PreviewModel(_))
+            && let Ok(data) = read_private_output(&output.path().join("result.error"), 512)
+            && let Ok(message) = String::from_utf8(data)
+        {
+            return Err(message);
+        }
         return Err("The sandboxed preview renderer failed".to_owned());
     }
 
@@ -436,6 +501,15 @@ fn wait_for_renderer(
     cancellation: &Cancellation,
     wall_time_limit: Duration,
 ) -> Result<ExitStatus, String> {
+    wait_for_renderer_reporting(child, cancellation, wall_time_limit, &mut || {})
+}
+
+fn wait_for_renderer_reporting(
+    child: &mut Child,
+    cancellation: &Cancellation,
+    wall_time_limit: Duration,
+    progress: &mut dyn FnMut(),
+) -> Result<ExitStatus, String> {
     let started = Instant::now();
     let deadline = started + wall_time_limit;
     let pidfd = child_pidfd(child);
@@ -448,6 +522,7 @@ fn wait_for_renderer(
             terminate(child);
             return Err("The preview renderer timed out".to_owned());
         }
+        progress();
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
             Ok(None) => wait_step(pidfd.as_ref(), deadline),
@@ -595,6 +670,15 @@ fn sandbox_command(
                 let size = PdfRenderSize::new(size.width, size.height);
                 format!("{value}:{}x{}", size.width, size.height)
             }
+            ParseOperation::PreviewModel(render) => format!(
+                "{}:{}x{}:{:06x}:{:06x}",
+                render.format.argument(),
+                render.size.width,
+                render.size.height,
+                render.palette.accent,
+                render.palette.surface,
+            ),
+            ParseOperation::ThumbnailModel(format) => format.argument().to_owned(),
             ParseOperation::ArchiveList { format, .. } => format.extension().to_owned(),
             _ => value.to_string(),
         };
@@ -713,7 +797,7 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
     }
 }
 
-fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+pub(crate) fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
     if !data.starts_with(b"\x89PNG\r\n\x1a\n")
         || data.get(8..12)? != 13u32.to_be_bytes()
         || data.get(12..16)? != b"IHDR"
