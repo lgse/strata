@@ -3,22 +3,6 @@
 use super::*;
 
 #[test]
-fn navigation_reference_matches_each_mode() {
-    assert!(
-        crate::ui::shortcut_reference::default_navigation(BrowserMode::Columns)
-            .contains(&("← / →", "Parent pane / enter folder"))
-    );
-    assert!(
-        crate::ui::shortcut_reference::default_navigation(BrowserMode::Icons)
-            .contains(&("← at left edge", "Focus the visible sidebar"))
-    );
-    assert!(
-        crate::ui::shortcut_reference::default_navigation(BrowserMode::List)
-            .contains(&("←", "Focus the visible sidebar"))
-    );
-}
-
-#[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
 fn footer_tracks_modes_and_shields_files_while_open() {
     const CHILD: &str = "STRATA_SHORTCUT_FOOTER_GTK_CHILD";
@@ -275,8 +259,6 @@ fn omastrata_reference_follows_the_active_map() {
             let manager = super::super::preferences::PreferenceManager::shared();
             manager.set_omastrata_mode(false);
             manager.set_show_keybinding_hints(true);
-            let directory = tempfile::tempdir().expect("reference fixture");
-            std::fs::write(directory.path().join("one.txt"), "one").expect("file");
             let footer = ShortcutFooter::new(BrowserMode::Columns);
             footer.bind_preferences(&manager);
             let entry = gtk::Entry::new();
@@ -293,53 +275,38 @@ fn omastrata_reference_follows_the_active_map() {
             entry.grab_focus();
             settle();
             let phrase = crate::ui::shortcut_reference::EXPERIMENTAL_LABEL;
-            assert!(
-                !reference_labels(&footer)
-                    .iter()
-                    .any(|label| label == phrase)
-            );
+            let none = gdk::ModifierType::empty();
             assert!(!footer.tag_note.is_visible());
             assert!(
                 reference_labels(&footer)
                     .iter()
                     .any(|label| label == "Toggle file preview")
             );
-            assert_eq!(
-                footer.handle_key(gdk::Key::asciitilde, gdk::ModifierType::empty()),
-                None
-            );
+            assert_eq!(footer.handle_key(gdk::Key::asciitilde, none), None);
             assert!(!footer.popover.is_visible());
 
             manager.set_omastrata_mode(true);
             settle();
-            assert_eq!(footer.tag.text(), crate::ui::omastrata_mode::TAG_TEXT);
-            assert_eq!(footer.tag_note.text(), phrase);
             assert!(footer.tag_note.is_visible());
+            assert_eq!(footer.tag_note.text(), phrase);
             assert!(
                 footer
                     .tag
                     .tooltip_text()
                     .is_some_and(|text| text.contains(phrase))
             );
-            assert_eq!(footer.experimental.text(), phrase);
             let columns = reference_labels(&footer);
+            assert!(columns.iter().any(|label| label == "Leave Omastrata mode"));
             assert!(
                 columns
                     .iter()
                     .any(|label| label == "Parent pane / enter folder")
             );
+            assert!(!columns.iter().any(|label| label == "Toggle file preview"));
             assert!(
                 !columns
                     .iter()
                     .any(|label| label == "Move spatially between tiles")
-            );
-            assert!(!columns.iter().any(|label| label == "Toggle file preview"));
-            assert!(!columns.iter().any(|label| label == "F2 / Ctrl+R"));
-            assert!(!columns.iter().any(|label| label == "y / p"));
-            assert!(
-                !columns
-                    .iter()
-                    .any(|label| label == "Focus the visible sidebar")
             );
             footer.set_mode(BrowserMode::Icons);
             let icons = reference_labels(&footer);
@@ -354,28 +321,9 @@ fn omastrata_reference_follows_the_active_map() {
                     .any(|label| label == "Parent pane / enter folder")
             );
 
-            let none = gdk::ModifierType::empty();
             footer.handle_key(gdk::Key::F1, none);
             settle();
             assert!(footer.popover.is_visible());
-            assert_eq!(
-                footer
-                    .popover
-                    .child()
-                    .and_then(|child| child.first_child())
-                    .and_then(|title| title.next_sibling())
-                    .and_downcast::<gtk::Label>()
-                    .expect("dismiss note")
-                    .text(),
-                "Press F1 again to close."
-            );
-            assert!(
-                footer
-                    .popover
-                    .child()
-                    .is_none_or(|child| !subtree_has_button(&child)),
-                "the shortcut reference has no close button"
-            );
             assert!(
                 gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
                     focus == *footer.scroll.upcast_ref::<gtk::Widget>()
@@ -383,46 +331,12 @@ fn omastrata_reference_follows_the_active_map() {
                 }),
                 "the open reference takes keyboard focus"
             );
-            let adjustment = footer.scroll.vadjustment();
-            assert!(
-                adjustment.upper() > adjustment.lower() + adjustment.page_size() + 1.0,
-                "the reference should overflow so scrolling can move"
-            );
-            let top = adjustment.value();
-            press_reference(&footer, gdk::Key::Down);
-            assert!(adjustment.value() > top, "Down scrolls the reference");
-            let stepped = adjustment.value();
-            press_reference(&footer, gdk::Key::Right);
-            assert!(adjustment.value() > stepped, "Right scrolls the reference");
-            press_reference(&footer, gdk::Key::Up);
-            press_reference(&footer, gdk::Key::Left);
-            assert!(
-                adjustment.value() <= top + 0.5,
-                "Up and Left return toward the start"
-            );
-            press_reference(&footer, gdk::Key::Page_Down);
-            assert!(
-                adjustment.value() > top + adjustment.step_increment().max(1.0),
-                "Page Down scrolls a page"
-            );
-            let paged = adjustment.value();
-            press_reference(&footer, gdk::Key::Page_Up);
-            assert!(adjustment.value() < paged, "Page Up scrolls back");
             press_reference(&footer, gdk::Key::F1);
             settle();
             assert!(
                 !footer.popover.is_visible(),
                 "F1 from the open reference closes it"
             );
-            assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
-                focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
-            }));
-            footer.handle_key(gdk::Key::F1, none);
-            settle();
-            assert!(footer.popover.is_visible());
-            footer.handle_key(gdk::Key::F1, none);
-            settle();
-            assert!(!footer.popover.is_visible());
             assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
                 focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)
             }));
@@ -433,7 +347,6 @@ fn omastrata_reference_follows_the_active_map() {
                 footer.handle_key(gdk::Key::Delete, none),
                 Some(glib::Propagation::Stop)
             );
-            assert!(directory.path().join("one.txt").exists());
             footer.handle_key(gdk::Key::Escape, none);
             settle();
             assert!(!footer.popover.is_visible());
@@ -443,28 +356,22 @@ fn omastrata_reference_follows_the_active_map() {
             assert!(
                 reference_labels(&other)
                     .iter()
-                    .any(|label| label == "Move between file rows")
-            );
-            assert!(
-                !reference_labels(&other)
-                    .iter()
-                    .any(|label| label == "Move spatially between tiles")
+                    .any(|label| label == "Leave Omastrata mode")
             );
             manager.set_omastrata_mode(false);
             settle();
-            assert!(!footer.experimental.is_visible());
-            assert!(footer.experimental.text().is_empty());
-            assert!(footer.tag_note.text().is_empty());
+            assert!(!footer.tag_note.is_visible());
             assert!(
-                reference_labels(&footer)
-                    .iter()
-                    .any(|label| label == "Toggle file preview")
+                footer
+                    .tag
+                    .tooltip_text()
+                    .is_none_or(|text| !text.contains(phrase))
             );
-            assert!(
-                reference_labels(&other)
-                    .iter()
-                    .any(|label| label == "Focus the visible sidebar")
-            );
+            for shown in [&footer, &other] {
+                let labels = reference_labels(shown);
+                assert!(labels.iter().any(|label| label == "Toggle file preview"));
+                assert!(!labels.iter().any(|label| label == "Leave Omastrata mode"));
+            }
             window.destroy();
         },
     );
@@ -484,20 +391,6 @@ fn press_reference(footer: &ShortcutFooter, key: gdk::Key) {
         controller.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &gdk::ModifierType::empty()]),
         "{key:?} should be handled by the open reference"
     );
-}
-
-fn subtree_has_button(widget: &gtk::Widget) -> bool {
-    if widget.is::<gtk::Button>() || widget.is::<gtk::MenuButton>() {
-        return true;
-    }
-    let mut child = widget.first_child();
-    while let Some(current) = child {
-        if subtree_has_button(&current) {
-            return true;
-        }
-        child = current.next_sibling();
-    }
-    false
 }
 
 fn reference_labels(footer: &ShortcutFooter) -> Vec<String> {

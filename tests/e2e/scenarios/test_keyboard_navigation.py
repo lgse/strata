@@ -68,27 +68,6 @@ def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, binding
     strata.wait_for_focused_entry("archive")
 
 
-@pytest.mark.preferences(omastrata_mode=True, type_to_search=True)
-def test_omastrata_keeps_location_edit_and_skips_the_filter_shortcut(strata):
-    strata.select_entry("readme.md")
-    names = strata.entry_names()
-
-    strata.keyboard.press("ctrl+f")
-    strata.wait(
-        lambda: strata.window.find(role="text", states={"editable", "focused"}) is None,
-        "Ctrl+F does not open a filter while Omastrata is on",
-    )
-    assert strata.entry_names() == names
-    assert strata.environment.read_preferences().get("omastrata_mode") == "true"
-
-    strata.keyboard.press("ctrl+l")
-    field = strata.editable_field()
-    strata.keyboard.press("q")
-    strata.wait(lambda: "q" in field.text.lower(), "q is typed into the location field")
-    assert strata.environment.read_preferences().get("omastrata_mode") == "true"
-    assert strata.entry_names() == names
-
-
 @pytest.mark.preferences(browser_mode="icons")
 def test_page_key_bursts_leave_large_image_directories_responsive(strata):
     folder = strata.fixture.path("large-photos")

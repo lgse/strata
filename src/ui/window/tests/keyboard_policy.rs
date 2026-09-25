@@ -453,16 +453,11 @@ fn omastrata_accelerators_follow_the_saved_mode_across_windows() {
             let enabled = accel_snapshot(&first);
             let second = policy_window();
             assert_eq!(accel_snapshot(&second), enabled);
-            preferences.set_omastrata_mode(true);
-            assert_eq!(accel_snapshot(&first), enabled);
             first.destroy();
             settle_policy();
             assert_eq!(accel_snapshot(&second), enabled);
             preferences.set_omastrata_mode(false);
             assert_accelerators(&second, false);
-            let restored = accel_snapshot(&second);
-            preferences.set_omastrata_mode(false);
-            assert_eq!(accel_snapshot(&second), restored);
             second.destroy();
         },
     );

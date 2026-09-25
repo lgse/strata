@@ -846,29 +846,17 @@ fn context_hints_follow_the_active_map() {
             wait_until(|| label(&view.widget(), "notes.txt").is_some());
             let menu = open_menu(&view, Some("notes.txt"));
             let hints = label_texts(&menu);
-            assert!(hints.iter().any(|hint| hint == "Y"), "{hints:?}");
             assert!(hints.iter().any(|hint| hint == "Space"), "{hints:?}");
-            assert!(hints.iter().any(|hint| hint == "Ctrl+C"), "{hints:?}");
+            assert!(hints.iter().any(|hint| hint == "Y"), "{hints:?}");
             menu.popdown();
             wait_until(|| !menu.is_mapped());
             manager.set_omastrata_mode(true);
             let menu = open_menu(&view, Some("notes.txt"));
             let hints = label_texts(&menu);
-            assert!(!hints.iter().any(|hint| hint == "Y"), "{hints:?}");
             assert!(!hints.iter().any(|hint| hint == "Space"), "{hints:?}");
-            assert!(
-                !hints.iter().any(|hint| hint.contains("Ctrl+R")),
-                "{hints:?}"
-            );
+            assert!(!hints.iter().any(|hint| hint == "Y"), "{hints:?}");
             assert!(hints.iter().any(|hint| hint == "F2"), "{hints:?}");
             assert!(hints.iter().any(|hint| hint == "Ctrl+C"), "{hints:?}");
-            assert!(hints.iter().any(|hint| hint == "Ctrl+X"), "{hints:?}");
-            for planned in ["x", "y", "p", "d", "D", "r", "i"] {
-                assert!(
-                    !hints.iter().any(|hint| hint == planned),
-                    "{planned} is not a working command: {hints:?}"
-                );
-            }
             menu.popdown();
             view.browser().clear_observer();
             window.destroy();

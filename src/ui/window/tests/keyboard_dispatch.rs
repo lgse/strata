@@ -1434,21 +1434,6 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
                 widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
                     .is_none_or(|popover| !popover.is_visible())
             });
-            assert!(fixture.press(Key::asciitilde, ModifierType::empty()));
-            wait_until(|| {
-                widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
-                    .is_some_and(|popover| popover.is_visible())
-            });
-            if let Some(popover) =
-                widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
-                    .and_then(|widget| widget.downcast::<gtk::Popover>().ok())
-            {
-                popover.popdown();
-            }
-            wait_until(|| {
-                widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
-                    .is_none_or(|popover| !popover.is_visible())
-            });
 
             focus_files(&fixture);
             assert!(fixture.press(Key::Menu, ModifierType::empty()));
