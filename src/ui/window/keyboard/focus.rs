@@ -17,10 +17,69 @@ use crate::{
 
 impl Dispatcher {
     pub(super) fn focus_navigation(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
+        if self.type_to_search.preferences.omastrata_mode() {
+            if let Some(result) = self.omastrata_pane_focus(browser, event) {
+                return Some(result);
+            }
+            return self.popover_navigation(event);
+        }
         self.popover_navigation(event)
             .or_else(|| self.top_bar_navigation(browser, event))
             .or_else(|| self.header_navigation(event))
             .or_else(|| self.sidebar_navigation(browser, event))
+    }
+
+    /// Tab and arrows stay inside the Columns, List, and Icons panes.
+    /// Focus that is already on surrounding chrome returns to the file list.
+    fn omastrata_pane_focus(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
+        if event.text_has_focus() || self.focus_in_popover() {
+            return None;
+        }
+        let tab =
+            crate::ui::focus_navigation::plain_tab_direction(event.key, event.modifiers).is_some();
+        let arrow = crate::ui::focus_navigation::arrow_direction(event.key);
+        let vim = vim_focus_direction(event.key);
+        if !tab && arrow.is_none() && vim.is_none() {
+            return None;
+        }
+        let panes = self.view.widget();
+        let inside = crate::ui::focus_navigation::contains_widget(&panes, event.focused.as_ref());
+        if !inside {
+            browser.focus_active();
+            return (tab || arrow.is_none()).then_some(Propagation::Stop);
+        }
+        if tab {
+            return Some(Propagation::Stop);
+        }
+        if self.view.header_actions_have_focus() {
+            return self.confined_header_navigation(event);
+        }
+        if self.view.item_view_has_focus() {
+            return None;
+        }
+        if let Some(direction) = arrow.or(vim) {
+            self.view.widget().child_focus(direction);
+        }
+        Some(Propagation::Stop)
+    }
+
+    fn confined_header_navigation(&self, event: &KeyEvent) -> KeyResult {
+        if !event.without(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK) {
+            return None;
+        }
+        match event.key {
+            Key::h | Key::Left => {
+                self.view.move_header_focus(gtk::DirectionType::Left);
+            }
+            Key::l | Key::Right => {
+                self.view.move_header_focus(gtk::DirectionType::Right);
+            }
+            Key::j | Key::Down => {
+                self.view.focus_items_from_header();
+            }
+            _ => {}
+        }
+        Some(Propagation::Stop)
     }
 
     fn popover_navigation(&self, event: &KeyEvent) -> KeyResult {

@@ -366,7 +366,9 @@ lives in `ui/omastrata_mode.rs`, not on `Browser`. Per-window preference binding
 update the shared `gtk::Application` accelerators idempotently; window destruction
 does not restore them while other windows still use Omastrata mode.
 Chrome-visibility bindings hide pane Close/filter/refresh/sort in both
-interactive browsers and the chooser. The preference is
+interactive browsers and the chooser. Tab and arrow focus stay inside the
+Columns, List, and Icons panes; sidebar, header, and footer controls stay
+pointer-operated. The preference is
 `PreferenceManager::omastrata_mode` in `ui/preferences.rs`, not a theme setting.
 
 Initial binding applies the saved mode without transition teardown. Real transitions

@@ -79,6 +79,32 @@ pub(super) fn arrow_direction(key: gdk::Key) -> Option<gtk::DirectionType> {
     }
 }
 
+pub(super) fn plain_tab_direction(
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+) -> Option<gtk::DirectionType> {
+    if modifiers.intersects(
+        gdk::ModifierType::CONTROL_MASK
+            | gdk::ModifierType::ALT_MASK
+            | gdk::ModifierType::SUPER_MASK,
+    ) {
+        return None;
+    }
+    match key {
+        gdk::Key::ISO_Left_Tab => Some(gtk::DirectionType::TabBackward),
+        gdk::Key::Tab => Some(if modifiers.contains(gdk::ModifierType::SHIFT_MASK) {
+            gtk::DirectionType::TabBackward
+        } else {
+            gtk::DirectionType::TabForward
+        }),
+        _ => None,
+    }
+}
+
+pub(super) fn contains_widget(container: &gtk::Widget, focused: Option<&gtk::Widget>) -> bool {
+    focused.is_some_and(|focused| focused == container || focused.is_ancestor(container))
+}
+
 pub(super) fn editable(widget: &gtk::Widget) -> bool {
     widget.is::<gtk::Editable>()
         || widget.is::<gtk::TextView>()

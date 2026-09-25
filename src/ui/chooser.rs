@@ -1501,7 +1501,9 @@ fn install_shortcuts(
                 .as_ref()
                 .is_none_or(|widget| !widget.is_mapped() || !widget.is_sensitive())
             {
-                if let Some(filename) = state.filename.as_ref() {
+                if preferences.omastrata_mode() {
+                    browser.focus_active();
+                } else if let Some(filename) = state.filename.as_ref() {
                     filename.grab_focus();
                 } else {
                     sidebar_toggle.grab_focus();
@@ -1596,6 +1598,9 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if is_sidebar_focus_shortcut(key, modifiers) {
+            if preferences.omastrata_mode() {
+                return glib::Propagation::Stop;
+            }
             if sidebar_has_focus {
                 let restored = focus_before_sidebar
                     .borrow_mut()
@@ -1716,11 +1721,21 @@ fn install_shortcuts(
                 return glib::Propagation::Proceed;
             }
         }
+        if preferences.omastrata_mode()
+            && super::focus_navigation::plain_tab_direction(key, modifiers).is_some()
+        {
+            if !super::focus_navigation::contains_widget(&state.view.widget(), focused.as_ref()) {
+                browser.focus_active();
+            }
+            return glib::Propagation::Stop;
+        }
         let mut header_left_boundary = false;
         if state.view.header_actions_have_focus() && !control && !alt {
             match key {
                 gtk::gdk::Key::h | gtk::gdk::Key::Left => {
-                    if state.view.move_header_focus(gtk::DirectionType::Left) {
+                    if state.view.move_header_focus(gtk::DirectionType::Left)
+                        || preferences.omastrata_mode()
+                    {
                         return glib::Propagation::Stop;
                     }
                     header_left_boundary = true;
@@ -1742,7 +1757,12 @@ fn install_shortcuts(
             && let Some(direction) =
                 vim_focus_direction(key).or_else(|| super::focus_navigation::arrow_direction(key))
         {
-            if direction == gtk::DirectionType::Right {
+            if preferences.omastrata_mode() {
+                browser.focus_active();
+                if super::focus_navigation::arrow_direction(key).is_none() {
+                    return glib::Propagation::Stop;
+                }
+            } else if direction == gtk::DirectionType::Right {
                 focus_before_sidebar.borrow_mut().take();
                 browser.focus_active();
             } else if !sidebar_widget.child_focus(direction) && direction == gtk::DirectionType::Up
@@ -1750,7 +1770,9 @@ fn install_shortcuts(
                 sidebar_toggle.grab_focus();
                 state.window.set_focus_visible(true);
             }
-            return glib::Propagation::Stop;
+            if !preferences.omastrata_mode() {
+                return glib::Propagation::Stop;
+            }
         }
         if key == gtk::gdk::Key::BackSpace
             && !control
@@ -1760,7 +1782,16 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if !control && !alt && !state.view.item_view_has_focus() && !header_left_boundary {
-            if !shift && let Some(direction) = super::focus_navigation::arrow_direction(key) {
+            if preferences.omastrata_mode()
+                && (super::focus_navigation::arrow_direction(key).is_some()
+                    || vim_focus_direction(key).is_some())
+            {
+                browser.focus_active();
+                if super::focus_navigation::arrow_direction(key).is_none() {
+                    return glib::Propagation::Stop;
+                }
+            } else if !shift && let Some(direction) = super::focus_navigation::arrow_direction(key)
+            {
                 if direction == gtk::DirectionType::Up
                     && focused.as_ref().is_some_and(|focused| {
                         let mut widget = Some(focused.clone());
@@ -1779,8 +1810,10 @@ fn install_shortcuts(
                 if super::focus_navigation::move_focus(state.window.upcast_ref(), direction) {
                     return glib::Propagation::Stop;
                 }
+                return glib::Propagation::Proceed;
+            } else {
+                return glib::Propagation::Proceed;
             }
-            return glib::Propagation::Proceed;
         }
         if key == gtk::gdk::Key::Left
             && !control
@@ -1789,7 +1822,7 @@ fn install_shortcuts(
             && sidebar_toggle.is_active()
             && state.view.item_view_has_focus()
             && state.view.item_at_sidebar_edge()
-            && !PreferenceManager::shared().arrow_navigation_scoped()
+            && !PreferenceManager::shared().arrow_navigation_scoped_active()
         {
             focus_before_sidebar.replace(focused.clone());
             sidebar_state.focus_active_place();
@@ -1827,7 +1860,7 @@ fn install_shortcuts(
             }
             if !shift
                 && key == gtk::gdk::Key::Up
-                && !PreferenceManager::shared().arrow_navigation_scoped()
+                && !PreferenceManager::shared().arrow_navigation_scoped_active()
                 && state.view.focus_header_from_top_item()
             {
                 return glib::Propagation::Stop;
@@ -1883,7 +1916,7 @@ fn install_shortcuts(
         }
         if !shift
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
-            && !PreferenceManager::shared().arrow_navigation_scoped()
+            && !PreferenceManager::shared().arrow_navigation_scoped_active()
             && state.view.focus_header_from_top_item()
         {
             return glib::Propagation::Stop;
@@ -1902,7 +1935,7 @@ fn install_shortcuts(
                 if !control
                     && state.view.first_column_has_focus()
                     && sidebar_toggle.is_active()
-                    && !PreferenceManager::shared().arrow_navigation_scoped() =>
+                    && !PreferenceManager::shared().arrow_navigation_scoped_active() =>
             {
                 focus_before_sidebar.replace(focused.clone());
                 sidebar_state.focus_active_place();

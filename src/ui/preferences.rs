@@ -617,9 +617,10 @@ impl PreferenceManager {
         self.type_to_search() && !self.omastrata_mode()
     }
 
-    /// Saved arrow scoping is ignored while Omastrata mode is on.
+    /// Arrows stay in the file panes while Omastrata mode is on.
+    /// The saved preference applies only while that mode is off.
     pub fn arrow_navigation_scoped_active(&self) -> bool {
-        self.arrow_navigation_scoped() && !self.omastrata_mode()
+        self.omastrata_mode() || self.arrow_navigation_scoped()
     }
 
     pub fn show_keybinding_hints(&self) -> bool {

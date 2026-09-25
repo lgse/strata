@@ -209,7 +209,9 @@ Accept/Cancel stay; List column headings stay),
 disables type-to-search and the conflicting default accelerators, and installs
 the Yazi-style map with footer prompts (`/` `?` `f` `s` `a` `r` `g Space`
 `z`/`Z`), `g`-chord keycaps, and non-conflicting GUI keys (`Ctrl+C`/`X`/`V`,
-`F2`, `F5`, `Delete`, …). **`s`** is current-folder recursive name search;
+`F2`, `F5`, `Delete`, …). Keyboard navigation stays in the Columns, List, and
+Icons panes. The sidebar, window header, footer, and other controls outside
+those panes stay pointer-operated. **`s`** is current-folder recursive name search;
 **`S`** is unbound. Toggle with **Ctrl+Shift+M**, leave with **q**, close the window with **Q**. The
 preference is defined in `src/ui/preferences.rs`, saved as `omastrata_mode` in
 `settings.toml`, and live-updates every window. Real mode transitions clear

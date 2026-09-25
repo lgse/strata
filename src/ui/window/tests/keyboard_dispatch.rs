@@ -852,6 +852,125 @@ fn arrow_scope_preference_keeps_up_in_the_file_list() {
 }
 
 #[test]
+fn omastrata_keeps_keyboard_navigation_inside_the_file_panes() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::omastrata_keeps_keyboard_navigation_inside_the_file_panes",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_arrow_navigation_scoped(false);
+            preferences.set_omastrata_mode(true);
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                fixture.window.present();
+                fixture.view.browser().select(0, 0);
+                focus_files(&fixture);
+
+                for (key, modifiers) in [
+                    (Key::Up, ModifierType::empty()),
+                    (Key::Tab, ModifierType::empty()),
+                    (Key::ISO_Left_Tab, ModifierType::empty()),
+                    (Key::Tab, ModifierType::SHIFT_MASK),
+                    (
+                        Key::b,
+                        ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                    ),
+                ] {
+                    focus_files(&fixture);
+                    fixture.press(key, modifiers);
+                    assert!(
+                        fixture.view.item_view_has_focus(),
+                        "{mode:?} {key:?} left the file panes"
+                    );
+                    assert!(
+                        !sidebar_has_focus(&fixture),
+                        "{mode:?} {key:?} focused the sidebar"
+                    );
+                }
+
+                let origin = fixture.view.browser().active_location();
+                focus_files(&fixture);
+                fixture.press(Key::Left, ModifierType::empty());
+                assert!(
+                    file_panes_have_focus(&fixture),
+                    "{mode:?} Left left the file panes"
+                );
+                assert!(!sidebar_has_focus(&fixture), "{mode:?}");
+                if fixture.view.browser().active_location() != origin
+                    && let Some(origin) = origin
+                {
+                    fixture.view.browser().navigate(origin);
+                    wait_until(|| {
+                        fixture
+                            .view
+                            .browser()
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading)
+                    });
+                }
+                fixture.view.browser().select(0, 0);
+                focus_files(&fixture);
+                if mode == BrowserMode::Columns {
+                    assert!(fixture.press(Key::Down, ModifierType::empty()));
+                    assert_eq!(fixture.selected(), [1], "{mode:?}");
+                    assert!(fixture.view.item_view_has_focus());
+                }
+
+                assert!(
+                    fixture.sidebar.state.focus_active_place(),
+                    "{mode:?} sidebar place"
+                );
+                wait_until(|| sidebar_has_focus(&fixture));
+                fixture.press(Key::j, ModifierType::empty());
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?} j must return from the sidebar to the files"
+                );
+                assert!(
+                    fixture.sidebar.state.focus_active_place(),
+                    "{mode:?} sidebar place"
+                );
+                wait_until(|| sidebar_has_focus(&fixture));
+                fixture.press(Key::Down, ModifierType::empty());
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?} Down from the sidebar must return to the files"
+                );
+
+                assert!(fixture.sidebar_toggle.grab_focus(), "{mode:?}");
+                fixture.press(Key::Right, ModifierType::empty());
+                assert!(fixture.view.item_view_has_focus(), "{mode:?}");
+                assert!(!fixture.sidebar_toggle.has_focus(), "{mode:?}");
+
+                let shortcuts =
+                    widget_with_class(fixture.window.upcast_ref(), "shortcut-footer-button")
+                        .expect("shortcuts button");
+                wait_until(|| shortcuts.is_mapped());
+                assert!(shortcuts.grab_focus(), "{mode:?}");
+                fixture.press(Key::Tab, ModifierType::empty());
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?} Tab from the footer must return to the files"
+                );
+            }
+
+            focus_files(&fixture);
+            assert!(fixture.press(Key::l, ModifierType::CONTROL_MASK));
+            assert!(fixture.view.location_has_focus());
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            assert!(!fixture.view.location_has_focus());
+
+            preferences.set_omastrata_mode(false);
+            fixture.view.set_view_mode(BrowserMode::List);
+            fixture.view.browser().select(0, 0);
+            focus_files(&fixture);
+            fixture.press(Key::Up, ModifierType::empty());
+            wait_until(|| fixture.view.header_actions_have_focus());
+        },
+    );
+}
+
+#[test]
 fn right_from_the_sidebar_returns_to_the_files_after_the_header() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::right_from_the_sidebar_returns_to_the_files_after_the_header",
@@ -1271,6 +1390,18 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
             window.destroy();
         },
     );
+}
+
+fn file_panes_have_focus(fixture: &KeyboardFixture) -> bool {
+    let panes = fixture.view.widget();
+    gtk::prelude::RootExt::focus(&fixture.window)
+        .is_some_and(|focused| focused == panes || focused.is_ancestor(&panes))
+}
+
+fn sidebar_has_focus(fixture: &KeyboardFixture) -> bool {
+    gtk::prelude::RootExt::focus(&fixture.window).is_some_and(|focused| {
+        focused == fixture.sidebar.widget || focused.is_ancestor(&fixture.sidebar.widget)
+    })
 }
 
 fn focus_files(fixture: &KeyboardFixture) {

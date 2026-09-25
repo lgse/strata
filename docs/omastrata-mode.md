@@ -292,19 +292,17 @@ rather than moving the hidden directory cursor. **Ctrl+R** inverts **f** matches
 but is inactive for recursive **s** hits. Once the preview owns keys, its scrolling
 map takes precedence.
 
-## Sidebar
+## Sidebar and surrounding controls
 
-**Ctrl+Shift+B** focuses the visible sidebar. It does not show a hidden
-sidebar; use the header toggle for that.
+Keyboard navigation stays in the Columns, List, and Icons panes. **Tab**,
+**Shift+Tab**, and the arrow keys move among the files there. The sidebar,
+window header, footer, preview chrome, and other controls outside those panes
+stay pointer-operated. When one of those controls already has focus, the next
+**Tab** or arrow key returns to the file list.
 
-| Key | Action |
-| --- | --- |
-| **j** / **k** (or **↓** / **↑**) | Move between places |
-| **l** / **Enter** / **Space** | Activate the focused place or device control |
-| **h** / **←** / **Backspace** | Return to the file list |
-
-Header buttons reached with Tab use **Enter** / **Space** to activate;
-**h** / **j** return to the files.
+**Ctrl+Shift+B** stays with the file list while the mode is on. Show or hide
+the sidebar with the header toggle. **Ctrl+L** still edits the location bar.
+Menus, dialogs, text fields, and the shortcut reference keep their own keys.
 
 ## Still bound
 
