@@ -9,8 +9,7 @@ use std::{
 };
 
 pub(super) fn image(path: &Path, edge: u32) -> Result<Vec<u8>, String> {
-    // An SVG resvg rejects still reaches the raster loaders, which decode some
-    // dialects resvg does not.
+    // Other loaders accept SVG dialects resvg rejects.
     if let Some(source) = super::svg_source(path)
         && let Ok(rendered) = svg(&source, edge)
     {
@@ -85,8 +84,6 @@ pub(super) struct RenderedSvg {
 
 pub(super) fn svg(source: &str, edge: u32) -> Result<RenderedSvg, String> {
     let mut options = svg_options();
-    // System font discovery parses every installed face; only pay it when the
-    // document actually has text to lay out.
     if source.contains("<text") {
         load_text_fonts(source, &mut options);
         // Without fontconfig integration, fontdb's generic aliases can name missing
@@ -138,7 +135,6 @@ const FONT_FILE_LIMIT: usize = 32;
 const FONT_LIST_LIMIT: u64 = 4 * 1024 * 1024;
 const FONT_FAMILY_LIMIT: usize = 16;
 
-// First real family to try per generic alias, in preference order.
 const GENERIC_FAMILIES: &[&[&str]] = &[
     &[
         "DejaVu Sans",
@@ -163,10 +159,7 @@ const GENERIC_FAMILIES: &[&[&str]] = &[
     ],
 ];
 
-// fontconfig's cache resolves family names to files in tens of milliseconds,
-// while fontdb's scan parses every installed face. Non-ASCII documents keep the
-// full scan so glyph fallback can reach every installed script; `&#…;`
-// references can encode non-ASCII glyphs inside otherwise-ASCII sources.
+// Escaped non-ASCII glyphs need the full font fallback scan even in ASCII sources.
 fn needs_full_font_scan(source: &str) -> bool {
     !source.is_ascii() || source.contains("&#")
 }
@@ -235,8 +228,6 @@ fn resolve_font_files(source: &str) -> Option<Vec<PathBuf>> {
     (!paths.is_empty()).then_some(paths)
 }
 
-/// `font-family` appears as an attribute (`font-family="A, B"`) and inside CSS
-/// (`font-family: A`); both forms end at a quote, `;`, or tag boundary.
 fn svg_font_families(source: &str) -> Vec<String> {
     let mut families = Vec::new();
     for (index, _) in source.match_indices("font-family") {

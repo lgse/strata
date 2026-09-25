@@ -103,9 +103,7 @@ struct Cached {
     completed: Option<Instant>,
 }
 
-// The operation distinguishes render sizes: thumbnails and previews of one file
-// produce different output and must not share an entry. Each pool keeps its own
-// cache so document renders cannot evict directory thumbnails.
+// A source version may have distinct render sizes; keep operations separate.
 type Cache = VecDeque<((FileKey, Operation), Arc<Mutex<Cached>>)>;
 
 fn cache_entry(cache: &Mutex<Cache>, key: FileKey, operation: Operation) -> Arc<Mutex<Cached>> {
@@ -176,8 +174,6 @@ pub(crate) fn metadata(
     .ok_or_else(|| "Media details unavailable".into())
 }
 
-/// Quick previews and document media reuse the pooled workers instead of
-/// spawning a one-shot sandbox per render. `None` keeps the caller's fallback.
 pub(crate) fn preview(
     path: &Path,
     operation: &ParseOperation,
@@ -846,8 +842,6 @@ impl<R: io::Read + std::os::fd::AsFd> io::Read for DeadlineReader<'_, R> {
                     "Browser renderer timed out",
                 ));
             }
-            // Poll in quanta so a cancelled preview releases its worker
-            // instead of waiting out the absolute deadline.
             let wait = remaining.min(WAIT_QUANTUM);
             let timeout = Timespec {
                 tv_sec: wait.as_secs() as i64,

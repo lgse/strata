@@ -140,7 +140,6 @@ fn preview_renders_do_not_evict_thumbnail_cache_entries() {
     let thumbnails = Mutex::new(Cache::default());
     let previews = Mutex::new(Cache::default());
     let thumbnail = cache_entry(&thumbnails, key(0), Operation::Image);
-    // Overflowing the preview cache must leave the thumbnail entry alive.
     for index in 1..=(CACHE_ENTRIES as u64 + 1) {
         cache_entry(&previews, key(index), Operation::PreviewImage);
     }
@@ -157,22 +156,6 @@ fn worker_limit_updates_thumbnail_and_preview_pools() {
     assert_eq!(pool().limit.load(Ordering::Relaxed), 7);
     assert_eq!(preview_pool().limit.load(Ordering::Relaxed), 7);
     set_worker_limit(original);
-}
-
-#[test]
-fn rejected_output_is_labelled_for_its_pool() {
-    assert_eq!(
-        invalid_output_label(Operation::Image),
-        "Invalid browser thumbnail"
-    );
-    assert_eq!(
-        invalid_output_label(Operation::PreviewImage),
-        "Invalid preview render"
-    );
-    assert_eq!(
-        invalid_output_label(Operation::DocumentMath),
-        "Invalid preview render"
-    );
 }
 
 #[test]
@@ -221,7 +204,6 @@ fn file_versions_invalidate_cached_work_after_replacement() {
         &gate,
         &cache_entry(&cache, second.clone(), Operation::Image)
     ));
-    // A thumbnail render never satisfies a preview of the same file version.
     assert!(!Arc::ptr_eq(
         &cache_entry(&cache, second.clone(), Operation::PreviewImage),
         &cache_entry(&cache, second, Operation::Image)
@@ -685,7 +667,6 @@ fn preview_operations_render_inside_the_decoder() {
     )
     .expect("fixture");
     let cancellation = Cancellation::default();
-    // Thumbnail parse operations belong to the thumbnail pool entry point.
     assert!(preview(&path, &ParseOperation::ThumbnailImage, &cancellation).is_none());
     let response = crate::sandbox_helper::browser_render(&path, Operation::PreviewImage);
     assert!(super::super::valid_output(

@@ -169,7 +169,6 @@ fn write_media_metadata(input: &Path, output: &Path) -> Result<(), String> {
     fs::write(output, read_media_metadata(input)?).map_err(|error| error.to_string())
 }
 
-/// Worker inputs are descriptors without filenames; detect SVG by content.
 fn svg_source(input: &Path) -> Option<String> {
     let mut file = fs::File::open(input).ok()?;
     let mut bytes = Vec::new();
@@ -261,8 +260,7 @@ pub(crate) fn browser_render(
         |(width, height)| video_stream_metadata(width, height).unwrap_or_default();
     match operation {
         Operation::Image => {
-            // GdkPixbuf loads SVG through an out-of-process glycin loader that
-            // fails inside this sandbox; resvg renders it directly.
+            // glycin's nested sandbox cannot run here; use resvg first.
             if let Some(source) = svg_source(input)
                 && let Ok(rendered) = document_media::svg(&source, 256)
             {
