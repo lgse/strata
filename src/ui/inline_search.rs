@@ -205,7 +205,15 @@ impl InlineSearch {
     }
 
     pub fn selected_entry(&self) -> Option<FileEntry> {
-        self.selected_entries()?.into_iter().next()
+        let state = self.state.as_ref()?;
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return None;
+        }
+        state
+            .collection
+            .current_position()
+            .and_then(|position| collection_entry(&state.collection.sorted, position))
+            .or_else(|| state.selected_entries().into_iter().next())
     }
 
     pub fn selected_entries(&self) -> Option<Vec<FileEntry>> {
@@ -268,6 +276,14 @@ impl InlineSearch {
     }
 
     pub fn focus_result(&self, path: &Path) -> bool {
+        self.focus_result_with_selection(path, false)
+    }
+
+    pub fn select_result(&self, path: &Path) -> bool {
+        self.focus_result_with_selection(path, true)
+    }
+
+    fn focus_result_with_selection(&self, path: &Path, exclusive: bool) -> bool {
         let Some(state) = self.state.as_ref() else {
             return false;
         };
@@ -283,9 +299,10 @@ impl InlineSearch {
             return false;
         };
         let position = position as u32;
-        state
-            .collection
-            .focus(position, !state.collection.selection.is_selected(position))
+        state.collection.focus(
+            position,
+            exclusive || !state.collection.selection.is_selected(position),
+        )
     }
 
     pub fn refresh_cut_rows(&self) {

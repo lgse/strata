@@ -157,10 +157,13 @@ impl PreviewDrawer {
         let weak = Rc::downgrade(&self.state);
         let weak_browser = browser.downgrade();
         browser.connect_search_selection_changed(Rc::new(move || {
+            let request_at_selection = weak.upgrade().and_then(|state| state.current_request.get());
             let weak = weak.clone();
             let weak_browser = weak_browser.clone();
             glib::idle_add_local_once(move || {
-                let Some(state) = weak.upgrade().filter(|state| state.is_enabled()) else {
+                let Some(state) = weak.upgrade().filter(|state| {
+                    state.is_enabled() && state.current_request.get() == request_at_selection
+                }) else {
                     return;
                 };
                 let Some(browser) = weak_browser.upgrade() else {

@@ -1493,6 +1493,9 @@ pub(super) fn preview_context_entry(
     if let Some(position) = current_context_position(state, depth, position, &entry) {
         state.browser.preview(depth, position);
     } else {
+        if let Some(path) = entry.location.native_path() {
+            state.mode_views.borrow().select_search_result(path);
+        }
         state.browser.request_preview(entry);
     }
 }
