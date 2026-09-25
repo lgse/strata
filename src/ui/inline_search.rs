@@ -275,6 +275,28 @@ impl InlineSearch {
             .collect()
     }
 
+    pub(in crate::ui) fn focus_current(&self) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        state.collection.view.grab_focus()
+    }
+
+    /// The focused search row, when results are on screen.
+    pub(super) fn selected_anchor(&self) -> Option<(gtk::Widget, FileEntry)> {
+        let state = self.state.as_ref()?;
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return None;
+        }
+        let position = state.collection.current_position()?;
+        let entry = collection_entry(&state.collection.sorted, position)?;
+        let (_, widget) = state.collection.bound_at(position)?;
+        Some((widget, entry))
+    }
+
     pub fn focus_result(&self, path: &Path) -> bool {
         self.focus_result_with_selection(path, false)
     }
@@ -440,11 +462,12 @@ fn install_marquee(
 pub(super) fn wrap(
     content: &impl IsA<gtk::Widget>,
     entry: &gtk::Entry,
-    root: Option<PathBuf>,
+    root: impl Fn() -> Option<PathBuf> + 'static,
     browser: &Rc<Browser>,
     options: SearchCollectionOptions,
 ) -> InlineSearch {
-    let Some(root) = root else {
+    let root = Rc::new(root);
+    let Some(initial_root) = root() else {
         return InlineSearch {
             widget: content.clone().upcast(),
             state: None,
@@ -469,7 +492,7 @@ pub(super) fn wrap(
     let (collection, scroll, overlay) = build_collection(
         presentation,
         recursive.clone(),
-        root.clone(),
+        initial_root.clone(),
         CollectionBehavior {
             multiple_selection: multiple_selection.clone(),
             activate: activate.clone(),
@@ -609,9 +632,12 @@ pub(super) fn wrap(
                 .is_some_and(|browser| browser.preferences().show_hidden);
             let weak = Rc::downgrade(state);
             let browser = weak_browser.clone();
+            let Some(root) = root() else {
+                return;
+            };
             state.session.update(
                 super::search_session::SearchInput {
-                    root: root.clone(),
+                    root,
                     show_hidden,
                     recursive: is_recursive,
                 },

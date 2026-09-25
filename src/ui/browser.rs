@@ -1361,6 +1361,27 @@ impl BrowserView {
         }
     }
 
+    /// Opens or closes the folder-peek popover for the focused directory.
+    /// Hover peeking's keyboard suppression does not apply. Focus stays put.
+    pub fn toggle_folder_peek(&self) {
+        if self.state.peek.borrow().is_some() {
+            self.state.browser.close_peek();
+            self.keyboard_navigation();
+            return;
+        }
+        self.keyboard_navigation();
+        self.state.open_keyboard_peek();
+    }
+
+    pub fn focus_search_results(&self) -> bool {
+        self.state.mode_views.borrow().focus_search_results()
+    }
+
+    #[cfg(test)]
+    pub fn focus_search_result(&self, path: &std::path::Path) -> bool {
+        self.state.mode_views.borrow().focus_search_result(path)
+    }
+
     pub fn keyboard_navigation(&self) {
         self.state
             .input_ownership

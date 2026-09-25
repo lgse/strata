@@ -298,31 +298,37 @@ const OMASTRATA_SETTINGS: &[Binding] = &[
     Binding {
         category: "Navigation",
         action: "Open item",
-        note: "o in List and Columns",
+        note: "",
         keys: "Enter / o",
     },
     Binding {
         category: "Navigation",
+        action: "Toggle folder peek",
+        note: "Icons",
+        keys: "i",
+    },
+    Binding {
+        category: "Navigation",
         action: "Back / forward",
-        note: "H / L in List and Columns",
+        note: "",
         keys: "H / L / Alt + ← / Alt + →",
     },
     Binding {
         category: "Navigation",
         action: "First / last item",
-        note: "G in List and Columns",
+        note: "",
         keys: "Home / G / End",
     },
     Binding {
         category: "Navigation",
         action: "Move half a page",
-        note: "List and Columns",
+        note: "",
         keys: "Ctrl + U / Ctrl + D",
     },
     Binding {
         category: "Navigation",
         action: "Move one page",
-        note: "Ctrl + B / F in List and Columns",
+        note: "",
         keys: "Ctrl + B / Ctrl + F / PgUp / PgDn",
     },
     Binding {
@@ -639,20 +645,18 @@ pub(crate) fn default_navigation(mode: BrowserMode) -> Vec<(&'static str, &'stat
 fn omastrata_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
     match mode {
         BrowserMode::Columns | BrowserMode::List => omastrata_listing_navigation(mode),
-        BrowserMode::Icons => {
-            let mut shortcuts = vec![
-                ("↑ ↓ ← →", "Move spatially between tiles"),
-                ("Enter", "Open the focused item"),
-            ];
-            shortcuts.extend_from_slice(&[
-                ("Backspace / Alt+↑", "Go to the parent folder"),
-                ("Alt+← / Alt+→", "Back / forward in history"),
-                ("Home / End", "First / last item"),
-                ("Ctrl+↑ / Ctrl+↓", "First / last item"),
-                ("PgUp / PgDn", "Move one page"),
-            ]);
-            shortcuts
-        }
+        BrowserMode::Icons => vec![
+            ("h / j / k / l / ↑ ↓ ← →", "Move spatially between tiles"),
+            ("Enter / o", "Open the focused item"),
+            ("i", "Toggle folder peek for the focused directory"),
+            ("Backspace / Alt+↑", "Go to the parent folder"),
+            ("H / L / Alt+← / Alt+→", "Back / forward in history"),
+            ("Home", "First item"),
+            ("G / End", "Last item"),
+            ("Ctrl+↑ / Ctrl+↓", "First / last item"),
+            ("Ctrl+U / Ctrl+D", "Move half a page"),
+            ("Ctrl+B / Ctrl+F / PgUp / PgDn", "Move one page"),
+        ],
     }
 }
 

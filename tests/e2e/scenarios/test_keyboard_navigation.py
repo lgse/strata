@@ -68,6 +68,77 @@ def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, binding
     strata.wait_for_focused_entry("archive")
 
 
+@pytest.mark.preferences(browser_mode="icons", type_to_search=False)
+def test_omastrata_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
+    """Home-row Icons motion, including an edge, an empty folder, search hits, and i."""
+
+    strata.keyboard.press("ctrl+shift+m")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("omastrata_mode") == "true",
+        "Omastrata mode to turn on",
+    )
+    root = strata.current_directory()
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    for key in ("Left", "h", "KP_Left"):
+        strata.keyboard.press(key)
+        strata.wait_for_focused_entry("archive")
+        assert strata.current_directory() == root
+
+    empty = strata.fixture.path("empty-icons")
+    empty.mkdir()
+    strata.keyboard.press("F5")
+    strata.select_entry("empty-icons")
+    strata.keyboard.press("o")
+    strata.wait_for_directory("empty-icons")
+    for key in ("h", "j", "k", "l", "Left", "Down", "i"):
+        strata.keyboard.press(key)
+        assert strata.current_directory() == "empty-icons"
+        assert strata.peek() is None
+    strata.keyboard.press("BackSpace")
+    strata.wait_for_directory(root)
+
+    strata.select_entry("documents")
+    strata.keyboard.press("i")
+    strata.wait(lambda: strata.peek() is not None, "i to open the folder peek")
+    assert strata.current_directory() == root
+    assert strata.focused_name() == "documents"
+    strata.keyboard.press("i")
+    strata.wait(lambda: strata.peek() is None, "a second i to close the folder peek")
+    strata.select_entry("readme.md")
+    strata.keyboard.press("i")
+    assert strata.peek() is None
+    assert strata.current_directory() == root
+
+    strata.keyboard.press("ctrl+shift+m")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("omastrata_mode") == "false",
+        "Omastrata mode to turn off",
+    )
+    strata.keyboard.press("ctrl+f")
+    strata.editable_field()
+    strata.keyboard.type_text("txt")
+    strata.wait(lambda: len(strata.matches()) >= 2, "icon search hits")
+    strata.keyboard.press("Down")
+    strata.wait(
+        lambda: strata.focused_name() in strata.matches(),
+        "Down to focus a search hit",
+    )
+    strata.keyboard.press("ctrl+shift+m")
+    strata.wait(
+        lambda: strata.environment.read_preferences().get("omastrata_mode") == "true",
+        "Omastrata mode to turn on over search results",
+    )
+    before = strata.current_directory()
+    shown = list(strata.matches())
+    strata.keyboard.press("Down")
+    strata.keyboard.press("j")
+    assert strata.current_directory() == before
+    assert strata.matches() == shown, "directional keys dismissed the search results"
+    assert strata.focused_name() in shown
+    assert strata.peek() is None
+
+
 @pytest.mark.preferences(browser_mode="icons")
 def test_page_key_bursts_leave_large_image_directories_responsive(strata):
     folder = strata.fixture.path("large-photos")

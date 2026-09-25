@@ -108,6 +108,68 @@ fn native_arrow_aliases_use_gtk_spatial_selection() {
 }
 
 #[test]
+fn spatial_aliases_share_a_grid_destination() {
+    crate::test_support::gtk_test(
+        "ui::focus_navigation::tests::spatial_aliases_share_a_grid_destination",
+        || {
+            let model = gtk::StringList::new(&["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
+            let selection = gtk::SingleSelection::new(Some(model));
+            let factory = gtk::SignalListItemFactory::new();
+            factory.connect_setup(|_, object| {
+                let item = object.downcast_ref::<gtk::ListItem>().expect("list item");
+                let label = gtk::Label::new(Some("Item"));
+                label.set_size_request(80, 40);
+                item.set_child(Some(&label));
+            });
+            let grid = gtk::GridView::builder()
+                .model(&selection)
+                .factory(&factory)
+                .min_columns(3)
+                .max_columns(3)
+                .build();
+            let scroll = gtk::ScrolledWindow::builder().child(&grid).build();
+            let window = gtk::Window::builder()
+                .child(&scroll)
+                .default_width(400)
+                .default_height(500)
+                .build();
+            window.present();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while grid.width() == 0 {
+                glib::MainContext::default().iteration(false);
+                assert!(std::time::Instant::now() < deadline);
+            }
+            assert!(grid.grab_focus());
+            let aliases = [
+                (gdk::Key::h, gdk::Key::Left, gdk::Key::KP_Left, 0u32),
+                (gdk::Key::l, gdk::Key::Right, gdk::Key::KP_Right, 4),
+                (gdk::Key::k, gdk::Key::Up, gdk::Key::KP_Up, 4),
+                (gdk::Key::j, gdk::Key::Down, gdk::Key::KP_Down, 4),
+            ];
+            for (letter, arrow, keypad, start) in aliases {
+                let mut landed = Vec::new();
+                for key in [letter, arrow, keypad] {
+                    selection.set_selected(start);
+                    let motion = spatial_arrow(key).expect("spatial alias");
+                    assert!(activate_native_arrow(&window, motion));
+                    landed.push(selection.selected());
+                }
+                assert!(
+                    landed.iter().all(|position| *position == landed[0]),
+                    "{letter:?} landed on {landed:?}"
+                );
+                if start == 0 {
+                    assert_eq!(landed[0], 0, "the left edge stays put");
+                } else {
+                    assert_ne!(landed[0], start);
+                }
+            }
+            window.close();
+        },
+    );
+}
+
+#[test]
 fn directional_neighbors_prefer_aligned_controls_and_exclude_the_opposite_direction() {
     let origin = gtk::graphene::Rect::new(100.0, 100.0, 40.0, 30.0);
     let right = gtk::graphene::Rect::new(160.0, 100.0, 40.0, 30.0);
