@@ -175,7 +175,7 @@ impl Dispatcher {
                 self.view.cancel_pending_click_rename();
                 let activated_directory = event
                     .without(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
-                    && self.view.activate_directory_column();
+                    && self.view.activate_directory_on_space();
                 if !activated_directory {
                     self.preview.toggle(
                         preview_target(browser.focused_entry()),

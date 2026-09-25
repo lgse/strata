@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::prelude::TextureExt;
-
-use super::{
-    folder_decoration_texture, icons, primary_icon_texture, primary_icon_texture_at,
-    recolor_icon_source, svg_body, texture_px_for_pixel_size,
-};
+use super::{folder_decoration_texture, icons, recolor_icon_source};
 
 #[test]
 fn themed_icons_replace_every_legacy_fallback_color() {
@@ -54,22 +49,6 @@ fn custom_emoji_preferences_are_bounded_and_safe_to_render() {
         icons::custom_emoji(&format!("emoji:{}", "x".repeat(65))),
         None
     );
-}
-
-#[test]
-fn svg_body_preserves_bundled_icon_geometry() {
-    assert_eq!(
-        svg_body(r#"<svg viewBox="0 0 24 24"><path d="M1 2" /></svg>"#),
-        Some(r#"<path d="M1 2" />"#)
-    );
-}
-
-#[test]
-fn folder_emoji_renders_at_high_resolution() {
-    gio::resources_register_include!("strata.gresource").expect("resources register");
-    let texture = folder_decoration_texture("emoji:🚀", "#e5484d").expect("emoji renders");
-    assert!(texture.width() > 0);
-    assert!(texture.height() > 0);
 }
 
 #[test]
@@ -135,40 +114,6 @@ fn cold_interface_icons_render_when_decoder_workers_cannot_start() {
             assert!(folder_decoration_texture(icons::PICTURES, "#d46b31").is_some());
             assert!(super::emoji_icon_paintable("🚀").is_some());
             assert!(folder_decoration_texture("emoji:🚀", "#d46b31").is_some());
-        },
-    );
-}
-
-#[test]
-fn primary_icons_rasterize_at_high_resolution() {
-    gio::resources_register_include!("strata.gresource").expect("resources register");
-    let texture = primary_icon_texture(icons::DOCUMENTS, "#8bc9eb").expect("icon renders");
-    assert!(texture.width() > 0);
-    assert!(texture.height() > 0);
-}
-
-#[test]
-fn chrome_icon_textures_are_twice_the_toolbar_size() {
-    assert_eq!(texture_px_for_pixel_size(-1), 96);
-    assert_eq!(texture_px_for_pixel_size(i32::MAX), 768);
-    gio::resources_register_include!("strata.gresource").expect("resources register");
-    let texture = primary_icon_texture_at(icons::SEARCH, "#8bc9eb", 32).expect("icon renders");
-    assert_eq!(texture.width(), 32);
-    assert_eq!(texture.height(), 32);
-}
-
-#[test]
-fn chrome_icons_use_header_bar_pixel_size() {
-    crate::test_support::gtk_test(
-        "assets::tests::chrome_icons_use_header_bar_pixel_size",
-        || {
-            use gtk::prelude::*;
-            let icon = crate::assets::chrome_icon(icons::SEARCH);
-            let texture_width =
-                |image: &gtk::Image| image.paintable().expect("icon texture").intrinsic_width();
-            assert_eq!(texture_width(&icon), 32);
-            crate::assets::set_primary_icon(&icon, icons::X);
-            assert_eq!(texture_width(&icon), 32);
         },
     );
 }

@@ -23,6 +23,7 @@ use crate::{
 mod appimage;
 mod document_media;
 mod media;
+mod raw_metadata;
 
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
@@ -76,6 +77,9 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if operation == "media-metadata" {
         return write_media_metadata(input, output);
     }
+    if operation == "raw-metadata" {
+        return fs::write(output, raw_metadata::read(input)?).map_err(|error| error.to_string());
+    }
     if operation == "archive-list" {
         return run_archive_list(input, output, value, secret_fd);
     }
@@ -99,8 +103,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             appimage::render(input, numeric_value()?.clamp(16, 256))?,
             None,
         ),
-        "preview-image" => (render_raw(input, 800)?, None),
-        "document-image" => (document_media::image(input)?, None),
+        "preview-image" | "document-image" => (document_media::image(input, 800)?, None),
         "document-mermaid" => (document_media::mermaid(input)?, None),
         "document-math" => (document_media::math(input, true)?, None),
         "document-inline-math" => (document_media::math(input, false)?, None),
@@ -170,7 +173,59 @@ fn write_media_metadata(input: &Path, output: &Path) -> Result<(), String> {
     fs::write(output, read_media_metadata(input)?).map_err(|error| error.to_string())
 }
 
+fn svg_source(input: &Path) -> Option<String> {
+    let mut file = fs::File::open(input).ok()?;
+    let mut bytes = Vec::new();
+    (&mut file).take(8192).read_to_end(&mut bytes).ok()?;
+    let limit = crate::services::document_media::IMAGE_INPUT_LIMIT;
+    if bytes.starts_with(b"\x1f\x8b") {
+        let mut decompressed = Vec::new();
+        flate2::read::GzDecoder::new(fs::File::open(input).ok()?)
+            .take(limit + 1)
+            .read_to_end(&mut decompressed)
+            .ok()?;
+        bytes = decompressed;
+    } else if is_svg_head(&bytes) {
+        (&mut file)
+            .take(limit.saturating_sub(bytes.len() as u64) + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+    }
+    if bytes.len() as u64 > limit || !is_svg_head(&bytes) {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
+}
+
+fn is_svg_head(head: &[u8]) -> bool {
+    let head = head.strip_prefix(b"\xef\xbb\xbf").unwrap_or(head);
+    let Some(first) = head.iter().position(|byte| !byte.is_ascii_whitespace()) else {
+        return false;
+    };
+    if head[first] != b'<' {
+        return false;
+    }
+    head.windows(4).enumerate().any(|(index, window)| {
+        window == b"<svg"
+            && matches!(
+                head.get(index + 4),
+                None | Some(b' ' | b'\t' | b'\r' | b'\n' | b'>' | b'/')
+            )
+    })
+}
+
+fn video_stream_metadata(width: i32, height: i32) -> serde_json::Result<Vec<u8>> {
+    serde_json::to_vec(&serde_json::json!({
+        "streams": [{"codec_type": "video", "width": width, "height": height}]
+    }))
+}
+
 fn read_media_metadata(input: &Path) -> Result<Vec<u8>, String> {
+    if let Some(source) = svg_source(input)
+        && let Some((width, height)) = document_media::svg_dimensions(&source)
+    {
+        return video_stream_metadata(width, height).map_err(|error| error.to_string());
+    }
     let probe = bounded_output_with_timeout(
         Command::new("ffprobe")
             .args([
@@ -188,10 +243,7 @@ fn read_media_metadata(input: &Path) -> Result<Vec<u8>, String> {
             let (_, width, height) = gdk_pixbuf::Pixbuf::file_info(input)
                 .filter(|(_, width, height)| *width > 0 && *height > 0)
                 .ok_or("Unable to inspect media")?;
-            serde_json::to_vec(&serde_json::json!({
-                "streams": [{"codec_type": "video", "width": width, "height": height}]
-            }))
-            .map_err(|error| error.to_string())?
+            video_stream_metadata(width, height).map_err(|error| error.to_string())?
         }
     };
     Ok(bytes)
@@ -208,36 +260,55 @@ pub(crate) fn browser_render(
             .filter(|(_, width, height)| *width > 0 && *height > 0)
             .map(|(_, width, height)| (width, height))
     };
-    let encode_dimensions = |(width, height)| {
-        serde_json::to_vec(&serde_json::json!({
-            "streams": [{"codec_type": "video", "width": width, "height": height}]
-        }))
-        .unwrap_or_default()
-    };
+    let encode_dimensions =
+        |(width, height)| video_stream_metadata(width, height).unwrap_or_default();
     match operation {
         Operation::Image => {
-            if let Some(size) = dimensions() {
-                response.metadata = encode_dimensions(size);
-                response.png =
-                    render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+            // glycin's nested sandbox cannot run here; use resvg first.
+            if let Some(source) = svg_source(input)
+                && let Ok(rendered) = document_media::svg(&source, 256)
+            {
+                response.metadata = encode_dimensions((rendered.width, rendered.height));
+                response.png = rendered.png;
             }
             if response.png.is_empty() {
-                response.png = render_imagemagick(input, 256)
-                    .or_else(|_| render_dcraw(input, 256))
-                    .unwrap_or_default();
+                if let Some(size) = dimensions() {
+                    response.metadata = encode_dimensions(size);
+                    response.png =
+                        render_pixbuf(input, 256.min(size.0.max(size.1))).unwrap_or_default();
+                }
+                if response.png.is_empty() {
+                    response.png = render_imagemagick(input, 256)
+                        .or_else(|_| render_dcraw(input, 256))
+                        .unwrap_or_default();
+                }
             }
         }
         Operation::Raw => response.png = render_raw_thumbnail(input, 256).unwrap_or_default(),
         Operation::Pdf => response.png = render_pdf_thumbnail(input, 256).unwrap_or_default(),
         Operation::Video => response.png = render_media(input, 256).unwrap_or_default(),
         Operation::ImageMetadata => {
-            response.metadata = dimensions()
+            response.metadata = svg_source(input)
+                .and_then(|source| document_media::svg_dimensions(&source))
                 .map(encode_dimensions)
+                .or_else(|| dimensions().map(encode_dimensions))
                 .or_else(|| read_media_metadata(input).ok())
                 .unwrap_or_default();
         }
         Operation::MediaMetadata => {
             response.metadata = read_media_metadata(input).unwrap_or_default()
+        }
+        Operation::PreviewImage => {
+            response.png = document_media::image(input, 800).unwrap_or_default();
+        }
+        Operation::DocumentMermaid => {
+            response.png = document_media::mermaid(input).unwrap_or_default();
+        }
+        Operation::DocumentMath => {
+            response.png = document_media::math(input, true).unwrap_or_default();
+        }
+        Operation::DocumentMathInline => {
+            response.png = document_media::math(input, false).unwrap_or_default();
         }
     }
     response
