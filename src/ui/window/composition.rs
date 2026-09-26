@@ -162,8 +162,6 @@ fn install_browser_actions(
         toggle_preferences.set_arrow_navigation_scoped(next);
     });
     window.add_action(&toggle_action);
-    // The set lives on the application, so it follows the saved mode rather
-    // than whichever window was constructed or destroyed last.
     if let Some(application) = window.application() {
         let application = application.clone();
         preferences.bind_preference(
