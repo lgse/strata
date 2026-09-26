@@ -3002,6 +3002,24 @@ entry.preview-command-entry selection {
   opacity: 1;
 }
 
+.download-chip {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.8);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24), 0 6px 20px alpha(@theme_bg, 0.45);
+  color: @theme_text;
+  padding: 8px 10px;
+}
+
+.download-chip-name {
+  color: @theme_text;
+}
+
+.download-chip-status {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
 .column-header {
   background: transparent;
   border-top: 3px solid transparent;

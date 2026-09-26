@@ -1764,3 +1764,186 @@ fn arrow_scope_keeps_left_in_the_chooser_file_view() {
         },
     );
 }
+
+#[test]
+fn pasted_url_in_location_bar_downloads_and_returns_temp_path() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::pasted_url_in_location_bar_downloads_and_returns_temp_path",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
+            let base = crate::test_support::serve_http_once(
+                b"HTTP/1.1 200 OK\r\ncontent-length: 6\r\ncontent-disposition: attachment; filename=\"report.pdf\"\r\n\r\nbinary".to_vec(),
+            );
+            let root = tempfile::tempdir().expect("fixture");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let state = build_chooser(
+                request(root.path().to_path_buf()),
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+
+            state.view.begin_location_edit();
+            let focused =
+                gtk::prelude::RootExt::focus(&state.window).expect("focused location editor");
+            let entry = focused
+                .clone()
+                .downcast::<gtk::Entry>()
+                .ok()
+                .or_else(|| {
+                    focused
+                        .ancestor(gtk::Entry::static_type())
+                        .and_downcast::<gtk::Entry>()
+                })
+                .expect("focused location entry");
+            entry.set_text(&format!("{base}/anything.bin"));
+            entry.emit_activate();
+
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            let path = gio::File::for_uri(&selected.uris()[0].to_string())
+                .path()
+                .expect("local temp path");
+            let directory = path.parent().expect("download directory");
+            assert!(
+                directory
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with("strata-download-"))
+            );
+            assert_eq!(
+                path.file_name().expect("file name").to_string_lossy(),
+                "report.pdf"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("downloaded body"),
+                "binary"
+            );
+            let _cleanup = std::fs::remove_dir_all(directory);
+            state.window.close();
+        },
+    );
+}
+
+#[test]
+fn pasted_url_in_save_name_field_downloads_and_returns_temp_path() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::pasted_url_in_save_name_field_downloads_and_returns_temp_path",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
+            let base = crate::test_support::serve_http_once(
+                b"HTTP/1.1 200 OK\r\ncontent-length: 8\r\n\r\ncontents".to_vec(),
+            );
+            let root = tempfile::tempdir().expect("fixture");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFile {
+                current_name: Some("output.txt".into()),
+            };
+            let state = build_chooser(
+                save_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+
+            state
+                .filename
+                .as_ref()
+                .expect("save name entry")
+                .set_text(&format!("{base}/pasted.zip"));
+            state.accept_button.emit_clicked();
+
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            let path = gio::File::for_uri(&selected.uris()[0].to_string())
+                .path()
+                .expect("local temp path");
+            assert!(
+                path.parent()
+                    .and_then(|parent| parent.file_name())
+                    .is_some_and(|name| name.to_string_lossy().starts_with("strata-download-"))
+            );
+            assert_eq!(
+                path.file_name().expect("file name").to_string_lossy(),
+                "pasted.zip"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("downloaded body"),
+                "contents"
+            );
+            let _cleanup = std::fs::remove_dir_all(path.parent().expect("download directory"));
+            state.window.close();
+        },
+    );
+}
+
+#[test]
+fn pasted_url_in_directory_chooser_shows_an_error() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::pasted_url_in_directory_chooser_shows_an_error",
+        || {
+            crate::ui::prepare_portal_ui();
+            PreferenceManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut directory_request = request(root.path().to_path_buf());
+            directory_request.kind = ChooserKind::Open {
+                directory: true,
+                multiple: false,
+            };
+            let state = build_chooser(
+                directory_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+
+            browser
+                .navigate_input("https://example.com/report.pdf")
+                .expect("URL accepted");
+
+            assert!(state.error.is_visible());
+            assert!(result.borrow().is_none());
+            state.window.close();
+        },
+    );
+}
