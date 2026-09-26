@@ -1531,7 +1531,7 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
             let start_path = start.location.native_path().expect("search hit path");
             let mut search_landed = Vec::new();
             for key in [Key::j, Key::Down, Key::KP_Down] {
-                assert!(fixture.view.focus_search_result(&start_path), "{key:?}");
+                assert!(fixture.view.focus_search_result(start_path), "{key:?}");
                 pump(40);
                 assert_eq!(
                     fixture
