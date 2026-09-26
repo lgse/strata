@@ -444,7 +444,13 @@ impl Dispatcher {
             self.window.close();
             return Some(Propagation::Stop);
         }
-        if self.tenxer_listing(browser, key, modifiers) {
+        let icons = self.view.view_mode() == crate::ui::browser_modes::BrowserMode::Icons;
+        let claimed = if icons {
+            self.tenxer_icons(browser, key, modifiers)
+        } else {
+            self.tenxer_listing(browser, key, modifiers)
+        };
+        if claimed {
             return Some(Propagation::Stop);
         }
         // Claim the conflicting default map. Still-bound shortcuts fall through

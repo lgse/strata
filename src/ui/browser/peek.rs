@@ -388,6 +388,8 @@ impl ViewState {
             .margin_end(margin_end)
             .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
+        revealer.set_can_focus(false);
+        content.set_can_focus(false);
         self.overlay.add_overlay(&revealer);
         self.overlay.add_css_class("peek-open");
         anchor.widget.add_css_class("peek-anchor");
@@ -402,6 +404,23 @@ impl ViewState {
             spinner,
         }));
         glib::idle_add_local_once(move || revealer.set_reveal_child(true));
+    }
+
+    /// Shows the peek for the focused directory after keyboard ownership is claimed.
+    /// `keyboard_navigation` closes a peek, so the caller checks the open state first.
+    pub(in crate::ui) fn open_keyboard_peek(&self) {
+        let Some((widget, depth, location)) = self.mode_views.borrow().keyboard_peek_target()
+        else {
+            return;
+        };
+        self.peek_anchor.replace(Some(PeekAnchor {
+            widget,
+            origin_depth: depth,
+        }));
+        self.browser.begin_peek(depth, location);
+        if self.peek.borrow().is_none() {
+            self.peek_anchor.take();
+        }
     }
 
     pub(super) fn close_peek_visual(&self) {

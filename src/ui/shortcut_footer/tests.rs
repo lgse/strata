@@ -322,11 +322,20 @@ fn tenxer_reference_follows_the_active_map() {
                     .any(|label| label == "Move spatially between tiles")
             );
             assert!(
+                icons
+                    .iter()
+                    .any(|label| label == "Toggle folder peek for the focused directory")
+            );
+            assert!(
                 !icons
                     .iter()
                     .any(|label| label == "Open the focused directory")
             );
-            assert!(!icons.iter().any(|label| label == "Move half a page"));
+            assert!(
+                !icons
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
 
             footer.handle_key(gdk::Key::F1, none);
             settle();

@@ -5,6 +5,17 @@ use gtk::{gdk, glib, prelude::*};
 #[cfg(test)]
 mod tests;
 
+/// Home-row, arrow, and keypad aliases that move a grid by GTK's own spatial binding.
+pub(super) fn spatial_arrow(key: gdk::Key) -> Option<gdk::Key> {
+    match key {
+        gdk::Key::h | gdk::Key::Left | gdk::Key::KP_Left => Some(gdk::Key::Left),
+        gdk::Key::j | gdk::Key::Down | gdk::Key::KP_Down => Some(gdk::Key::Down),
+        gdk::Key::k | gdk::Key::Up | gdk::Key::KP_Up => Some(gdk::Key::Up),
+        gdk::Key::l | gdk::Key::Right | gdk::Key::KP_Right => Some(gdk::Key::Right),
+        _ => None,
+    }
+}
+
 pub(super) fn navigation_key(
     key: gdk::Key,
     modifiers: gdk::ModifierType,

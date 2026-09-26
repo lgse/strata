@@ -241,8 +241,75 @@ impl Dispatcher {
         }
     }
 
+    /// Icons tile motion. Letters and arrows stay spatial, including on search hits.
+    /// Returns false when this key is not one of those chords or the file view is not focused.
+    pub(super) fn tenxer_icons(
+        &self,
+        browser: &Rc<Browser>,
+        key: Key,
+        modifiers: Modifiers,
+    ) -> bool {
+        if self.view.view_mode() != BrowserMode::Icons || !self.view.item_view_has_focus() {
+            return false;
+        }
+        let search = self.view.selected_search_results().is_some();
+        let mods = super::command_modifiers(modifiers);
+        if search && !mods.is_empty() {
+            return false;
+        }
+        if mods == Modifiers::CONTROL_MASK {
+            return self.tenxer_control_page(key);
+        }
+        if mods == Modifiers::ALT_MASK {
+            return self.tenxer_alt_navigation(browser, key);
+        }
+        if mods == Modifiers::SHIFT_MASK {
+            return self.tenxer_shifted(browser, key);
+        }
+        if !mods.is_empty() {
+            return false;
+        }
+        if let Some(arrow) = crate::ui::focus_navigation::spatial_arrow(key) {
+            self.view.keyboard_navigation();
+            if search {
+                self.view.focus_search_results();
+            }
+            crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
+            return true;
+        }
+        match key {
+            Key::Home | Key::KP_Home if !search => self.jump_displayed(-1),
+            Key::End | Key::KP_End | Key::G if !search => self.jump_displayed(1),
+            Key::H if !search => self.go_back(browser),
+            Key::L if !search => self.go_forward(browser),
+            Key::BackSpace if !search => self.go_parent(),
+            Key::o | Key::Return | Key::KP_Enter => self.activate_icons(browser),
+            Key::i => self.view.toggle_folder_peek(),
+            Key::Page_Up | Key::KP_Page_Up if !search => self.view.page_displayed_cursor(-1, false),
+            Key::Page_Down | Key::KP_Page_Down if !search => {
+                self.view.page_displayed_cursor(1, false)
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// Opens the focused icon, or the focused search hit when results are showing.
+    fn activate_icons(&self, browser: &Rc<Browser>) {
+        self.view.keyboard_navigation();
+        if let Some(entry) = self.view.selected_search_result() {
+            if entry.is_directory() {
+                browser.navigate(entry.location);
+            } else {
+                browser.open_location(entry.location);
+            }
+            return;
+        }
+        self.view.activate_focused();
+    }
+
     /// List and Columns movement, directory entry, history, and column inspect.
-    /// Icons keep their current map. Returns false when this key is not one of those chords.
+    /// Icons keep their own map. Returns false when this key is not one of those chords.
     pub(super) fn tenxer_listing(
         &self,
         browser: &Rc<Browser>,

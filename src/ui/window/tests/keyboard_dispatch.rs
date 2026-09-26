@@ -1225,6 +1225,379 @@ fn tenxer_list_and_columns_move_enter_and_traverse_history() {
     );
 }
 
+#[test]
+fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::tenxer_icons_move_spatially_open_explicitly_and_peek",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_folder_peeking(false);
+            preferences.set_single_click_previews(true);
+            let browser = fixture.view.browser();
+            let root = fixture._directory.path().to_path_buf();
+            std::fs::create_dir(root.join("nest")).expect("nest");
+            std::fs::write(root.join("nest/inside.txt"), b"inside").expect("inside");
+            std::fs::create_dir(root.join("empty")).expect("empty");
+            for index in 0..12 {
+                std::fs::write(root.join(format!("tile-{index:02}.txt")), b"t").expect("tile");
+            }
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            fixture.view.set_icons_thumbnail_size(48);
+            fixture.view.set_view_mode(BrowserMode::Icons);
+            focus_files(&fixture);
+            wait_until(|| rendered_name(&fixture.view.widget(), "tile-00.txt"));
+
+            let origin = browser.active_location();
+            let aliases = [
+                (Key::h, Key::Left, Key::KP_Left),
+                (Key::j, Key::Down, Key::KP_Down),
+                (Key::k, Key::Up, Key::KP_Up),
+                (Key::l, Key::Right, Key::KP_Right),
+            ];
+            for (letter, arrow, keypad) in aliases {
+                let mut landed = Vec::new();
+                for key in [letter, arrow, keypad] {
+                    select_named(&fixture, "tile-04.txt");
+                    pump(50);
+                    let before = focused_name(&browser);
+                    assert_eq!(before, "tile-04.txt", "{key:?}");
+                    assert!(fixture.press(key, ModifierType::empty()), "{key:?}");
+                    pump(30);
+                    assert_eq!(browser.active_location(), origin, "{key:?}");
+                    assert!(fixture.view.item_view_has_focus(), "{key:?}");
+                    assert!(!sidebar_has_focus(&fixture), "{key:?}");
+                    assert!(!fixture.preview.is_open(), "{key:?}");
+                    assert!(
+                        !preview_has_focus(&fixture),
+                        "{key:?} moved into the preview"
+                    );
+                    landed.push(focused_name(&browser));
+                }
+                assert!(
+                    landed.iter().all(|name| name == &landed[0]),
+                    "{letter:?} landed on {landed:?}"
+                );
+            }
+            select_named(&fixture, "tile-04.txt");
+            pump(50);
+            fixture.press(Key::Down, ModifierType::empty());
+            pump(30);
+            assert_ne!(
+                focused_name(&browser),
+                "tile-04.txt",
+                "Down leaves the starting tile"
+            );
+
+            select_named(&fixture, "tile-04.txt");
+            pump(50);
+            let opened = Rc::new(RefCell::new(Vec::new()));
+            let record = opened.clone();
+            browser.observe(move |event| {
+                if let BrowserEvent::OpenRequested { location } = event {
+                    record.borrow_mut().push(location.clone());
+                }
+            });
+            fixture
+                .preview
+                .show(browser.focused_entry().expect("text file"), Some(0));
+            wait_until(|| fixture.preview.is_open());
+            for key in [Key::l, Key::Right, Key::h, Key::j] {
+                fixture.press(key, ModifierType::empty());
+                pump(20);
+                assert!(!preview_has_focus(&fixture), "{key:?}");
+                assert_eq!(browser.active_location(), origin, "{key:?}");
+            }
+            assert!(
+                opened.borrow().is_empty(),
+                "tile motion must not launch a file"
+            );
+
+            fixture.view.set_view_mode(BrowserMode::List);
+            wait_loaded(&browser, 0);
+            pump(100);
+            focus_files(&fixture);
+            select_named(&fixture, "tile-04.txt");
+            pump(100);
+            select_named(&fixture, "tile-04.txt");
+            assert_eq!(focused_name(&browser), "tile-04.txt");
+            assert!(fixture.press(Key::l, ModifierType::empty()));
+            assert_eq!(
+                browser.active_location(),
+                origin,
+                "List l on a file changed directory to {:?}",
+                browser
+                    .active_location()
+                    .map(|location| location.display_path())
+            );
+            assert!(fixture.press(Key::Right, ModifierType::empty()));
+            assert_eq!(
+                browser.active_location(),
+                origin,
+                "List Right on a file changed directory to {:?}",
+                browser
+                    .active_location()
+                    .map(|location| location.display_path())
+            );
+            assert!(opened.borrow().is_empty());
+            assert!(!preview_has_focus(&fixture));
+            fixture.view.set_view_mode(BrowserMode::Icons);
+            wait_loaded(&browser, 0);
+            let names = source_names(&browser);
+            assert!(
+                names.iter().any(|name| name == "tile-04.txt"),
+                "after Icons {:?}: {names:?}",
+                browser
+                    .active_location()
+                    .map(|location| location.display_path())
+            );
+            focus_files(&fixture);
+            select_named(&fixture, "tile-04.txt");
+            pump(80);
+            fixture.press(Key::l, ModifierType::empty());
+            fixture.press(Key::Right, ModifierType::empty());
+            assert!(
+                opened.borrow().is_empty(),
+                "Icons must not keep the List preview-entry hotkey"
+            );
+            assert!(!preview_has_focus(&fixture));
+            assert_eq!(browser.active_location(), origin);
+
+            focus_icon(&fixture, &browser, "nest");
+            fixture.press(Key::o, ModifierType::empty());
+            wait_loaded(&browser, 0);
+            assert!(location_ends_with(browser.active_location(), "nest"));
+            fixture.press(Key::BackSpace, ModifierType::empty());
+            wait_loaded(&browser, 0);
+            assert_eq!(browser.active_location(), origin);
+            focus_icon(&fixture, &browser, "nest");
+            fixture.press(Key::Return, ModifierType::empty());
+            wait_loaded(&browser, 0);
+            assert!(location_ends_with(browser.active_location(), "nest"));
+            fixture.press(Key::Up, ModifierType::ALT_MASK);
+            wait_loaded(&browser, 0);
+            assert_eq!(browser.active_location(), origin);
+            focus_icon(&fixture, &browser, "nest");
+            fixture.press(Key::o, ModifierType::empty());
+            wait_loaded(&browser, 0);
+            fixture.press(Key::H, ModifierType::SHIFT_MASK);
+            wait_loaded(&browser, 0);
+            assert_eq!(browser.active_location(), origin);
+            fixture.press(Key::L, ModifierType::SHIFT_MASK);
+            wait_loaded(&browser, 0);
+            assert!(location_ends_with(browser.active_location(), "nest"));
+            fixture.press(Key::Left, ModifierType::ALT_MASK);
+            wait_loaded(&browser, 0);
+            assert_eq!(browser.active_location(), origin);
+
+            focus_files(&fixture);
+            fixture.press(Key::Home, ModifierType::empty());
+            let first = focused_name(&browser);
+            fixture.press(Key::End, ModifierType::empty());
+            let last = focused_name(&browser);
+            assert_ne!(first, last);
+            fixture.press(Key::G, ModifierType::SHIFT_MASK);
+            assert_eq!(focused_name(&browser), last);
+            fixture.press(Key::Home, ModifierType::empty());
+            assert_eq!(focused_name(&browser), first);
+            let start = focused_index(&browser);
+            fixture.press(Key::Page_Down, ModifierType::empty());
+            let paged = focused_index(&browser);
+            fixture.press(Key::Home, ModifierType::empty());
+            fixture.press(Key::d, ModifierType::CONTROL_MASK);
+            assert_ne!(focused_index(&browser), start);
+            fixture.press(Key::Home, ModifierType::empty());
+            fixture.press(Key::f, ModifierType::CONTROL_MASK);
+            assert_eq!(focused_index(&browser), paged);
+            fixture.press(Key::h, ModifierType::empty());
+            fixture.press(Key::l, ModifierType::empty());
+            assert_eq!(browser.active_location(), origin);
+
+            fixture.press(Key::Home, ModifierType::empty());
+            for key in [Key::Left, Key::h, Key::KP_Left] {
+                fixture.press(key, ModifierType::empty());
+                assert_eq!(focused_name(&browser), first, "{key:?} stays on the edge");
+                assert!(!sidebar_has_focus(&fixture), "{key:?}");
+                assert_eq!(browser.active_location(), origin);
+            }
+
+            focus_icon(&fixture, &browser, "empty");
+            fixture.press(Key::o, ModifierType::empty());
+            wait_loaded(&browser, 0);
+            assert_eq!(entry_count(&browser), 0);
+            assert!(location_ends_with(browser.active_location(), "empty"));
+            focus_files(&fixture);
+            for key in [
+                Key::h,
+                Key::j,
+                Key::k,
+                Key::l,
+                Key::Left,
+                Key::Right,
+                Key::Up,
+                Key::Down,
+                Key::KP_Left,
+                Key::i,
+            ] {
+                fixture.press(key, ModifierType::empty());
+                pump(20);
+                assert!(
+                    location_ends_with(browser.active_location(), "empty"),
+                    "{key:?}"
+                );
+                assert!(!sidebar_has_focus(&fixture), "{key:?}");
+                assert!(!fixture.view.widget().has_css_class("peek-open"), "{key:?}");
+            }
+            fixture.press(Key::BackSpace, ModifierType::empty());
+            wait_loaded(&browser, 0);
+            assert_eq!(browser.active_location(), origin);
+
+            select_named(&fixture, "tile-01.txt");
+            pump(40);
+            let before = focused_index(&browser);
+            fixture.press(Key::j, ModifierType::empty());
+            assert_ne!(focused_index(&browser), before);
+            assert!(fixture.view.widget().has_css_class("keyboard-navigation"));
+            fixture.view.record_pointer_hover((12.0, 24.0), Some(0));
+            let parked = focused_index(&browser);
+            fixture.press(Key::j, ModifierType::empty());
+            assert_ne!(focused_index(&browser), parked);
+            assert!(fixture.view.widget().has_css_class("keyboard-navigation"));
+
+            fixture.preview.close();
+            pump(40);
+            focus_icon(&fixture, &browser, "tile-02.txt");
+            fixture.press(Key::i, ModifierType::empty());
+            pump(40);
+            assert!(!fixture.view.widget().has_css_class("peek-open"));
+            assert_eq!(browser.active_location(), origin);
+            focus_icon(&fixture, &browser, "nest");
+            fixture.press(Key::j, ModifierType::empty());
+            fixture.press(Key::k, ModifierType::empty());
+            focus_icon(&fixture, &browser, "nest");
+            fixture.press(Key::i, ModifierType::empty());
+            pump(80);
+            assert!(
+                fixture.view.widget().has_css_class("peek-open"),
+                "i did not peek {}; location {:?}",
+                focused_name(&browser),
+                browser
+                    .active_location()
+                    .map(|location| location.display_path())
+            );
+            assert!(fixture.view.item_view_has_focus());
+            assert!(!peek_has_focus(&fixture));
+            assert_eq!(browser.active_location(), origin);
+            fixture.press(Key::i, ModifierType::empty());
+            pump(40);
+            assert!(!fixture.view.widget().has_css_class("peek-open"));
+
+            fixture.view.set_view_mode(BrowserMode::List);
+            fixture.view.set_view_mode(BrowserMode::Icons);
+            wait_loaded(&browser, 0);
+            focus_files(&fixture);
+            let cursor = browser
+                .focused_item()
+                .map(|(depth, position, _)| (depth, position));
+            preferences.set_filter_include_subfolders(true);
+            preferences.set_tenxer_mode(false);
+            assert!(fixture.view.show_filter_with_query("tile"));
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+            while fixture
+                .view
+                .focus_search_results()
+                .then(|| fixture.view.selected_search_result())
+                .flatten()
+                .is_none()
+            {
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "search results did not focus"
+                );
+            }
+            pump(50);
+            assert_eq!(
+                browser
+                    .focused_item()
+                    .map(|(depth, position, _)| (depth, position)),
+                cursor,
+                "focusing search results moved the hidden directory cursor"
+            );
+            let start = fixture.view.selected_search_result().expect("search hit");
+            preferences.set_tenxer_mode(true);
+            let start_name = start.display_name.clone();
+            let start_path = start.location.native_path().expect("search hit path");
+            let mut search_landed = Vec::new();
+            for key in [Key::j, Key::Down, Key::KP_Down] {
+                assert!(fixture.view.focus_search_result(start_path), "{key:?}");
+                pump(40);
+                assert_eq!(
+                    fixture
+                        .view
+                        .selected_search_result()
+                        .map(|entry| entry.display_name),
+                    Some(start_name.clone())
+                );
+                assert!(fixture.press(key, ModifierType::empty()), "{key:?}");
+                pump(40);
+                assert!(
+                    fixture.view.selected_search_results().is_some(),
+                    "{key:?} dismissed search"
+                );
+                assert_eq!(
+                    browser
+                        .focused_item()
+                        .map(|(depth, position, _)| (depth, position)),
+                    cursor,
+                    "{key:?} moved the hidden directory cursor"
+                );
+                assert_eq!(browser.active_location(), origin, "{key:?}");
+                search_landed.push(
+                    fixture
+                        .view
+                        .selected_search_result()
+                        .map(|entry| entry.display_name),
+                );
+            }
+            assert!(
+                search_landed.iter().all(|name| name == &search_landed[0]),
+                "search aliases diverged: {search_landed:?}"
+            );
+            assert_ne!(
+                search_landed[0].as_deref(),
+                Some(start_name.as_str()),
+                "Down should move among search icons"
+            );
+        },
+    );
+}
+
+fn preview_has_focus(fixture: &KeyboardFixture) -> bool {
+    gtk::prelude::RootExt::focus(&fixture.window).is_some_and(|focused| {
+        let preview = fixture.preview.widget();
+        focused == preview || focused.is_ancestor(&preview)
+    })
+}
+
+fn peek_has_focus(fixture: &KeyboardFixture) -> bool {
+    let Some(mut current) = gtk::prelude::RootExt::focus(&fixture.window) else {
+        return false;
+    };
+    loop {
+        if current.has_css_class("peek-popover") {
+            return true;
+        }
+        let Some(parent) = current.parent() else {
+            return false;
+        };
+        current = parent;
+    }
+}
+
 fn file_panes_have_focus(fixture: &KeyboardFixture) -> bool {
     let panes = fixture.view.widget();
     gtk::prelude::RootExt::focus(&fixture.window)
@@ -1240,6 +1613,51 @@ fn sidebar_has_focus(fixture: &KeyboardFixture) -> bool {
 fn focus_files(fixture: &KeyboardFixture) {
     fixture.view.browser().focus_active();
     wait_until(|| fixture.view.item_view_has_focus());
+}
+
+/// Walk the icon grid until `name` is the keyboard cursor.
+fn focus_icon(fixture: &KeyboardFixture, browser: &crate::app::Browser, name: &str) {
+    focus_files(fixture);
+    for key in [Key::k, Key::h] {
+        for _ in 0..24 {
+            let before = focused_name(browser);
+            fixture.press(key, ModifierType::empty());
+            if focused_name(browser) == before {
+                break;
+            }
+        }
+    }
+    for _ in 0..30 {
+        if focused_name(browser) == name {
+            return;
+        }
+        for key in [Key::l, Key::h] {
+            for _ in 0..24 {
+                if focused_name(browser) == name {
+                    return;
+                }
+                let before = focused_name(browser);
+                fixture.press(key, ModifierType::empty());
+                if focused_name(browser) == before {
+                    break;
+                }
+            }
+        }
+        if focused_name(browser) == name {
+            return;
+        }
+        let before = focused_name(browser);
+        fixture.press(Key::j, ModifierType::empty());
+        assert_ne!(
+            focused_name(browser),
+            before,
+            "could not reach {name}, stopped on {before}"
+        );
+    }
+    panic!(
+        "could not reach {name}, stopped on {}",
+        focused_name(browser)
+    );
 }
 
 fn move_to_named(fixture: &KeyboardFixture, browser: &crate::app::Browser, name: &str) {
