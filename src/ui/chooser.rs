@@ -489,42 +489,60 @@ impl ChooserState {
             };
             // Events only apply while this poller's attempt is the current
             // one; a replaced or cancelled flag retires the poller.
-            let current = state
-                .download_cancel
-                .borrow()
-                .as_ref()
-                .is_some_and(|flag| Arc::ptr_eq(flag, &cancelled));
-            match receiver.try_recv() {
-                Ok(RemoteDownload::Named(name)) if current => {
-                    state.view.set_download_name(&name);
-                    glib::ControlFlow::Continue
-                }
-                Ok(RemoteDownload::Progress { downloaded, total }) if current => {
-                    state.view.update_download_progress(downloaded, total);
-                    glib::ControlFlow::Continue
-                }
-                Ok(RemoteDownload::Finished(path)) if current => {
-                    state.view.dismiss_download_progress();
-                    if state.download_cancel.borrow_mut().take().is_some() {
-                        state.complete_remote(path);
-                    }
-                    glib::ControlFlow::Break
-                }
-                Ok(RemoteDownload::Failed(message)) if current => {
-                    state.view.dismiss_download_progress();
-                    state.accept_button.set_sensitive(true);
-                    if state.download_cancel.borrow_mut().take().is_some() {
-                        crate::ui::modal::show_error_dialog(
-                            &state.window,
-                            "Download failed",
-                            &message,
-                        );
-                    }
-                    glib::ControlFlow::Break
-                }
-                Err(TryRecvError::Empty) if current => glib::ControlFlow::Continue,
-                _ => glib::ControlFlow::Break,
+            let current = || {
+                state
+                    .download_cancel
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|flag| Arc::ptr_eq(flag, &cancelled))
+            };
+            if !current() {
+                return glib::ControlFlow::Break;
             }
+            // Drain the queue so Finished never waits behind stale Progress
+            // events; only the newest progress is applied per tick.
+            let mut latest_progress = None;
+            let flow = loop {
+                match receiver.try_recv() {
+                    Ok(RemoteDownload::Named(name)) => {
+                        state.view.set_download_name(&name);
+                    }
+                    Ok(RemoteDownload::Progress { downloaded, total }) => {
+                        latest_progress = Some((downloaded, total));
+                    }
+                    Ok(RemoteDownload::Finished(path)) => {
+                        state.view.dismiss_download_progress();
+                        if state.download_cancel.borrow_mut().take().is_some() {
+                            state.complete_remote(path);
+                        }
+                        break glib::ControlFlow::Break;
+                    }
+                    Ok(RemoteDownload::Failed(message)) => {
+                        state.view.dismiss_download_progress();
+                        state.accept_button.set_sensitive(true);
+                        if state.download_cancel.borrow_mut().take().is_some() {
+                            crate::ui::modal::show_error_dialog(
+                                &state.window,
+                                "Download failed",
+                                &message,
+                            );
+                        }
+                        break glib::ControlFlow::Break;
+                    }
+                    Err(TryRecvError::Empty) => break glib::ControlFlow::Continue,
+                    Err(TryRecvError::Disconnected) => {
+                        // The worker exited without a terminal event.
+                        state.view.dismiss_download_progress();
+                        state.accept_button.set_sensitive(true);
+                        state.download_cancel.borrow_mut().take();
+                        break glib::ControlFlow::Break;
+                    }
+                }
+            };
+            if let Some((downloaded, total)) = latest_progress {
+                state.view.update_download_progress(downloaded, total);
+            }
+            flow
         });
     }
 
@@ -780,6 +798,11 @@ impl ChooserState {
                 return;
             };
             state.destination_check.set(false);
+            // A download may have started while the overwrite check awaited;
+            // keep the button insensitive and let the fetch finish.
+            if state.download_in_progress() {
+                return;
+            }
             state.accept_button.set_sensitive(true);
             if state.completion.borrow().is_none() {
                 return;
