@@ -53,6 +53,7 @@ impl ShortcutFooter {
         tag_note.add_css_class("tenxer-experimental");
         tag_note.set_ellipsize(gtk::pango::EllipsizeMode::End);
         tag_note.set_max_width_chars(28);
+        tag_note.set_tooltip_text(Some(super::shortcut_reference::EXPERIMENTAL_LABEL));
         tag_note.set_visible(false);
         let chord = gtk::Label::new(None);
         chord.add_css_class("shortcut-footer-chord");
@@ -477,7 +478,6 @@ impl ShortcutFooter {
             self.more.popdown();
             return Some(glib::Propagation::Stop);
         }
-        // The reference only scrolls vertically, so Left and Right move it too.
         if !command_modifiers && self.scroll_reference(key) {
             return Some(glib::Propagation::Stop);
         }

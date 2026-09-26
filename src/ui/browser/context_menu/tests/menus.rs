@@ -165,9 +165,6 @@ pub(super) fn open_menu(view: &BrowserView, name: Option<&str>) -> gtk::Popover 
     panic!("no menu for {name:?}");
 }
 
-// Before popup, is_visible() includes hidden ancestors; a remote URI exposes
-// the regression because Rename is available without Compress.
-
 #[test]
 fn context_hints_follow_the_active_map() {
     crate::test_support::gtk_test(
