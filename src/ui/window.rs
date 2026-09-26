@@ -554,17 +554,17 @@ const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
 ];
 
-/// Default-map accelerators the Omastrata table leaves unbound. Search and
+/// Default-map accelerators the 10xer table leaves unbound. Search and
 /// refresh stay installed; these three are removed while the mode is on.
-const OMASTRATA_SUPPRESSED_ACCELS: &[&str] = &[
+const TENXER_SUPPRESSED_ACCELS: &[&str] = &[
     "win.jump-folder",
     "win.open-terminal",
     "win.toggle-arrow-scope",
 ];
 
-pub(super) fn install_mode_accelerators(application: &gtk::Application, omastrata: bool) {
+pub(super) fn install_mode_accelerators(application: &gtk::Application, tenxer: bool) {
     for (action, accels) in DEFAULT_ACCELS {
-        let accels = if omastrata && OMASTRATA_SUPPRESSED_ACCELS.contains(action) {
+        let accels = if tenxer && TENXER_SUPPRESSED_ACCELS.contains(action) {
             &[][..]
         } else {
             *accels
@@ -808,7 +808,7 @@ pub(super) fn build_appearance_menu(
     let tooltip_toggle = preview_toggle.clone();
     preferences.bind_preference(
         &preview_shortcut,
-        PreferenceManager::omastrata_mode,
+        PreferenceManager::tenxer_mode,
         move |_, enabled| {
             let text = crate::ui::shortcut_reference::context_hint_for(
                 crate::ui::shortcut_reference::ContextHint::Preview,

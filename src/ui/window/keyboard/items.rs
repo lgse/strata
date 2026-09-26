@@ -243,7 +243,7 @@ impl Dispatcher {
 
     /// List and Columns movement, directory entry, history, and column inspect.
     /// Icons keep their current map. Returns false when this key is not one of those chords.
-    pub(super) fn omastrata_listing(
+    pub(super) fn tenxer_listing(
         &self,
         browser: &Rc<Browser>,
         key: Key,
@@ -254,21 +254,21 @@ impl Dispatcher {
         }
         let mods = super::command_modifiers(modifiers);
         if mods == Modifiers::CONTROL_MASK {
-            return self.omastrata_control_page(key);
+            return self.tenxer_control_page(key);
         }
         if mods == Modifiers::ALT_MASK {
-            return self.omastrata_alt_navigation(browser, key);
+            return self.tenxer_alt_navigation(browser, key);
         }
         if mods == Modifiers::SHIFT_MASK {
-            return self.omastrata_shifted(browser, key);
+            return self.tenxer_shifted(browser, key);
         }
         if !mods.is_empty() {
             return false;
         }
-        self.omastrata_plain(browser, key)
+        self.tenxer_plain(browser, key)
     }
 
-    fn omastrata_control_page(&self, key: Key) -> bool {
+    fn tenxer_control_page(&self, key: Key) -> bool {
         let (direction, half) = match key {
             Key::u | Key::U => (-1, true),
             Key::d | Key::D => (1, true),
@@ -280,7 +280,7 @@ impl Dispatcher {
         true
     }
 
-    fn omastrata_alt_navigation(&self, browser: &Rc<Browser>, key: Key) -> bool {
+    fn tenxer_alt_navigation(&self, browser: &Rc<Browser>, key: Key) -> bool {
         match key {
             Key::Left | Key::KP_Left => self.go_back(browser),
             Key::Right | Key::KP_Right => self.go_forward(browser),
@@ -290,7 +290,7 @@ impl Dispatcher {
         true
     }
 
-    fn omastrata_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
+    fn tenxer_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
         match key {
             Key::G => self.jump_displayed(1),
             Key::H => self.go_back(browser),
@@ -300,7 +300,7 @@ impl Dispatcher {
         true
     }
 
-    fn omastrata_plain(&self, browser: &Rc<Browser>, key: Key) -> bool {
+    fn tenxer_plain(&self, browser: &Rc<Browser>, key: Key) -> bool {
         match key {
             Key::j | Key::Down | Key::KP_Down => self.view.move_displayed_cursor(1, 1),
             Key::k | Key::Up | Key::KP_Up => self.view.move_displayed_cursor(-1, 1),

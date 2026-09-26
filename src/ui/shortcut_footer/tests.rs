@@ -252,12 +252,12 @@ impl ShortcutFooter {
 }
 
 #[test]
-fn omastrata_reference_follows_the_active_map() {
+fn tenxer_reference_follows_the_active_map() {
     crate::test_support::gtk_test(
-        "ui::shortcut_footer::tests::omastrata_reference_follows_the_active_map",
+        "ui::shortcut_footer::tests::tenxer_reference_follows_the_active_map",
         || {
             let manager = super::super::preferences::PreferenceManager::shared();
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             manager.set_show_keybinding_hints(true);
             let footer = ShortcutFooter::new(BrowserMode::Columns);
             footer.bind_preferences(&manager);
@@ -285,7 +285,7 @@ fn omastrata_reference_follows_the_active_map() {
             assert_eq!(footer.handle_key(gdk::Key::asciitilde, none), None);
             assert!(!footer.popover.is_visible());
 
-            manager.set_omastrata_mode(true);
+            manager.set_tenxer_mode(true);
             settle();
             assert!(footer.tag_note.is_visible());
             assert_eq!(footer.tag_note.text(), phrase);
@@ -296,7 +296,7 @@ fn omastrata_reference_follows_the_active_map() {
                     .is_some_and(|text| text.contains(phrase))
             );
             let columns = reference_labels(&footer);
-            assert!(columns.iter().any(|label| label == "Leave Omastrata mode"));
+            assert!(columns.iter().any(|label| label == "Leave 10xer mode"));
             assert!(
                 columns
                     .iter()
@@ -361,7 +361,7 @@ fn omastrata_reference_follows_the_active_map() {
             let other = ShortcutFooter::new(BrowserMode::List);
             other.bind_preferences(&manager);
             let list = reference_labels(&other);
-            assert!(list.iter().any(|label| label == "Leave Omastrata mode"));
+            assert!(list.iter().any(|label| label == "Leave 10xer mode"));
             assert!(
                 list.iter()
                     .any(|label| label == "Open the focused directory")
@@ -371,7 +371,7 @@ fn omastrata_reference_follows_the_active_map() {
                     .iter()
                     .any(|label| label == "Open the next column for the focused directory")
             );
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             settle();
             assert!(!footer.tag_note.is_visible());
             assert!(
@@ -383,7 +383,7 @@ fn omastrata_reference_follows_the_active_map() {
             for shown in [&footer, &other] {
                 let labels = reference_labels(shown);
                 assert!(labels.iter().any(|label| label == "Toggle file preview"));
-                assert!(!labels.iter().any(|label| label == "Leave Omastrata mode"));
+                assert!(!labels.iter().any(|label| label == "Leave 10xer mode"));
             }
             window.destroy();
         },

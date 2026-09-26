@@ -144,7 +144,7 @@ impl Dispatcher {
     pub(super) fn sidebar_commands(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
         let toggle = self.top_bar.sidebar_toggle();
         if is_sidebar_focus_shortcut(event.key, event.modifiers) {
-            if self.type_to_search.preferences.omastrata_mode() {
+            if self.type_to_search.preferences.tenxer_mode() {
                 return Some(Propagation::Stop);
             }
             self.view.keyboard_navigation();

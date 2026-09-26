@@ -4,16 +4,16 @@ use gtk::prelude::*;
 
 use super::*;
 use crate::ui::browser_modes::BrowserMode;
-use crate::ui::omastrata_mode::UNUSED_SUBTITLE;
 use crate::ui::preferences::PreferenceManager;
+use crate::ui::tenxer_mode::UNUSED_SUBTITLE;
 
 #[test]
-fn default_chrome_stays_operable_without_a_saved_omastrata_mode() {
+fn default_chrome_stays_operable_without_a_saved_tenxer_mode() {
     gtk_test(
-        "ui::window::tests::preferences::default_chrome_stays_operable_without_a_saved_omastrata_mode",
+        "ui::window::tests::preferences::default_chrome_stays_operable_without_a_saved_tenxer_mode",
         || {
             let manager = PreferenceManager::shared();
-            assert!(!manager.omastrata_mode());
+            assert!(!manager.tenxer_mode());
             let open = OpenWindow::open();
             let _directory = load_folder(&open);
             assert!(!open.content.footer().tag_visible());
@@ -24,20 +24,20 @@ fn default_chrome_stays_operable_without_a_saved_omastrata_mode() {
                 gtk::gdk::ModifierType::empty(),
             );
             assert!(window_listed(&open.window));
-            assert!(!manager.omastrata_mode());
+            assert!(!manager.tenxer_mode());
             assert!(!open.content.footer().tag_visible());
         },
     );
 }
 
 #[test]
-fn saved_omastrata_mode_applies_before_settings_and_to_lazy_views() {
+fn saved_tenxer_mode_applies_before_settings_and_to_lazy_views() {
     gtk_test(
-        "ui::window::tests::preferences::saved_omastrata_mode_applies_before_settings_and_to_lazy_views",
+        "ui::window::tests::preferences::saved_tenxer_mode_applies_before_settings_and_to_lazy_views",
         || {
-            write_settings("omastrata_mode = true\n");
+            write_settings("tenxer_mode = true\n");
             let manager = PreferenceManager::shared();
-            assert!(manager.omastrata_mode());
+            assert!(manager.tenxer_mode());
             let first = OpenWindow::open();
             let second = OpenWindow::open();
             assert!(settings_closed(&first));
@@ -92,7 +92,7 @@ fn saved_omastrata_mode_applies_before_settings_and_to_lazy_views() {
                 .expect("sorted list preferences")
                 .sort_direction;
             assert_ne!(before, after);
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             settle();
             assert_controls(&first, true);
             assert!(!first.content.footer().tag_visible());
@@ -121,7 +121,7 @@ fn browsing_control_and_shortcut_update_both_windows() {
                 gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
             );
             settle();
-            assert!(manager.omastrata_mode());
+            assert!(manager.tenxer_mode());
             assert_controls(&first, false);
             assert_controls(&second, false);
             assert!(first.content.footer().tag_visible());
@@ -129,32 +129,32 @@ fn browsing_control_and_shortcut_update_both_windows() {
             first.content.settings_button().emit_clicked();
             second.content.settings_button().emit_clicked();
             settle();
-            let first_switch = switch_named(first.content.overlay(), "Omastrata mode");
-            let second_switch = switch_named(second.content.overlay(), "Omastrata mode");
+            let first_switch = switch_named(first.content.overlay(), "10xer mode");
+            let second_switch = switch_named(second.content.overlay(), "10xer mode");
             assert!(first_switch.is_active());
             assert!(second_switch.is_active());
             second_switch.set_active(false);
             settle();
-            assert!(!manager.omastrata_mode());
+            assert!(!manager.tenxer_mode());
             assert!(!first_switch.is_active());
             assert_controls(&first, true);
             assert_controls(&second, true);
             assert!(!second.content.footer().tag_visible());
             let saved = std::fs::read_to_string(settings_file()).expect("saved settings");
-            assert!(saved.contains("omastrata_mode = false"));
+            assert!(saved.contains("tenxer_mode = false"));
         },
     );
 }
 
 #[test]
-fn q_leaves_omastrata_and_shift_q_closes_only_the_current_window() {
+fn q_leaves_tenxer_and_shift_q_closes_only_the_current_window() {
     gtk_test(
-        "ui::window::tests::preferences::q_leaves_omastrata_and_shift_q_closes_only_the_current_window",
+        "ui::window::tests::preferences::q_leaves_tenxer_and_shift_q_closes_only_the_current_window",
         || {
             let manager = PreferenceManager::shared();
             let first = OpenWindow::open();
             let second = OpenWindow::open();
-            manager.set_omastrata_mode(true);
+            manager.set_tenxer_mode(true);
             settle();
             press(
                 &first.window,
@@ -162,12 +162,12 @@ fn q_leaves_omastrata_and_shift_q_closes_only_the_current_window() {
                 gtk::gdk::ModifierType::empty(),
             );
             settle();
-            assert!(!manager.omastrata_mode());
+            assert!(!manager.tenxer_mode());
             assert!(window_listed(&first.window));
             assert!(window_listed(&second.window));
             assert!(!first.content.footer().tag_visible());
             assert!(!second.content.footer().tag_visible());
-            manager.set_omastrata_mode(true);
+            manager.set_tenxer_mode(true);
             settle();
             press(
                 &first.window,
@@ -177,7 +177,7 @@ fn q_leaves_omastrata_and_shift_q_closes_only_the_current_window() {
             settle();
             assert!(!window_listed(&first.window));
             assert!(window_listed(&second.window));
-            assert!(manager.omastrata_mode());
+            assert!(manager.tenxer_mode());
             assert!(second.content.footer().tag_visible());
         },
     );
@@ -207,7 +207,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                 filter_buttons(&open)
                     .iter()
                     .any(|button| button.is_active()),
-                "type to search filters before Omastrata is enabled"
+                "type to search filters before 10xer is enabled"
             );
             for button in filter_buttons(&open) {
                 if button.is_active() {
@@ -228,7 +228,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                     UNUSED_SUBTITLE
                 );
             }
-            manager.set_omastrata_mode(true);
+            manager.set_tenxer_mode(true);
             settle();
             assert!(manager.type_to_search());
             assert!(manager.arrow_navigation_scoped());
@@ -267,9 +267,9 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                 filter_buttons(&open)
                     .iter()
                     .all(|button| !button.is_active()),
-                "typing does not filter while Omastrata is on"
+                "typing does not filter while 10xer is on"
             );
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             settle();
             assert!(manager.type_to_search());
             assert!(open.content.browser.columns_mirror_selection_enabled());
@@ -300,7 +300,7 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
                 filter_buttons(&open)
                     .iter()
                     .any(|button| button.is_active()),
-                "type to search filters again after leaving Omastrata"
+                "type to search filters again after leaving 10xer"
             );
             drop(directory);
         },
@@ -308,9 +308,9 @@ fn browsing_preferences_stay_saved_but_unused_until_exit() {
 }
 
 #[test]
-fn entering_omastrata_hides_an_open_filter_and_leaving_restores_it() {
+fn entering_tenxer_hides_an_open_filter_and_leaving_restores_it() {
     gtk_test(
-        "ui::window::tests::preferences::entering_omastrata_hides_an_open_filter_and_leaving_restores_it",
+        "ui::window::tests::preferences::entering_tenxer_hides_an_open_filter_and_leaving_restores_it",
         || {
             let manager = PreferenceManager::shared();
             let open = OpenWindow::open();
@@ -327,15 +327,66 @@ fn entering_omastrata_hides_an_open_filter_and_leaving_restores_it() {
             settle();
             let revealer = revealer_for_filter(&filter);
             assert!(revealer.reveals_child());
-            manager.set_omastrata_mode(true);
+            manager.set_tenxer_mode(true);
             settle();
             assert!(!revealer.reveals_child());
             assert_controls(&open, false);
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             settle();
             assert!(revealer.reveals_child());
             assert_controls(&open, true);
             drop(directory);
+        },
+    );
+}
+
+#[test]
+fn ctrl_f_cannot_activate_hidden_filter_or_displace_existing_column_filter() {
+    gtk_test(
+        "ui::window::tests::preferences::ctrl_f_cannot_activate_hidden_filter_or_displace_existing_column_filter",
+        || {
+            let manager = PreferenceManager::shared();
+            let open = OpenWindow::open();
+            let _directory = load_folder(&open);
+            let first = filter_buttons(&open)
+                .into_iter()
+                .next()
+                .expect("first filter");
+            let first_revealer = revealer_for_filter(first.upcast_ref());
+            manager.set_tenxer_mode(true);
+            press(
+                &open.window,
+                gtk::gdk::Key::f,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            );
+            settle();
+            assert!(!first.is_active());
+            manager.set_tenxer_mode(false);
+            settle();
+            assert!(!first_revealer.reveals_child());
+
+            open_child_column(&open);
+            first.set_active(true);
+            settle();
+            assert!(first.is_active());
+            manager.set_tenxer_mode(true);
+            press(
+                &open.window,
+                gtk::gdk::Key::f,
+                gtk::gdk::ModifierType::CONTROL_MASK,
+            );
+            settle();
+            assert!(first.is_active(), "existing filter remains active");
+            assert_eq!(
+                filter_buttons(&open)
+                    .iter()
+                    .filter(|button| button.is_active())
+                    .count(),
+                1
+            );
+            manager.set_tenxer_mode(false);
+            settle();
+            assert!(first_revealer.reveals_child());
         },
     );
 }
@@ -458,7 +509,7 @@ fn assert_controls(open: &OpenWindow, operable: bool) {
         }
     }
     assert!(found_filter, "shown pane has a filter control");
-    for control in class_in_shown_pane(&open.content.browser.widget(), "omastrata-sort-direction") {
+    for control in class_in_shown_pane(&open.content.browser.widget(), "tenxer-sort-direction") {
         assert_eq!(control.is_visible() && control.is_sensitive(), operable);
         if !operable {
             assert!(!control.is_sensitive());
@@ -568,7 +619,7 @@ fn revealer_for_filter(button: &gtk::Widget) -> gtk::Revealer {
         let mut found = None;
         walk(&widget, &mut |child| {
             if found.is_none()
-                && child.has_css_class("omastrata-filter-revealer")
+                && child.has_css_class("tenxer-filter-revealer")
                 && let Ok(revealer) = child.clone().downcast::<gtk::Revealer>()
             {
                 found = Some(revealer);

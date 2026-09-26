@@ -13,6 +13,9 @@ use crate::services::{JobId, JobService, JobSnapshot, JobStatus, ListenerGuard};
 
 use super::actions::action_icon;
 
+#[cfg(test)]
+mod tests;
+
 type RefreshCallback = Rc<dyn Fn()>;
 type RefreshHolder = Rc<RefCell<Option<RefreshCallback>>>;
 type ObserverHolder = Rc<RefCell<Option<ListenerGuard<RefreshCallback>>>>;
@@ -630,6 +633,7 @@ fn job_row(
         .propagate_natural_height(true)
         .max_content_height(160)
         .build();
+    follow_log_output(&scroll);
     detail.append(&scroll);
     let created = gtk::Label::new(None);
     created.set_xalign(0.0);
@@ -652,6 +656,21 @@ fn job_row(
         created: created.downgrade(),
     };
     (row, widgets)
+}
+
+fn follow_log_output(scroll: &gtk::ScrolledWindow) {
+    let adjustment = scroll.vadjustment();
+    let following = Rc::new(Cell::new(true));
+    let track_position = following.clone();
+    adjustment.connect_value_changed(move |adjustment| {
+        track_position.set(at_log_bottom(adjustment));
+    });
+    adjustment.connect_changed(move |adjustment| {
+        if following.get() {
+            adjustment
+                .set_value((adjustment.upper() - adjustment.page_size()).max(adjustment.lower()));
+        }
+    });
 }
 
 fn job_controls(
@@ -678,41 +697,43 @@ fn job_controls(
             buttons.push(button);
         }
         JobStatus::Cancelling => {}
-        _ => {
-            let expanded = state.expanded.borrow().contains(&snapshot.id);
-            let details = job_button(
-                if expanded { "Hide" } else { "Details" },
-                if expanded {
-                    crate::assets::icons::EYE_OFF
-                } else {
-                    crate::assets::icons::EYE
-                },
-            );
-            let id = snapshot.id;
-            let expanded_state = state.expanded.clone();
-            let details_refresh = refresh.clone();
-            let dirty = state.dirty.clone();
-            details.connect_clicked(move |_| {
-                let mut expanded = expanded_state.borrow_mut();
-                if !expanded.remove(&id) {
-                    expanded.insert(id);
-                }
-                drop(expanded);
-                dirty.replace(true);
-                details_refresh();
-            });
-            buttons.push(details);
-
-            let dismiss = job_button("Dismiss", crate::assets::icons::X);
-            let service = state.service.clone();
-            let id = snapshot.id;
-            let dismiss_refresh = refresh.clone();
-            dismiss.connect_clicked(move |_| {
-                service.dismiss(id);
-                dismiss_refresh();
-            });
-            buttons.push(dismiss);
-        }
+        _ => {}
+    }
+    if snapshot.status != JobStatus::Queued {
+        let expanded = state.expanded.borrow().contains(&snapshot.id);
+        let details = job_button(
+            if expanded { "Hide" } else { "Details" },
+            if expanded {
+                crate::assets::icons::EYE_OFF
+            } else {
+                crate::assets::icons::EYE
+            },
+        );
+        let id = snapshot.id;
+        let expanded_state = state.expanded.clone();
+        let details_refresh = refresh.clone();
+        let dirty = state.dirty.clone();
+        details.connect_clicked(move |_| {
+            let mut expanded = expanded_state.borrow_mut();
+            if !expanded.remove(&id) {
+                expanded.insert(id);
+            }
+            drop(expanded);
+            dirty.replace(true);
+            details_refresh();
+        });
+        buttons.push(details);
+    }
+    if snapshot.status.is_finished() {
+        let dismiss = job_button("Dismiss", crate::assets::icons::X);
+        let service = state.service.clone();
+        let id = snapshot.id;
+        let dismiss_refresh = refresh.clone();
+        dismiss.connect_clicked(move |_| {
+            service.dismiss(id);
+            dismiss_refresh();
+        });
+        buttons.push(dismiss);
     }
     buttons
 }
@@ -798,14 +819,49 @@ fn icon_bezel(icon: &str) -> gtk::Box {
 }
 
 fn details_text(snapshot: &JobSnapshot) -> String {
-    let log = snapshot.log.trim_end();
+    let log = strip_terminal_sequences(snapshot.log.trim_end());
     if let Some(message) = snapshot.message.as_deref()
         && snapshot.status != JobStatus::Succeeded
         && !log.contains(message)
     {
         return format!("{message}\n{log}").trim_end().to_owned();
     }
-    log.to_owned()
+    log
+}
+
+fn at_log_bottom(adjustment: &gtk::Adjustment) -> bool {
+    adjustment.value() >= adjustment.upper() - adjustment.page_size() - 2.0
+}
+
+fn strip_terminal_sequences(text: &str) -> String {
+    let mut clean = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(character) = chars.next() {
+        if character == '\x1b' {
+            match chars.next() {
+                Some('[') => {
+                    for character in chars.by_ref() {
+                        if ('@'..='~').contains(&character) {
+                            break;
+                        }
+                    }
+                }
+                Some(']') => {
+                    while let Some(character) = chars.next() {
+                        if character == '\x07'
+                            || (character == '\x1b' && chars.next() == Some('\\'))
+                        {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else if !character.is_control() || character == '\n' || character == '\t' {
+            clean.push(character);
+        }
+    }
+    clean
 }
 
 fn meta_label(snapshot: &JobSnapshot) -> String {

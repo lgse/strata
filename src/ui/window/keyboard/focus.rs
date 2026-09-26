@@ -17,8 +17,8 @@ use crate::{
 
 impl Dispatcher {
     pub(super) fn focus_navigation(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
-        if self.type_to_search.preferences.omastrata_mode() {
-            if let Some(result) = self.omastrata_pane_focus(browser, event) {
+        if self.type_to_search.preferences.tenxer_mode() {
+            if let Some(result) = self.tenxer_pane_focus(browser, event) {
                 return Some(result);
             }
             return self.popover_navigation(event);
@@ -31,7 +31,7 @@ impl Dispatcher {
 
     /// Tab and arrows stay inside the Columns, List, and Icons panes.
     /// Focus that is already on surrounding chrome returns to the file list.
-    fn omastrata_pane_focus(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
+    fn tenxer_pane_focus(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
         if event.text_has_focus() || self.focus_in_popover() {
             return None;
         }

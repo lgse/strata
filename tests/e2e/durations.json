@@ -298,7 +298,6 @@
   "tests/e2e/scenarios/test_locations.py::test_typing_a_path_navigates_there": 2.488,
   "tests/e2e/scenarios/test_marquee_scrolling.py::test_scrolling_extends_marquee_without_losing_earlier_files[edge-columns]": 13.029,
   "tests/e2e/scenarios/test_marquee_scrolling.py::test_scrolling_extends_marquee_without_losing_earlier_files[edge-icons]": 10.685,
-  "tests/e2e/scenarios/test_marquee_scrolling.py::test_scrolling_extends_marquee_without_losing_earlier_files[edge-list]": 14.1,
   "tests/e2e/scenarios/test_marquee_scrolling.py::test_scrolling_extends_marquee_without_losing_earlier_files[wheel-columns]": 15.821,
   "tests/e2e/scenarios/test_marquee_scrolling.py::test_scrolling_extends_marquee_without_losing_earlier_files[wheel-icons]": 10.904,
   "tests/e2e/scenarios/test_marquee_scrolling.py::test_scrolling_extends_marquee_without_losing_earlier_files[wheel-list]": 13.325,

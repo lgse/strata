@@ -1501,7 +1501,7 @@ fn install_shortcuts(
                 .as_ref()
                 .is_none_or(|widget| !widget.is_mapped() || !widget.is_sensitive())
             {
-                if preferences.omastrata_mode() {
+                if preferences.tenxer_mode() {
                     browser.focus_active();
                 } else if let Some(filename) = state.filename.as_ref() {
                     filename.grab_focus();
@@ -1598,7 +1598,7 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if is_sidebar_focus_shortcut(key, modifiers) {
-            if preferences.omastrata_mode() {
+            if preferences.tenxer_mode() {
                 return glib::Propagation::Stop;
             }
             if sidebar_has_focus {
@@ -1721,7 +1721,7 @@ fn install_shortcuts(
                 return glib::Propagation::Proceed;
             }
         }
-        if preferences.omastrata_mode()
+        if preferences.tenxer_mode()
             && super::focus_navigation::plain_tab_direction(key, modifiers).is_some()
         {
             if !super::focus_navigation::contains_widget(&state.view.widget(), focused.as_ref()) {
@@ -1734,7 +1734,7 @@ fn install_shortcuts(
             match key {
                 gtk::gdk::Key::h | gtk::gdk::Key::Left => {
                     if state.view.move_header_focus(gtk::DirectionType::Left)
-                        || preferences.omastrata_mode()
+                        || preferences.tenxer_mode()
                     {
                         return glib::Propagation::Stop;
                     }
@@ -1757,7 +1757,7 @@ fn install_shortcuts(
             && let Some(direction) =
                 vim_focus_direction(key).or_else(|| super::focus_navigation::arrow_direction(key))
         {
-            if preferences.omastrata_mode() {
+            if preferences.tenxer_mode() {
                 browser.focus_active();
                 if super::focus_navigation::arrow_direction(key).is_none() {
                     return glib::Propagation::Stop;
@@ -1770,7 +1770,7 @@ fn install_shortcuts(
                 sidebar_toggle.grab_focus();
                 state.window.set_focus_visible(true);
             }
-            if !preferences.omastrata_mode() {
+            if !preferences.tenxer_mode() {
                 return glib::Propagation::Stop;
             }
         }
@@ -1782,7 +1782,7 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if !control && !alt && !state.view.item_view_has_focus() && !header_left_boundary {
-            if preferences.omastrata_mode()
+            if preferences.tenxer_mode()
                 && (super::focus_navigation::arrow_direction(key).is_some()
                     || vim_focus_direction(key).is_some())
             {
