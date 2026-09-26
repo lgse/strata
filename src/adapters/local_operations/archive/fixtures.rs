@@ -22,13 +22,7 @@ use std::{
     },
 };
 
-/// Temporary directory on the same device as the home directory.
-///
-/// GIO trashes a file into the home Trash only when that file's directory is on
-/// the home directory's device. Otherwise it refuses system-internal mounts such
-/// as a tmpfs `/tmp`. The default temporary directory follows `TMPDIR`, so
-/// replace-existing coverage would pass only for machines whose temp directory
-/// happens to share a device with home.
+/// GIO cannot trash test fixtures across devices into the home Trash.
 pub(super) fn tempdir_on_home_device() -> Result<tempfile::TempDir, Box<dyn Error>> {
     let home = gtk::glib::home_dir();
     let cache = gtk::glib::user_cache_dir();
@@ -49,10 +43,7 @@ fn same_device(left: &Path, right: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Deletes the home-trash copy of one fixture path when dropped.
-///
-/// Replace-existing tests move the original archive into Trash. On a host run
-/// that Trash is the developer's, so the fixture entry is removed again.
+/// Remove the fixture's Trash copy so host tests do not leave test files behind.
 pub(super) struct HomeTrashGuard(PathBuf);
 
 impl HomeTrashGuard {
