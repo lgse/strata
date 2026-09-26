@@ -226,14 +226,19 @@ impl LocalPreviewProvider {
             let mut content_type = guessed_type.to_string();
             let mut content = content_family(&content_type);
 
-            if matches!(content, PreviewContent::Unsupported)
-                && has_plain_text_extension(&entry.native_name)
-            {
-                content = PreviewContent::Text {
-                    content: String::new(),
-                    truncated: false,
-                };
-                content_type = "text/plain".to_owned();
+            if matches!(content, PreviewContent::Unsupported) {
+                if gio::content_type_is_a(&content_type, "text/plain") {
+                    content = PreviewContent::Text {
+                        content: String::new(),
+                        truncated: false,
+                    };
+                } else if has_plain_text_extension(&entry.native_name) {
+                    content = PreviewContent::Text {
+                        content: String::new(),
+                        truncated: false,
+                    };
+                    content_type = "text/plain".to_owned();
+                }
             }
 
             if matches!(content, PreviewContent::Unsupported)
