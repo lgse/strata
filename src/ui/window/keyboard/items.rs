@@ -241,8 +241,6 @@ impl Dispatcher {
         }
     }
 
-    /// List and Columns movement, directory entry, history, and column inspect.
-    /// Icons keep their current map. Returns false when this key is not one of those chords.
     pub(super) fn tenxer_listing(
         &self,
         browser: &Rc<Browser>,
@@ -348,7 +346,6 @@ impl Dispatcher {
         self.view.activate_focused();
     }
 
-    /// Opens a directory. A file is left alone so plain l / Right does not launch it.
     fn enter_focused_directory(&self, browser: &Rc<Browser>) {
         self.view.keyboard_navigation();
         if browser
@@ -359,7 +356,6 @@ impl Dispatcher {
         }
     }
 
-    /// Opens the next Miller column and leaves focus in the current column.
     fn open_miller_child(&self, browser: &Rc<Browser>) {
         self.view.keyboard_navigation();
         let Some((depth, _, entry)) = browser.focused_item() else {

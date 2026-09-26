@@ -660,7 +660,6 @@ fn tenxer_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
     }
 }
 
-/// List and Columns movement. `l` / Right open a directory and leave a file alone.
 fn tenxer_listing_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
     let mut shortcuts = vec![
         ("j / k / ↑ / ↓", "Next / previous item"),

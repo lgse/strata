@@ -1372,8 +1372,7 @@ impl BrowserView {
         }
         cancel_source(&self.state.pending_peek);
         self.state.browser.close_peek();
-        // Capture-phase keys run before the pane sees the event that would cancel
-        // an in-progress history restore, so the command has to cancel it first.
+        // Capture-phase navigation must cancel history restore before pane key handling.
         self.state.mode_views.borrow_mut().cancel_list_restore();
         self.state.sync_mode_selection();
         self.state.refresh_destination_style();
@@ -1824,8 +1823,6 @@ impl BrowserView {
         true
     }
 
-    /// Moves the keyboard cursor `steps` entries in displayed listing order.
-    /// Columns fall back to source order, which already follows the column sort.
     pub fn move_displayed_cursor(&self, direction: i32, steps: usize) {
         if direction == 0 {
             return;
@@ -1867,7 +1864,6 @@ impl BrowserView {
         }
     }
 
-    /// `half` moves half of one full page. Both ends stay inside the listing.
     pub fn page_displayed_cursor(&self, direction: i32, half: bool) {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let items = focused

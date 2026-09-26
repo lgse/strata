@@ -431,9 +431,6 @@ impl Dispatcher {
         if self.text_focused() || self.focus_in_popover() {
             return None;
         }
-        // Plain q leaves the mode. Shift+Q closes the window. List and Columns
-        // claim their own chords, including paging keys that otherwise filter,
-        // toggle the sidebar, or duplicate.
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
         if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
@@ -447,8 +444,6 @@ impl Dispatcher {
         if self.tenxer_listing(browser, key, modifiers) {
             return Some(Propagation::Stop);
         }
-        // Claim the conflicting default map. Still-bound shortcuts fall through
-        // to the existing commands.
         if claims_unbound_command(key, modifiers)
             || (self.view.item_view_has_focus() && claims_file_list_typing(key, modifiers))
         {
