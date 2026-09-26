@@ -434,10 +434,18 @@ pub(super) fn column_rows(
             if !shift && let Some(anchor) = change.anchor {
                 anchor_at(&weak_state_for_click, depth, &map_for_click, anchor);
             }
+            // Own this write for the whole synchronous selection-changed emission.
+            // A click on the cursor row is otherwise identical to a focus echo.
+            let pointer_owner = weak_state_for_click
+                .upgrade()
+                .inspect(|state| state.pointer_owns_selection.set(true));
             selection_for_click.set_selection(
                 &change.selected,
                 &gtk::Bitset::new_range(0, selection_for_click.n_items()),
             );
+            if let Some(state) = pointer_owner {
+                state.pointer_owns_selection.set(false);
+            }
             if (control || shift)
                 && let Some(widget) = gesture.widget()
                 && crate::ui::pointer::hits_item_content(&widget, x, y)

@@ -43,6 +43,32 @@ fn keybindings_follow_the_active_map_across_windows() {
                 assert!(!shown.contains(&"Quick preview".to_owned()));
                 assert!(shown.contains(&"Leave 10xer mode".to_owned()));
                 assert!(page_text(page).contains(phrase));
+                let rows = visible_bindings(page);
+                assert!(
+                    rows.iter().any(|(action, keys)| {
+                        action == "Toggle the focused item and move down"
+                            && keys.split_whitespace().any(|key| key == "Space")
+                    }),
+                    "the rendered 10xer page lists Space for the toggle action"
+                );
+                assert!(
+                    rows.iter().any(|(action, keys)| {
+                        let keys: Vec<_> = keys.split_whitespace().collect();
+                        action == "Invert the selection"
+                            && keys.contains(&"Ctrl")
+                            && keys.contains(&"R")
+                    }),
+                    "the rendered 10xer page lists Ctrl+R for invert"
+                );
+                assert!(
+                    rows.iter().any(|(action, keys)| {
+                        let keys: Vec<_> = keys.split_whitespace().collect();
+                        action == "Visual select / visual unset"
+                            && keys.contains(&"v")
+                            && keys.contains(&"V")
+                    }),
+                    "the rendered 10xer page lists v and V for visual ranges"
+                );
             }
             assert!(page_text(general.upcast_ref()).contains(phrase));
 
@@ -55,15 +81,25 @@ fn keybindings_follow_the_active_map_across_windows() {
 }
 
 fn visible_actions(page: &gtk::Widget) -> Vec<String> {
+    visible_bindings(page)
+        .into_iter()
+        .map(|(action, _)| action)
+        .collect()
+}
+
+fn visible_bindings(page: &gtk::Widget) -> Vec<(String, String)> {
     descendants::<gtk::Box>(page)
         .into_iter()
         .filter(|row| row.has_css_class("keybinding-row") && row.is_visible())
         .map(|row| {
-            row.first_child()
-                .and_downcast::<gtk::Label>()
-                .expect("shortcut action label")
-                .text()
-                .to_string()
+            let labels: Vec<String> = descendants::<gtk::Label>(row.upcast_ref())
+                .into_iter()
+                .filter(|label| label.is_visible())
+                .map(|label| label.text().to_string())
+                .collect();
+            let action = labels.first().cloned().unwrap_or_default();
+            let keys = labels.into_iter().skip(1).collect::<Vec<_>>().join(" ");
+            (action, keys)
         })
         .collect()
 }

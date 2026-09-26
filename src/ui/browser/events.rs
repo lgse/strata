@@ -544,6 +544,7 @@ impl ViewState {
                         }
                     }
                 }
+                self.refresh_destination_style();
             }
             BrowserEvent::FocusChanged { depth, position } => {
                 let column = self.columns.borrow().get(*depth).cloned();
@@ -561,6 +562,7 @@ impl ViewState {
                         set_column_selections(&column, &positions);
                         if !editing && !self.suppress_focus_scroll.get() {
                             scroll_column_to(&column, filtered_position);
+                            restore_column_cursor(&column, filtered_position);
                         }
                     }
                     if !editing
@@ -580,6 +582,7 @@ impl ViewState {
                         self.reveal_column(column.shell);
                     }
                 }
+                self.refresh_destination_style();
                 self.mirror_focused_folder(*depth, *position);
             }
             BrowserEvent::PreviewRequested { .. } => {}

@@ -292,6 +292,54 @@ pub(super) fn reveal_selection(
     advance(&scroll.vadjustment(), f64::from(direction) * page.distance);
 }
 
+/// How far a cursor-only move travelled, which decides how its reveal scrolls.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CursorMotion {
+    /// One entry. Focus-follow scrolling already keeps the cursor in sight.
+    Step,
+    /// A full or half page.
+    Page,
+    /// The first or last entry.
+    Jump,
+}
+
+/// Scrolls a cursor-only move to `position` when the caller knows the row.
+/// Grid pages still move by a page of pixels; jumps and list rows focus that row
+/// instead of the minimum filled position. A single step never pages the viewport.
+pub(super) fn reveal_cursor(
+    view: &gtk::Widget,
+    scroll: &gtk::ScrolledWindow,
+    direction: i32,
+    motion: CursorMotion,
+    position: Option<u32>,
+) {
+    let grid = view.is::<gtk::GridView>();
+    if motion == CursorMotion::Page && grid {
+        advance(
+            &scroll.vadjustment(),
+            f64::from(direction) * page(view, scroll).distance,
+        );
+        return;
+    }
+    // GridView `scroll_to` relies on stale cell estimates; the pane's own focus
+    // follow brings a single grid step into view.
+    if motion == CursorMotion::Step && grid {
+        return;
+    }
+    if scroll.child().is_some_and(|child| &child == view)
+        && let Some(position) = position.or_else(|| selected_position(view))
+    {
+        scroll_to_item(view, position);
+        return;
+    }
+    let distance = match motion {
+        CursorMotion::Step => return,
+        CursorMotion::Page => page(view, scroll).distance,
+        CursorMotion::Jump => f64::MAX,
+    };
+    advance(&scroll.vadjustment(), f64::from(direction) * distance);
+}
+
 /// Brings the newly selected item into sight after jumping to the first or last
 /// entry, scrolling all the way to that edge of the pane.
 pub(super) fn reveal_jump(view: &gtk::Widget, scroll: &gtk::ScrolledWindow, direction: i32) {

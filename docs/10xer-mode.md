@@ -118,6 +118,15 @@ deselect it. After **Space**, **Ctrl+A**, **Ctrl+R**, or leaving visual,
 fill. **v** then motion starts a new range from the cursor. **V** subtracts the
 walked span. In visual mode, **Space** toggles the cursor item without moving it.
 
+A range walks the pane in displayed order, including List type groups, and only
+rewrites the fill of that pane. Walking back toward the anchor restores the items
+the range had covered; items toggled with **Space** stay toggled. The footer shows
+**VISUAL** or **UNSET** while a range is active. Pressing the same key again or
+**Esc** leaves visual mode and keeps the fill; the other key starts a new range
+at the cursor. Opening another folder, moving to another pane, changing the view,
+a pointer selection, **Ctrl+A**, **Ctrl+R**, or leaving 10xer mode also end the
+range. In an empty folder **v** / **V** flash `Nothing to select`.
+
 ### Escape precedence
 
 Dialogs, the shortcut reference, text editors, and an open folder-peek popover

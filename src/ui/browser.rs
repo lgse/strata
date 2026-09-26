@@ -156,6 +156,9 @@ pub(super) struct ViewState {
     context_menu_generation: Cell<u64>,
     context_menu_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
+    /// True only while a column row gesture is writing the selection model.
+    /// Focus echoes of the cursor are not pointer-owned.
+    pointer_owns_selection: Cell<bool>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     suppress_focus_scroll: Cell<bool>,
     pending_mirror: RefCell<Option<glib::SourceId>>,
@@ -522,6 +525,7 @@ impl BrowserView {
             context_menu_generation: Cell::new(0),
             context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
+            pointer_owns_selection: Cell::new(false),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             suppress_focus_scroll: Cell::new(false),
             pending_mirror: RefCell::new(None),
@@ -971,6 +975,8 @@ impl BrowserView {
         if mode == previous {
             return;
         }
+        // The rebuilt view has a different displayed order for the same anchor.
+        self.state.browser.leave_visual();
         self.state.mode.set(mode);
         let filter = match previous {
             BrowserMode::Columns => self.state.capture_active_column_filter(),
@@ -1497,6 +1503,95 @@ impl BrowserView {
         }
     }
 
+    /// Selects the keyboard pane, ignoring the pointer-hovered column.
+    pub fn select_focused_pane(&self) -> bool {
+        self.keyboard_navigation();
+        let Some(depth) = self.focused_listing_depth() else {
+            return false;
+        };
+        self.state.browser.set_active_column(depth);
+        self.state.browser.select_visible(depth)
+    }
+
+    /// Inverts the keyboard pane. Rename stays on F2.
+    pub fn invert_focused_pane(&self) -> bool {
+        self.keyboard_navigation();
+        let Some(depth) = self.focused_listing_depth() else {
+            return false;
+        };
+        self.state.browser.set_active_column(depth);
+        self.state.browser.invert_visible(depth)
+    }
+
+    /// Toggles the cursor item and advances one row. A visual range toggles in
+    /// place instead. Returns false when the pane is empty.
+    pub fn toggle_cursor_and_advance(&self) -> bool {
+        self.keyboard_navigation();
+        let Some(depth) = self.focused_listing_depth() else {
+            return false;
+        };
+        self.state.browser.set_active_column(depth);
+        if self.state.browser.visual_kind().is_some() {
+            let order = self.displayed_order(depth);
+            return self.state.browser.toggle_visual_cursor(order.as_deref());
+        }
+        if self.state.browser.toggle_cursor_fill() == crate::app::CursorToggle::Empty {
+            return false;
+        }
+        self.move_displayed_cursor(1, 1);
+        true
+    }
+
+    /// Starts a visual range at the cursor of the keyboard pane, or leaves the
+    /// active range when `kind` repeats it. Returns false when the pane is empty.
+    pub fn toggle_visual(&self, kind: crate::app::VisualKind) -> bool {
+        self.keyboard_navigation();
+        let Some(depth) = self.focused_listing_depth() else {
+            return false;
+        };
+        self.state.browser.set_active_column(depth);
+        let order = self.displayed_order(depth);
+        self.state.browser.toggle_visual(kind, order.as_deref())
+    }
+
+    /// Recomputes an active range after a cursor move that bypassed the model,
+    /// such as native Icons grid motion.
+    pub fn refresh_visual(&self) {
+        if let Some(depth) = self.state.browser.active_depth() {
+            let order = self.displayed_order(depth);
+            self.state.browser.refresh_visual(order.as_deref());
+        }
+    }
+
+    pub fn leave_visual(&self) -> bool {
+        self.state.browser.leave_visual()
+    }
+
+    /// Source positions of one pane in the order it displays them, including
+    /// type groups and a Columns filter. `None` falls back to source order.
+    fn displayed_order(&self, depth: usize) -> Option<Vec<usize>> {
+        let order: Vec<usize> = if self.view_mode() == BrowserMode::Columns {
+            let columns = self.state.columns.borrow();
+            let column = columns.get(depth)?;
+            (0..column.selection.n_items())
+                .filter_map(|position| column.map.source_position(position))
+                .collect()
+        } else {
+            self.state.mode_views.borrow().visual_order(depth)
+        };
+        (!order.is_empty()).then_some(order)
+    }
+
+    fn focused_listing_depth(&self) -> Option<usize> {
+        if self.view_mode() == BrowserMode::Columns {
+            self.state
+                .focused_column_depth()
+                .or_else(|| self.state.browser.active_depth())
+        } else {
+            self.state.browser.active_depth()
+        }
+    }
+
     pub fn open_terminal(&self) {
         self.state.sync_mode_selection();
         let selected = self.state.browser.selected_entries();
@@ -1844,6 +1939,20 @@ impl BrowserView {
     }
 
     pub fn move_displayed_cursor(&self, direction: i32, steps: usize) {
+        let motion = if steps == usize::MAX {
+            super::scrolling::CursorMotion::Jump
+        } else {
+            super::scrolling::CursorMotion::Step
+        };
+        self.shift_displayed_cursor(direction, steps, motion);
+    }
+
+    fn shift_displayed_cursor(
+        &self,
+        direction: i32,
+        steps: usize,
+        motion: super::scrolling::CursorMotion,
+    ) {
         if direction == 0 {
             return;
         }
@@ -1853,35 +1962,46 @@ impl BrowserView {
         let collection = focused
             .as_ref()
             .and_then(super::scrolling::focused_collection);
-        self.state.mode_views.borrow().suppress_focus_scroll();
-        let target = self.state.browser.active_depth().and_then(|depth| {
+        let depth = self.state.browser.active_depth();
+        let target = depth.and_then(|depth| {
             self.state
                 .mode_views
                 .borrow()
                 .page_target(depth, direction, steps)
                 .map(|position| (depth, position))
         });
+        let order = depth.and_then(|depth| self.displayed_order(depth));
         if let Some((depth, position)) = target {
-            self.state.browser.select(depth, position);
-        } else {
-            let order = self
-                .state
-                .browser
-                .active_depth()
-                .map(|depth| self.state.mode_views.borrow().visual_order(depth))
-                .filter(|order| !order.is_empty());
             self.state
                 .browser
-                .page_along(direction, steps, order.as_deref());
+                .place_cursor(depth, position, order.as_deref());
+        } else {
+            self.state
+                .browser
+                .page_cursor(direction, steps, order.as_deref());
         }
         if let Some((view, scroll)) = collection {
-            if steps == usize::MAX {
-                super::scrolling::reveal_jump(&view, &scroll, direction);
-            } else {
-                let page = super::scrolling::page(&view, &scroll);
-                super::scrolling::reveal_selection(&view, &scroll, direction, &page);
+            let position = self.cursor_view_position(&view);
+            super::scrolling::reveal_cursor(&view, &scroll, direction, motion, position);
+        }
+    }
+
+    /// View position of the model cursor in `view`, so a reveal follows the cursor
+    /// rather than the first filled row.
+    fn cursor_view_position(&self, view: &gtk::Widget) -> Option<u32> {
+        let (depth, source, _) = self.state.browser.focused_item()?;
+        let columns = self.state.columns.borrow();
+        if let Some(column) = columns.get(depth) {
+            let list = column.list.clone().upcast::<gtk::Widget>();
+            if &list == view {
+                return column.map.view_position(source);
             }
         }
+        drop(columns);
+        self.state
+            .mode_views
+            .borrow()
+            .view_position_in(view, depth, source)
     }
 
     pub fn page_displayed_cursor(&self, direction: i32, half: bool) {
@@ -1893,7 +2013,7 @@ impl BrowserView {
             .unwrap_or(1)
             .max(1);
         let steps = if half { (items / 2).max(1) } else { items };
-        self.move_displayed_cursor(direction, steps);
+        self.shift_displayed_cursor(direction, steps, super::scrolling::CursorMotion::Page);
     }
 
     /// Moves the focus to the first or last visible entry of the active pane, for

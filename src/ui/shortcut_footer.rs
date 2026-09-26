@@ -3,6 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    time::Duration,
 };
 
 use gtk::{gdk, glib, prelude::*};
@@ -28,8 +29,10 @@ pub(super) struct ShortcutFooter {
     tag_note: gtk::Label,
     experimental: gtk::Label,
     feedback: gtk::Label,
+    feedback_epoch: Rc<Cell<u64>>,
     prompt: gtk::Entry,
     chord: gtk::Label,
+    visual: gtk::Label,
     view_mode: Rc<Cell<BrowserMode>>,
 }
 
@@ -58,6 +61,9 @@ impl ShortcutFooter {
         let chord = gtk::Label::new(None);
         chord.add_css_class("shortcut-footer-chord");
         chord.set_visible(false);
+        let visual = gtk::Label::new(None);
+        visual.add_css_class("shortcut-footer-chord");
+        visual.set_visible(false);
         let prompt = gtk::Entry::new();
         prompt.add_css_class("form-control");
         prompt.add_css_class("shortcut-footer-prompt");
@@ -71,6 +77,7 @@ impl ShortcutFooter {
         root.append(&paste);
         root.append(&tag);
         root.append(&tag_note);
+        root.append(&visual);
         root.append(&chord);
         root.append(&prompt);
         root.append(&feedback);
@@ -206,6 +213,7 @@ impl ShortcutFooter {
             tag.clone().upcast(),
             tag_note.clone().upcast(),
             chord.clone().upcast(),
+            visual.clone().upcast(),
             prompt.clone().upcast(),
             feedback.clone().upcast(),
         ]));
@@ -228,8 +236,10 @@ impl ShortcutFooter {
             tag_note,
             experimental,
             feedback,
+            feedback_epoch: Rc::new(Cell::new(0)),
             prompt,
             chord,
+            visual,
             view_mode: Rc::new(Cell::new(mode)),
         };
         let keys = gtk::EventControllerKey::new();
@@ -326,13 +336,27 @@ impl ShortcutFooter {
 
     pub fn observe_browser(&self, browser: &Rc<crate::app::Browser>) {
         update_item_count(&self.count, browser);
+        update_visual_mode(&self.visual, browser);
         let label = self.count.downgrade();
+        let visual = self.visual.downgrade();
         let weak_browser = Rc::downgrade(browser);
-        browser.observe(move |_| {
-            if let Some(label) = label.upgrade()
-                && let Some(browser) = weak_browser.upgrade()
-            {
+        let footer = self.clone();
+        browser.observe(move |event| {
+            if matches!(
+                event,
+                crate::app::BrowserEvent::NavigationStarting
+                    | crate::app::BrowserEvent::SelectionSetChanged { .. }
+            ) {
+                footer.clear_feedback();
+            }
+            let Some(browser) = weak_browser.upgrade() else {
+                return;
+            };
+            if let Some(label) = label.upgrade() {
                 update_item_count(&label, &browser);
+            }
+            if let Some(visual) = visual.upgrade() {
+                update_visual_mode(&visual, &browser);
             }
         });
     }
@@ -347,16 +371,43 @@ impl ShortcutFooter {
         rebuild_reference(&self.reference, mode);
     }
 
-    #[cfg(test)]
     pub(in crate::ui) fn show_feedback(&self, text: &str) {
+        let epoch = self.feedback_epoch.get().wrapping_add(1);
+        self.feedback_epoch.set(epoch);
         self.feedback.set_text(text);
-        self.feedback.set_visible(!text.is_empty());
+        let visible = !text.is_empty();
+        self.feedback.set_visible(visible);
+        if !visible {
+            return;
+        }
+        let epochs = self.feedback_epoch.clone();
+        let feedback = self.feedback.downgrade();
+        glib::timeout_add_local_once(FEEDBACK_FLASH, move || {
+            if epochs.get() != epoch {
+                return;
+            }
+            if let Some(feedback) = feedback.upgrade() {
+                feedback.set_text("");
+                feedback.set_visible(false);
+            }
+        });
+    }
+
+    pub(in crate::ui) fn clear_feedback(&self) {
+        self.feedback_epoch
+            .set(self.feedback_epoch.get().wrapping_add(1));
+        self.feedback.set_text("");
+        self.feedback.set_visible(false);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn feedback_text(&self) -> String {
+        self.feedback.text().to_string()
     }
 
     #[cfg(test)]
     pub(in crate::ui) fn dismiss_feedback(&self) {
-        self.feedback.set_text("");
-        self.feedback.set_visible(false);
+        self.clear_feedback();
     }
 
     #[cfg(test)]
@@ -583,6 +634,8 @@ fn apply_experimental_label(
     ]);
 }
 
+const FEEDBACK_FLASH: Duration = Duration::from_millis(2_000);
+
 fn clear_transient(feedback: &gtk::Label, prompt: &gtk::Entry, chord: &gtk::Label) {
     feedback.set_text("");
     feedback.set_visible(false);
@@ -590,6 +643,28 @@ fn clear_transient(feedback: &gtk::Label, prompt: &gtk::Entry, chord: &gtk::Labe
     prompt.set_visible(false);
     chord.set_text("");
     chord.set_visible(false);
+}
+
+fn update_visual_mode(label: &gtk::Label, browser: &Rc<crate::app::Browser>) {
+    let (text, name) = match browser.visual_kind() {
+        Some(crate::app::VisualKind::Select) => ("VISUAL", "Visual select"),
+        Some(crate::app::VisualKind::Unset) => ("UNSET", "Visual unset"),
+        None => ("", ""),
+    };
+    if label.text() != text {
+        label.set_text(text);
+        super::accessibility::set_label(label, name);
+    }
+    label.set_visible(!text.is_empty());
+}
+
+#[cfg(test)]
+impl ShortcutFooter {
+    pub(in crate::ui) fn visual_text(&self) -> Option<String> {
+        self.visual
+            .is_visible()
+            .then(|| self.visual.text().to_string())
+    }
 }
 
 fn update_item_count(label: &gtk::Label, browser: &Rc<crate::app::Browser>) {
