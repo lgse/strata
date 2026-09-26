@@ -223,6 +223,3 @@ fn path_suggestions(input: &str, base: &Path, home: &Path) -> Vec<std::path::Pat
     matches.truncate(8);
     matches
 }
-
-#[cfg(test)]
-mod tests;

@@ -29,8 +29,8 @@ FHS, `/run/wrappers/bin`, `/nix/store`, or `/gnu/store`.
   cannot initiate filesystem access, network access, JavaScript execution, or
   subresource loading. Relative Markdown images are separately confined to the
   document directory and staged as bounded private files. Their decoders and the
-  native Mermaid renderer and bundled MathJax equation renderer run in sandbox
-  helpers with a three-second deadline. QuickJS has no host APIs or module loader,
+  native Mermaid renderer and bundled MathJax equation renderer run as jobs in
+  the pooled sandbox supervisors described below. QuickJS has no host APIs or module loader,
   and user equations are passed as data, not evaluated as JavaScript;
   SVG resource resolution is disabled and only validated PNG output returns.
 
@@ -136,6 +136,15 @@ not a wall-clock guarantee: long probes, source I/O, and the existing fill budge
 can still delay details; a one-worker configuration must serialize decoding and
 probing.
 
+Quick previews and document media (images, Mermaid diagrams, equations) reuse
+the same supervisor implementation through a **second pool**, so an interactive
+Space preview never queues behind a scrolled directory's thumbnail flood. Both
+pools share the launcher thread, idle retirement, per-job isolation, and cache
+machinery; the cache keys results by source version *and* operation so a
+256-pixel thumbnail can never satisfy an 800-pixel preview of the same file.
+Each preview still runs in a freshly forked, Landlock/seccomp-confined decoder
+with per-job resource limits — only the supervisor process is reused.
+
 `RUST_LOG=strata::sandbox::browser=debug` records supervisor starts and operation
 latencies and idle retirements without source paths. It is useful for verifying
 reuse: repeated cold files within the idle timeout should produce jobs, not a new
@@ -152,10 +161,11 @@ raster images. Emoji icons retain Pango/Cairo rendering
 but pass raw pixels to GTK instead of encoding and decoding an intermediate PNG.
 
 This in-process icon path is not used for user SVGs, phone photos, or thumbnails
-of originals; those keep their sandbox boundary. Markdown SVGs, Mermaid diagrams, and equation
-output use a separate `resvg` path inside the sandbox, with font loading enabled
-there and image references disabled. No toolkit libraries or private media
-runtime patches are updated by this change.
+of originals; those keep their sandbox boundary. User SVG previews and
+thumbnails, Markdown SVGs, Mermaid diagrams, and equation output use a separate
+`resvg` path inside the sandbox, with image references disabled and system font
+loading enabled only when the document contains text. No toolkit libraries or
+private media runtime patches are updated by this change.
 
 ## Remote still-image previews
 
@@ -225,8 +235,9 @@ resolution; audio/video duration and overall bitrate; video codec and frame rate
 and audio codec, sample rate, and channel count. These describe the original file,
 not the preview's scaled frames or resampled audio. Attached album artwork is not
 reported as a video track, and still images do not show synthetic video timing.
-Missing individual fields are omitted; an unsuccessful inspection shows
-`Media: Unavailable` without blocking the other file information.
+For ordinary images and audio/video, missing individual fields are omitted; an
+unsuccessful inspection shows `Media: Unavailable` without blocking the other
+file information.
 
 Properties uses an asynchronous inspector. Only regular files with a
 local source are inspected; remote files are not downloaded for metadata. The
@@ -238,8 +249,38 @@ sandboxes expose only the optional BLAS/LAPACK runtime alternatives for supporte
 x86-64 and ARM64 Debian-family installations, not all of `/etc/alternatives`. Only
 validated numeric fields and bounded codec identifiers reach the UI, not arbitrary
 embedded tags. Closing Properties cancels its work and prevents stale results
-from appearing. The preview pane retains only its normal size, modified date,
-and type information; it does not run this metadata inspector.
+from appearing. Ordinary image and audio/video previews retain their normal size,
+modified date, and type information; they do not run this metadata inspector.
+
+Camera RAW files additionally show **Dimensions, Camera, Lens, Focal length,
+Shutter speed, ISO, and GPS coordinates**, in that order, in both the preview
+panel and Properties. All seven fields remain visible; missing or unreadable
+values show `N/A`. Dimensions describe the original image, account for orientation,
+and never use an embedded thumbnail's size. GPS is signed decimal latitude,
+then longitude; there is no reverse geocoding or network request. Shutter speeds
+use `1/N s` for integer reciprocals and decimal seconds otherwise (for example,
+`0.3 s`, not `1/3.333 s`).
+
+RAW inspection reuses LibRaw's `raw-identify -v` or classic `dcraw -i -v` when
+installed, with a three-second limit per identification attempt. The bundled
+`kamadak-exif` reader supplements capture and GPS tags from supported EXIF
+containers, including TIFF-based RAW files, without decoding pixels. It is also
+the fallback when those optional utilities are absent. ImageMagick's RAW metadata
+output is not used: DNG redirection and incomplete EXIF exposure vary by version.
+Support depends on the format and available tools; unavailable tags in other
+RAW containers remain `N/A`.
+
+Both parsers run only inside a short-lived, software-only sandbox with the
+existing 512 MiB input limit, memory/CPU/wall-time limits, and a 64 KiB output
+budget. Only the seven validated properties reach the UI; camera/lens strings
+are bounded plain text. Locally backed Trash entries use their existing local
+thumbnail source, recognizing the original display-name extension even when the
+stored filename has a collision suffix. Remote RAW files are not downloaded for
+metadata and show `N/A`. Selection changes and closing either surface cancel
+pending work.
+RAW preview labels remain in place during selection debounce and metadata loading;
+only their values reset to `N/A` and update when inspection completes.
+Detailed RAW inspection does not run for browser thumbnails.
 
 ## Incremental media playback
 

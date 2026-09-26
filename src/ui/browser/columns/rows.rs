@@ -229,6 +229,7 @@ pub(super) fn column_rows(
                     row.add_css_class("dragging");
                 }
                 if let Some(state) = weak_state_for_begin.upgrade() {
+                    state.drag_source_depth.set(Some(depth));
                     state.cancel_peek();
                 }
             });
@@ -266,18 +267,43 @@ pub(super) fn column_rows(
             let highlighted_row = row.downgrade();
             let state_for_enter = drop_state.clone();
             drop.connect_enter(move |target, _, _| {
+                let action = file_drop_action(target, &state_for_enter);
                 if let Some(row) = highlighted_row.upgrade() {
-                    row.add_css_class("drop-destination");
+                    if action.is_empty() {
+                        row.remove_css_class("drop-destination");
+                    } else {
+                        row.add_css_class("drop-destination");
+                    }
                 }
-                file_drop_action(target, &state_for_enter)
+                action
             });
             let highlighted_row = row.downgrade();
             let state_for_motion = drop_state.clone();
             drop.connect_motion(move |target, _, _| {
+                let action = file_drop_action(target, &state_for_motion);
                 if let Some(row) = highlighted_row.upgrade() {
-                    row.add_css_class("drop-destination");
+                    if action.is_empty() {
+                        row.remove_css_class("drop-destination");
+                    } else {
+                        row.add_css_class("drop-destination");
+                    }
                 }
-                file_drop_action(target, &state_for_motion)
+                action
+            });
+            let highlighted_row = row.downgrade();
+            let state_for_value = drop_state.clone();
+            drop.connect_value_notify(move |target| {
+                if target.current_drop().is_none() {
+                    return;
+                }
+                let action = file_drop_action(target, &state_for_value);
+                if let Some(row) = highlighted_row.upgrade() {
+                    if action.is_empty() {
+                        row.remove_css_class("drop-destination");
+                    } else {
+                        row.add_css_class("drop-destination");
+                    }
+                }
             });
             let highlighted_row = row.downgrade();
             drop.connect_leave(move |_| {
@@ -363,6 +389,7 @@ pub(super) fn column_rows(
         let rename_position = Rc::new(Cell::new(None::<usize>));
         let rename_position_for_press = rename_position.clone();
         let rename_position_for_release = rename_position.clone();
+        let name_label_for_press = label.downgrade();
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
             rename_position_for_press.set(None);
@@ -492,7 +519,7 @@ pub(super) fn column_rows(
                         control,
                         shift,
                         preserve_group,
-                    );
+                    ) && !state.browser.is_open_child(depth, &entry.location);
                     let slow_click_rename = press_count == 1
                         && selected_before
                         && selected_count_before == 1
@@ -506,7 +533,13 @@ pub(super) fn column_rows(
                         && !preserve_group
                         && !activate
                         && !state.browser.is_chooser_mode()
-                        && !is_trash_location(&entry.location);
+                        && !is_trash_location(&entry.location)
+                        && gesture
+                            .widget()
+                            .zip(name_label_for_press.upgrade())
+                            .is_some_and(|(row, label)| {
+                                crate::ui::pointer::hits_name_label(&row, label.upcast_ref(), x, y)
+                            });
                     rename_position_for_press.set(if slow_click_rename {
                         Some(source_position)
                     } else {
@@ -788,7 +821,9 @@ pub(super) fn column_rows(
                 .as_ref()
                 .is_some_and(|browser| browser.is_open_child(depth, &entry.location))
         });
-        set_active_path_style(&row, active);
+        let immediate =
+            browser.as_ref().and_then(|browser| browser.active_depth()) == Some(depth + 1);
+        set_active_path_style(&row, active, immediate);
         set_cut_path_style(
             &row,
             entry.as_ref().is_some_and(|entry| {

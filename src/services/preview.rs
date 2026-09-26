@@ -5,6 +5,7 @@ use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
     rc::Rc,
+    sync::Arc,
 };
 
 use crate::model::FileEntry;
@@ -99,7 +100,7 @@ impl PartialEq for PreviewInputLease {
 }
 impl Eq for PreviewInputLease {}
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum PreviewContent {
     Text {
         content: String,
@@ -128,11 +129,22 @@ pub enum PreviewContent {
         png: Vec<u8>,
         page: i32,
         pages: i32,
+        text_layer: Option<Arc<PdfTextLayer>>,
     },
     Archive {
         tree: ArchivePreviewTree,
     },
     Unsupported,
+}
+
+/// Extracted text and per-character bounds for one rendered PDF page.
+/// `glyphs[i]` locates the i-th char of `text` in rendered PNG pixels.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PdfTextLayer {
+    pub width: f32,
+    pub height: f32,
+    pub text: String,
+    pub glyphs: Vec<[f32; 4]>,
 }
 
 #[derive(Clone, Debug)]
@@ -216,6 +228,7 @@ pub(crate) fn content_family(content_type: &str) -> PreviewContent {
             png: Vec::new(),
             page: 0,
             pages: 0,
+            text_layer: None,
         }
     } else if content_type == "image/gif" {
         PreviewContent::Media
@@ -229,6 +242,7 @@ pub(crate) fn content_family(content_type: &str) -> PreviewContent {
             "application/json"
                 | "application/ld+json"
                 | "application/toml"
+                | "application/yaml"
                 | "application/x-yaml"
                 | "application/xml"
                 | "application/javascript"

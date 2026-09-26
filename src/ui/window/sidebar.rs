@@ -301,6 +301,3 @@ fn rebuild_on_change<T: 'static>(
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -44,6 +44,7 @@ pub(crate) fn worker_limit() -> usize {
 
 pub(crate) fn set_worker_limit(limit: usize) {
     pool().set_limit(limit);
+    preview_pool().set_limit(limit);
     if let Some(Ok(launcher)) = LAUNCHER.get() {
         let _ = launcher.send(LauncherMessage::Idle);
     }
@@ -102,14 +103,12 @@ struct Cached {
     completed: Option<Instant>,
 }
 
-type Cache = VecDeque<(FileKey, Arc<Mutex<Cached>>)>;
+// A source version may have distinct render sizes; keep operations separate.
+type Cache = VecDeque<((FileKey, Operation), Arc<Mutex<Cached>>)>;
 
-fn cache_entry(key: FileKey) -> Arc<Mutex<Cached>> {
-    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
-    let mut cache = CACHE
-        .get_or_init(Mutex::default)
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+fn cache_entry(cache: &Mutex<Cache>, key: FileKey, operation: Operation) -> Arc<Mutex<Cached>> {
+    let key = (key, operation);
+    let mut cache = cache.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(index) = cache.iter().position(|(candidate, _)| candidate == &key) {
         let entry = cache.remove(index).expect("existing cache entry");
         let result = entry.1.clone();
@@ -149,7 +148,7 @@ pub(crate) fn thumbnail(
         ParseOperation::ThumbnailVideo => Operation::Video,
         _ => return Err("Not a browser thumbnail operation".into()),
     };
-    let result = request(path, operation, cancellation)?;
+    let result = request(pool(), path, operation, cancellation)?;
     Ok(Thumbnail {
         png: result.png.ok_or("Thumbnail unavailable")?,
         metadata: result.metadata,
@@ -162,6 +161,7 @@ pub(crate) fn metadata(
     cancellation: &Cancellation,
 ) -> Result<MediaMetadata, String> {
     request(
+        pool(),
         path,
         if image {
             Operation::ImageMetadata
@@ -174,12 +174,58 @@ pub(crate) fn metadata(
     .ok_or_else(|| "Media details unavailable".into())
 }
 
+pub(crate) fn preview(
+    path: &Path,
+    operation: &ParseOperation,
+    cancellation: &Cancellation,
+) -> Option<Result<Vec<u8>, String>> {
+    let operation = match operation {
+        ParseOperation::PreviewImage | ParseOperation::DocumentImage => Operation::PreviewImage,
+        ParseOperation::DocumentMermaid => Operation::DocumentMermaid,
+        ParseOperation::DocumentMath { display: true } => Operation::DocumentMath,
+        ParseOperation::DocumentMath { display: false } => Operation::DocumentMathInline,
+        _ => return None,
+    };
+    if !workers_supported() {
+        return None;
+    }
+    Some(
+        request(preview_pool(), path, operation, cancellation)
+            .and_then(|parts| parts.png.ok_or_else(|| "Preview unavailable".to_owned())),
+    )
+}
+
+fn invalid_output_label(operation: Operation) -> &'static str {
+    match operation {
+        Operation::PreviewImage
+        | Operation::DocumentMermaid
+        | Operation::DocumentMath
+        | Operation::DocumentMathInline => "Invalid preview render",
+        _ => "Invalid browser thumbnail",
+    }
+}
+
+fn parse_operation(operation: Operation) -> ParseOperation {
+    match operation {
+        Operation::Image => ParseOperation::ThumbnailImage,
+        Operation::Raw => ParseOperation::ThumbnailRaw,
+        Operation::Pdf => ParseOperation::ThumbnailPdf,
+        Operation::Video => ParseOperation::ThumbnailVideo,
+        Operation::ImageMetadata | Operation::MediaMetadata => ParseOperation::MediaMetadata,
+        Operation::PreviewImage => ParseOperation::PreviewImage,
+        Operation::DocumentMermaid => ParseOperation::DocumentMermaid,
+        Operation::DocumentMath => ParseOperation::DocumentMath { display: true },
+        Operation::DocumentMathInline => ParseOperation::DocumentMath { display: false },
+    }
+}
+
 struct ResultParts {
     png: Option<Vec<u8>>,
     metadata: Option<MediaMetadata>,
 }
 
 fn request(
+    pool: &Pool,
     path: &Path,
     operation: Operation,
     cancellation: &Cancellation,
@@ -193,14 +239,10 @@ fn request(
         operation,
         Operation::ImageMetadata | Operation::MediaMetadata
     );
-    if matches!(
-        operation,
-        Operation::Image | Operation::Raw | Operation::Pdf
-    ) && key.size > super::MAX_RASTER_INPUT_BYTES
-    {
+    if !metadata_only && operation != Operation::Video && key.size > super::MAX_RASTER_INPUT_BYTES {
         return Err("Browser input exceeds the supported size limit".into());
     }
-    let entry = cache_entry(key.clone());
+    let entry = cache_entry(&pool.cache, key.clone(), operation);
     let mut cached = loop {
         if cancellation.is_cancelled() {
             return Err("Browser request cancelled".into());
@@ -224,22 +266,22 @@ fn request(
     };
     if !hit {
         let queued = Instant::now();
-        let mut lease = pool().acquire(operation, cancellation)?;
+        let mut lease = pool.acquire(operation, cancellation)?;
         let queue_ms = queued.elapsed().as_millis() as u64;
         if cancellation.is_cancelled() {
             return Err("Browser request cancelled".into());
         }
         let started = Instant::now();
-        let response = lease.execute(&file, operation)?;
+        let response = lease.execute(&file, operation, cancellation)?;
         if FileKey::read(path, &file).map_err(|e| e.to_string())? != key {
             return Err("Browser input changed while rendering".into());
         }
         if !response.png.is_empty() {
             if response.png.len() as u64 > wire::MAX_OUTPUT_BYTES
-                || !super::valid_output(ParseOperation::ThumbnailImage, &response.png)
+                || !super::valid_output(parse_operation(operation), &response.png)
             {
                 lease.discard();
-                return Err("Invalid browser thumbnail".into());
+                return Err(invalid_output_label(operation).into());
             }
             cached.png = Some(response.png);
         } else if !metadata_only {
@@ -298,6 +340,7 @@ struct Pool {
     changed: Condvar,
     limit: AtomicUsize,
     idle_timeout: Duration,
+    cache: Mutex<Cache>,
 }
 
 struct IdleWorker {
@@ -327,6 +370,35 @@ fn pool() -> &'static Pool {
                 .ok()
                 .as_deref(),
         ),
+        cache: Mutex::default(),
+    })
+}
+
+// Preview renders share the worker implementation but not the thumbnail pool:
+// a scrolled directory flood must not delay an interactive Space preview.
+fn preview_pool() -> &'static Pool {
+    static POOL: OnceLock<Pool> = OnceLock::new();
+    POOL.get_or_init(|| Pool {
+        state: Mutex::default(),
+        changed: Condvar::new(),
+        limit: AtomicUsize::new(default_worker_limit()),
+        idle_timeout: configured_idle_timeout(
+            std::env::var("STRATA_THUMBNAIL_IDLE_SECONDS")
+                .ok()
+                .as_deref(),
+        ),
+        cache: Mutex::default(),
+    })
+}
+
+fn workers_supported() -> bool {
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        let supported = worker::supported();
+        if !supported {
+            tracing::warn!("Landlock ABI 3 unavailable; retaining one-shot sandboxes");
+        }
+        supported
     })
 }
 
@@ -401,7 +473,14 @@ impl Pool {
             operation,
             Operation::ImageMetadata | Operation::MediaMetadata
         );
-        let slow = operation != Operation::Image;
+        let slow = matches!(
+            operation,
+            Operation::Raw
+                | Operation::Pdf
+                | Operation::Video
+                | Operation::ImageMetadata
+                | Operation::MediaMetadata
+        );
         let mut state = self.state.lock().unwrap_or_else(|p| p.into_inner());
         if metadata {
             state.metadata_waiters += 1;
@@ -479,12 +558,17 @@ struct Lease<'a> {
 }
 
 impl Lease<'_> {
-    fn execute(&mut self, file: &File, operation: Operation) -> Result<Response, String> {
+    fn execute(
+        &mut self,
+        file: &File,
+        operation: Operation,
+        cancellation: &Cancellation,
+    ) -> Result<Response, String> {
         let mut result = self
             .worker
             .as_mut()
             .ok_or("Missing browser worker")?
-            .execute(file, operation);
+            .execute(file, operation, cancellation);
         if result.as_ref().is_err_and(|error| {
             matches!(
                 error.kind(),
@@ -495,11 +579,11 @@ impl Lease<'_> {
         }) {
             self.discard();
             self.worker = Some(Worker::spawn().map_err(|e| e.to_string())?);
-            result = self
-                .worker
-                .as_mut()
-                .expect("replacement worker")
-                .execute(file, operation);
+            result = self.worker.as_mut().expect("replacement worker").execute(
+                file,
+                operation,
+                cancellation,
+            );
         }
         if result.is_err() {
             self.discard();
@@ -545,43 +629,33 @@ enum Worker {
 
 impl Worker {
     fn spawn() -> io::Result<Self> {
-        static SUPPORTED: OnceLock<bool> = OnceLock::new();
-        if *SUPPORTED.get_or_init(|| {
-            let supported = worker::supported();
-            if !supported {
-                tracing::warn!("Landlock ABI 3 unavailable; retaining one-shot browser sandboxes");
-            }
-            supported
-        }) {
+        if workers_supported() {
             ProcessWorker::spawn().map(Self::Persistent)
         } else {
             Ok(Self::OneShot)
         }
     }
 
-    fn execute(&mut self, file: &File, operation: Operation) -> io::Result<Response> {
+    fn execute(
+        &mut self,
+        file: &File,
+        operation: Operation,
+        cancellation: &Cancellation,
+    ) -> io::Result<Response> {
         match self {
-            Self::Persistent(worker) => worker.execute(file, operation),
+            Self::Persistent(worker) => worker.execute(file, operation, cancellation),
             Self::OneShot => {
                 use std::os::fd::AsRawFd;
-                let parse_operation = match operation {
-                    Operation::Image => ParseOperation::ThumbnailImage,
-                    Operation::Raw => ParseOperation::ThumbnailRaw,
-                    Operation::Pdf => ParseOperation::ThumbnailPdf,
-                    Operation::Video => ParseOperation::ThumbnailVideo,
-                    Operation::ImageMetadata | Operation::MediaMetadata => {
-                        ParseOperation::MediaMetadata
-                    }
-                };
+                let operation = parse_operation(operation);
                 let output = super::parse(
                     Path::new(&format!("/proc/self/fd/{}", file.as_raw_fd())),
-                    parse_operation.clone(),
+                    operation.clone(),
                     256,
                     super::MediaPreviewBackend::Software,
-                    &Cancellation::default(),
+                    cancellation,
                 )
                 .map_err(io::Error::other)?;
-                Ok(if parse_operation == ParseOperation::MediaMetadata {
+                Ok(if operation == ParseOperation::MediaMetadata {
                     Response {
                         png: Vec::new(),
                         metadata: output.data,
@@ -623,8 +697,14 @@ impl ProcessWorker {
                     .spawn(move || {
                         use std::sync::mpsc::RecvTimeoutError;
                         loop {
-                            pool().retire_idle(Instant::now());
-                            let message = match pool().next_expiration(Instant::now()) {
+                            let now = Instant::now();
+                            pool().retire_idle(now);
+                            preview_pool().retire_idle(now);
+                            let expiration = [pool(), preview_pool()]
+                                .into_iter()
+                                .filter_map(|pool| pool.next_expiration(Instant::now()))
+                                .min();
+                            let message = match expiration {
                                 Some(timeout) => receiver.recv_timeout(timeout),
                                 None => receiver.recv().map_err(|_| RecvTimeoutError::Disconnected),
                             };
@@ -695,7 +775,12 @@ impl ProcessWorker {
         })
     }
 
-    fn execute(&mut self, file: &File, operation: Operation) -> io::Result<Response> {
+    fn execute(
+        &mut self,
+        file: &File,
+        operation: Operation,
+        cancellation: &Cancellation,
+    ) -> io::Result<Response> {
         use io::Read;
         let (read, write) = rustix::pipe::pipe_with(rustix::pipe::PipeFlags::CLOEXEC)?;
         let deadline = Instant::now() + super::WALL_TIME_LIMIT;
@@ -705,6 +790,7 @@ impl ProcessWorker {
         let mut reader = DeadlineReader {
             reader: &mut output,
             deadline,
+            cancellation,
         };
         let response = Response::read(&mut reader);
         if response
@@ -717,6 +803,7 @@ impl ProcessWorker {
         DeadlineReader {
             reader: &mut self.socket,
             deadline,
+            cancellation,
         }
         .read_exact(&mut status)?;
         match status[0] {
@@ -736,6 +823,7 @@ impl ProcessWorker {
 struct DeadlineReader<'a, R> {
     reader: &'a mut R,
     deadline: Instant,
+    cancellation: &'a Cancellation,
 }
 impl<R: io::Read + std::os::fd::AsFd> io::Read for DeadlineReader<'_, R> {
     fn read(&mut self, bytes: &mut [u8]) -> io::Result<usize> {
@@ -744,6 +832,9 @@ impl<R: io::Read + std::os::fd::AsFd> io::Read for DeadlineReader<'_, R> {
             return Ok(0);
         }
         loop {
+            if self.cancellation.is_cancelled() {
+                return Err(io::Error::other("Browser request cancelled"));
+            }
             let remaining = self.deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 return Err(io::Error::new(
@@ -751,9 +842,10 @@ impl<R: io::Read + std::os::fd::AsFd> io::Read for DeadlineReader<'_, R> {
                     "Browser renderer timed out",
                 ));
             }
+            let wait = remaining.min(WAIT_QUANTUM);
             let timeout = Timespec {
-                tv_sec: remaining.as_secs() as i64,
-                tv_nsec: i64::from(remaining.subsec_nanos()),
+                tv_sec: wait.as_secs() as i64,
+                tv_nsec: i64::from(wait.subsec_nanos()),
             };
             let mut fds = [PollFd::new(&*self.reader, PollFlags::IN)];
             match poll(&mut fds, Some(&timeout)) {

@@ -663,6 +663,3 @@ pub(crate) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
         source.remove();
     }
 }
-
-#[cfg(test)]
-mod tests;

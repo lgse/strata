@@ -58,7 +58,7 @@ Drag through cells and rows to select a continuous range in displayed sort order
 
 The old 200-row display cap is removed. Delimited/workbook output is instead bounded by 100,000 values, 4 MiB of cell text, and 256 columns, with a visible warning when output is limited. CSV/TSV retain the 1 MiB source-reading limit and Source fallback. Virtualization bounds resident row widgets; it does not make parsing or model memory unlimited.
 
-Images and diagrams load asynchronously as rows are visited, with at most 16 media items (images, diagrams, and equations) retained per preview. Local images are limited to 8 MiB, Mermaid input to 16 KiB and 256 lines, equation input to 4 KiB, and decoded output to 800 × 800 pixels. Larger Mermaid blocks remain virtualized code. Each media renderer has a three-second deadline; closing the preview cancels pending work. Missing files, unsupported formats, and decoder errors preserve alt text or diagram source without preventing the rest of the document from rendering.
+Images and diagrams load asynchronously as rows are visited, with at most 16 media items (images, diagrams, and equations) retained per preview. Local images are limited to 8 MiB, Mermaid input to 16 KiB and 256 lines, equation input to 4 KiB, and decoded output to 800 × 800 pixels. Larger Mermaid blocks remain virtualized code. Media renderers run as per-request jobs inside the pooled preview supervisors (10-second CPU and bounded wall deadlines); closing the preview cancels pending work. Missing files, unsupported formats, and decoder errors preserve alt text or diagram source without preventing the rest of the document from rendering.
 
 ## Trust boundary
 

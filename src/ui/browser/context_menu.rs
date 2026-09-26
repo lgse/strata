@@ -13,6 +13,8 @@ use crate::ui::browser::paths::{
 };
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::browser_modes::BrowserMode;
+use crate::ui::preferences::PreferenceManager;
+use crate::ui::shortcut_reference::{self, ContextHint};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -354,15 +356,38 @@ pub(in crate::ui) fn install_folder_context_menu(
     let new_folder = context_menu_option(
         crate::assets::icons::FOLDER_PLUS,
         "New Folder",
-        "Ctrl+Shift+N",
+        ContextHint::NewFolder,
     );
-    let new_file = context_menu_option(crate::assets::icons::FILE_PLUS, "New File", "");
-    let open_with = context_menu_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
-    let open_terminal =
-        context_menu_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
-    let paste = context_menu_option(crate::assets::icons::CLIPBOARD_PASTE, "Paste", "Ctrl+V");
-    let select_all = context_menu_option(crate::assets::icons::LIST_CHECKS, "Select All", "Ctrl+A");
-    let refresh = context_menu_option(crate::assets::icons::REFRESH, "Refresh", "F5");
+    let new_file = context_menu_option(
+        crate::assets::icons::FILE_PLUS,
+        "New File",
+        ContextHint::None,
+    );
+    let open_with = context_menu_option(
+        crate::assets::icons::APP_WINDOW,
+        "Open With…",
+        ContextHint::None,
+    );
+    let open_terminal = context_menu_option(
+        crate::assets::icons::TERMINAL,
+        "Open in Terminal",
+        ContextHint::Terminal,
+    );
+    let paste = context_menu_option(
+        crate::assets::icons::CLIPBOARD_PASTE,
+        "Paste",
+        ContextHint::Paste,
+    );
+    let select_all = context_menu_option(
+        crate::assets::icons::LIST_CHECKS,
+        "Select All",
+        ContextHint::SelectAll,
+    );
+    let refresh = context_menu_option(
+        crate::assets::icons::REFRESH,
+        "Refresh",
+        ContextHint::Refresh,
+    );
     let hidden_files_shown = state.browser.preferences().show_hidden;
     let (toggle_hidden, toggle_hidden_icon, toggle_hidden_label) = context_menu_toggle_option(
         if hidden_files_shown {
@@ -375,10 +400,15 @@ pub(in crate::ui) fn install_folder_context_menu(
         } else {
             "Show Hidden Files"
         },
-        "Ctrl+H",
+        ContextHint::HiddenFiles,
     );
-    let customize = context_menu_option(crate::assets::icons::PALETTE, "Customize…", "");
-    let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
+    let customize = context_menu_option(
+        crate::assets::icons::PALETTE,
+        "Customize…",
+        ContextHint::None,
+    );
+    let properties =
+        context_menu_option(crate::assets::icons::INFO, "Properties", ContextHint::None);
     let in_trash = is_trash_location(&location);
     let in_recent = location.is_recent_location();
     let directory_actions = !in_trash && !in_recent;
@@ -391,10 +421,11 @@ pub(in crate::ui) fn install_folder_context_menu(
     properties.set_visible(!in_recent);
     content.append(&new_folder);
     content.append(&new_file);
+    content.append(&paste);
+    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&open_with);
     content.append(&open_terminal);
     content.set_visible(directory_actions);
-    remaining.append(&paste);
     remaining.append(&select_all);
     remaining.append(&refresh);
     remaining.append(&toggle_hidden);
@@ -764,78 +795,146 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         .bind_property("visible", &single_open, "visible")
         .sync_create()
         .build();
-    let open = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "↵");
-    let open_with = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
-    let open_file_location =
-        item_context_option(crate::assets::icons::FOLDER_OPEN, "Open file location", "");
-    let run = item_context_option(crate::assets::icons::PLAY, "Run", "");
-    let open_terminal =
-        item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
-    let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
-    let print = item_context_option(crate::assets::icons::PRINTER, "Print", "");
-    let restore = item_context_option(crate::assets::icons::UNDO_2, "Restore", "");
+    let open = item_context_option(
+        crate::assets::icons::EXTERNAL_LINK,
+        "Open",
+        ContextHint::Open,
+    );
+    let open_with = item_context_option(
+        crate::assets::icons::APP_WINDOW,
+        "Open With…",
+        ContextHint::None,
+    );
+    let open_file_location = item_context_option(
+        crate::assets::icons::FOLDER_OPEN,
+        "Open file location",
+        ContextHint::None,
+    );
+    let run = item_context_option(crate::assets::icons::PLAY, "Run", ContextHint::None);
+    let open_terminal = item_context_option(
+        crate::assets::icons::TERMINAL,
+        "Open in Terminal",
+        ContextHint::Terminal,
+    );
+    let preview = item_context_option(
+        crate::assets::icons::EYE,
+        "Quick preview",
+        ContextHint::Preview,
+    );
+    let print = item_context_option(crate::assets::icons::PRINTER, "Print", ContextHint::None);
+    let restore = item_context_option(crate::assets::icons::UNDO_2, "Restore", ContextHint::None);
     restore.set_visible(in_trash);
-    let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
-    let copy = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
-    let duplicate = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
-    let copy_path = item_context_option(crate::assets::icons::COPY, "Copy path", "Y");
-    let copy_name = item_context_option(crate::assets::icons::COPY, "Copy name", "");
-    let move_to = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
-    let copy_to = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
-    let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", "F2 / Ctrl+R");
-    let cut = item_context_option(crate::assets::icons::SCISSORS, "Cut", "Ctrl+X");
+    let pin = item_context_option(
+        crate::assets::icons::PIN,
+        "Pin to sidebar",
+        ContextHint::Pin,
+    );
+    let copy = item_context_option(crate::assets::icons::COPY, "Copy", ContextHint::Copy);
+    let duplicate = item_context_option(
+        crate::assets::icons::COPY_PLUS,
+        "Duplicate",
+        ContextHint::Duplicate,
+    );
+    let copy_path = item_context_option(
+        crate::assets::icons::ROUTE,
+        "Copy path",
+        ContextHint::CopyPath,
+    );
+    let copy_name = item_context_option(
+        crate::assets::icons::FILE_TYPE,
+        "Copy name",
+        ContextHint::None,
+    );
+    let move_to = item_context_option(
+        crate::assets::icons::FOLDER_INPUT,
+        "Move to…",
+        ContextHint::None,
+    );
+    let copy_to = item_context_option(
+        crate::assets::icons::FOLDER_OUTPUT,
+        "Copy to…",
+        ContextHint::None,
+    );
+    let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", ContextHint::Rename);
+    let cut = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
     let delete_label = if in_trash {
         "Permanently delete"
     } else {
         "Move to Trash"
     };
     let move_to_trash = if in_trash {
-        let option = item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
+        let option = item_context_danger_option(
+            crate::assets::icons::CIRCLE_X,
+            delete_label,
+            ContextHint::Trash,
+        );
         option.add_css_class("danger");
         option
     } else {
-        item_context_option(crate::assets::icons::TRASH, delete_label, "Del")
+        item_context_option(
+            crate::assets::icons::TRASH,
+            delete_label,
+            ContextHint::Trash,
+        )
     };
     let permanent_delete = item_context_danger_option(
-        crate::assets::icons::TRASH,
+        crate::assets::icons::CIRCLE_X,
         "Permanently delete",
-        "Shift+Del",
+        ContextHint::PermanentDelete,
     );
     permanent_delete.add_css_class("danger");
-    let properties = item_context_option(crate::assets::icons::INFO, "Properties", "Alt+Enter");
-    let customize = item_context_option(crate::assets::icons::PALETTE, "Customize…", "");
-    let compress = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
-    let extract = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract here", "");
-    let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
+    let properties = item_context_option(
+        crate::assets::icons::INFO,
+        "Properties",
+        ContextHint::Properties,
+    );
+    let customize = item_context_option(
+        crate::assets::icons::PALETTE,
+        "Customize…",
+        ContextHint::None,
+    );
+    let compress = item_context_option(
+        crate::assets::icons::PACKAGE_PLUS,
+        "Compress…",
+        ContextHint::None,
+    );
+    let extract = item_context_option(
+        crate::assets::icons::PACKAGE_OPEN,
+        "Extract here",
+        ContextHint::None,
+    );
+    let extract_to = item_context_option(
+        crate::assets::icons::FOLDER_ARCHIVE,
+        "Extract to…",
+        ContextHint::None,
+    );
     single_open.append(&open);
     single_open.append(&open_with);
+    single_open.append(&preview);
     single_open.append(&open_file_location);
     single_open.append(&run);
     single_open.append(&open_terminal);
-    single_open.append(&preview);
     single_open.append(&restore);
+    single_open.append(&print);
     single_open.append(&extract);
     single_open.append(&extract_to);
-    single_open.append(&pin);
-    single_open.append(&print);
     content.append(&single_open);
     single.append(&cut);
     single.append(&copy);
     single.append(&duplicate);
-    single.append(&copy_path);
-    single.append(&copy_name);
+    single.append(&rename);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to);
     single.append(&copy_to);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    let archive_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    single.append(&rename);
     single.append(&compress);
-    single.append(&archive_separator);
+    single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    single.append(&pin);
     single.append(&customize);
+    single.append(&copy_path);
+    single.append(&copy_name);
     single.append(&properties);
-    let delete_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    single.append(&delete_separator);
+    single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to_trash);
     single.append(&permanent_delete);
     remaining.append(&single);
@@ -846,35 +945,80 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         .bind_property("visible", &multiple_open, "visible")
         .sync_create()
         .build();
-    let open_multiple = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "Enter");
-    let open_with_multiple =
-        item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
-    let restore_multiple = item_context_option(crate::assets::icons::UNDO_2, "Restore items", "");
+    let open_multiple = item_context_option(
+        crate::assets::icons::EXTERNAL_LINK,
+        "Open",
+        ContextHint::OpenMultiple,
+    );
+    let open_with_multiple = item_context_option(
+        crate::assets::icons::APP_WINDOW,
+        "Open With…",
+        ContextHint::None,
+    );
+    let restore_multiple = item_context_option(
+        crate::assets::icons::UNDO_2,
+        "Restore items",
+        ContextHint::None,
+    );
     restore_multiple.set_visible(in_trash);
-    let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
-    let duplicate_multiple = item_context_option(crate::assets::icons::COPY, "Duplicate", "Ctrl+D");
-    let copy_paths = item_context_option(crate::assets::icons::COPY, "Copy paths", "Y");
-    let copy_names_button = item_context_option(crate::assets::icons::COPY, "Copy names", "");
-    let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
-    let copy_to_multiple = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
-    let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", "Ctrl+X");
+    let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", ContextHint::Copy);
+    let duplicate_multiple = item_context_option(
+        crate::assets::icons::COPY_PLUS,
+        "Duplicate",
+        ContextHint::Duplicate,
+    );
+    let copy_paths = item_context_option(
+        crate::assets::icons::ROUTE,
+        "Copy paths",
+        ContextHint::CopyPaths,
+    );
+    let copy_names_button = item_context_option(
+        crate::assets::icons::FILE_TYPE,
+        "Copy names",
+        ContextHint::None,
+    );
+    let move_multiple = item_context_option(
+        crate::assets::icons::FOLDER_INPUT,
+        "Move to…",
+        ContextHint::None,
+    );
+    let copy_to_multiple = item_context_option(
+        crate::assets::icons::FOLDER_OUTPUT,
+        "Copy to…",
+        ContextHint::None,
+    );
+    let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", ContextHint::Cut);
     let trash_multiple = if in_trash {
-        let option = item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
+        let option = item_context_danger_option(
+            crate::assets::icons::CIRCLE_X,
+            delete_label,
+            ContextHint::Trash,
+        );
         option.add_css_class("danger");
         option
     } else {
-        item_context_option(crate::assets::icons::TRASH, delete_label, "Del")
+        item_context_option(
+            crate::assets::icons::TRASH,
+            delete_label,
+            ContextHint::Trash,
+        )
     };
     let permanent_delete_multiple = item_context_danger_option(
-        crate::assets::icons::TRASH,
+        crate::assets::icons::CIRCLE_X,
         "Permanently delete",
-        "Shift+Del",
+        ContextHint::PermanentDelete,
     );
     permanent_delete_multiple.add_css_class("danger");
-    let compress_multiple =
-        item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
-    let properties_multiple =
-        item_context_option(crate::assets::icons::INFO, "Properties", "Alt+Enter");
+    let compress_multiple = item_context_option(
+        crate::assets::icons::PACKAGE_PLUS,
+        "Compress…",
+        ContextHint::None,
+    );
+    let properties_multiple = item_context_option(
+        crate::assets::icons::INFO,
+        "Properties",
+        ContextHint::Properties,
+    );
     multiple_open.append(&open_multiple);
     multiple_open.append(&open_with_multiple);
     multiple_open.append(&restore_multiple);
@@ -882,16 +1026,14 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
     multiple.append(&duplicate_multiple);
-    multiple.append(&copy_paths);
-    multiple.append(&copy_names_button);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&move_multiple);
     multiple.append(&copy_to_multiple);
-    let multiple_transfer_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    multiple.append(&multiple_transfer_separator);
-    let multiple_archive_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&compress_multiple);
-    multiple.append(&multiple_archive_separator);
+    multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    multiple.append(&copy_paths);
+    multiple.append(&copy_names_button);
     multiple.append(&properties_multiple);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
@@ -1086,17 +1228,26 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let preview_target = target.clone();
     let preview_popover = popover.downgrade();
     preview.connect_clicked(move |_| {
-        if let Some(popover) = preview_popover.upgrade() {
-            popover.popdown();
-        }
-        let Some((position, entry)) = preview_target.borrow().clone() else {
-            return;
-        };
-        if let Some(state) = weak.upgrade()
-            && !entry.is_directory()
-        {
-            preview_context_entry(&state, depth, position, entry);
-        }
+        let target = preview_target.borrow().clone();
+        let popover = preview_popover.clone();
+        let weak = weak.clone();
+        // Dismiss after the click finishes so it cannot select a result beneath the menu.
+        glib::idle_add_local_once(move || {
+            if let Some(popover) = popover.upgrade() {
+                popover.popdown();
+            }
+            let Some((position, entry)) = target else {
+                return;
+            };
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade()
+                    && !entry.is_directory()
+                {
+                    focus_context_entry(&state, depth, position, &entry);
+                    preview_context_entry(&state, depth, position, entry);
+                }
+            });
+        });
     });
     let weak = Rc::downgrade(state);
     let print_target = target.clone();
@@ -1389,8 +1540,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 .all(|entry| entry.location.native_path().is_some());
             compress.set_visible(can_compress);
             compress_multiple.set_visible(can_compress);
-            archive_separator.set_visible(rename_visible || can_compress);
-            multiple_archive_separator.set_visible(can_compress);
             preview.set_visible(crate::ui::preview::entry_supports_quick_preview(&entry));
             print.set_visible(entry_supports_printing(&entry));
             open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
@@ -1411,9 +1560,6 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
                 permanently_delete_is_visible(in_trash, state.browser.can_delete_at(depth));
             permanent_delete.set_visible(permanent_delete_visible);
             permanent_delete_multiple.set_visible(permanent_delete_visible);
-            delete_separator.set_visible(trash_visible || permanent_delete_visible);
-            multiple_transfer_separator
-                .set_visible(can_compress || trash_visible || permanent_delete_visible);
             pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
             pin.set_sensitive(
                 state
@@ -1489,7 +1635,27 @@ pub(super) fn preview_context_entry(
     if let Some(position) = current_context_position(state, depth, position, &entry) {
         state.browser.preview(depth, position);
     } else {
+        let path = entry
+            .location
+            .native_path()
+            .map(std::path::Path::to_path_buf);
         state.browser.request_preview(entry);
+        if let Some(path) = path {
+            let weak = Rc::downgrade(state);
+            // Grid reflow after opening the preview can replace search selection.
+            let frames = std::cell::Cell::new(0);
+            state.overlay.add_tick_callback(move |_, _| {
+                let frame = frames.get() + 1;
+                frames.set(frame);
+                if frame < 2 {
+                    return glib::ControlFlow::Continue;
+                }
+                if let Some(state) = weak.upgrade() {
+                    state.mode_views.borrow().select_search_result(&path);
+                }
+                glib::ControlFlow::Break
+            });
+        }
     }
 }
 
@@ -1655,17 +1821,16 @@ fn connect_context_extract(
     });
 }
 
-fn item_context_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
-    item_context_option_with_icon(crate::assets::primary_icon(icon, 15), label, accelerator)
+fn item_context_option(icon: &str, label: &str, hint: ContextHint) -> gtk::Button {
+    item_context_option_with_icon(crate::assets::primary_icon(icon, 15), label, hint)
 }
 
-fn item_context_danger_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
-    item_context_option_with_icon(crate::assets::danger_icon(icon, 15), label, accelerator)
+fn item_context_danger_option(icon: &str, label: &str, hint: ContextHint) -> gtk::Button {
+    item_context_option_with_icon(crate::assets::danger_icon(icon, 15), label, hint)
 }
 
-fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &str) -> gtk::Button {
+fn item_context_option_with_icon(icon: gtk::Image, label: &str, hint: ContextHint) -> gtk::Button {
     let button = crate::ui::accessibility::menu_item_button();
-    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
     button.add_css_class("item-context-option");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     icon.add_css_class("item-context-icon");
@@ -1674,11 +1839,10 @@ fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &st
     title.set_hexpand(true);
     row.append(&icon);
     row.append(&title);
-    if !accelerator.is_empty() {
-        let shortcut = gtk::Label::new(Some(accelerator));
-        shortcut.add_css_class("item-context-shortcut");
-        row.append(&shortcut);
-    }
+    let shortcut = gtk::Label::new(None);
+    shortcut.add_css_class("item-context-shortcut");
+    row.append(&shortcut);
+    bind_context_hint(&button, &shortcut, label, hint);
     button.set_child(Some(&row));
     button
 }
@@ -1686,7 +1850,8 @@ fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &st
 fn context_menu_row(
     icon: &str,
     label: &str,
-    accelerator: &str,
+    hint: ContextHint,
+    button: &gtk::Button,
 ) -> (gtk::Box, gtk::Image, gtk::Label) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = crate::assets::primary_icon(icon, 15);
@@ -1696,22 +1861,20 @@ fn context_menu_row(
     title.set_hexpand(true);
     row.append(&icon);
     row.append(&title);
-    if !accelerator.is_empty() {
-        let shortcut = gtk::Label::new(Some(accelerator));
-        shortcut.add_css_class("folder-context-shortcut");
-        row.append(&shortcut);
-    }
+    let shortcut = gtk::Label::new(None);
+    shortcut.add_css_class("folder-context-shortcut");
+    row.append(&shortcut);
+    bind_context_hint(button, &shortcut, label, hint);
     (row, icon, title)
 }
 
 pub(in crate::ui) fn context_menu_option(
     icon: &str,
     label: &str,
-    accelerator: &str,
+    hint: ContextHint,
 ) -> gtk::Button {
-    let (row, _, _) = context_menu_row(icon, label, accelerator);
     let button = crate::ui::accessibility::menu_item_button();
-    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
+    let (row, _, _) = context_menu_row(icon, label, hint, &button);
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
     button
@@ -1720,8 +1883,9 @@ pub(in crate::ui) fn context_menu_option(
 pub(super) fn context_menu_danger_option(
     icon: &str,
     label: &str,
-    accelerator: &str,
+    hint: ContextHint,
 ) -> gtk::Button {
+    let button = crate::ui::accessibility::menu_item_button();
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = crate::assets::danger_icon(icon, 15);
     icon.add_css_class("folder-context-icon");
@@ -1730,13 +1894,10 @@ pub(super) fn context_menu_danger_option(
     title.set_hexpand(true);
     row.append(&icon);
     row.append(&title);
-    if !accelerator.is_empty() {
-        let shortcut = gtk::Label::new(Some(accelerator));
-        shortcut.add_css_class("folder-context-shortcut");
-        row.append(&shortcut);
-    }
-    let button = crate::ui::accessibility::menu_item_button();
-    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
+    let shortcut = gtk::Label::new(None);
+    shortcut.add_css_class("folder-context-shortcut");
+    row.append(&shortcut);
+    bind_context_hint(&button, &shortcut, label, hint);
     button.add_css_class("folder-context-option");
     button.add_css_class("danger");
     button.set_child(Some(&row));
@@ -1746,14 +1907,29 @@ pub(super) fn context_menu_danger_option(
 fn context_menu_toggle_option(
     icon: &str,
     label: &str,
-    accelerator: &str,
+    hint: ContextHint,
 ) -> (gtk::Button, gtk::Image, gtk::Label) {
-    let (row, icon, title) = context_menu_row(icon, label, accelerator);
     let button = crate::ui::accessibility::menu_item_button();
-    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
+    let (row, icon, title) = context_menu_row(icon, label, hint, &button);
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
     (button, icon, title)
+}
+
+fn bind_context_hint(button: &gtk::Button, shortcut: &gtk::Label, label: &str, hint: ContextHint) {
+    let shown = shortcut.clone();
+    let button = button.clone();
+    let label = label.to_owned();
+    PreferenceManager::shared().bind_preference(
+        shortcut,
+        PreferenceManager::tenxer_mode,
+        move |_, enabled| {
+            let text = shortcut_reference::context_hint_for(hint, enabled);
+            shown.set_text(text);
+            shown.set_visible(!text.is_empty());
+            crate::ui::accessibility::describe_menu_item(&button, &label, text);
+        },
+    );
 }
 
 /// In Trash this shared action deletes permanently, so `can_trash` is irrelevant.

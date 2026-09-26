@@ -51,6 +51,7 @@ pub struct ColumnState {
     selection_anchor: Option<Location>,
     selection_target: Option<Location>,
     pending_selection: HashSet<Location>,
+    pending_reveal: Option<Location>,
     pub load_state: LoadState,
     pub truncated: bool,
     /// Whether entries here can be moved to Trash, resolved from a listed entry
@@ -104,6 +105,7 @@ pub struct NavigationState {
     preferences: ViewPreferences,
     // GTK focus/rebuild selection echoes must not arm paste-into.
     selection_commit: bool,
+    selectionless_removals: HashSet<Location>,
 }
 
 impl NavigationState {
@@ -195,6 +197,7 @@ impl NavigationState {
                 selection_anchor: None,
                 selection_target: None,
                 pending_selection: HashSet::new(),
+                pending_reveal: None,
                 load_state: LoadState::Loading,
                 truncated: false,
                 can_trash: None,
@@ -269,6 +272,7 @@ impl NavigationState {
             selection_anchor: None,
             selection_target: None,
             pending_selection: HashSet::new(),
+            pending_reveal: None,
             load_state: LoadState::Loading,
             truncated: false,
             can_trash: None,
@@ -283,6 +287,50 @@ impl NavigationState {
         if let Some(column) = self.columns.get_mut(depth) {
             column.select_first_on_load = true;
         }
+    }
+
+    pub fn select_location_on_load(&mut self, depth: usize, location: Location) {
+        if let Some(column) = self.columns.get_mut(depth) {
+            column.selected = None;
+            column.selected_locations.clear();
+            column.selection_anchor = None;
+            column.selection_target = None;
+            column.pending_selection.clear();
+            column.pending_reveal = Some(location);
+            column.select_first_on_load = false;
+            column.load_cursor = None;
+        }
+    }
+
+    pub fn take_resolved_location_reveal(
+        &mut self,
+        depth: usize,
+        request_id: RequestId,
+    ) -> Option<bool> {
+        let column = self.columns.get_mut(depth)?;
+        if column.request_id != request_id {
+            return None;
+        }
+        let target = column.pending_reveal.as_ref()?;
+        let is_hidden = column
+            .entries
+            .iter()
+            .find(|entry| &entry.location == target)?
+            .is_hidden;
+        column.pending_reveal = None;
+        Some(is_hidden)
+    }
+
+    pub fn take_unresolved_location_reveal(
+        &mut self,
+        depth: usize,
+        request_id: RequestId,
+    ) -> Option<Location> {
+        let column = self.columns.get_mut(depth)?;
+        if column.request_id != request_id {
+            return None;
+        }
+        column.pending_reveal.take()
     }
 
     pub fn apply_batch(
@@ -311,6 +359,7 @@ impl NavigationState {
                 column.selection_target = None;
             }
         }
+        column.resolve_pending_reveal();
         column.restore_pending_selection();
         if column.select_first_on_load && !column.entries.is_empty() {
             column.pending_selection.clear();
@@ -349,6 +398,7 @@ impl NavigationState {
                 column.selection_target = None;
             }
         }
+        column.resolve_pending_reveal();
         column.restore_pending_selection();
         if column.select_first_on_load && !column.entries.is_empty() {
             column.pending_selection.clear();
@@ -457,16 +507,34 @@ impl NavigationState {
         Some((depth, positions, stale))
     }
 
+    pub fn set_selectionless_removals(&mut self, locations: impl IntoIterator<Item = Location>) {
+        self.selectionless_removals = locations.into_iter().collect();
+    }
+
+    pub fn retain_selectionless_removals(&mut self, locations: impl IntoIterator<Item = Location>) {
+        let locations: HashSet<_> = locations.into_iter().collect();
+        self.selectionless_removals
+            .retain(|location| locations.contains(location));
+    }
+
     pub fn apply_directory_change(
         &mut self,
         depth: usize,
         watched: &Location,
         change: DirectoryChange,
     ) -> Option<(Vec<EntrySplice>, Option<usize>)> {
-        let column = self
+        if !self
             .columns
-            .get_mut(depth)
-            .filter(|column| &column.location == watched)?;
+            .get(depth)
+            .is_some_and(|column| &column.location == watched)
+        {
+            return None;
+        }
+        let replace_selection = match &change {
+            DirectoryChange::Remove(location) => !self.selectionless_removals.remove(location),
+            _ => true,
+        };
+        let column = self.columns.get_mut(depth).expect("column checked");
         let preferences = column.preferences;
         let mut selected_location = column
             .selected
@@ -494,7 +562,7 @@ impl NavigationState {
                 let selected_was_removed = selected_location.as_ref() == Some(&location);
                 column.selected_locations.remove(&location);
                 remove_monitored_entry(&mut column.entries, &location, &mut splices);
-                if selected_was_removed {
+                if selected_was_removed && replace_selection {
                     selected_location = removed_position.and_then(|position| {
                         column
                             .entries
@@ -608,6 +676,7 @@ impl NavigationState {
             &mut column.selection_target,
             &mut column.selection_anchor,
             &mut column.load_cursor,
+            &mut column.pending_reveal,
         ] {
             *target = target
                 .as_ref()
@@ -759,6 +828,7 @@ impl NavigationState {
 
     pub fn fail(&mut self, request_id: RequestId, message: String) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
+        column.pending_reveal = None;
         column.load_state = LoadState::Error(message);
         Some(depth)
     }
@@ -1376,6 +1446,25 @@ impl ColumnState {
         .then_some(position)
     }
 
+    fn resolve_pending_reveal(&mut self) {
+        let Some(target) = self.pending_reveal.as_ref() else {
+            return;
+        };
+        let Some(position) = self
+            .entries
+            .iter()
+            .position(|entry| &entry.location == target)
+        else {
+            return;
+        };
+        let target = target.clone();
+        self.selected = Some(position);
+        self.selected_locations = HashSet::from([target.clone()]);
+        self.selection_anchor = Some(target);
+        self.selection_target = None;
+        self.load_cursor = None;
+    }
+
     fn restore_pending_selection(&mut self) {
         if self.pending_selection.is_empty() {
             return;
@@ -1402,6 +1491,7 @@ impl ColumnState {
 fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {
     if commit {
         column.load_cursor = None;
+        column.pending_reveal = None;
     }
     column.selected_locations = locations;
 }

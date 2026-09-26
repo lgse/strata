@@ -301,28 +301,22 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                             gtk::gdk::Key::space,
                             gtk::gdk::ModifierType::empty()
                         ));
-                        if mode == BrowserMode::Columns {
-                            let path = root.path().join(if recursive {
-                                "folder/matched"
-                            } else {
-                                "folder"
-                            });
-                            wait_until(|| {
-                                browser.active_location() == Some(Location::local(&path))
-                            });
-                            if !recursive {
-                                assert_eq!(
-                                    browser.location_at(0),
-                                    Some(Location::local(root.path()))
-                                );
-                            }
+                        let path = root.path().join(if recursive {
+                            "folder/matched"
                         } else {
-                            assert_eq!(
-                                browser.active_location(),
-                                Some(Location::local(root.path())),
-                                "Space must not navigate: {mode:?}, recursive={recursive}"
-                            );
+                            "folder"
+                        });
+                        wait_until(|| browser.active_location() == Some(Location::local(&path)));
+                        if mode == BrowserMode::Columns && !recursive {
+                            assert_eq!(browser.location_at(0), Some(Location::local(root.path())));
                         }
+                        assert!(
+                            find(state.window.upcast_ref(), &|widget| {
+                                widget.is_mapped() && widget.has_css_class("preview-pane")
+                            })
+                            .is_none(),
+                            "folder Space must not open preview: {mode:?}, recursive={recursive}"
+                        );
                         assert!(state.completion.borrow().is_some());
                     }
                     state.cancel();

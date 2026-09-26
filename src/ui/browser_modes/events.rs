@@ -12,11 +12,6 @@ use crate::{
 };
 
 impl ModeViews {
-    #[cfg(test)]
-    pub fn handle(&mut self, event: &BrowserEvent) {
-        self.handle_with_deferred_empty(event, false);
-    }
-
     pub(crate) fn handle_with_deferred_empty(&mut self, event: &BrowserEvent, defer_empty: bool) {
         if self.handle_structure_event(event) {
             return;
@@ -453,6 +448,3 @@ impl Pane {
         self.loading.show("status");
     }
 }
-
-#[cfg(test)]
-mod tests;

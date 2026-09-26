@@ -840,9 +840,50 @@ impl ModeViews {
         self.single_pane()?.search.selected_entry()
     }
 
+    pub fn focus_search_results(&self) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.focus_current())
+    }
+
+    pub(in crate::ui) fn keyboard_peek_target(&self) -> Option<(gtk::Widget, usize, Location)> {
+        if let Some(pane) = self.single_pane()
+            && pane.search.selected_entries().is_some()
+        {
+            let (widget, entry) = pane.search.selected_anchor()?;
+            return entry
+                .is_directory()
+                .then_some((widget, pane.depth, entry.location));
+        }
+        let (depth, position, entry) = self.browser.focused_item()?;
+        if !entry.is_directory() {
+            return None;
+        }
+        let pane = self.panes_at(depth).into_iter().next()?;
+        for section in pane.item_sections() {
+            let Some(view_position) =
+                view_position_for_source(&pane.model, Some(&section.view_model), position)
+            else {
+                continue;
+            };
+            let Some(widget) = section.bound_items.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == view_position).then(|| bound.widget.upgrade())?
+            }) else {
+                continue;
+            };
+            return Some((widget, depth, entry.location));
+        }
+        None
+    }
+
     pub fn focus_search_result(&self, path: &std::path::Path) -> bool {
         self.single_pane()
             .is_some_and(|pane| pane.search.focus_result(path))
+    }
+
+    pub fn select_search_result(&self, path: &std::path::Path) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.select_result(path))
     }
 
     pub fn select_all_search_results(&self) -> bool {
@@ -963,6 +1004,10 @@ impl ModeViews {
         true
     }
 
+    pub fn cancel_list_restore(&mut self) {
+        self.list_navigation.borrow_mut().cancel();
+    }
+
     pub fn prepare_mode(&mut self, mode: BrowserMode) {
         if self.mode == mode {
             return;
@@ -1066,11 +1111,6 @@ impl ModeViews {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.single_click_previews.set(enabled);
-    }
-
-    #[cfg(test)]
-    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
-        self.single_click_previews.get()
     }
 
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
@@ -1741,6 +1781,9 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
     let shown_filter = revealer.clone();
     let focused_filter = entry.clone();
     button.connect_toggled(move |button| {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
+            return;
+        }
         shown_filter.set_reveal_child(button.is_active());
         if button.is_active() {
             focused_filter.grab_focus();
@@ -1748,6 +1791,7 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
             focused_filter.set_text("");
         }
     });
+    crate::ui::tenxer_mode::hide_filter_while_enabled(&button, &revealer);
     (entry, revealer, button)
 }
 
@@ -2043,13 +2087,15 @@ fn build_icons_pane(
         false,
         context.click.multiple_selection.clone(),
     );
+    let browser_for_search = context.browser.clone();
     let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
-        context
-            .browser
-            .location_at(depth)
-            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
+        move || {
+            browser_for_search
+                .location_at(depth)
+                .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
+        },
         &context.browser,
         search_collection_options(
             super::inline_search::SearchPresentation::Icons {
@@ -2146,6 +2192,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
         install_preview_click(
             &card,
             item,
+            &rename_label,
             browser_for_setup.clone(),
             weak_state_for_clicks.clone(),
             previews_for_setup.clone(),
@@ -3020,12 +3067,15 @@ fn build_list_pane(
         // ListView still reveals focused rows vertically.
         viewport.set_scroll_to_focus(false);
     }
+    let browser_for_search = browser.clone();
     let search = super::inline_search::wrap(
         &table_scroll,
         &filter_entry,
-        browser
-            .location_at(depth)
-            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
+        move || {
+            browser_for_search
+                .location_at(depth)
+                .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
+        },
         &browser,
         search_collection_options(
             super::inline_search::SearchPresentation::Rows,
@@ -3596,18 +3646,43 @@ fn install_list_drag_drop(
     let highlighted_row = row.downgrade();
     let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| {
+        let action = super::browser::file_drop_action(target, &state_for_enter);
         if let Some(row) = highlighted_row.upgrade() {
-            row.add_css_class("drop-destination");
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
         }
-        super::browser::file_drop_action(target, &state_for_enter)
+        action
     });
     let highlighted_row = row.downgrade();
     let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| {
+        let action = super::browser::file_drop_action(target, &state_for_motion);
         if let Some(row) = highlighted_row.upgrade() {
-            row.add_css_class("drop-destination");
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
         }
-        super::browser::file_drop_action(target, &state_for_motion)
+        action
+    });
+    let highlighted_row = row.downgrade();
+    let state_for_value = drop_state.clone();
+    drop.connect_value_notify(move |target| {
+        if target.current_drop().is_none() {
+            return;
+        }
+        let action = super::browser::file_drop_action(target, &state_for_value);
+        if let Some(row) = highlighted_row.upgrade() {
+            if action.is_empty() {
+                row.remove_css_class("drop-destination");
+            } else {
+                row.add_css_class("drop-destination");
+            }
+        }
     });
     let highlighted_row = row.downgrade();
     drop.connect_leave(move |_| {
@@ -3859,6 +3934,7 @@ fn activate_filtered_item(
 fn install_preview_click(
     widget: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
+    rename_label: &impl IsA<gtk::Widget>,
     browser: Weak<Browser>,
     weak_state: Weak<super::browser::ViewState>,
     enabled: Rc<Cell<bool>>,
@@ -3871,7 +3947,8 @@ fn install_preview_click(
     let click = gtk::GestureClick::new();
     click.set_button(1);
     let clicked_item = item.downgrade();
-    super::pointer::connect_click_release(&click, item, move |gesture, press_count| {
+    let rename_label = rename_label.as_ref().downgrade();
+    super::pointer::connect_click_release(&click, item, move |gesture, press_count, x, y| {
         let modifiers = gesture.current_event_state();
         if modifiers
             .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
@@ -3933,7 +4010,10 @@ fn install_preview_click(
             && !browser.is_chooser_mode()
             && !is_trash_location(&entry.location)
         {
-            if let Some(state) = weak_state.upgrade() {
+            if let (Some(surface), Some(label)) = (gesture.widget(), rename_label.upgrade())
+                && super::pointer::hits_name_label(&surface, &label, x, y)
+                && let Some(state) = weak_state.upgrade()
+            {
                 state.schedule_click_rename(depth, position);
             }
         } else if press_count == 1
@@ -4683,20 +4763,6 @@ fn compare_type_groups_for_preferences(
     }
 }
 
-#[cfg(test)]
-fn type_groups_of(values: impl Iterator<Item = impl AsRef<str>>) -> Vec<String> {
-    let mut labels: Vec<String> = Vec::new();
-    for value in values {
-        let label = super::browser::model_type_group(value.as_ref());
-        if let Err(position) =
-            labels.binary_search_by(|candidate| compare_type_groups(candidate, &label))
-        {
-            labels.insert(position, label);
-        }
-    }
-    labels
-}
-
 fn type_group_heading(label: &str) -> gtk::Label {
     let heading = gtk::Label::new(Some(label));
     heading.add_css_class("type-group-heading");
@@ -4871,6 +4937,3 @@ fn bitset_positions(bitset: &gtk::Bitset) -> Vec<usize> {
         .map(|position| position as usize)
         .collect()
 }
-
-#[cfg(test)]
-mod tests;

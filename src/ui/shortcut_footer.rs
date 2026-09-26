@@ -11,51 +11,6 @@ use super::browser_modes::BrowserMode;
 
 type Shortcut = (&'static str, &'static str);
 
-const FILES: &[Shortcut] = &[
-    ("Enter", "Open the current item"),
-    ("Space", "Toggle file preview"),
-    ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
-    ("Ctrl+V", "Paste into the indicated directory"),
-    ("Ctrl+D", "Duplicate selected items"),
-    ("Delete", "Move selected items to Trash, when supported"),
-    ("Shift+Delete", "Permanently delete selected items"),
-    (
-        "Ctrl+Z / Ctrl+Shift+Z",
-        "Undo / redo the last file operation",
-    ),
-    ("F2 / Ctrl+R", "Rename"),
-    ("Ctrl+Shift+N", "Create a folder"),
-    ("Ctrl+A", "Select all items in the focused pane"),
-    ("Shift+↑ / ↓", "Extend selection"),
-    ("Alt+Enter", "Show item properties"),
-    ("Menu / Shift+F10", "Open the context menu"),
-    ("y / p", "Copy path / pin a folder (type-to-search off)"),
-];
-
-const MEDIA: &[Shortcut] = &[
-    ("Ctrl+Alt+Space", "Play / pause"),
-    ("Ctrl+Alt+← / →", "Seek −5 / +5 seconds"),
-    ("Ctrl+Alt+↑ / ↓", "Volume up / down"),
-    ("Ctrl+Alt+M", "Mute / unmute"),
-];
-
-const TOOLS: &[Shortcut] = &[
-    ("Ctrl+F", "Filter the current pane"),
-    ("Ctrl+K", "Open global search"),
-    ("Ctrl+Shift+K", "Jump to a recent folder"),
-    ("Alt+Enter", "Open containing folder (global search)"),
-    ("Ctrl+L", "Edit the location"),
-    ("Ctrl+T", "Open a terminal"),
-    ("F5", "Refresh"),
-    ("Ctrl+H / Ctrl+.", "Show or hide hidden files"),
-    ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),
-    ("Ctrl+B", "Show or hide the sidebar"),
-    ("Ctrl+Shift+B", "Switch focus between sidebar and browser"),
-    ("Ctrl+,", "Open Settings"),
-    ("Escape", "Close preview or cancel the current interaction"),
-    ("F1", "Show or hide this reference"),
-];
-
 #[derive(Clone)]
 pub(super) struct ShortcutFooter {
     root: gtk::Box,
@@ -66,8 +21,16 @@ pub(super) struct ShortcutFooter {
     more: gtk::MenuButton,
     popover: gtk::Popover,
     reference: gtk::Box,
+    scroll: gtk::ScrolledWindow,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
+    tag: gtk::Label,
+    tag_note: gtk::Label,
+    experimental: gtk::Label,
+    feedback: gtk::Label,
+    prompt: gtk::Entry,
+    chord: gtk::Label,
+    view_mode: Rc<Cell<BrowserMode>>,
 }
 
 impl ShortcutFooter {
@@ -81,7 +44,36 @@ impl ShortcutFooter {
         paste.add_css_class("shortcut-footer-paste");
         paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
+        let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
+        tag.add_css_class("tenxer-tag");
+        tag.set_tooltip_text(Some(crate::ui::tenxer_mode::TAG_NAME));
+        super::accessibility::set_label(&tag, crate::ui::tenxer_mode::TAG_NAME);
+        tag.set_visible(false);
+        let tag_note = gtk::Label::new(None);
+        tag_note.add_css_class("tenxer-experimental");
+        tag_note.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        tag_note.set_max_width_chars(28);
+        tag_note.set_tooltip_text(Some(super::shortcut_reference::EXPERIMENTAL_LABEL));
+        tag_note.set_visible(false);
+        let chord = gtk::Label::new(None);
+        chord.add_css_class("shortcut-footer-chord");
+        chord.set_visible(false);
+        let prompt = gtk::Entry::new();
+        prompt.add_css_class("form-control");
+        prompt.add_css_class("shortcut-footer-prompt");
+        prompt.set_width_chars(12);
+        prompt.set_hexpand(false);
+        prompt.set_visible(false);
+        super::accessibility::set_label(&prompt, "Command prompt");
+        let feedback = gtk::Label::new(None);
+        feedback.add_css_class("shortcut-footer-feedback");
+        feedback.set_visible(false);
         root.append(&paste);
+        root.append(&tag);
+        root.append(&tag_note);
+        root.append(&chord);
+        root.append(&prompt);
+        root.append(&feedback);
         root.append(&count);
         let show_hints = Rc::new(Cell::new(true));
         let pending_popup = Rc::new(Cell::new(false));
@@ -101,29 +93,32 @@ impl ShortcutFooter {
             .build();
         popover.add_css_class("shortcut-popover");
         let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         let title = gtk::Label::builder()
             .label("Keyboard shortcuts")
             .xalign(0.0)
             .hexpand(true)
             .build();
         title.add_css_class("shortcut-reference-title");
-        let close = gtk::Button::with_label("Close");
-        close.add_css_class("shortcut-reference-close");
-        let weak = popover.downgrade();
-        close.connect_clicked(move |_| {
-            if let Some(popover) = weak.upgrade() {
-                popover.popdown();
-            }
-        });
-        header.append(&title);
-        header.append(&close);
-        content.append(&header);
+        content.append(&title);
+        let dismiss_note = gtk::Label::builder()
+            .label("Press F1 again to close.")
+            .xalign(0.0)
+            .wrap(true)
+            .build();
+        dismiss_note.add_css_class("shortcut-reference-note");
+        content.append(&dismiss_note);
         let note = gtk::Label::builder()
             .label("Media controls use Ctrl+Alt. Plain keys keep browsing; text fields and dialogs keep native controls.")
             .xalign(0.0).wrap(true).build();
         note.add_css_class("shortcut-reference-note");
         content.append(&note);
+        let experimental = gtk::Label::new(None);
+        experimental.add_css_class("shortcut-reference-note");
+        experimental.add_css_class("tenxer-experimental");
+        experimental.set_xalign(0.0);
+        experimental.set_wrap(true);
+        experimental.set_visible(false);
+        content.append(&experimental);
         let reference = gtk::Box::new(gtk::Orientation::Vertical, 16);
         let scroll = gtk::ScrolledWindow::builder()
             .child(&reference)
@@ -134,17 +129,32 @@ impl ShortcutFooter {
             .width_request(420)
             .focusable(true)
             .build();
+        scroll.add_css_class("shortcut-reference-scroll");
         content.append(&scroll);
         popover.set_child(Some(&content));
         let weak_scroll = scroll.downgrade();
+        let weak_popover = popover.downgrade();
         popover.connect_show(move |popover| {
-            if let Some(scroll) = weak_scroll.upgrade()
-                && let Some(window) = popover.root().and_downcast::<gtk::Window>()
-            {
+            let Some(scroll) = weak_scroll.upgrade() else {
+                return;
+            };
+            if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
                 scroll.vadjustment().set_value(scroll.vadjustment().lower());
                 scroll.set_max_content_height((window.height() - 150).clamp(100, 440));
                 scroll.set_width_request((window.width() - 60).clamp(260, 420));
             }
+            let scroll = scroll.downgrade();
+            let popover = weak_popover.clone();
+            // Show runs before the popover can take focus; grab it once mapped.
+            glib::idle_add_local_once(move || {
+                if popover
+                    .upgrade()
+                    .is_some_and(|popover| popover.is_visible())
+                    && let Some(scroll) = scroll.upgrade()
+                {
+                    scroll.grab_focus();
+                }
+            });
         });
         more.set_popover(Some(&popover));
         let focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>> =
@@ -193,6 +203,11 @@ impl ShortcutFooter {
             paste.clone().upcast::<gtk::Widget>(),
             count.clone().upcast(),
             more.clone().upcast(),
+            tag.clone().upcast(),
+            tag_note.clone().upcast(),
+            chord.clone().upcast(),
+            prompt.clone().upcast(),
+            feedback.clone().upcast(),
         ]));
         for widget in status_widgets.borrow().iter() {
             watch_status_widget(widget, &status_widgets, &root);
@@ -206,9 +221,26 @@ impl ShortcutFooter {
             more,
             popover,
             reference,
+            scroll,
             focus_before,
             status_widgets,
+            tag,
+            tag_note,
+            experimental,
+            feedback,
+            prompt,
+            chord,
+            view_mode: Rc::new(Cell::new(mode)),
         };
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let shortcuts = footer.clone();
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            shortcuts
+                .handle_key(key, modifiers)
+                .unwrap_or(glib::Propagation::Proceed)
+        });
+        footer.popover.add_controller(keys);
         footer.set_mode(mode);
         footer
     }
@@ -225,6 +257,44 @@ impl ShortcutFooter {
     }
 
     pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
+        let tag = self.tag.downgrade();
+        let tag_note = self.tag_note.downgrade();
+        let experimental = self.experimental.downgrade();
+        let reference = self.reference.downgrade();
+        let view_mode = self.view_mode.clone();
+        let feedback = self.feedback.downgrade();
+        let prompt = self.prompt.downgrade();
+        let chord = self.chord.downgrade();
+        let primed = Rc::new(Cell::new(false));
+        manager.bind_preference(
+            &self.root,
+            super::preferences::PreferenceManager::tenxer_mode,
+            move |_, enabled| {
+                let Some(tag) = tag.upgrade() else {
+                    return;
+                };
+                let Some(tag_note) = tag_note.upgrade() else {
+                    return;
+                };
+                let Some(experimental) = experimental.upgrade() else {
+                    return;
+                };
+                let Some(reference) = reference.upgrade() else {
+                    return;
+                };
+                let starting = !primed.replace(true);
+                apply_experimental_label(&tag, &tag_note, &experimental, enabled);
+                if !starting
+                    && !enabled
+                    && let Some(feedback) = feedback.upgrade()
+                    && let Some(prompt) = prompt.upgrade()
+                    && let Some(chord) = chord.upgrade()
+                {
+                    clear_transient(&feedback, &prompt, &chord);
+                }
+                rebuild_reference(&reference, view_mode.get());
+            },
+        );
         let show_hints = self.show_hints.clone();
         let pending = self.pending_popup.clone();
         let weak_popover = self.popover.downgrade();
@@ -267,22 +337,65 @@ impl ShortcutFooter {
         });
     }
 
+    #[cfg(test)]
+    pub(in crate::ui) fn tag_visible(&self) -> bool {
+        self.tag.is_visible()
+    }
+
     pub fn set_mode(&self, mode: BrowserMode) {
-        while let Some(child) = self.reference.first_child() {
-            self.reference.remove(&child);
-        }
-        append_section(
-            &self.reference,
-            match mode {
-                BrowserMode::Columns => "Columns navigation",
-                BrowserMode::Icons => "Icons navigation",
-                BrowserMode::List => "List navigation",
-            },
-            &navigation_shortcuts(mode),
-        );
-        append_section(&self.reference, "Files and selection", FILES);
-        append_section(&self.reference, "Search and tools", TOOLS);
-        append_section(&self.reference, "Preview media", MEDIA);
+        self.view_mode.set(mode);
+        rebuild_reference(&self.reference, mode);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn show_feedback(&self, text: &str) {
+        self.feedback.set_text(text);
+        self.feedback.set_visible(!text.is_empty());
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn dismiss_feedback(&self) {
+        self.feedback.set_text("");
+        self.feedback.set_visible(false);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn show_prompt(&self) {
+        self.prompt.set_visible(true);
+        self.prompt.set_sensitive(true);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn prompt(&self) -> &gtk::Entry {
+        &self.prompt
+    }
+
+    pub(in crate::ui) fn dismiss_prompt(&self) {
+        self.prompt.set_text("");
+        self.prompt.set_visible(false);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn arm_chord(&self, mark: &str) {
+        self.chord.set_text(mark);
+        self.chord.set_visible(!mark.is_empty());
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn chord(&self) -> &gtk::Label {
+        &self.chord
+    }
+
+    pub(in crate::ui) fn prompt_has_focus(&self) -> bool {
+        gtk::prelude::WidgetExt::is_visible(&self.prompt)
+            && self
+                .root
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focus| {
+                    focus == *self.prompt.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&self.prompt)
+                })
     }
 
     pub fn handle_key(
@@ -295,10 +408,19 @@ impl ShortcutFooter {
                 | gdk::ModifierType::ALT_MASK
                 | gdk::ModifierType::SUPER_MASK,
         );
-        if key == gdk::Key::F1
+        let reference_open = self.popover.is_visible() || self.pending_popup.get();
+        let f1 = key == gdk::Key::F1
             && !command_modifiers
-            && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
-        {
+            && !modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+        let tilde = self.tilde_toggles(key, modifiers, reference_open);
+        if self.prompt_has_focus() && !f1 && !tilde && !reference_open {
+            if key == gdk::Key::Escape && !command_modifiers {
+                self.dismiss_prompt();
+                return Some(glib::Propagation::Stop);
+            }
+            return None;
+        }
+        if f1 || tilde {
             if self.popover.is_visible() || self.pending_popup.replace(false) {
                 if self.popover.is_visible() {
                     self.more.popdown();
@@ -356,6 +478,9 @@ impl ShortcutFooter {
             self.more.popdown();
             return Some(glib::Propagation::Stop);
         }
+        if !command_modifiers && self.scroll_reference(key) {
+            return Some(glib::Propagation::Stop);
+        }
         // The reference is read-only: never let a shortcut operate on files behind it.
         Some(
             if !command_modifiers
@@ -363,12 +488,6 @@ impl ShortcutFooter {
                     key,
                     gdk::Key::Tab
                         | gdk::Key::ISO_Left_Tab
-                        | gdk::Key::Up
-                        | gdk::Key::Down
-                        | gdk::Key::Left
-                        | gdk::Key::Right
-                        | gdk::Key::Page_Up
-                        | gdk::Key::Page_Down
                         | gdk::Key::Home
                         | gdk::Key::End
                         | gdk::Key::Return
@@ -382,6 +501,95 @@ impl ShortcutFooter {
             },
         )
     }
+
+    fn scroll_reference(&self, key: gdk::Key) -> bool {
+        let adjustment = self.scroll.vadjustment();
+        let page = adjustment.page_size().max(1.0);
+        let step = if adjustment.step_increment() >= 1.0 {
+            adjustment.step_increment()
+        } else {
+            page / 10.0
+        };
+        let page_step = if adjustment.page_increment() >= 1.0 {
+            adjustment.page_increment()
+        } else {
+            page
+        };
+        let delta = match key {
+            gdk::Key::Up | gdk::Key::KP_Up | gdk::Key::Left | gdk::Key::KP_Left => -step,
+            gdk::Key::Down | gdk::Key::KP_Down | gdk::Key::Right | gdk::Key::KP_Right => step,
+            gdk::Key::Page_Up | gdk::Key::KP_Page_Up => -page_step,
+            gdk::Key::Page_Down | gdk::Key::KP_Page_Down => page_step,
+            _ => return false,
+        };
+        let limit = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+        adjustment.set_value((adjustment.value() + delta).clamp(adjustment.lower(), limit));
+        true
+    }
+
+    fn tilde_toggles(
+        &self,
+        key: gdk::Key,
+        modifiers: gdk::ModifierType,
+        reference_open: bool,
+    ) -> bool {
+        if !super::preferences::PreferenceManager::shared().tenxer_mode() {
+            return false;
+        }
+        if modifiers.intersects(
+            gdk::ModifierType::CONTROL_MASK
+                | gdk::ModifierType::ALT_MASK
+                | gdk::ModifierType::SUPER_MASK,
+        ) {
+            return false;
+        }
+        let tilde = key == gdk::Key::asciitilde
+            || (key == gdk::Key::grave && modifiers.contains(gdk::ModifierType::SHIFT_MASK));
+        tilde && (reference_open || !self.prompt_has_focus())
+    }
+}
+
+fn rebuild_reference(reference: &gtk::Box, mode: BrowserMode) {
+    while let Some(child) = reference.first_child() {
+        reference.remove(&child);
+    }
+    for section in super::shortcut_reference::reference_sections(mode) {
+        append_section(reference, section.title, &section.rows);
+    }
+}
+
+fn apply_experimental_label(
+    tag: &gtk::Label,
+    tag_note: &gtk::Label,
+    reference_note: &gtk::Label,
+    enabled: bool,
+) {
+    tag.set_text(crate::ui::tenxer_mode::TAG_TEXT);
+    tag.set_visible(enabled);
+    let phrase = super::shortcut_reference::EXPERIMENTAL_LABEL;
+    tag_note.set_text(if enabled { phrase } else { "" });
+    tag_note.set_visible(enabled);
+    reference_note.set_text(if enabled { phrase } else { "" });
+    reference_note.set_visible(enabled);
+    let announced = if enabled {
+        format!("{} {phrase}", crate::ui::tenxer_mode::TAG_NAME)
+    } else {
+        crate::ui::tenxer_mode::TAG_NAME.to_owned()
+    };
+    tag.set_tooltip_text(Some(&announced));
+    tag.update_property(&[
+        gtk::accessible::Property::Label(&announced),
+        gtk::accessible::Property::Description(if enabled { phrase } else { "" }),
+    ]);
+}
+
+fn clear_transient(feedback: &gtk::Label, prompt: &gtk::Entry, chord: &gtk::Label) {
+    feedback.set_text("");
+    feedback.set_visible(false);
+    prompt.set_text("");
+    prompt.set_visible(false);
+    chord.set_text("");
+    chord.set_visible(false);
 }
 
 fn update_item_count(label: &gtk::Label, browser: &Rc<crate::app::Browser>) {
@@ -509,59 +717,6 @@ fn refresh_paste_availability(
             label.set_visible(available);
         }
     });
-}
-
-fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
-    let mut shortcuts = match mode {
-        BrowserMode::Columns => vec![
-            ("↑ / ↓", "Move between items"),
-            ("← / →", "Parent pane / enter folder"),
-            ("Space", "Open folder column"),
-            ("← at first pane", "Focus the visible sidebar"),
-            (
-                "Backspace",
-                "Close the current pane or go to the parent folder",
-            ),
-            (
-                "h / j / k / l",
-                "Move between items; l opens the item (type-to-search off)",
-            ),
-        ],
-        BrowserMode::Icons => vec![
-            ("↑ ↓ ← →", "Move spatially between tiles"),
-            ("← at left edge", "Focus the visible sidebar"),
-            ("Backspace", "Go to the parent folder"),
-            ("h / l", "Parent folder / open item (type-to-search off)"),
-            ("j / k", "Next / previous item (type-to-search off)"),
-        ],
-        BrowserMode::List => vec![
-            ("↑ / ↓", "Move between file rows"),
-            ("←", "Focus the visible sidebar"),
-            ("Backspace", "Go to the parent folder"),
-            ("h / l", "Parent folder / open item (type-to-search off)"),
-            ("j / k", "Next / previous item (type-to-search off)"),
-        ],
-    };
-    shortcuts.extend_from_slice(&[
-        ("↑ at top", "Focus the navigation header"),
-        ("← / → in header", "Move between header controls"),
-        ("↓ in header", "Return to the files"),
-        ("→ in sidebar", "Return to the browser"),
-        ("↑ at sidebar top", "Focus the top navigation bar"),
-        ("← / → in top bar", "Move between top-bar controls"),
-        (
-            "↓ in top bar",
-            "Return to the sidebar, or files when hidden",
-        ),
-        ("Alt+← / Alt+→", "Back / forward in history"),
-        ("Alt+↑", "Go to the parent folder"),
-        ("Alt+Home", "Go to Home"),
-        ("Home / End", "First / last item"),
-        ("Ctrl+↑ / Ctrl+↓", "First / last item"),
-        ("PgUp / PgDn", "Move one page"),
-        ("Tab / Shift+Tab", "Next / previous interface control"),
-    ]);
-    shortcuts
 }
 
 fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut]) {

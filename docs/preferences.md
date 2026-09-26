@@ -60,6 +60,7 @@ control that might be midway through synchronization.
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Explicit field sorting updates the persisted defaults. Camera Photos libraries instead open in column-local Device order (see below). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
+| 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Off by default; toggle with `Ctrl+Shift+M`, `q`, or Settings → General → Browsing. |
 | Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
 | Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
@@ -76,7 +77,7 @@ control that might be midway through synchronization.
 | Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. |
 | Sidebar order | Existing sidebars bind to the shared order. |
 | Sidebar default-place visibility | Existing sidebars bind to the shared Home, Trash, Network, Recent, and standard-folder visibility and rebuild. Enabled by default; hiding removes that place from the sidebar without changing pins or devices. Recent is also omitted when GTK recent-file tracking or the runtime Recent VFS backend is unavailable, and from local-only sidebars. Toggle the location chips under General → Sidebar; existing default-place Unpin context actions remain available where supported. Re-enable a hidden place’s chip to restore it. |
-| Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. |
+| Modified date format | Modified-time labels read the saved format at every render; already-open labels re-render live. Properties uses full absolute local timestamps for Relative, while preserving ISO 8601 and Long. |
 | Folder colors/custom icons | Icon resolution reads the manager; existing customization refreshes notify rendered icons. |
 
 Location, selection, history, each column's sort, filter query, transient theme
@@ -179,15 +180,31 @@ Paste and **Move/Copy to…** continue to reveal their destination independently
 
 In **Settings → General → Date & time**, **Modified date format** selects how file
 modified times appear; each choice lists a live example rendered from the
-current time. **Relative** (default) renders elapsed buckets: "just
-now"/"5m ago" under an hour, "3h ago" for the same day, "Yesterday, 23:59", then
-"Sep 1, 23:30"-style fallbacks. Sub-hour buckets follow elapsed time, so a file
-saved just before midnight still reads "2m ago" after the clock rolls over, and
-timestamps up to a minute in the future read "just now" as clock skew.
+current time. **Relative** (default) uses these buckets in lists and previews:
+
+- Under a minute: "Just now"; under an hour: whole minutes such as "5m ago".
+- Under 24 elapsed hours: whole hours such as "3h ago", even across midnight.
+  On a long daylight-saving fall-back day, timestamps still within the same
+  local calendar day continue to show actual whole elapsed hours, such as
+  "24h ago", without clamping.
+- After that, 1–6 local calendar days ago: full weekday name, such as "Monday".
+- 7–30 local calendar days ago: whole calendar weeks, such as "2w ago".
+- Older dates: "Sep 1, 23:30" in the current local year, or "Sep 1, 2025" in
+  an earlier year.
+
+Timestamps up to a minute in the future read "Just now" as clock skew; further
+future timestamps use an absolute date and time. Calendar boundaries and date
+labels use local time, while minute/hour buckets use elapsed time across DST.
 **ISO 8601** always renders `2026-09-17 14:30`; **Long** renders
 "September 17, 2026, 14:30". Saved as `date_format = "relative"`. Open labels
 re-render immediately when the choice changes, and the 30-second refresh still
 applies for elapsed buckets.
+
+**Properties** always shows an absolute local date, time, and year. With Relative
+selected, it uses "Sep 24, 2026, 9:30 PM"; ISO 8601 and Long retain their selected
+formats. This applies both to cached timestamps shown when the dialog opens and
+to asynchronously loaded file/folder metadata. Open Properties dialogs follow
+format changes live, just like lists and previews.
 
 ## Filter scope
 
@@ -196,6 +213,39 @@ on by default. Turn it off to match only immediate files and folders, without
 redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
+
+## 10xer mode
+
+In **Settings → General → Browsing**, **10xer mode** is off by default.
+Its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.**
+The footer shows **10X** at the right, immediately before the item count, while the mode is on.
+While the mode is on, that tag, the 10xer mode row, **Settings → Keybindings**, and the F1 / `~` reference are labeled **(experimental feature, under active development)**. The tag text stays **10X**. Those surfaces list only the commands that currently run.
+It hides window Search and pane Close/filter/refresh/sort chrome in
+interactive browsers and the portal file chooser (window Close and chooser
+Accept/Cancel stay; List column headings stay),
+disables type-to-search and the conflicting default accelerators, and installs
+the Yazi-style map with footer prompts (`/` `?` `f` `s` `a` `r` `g Space`
+`z`/`Z`), `g`-chord keycaps, and non-conflicting GUI keys (`Ctrl+C`/`X`/`V`,
+`F2`, `F5`, `Delete`, …). Keyboard navigation stays in the Columns, List, and
+Icons panes. The sidebar, window header, footer, and other controls outside
+those panes stay pointer-operated. **`s`** is current-folder recursive name search;
+**`S`** is unbound. Toggle with **Ctrl+Shift+M**, leave with **q**, close the window with **Q**. The
+preference is defined in `src/ui/preferences.rs`, saved as `tenxer_mode` in
+`settings.toml`, and live-updates every window. Real mode transitions clear
+prompts and credentials, chords, find highlights, hidden filters/search
+(including forced recursion from **s**), and a keyboard folder peek. Leaving visual mode preserves the ordinary listing's filled selection;
+leaving preview keyboard ownership restores its previous focusability without
+closing the drawer. Default **Ctrl+F** then follows the saved **Include subfolders**
+choice again. Initial preference binding applies chrome and accelerators without
+transition teardown or a file-list focus grab at disabled startup.
+Context-menu shortcut hints and **Settings → Keybindings** list the currently
+active map (including the kept Ctrl/F-key conventions). **Type to search**,
+**Keep arrows in file list**, and **Mirror columns selection** stay saved and
+editable; while the mode is on they are unused and those rows show the subtitle
+**Not used in 10xer mode.** Cursor movement does not open a child column or
+a preview. **i** opens the next Miller column without focusing it, or toggles
+the folder-peek popover in List and Icons. See
+[10xer mode](10xer-mode.md) for the keymap.
 
 ## Adding a preference
 

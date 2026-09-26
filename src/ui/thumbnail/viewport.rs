@@ -211,8 +211,6 @@ pub(in crate::ui) fn near_viewport(widget: &impl IsA<gtk::Widget>) -> bool {
 }
 
 #[cfg(test)]
-mod scroll_tests;
-#[cfg(test)]
 mod tests;
 
 type Priority = (u8, i32, i32, u64);

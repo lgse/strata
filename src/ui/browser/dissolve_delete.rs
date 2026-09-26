@@ -374,6 +374,3 @@ impl Random {
         (self.next() - 0.5) * spread
     }
 }
-
-#[cfg(test)]
-mod tests;

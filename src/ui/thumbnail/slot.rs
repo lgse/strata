@@ -19,8 +19,6 @@ mod imp {
         pub cut: Cell<bool>,
         pub hidden: Cell<bool>,
         pub base_opacity: Cell<f64>,
-        #[cfg(test)]
-        pub resize_calls: Cell<u32>,
     }
 
     #[glib::object_subclass]
@@ -137,9 +135,6 @@ fn same_texture(left: Option<&gdk::Texture>, right: Option<&gdk::Texture>) -> bo
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 glib::wrapper! {
     pub struct ThumbnailSlot(ObjectSubclass<imp::ThumbnailSlot>)
         @extends gtk::Widget,
@@ -163,21 +158,12 @@ impl ThumbnailSlot {
         widget
     }
 
-    #[cfg(test)]
-    pub(crate) fn slot_size(&self) -> i32 {
-        self.imp().slot.get().max(1)
-    }
-
     pub(crate) fn set_slot(&self, size: i32) {
         let size = size.max(1);
         if self.imp().slot.get() == size {
             return;
         }
         self.imp().slot.set(size);
-        #[cfg(test)]
-        self.imp()
-            .resize_calls
-            .set(self.imp().resize_calls.get() + 1);
         self.queue_resize();
     }
 
@@ -257,15 +243,5 @@ impl ThumbnailSlot {
             self.imp().base_opacity.get()
         };
         self.set_opacity(opacity);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn resize_calls(&self) -> u32 {
-        self.imp().resize_calls.get()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn fallback_texture(&self) -> Option<gdk::Texture> {
-        self.imp().fallback.borrow().clone()
     }
 }

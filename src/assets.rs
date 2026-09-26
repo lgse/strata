@@ -20,13 +20,16 @@ pub mod icons {
     pub const ARROW_RIGHT: &str = "strata-arrow-right";
     pub const ARROW_UP: &str = "strata-arrow-up";
     pub const ARROW_UP_NARROW_WIDE: &str = "strata-arrow-up-narrow-wide";
+    pub const APP_WINDOW: &str = "strata-app-window";
     pub const CHECK: &str = "strata-check";
     pub const CIRCLE_CHECK: &str = "strata-circle-check";
+    pub const CIRCLE_X: &str = "strata-circle-x";
     pub const CHECK_ON_PRIMARY: &str = "strata-check-on-primary";
     pub const CHEVRON_RIGHT: &str = "strata-chevron-right";
     pub const CLOCK: &str = "strata-clock";
     pub const CLIPBOARD_PASTE: &str = "strata-clipboard-paste";
     pub const COPY: &str = "strata-copy";
+    pub const COPY_PLUS: &str = "strata-copy-plus";
     pub const CORNER_DOWN_LEFT: &str = "strata-corner-down-left";
     pub const DOCUMENTS: &str = "strata-file-text";
     pub const DOWNLOADS: &str = "strata-download";
@@ -37,8 +40,12 @@ pub mod icons {
     pub const FILE_ARCHIVE: &str = "strata-file-archive";
     pub const FILE_CODE: &str = "strata-file-code";
     pub const FILE_PLUS: &str = "strata-file-plus";
+    pub const FILE_TYPE: &str = "strata-file-type";
     pub const FOLDER: &str = "strata-folder";
+    pub const FOLDER_ARCHIVE: &str = "strata-folder-archive";
+    pub const FOLDER_INPUT: &str = "strata-folder-input";
     pub const FOLDER_OPEN: &str = "strata-folder-open";
+    pub const FOLDER_OUTPUT: &str = "strata-folder-output";
     pub const FOLDER_PLUS: &str = "strata-folder-plus";
     pub const HARD_DRIVE: &str = "strata-hard-drive";
     pub const INFO: &str = "strata-info";
@@ -64,6 +71,8 @@ pub mod icons {
     pub const PANEL_LEFT: &str = "strata-panel-left-symbolic";
     pub const PANEL_RIGHT_CLOSE: &str = "strata-panel-right-close";
     pub const PAUSE: &str = "strata-pause";
+    pub const PACKAGE_OPEN: &str = "strata-package-open";
+    pub const PACKAGE_PLUS: &str = "strata-package-plus";
     pub const PENCIL: &str = "strata-pencil";
     pub const PIN: &str = "strata-pin";
     pub const PLAY: &str = "strata-play";
@@ -72,6 +81,7 @@ pub mod icons {
     pub const PRINTER: &str = "strata-printer";
     pub const PICTURES: &str = "strata-image";
     pub const ROWS: &str = "strata-rows";
+    pub const ROUTE: &str = "strata-route";
     pub const SCISSORS: &str = "strata-scissors";
     pub const SEARCH: &str = "strata-search";
     pub const SETTINGS: &str = "strata-settings";

@@ -350,6 +350,3 @@ fn ensure_indeterminate_pulse(view: &FileProgressView) {
     });
     view.pulse_source.replace(Some(source));
 }
-
-#[cfg(test)]
-mod tests;

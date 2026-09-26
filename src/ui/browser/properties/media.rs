@@ -8,19 +8,7 @@ use crate::sandbox::{
     self, Cancellation, MediaPreviewBackend, ParseOperation, metadata::MediaMetadata,
 };
 
-pub(super) struct MetadataLoad(Cancellation);
-
-impl Drop for MetadataLoad {
-    fn drop(&mut self) {
-        self.0.cancel();
-    }
-}
-
-impl MetadataLoad {
-    pub(super) fn cancel(&self) {
-        self.0.cancel();
-    }
-}
+pub(super) use crate::ui::raw_details::MetadataLoad;
 
 fn append_row(parent: &gtk::Box, name: &str, value: &str) -> gtk::Label {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);

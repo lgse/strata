@@ -134,7 +134,7 @@ def test_returning_to_a_parent_pane_anchors_its_first_entry(strata, root):
     strata.wait_for_selection(["archive"], root)
     strata.click_entry_with("pictures", ["shift"], directory=root)
     strata.wait_for_selection(["archive", "documents", "pictures"], root)
-    assert "documents" in strata.pane_names()
+    assert "documents" not in strata.pane_names()
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

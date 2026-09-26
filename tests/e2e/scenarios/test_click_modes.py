@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import time
+
 import pytest
 
 from harness.modes import ALL_MODES
@@ -119,6 +121,29 @@ def test_two_slow_clicks_do_not_open(strata, mode):
         "the entry to stay selected",
     )
     assert strata.pane().name == root
+
+
+@DOUBLE_CLICK
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_click_then_double_click_opens_without_renaming(strata, mode):
+    strata.pointer.click(strata.entry("documents"))
+    strata.wait(
+        lambda: strata.selected_names() == ["documents"],
+        "the first click to select the folder",
+    )
+    # Outlast GTK's double-click interval so the pair is a fresh sequence.
+    time.sleep(0.6)
+
+    strata.pointer.double_click(strata.entry("documents"))
+
+    strata.wait(
+        lambda: strata.pane().name == "documents",
+        "the double-click to open the folder",
+    )
+    time.sleep(0.6)
+    assert strata.window.find(role="text", name="Rename", states={"editable"}) is None, (
+        "a double-click must not leave a rename editor behind"
+    )
 
 
 @DOUBLE_CLICK

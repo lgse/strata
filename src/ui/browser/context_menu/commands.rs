@@ -244,22 +244,24 @@ fn update_item(item: &gio::MenuItem, button: &gtk::Button) {
         "x-strata-danger",
         Some(&button.has_css_class("danger").to_variant()),
     );
-    if !shortcut.is_empty() {
-        let accelerator = shortcut
-            .split(" / ")
-            .next()
-            .unwrap_or(shortcut)
-            .replace("Ctrl+", "<Control>")
-            .replace("Shift+", "<Shift>")
-            .replace("Alt+", "<Alt>")
-            .replace('↵', "Return");
-        let accelerator = match accelerator.as_str() {
-            "Del" => "Delete".to_owned(),
-            "Enter" => "Return".to_owned(),
-            "Space" => "space".to_owned(),
-            "<Shift>Del" => "<Shift>Delete".to_owned(),
-            _ => accelerator,
-        };
-        item.set_attribute_value("accel", Some(&accelerator.to_variant()));
+    if shortcut.is_empty() {
+        item.set_attribute_value("accel", None);
+        return;
     }
+    let accelerator = shortcut
+        .split(" / ")
+        .next()
+        .unwrap_or(shortcut)
+        .replace("Ctrl+", "<Control>")
+        .replace("Shift+", "<Shift>")
+        .replace("Alt+", "<Alt>")
+        .replace('↵', "Return");
+    let accelerator = match accelerator.as_str() {
+        "Del" => "Delete".to_owned(),
+        "Enter" => "Return".to_owned(),
+        "Space" => "space".to_owned(),
+        "<Shift>Del" => "<Shift>Delete".to_owned(),
+        _ => accelerator,
+    };
+    item.set_attribute_value("accel", Some(&accelerator.to_variant()));
 }

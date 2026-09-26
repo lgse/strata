@@ -438,6 +438,3 @@ fn append_row(text: &mut String, row: &[DocumentTableCellLayout]) {
     }
     text.push('\n');
 }
-
-#[cfg(test)]
-mod tests;

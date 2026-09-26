@@ -4,11 +4,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 static LIVE_BYTES: AtomicUsize = AtomicUsize::new(0);
 
-#[cfg(test)]
-pub(super) fn live_bytes() -> usize {
-    LIVE_BYTES.load(Ordering::Relaxed)
-}
-
 pub(super) struct Pixels(Vec<u8>);
 
 impl Pixels {

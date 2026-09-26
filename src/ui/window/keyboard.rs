@@ -24,6 +24,11 @@ use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 mod commands;
 mod focus;
 mod items;
+mod sidebar;
+
+pub(in crate::ui) use sidebar::{
+    SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_chord,
+};
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
@@ -169,6 +174,77 @@ pub(super) fn handle_text_zoom_scroll(
     Propagation::Stop
 }
 
+fn command_modifiers(modifiers: Modifiers) -> Modifiers {
+    modifiers
+        & (Modifiers::CONTROL_MASK
+            | Modifiers::SHIFT_MASK
+            | Modifiers::ALT_MASK
+            | Modifiers::SUPER_MASK)
+}
+
+fn plain_control(modifiers: Modifiers) -> bool {
+    let modifiers = command_modifiers(modifiers);
+    modifiers.contains(Modifiers::CONTROL_MASK)
+        && !modifiers
+            .intersects(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+}
+
+fn claims_unbound_command(key: Key, modifiers: Modifiers) -> bool {
+    let control_shift = {
+        let modifiers = command_modifiers(modifiers);
+        modifiers.contains(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
+            && !modifiers.intersects(Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+    };
+    match key {
+        Key::d
+        | Key::D
+        | Key::f
+        | Key::F
+        | Key::b
+        | Key::B
+        | Key::r
+        | Key::R
+        | Key::t
+        | Key::T
+        | Key::backslash
+            if plain_control(modifiers) =>
+        {
+            true
+        }
+        Key::k | Key::K if control_shift => true,
+        _ => false,
+    }
+}
+
+fn claims_file_list_typing(key: Key, modifiers: Modifiers) -> bool {
+    if command_modifiers(modifiers)
+        .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+    {
+        return false;
+    }
+    if key == Key::space {
+        return true;
+    }
+    if matches!(key, Key::q | Key::Q) {
+        return false;
+    }
+    super::type_to_search_query(key, modifiers).is_some()
+}
+
+fn visible_popover_menu(widget: &gtk::Widget) -> bool {
+    if widget.is_visible() && widget.is::<gtk::PopoverMenu>() {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if visible_popover_menu(&widget) {
+            return true;
+        }
+        child = widget.next_sibling();
+    }
+    false
+}
+
 fn inside_pdf_scroll(widget: &gtk::Widget) -> bool {
     let mut current = Some(widget.clone());
     while let Some(widget) = current {
@@ -232,11 +308,14 @@ impl Dispatcher {
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
+        if let Some(result) = self.tenxer_keys(browser, key, modifiers) {
+            return result;
+        }
         let focused = gtk::prelude::RootExt::focus(&self.window);
         let navigation_key = crate::ui::focus_navigation::navigation_key(
             key,
             modifiers,
-            self.type_to_search.preferences.type_to_search(),
+            self.type_to_search.preferences.type_to_search_active(),
             focused.as_ref(),
         );
         let mut event = KeyEvent {
@@ -305,10 +384,13 @@ impl Dispatcher {
             }
             return Some(Propagation::Proceed);
         }
-        if gtk::prelude::RootExt::focus(&self.window)
-            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
-            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
-        {
+        if self.native_menu_owns_input() {
+            return Some(Propagation::Proceed);
+        }
+        if self.shortcuts.prompt_has_focus() {
+            if let Some(result) = self.shortcuts.handle_key(key, modifiers) {
+                return Some(result);
+            }
             return Some(Propagation::Proceed);
         }
         if !self.inline_editing_active()
@@ -326,8 +408,88 @@ impl Dispatcher {
         self.view.rename_is_active() || self.view.new_entry_is_active()
     }
 
+    fn native_menu_owns_input(&self) -> bool {
+        if gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
+            focused.is::<gtk::PopoverMenu>()
+                || focused.ancestor(gtk::PopoverMenu::static_type()).is_some()
+                || focused
+                    .ancestor(gtk::Popover::static_type())
+                    .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        }) {
+            return true;
+        }
+        visible_popover_menu(self.window.upcast_ref())
+    }
+
+    fn tenxer_keys(&self, browser: &Rc<Browser>, key: Key, modifiers: Modifiers) -> KeyResult {
+        if visible_modal_layer(&self.window).is_some() {
+            return None;
+        }
+        let preferences = &self.type_to_search.preferences;
+        if crate::ui::tenxer_mode::is_toggle_shortcut(key, modifiers) {
+            preferences.set_tenxer_mode(!preferences.tenxer_mode());
+            return Some(Propagation::Stop);
+        }
+        if !preferences.tenxer_mode() {
+            return None;
+        }
+        if self.text_focused() || self.focus_in_popover() {
+            return None;
+        }
+        let command = modifiers
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
+        if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
+            preferences.set_tenxer_mode(false);
+            return Some(Propagation::Stop);
+        }
+        if key == Key::Q && modifiers.contains(Modifiers::SHIFT_MASK) && !command {
+            self.window.close();
+            return Some(Propagation::Stop);
+        }
+        let focus = gtk::prelude::RootExt::focus(&self.window);
+        if self.sidebar.contains(&focus)
+            && let Some(result) = self.tenxer_sidebar(browser, key, modifiers)
+        {
+            return Some(result);
+        }
+        if self.tenxer_header_focused(&focus)
+            && let Some(result) = self.tenxer_header(browser, key, modifiers)
+        {
+            return Some(result);
+        }
+        let icons = self.view.view_mode() == crate::ui::browser_modes::BrowserMode::Icons;
+        let claimed = if icons {
+            self.tenxer_icons(browser, key, modifiers)
+        } else {
+            self.tenxer_listing(browser, key, modifiers)
+        };
+        if claimed {
+            return Some(Propagation::Stop);
+        }
+        if claims_unbound_command(key, modifiers)
+            || (self.view.item_view_has_focus() && claims_file_list_typing(key, modifiers))
+        {
+            return Some(Propagation::Stop);
+        }
+        None
+    }
+
+    fn text_focused(&self) -> bool {
+        gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
+            focused.is::<gtk::Text>() || focused.is::<gtk::TextView>() || focused.is::<gtk::Entry>()
+        })
+    }
+
+    fn focus_in_popover(&self) -> bool {
+        gtk::prelude::RootExt::focus(&self.window).is_some_and(|focused| {
+            focused.is::<gtk::Popover>() || focused.ancestor(gtk::Popover::static_type()).is_some()
+        })
+    }
+
     fn arrows_scoped_to_content(&self) -> bool {
-        self.type_to_search.preferences.arrow_navigation_scoped()
+        self.type_to_search
+            .preferences
+            .arrow_navigation_scoped_active()
     }
 
     fn enter_sidebar(&self, event: &KeyEvent) {
@@ -337,6 +499,72 @@ impl Dispatcher {
             .then(|| event.focused.clone())
             .flatten();
         self.sidebar.enter(&previous);
+    }
+
+    fn tenxer_sidebar(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
+        let chord = sidebar_chord(key, modifiers)?;
+        match chord {
+            SidebarChord::Move(delta) => {
+                move_sidebar_focus(&self.sidebar.widget, delta);
+            }
+            SidebarChord::Activate => self.activate_sidebar(browser),
+            SidebarChord::Leave => self.sidebar.restore(browser, true),
+            SidebarChord::Swallow => {}
+        }
+        Some(Propagation::Stop)
+    }
+
+    fn activate_sidebar(&self, browser: &Browser) {
+        let before = browser.active_location();
+        if !activate_sidebar_focus(&self.sidebar.widget) {
+            return;
+        }
+        if browser.active_location() != before {
+            self.sidebar.previous.replace(None);
+            if !self.view.item_view_has_focus() {
+                browser.focus_active();
+            }
+        }
+    }
+
+    fn tenxer_header_focused(&self, focus: &Option<gtk::Widget>) -> bool {
+        if self.top_bar.has_focus() || self.view.header_actions_have_focus() {
+            return true;
+        }
+        let panes = self.view.widget();
+        crate::ui::focus_navigation::contains_widget(&panes, focus.as_ref())
+            && !self.view.item_view_has_focus()
+    }
+
+    fn tenxer_header(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
+        if modifiers
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        {
+            return None;
+        }
+        if modifiers.contains(Modifiers::SHIFT_MASK) && !matches!(key, Key::Tab | Key::ISO_Left_Tab)
+        {
+            return Some(Propagation::Stop);
+        }
+        match key {
+            Key::h | Key::j => {
+                self.return_from_header(browser);
+                Some(Propagation::Stop)
+            }
+            Key::Return | Key::KP_Enter | Key::space => {
+                crate::ui::focus_navigation::activate(self.window.upcast_ref());
+                Some(Propagation::Stop)
+            }
+            Key::Delete => Some(Propagation::Stop),
+            _ => None,
+        }
+    }
+
+    fn return_from_header(&self, browser: &Browser) {
+        if self.view.header_actions_have_focus() && self.view.focus_items_from_header() {
+            return;
+        }
+        browser.focus_active();
     }
 }
 

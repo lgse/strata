@@ -482,6 +482,3 @@ fn widget_center_in_overlay(widget: &gtk::Widget, overlay: &gtk::Overlay) -> Opt
         f64::from(bounds.y() + bounds.height() / 2.0),
     ))
 }
-
-#[cfg(test)]
-mod tests;

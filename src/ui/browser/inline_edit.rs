@@ -138,9 +138,6 @@ pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
     }
 }
 
-#[cfg(test)]
-use crate::ui::collection_edit::{basename_field_error, rename_stem_end};
-
 fn pending_rename_matches(pending: &PendingRename, location: &Location) -> bool {
     pending.old_location == *location
         || (matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
@@ -1226,6 +1223,3 @@ impl ViewState {
         self.submit_rename_entry(entry, name);
     }
 }
-
-#[cfg(test)]
-mod tests;

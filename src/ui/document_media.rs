@@ -16,6 +16,7 @@ use std::{
 };
 
 type MediaKey = (usize, Option<usize>);
+const MEDIA_RENDER_SLOTS: usize = 4;
 
 struct Entry {
     source: DocumentMedia,
@@ -29,7 +30,7 @@ pub(super) struct MediaCache {
     cancellation: Cancellation,
     entries: RefCell<HashMap<MediaKey, Entry>>,
     pending: RefCell<VecDeque<MediaKey>>,
-    running: Cell<bool>,
+    running: Cell<usize>,
 }
 
 impl Drop for MediaCache {
@@ -45,7 +46,7 @@ impl MediaCache {
             cancellation: Cancellation::default(),
             entries: RefCell::new(HashMap::new()),
             pending: RefCell::new(VecDeque::new()),
-            running: Cell::new(false),
+            running: Cell::new(0),
         })
     }
 
@@ -86,13 +87,13 @@ impl MediaCache {
     }
 
     fn start_next(self: &Rc<Self>) {
-        if self.running.get() {
+        if self.running.get() >= MEDIA_RENDER_SLOTS {
             return;
         }
         let Some(index) = self.pending.borrow_mut().pop_front() else {
             return;
         };
-        self.running.set(true);
+        self.running.set(self.running.get() + 1);
         let source = self.entries.borrow()[&index].source.clone();
         let path = self.path.clone();
         let cancellation = self.cancellation.clone();
@@ -131,7 +132,7 @@ impl MediaCache {
                     }
                 }
             }
-            cache.running.set(false);
+            cache.running.set(cache.running.get().saturating_sub(1));
             cache.start_next();
         });
     }

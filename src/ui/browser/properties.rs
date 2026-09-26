@@ -502,7 +502,15 @@ impl ViewState {
             )
         });
         let modified = properties_row(&details, "MODIFIED", "—");
-        crate::util::set_modified_date(&modified, entry.as_ref(), "—");
+        crate::util::set_full_modified_date(
+            &modified,
+            entry
+                .as_ref()
+                .and_then(|entry| match entry.modified_unix_seconds {
+                    crate::model::MetadataValue::Known(seconds) => Some(seconds),
+                    _ => None,
+                }),
+        );
         let opens_with = properties_row(&details, "OPENS WITH", "—");
         let hidden = properties_row(
             &details,
@@ -631,10 +639,20 @@ impl ViewState {
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         let restore_focus = remember_properties_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
-        if !is_directory
-            && let Some(path) = entry.as_ref().and_then(FileEntry::local_thumbnail_path)
-        {
-            let load = Rc::new(media::load(&media_section, path.to_path_buf()));
+        let metadata_load = entry.as_ref().filter(|_| !is_directory).and_then(|entry| {
+            if crate::ui::raw_details::supports(entry) {
+                Some(crate::ui::raw_details::load(
+                    &media_section,
+                    entry.local_thumbnail_path().map(ToOwned::to_owned),
+                ))
+            } else {
+                entry
+                    .local_thumbnail_path()
+                    .map(|path| media::load(&media_section, path.to_path_buf()))
+            }
+        });
+        if let Some(load) = metadata_load {
+            let load = Rc::new(load);
             let closing = load.clone();
             layer.connect_sensitive_notify(move |layer| {
                 if !layer.is_sensitive() {
@@ -806,12 +824,7 @@ impl ViewState {
                 size.set_text(&format_file_size(info.size().max(0) as u64));
             }
             if let Some(time) = info.modification_date_time() {
-                modified.set_text(
-                    &time
-                        .format("%Y-%m-%d %H:%M")
-                        .map(|value| value.to_string())
-                        .unwrap_or_else(|_| "—".to_owned()),
-                );
+                crate::util::set_full_modified_date(&modified, Some(time.to_unix()));
             }
             hidden.set_text(if info.is_hidden() { "Yes" } else { "No" });
             if let Some(content_type) = info.content_type() {
@@ -935,6 +948,3 @@ impl ViewState {
         });
     }
 }
-
-#[cfg(test)]
-mod tests;

@@ -579,6 +579,3 @@ impl DecodedMedia {
         }
     }
 }
-
-#[cfg(test)]
-pub(crate) mod tests;

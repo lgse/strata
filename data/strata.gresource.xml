@@ -8,13 +8,16 @@
     <file>icons/scalable/actions/strata-arrow-right.svg</file>
     <file>icons/scalable/actions/strata-arrow-up.svg</file>
     <file>icons/scalable/actions/strata-arrow-up-narrow-wide.svg</file>
+    <file>icons/scalable/actions/strata-app-window.svg</file>
     <file>icons/scalable/actions/strata-check.svg</file>
     <file>icons/scalable/actions/strata-circle-check.svg</file>
+    <file>icons/scalable/actions/strata-circle-x.svg</file>
     <file>icons/scalable/actions/strata-check-on-primary.svg</file>
     <file>icons/scalable/actions/strata-chevron-right.svg</file>
     <file>icons/scalable/actions/strata-clock.svg</file>
     <file>icons/scalable/actions/strata-clipboard-paste.svg</file>
     <file>icons/scalable/actions/strata-copy.svg</file>
+    <file>icons/scalable/actions/strata-copy-plus.svg</file>
     <file>icons/scalable/actions/strata-corner-down-left.svg</file>
     <file>icons/scalable/actions/strata-download.svg</file>
     <file>icons/scalable/actions/strata-eject.svg</file>
@@ -25,8 +28,12 @@
     <file>icons/scalable/actions/strata-file-code.svg</file>
     <file>icons/scalable/actions/strata-file-plus.svg</file>
     <file>icons/scalable/actions/strata-file-text.svg</file>
+    <file>icons/scalable/actions/strata-file-type.svg</file>
+    <file>icons/scalable/actions/strata-folder-archive.svg</file>
     <file>icons/scalable/actions/strata-folder.svg</file>
+    <file>icons/scalable/actions/strata-folder-input.svg</file>
     <file>icons/scalable/actions/strata-folder-open.svg</file>
+    <file>icons/scalable/actions/strata-folder-output.svg</file>
     <file>icons/scalable/actions/strata-folder-plus.svg</file>
     <file>icons/scalable/actions/strata-funnel.svg</file>
     <file>icons/scalable/actions/strata-columns.svg</file>
@@ -49,6 +56,8 @@
     <file>icons/scalable/actions/strata-keyboard.svg</file>
     <file>icons/scalable/actions/strata-monitor.svg</file>
     <file>icons/scalable/actions/strata-network.svg</file>
+    <file>icons/scalable/actions/strata-package-open.svg</file>
+    <file>icons/scalable/actions/strata-package-plus.svg</file>
     <file>icons/scalable/actions/strata-palette.svg</file>
     <file>icons/scalable/actions/strata-panel-left-symbolic.svg</file>
     <file>icons/scalable/actions/strata-pause.svg</file>
@@ -59,6 +68,7 @@
     <file>icons/scalable/actions/strata-plus.svg</file>
     <file>icons/scalable/actions/strata-printer.svg</file>
     <file>icons/scalable/actions/strata-rows.svg</file>
+    <file>icons/scalable/actions/strata-route.svg</file>
     <file>icons/scalable/actions/strata-scissors.svg</file>
     <file>icons/scalable/actions/strata-search.svg</file>
     <file>icons/scalable/actions/strata-settings-active.svg</file>

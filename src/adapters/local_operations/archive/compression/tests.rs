@@ -4,7 +4,8 @@ mod cancellation;
 mod policy;
 
 use super::super::fixtures::{
-    compression_stage_mode, compression_stages, never_cancelled, write_compression_fixture,
+    HomeTrashGuard, compression_stage_mode, compression_stages, never_cancelled,
+    tempdir_on_home_device, write_compression_fixture,
 };
 use super::{ArchiveError, inspect_archive_sources, process_umask, write_staged_archive};
 use crate::{
@@ -32,9 +33,10 @@ fn compression_staging_stays_private_while_encoding() -> Result<(), Box<dyn Erro
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
+    let root = tempdir_on_home_device()?;
     let destination = root.path().to_path_buf();
     let archive = destination.join("existing.zip");
+    let _trash = HomeTrashGuard::new(&archive);
     fs::write(&archive, b"original")?;
     fs::set_permissions(&archive, fs::Permissions::from_mode(0o640))?;
     let original = TrashedOriginal::from_metadata(&fs::symlink_metadata(&archive)?);

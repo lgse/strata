@@ -36,6 +36,23 @@ def _visible_rows(container, viewport):
             yield row
 
 
+@pytest.mark.preferences(browser_mode="columns", open_folder_after_drop=True)
+def test_drop_keeps_selection_only_at_destination(strata):
+    fixture = strata.fixture
+    source = strata.select_entry("todo.txt")
+    target = strata.entry("archive")
+
+    strata.pointer.drag(source, target)
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        "the dragged file to arrive in archive",
+    )
+    strata.wait_for_entry_gone("todo.txt", directory=fixture.root.name)
+    strata.wait_for_selection(["todo.txt"], "archive")
+    assert strata.all_selected_names() == ["todo.txt"]
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_dragging_a_file_onto_a_folder_moves_it(strata, mode):
     fixture = strata.fixture

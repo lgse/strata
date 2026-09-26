@@ -14,13 +14,78 @@ use std::{
     ffi::OsString,
     fs,
     io::{Cursor, Write},
-    os::unix::fs::PermissionsExt,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
+
+/// GIO cannot trash test fixtures across devices into the home Trash.
+pub(super) fn tempdir_on_home_device() -> Result<tempfile::TempDir, Box<dyn Error>> {
+    let home = gtk::glib::home_dir();
+    let cache = gtk::glib::user_cache_dir();
+    let parent = if same_device(&cache, &home) {
+        cache
+    } else {
+        home
+    };
+    fs::create_dir_all(&parent)?;
+    Ok(tempfile::Builder::new()
+        .prefix(".strata-archive-test-")
+        .tempdir_in(parent)?)
+}
+
+fn same_device(left: &Path, right: &Path) -> bool {
+    fs::metadata(left)
+        .and_then(|left| fs::metadata(right).map(|right| left.dev() == right.dev()))
+        .unwrap_or(false)
+}
+
+/// Remove the fixture's Trash copy so host tests do not leave test files behind.
+pub(super) struct HomeTrashGuard(PathBuf);
+
+impl HomeTrashGuard {
+    pub(super) fn new(path: impl Into<PathBuf>) -> Self {
+        Self(path.into())
+    }
+}
+
+impl Drop for HomeTrashGuard {
+    fn drop(&mut self) {
+        let info_dir = gtk::glib::user_data_dir().join("Trash/info");
+        let files_dir = gtk::glib::user_data_dir().join("Trash/files");
+        let Ok(entries) = fs::read_dir(&info_dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let info_path = entry.path();
+            if info_path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                != Some("trashinfo")
+            {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(&info_path) else {
+                continue;
+            };
+            let Some(encoded) = text.lines().find_map(|line| line.strip_prefix("Path=")) else {
+                continue;
+            };
+            if crate::adapters::trash_restore::decode_trashinfo_path(encoded).as_deref()
+                != Some(self.0.as_path())
+            {
+                continue;
+            }
+            if let Some(name) = info_path.file_stem() {
+                let _removed = fs::remove_file(files_dir.join(name));
+            }
+            let _removed = fs::remove_file(info_path);
+        }
+    }
+}
 
 pub(super) fn test_file_entry(path: &Path) -> FileEntry {
     let name = path.file_name().unwrap_or_default().to_os_string();

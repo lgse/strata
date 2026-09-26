@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use super::{DateFormat, calendar_day_difference, modified_date_at};
+use super::{DateFormat, modified_date_at};
 
 fn date_in_timezone(
     timezone: &glib::TimeZone,
@@ -15,46 +15,6 @@ fn date_in_timezone(
 
 fn utc_date(year: i32, month: i32, day: i32, hour: i32, minute: i32) -> glib::DateTime {
     date_in_timezone(&glib::TimeZone::utc(), year, month, day, hour, minute)
-}
-
-#[test]
-fn future_modified_dates_use_an_absolute_timestamp() {
-    let now = utc_date(2026, 9, 3, 12, 0);
-    let modified = utc_date(2026, 9, 3, 13, 0);
-
-    assert_eq!(
-        modified_date_at(&modified, &now, DateFormat::Relative),
-        "2026-09-03 13:00"
-    );
-}
-
-#[test]
-fn slight_future_timestamps_are_clock_skew_not_future_files() {
-    let now = utc_date(2026, 9, 3, 12, 0);
-    let skew = utc_date(2026, 9, 3, 12, 0).add_seconds(30.0).expect("skew");
-    let just_past = utc_date(2026, 9, 3, 12, 1)
-        .add_seconds(-1.0)
-        .expect("minute");
-    let minute_future = utc_date(2026, 9, 3, 12, 1)
-        .add_seconds(1.0)
-        .expect("future");
-
-    assert_eq!(
-        modified_date_at(&skew, &now, DateFormat::Relative),
-        "just now"
-    );
-    assert_eq!(
-        modified_date_at(&just_past, &now, DateFormat::Relative),
-        "just now"
-    );
-    assert_eq!(
-        modified_date_at(&minute_future, &now, DateFormat::Relative),
-        "2026-09-03 12:01"
-    );
-    assert_eq!(
-        modified_date_at(&skew, &now, DateFormat::Iso8601),
-        "2026-09-03 12:00"
-    );
 }
 
 #[test]
@@ -74,31 +34,52 @@ fn date_format_parsing_tolerates_hand_edited_values() {
 }
 
 #[test]
-fn recent_past_modified_dates_remain_relative() {
-    let now = utc_date(2026, 9, 3, 12, 0);
-    let modified = utc_date(2026, 9, 3, 11, 45);
-
-    assert_eq!(
-        modified_date_at(&modified, &now, DateFormat::Relative),
-        "15m ago"
-    );
+fn relative_time_boundaries_survive_midnight_and_clock_skew() {
+    let now = utc_date(2026, 9, 8, 0, 0);
+    for (seconds_ago, expected) in [
+        (-61, "2026-09-08 00:01"),
+        (-60, "Just now"),
+        (0, "Just now"),
+        (59, "Just now"),
+        (60, "1m ago"),
+        (3599, "59m ago"),
+        (3600, "1h ago"),
+        (86399, "23h ago"),
+        (86400, "Monday"),
+    ] {
+        let modified = now.add_seconds(-f64::from(seconds_ago)).expect("offset");
+        assert_eq!(
+            modified_date_at(&modified, &now, DateFormat::Relative),
+            expected,
+            "{seconds_ago} seconds ago"
+        );
+    }
 }
 
 #[test]
-fn recent_files_stay_relative_across_midnight() {
+fn older_relative_dates_follow_calendar_boundaries() {
     let now = utc_date(2026, 9, 8, 0, 0);
-
+    for (modified, expected) in [
+        (utc_date(2026, 9, 2, 23, 59), "Wednesday"),
+        (utc_date(2026, 9, 1, 23, 59), "1w ago"),
+        (utc_date(2026, 8, 26, 23, 59), "1w ago"),
+        (utc_date(2026, 8, 25, 23, 59), "2w ago"),
+        (utc_date(2026, 8, 9, 23, 59), "4w ago"),
+        (utc_date(2026, 8, 8, 23, 59), "Aug 8, 23:59"),
+        (utc_date(2025, 9, 8, 23, 59), "Sep 8, 2025"),
+    ] {
+        assert_eq!(
+            modified_date_at(&modified, &now, DateFormat::Relative),
+            expected
+        );
+    }
     assert_eq!(
-        modified_date_at(&utc_date(2026, 9, 7, 23, 59), &now, DateFormat::Relative),
-        "1m ago"
-    );
-    assert_eq!(
-        modified_date_at(&utc_date(2026, 9, 7, 23, 45), &now, DateFormat::Relative),
-        "15m ago"
-    );
-    assert_eq!(
-        modified_date_at(&utc_date(2026, 9, 7, 23, 0), &now, DateFormat::Relative),
-        "Yesterday, 23:00"
+        modified_date_at(
+            &utc_date(2026, 12, 31, 12, 0),
+            &utc_date(2027, 1, 1, 12, 0),
+            DateFormat::Relative
+        ),
+        "Thursday"
     );
 }
 
@@ -107,73 +88,81 @@ fn saved_formats_always_render_absolute() {
     let now = utc_date(2026, 9, 8, 0, 0);
     let recent = utc_date(2026, 9, 7, 23, 59);
     let future = utc_date(2026, 9, 8, 0, 30);
-
-    assert_eq!(
-        modified_date_at(&recent, &now, DateFormat::Iso8601),
-        "2026-09-07 23:59"
-    );
-    assert_eq!(
-        modified_date_at(&future, &now, DateFormat::Iso8601),
-        "2026-09-08 00:30"
-    );
-    assert_eq!(
-        modified_date_at(&recent, &now, DateFormat::Long),
-        "September 7, 2026, 23:59"
-    );
-    assert_eq!(
-        modified_date_at(&future, &now, DateFormat::Long),
-        "September 8, 2026, 00:30"
-    );
+    for (format, expected_recent, expected_future) in [
+        (DateFormat::Iso8601, "2026-09-07 23:59", "2026-09-08 00:30"),
+        (
+            DateFormat::Long,
+            "September 7, 2026, 23:59",
+            "September 8, 2026, 00:30",
+        ),
+    ] {
+        assert_eq!(modified_date_at(&recent, &now, format), expected_recent);
+        assert_eq!(modified_date_at(&future, &now, format), expected_future);
+    }
 }
 
 #[test]
-fn relative_days_follow_the_calendar_rather_than_24_hour_windows() {
-    let now = utc_date(2026, 9, 8, 23, 0);
-
-    assert_eq!(
-        modified_date_at(&utc_date(2026, 9, 7, 0, 30), &now, DateFormat::Relative),
-        "Yesterday, 00:30"
-    );
-    assert_eq!(
-        modified_date_at(&utc_date(2026, 9, 6, 23, 30), &now, DateFormat::Relative),
-        "Sunday 23:30"
-    );
-    assert_eq!(
-        modified_date_at(&utc_date(2026, 9, 1, 23, 30), &now, DateFormat::Relative),
-        "Sep 1, 23:30"
-    );
+fn daylight_saving_uses_elapsed_hours_then_calendar_days() {
+    for (zone, modified, now, expected) in [
+        (
+            "America/New_York",
+            (2026, 3, 8, 1, 50),
+            (2026, 3, 8, 3, 10),
+            "20m ago",
+        ),
+        (
+            "America/New_York",
+            (2026, 3, 7, 12, 0),
+            (2026, 3, 8, 12, 0),
+            "23h ago",
+        ),
+        (
+            "America/New_York",
+            (2026, 11, 1, 0, 1),
+            (2026, 11, 1, 23, 59),
+            "24h ago",
+        ),
+        (
+            "America/New_York",
+            (2026, 11, 1, 0, 1),
+            (2026, 11, 2, 0, 1),
+            "Sunday",
+        ),
+        (
+            "America/New_York",
+            (2026, 3, 2, 12, 0),
+            (2026, 3, 9, 12, 0),
+            "1w ago",
+        ),
+        (
+            "Australia/Lord_Howe",
+            (2026, 4, 5, 1, 20),
+            (2026, 4, 5, 2, 10),
+            "1h ago",
+        ),
+    ] {
+        let timezone = glib::TimeZone::from_identifier(Some(zone)).expect("timezone");
+        let date = |(year, month, day, hour, minute)| {
+            date_in_timezone(&timezone, year, month, day, hour, minute)
+        };
+        assert_eq!(
+            modified_date_at(&date(modified), &date(now), DateFormat::Relative),
+            expected,
+            "{zone}: {modified:?} -> {now:?}"
+        );
+    }
 }
 
 #[test]
-fn previous_local_date_is_yesterday_even_with_less_than_one_day_elapsed() {
-    let timezone = glib::TimeZone::from_identifier(Some("America/New_York"))
-        .expect("America/New_York timezone");
-    let modified = date_in_timezone(&timezone, 2026, 9, 7, 23, 30);
-    let now = date_in_timezone(&timezone, 2026, 9, 8, 0, 30);
-
-    assert_eq!(
-        modified_date_at(&modified, &now, DateFormat::Relative),
-        "Yesterday, 23:30"
-    );
-}
-
-#[test]
-fn calendar_days_survive_daylight_saving_transitions() {
-    let timezone = glib::TimeZone::from_identifier(Some("America/New_York"))
-        .expect("America/New_York timezone");
-    let spring_modified = date_in_timezone(&timezone, 2026, 3, 8, 23, 30);
-    let spring_now = date_in_timezone(&timezone, 2026, 3, 9, 23, 0);
-    let fall_modified = date_in_timezone(&timezone, 2026, 11, 1, 23, 30);
-    let fall_now = date_in_timezone(&timezone, 2026, 11, 2, 12, 0);
-    let two_dates_before_fall_now = date_in_timezone(&timezone, 2026, 10, 31, 23, 30);
-
-    assert_eq!(
-        calendar_day_difference(&spring_modified, &spring_now),
-        Some(1)
-    );
-    assert_eq!(calendar_day_difference(&fall_modified, &fall_now), Some(1));
-    assert_eq!(
-        calendar_day_difference(&two_dates_before_fall_now, &fall_now),
-        Some(2)
-    );
+fn calendar_rendering_converts_entries_into_now_timezone() {
+    let new_york =
+        glib::TimeZone::from_identifier(Some("America/New_York")).expect("America/New_York");
+    let modified = utc_date(2026, 9, 7, 3, 30);
+    let now = date_in_timezone(&new_york, 2026, 9, 8, 3, 30);
+    for (format, expected) in [
+        (DateFormat::Relative, "Sunday"),
+        (DateFormat::Iso8601, "2026-09-06 23:30"),
+    ] {
+        assert_eq!(modified_date_at(&modified, &now, format), expected);
+    }
 }

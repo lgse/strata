@@ -682,6 +682,7 @@ fn needs_shell_escape(c: char) -> bool {
 // the main thread) is the source of truth for both paste behavior and styling.
 thread_local! {
     static SHARED_CUT_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+    static OWNED_FILE_PROVIDER: RefCell<Option<gtk::gdk::ContentProvider>> = const { RefCell::new(None) };
     static CUT_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -750,12 +751,14 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
         return false;
     }
     gtk::gdk::Display::default().is_some_and(|display| {
-        display
-            .clipboard()
-            .set_content(Some(&gtk::gdk::ContentProvider::for_value(
-                &gtk::gdk::FileList::from_array(&files).to_value(),
-            )))
-            .is_ok()
+        let provider = gtk::gdk::ContentProvider::for_value(
+            &gtk::gdk::FileList::from_array(&files).to_value(),
+        );
+        if display.clipboard().set_content(Some(&provider)).is_err() {
+            return false;
+        }
+        OWNED_FILE_PROVIDER.with(|owned| owned.replace(Some(provider)));
+        true
     })
 }
 
@@ -834,13 +837,31 @@ impl ViewState {
     }
 
     pub(super) fn complete_cut_transfer(&self, transferred: &[Location]) {
+        let consumed = shared_cut_locations()
+            .iter()
+            .any(|cut| transferred.iter().any(|moved| locations_equal(cut, moved)));
+        if !consumed {
+            return;
+        }
         retain_shared_untransferred(transferred);
         let remaining = shared_cut_locations();
+        let Some(display) = gtk::gdk::Display::default() else {
+            return;
+        };
+        let clipboard = display.clipboard();
+        // A matching file-list format does not imply we still own the clipboard.
+        if !OWNED_FILE_PROVIDER.with(|owned| {
+            let owned = owned.borrow();
+            owned.is_some() && clipboard.content().as_ref() == owned.as_ref()
+        }) {
+            return;
+        }
         if remaining.is_empty() {
-            if let Some(display) = gtk::gdk::Display::default() {
-                let _result = display
-                    .clipboard()
-                    .set_content(None::<&gtk::gdk::ContentProvider>);
+            if clipboard
+                .set_content(None::<&gtk::gdk::ContentProvider>)
+                .is_ok()
+            {
+                OWNED_FILE_PROVIDER.with(|owned| owned.replace(None));
             }
         } else {
             let _set = set_location_files_clipboard(&remaining);

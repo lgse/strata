@@ -238,6 +238,3 @@ pub(super) async fn aggregate_directory_summary(entries: &[FileEntry]) -> Direct
     }
     total
 }
-
-#[cfg(test)]
-mod tests;

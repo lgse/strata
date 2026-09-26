@@ -205,6 +205,7 @@ impl Browser {
                     .finish(request_id, truncated, can_trash, can_delete);
                 if let Some(depth) = finished {
                     self.emit(BrowserEvent::LoadFinished { depth, truncated });
+                    self.report_unresolved_location_reveal(depth, request_id);
                     self.ensure_sorted_after_load(depth);
                 }
             }

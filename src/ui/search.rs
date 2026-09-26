@@ -694,7 +694,7 @@ fn show_result_menu(
     let reveal = context_menu_option(
         crate::assets::icons::FOLDER_OPEN,
         "Open containing folder",
-        "Alt+Enter",
+        crate::ui::shortcut_reference::ContextHint::ContainingFolder,
     );
     reveal.set_sensitive(item.path.parent().is_some());
     content.append(&reveal);

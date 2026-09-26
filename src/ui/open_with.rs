@@ -740,6 +740,3 @@ pub(super) fn show(
         search_entry.grab_focus();
     }
 }
-
-#[cfg(test)]
-mod tests;

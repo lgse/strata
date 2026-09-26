@@ -26,6 +26,15 @@ allow = [
 name = "arrayref"
 allow = ["BSD-2-Clause"]
 
+# RAW metadata dependencies; their redistribution notices are in THIRD_PARTY_LICENSES.md.
+[[licenses.exceptions]]
+name = "kamadak-exif"
+allow = ["BSD-2-Clause"]
+
+[[licenses.exceptions]]
+name = "mutate_once"
+allow = ["BSD-2-Clause"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

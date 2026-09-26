@@ -31,6 +31,7 @@ gstreamer-app = { version = "0.25.2", features = ["v1_20"] }
 gtk = { package = "gtk4", version = "0.11.4", features = ["v4_12"] }
 html5gum = { version = "0.8", default-features = false }
 ignore = "0.4.23"
+kamadak-exif = "0.6.1"
 landlock = "0.4.7"
 libc = "0.2"
 mermaid-svg = "0.7.0"

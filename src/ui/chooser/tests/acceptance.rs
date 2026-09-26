@@ -247,6 +247,84 @@ pub(super) fn request(root: PathBuf) -> ChooserRequest {
 }
 
 #[test]
+fn full_file_path_selects_and_accepts_the_named_file() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::full_file_path_selects_and_accepts_the_named_file",
+        || {
+            crate::ui::prepare_portal_ui();
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                PreferenceManager::shared().set_browser_mode(mode);
+                let root = tempfile::tempdir().expect("fixture");
+                let initial = root.path().join("initial");
+                let destination = root.path().join("destination");
+                let target = destination.join("report.pdf");
+                std::fs::create_dir(&initial).expect("initial folder");
+                std::fs::create_dir(&destination).expect("destination folder");
+                std::fs::write(&target, "report").expect("target file");
+
+                let result = Rc::new(RefCell::new(None));
+                let received = result.clone();
+                let state = build_chooser(
+                    request(initial.clone()),
+                    Arc::new(AtomicBool::new(false)),
+                    move |value| {
+                        received.replace(Some(value));
+                    },
+                )
+                .expect("chooser");
+                let browser = state.view.browser();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+
+                state.view.begin_location_edit();
+                let focused =
+                    gtk::prelude::RootExt::focus(&state.window).expect("focused location editor");
+                let entry = focused
+                    .clone()
+                    .downcast::<gtk::Entry>()
+                    .ok()
+                    .or_else(|| {
+                        focused
+                            .ancestor(gtk::Entry::static_type())
+                            .and_downcast::<gtk::Entry>()
+                    })
+                    .expect("focused location entry");
+                entry.set_text(&target.to_string_lossy());
+                entry.emit_activate();
+
+                wait_until(|| {
+                    browser.active_location() == Some(Location::local(&destination))
+                        && browser
+                            .selected_entries()
+                            .as_slice()
+                            .first()
+                            .is_some_and(|entry| entry.location == Location::local(&target))
+                });
+                assert!(!browser.selection_is_load_cursor(), "{mode:?}");
+
+                state.accept_button.emit_clicked();
+                wait_until(|| result.borrow().is_some());
+                let selected = result
+                    .borrow_mut()
+                    .take()
+                    .expect("result")
+                    .expect("accepted");
+                assert_eq!(selected.uris().len(), 1, "{mode:?}");
+                assert_eq!(
+                    selected.uris()[0].to_string(),
+                    gio::File::for_path(&target).uri(),
+                    "{mode:?}"
+                );
+                state.window.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn directory_confirmation_distinguishes_load_cursor_from_explicit_selection() {
     crate::test_support::gtk_test(
         "ui::chooser::tests::acceptance::directory_confirmation_distinguishes_load_cursor_from_explicit_selection",

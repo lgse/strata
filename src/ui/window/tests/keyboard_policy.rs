@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 
+use gtk::prelude::*;
+
 use super::*;
+use crate::ui::preferences::PreferenceManager;
 
 #[test]
 fn plain_single_pane_arrows_move_focus_not_directories() {
@@ -435,6 +438,109 @@ fn default_accels_never_bind_one_chord_twice() {
             assert_eq!(refresh, &["F5"]);
         },
     );
+}
+
+#[test]
+fn tenxer_accelerators_follow_the_saved_mode_across_windows() {
+    gtk_test(
+        "ui::window::tests::keyboard_policy::tenxer_accelerators_follow_the_saved_mode_across_windows",
+        || {
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(false);
+            let first = policy_window();
+            assert_accelerators(&first, false);
+            preferences.set_tenxer_mode(true);
+            assert_accelerators(&first, true);
+            let enabled = accel_snapshot(&first);
+            let second = policy_window();
+            assert_eq!(accel_snapshot(&second), enabled);
+            preferences.set_tenxer_mode(true);
+            assert_eq!(accel_snapshot(&first), enabled);
+            first.destroy();
+            settle_policy();
+            assert_eq!(accel_snapshot(&second), enabled);
+            preferences.set_tenxer_mode(false);
+            assert_accelerators(&second, false);
+            let restored = accel_snapshot(&second);
+            preferences.set_tenxer_mode(false);
+            assert_eq!(accel_snapshot(&second), restored);
+            second.destroy();
+        },
+    );
+}
+
+fn policy_window() -> gtk::ApplicationWindow {
+    let preferences = PreferenceManager::shared();
+    let application = gtk::gio::Application::default()
+        .and_downcast::<gtk::Application>()
+        .unwrap_or_else(|| {
+            let application =
+                gtk::Application::new(None::<&str>, gtk::gio::ApplicationFlags::NON_UNIQUE);
+            application
+                .register(None::<&gtk::gio::Cancellable>)
+                .expect("test application registration");
+            application
+        });
+    let window = gtk::ApplicationWindow::builder()
+        .application(&application)
+        .default_width(800)
+        .default_height(600)
+        .build();
+    let content = super::super::composition::WindowContent::new(&window, &preferences);
+    content.bind(&window, &preferences);
+    window.present();
+    window
+}
+
+fn assert_accelerators(window: &gtk::ApplicationWindow, tenxer: bool) {
+    let application = window.application().expect("application");
+    for (action, expected) in DEFAULT_ACCELS {
+        let installed = application.accels_for_action(action);
+        let suppressed = tenxer
+            && matches!(
+                *action,
+                "win.jump-folder" | "win.open-terminal" | "win.toggle-arrow-scope"
+            );
+        if suppressed {
+            assert!(
+                installed.is_empty(),
+                "{action} stays bound while 10xer is on: {installed:?}"
+            );
+            continue;
+        }
+        assert_eq!(installed.len(), expected.len(), "{action}");
+        for (actual, &expected) in installed.iter().zip(*expected) {
+            assert_eq!(
+                gtk::accelerator_parse(actual).expect("installed accelerator"),
+                gtk::accelerator_parse(expected).expect("default accelerator"),
+                "{action}"
+            );
+        }
+    }
+}
+
+fn accel_snapshot(window: &gtk::ApplicationWindow) -> Vec<(String, Vec<String>)> {
+    let application = window.application().expect("application");
+    DEFAULT_ACCELS
+        .iter()
+        .map(|(action, _)| {
+            (
+                (*action).to_owned(),
+                application
+                    .accels_for_action(action)
+                    .iter()
+                    .map(|accel| accel.to_string())
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn settle_policy() {
+    let context = gtk::glib::MainContext::default();
+    while context.pending() {
+        context.iteration(false);
+    }
 }
 
 #[test]

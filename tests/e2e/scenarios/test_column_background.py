@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""Column background clicks focus the parent without closing its descendants."""
-
 import pytest
 
 
@@ -63,6 +61,8 @@ def test_column_background_click_focuses_parent(strata, surface):
         strata.wait_for_selection(["archive"], root)
         strata.pointer.click(strata.pane(root), at=strata.background_point(root))
         strata.wait(lambda: not strata.all_selected_names(), "active background click to clear selection")
+        assert "documents" not in strata.pane_names()
     else:
         assert strata.selected_names(directory=root) == selected
-    assert "documents" in strata.pane_names()
+        # The header label is chrome, not content background: it only focuses.
+        assert "documents" in strata.pane_names()
