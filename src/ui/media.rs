@@ -56,6 +56,7 @@ mod imp {
         pub(super) end: Cell<Option<u64>>,
         pub(super) last_progress: Cell<Option<Instant>>,
         pub(super) spectrum: RefCell<[f32; 24]>,
+        pub(super) spectrum_requested: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -161,8 +162,12 @@ glib::wrapper! {
 }
 
 impl DecodedMedia {
-    pub fn spectrum(&self) -> [f32; 24] {
+    pub(crate) fn spectrum(&self) -> [f32; 24] {
         *self.imp().spectrum.borrow()
+    }
+
+    pub(crate) fn enable_spectrum(&self) {
+        self.imp().spectrum_requested.set(true);
     }
 
     pub fn new(source: SandboxedMedia) -> Self {
@@ -237,6 +242,7 @@ impl DecodedMedia {
         }
         imp.audio.borrow_mut().take();
         imp.frames.borrow_mut().clear();
+        imp.spectrum.replace([0.0; 24]);
         imp.restart.set(Some(tick));
         imp.starting.set(Some(Instant::now()));
         imp.position.set(media::timestamp(tick));
@@ -420,14 +426,8 @@ impl DecodedMedia {
                             .samples
                             .truncate(samples_left.min(media::AUDIO_BYTES as u64 / 4) as usize * 4);
                         if !frame.samples.is_empty() {
-                            let bands = compute_spectrum_bands(&frame.samples);
-                            let mut current = imp.spectrum.borrow_mut();
-                            for (i, &band) in bands.iter().enumerate() {
-                                if band > current[i] {
-                                    current[i] = band * 0.6 + current[i] * 0.4;
-                                } else {
-                                    current[i] = (band * 0.25 + current[i] * 0.75).max(0.0);
-                                }
+                            if imp.spectrum_requested.get() {
+                                imp.spectrum.replace(compute_spectrum_bands(&frame.samples));
                             }
                             audio.push(
                                 std::mem::take(&mut frame.samples),
@@ -660,14 +660,13 @@ fn compute_spectrum_bands(samples: &[u8]) -> [f32; 24] {
         len *= 2;
     }
 
-    // Normalized magnitude spectrum (first CHUNK / 2 bins)
     let mut mags = [0.0f32; CHUNK / 2];
     let norm_factor = 2.0 / CHUNK as f32;
     for (k, mag) in mags.iter_mut().enumerate() {
         *mag = (re[k] * re[k] + im[k] * im[k]).sqrt() * norm_factor;
     }
 
-    // Logarithmic frequency bands matching Omaramp's spectrum.py
+    // Log-spaced frequency bands
     let min_f = 20.0f32;
     let max_f = 16000.0f32;
     let rate = 48000.0f32;

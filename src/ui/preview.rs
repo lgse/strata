@@ -31,7 +31,7 @@ mod media_layout;
 mod pdf_ranges_tests;
 mod pdf_text;
 mod session;
-mod waveform;
+pub(super) mod waveform;
 
 use waveform::SoundCloudWaveform;
 

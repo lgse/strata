@@ -11,6 +11,22 @@ use gtk::{gdk, glib, prelude::*};
 
 use crate::ui::{media::DecodedMedia, theme::ThemeManager};
 
+thread_local! {
+    static WAVEFORMS: RefCell<Vec<glib::WeakRef<gtk::DrawingArea>>> = const { RefCell::new(Vec::new()) };
+}
+
+pub(crate) fn apply_theme() {
+    WAVEFORMS.with_borrow_mut(|areas| {
+        areas.retain(|area| {
+            let Some(area) = area.upgrade() else {
+                return false;
+            };
+            area.queue_draw();
+            true
+        });
+    });
+}
+
 const NUM_BARS: usize = 84;
 const NUM_BANDS: usize = 24;
 const HORIZON_GAP: f64 = 1.2;
@@ -59,15 +75,21 @@ impl SoundCloudWaveform {
             .borrow_mut()
             .replace(Rc::downgrade(&waveform));
 
-        // Setup draw function
+        if let Some(decoded) = media.downcast_ref::<DecodedMedia>() {
+            decoded.enable_spectrum();
+        }
+
         let weak_self = Rc::downgrade(&waveform);
         area.set_draw_func(move |_, ctx, width, height| {
             if let Some(wf) = weak_self.upgrade() {
                 wf.draw(ctx, f64::from(width), f64::from(height));
             }
         });
+        WAVEFORMS.with_borrow_mut(|areas| {
+            areas.retain(|area| area.upgrade().is_some());
+            areas.push(area.downgrade());
+        });
 
-        // Gesture: Click to toggle play/pause
         let click = gtk::GestureClick::new();
         let wf_for_click = waveform.clone();
         click.connect_pressed(move |gesture, _, _, _| {
@@ -112,7 +134,7 @@ impl SoundCloudWaveform {
             if !handle.is_playing.get() {
                 let settled = handle.decay_bands.borrow().iter().all(|&x| x < 0.005);
                 if settled {
-                    handle.remove_tick_callback();
+                    handle.tick_id.borrow_mut().take();
                     return glib::ControlFlow::Break;
                 }
             }
@@ -121,52 +143,32 @@ impl SoundCloudWaveform {
         self.tick_id.replace(Some(id));
     }
 
-    fn remove_tick_callback(&self) {
-        if let Some(id) = self.tick_id.borrow_mut().take() {
-            id.remove();
-        }
-    }
-
     fn draw(&self, ctx: &gtk::cairo::Context, width: f64, height: f64) {
         if width <= 0.0 || height <= 0.0 {
             return;
         }
 
         let tokens = ThemeManager::shared().appearance_tokens();
-        let accent_color = gdk::RGBA::parse(&tokens.accent)
-            .or_else(|_| gdk::RGBA::parse(&tokens.highlight))
-            .unwrap_or_else(|_| gdk::RGBA::new(1.0, 0.47, 0.0, 1.0));
-        let ar = f64::from(accent_color.red());
-        let ag = f64::from(accent_color.green());
-        let ab = f64::from(accent_color.blue());
+        let Ok(accent) = gdk::RGBA::parse(&tokens.accent) else {
+            return;
+        };
+        let tip = gdk::RGBA::parse(&tokens.highlight).unwrap_or(accent);
+        let ar = f64::from(accent.red());
+        let ag = f64::from(accent.green());
+        let ab = f64::from(accent.blue());
+        let mix = |channel: fn(&gdk::RGBA) -> f32| -> f64 {
+            f64::from(channel(&tip) + (channel(&accent) - channel(&tip)) * 0.55)
+        };
 
         let is_playing = self.is_playing.get();
 
-        // Retrieve real live audio spectrum from DecodedMedia
-        let mut live_spectrum = self
+        let live_spectrum = self
             .media
             .upgrade()
             .and_then(|m| m.downcast::<DecodedMedia>().ok())
             .map(|dm| dm.spectrum())
             .unwrap_or([0.0f32; NUM_BANDS]);
 
-        // Fallback: if DecodedMedia spectrum is silent or 0, check /run/user/1000/omaramp/spectrum.json
-        if is_playing
-            && live_spectrum.iter().all(|&x| x <= 0.001)
-            && let Ok(content) = std::fs::read_to_string("/run/user/1000/omaramp/spectrum.json")
-            && let Some(start) = content.find("\"bands\":[")
-        {
-            let sub = &content[start + 9..];
-            if let Some(end) = sub.find(']') {
-                for (i, val_str) in sub[..end].split(',').take(NUM_BANDS).enumerate() {
-                    if let Ok(v) = val_str.trim().parse::<f32>() {
-                        live_spectrum[i] = v;
-                    }
-                }
-            }
-        }
-
-        // Smooth decay interpolation matching Omaramp DSP
         let mut decay = self.decay_bands.borrow_mut();
         for (i, &band) in live_spectrum.iter().enumerate() {
             if is_playing {
@@ -180,7 +182,7 @@ impl SoundCloudWaveform {
             }
         }
 
-        // Beat drop kick calculation matching Omaramp updateBeatDrop()
+        // Bass kick pulse: fires when sub-bass jumps above its running average
         let sub_bass = (decay[0] + decay[1] + decay[2]) as f64 / 3.0;
         let avg = self.bass_avg.get() * 0.85 + sub_bass * 0.15;
         self.bass_avg.set(avg);
@@ -197,7 +199,6 @@ impl SoundCloudWaveform {
         }
         let beat_drop = self.beat_drop_pulse.get();
 
-        // Linearly resample 24 frequency bands into 84 ultra-thin bars
         let resampled = resample_bands_linear(&*decay, NUM_BARS);
 
         let margin = 6.0;
@@ -212,25 +213,22 @@ impl SoundCloudWaveform {
         let max_top_h = (baseline_y - 4.0).max(4.0);
         let max_bot_h = (height - baseline_y - 4.0).max(2.0);
 
-        // Draw 84 live dancing waveform bars with full vibrant color fill
         for (i, &band_energy) in resampled.iter().enumerate().take(num_bars) {
             let bx = start_x + i as f64 * (bar_w + gap);
 
-            // Dynamic wave envelope
             let env = ((i as f64 / num_bars as f64) * PI).sin();
             let shape_val = 0.16
                 + env * 0.48
                 + ((i as f64) * 0.55 + 0.2).sin() * 0.12
                 + ((i as f64) * 1.3).sin() * 0.08;
 
-            let energy = if is_playing { band_energy } else { 0.0 };
             let kick = if (3..=20).contains(&i) {
                 beat_drop * 0.22
             } else {
                 0.0
             };
 
-            let top_norm = (shape_val * 0.38 + energy * 0.65 + kick).clamp(0.06, 1.0);
+            let top_norm = (shape_val * 0.38 + band_energy * 0.65 + kick).clamp(0.06, 1.0);
             let top_h = (top_norm * max_top_h).max(3.0);
             let bot_h = (top_h * BOT_REFLECTION_RATIO).min(max_bot_h).max(1.5);
 
@@ -238,14 +236,19 @@ impl SoundCloudWaveform {
             let bot_y = baseline_y + HORIZON_GAP;
             let radius = (bar_w / 2.0).min(0.8);
 
-            // ── Full Vibrant Top Bar Gradient ──
             let top_grad = gtk::cairo::LinearGradient::new(0.0, top_y, 0.0, baseline_y);
-            top_grad.add_color_stop_rgba(0.0, 1.0, 1.0, 1.0, 0.98);
+            top_grad.add_color_stop_rgba(
+                0.0,
+                f64::from(tip.red()),
+                f64::from(tip.green()),
+                f64::from(tip.blue()),
+                0.98,
+            );
             top_grad.add_color_stop_rgba(
                 0.20,
-                (ar + 0.20).min(1.0),
-                (ag + 0.15).min(1.0),
-                1.0,
+                mix(|c| c.red()),
+                mix(|c| c.green()),
+                mix(|c| c.blue()),
                 0.95,
             );
             top_grad.add_color_stop_rgba(1.0, ar, ag, ab, 0.88);
@@ -253,7 +256,6 @@ impl SoundCloudWaveform {
             draw_rounded_rect(ctx, bx, top_y, bar_w, top_h, radius);
             let _ = ctx.fill();
 
-            // ── Full Vibrant Bottom Reflection ──
             let bot_grad = gtk::cairo::LinearGradient::new(0.0, bot_y, 0.0, bot_y + bot_h);
             bot_grad.add_color_stop_rgba(0.0, ar, ag, ab, 0.55);
             bot_grad.add_color_stop_rgba(1.0, ar, ag, ab, 0.15);
