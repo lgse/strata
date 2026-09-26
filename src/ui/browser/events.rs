@@ -45,6 +45,7 @@ impl ViewState {
                 | BrowserEvent::SelectionSetChanged { .. }
                 | BrowserEvent::SelectionSynced { .. }
                 | BrowserEvent::OpenRequested { .. }
+                | BrowserEvent::RemoteFileRequested { .. }
         ) {
             self.cancel_click_rename();
         }
@@ -943,6 +944,9 @@ impl ViewState {
                     self.browser.navigate(dest);
                 }
             }
+            // The chooser's own observer turns a pasted URL into a download;
+            // the file view itself has nothing to render for it.
+            BrowserEvent::RemoteFileRequested { .. } => {}
         }
         if Self::event_refreshes_active_path(event) {
             self.refresh_active_path_rows();

@@ -82,6 +82,37 @@ pub(crate) fn gtk_test_with_env(
     assert!(status.success(), "{name} failed");
 }
 
+/// Binds a loopback listener that consumes exactly one HTTP request, writes
+/// `response` verbatim, then closes. Returns the `http://127.0.0.1:port` base.
+pub(crate) fn serve_http_once(response: Vec<u8>) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("loopback listener");
+    let port = listener.local_addr().expect("listener address").port();
+    std::thread::spawn(move || {
+        let Ok((mut stream, _)) = listener.accept() else {
+            return;
+        };
+        let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+        // Read the request head first so the response isn't lost to a reset.
+        let mut buffer = [0_u8; 8192];
+        let mut used = 0;
+        while used < buffer.len() {
+            match stream.read(&mut buffer[used..]) {
+                Ok(0) | Err(_) => break,
+                Ok(count) => {
+                    used += count;
+                    if buffer[..used].windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = stream.write_all(&response);
+        let _ = stream.flush();
+    });
+    format!("http://127.0.0.1:{port}")
+}
+
 pub(crate) fn distinct_device_dirs(name: &str) -> Option<(tempfile::TempDir, tempfile::TempDir)> {
     use std::os::unix::fs::MetadataExt;
     let dirs = (|| {

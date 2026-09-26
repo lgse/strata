@@ -176,7 +176,7 @@ impl ViewState {
         }
         cancel.grab_focus();
         if let Some(view) = self.file_progress_view.borrow().as_ref() {
-            ensure_indeterminate_pulse(view);
+            ensure_indeterminate_pulse(&view.progress, &view.indeterminate, &view.pulse_source);
         }
         if let Some((completed_items, transferred_bytes, total_bytes)) =
             self.transfer_progress.get()
@@ -229,7 +229,7 @@ impl ViewState {
         view.status.set_text("Writing to device…");
         view.indeterminate.set(true);
         view.progress.pulse();
-        ensure_indeterminate_pulse(view);
+        ensure_indeterminate_pulse(&view.progress, &view.indeterminate, &view.pulse_source);
     }
 
     pub(super) fn update_item_progress(&self, completed: usize, total: usize) {
@@ -327,26 +327,130 @@ impl ViewState {
             .set_text(&format!("{} deleted", item_count_label(processed)));
         view.indeterminate.set(true);
     }
+
+    /// Floating corner chip for a pasted-URL download. Unlike the operation
+    /// modal it never blocks the view; only its own button cancels the fetch.
+    pub(super) fn show_download_progress(&self, url: &str, on_cancel: Rc<dyn Fn()>) {
+        self.dismiss_download_progress();
+        let chip = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        chip.add_css_class("download-chip");
+        chip.set_halign(gtk::Align::End);
+        chip.set_valign(gtk::Align::End);
+        chip.set_margin_end(16);
+        chip.set_margin_bottom(16);
+        chip.set_tooltip_text(Some(url));
+        chip.append(&crate::assets::primary_icon(
+            crate::assets::icons::DOWNLOADS,
+            16,
+        ));
+
+        let name = gtk::Label::new(Some(
+            &crate::services::remote_file_name(url).unwrap_or_else(|| url.to_owned()),
+        ));
+        name.add_css_class("download-chip-name");
+        name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        name.set_max_width_chars(28);
+        chip.append(&name);
+
+        let progress = gtk::ProgressBar::new();
+        progress.add_css_class("job-progress");
+        progress.set_size_request(140, -1);
+        progress.set_valign(gtk::Align::Center);
+        chip.append(&progress);
+
+        let status = gtk::Label::new(Some("Connecting…"));
+        status.add_css_class("download-chip-status");
+        chip.append(&status);
+
+        let cancel = gtk::Button::new();
+        cancel.add_css_class("job-action");
+        cancel.set_tooltip_text(Some("Cancel download"));
+        cancel.set_child(Some(&crate::assets::primary_icon(
+            crate::assets::icons::X,
+            14,
+        )));
+        cancel.connect_clicked(move |_| on_cancel());
+        chip.append(&cancel);
+
+        self.overlay.add_overlay(&chip);
+        self.download_chip.replace(Some(DownloadChip {
+            root: chip,
+            overlay: self.overlay.clone(),
+            status,
+            progress,
+            indeterminate: Rc::new(Cell::new(true)),
+            pulse_source: Rc::new(RefCell::new(None)),
+        }));
+        if let Some(chip) = self.download_chip.borrow().as_ref() {
+            ensure_indeterminate_pulse(&chip.progress, &chip.indeterminate, &chip.pulse_source);
+        }
+    }
+
+    pub(super) fn update_download_progress(&self, downloaded: u64, total_bytes: Option<u64>) {
+        let chip_ref = self.download_chip.borrow();
+        let Some(chip) = chip_ref.as_ref() else {
+            return;
+        };
+        match total_bytes.filter(|total| *total > 0) {
+            Some(total) => {
+                let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
+                let percentage = (fraction * 100.0) as usize;
+                chip.status
+                    .set_text(&format!("{percentage}% of {}", format_file_size(total)));
+                chip.indeterminate.set(false);
+                chip.progress.set_fraction(fraction);
+            }
+            None => {
+                chip.status
+                    .set_text(&format!("{} downloaded", format_file_size(downloaded)));
+                chip.indeterminate.set(true);
+            }
+        }
+    }
+
+    pub(super) fn dismiss_download_progress(&self) {
+        if let Some(chip) = self.download_chip.take() {
+            chip.indeterminate.set(false);
+            if let Some(source) = chip.pulse_source.take() {
+                source.remove();
+            }
+            chip.overlay.remove_overlay(&chip.root);
+        }
+    }
 }
 
-fn ensure_indeterminate_pulse(view: &FileProgressView) {
-    if view.pulse_source.borrow().is_some() {
+pub(super) struct DownloadChip {
+    root: gtk::Box,
+    overlay: gtk::Overlay,
+    status: gtk::Label,
+    progress: gtk::ProgressBar,
+    indeterminate: Rc<Cell<bool>>,
+    pulse_source: Rc<RefCell<Option<glib::SourceId>>>,
+}
+
+fn ensure_indeterminate_pulse(
+    progress: &gtk::ProgressBar,
+    indeterminate: &Rc<Cell<bool>>,
+    pulse_source: &Rc<RefCell<Option<glib::SourceId>>>,
+) {
+    if pulse_source.borrow().is_some() {
         return;
     }
-    let weak_progress = view.progress.downgrade();
-    let indeterminate = view.indeterminate.clone();
-    let pulse_source = view.pulse_source.clone();
+    let weak_progress = progress.downgrade();
+    let indeterminate = indeterminate.clone();
+    let pulse_source = pulse_source.clone();
+    let holder = pulse_source.clone();
     let source = glib::timeout_add_local(INDETERMINATE_PROGRESS_INTERVAL, move || {
         if !indeterminate.get() {
-            pulse_source.borrow_mut().take();
+            holder.borrow_mut().take();
             return glib::ControlFlow::Break;
         }
         let Some(progress) = weak_progress.upgrade() else {
-            pulse_source.borrow_mut().take();
+            holder.borrow_mut().take();
             return glib::ControlFlow::Break;
         };
         progress.pulse();
         glib::ControlFlow::Continue
     });
-    view.pulse_source.replace(Some(source));
+    pulse_source.replace(Some(source));
 }

@@ -12,7 +12,9 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
+        mpsc::TryRecvError,
     },
+    time::Duration,
 };
 
 use ashpd::{
@@ -31,7 +33,7 @@ use crate::{
     },
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataRequest,
+        LocationValidationError, MetadataRequest, RemoteDownload, download_remote, remote_file_url,
     },
 };
 
@@ -423,6 +425,9 @@ struct ChooserState {
     destination_check: Cell<bool>,
     accept_button: gtk::Button,
     completion: RefCell<Option<Completion>>,
+    /// Abort flag for an in-flight pasted-URL download; `Some` until the
+    /// fetch reports back or the user cancels it.
+    download_cancel: RefCell<Option<Arc<AtomicBool>>>,
 }
 
 impl ChooserState {
@@ -430,7 +435,102 @@ impl ChooserState {
         self.finish(Err(PortalError::Cancelled("file chooser dismissed".into())));
     }
 
+    /// Stops an in-flight pasted-URL download. Returns whether one was running.
+    fn cancel_download(&self) -> bool {
+        let Some(cancelled) = self.download_cancel.borrow_mut().take() else {
+            return false;
+        };
+        cancelled.store(true, Ordering::SeqCst);
+        self.view.dismiss_download_progress();
+        self.accept_button.set_sensitive(true);
+        true
+    }
+
+    /// Fetches a pasted `http(s)` URL into a temp file, then completes the
+    /// request with it: the calling app receives a plain local path.
+    fn open_remote(self: &Rc<Self>, url: &str) {
+        let supported = matches!(
+            &self.request.kind,
+            ChooserKind::Open {
+                directory: false,
+                ..
+            } | ChooserKind::SaveFile { .. }
+        );
+        if !supported {
+            self.show_error("Remote links are files, not folders");
+            return;
+        }
+        if self.completion.borrow().is_none() {
+            return;
+        }
+        self.cancel_download();
+        self.error.set_visible(false);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        *self.download_cancel.borrow_mut() = Some(cancelled.clone());
+        let state = Rc::downgrade(self);
+        self.view.show_download_progress(
+            url,
+            Rc::new(move || {
+                if let Some(state) = state.upgrade() {
+                    state.cancel_download();
+                }
+            }),
+        );
+        self.accept_button.set_sensitive(false);
+        let receiver = download_remote(url.to_owned(), cancelled);
+        let state = Rc::downgrade(self);
+        glib::timeout_add_local(Duration::from_millis(120), move || {
+            let Some(state) = state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            match receiver.try_recv() {
+                Ok(RemoteDownload::Progress { downloaded, total }) => {
+                    state.view.update_download_progress(downloaded, total);
+                    glib::ControlFlow::Continue
+                }
+                Ok(RemoteDownload::Finished(path)) => {
+                    state.view.dismiss_download_progress();
+                    // A cancelled fetch may still report Finished if the worker
+                    // passed its last flag check before the flag was set.
+                    if state.download_cancel.borrow_mut().take().is_some() {
+                        state.complete_remote(path);
+                    }
+                    glib::ControlFlow::Break
+                }
+                Ok(RemoteDownload::Failed(message)) => {
+                    state.view.dismiss_download_progress();
+                    state.accept_button.set_sensitive(true);
+                    if state.download_cancel.borrow_mut().take().is_some() {
+                        crate::ui::modal::show_error_dialog(
+                            &state.window,
+                            "Download failed",
+                            &message,
+                        );
+                    }
+                    glib::ControlFlow::Break
+                }
+                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(TryRecvError::Disconnected) => {
+                    state.view.dismiss_download_progress();
+                    state.accept_button.set_sensitive(true);
+                    state.download_cancel.borrow_mut().take();
+                    glib::ControlFlow::Break
+                }
+            }
+        });
+    }
+
+    fn complete_remote(&self, path: PathBuf) {
+        self.complete_paths(
+            vec![path],
+            self.read_only
+                .as_ref()
+                .map(|read_only| writable_from_read_only(read_only.is_active())),
+        );
+    }
+
     fn finish(&self, result: ashpd::backend::Result<SelectedFiles>) {
+        self.cancel_download();
         let Some(completion) = self.completion.take() else {
             return;
         };
@@ -570,6 +670,14 @@ impl ChooserState {
         {
             return;
         }
+        // Windows behavior: pressing Open with a URL in the location bar
+        // fetches the remote file instead of complaining about the selection.
+        if self.view.location_edit_is_active()
+            && let Some(url) = remote_file_url(&self.view.location_text())
+        {
+            self.open_remote(&url);
+            return;
+        }
         self.error.set_visible(false);
         match &self.request.kind {
             ChooserKind::Open {
@@ -621,6 +729,12 @@ impl ChooserState {
             return;
         };
         let name = filename.text().to_string();
+        // Windows behavior: a pasted file URL in the Name field downloads the
+        // remote file and returns its temporary local path.
+        if let Some(url) = remote_file_url(&name) {
+            self.open_remote(&url);
+            return;
+        }
         if let Err(message) = crate::services::validate_basename(&name) {
             filename.add_css_class("error");
             filename.set_tooltip_text(Some(message));
@@ -1138,6 +1252,7 @@ fn build_chooser_with_source(
         destination_check: Cell::new(false),
         accept_button: accept.clone(),
         completion: RefCell::new(Some(Box::new(completion))),
+        download_cancel: RefCell::new(None),
     });
 
     let weak = Rc::downgrade(&state);
@@ -1177,6 +1292,7 @@ fn build_chooser_with_source(
     browser.observe(move |event| {
         match event {
             BrowserEvent::OpenRequested { location } => state_for_observer.activate_file(location),
+            BrowserEvent::RemoteFileRequested { url } => state_for_observer.open_remote(url),
             BrowserEvent::FocusChanged { .. } | BrowserEvent::SelectionSetChanged { .. } => {
                 state_for_observer.update_selected_filename()
             }
@@ -1540,6 +1656,9 @@ fn install_shortcuts(
                 preview.close();
                 return glib::Propagation::Stop;
             }
+            if state.cancel_download() {
+                return glib::Propagation::Stop;
+            }
             state.cancel();
             return glib::Propagation::Stop;
         }
@@ -1689,6 +1808,28 @@ fn install_shortcuts(
             && let Some(mode) = super::window::browser_mode_for_digit(key)
         {
             super::window::apply_browser_mode(&state.view, &PreferenceManager::shared(), mode);
+            return glib::Propagation::Stop;
+        }
+        if control
+            && !shift
+            && !alt
+            && matches!(key, gtk::gdk::Key::v | gtk::gdk::Key::V)
+            && !focused
+                .as_ref()
+                .is_some_and(super::focus_navigation::editable)
+        {
+            // Windows behavior: pasting a remote file URL fetches it no matter
+            // which widget has focus, so the location bar is not required.
+            let state = state.clone();
+            let clipboard = state.window.clipboard();
+            clipboard.read_text_async(gio::Cancellable::NONE, move |result| {
+                let Ok(Some(text)) = result else {
+                    return;
+                };
+                if let Some(url) = remote_file_url(&text) {
+                    state.open_remote(&url);
+                }
+            });
             return glib::Propagation::Stop;
         }
         if control {

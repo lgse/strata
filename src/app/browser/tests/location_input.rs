@@ -171,6 +171,48 @@ fn location_input_rejects_unsupported_uri_schemes() {
 }
 
 #[test]
+fn chooser_mode_location_input_requests_web_url_downloads() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_chooser_mode(true);
+    browser.navigate(Location::local("/fixture"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    assert_eq!(
+        browser.navigate_input("https://example.com/report.pdf"),
+        Ok(())
+    );
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RemoteFileRequested { url } if url == "https://example.com/report.pdf"
+    )));
+    // The URL becomes a download selection; it does not navigate the chooser.
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+}
+
+#[test]
+fn non_chooser_mode_still_rejects_web_urls() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    assert!(matches!(
+        browser.navigate_input("https://example.com/report.pdf"),
+        Err(LocationValidationError::UnsupportedScheme(_))
+    ));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::RemoteFileRequested { .. }))
+    );
+}
+
+#[test]
 fn location_input_rejects_unc_and_scp_shorthand_with_a_helpful_message() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.navigate(Location::local("/fixture"));

@@ -17,7 +17,7 @@ use crate::ui::browser::location::{
 };
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
-use crate::ui::browser::progress::FileProgressView;
+use crate::ui::browser::progress::{DownloadChip, FileProgressView};
 use crate::ui::browser::transfer::duplicate_transfer;
 use crate::ui::browser::trash::TrashLoadingView;
 use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ModeViews};
@@ -180,6 +180,7 @@ pub(super) struct ViewState {
     click_rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
+    download_chip: RefCell<Option<DownloadChip>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
     file_operation_progress: Cell<(usize, usize)>,
     transfer_progress: Cell<Option<(usize, u64, Option<u64>)>>,
@@ -546,6 +547,7 @@ impl BrowserView {
             click_rename_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
+            download_chip: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
             file_operation_progress: Cell::new((0, 0)),
             transfer_progress: Cell::new(None),
@@ -744,6 +746,19 @@ impl BrowserView {
 
     pub(crate) fn overlay(&self) -> gtk::Overlay {
         self.state.overlay.clone()
+    }
+
+    /// Corner progress chip for the chooser's pasted-URL download.
+    pub(crate) fn show_download_progress(&self, url: &str, on_cancel: Rc<dyn Fn()>) {
+        self.state.show_download_progress(url, on_cancel);
+    }
+
+    pub(crate) fn update_download_progress(&self, downloaded: u64, total: Option<u64>) {
+        self.state.update_download_progress(downloaded, total);
+    }
+
+    pub(crate) fn dismiss_download_progress(&self) {
+        self.state.dismiss_download_progress();
     }
 
     pub(crate) fn set_navigation_cleanup(&self, cleanup: impl FnOnce() + 'static) {
@@ -1270,6 +1285,10 @@ impl BrowserView {
                 .and_then(|root| root.focus())
                 .as_ref()
                 .is_some_and(|focused| focused == entry || focused.is_ancestor(entry))
+    }
+
+    pub fn location_text(&self) -> gtk::glib::GString {
+        self.state.location_entry.text()
     }
 
     pub(super) fn location_edit_is_active(&self) -> bool {
