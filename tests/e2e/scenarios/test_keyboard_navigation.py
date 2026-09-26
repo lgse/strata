@@ -136,6 +136,79 @@ def test_tenxer_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
     assert strata.peek() is None
 
 
+@pytest.mark.preferences(tenxer_mode=True, type_to_search=False)
+def test_tenxer_sidebar_and_header_round_trips(strata):
+    """Visit a visible sidebar and the header, then return without losing the file."""
+
+    empty = strata.fixture.path("empty-sidebar")
+    empty.mkdir()
+    for chord, mode in (("ctrl+1", "Columns"), ("ctrl+3", "List"), ("ctrl+2", "Icons")):
+        strata.keyboard.press(chord)
+        strata.wait_for_view(mode)
+        root = strata.current_directory()
+        strata.select_entry("readme.md")
+        strata.wait_for_focused_entry("readme.md")
+
+        toggle = strata.window.find(name="Toggle sidebar (Ctrl+B)")
+        assert toggle is not None, "sidebar toggle"
+        strata.keyboard.press("Tab")
+        strata.wait(lambda: toggle.has_state("focused"), "Tab to focus the sidebar toggle")
+        assert strata.selected_names() == ["readme.md"]
+        strata.keyboard.press("h")
+        strata.wait_for_focused_entry("readme.md")
+        assert strata.current_directory() == root
+
+        strata.keyboard.press("Tab")
+        strata.wait(lambda: toggle.has_state("focused"), "Tab to return to the sidebar toggle")
+        strata.keyboard.press("space")
+        strata.wait(
+            lambda: strata.window.find(role="button", name="Home") is None,
+            "Space on the header toggle to hide the sidebar",
+        )
+        strata.keyboard.press("ctrl+shift+b")
+        assert strata.window.find(role="button", name="Home") is None
+        assert strata.selected_names() == ["readme.md"]
+        strata.keyboard.press("space")
+        strata.wait(
+            lambda: strata.window.find(role="button", name="Home") is not None,
+            "Space to show the sidebar again",
+        )
+        strata.keyboard.press("h")
+        strata.wait_for_focused_entry("readme.md")
+
+        strata.keyboard.press("ctrl+shift+b")
+        home = strata.sidebar_button("Home")
+        strata.wait(lambda: home.has_state("focused"), "Ctrl+Shift+B to focus the sidebar")
+        assert strata.selected_names() == ["readme.md"]
+        assert strata.current_directory() == root
+        strata.keyboard.press("j")
+        strata.wait(lambda: not home.has_state("focused"), "j to move to the next place")
+        assert strata.current_directory() == root
+        assert strata.selected_names() == ["readme.md"]
+        strata.keyboard.press("h")
+        strata.wait_for_focused_entry("readme.md")
+
+        strata.keyboard.press("ctrl+shift+b")
+        strata.wait(lambda: home.has_state("focused"), "the sidebar to take focus again")
+        strata.keyboard.press("Return")
+        strata.wait(lambda: strata.current_directory() != root, "Enter to open the focused place")
+        assert not home.has_state("focused")
+        strata.keyboard.press("alt+Left")
+        strata.wait_for_directory(root)
+
+        strata.select_entry("empty-sidebar")
+        strata.keyboard.press("o")
+        strata.wait_for_directory("empty-sidebar")
+        assert strata.selected_names() == []
+        strata.keyboard.press("ctrl+shift+b")
+        strata.wait(lambda: home.has_state("focused"), "sidebar focus from an empty directory")
+        strata.keyboard.press("BackSpace")
+        strata.wait_for_directory("empty-sidebar")
+        assert strata.selected_names() == []
+        strata.keyboard.press("BackSpace")
+        strata.wait_for_directory(root)
+
+
 @pytest.mark.preferences(tenxer_mode=True, type_to_search=True)
 def test_tenxer_keeps_location_edit_and_skips_the_filter_shortcut(strata):
     strata.select_entry("readme.md")

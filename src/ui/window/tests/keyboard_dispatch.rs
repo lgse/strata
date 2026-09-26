@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use gtk::gdk::{Key, ModifierType};
 
@@ -216,13 +217,8 @@ fn tenxer_keeps_keyboard_navigation_inside_the_file_panes() {
 
                 for (key, modifiers) in [
                     (Key::Up, ModifierType::empty()),
-                    (Key::Tab, ModifierType::empty()),
                     (Key::ISO_Left_Tab, ModifierType::empty()),
                     (Key::Tab, ModifierType::SHIFT_MASK),
-                    (
-                        Key::b,
-                        ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
-                    ),
                 ] {
                     focus_files(&fixture);
                     fixture.press(key, modifiers);
@@ -264,27 +260,6 @@ fn tenxer_keeps_keyboard_navigation_inside_the_file_panes() {
                     assert!(fixture.view.item_view_has_focus());
                 }
 
-                assert!(
-                    fixture.sidebar.state.focus_active_place(),
-                    "{mode:?} sidebar place"
-                );
-                wait_until(|| sidebar_has_focus(&fixture));
-                fixture.press(Key::j, ModifierType::empty());
-                assert!(
-                    fixture.view.item_view_has_focus(),
-                    "{mode:?} j must return from the sidebar to the files"
-                );
-                assert!(
-                    fixture.sidebar.state.focus_active_place(),
-                    "{mode:?} sidebar place"
-                );
-                wait_until(|| sidebar_has_focus(&fixture));
-                fixture.press(Key::Down, ModifierType::empty());
-                assert!(
-                    fixture.view.item_view_has_focus(),
-                    "{mode:?} Down from the sidebar must return to the files"
-                );
-
                 assert!(fixture.sidebar_toggle.grab_focus(), "{mode:?}");
                 fixture.press(Key::Right, ModifierType::empty());
                 assert!(fixture.view.item_view_has_focus(), "{mode:?}");
@@ -314,6 +289,252 @@ fn tenxer_keeps_keyboard_navigation_inside_the_file_panes() {
             focus_files(&fixture);
             fixture.press(Key::Up, ModifierType::empty());
             wait_until(|| fixture.view.header_actions_have_focus());
+        },
+    );
+}
+
+#[test]
+fn tenxer_sidebar_and_header_round_trips() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::tenxer_sidebar_and_header_round_trips",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            let origin = crate::model::Location::local(fixture._directory.path());
+            let clicks = Rc::new(Cell::new(0));
+            let observed = clicks.clone();
+            let place = super::super::sidebar_button(crate::assets::icons::HARD_DRIVE, "USB");
+            let eject = super::super::sidebar_eject_button(
+                super::super::MediaRelease::UnmountMount,
+                move || observed.set(observed.get() + 1),
+            );
+            let row = super::super::sidebar_device_row(&place, None, Some(&eject));
+            fixture.sidebar.state.places_for_test().append(&row);
+            wait_until(|| eject.is_mapped());
+
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                fixture.view.browser().navigate(origin.clone());
+                wait_until(|| {
+                    fixture
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                fixture.view.browser().select(0, 0);
+                focus_files(&fixture);
+                assert!(fixture.sidebar_toggle.is_active(), "{mode:?}");
+
+                assert!(fixture.press(Key::Tab, ModifierType::empty()), "{mode:?}");
+                assert!(
+                    fixture.sidebar_toggle.has_focus(),
+                    "{mode:?} Tab reaches the header"
+                );
+                assert_eq!(fixture.selected(), [0], "{mode:?}");
+                fixture.press(Key::h, ModifierType::empty());
+                assert!(fixture.view.item_view_has_focus(), "{mode:?}");
+                assert_eq!(
+                    fixture.selected(),
+                    [0],
+                    "{mode:?} h must not move the selection"
+                );
+                assert_eq!(
+                    fixture.view.browser().active_location(),
+                    Some(origin.clone())
+                );
+                assert!(
+                    fixture.sidebar_toggle.is_active(),
+                    "{mode:?} h must not toggle the sidebar"
+                );
+
+                assert!(fixture.press(Key::Tab, ModifierType::empty()));
+                fixture.press(Key::j, ModifierType::empty());
+                assert!(fixture.view.item_view_has_focus(), "{mode:?}");
+                assert_eq!(
+                    fixture.selected(),
+                    [0],
+                    "{mode:?} j must not move the selection"
+                );
+                assert!(fixture.sidebar_toggle.is_active());
+
+                assert!(fixture.press(Key::Tab, ModifierType::empty()));
+                let clicks_before_header = clicks.get();
+                fixture.press(Key::space, ModifierType::empty());
+                assert!(
+                    !fixture.sidebar_toggle.is_active(),
+                    "{mode:?} Space activates the header toggle"
+                );
+                assert_eq!(clicks.get(), clicks_before_header);
+                assert_eq!(fixture.selected(), [0]);
+                fixture.sidebar_toggle.set_active(true);
+
+                focus_files(&fixture);
+                fixture.sidebar_toggle.set_active(false);
+                fixture.press(
+                    Key::b,
+                    ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                );
+                assert!(
+                    !fixture.sidebar_toggle.is_active(),
+                    "{mode:?} hidden sidebar stays hidden"
+                );
+                assert!(!sidebar_has_focus(&fixture), "{mode:?}");
+                assert!(fixture.view.item_view_has_focus(), "{mode:?}");
+                assert_eq!(fixture.selected(), [0]);
+                fixture.sidebar_toggle.set_active(true);
+
+                focus_files(&fixture);
+                fixture.press(
+                    Key::b,
+                    ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                );
+                wait_until(|| sidebar_has_focus(&fixture));
+                assert_eq!(
+                    fixture.selected(),
+                    [0],
+                    "{mode:?} focusing the sidebar keeps the selection"
+                );
+                assert_eq!(
+                    fixture.view.browser().active_location(),
+                    Some(origin.clone())
+                );
+                fixture.press(Key::j, ModifierType::empty());
+                assert!(place.has_focus(), "{mode:?} j moves to the device row");
+                fixture.press(Key::Down, ModifierType::empty());
+                assert!(
+                    eject.has_focus(),
+                    "{mode:?} Down moves to the device control"
+                );
+                fixture.press(Key::Up, ModifierType::empty());
+                assert!(place.has_focus(), "{mode:?}");
+                fixture.press(Key::k, ModifierType::empty());
+                assert!(
+                    !place.has_focus() && !eject.has_focus(),
+                    "{mode:?} k returns to the first place"
+                );
+                assert_eq!(fixture.selected(), [0]);
+                assert_eq!(clicks.get(), clicks_before_header);
+                fixture.press(Key::Right, ModifierType::empty());
+                assert!(
+                    sidebar_has_focus(&fixture),
+                    "{mode:?} Right does not leave or activate"
+                );
+                assert_eq!(clicks.get(), clicks_before_header);
+
+                fixture.press(Key::j, ModifierType::empty());
+                fixture.press(Key::l, ModifierType::empty());
+                assert_eq!(
+                    clicks.get(),
+                    clicks_before_header,
+                    "{mode:?} l on the row is not the eject control"
+                );
+                assert_eq!(
+                    fixture.view.browser().active_location(),
+                    Some(origin.clone())
+                );
+                fixture.press(Key::j, ModifierType::empty());
+                assert!(eject.has_focus(), "{mode:?}");
+                fixture.press(Key::space, ModifierType::empty());
+                assert_eq!(
+                    clicks.get(),
+                    clicks_before_header + 1,
+                    "{mode:?} Space activates the device control"
+                );
+                fixture.press(Key::Return, ModifierType::empty());
+                assert_eq!(clicks.get(), clicks_before_header + 2, "{mode:?}");
+                assert!(
+                    sidebar_has_focus(&fixture),
+                    "{mode:?} device activation keeps the sidebar"
+                );
+                assert_eq!(fixture.selected(), [0]);
+
+                fixture.press(Key::h, ModifierType::empty());
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?} h returns to the files"
+                );
+                assert_eq!(fixture.selected(), [0]);
+                focus_files(&fixture);
+                fixture.press(
+                    Key::b,
+                    ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                );
+                wait_until(|| sidebar_has_focus(&fixture));
+                fixture.press(Key::Left, ModifierType::empty());
+                assert!(fixture.view.item_view_has_focus(), "{mode:?}");
+                assert_eq!(fixture.selected(), [0]);
+                fixture.press(
+                    Key::b,
+                    ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                );
+                wait_until(|| sidebar_has_focus(&fixture));
+                fixture.press(Key::BackSpace, ModifierType::empty());
+                assert!(fixture.view.item_view_has_focus(), "{mode:?}");
+                assert_eq!(fixture.selected(), [0]);
+                assert_eq!(
+                    fixture.view.browser().active_location(),
+                    Some(origin.clone())
+                );
+
+                let empty = fixture._directory.path().join(format!("empty-{mode:?}"));
+                std::fs::create_dir(&empty).expect("empty directory");
+                fixture
+                    .view
+                    .browser()
+                    .navigate(crate::model::Location::local(&empty));
+                wait_until(|| {
+                    fixture
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                assert!(fixture.selected().is_empty(), "{mode:?}");
+                focus_files(&fixture);
+                fixture.press(
+                    Key::b,
+                    ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                );
+                wait_until(|| sidebar_has_focus(&fixture));
+                fixture.press(Key::h, ModifierType::empty());
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?} empty directory round trip"
+                );
+                assert!(fixture.selected().is_empty(), "{mode:?}");
+
+                fixture.view.browser().navigate(origin.clone());
+                wait_until(|| {
+                    fixture
+                        .view
+                        .browser()
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                fixture.view.browser().select(0, 0);
+                focus_files(&fixture);
+                fixture.press(
+                    Key::b,
+                    ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+                );
+                wait_until(|| sidebar_has_focus(&fixture));
+                fixture.press(Key::Return, ModifierType::empty());
+                wait_until(|| {
+                    fixture.view.browser().active_location() != Some(origin.clone())
+                        && fixture
+                            .view
+                            .browser()
+                            .column_snapshot(0)
+                            .is_some_and(|column| !column.loading)
+                });
+                assert!(
+                    fixture.view.item_view_has_focus(),
+                    "{mode:?} place activation focuses the new listing"
+                );
+                assert!(!sidebar_has_focus(&fixture), "{mode:?}");
+            }
         },
     );
 }

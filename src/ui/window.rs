@@ -44,6 +44,10 @@ mod sidebar;
 mod unlock_argument;
 mod volume_password;
 
+pub(in crate::ui) use keyboard::{
+    SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_chord,
+};
+
 pub use open_argument::present_open;
 pub use unlock_argument::{UnlockTarget, present_unlock};
 
@@ -1694,6 +1698,11 @@ impl SidebarState {
         for (index, (_, row)) in rows.iter().enumerate() {
             set_sidebar_row_active(row, selected == Some(index));
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn places_for_test(&self) -> gtk::Box {
+        self.widget.clone()
     }
 
     pub(super) fn focus_active_place(&self) -> bool {

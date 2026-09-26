@@ -750,6 +750,22 @@ const DEFAULT_TOOLS: &[(&str, &str)] = &[
 ];
 
 const TENXER_TOOLS: &[(&str, &str)] = &[
+    ("Tab", "Focus the window header"),
+    (
+        "Enter / Space in the header",
+        "Activate the focused control",
+    ),
+    ("h / j in the header", "Return to the files"),
+    ("Ctrl+Shift+B", "Focus the sidebar when it is visible"),
+    (
+        "j / k / ↑ / ↓ in the sidebar",
+        "Move between places and device controls",
+    ),
+    (
+        "l / Enter / Space in the sidebar",
+        "Activate the focused place or device control",
+    ),
+    ("h / ← / Backspace in the sidebar", "Return to the files"),
     ("Ctrl+K", "Open global search"),
     ("Alt+Enter", "Open containing folder (global search)"),
     ("Ctrl+L", "Edit the location"),
