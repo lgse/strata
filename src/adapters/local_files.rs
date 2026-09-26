@@ -169,7 +169,12 @@ fn cached_icon_details(path: &Path, fingerprint: IconDetailsFingerprint) -> Opti
     icon_details_cache().lock().ok()?.get(path, fingerprint)
 }
 
+static CACHE_HAS_ENTRIES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn cached_icon_details_for_revisit(path: &Path) -> Option<IconDetails> {
+    if !CACHE_HAS_ENTRIES.load(std::sync::atomic::Ordering::Acquire) {
+        return None;
+    }
     let was_cached = icon_details_cache().lock().ok()?.entries.contains_key(path);
     if !was_cached {
         return None;
@@ -191,6 +196,7 @@ fn cache_icon_details(
             fingerprint,
             IconDetails::from_update(update),
         );
+        CACHE_HAS_ENTRIES.store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -517,7 +523,7 @@ fn scan_native_directory(
         Err(error) => return NativeEnumeration::Failed(error.to_string()),
     };
     let hidden_names = native_hidden_names(path);
-    let mut entries = Vec::new();
+    let mut entries = Vec::with_capacity(1024);
     let mut truncated = false;
     for child in children {
         if cancellable.is_cancelled() {

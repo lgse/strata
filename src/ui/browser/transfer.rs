@@ -25,6 +25,7 @@ use crate::ui::modal::{
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -280,13 +281,24 @@ impl ViewState {
         }
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
+        let dest_existing: Option<HashSet<std::ffi::OsString>> =
+            destination.native_path().and_then(|path| {
+                std::fs::read_dir(path)
+                    .ok()
+                    .map(|rd| rd.filter_map(|e| e.ok().map(|e| e.file_name())).collect())
+            });
         for source in sources {
-            match transfer_collision(&source, &destination) {
-                Some(collision) => collisions.push(collision),
-                None => accepted.push(PasteItem {
+            let may_collide = match (&dest_existing, source.file_name()) {
+                (Some(existing), Some(name)) => existing.contains(&name),
+                _ => true,
+            };
+            if may_collide && let Some(collision) = transfer_collision(&source, &destination) {
+                collisions.push(collision);
+            } else {
+                accepted.push(PasteItem {
                     source,
                     conflict: TransferConflict::FailIfExists,
-                }),
+                });
             }
         }
         self.resolve_transfer_collisions(destination, collisions, accepted, move_sources, reveal);

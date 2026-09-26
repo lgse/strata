@@ -1367,11 +1367,15 @@ impl BrowserView {
 
     pub fn paste(&self) {
         self.state.sync_mode_selection();
-        let selected = self.state.browser.selected_entries();
         let column = self
             .state
             .destination_depth()
             .and_then(|depth| self.state.browser.location_at(depth));
+        let selected = if self.state.browser.selected_count() == 1 {
+            self.state.browser.selected_entries()
+        } else {
+            Vec::new()
+        };
         if let Some(location) = paste_destination(
             &selected,
             column,

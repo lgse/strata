@@ -285,7 +285,7 @@ impl Browser {
         completion: &OperationCompletion,
         event: &OperationEvent,
     ) -> bool {
-        if !completion.deleting && !completion.restoring {
+        if !completion.deleting && !completion.restoring && completion.moving.is_none() {
             return false;
         }
         let changes = self.deferred_file_operation_changes.take();
@@ -565,9 +565,9 @@ fn operation_event_id(event: &OperationEvent) -> OperationRequestId {
 
 fn completed_change_count(event: &OperationEvent) -> usize {
     match event {
-        OperationEvent::Deleted { locations, .. } | OperationEvent::Restored { locations, .. } => {
-            locations.len()
-        }
+        OperationEvent::Deleted { locations, .. }
+        | OperationEvent::Restored { locations, .. }
+        | OperationEvent::Pasted { locations, .. } => locations.len(),
         OperationEvent::CompletedWithErrors {
             deleted_locations, ..
         } => deleted_locations.len(),

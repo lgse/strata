@@ -440,12 +440,24 @@ impl ViewState {
                             if let Some(state) = weak.upgrade()
                                 && state.browser.location_at(depth) == destination
                             {
+                                const MAX_BULK_REVEAL_SELECTION: usize = 64;
                                 if !locations.is_empty() {
+                                    let reveal_slice =
+                                        if locations.len() > MAX_BULK_REVEAL_SELECTION {
+                                            &locations[..1]
+                                        } else {
+                                            &locations[..]
+                                        };
                                     state
                                         .browser
-                                        .select_entries_by_location_at(depth, &locations);
+                                        .select_entries_by_location_at(depth, reveal_slice);
                                 } else if !names.is_empty() {
-                                    state.browser.select_entries_by_name_at(depth, &names);
+                                    let reveal_names = if names.len() > MAX_BULK_REVEAL_SELECTION {
+                                        &names[..1]
+                                    } else {
+                                        &names[..]
+                                    };
+                                    state.browser.select_entries_by_name_at(depth, reveal_names);
                                 }
                                 if state
                                     .pending_archive_destination
