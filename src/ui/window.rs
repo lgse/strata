@@ -554,8 +554,6 @@ const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
 ];
 
-/// Default-map accelerators the 10xer table leaves unbound. Search and
-/// refresh stay installed; these three are removed while the mode is on.
 const TENXER_SUPPRESSED_ACCELS: &[&str] = &[
     "win.jump-folder",
     "win.open-terminal",

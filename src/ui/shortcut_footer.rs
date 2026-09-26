@@ -53,6 +53,7 @@ impl ShortcutFooter {
         tag_note.add_css_class("tenxer-experimental");
         tag_note.set_ellipsize(gtk::pango::EllipsizeMode::End);
         tag_note.set_max_width_chars(28);
+        tag_note.set_tooltip_text(Some(super::shortcut_reference::EXPERIMENTAL_LABEL));
         tag_note.set_visible(false);
         let chord = gtk::Label::new(None);
         chord.add_css_class("shortcut-footer-chord");
@@ -256,22 +257,39 @@ impl ShortcutFooter {
     }
 
     pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
-        let tag = self.tag.clone();
-        let tag_note = self.tag_note.clone();
-        let experimental = self.experimental.clone();
-        let reference = self.reference.clone();
+        let tag = self.tag.downgrade();
+        let tag_note = self.tag_note.downgrade();
+        let experimental = self.experimental.downgrade();
+        let reference = self.reference.downgrade();
         let view_mode = self.view_mode.clone();
-        let feedback = self.feedback.clone();
-        let prompt = self.prompt.clone();
-        let chord = self.chord.clone();
+        let feedback = self.feedback.downgrade();
+        let prompt = self.prompt.downgrade();
+        let chord = self.chord.downgrade();
         let primed = Rc::new(Cell::new(false));
         manager.bind_preference(
             &self.root,
             super::preferences::PreferenceManager::tenxer_mode,
             move |_, enabled| {
+                let Some(tag) = tag.upgrade() else {
+                    return;
+                };
+                let Some(tag_note) = tag_note.upgrade() else {
+                    return;
+                };
+                let Some(experimental) = experimental.upgrade() else {
+                    return;
+                };
+                let Some(reference) = reference.upgrade() else {
+                    return;
+                };
                 let starting = !primed.replace(true);
                 apply_experimental_label(&tag, &tag_note, &experimental, enabled);
-                if !starting && !enabled {
+                if !starting
+                    && !enabled
+                    && let Some(feedback) = feedback.upgrade()
+                    && let Some(prompt) = prompt.upgrade()
+                    && let Some(chord) = chord.upgrade()
+                {
                     clear_transient(&feedback, &prompt, &chord);
                 }
                 rebuild_reference(&reference, view_mode.get());
@@ -460,7 +478,6 @@ impl ShortcutFooter {
             self.more.popdown();
             return Some(glib::Propagation::Stop);
         }
-        // The reference only scrolls vertically, so Left and Right move it too.
         if !command_modifiers && self.scroll_reference(key) {
             return Some(glib::Propagation::Stop);
         }

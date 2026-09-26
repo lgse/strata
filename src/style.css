@@ -2944,11 +2944,9 @@ entry.preview-command-entry selection {
 }
 
 .shortcut-popover scrolledwindow:focus,
-.shortcut-popover scrolledwindow:focus-visible,
-.shortcut-popover viewport:focus,
-.shortcut-popover viewport:focus-visible {
-  outline: none;
-  box-shadow: none;
+.shortcut-popover scrolledwindow:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .columns {
