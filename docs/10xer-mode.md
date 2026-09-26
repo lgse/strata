@@ -110,6 +110,7 @@ folder peek.
 | **v** / **V** | Visual select / visual unset |
 | **Ctrl+A** | Select all in the focused pane |
 | **Ctrl+R** | Invert the selection |
+| **Shift+↑** / **Shift+↓** | Extend the selection |
 | **Esc** | Dismiss the current interaction, one step per press; see the precedence below |
 
 On a cursor-only row, **Space** adds that item and moves down; it does not
@@ -125,7 +126,15 @@ the range had covered; items toggled with **Space** stay toggled. The footer sho
 **Esc** leaves visual mode and keeps the fill; the other key starts a new range
 at the cursor. Opening another folder, moving to another pane, changing the view,
 a pointer selection, **Ctrl+A**, **Ctrl+R**, or leaving 10xer mode also end the
-range. In an empty folder **v** / **V** flash `Nothing to select`.
+range. In an empty folder **v** / **V**, **Space**, **Ctrl+A**, **Ctrl+R**, and
+**Shift+↑** / **Shift+↓** flash `Nothing to select`.
+
+**Shift+↑** / **Shift+↓** add the span from the cursor where the run started to
+the moved cursor on top of the kept fill, in displayed order; reversing shrinks
+the span back. In Icons they move up or down the grid. The run shows no footer
+tag and ends at the next key that is not **Shift+↑** / **Shift+↓**, keeping the
+fill; a later run starts at the new cursor. During a visual range they extend
+that range like **j** / **k**.
 
 ### Escape precedence
 

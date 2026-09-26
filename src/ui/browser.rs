@@ -1554,6 +1554,19 @@ impl BrowserView {
         self.state.browser.toggle_visual(kind, order.as_deref())
     }
 
+    /// Prepares Shift+arrow motion in the keyboard pane: a visual range keeps
+    /// walking, otherwise a run starts at the cursor over the committed fill.
+    /// Returns false when the pane is empty.
+    pub fn begin_extend(&self) -> bool {
+        self.keyboard_navigation();
+        let Some(depth) = self.focused_listing_depth() else {
+            return false;
+        };
+        self.state.browser.set_active_column(depth);
+        let order = self.displayed_order(depth);
+        self.state.browser.begin_extend(order.as_deref())
+    }
+
     /// Recomputes an active range after a cursor move that bypassed the model,
     /// such as native Icons grid motion.
     pub fn refresh_visual(&self) {

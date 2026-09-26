@@ -693,6 +693,11 @@ fn tenxer_space_selects_the_cursor_and_motion_keeps_the_fill() {
             assert!(browser.selected_entries().is_empty());
             assert!(!fixture.preview.is_open());
             wait_until(|| fixture.shortcuts.feedback_text().is_empty());
+            for key in [Key::a, Key::r] {
+                fixture.press(key, ModifierType::CONTROL_MASK);
+                assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
+                wait_until(|| fixture.shortcuts.feedback_text().is_empty());
+            }
 
             focus_files(&fixture);
             fixture.press(Key::space, ModifierType::empty());
@@ -860,6 +865,85 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
                     fill_names(&browser).is_empty(),
                     "{mode:?} the next Escape clears the fill"
                 );
+
+                let shift = ModifierType::SHIFT_MASK;
+                fixture.press(Key::Home, none);
+                fixture.press(Key::space, none);
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+                }
+                fixture.press(next, none);
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
+                    assert!(fixture.press(Key::Down, shift));
+                    let fill = fill_names(&browser);
+                    let focused = focused_name(&browser);
+                    for name in ["a.txt", "c.txt", focused.as_str()] {
+                        assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
+                    }
+                } else {
+                    assert!(fixture.press(Key::Down, shift));
+                    fixture.press(Key::Down, shift);
+                    assert_eq!(focused_name(&browser), "e.txt", "{mode:?}");
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "c.txt", "d.txt", "e.txt"],
+                        "{mode:?} Shift+Down extends from the cursor over the fill"
+                    );
+                    fixture.press(Key::Up, shift);
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "c.txt", "d.txt"],
+                        "{mode:?} reversing shrinks the run"
+                    );
+                    fixture.press(previous, none);
+                    assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "c.txt", "d.txt"],
+                        "{mode:?} other motion ends the run and keeps the fill"
+                    );
+                    fixture.press(Key::Up, shift);
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "b.txt", "c.txt", "d.txt"],
+                        "{mode:?} the next run anchors at the cursor"
+                    );
+                }
+                assert_eq!(fixture.shortcuts.visual_text(), None, "{mode:?}");
+                fixture.press(Key::Escape, none);
+
+                fixture.press(Key::Home, none);
+                fixture.press(Key::v, none);
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "a.txt"));
+                }
+                fixture.press(next, none);
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+                }
+                fixture.press(Key::Down, shift);
+                assert_eq!(
+                    fixture.shortcuts.visual_text().as_deref(),
+                    Some("VISUAL"),
+                    "{mode:?} Shift+Down keeps the visual range"
+                );
+                if mode == BrowserMode::Icons {
+                    let fill = fill_names(&browser);
+                    assert!(
+                        fill.starts_with(&["a.txt".into(), "b.txt".into()]),
+                        "{fill:?}"
+                    );
+                } else {
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "b.txt", "c.txt"],
+                        "{mode:?} Shift+Down walks the visual range"
+                    );
+                }
+                fixture.press(Key::Escape, none);
+                fixture.press(Key::Escape, none);
             }
 
             std::fs::create_dir(fixture._directory.path().join("empty")).expect("empty");
@@ -880,6 +964,9 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
             fixture.press(Key::v, none);
             assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
             assert_eq!(fixture.shortcuts.visual_text(), None);
+            wait_until(|| fixture.shortcuts.feedback_text().is_empty());
+            fixture.press(Key::Down, ModifierType::SHIFT_MASK);
+            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
         },
     );
 }

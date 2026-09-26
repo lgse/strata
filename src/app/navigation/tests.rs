@@ -2232,6 +2232,59 @@ fn visual_ranges_add_and_subtract_the_walked_span_in_displayed_order() {
 }
 
 #[test]
+fn shift_runs_extend_from_their_own_anchor_over_the_kept_fill() {
+    let mut state = NavigationState::default();
+    five_entry_listing(&mut state);
+    let order = [3, 4, 0, 1, 2];
+    assert!(state.install_pane_fill(0, &[4], 3));
+    state.place_cursor(0, 1).expect("bravo");
+
+    assert!(state.begin_extend(Some(&order)).is_some());
+    assert_eq!(state.visual_kind(), None, "a run is not a visual mode");
+    walk_to(&mut state, 2, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["bravo", "charlie", "echo"],
+        "the run anchors at the moved cursor and keeps the fill"
+    );
+    assert!(state.begin_extend(Some(&order)).is_some());
+    walk_to(&mut state, 0, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["alpha", "bravo", "echo"],
+        "reversing past the anchor drops what the run covered"
+    );
+
+    state.end_extend();
+    walk_to(&mut state, 3, &order);
+    assert_eq!(fill(&state, 0), ["alpha", "bravo", "echo"]);
+    assert!(state.begin_extend(Some(&order)).is_some());
+    walk_to(&mut state, 4, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["alpha", "bravo", "delta", "echo"],
+        "the next run starts at the new cursor"
+    );
+    state.end_extend();
+
+    walk_to(&mut state, 2, &order);
+    state
+        .start_visual(VisualKind::Unset, Some(&order))
+        .expect("unset range at charlie");
+    assert!(state.begin_extend(Some(&order)).is_some());
+    walk_to(&mut state, 0, &order);
+    assert_eq!(
+        fill(&state, 0),
+        ["delta", "echo"],
+        "a run key extends the visual range instead of replacing it"
+    );
+    state.end_extend();
+    assert_eq!(state.visual_kind(), Some(VisualKind::Unset));
+    walk_to(&mut state, 1, &order);
+    assert_eq!(fill(&state, 0), ["alpha", "delta", "echo"]);
+}
+
+#[test]
 fn visual_ranges_start_on_a_load_cursor_and_leave_other_columns_alone() {
     let mut state = NavigationState::default();
     listing_with_the_first_entry_selected(&mut state);
@@ -2269,6 +2322,12 @@ fn visual_ranges_start_on_a_load_cursor_and_leave_other_columns_alone() {
         state.visual_kind(),
         None,
         "another pane does not continue the range"
+    );
+    state.focus_column(0);
+    assert_eq!(
+        state.visual_kind(),
+        None,
+        "returning to the pane does not resume the range"
     );
     assert_eq!(state.refresh_visual(None), None);
     assert_eq!(fill(&state, 0), ["alpha", "bravo"]);

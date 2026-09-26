@@ -363,6 +363,8 @@ def test_query_updates_retain_selection_focus_preview_and_background_menu(strata
     strata.pointer.move_to(*hovered.screen_bounds().center)
     strata.settle(hovered)
     assert not hovered.has_state("selected")
+    assert result(strata, "beta/match-note.txt").has_state("selected")
+    assert strata.preview_shows("beta source")
     for query, count in [("match-note.t", 3), ("match-note", 4)] * 2:
         strata.keyboard.press("ctrl+a")
         strata.keyboard.type_text(query)

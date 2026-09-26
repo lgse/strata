@@ -119,6 +119,9 @@ pub struct VisualRange {
     base: HashSet<Location>,
     // Space inside the range flips an item on top of the walked result.
     toggled: HashSet<Location>,
+    // A Shift+arrow run: walked like `Select`, but not a visual mode, so it has no
+    // footer tag and ends at the next key that is not part of the run.
+    extend: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1030,6 +1033,33 @@ impl NavigationState {
         kind: VisualKind,
         order: Option<&[usize]>,
     ) -> Option<(usize, usize, Vec<usize>)> {
+        self.start_range(kind, false, order)
+    }
+
+    /// Keeps a live visual range or Shift+arrow run in the active pane, or starts
+    /// a run at its cursor over the committed fill. Returns the range's pane and
+    /// cursor, or `None` when the pane has no cursor item to anchor on.
+    pub fn begin_extend(&mut self, order: Option<&[usize]>) -> Option<(usize, usize)> {
+        if let Some(depth) = self.live_range().map(|range| range.depth) {
+            return self.columns[depth].selected.map(|cursor| (depth, cursor));
+        }
+        self.start_range(VisualKind::Select, true, order)
+            .map(|(depth, focused, _)| (depth, focused))
+    }
+
+    /// Ends a Shift+arrow run and keeps its fill. A visual range is left alone.
+    pub fn end_extend(&mut self) {
+        if self.visual.as_ref().is_some_and(|range| range.extend) {
+            self.visual = None;
+        }
+    }
+
+    fn start_range(
+        &mut self,
+        kind: VisualKind,
+        extend: bool,
+        order: Option<&[usize]>,
+    ) -> Option<(usize, usize, Vec<usize>)> {
         self.visual = None;
         let depth = self
             .active_column
@@ -1051,6 +1081,7 @@ impl NavigationState {
             kind,
             base: column.selected_locations.clone(),
             toggled: HashSet::new(),
+            extend,
         });
         self.refresh_visual(Some(&order))
     }
@@ -1143,8 +1174,15 @@ impl NavigationState {
         self.visual.take().is_some()
     }
 
-    /// The active range kind, if its pane and anchor are still listed.
+    /// The active range kind, if its pane and anchor are still listed. A
+    /// Shift+arrow run is not a visual mode.
     pub fn visual_kind(&self) -> Option<VisualKind> {
+        self.live_range()
+            .filter(|range| !range.extend)
+            .map(|range| range.kind)
+    }
+
+    fn live_range(&self) -> Option<&VisualRange> {
         let range = self.visual.as_ref()?;
         let column = self.columns.get(range.depth)?;
         (column.location == range.directory
@@ -1153,7 +1191,7 @@ impl NavigationState {
                 .entries
                 .iter()
                 .any(|entry| entry.location == range.anchor))
-        .then_some(range.kind)
+        .then_some(range)
     }
 
     pub fn commit_selection(&mut self) {
@@ -1565,14 +1603,26 @@ impl NavigationState {
         if depth >= self.columns.len() {
             return false;
         }
-        self.active_column = Some(depth);
+        self.activate_pane(depth);
         true
+    }
+
+    /// Makes `depth` the active pane. Moving to another pane ends a range.
+    fn activate_pane(&mut self, depth: usize) {
+        if self
+            .visual
+            .as_ref()
+            .is_some_and(|range| range.depth != depth)
+        {
+            self.visual = None;
+        }
+        self.active_column = Some(depth);
     }
 
     pub fn focus_parent(&mut self) -> Option<(usize, Option<usize>)> {
         let depth = self.active_column?;
         let parent_depth = depth.checked_sub(1)?;
-        self.active_column = Some(parent_depth);
+        self.activate_pane(parent_depth);
         Some((parent_depth, self.columns[parent_depth].selected))
     }
 
@@ -1595,7 +1645,7 @@ impl NavigationState {
                 column.select_first_on_load = true;
             }
         }
-        self.active_column = Some(child_depth);
+        self.activate_pane(child_depth);
         Some((child_depth, position))
     }
 

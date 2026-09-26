@@ -391,12 +391,28 @@ impl Dispatcher {
         if self.view.selected_search_results().is_some() {
             return false;
         }
-        match key {
+        let filled = match key {
             Key::a | Key::A => self.view.select_focused_pane(),
             Key::r | Key::R => self.view.invert_focused_pane(),
             _ => return false,
         };
+        if !filled {
+            self.shortcuts.show_feedback("Nothing to select");
+        }
         true
+    }
+
+    /// Shift+Up/Down walks from the run's anchor on top of the kept fill, or
+    /// extends the active visual range.
+    fn extend_tenxer_cursor(&self, browser: &Rc<Browser>, arrow: Key) {
+        if !self.view.begin_extend() {
+            self.shortcuts.show_feedback("Nothing to select");
+        } else if self.view.view_mode() == BrowserMode::Icons {
+            self.move_icon_range(browser, arrow);
+        } else {
+            self.view
+                .move_displayed_cursor(if arrow == Key::Up { -1 } else { 1 }, 1);
+        }
     }
 
     fn toggle_visual(&self, kind: VisualKind) {
@@ -445,6 +461,12 @@ impl Dispatcher {
     }
 
     fn tenxer_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
+        if let Some(arrow) = extend_arrow(key)
+            && self.view.selected_search_results().is_none()
+        {
+            self.extend_tenxer_cursor(browser, arrow);
+            return true;
+        }
         match key {
             Key::V if self.view.selected_search_results().is_none() => {
                 self.toggle_visual(VisualKind::Unset);
@@ -536,4 +558,35 @@ impl Dispatcher {
             browser.show_child(depth, entry.location);
         }
     }
+}
+
+fn extend_arrow(key: Key) -> Option<Key> {
+    match key {
+        Key::Up | Key::KP_Up => Some(Key::Up),
+        Key::Down | Key::KP_Down => Some(Key::Down),
+        _ => None,
+    }
+}
+
+/// Whether a key press leaves a Shift+arrow run going. Modifier presses do, so
+/// releasing and pressing Shift again continues from the same anchor.
+pub(super) fn continues_extend(key: Key, modifiers: Modifiers) -> bool {
+    let modifier_key = matches!(
+        key,
+        Key::Shift_L
+            | Key::Shift_R
+            | Key::Control_L
+            | Key::Control_R
+            | Key::Alt_L
+            | Key::Alt_R
+            | Key::Super_L
+            | Key::Super_R
+            | Key::Meta_L
+            | Key::Meta_R
+            | Key::ISO_Level3_Shift
+            | Key::Caps_Lock
+    );
+    modifier_key
+        || (super::command_modifiers(modifiers) == Modifiers::SHIFT_MASK
+            && extend_arrow(key).is_some())
 }
