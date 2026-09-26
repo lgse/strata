@@ -31,6 +31,9 @@ mod media_layout;
 mod pdf_ranges_tests;
 mod pdf_text;
 mod session;
+pub(super) mod waveform;
+
+use waveform::SoundCloudWaveform;
 
 pub(in crate::ui) const DEFAULT_WIDTH: i32 = 520;
 pub(in crate::ui) const MIN_WIDTH: i32 = 240;
@@ -1305,6 +1308,7 @@ impl PreviewState {
             PreviewContent::SandboxedMedia { media: source } => {
                 let media = super::media::DecodedMedia::new(source).upcast::<gtk::MediaStream>();
                 let is_gif = preview.content_type == "image/gif";
+                let is_audio = preview.content_type.starts_with("audio/");
                 self.media.replace(Some(media.clone()));
                 let weak = Rc::downgrade(self);
                 media.connect_error_notify(move |media| {
@@ -1316,15 +1320,21 @@ impl PreviewState {
                     }
                 });
 
-                let (overlay, center_play) = self.build_media_view(&media);
-                let section = media_layout::section(&overlay, &media);
-                self.content.append(&section);
+                if is_audio {
+                    let waveform = SoundCloudWaveform::new(&media);
 
-                let preferences = super::preferences::PreferenceManager::shared();
-                if is_gif {
-                    media.set_loop(true);
-                    self.append_media_controls(&media, &preferences, &section, &center_play, true);
-                } else {
+                    let wf_for_playing = waveform.clone();
+                    let handler = media.connect_notify_local(Some("playing"), move |media, _| {
+                        wf_for_playing.update_playing_state(media.is_playing());
+                    });
+                    self.media_signals.borrow_mut().push(handler);
+
+                    let audio_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    audio_box.set_hexpand(true);
+                    audio_box.set_vexpand(true);
+                    audio_box.append(waveform.widget());
+
+                    let preferences = super::preferences::PreferenceManager::shared();
                     let muted = preferences.preview_muted();
                     let volume = if muted {
                         0.0
@@ -1333,12 +1343,49 @@ impl PreviewState {
                     };
                     media.set_volume(volume);
                     media.set_muted(muted);
-                    self.append_media_controls(&media, &preferences, &section, &center_play, false);
-                }
-                if preferences.preview_autoplay() {
-                    self.sizing.play_or_defer(&media);
+                    self.append_media_controls(&media, &preferences, &audio_box, None, false);
+                    self.content.append(&audio_box);
+
+                    if preferences.preview_autoplay() {
+                        self.sizing.play_or_defer(&media);
+                    }
                 } else {
-                    center_play.set_visible(true);
+                    let (overlay, center_play) = self.build_media_view(&media);
+                    let section = media_layout::section(&overlay, &media);
+                    self.content.append(&section);
+
+                    let preferences = super::preferences::PreferenceManager::shared();
+                    if is_gif {
+                        media.set_loop(true);
+                        self.append_media_controls(
+                            &media,
+                            &preferences,
+                            &section,
+                            Some(&center_play),
+                            true,
+                        );
+                    } else {
+                        let muted = preferences.preview_muted();
+                        let volume = if muted {
+                            0.0
+                        } else {
+                            preferences.preview_volume()
+                        };
+                        media.set_volume(volume);
+                        media.set_muted(muted);
+                        self.append_media_controls(
+                            &media,
+                            &preferences,
+                            &section,
+                            Some(&center_play),
+                            false,
+                        );
+                    }
+                    if preferences.preview_autoplay() {
+                        self.sizing.play_or_defer(&media);
+                    } else {
+                        center_play.set_visible(true);
+                    }
                 }
 
                 if let Some(error) = media.error() {
@@ -1560,6 +1607,18 @@ impl PreviewState {
     }
 
     fn build_media_view(self: &Rc<Self>, media: &gtk::MediaStream) -> (gtk::Overlay, gtk::Button) {
+        let overlay = gtk::Overlay::new();
+        overlay.set_focusable(true);
+        overlay.set_can_target(true);
+
+        let center_play = gtk::Button::new();
+        center_play.add_css_class("preview-media-center");
+        center_play.set_halign(gtk::Align::Center);
+        center_play.set_valign(gtk::Align::Center);
+        center_play.set_visible(false);
+        let center_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 48);
+        center_play.set_child(Some(&center_icon));
+
         let picture = gtk::Picture::for_paintable(media);
         picture.add_css_class("preview-media");
         picture.set_content_fit(gtk::ContentFit::Contain);
@@ -1584,29 +1643,8 @@ impl PreviewState {
             }
             glib::ControlFlow::Continue
         });
-
-        let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&picture));
-        overlay.set_focusable(true);
-        overlay.set_can_target(true);
-
-        let center_play = gtk::Button::new();
-        center_play.add_css_class("preview-media-center");
-        center_play.set_halign(gtk::Align::Center);
-        center_play.set_valign(gtk::Align::Center);
-        center_play.set_visible(false);
-        let center_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 48);
-        center_play.set_child(Some(&center_icon));
         overlay.add_overlay(&center_play);
-
-        let media_for_center = media.clone();
-        center_play.connect_clicked(move |_| {
-            if media_for_center.is_playing() {
-                media_for_center.pause();
-            } else {
-                media_for_center.play();
-            }
-        });
 
         let media_for_click = media.clone();
         let overlay_for_focus = overlay.downgrade();
@@ -1622,6 +1660,15 @@ impl PreviewState {
             }
         });
         picture.add_controller(click);
+
+        let media_for_center = media.clone();
+        center_play.connect_clicked(move |_| {
+            if media_for_center.is_playing() {
+                media_for_center.pause();
+            } else {
+                media_for_center.play();
+            }
+        });
 
         (overlay, center_play)
     }
@@ -2167,7 +2214,7 @@ impl PreviewState {
         media: &gtk::MediaStream,
         preferences: &Rc<super::preferences::PreferenceManager>,
         section: &gtk::Box,
-        center_play: &gtk::Button,
+        center_play: Option<&gtk::Button>,
         is_gif: bool,
     ) {
         let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -2197,7 +2244,7 @@ impl PreviewState {
         let play_button_for_notify = play_button.clone();
         let play_icon_for_notify = play_icon.clone();
         let pause_icon_for_notify = pause_icon.clone();
-        let center_for_notify = center_play.clone();
+        let center_for_notify = center_play.cloned();
         let media_for_playing = media.clone();
         let handler = media.connect_notify_local(Some("playing"), move |_, _| {
             let playing = media_for_playing.is_playing();
@@ -2206,7 +2253,9 @@ impl PreviewState {
             } else {
                 &play_icon_for_notify
             }));
-            center_for_notify.set_visible(!playing);
+            if let Some(center) = center_for_notify.as_ref() {
+                center.set_visible(!playing);
+            }
         });
         self.media_signals.borrow_mut().push(handler);
 

@@ -2572,6 +2572,12 @@ paned > separator {
   outline-offset: 1px;
 }
 
+.preview-soundcloud-waveform {
+  background: transparent;
+  padding: 8px 12px;
+  min-height: 120px;
+}
+
 .preview-media-bar {
   background: alpha(@theme_bg, 0.55);
   border-top: 1px solid alpha(@theme_border, 0.24);
