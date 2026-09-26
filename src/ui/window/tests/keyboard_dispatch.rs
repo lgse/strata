@@ -1502,6 +1502,7 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
                 .focused_item()
                 .map(|(depth, position, _)| (depth, position));
             preferences.set_filter_include_subfolders(true);
+            preferences.set_tenxer_mode(false);
             assert!(fixture.view.show_filter_with_query("tile"));
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
             while fixture
@@ -1527,6 +1528,7 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
                 "focusing search results moved the hidden directory cursor"
             );
             let start = fixture.view.selected_search_result().expect("search hit");
+            preferences.set_tenxer_mode(true);
             let start_name = start.display_name.clone();
             let start_path = start.location.native_path().expect("search hit path");
             let mut search_landed = Vec::new();
