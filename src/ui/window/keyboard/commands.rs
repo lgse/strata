@@ -145,6 +145,15 @@ impl Dispatcher {
         let toggle = self.top_bar.sidebar_toggle();
         if is_sidebar_focus_shortcut(event.key, event.modifiers) {
             if self.type_to_search.preferences.tenxer_mode() {
+                if !toggle.is_active() {
+                    return Some(Propagation::Stop);
+                }
+                if self.sidebar.contains(&event.focused) {
+                    self.sidebar.restore(browser, true);
+                } else {
+                    self.sidebar.previous.replace(event.focused.clone());
+                    self.sidebar.state.focus_active_place();
+                }
                 return Some(Propagation::Stop);
             }
             self.view.keyboard_navigation();

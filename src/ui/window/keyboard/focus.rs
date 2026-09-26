@@ -35,20 +35,25 @@ impl Dispatcher {
         if event.text_has_focus() || self.focus_in_popover() {
             return None;
         }
-        let tab =
-            crate::ui::focus_navigation::plain_tab_direction(event.key, event.modifiers).is_some();
+        let tab = crate::ui::focus_navigation::plain_tab_direction(event.key, event.modifiers);
+        if self.view.item_view_has_focus() && tab == Some(gtk::DirectionType::TabForward) {
+            if self.top_bar.focus_first() {
+                self.window.set_focus_visible(true);
+            }
+            return Some(Propagation::Stop);
+        }
         let arrow = crate::ui::focus_navigation::arrow_direction(event.key);
         let vim = vim_focus_direction(event.key);
-        if !tab && arrow.is_none() && vim.is_none() {
+        if tab.is_none() && arrow.is_none() && vim.is_none() {
             return None;
         }
         let panes = self.view.widget();
         let inside = crate::ui::focus_navigation::contains_widget(&panes, event.focused.as_ref());
         if !inside {
             browser.focus_active();
-            return (tab || arrow.is_none()).then_some(Propagation::Stop);
+            return Some(Propagation::Stop);
         }
-        if tab {
+        if tab.is_some() {
             return Some(Propagation::Stop);
         }
         if self.view.header_actions_have_focus() {
@@ -68,15 +73,16 @@ impl Dispatcher {
             return None;
         }
         match event.key {
-            Key::h | Key::Left => {
+            Key::h | Key::j | Key::Down => {
+                self.view.focus_items_from_header();
+            }
+            Key::Left => {
                 self.view.move_header_focus(gtk::DirectionType::Left);
             }
             Key::l | Key::Right => {
                 self.view.move_header_focus(gtk::DirectionType::Right);
             }
-            Key::j | Key::Down => {
-                self.view.focus_items_from_header();
-            }
+            Key::Return | Key::KP_Enter | Key::space => return None,
             _ => {}
         }
         Some(Propagation::Stop)

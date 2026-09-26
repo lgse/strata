@@ -297,15 +297,27 @@ map takes precedence.
 
 ## Sidebar and surrounding controls
 
-Keyboard navigation stays in the Columns, List, and Icons panes. **Tab**,
-**Shift+Tab**, and the arrow keys move among the files there. The sidebar,
-window header, footer, preview chrome, and other controls outside those panes
-stay pointer-operated. When one of those controls already has focus, the next
-**Tab** or arrow key returns to the file list.
+Arrows and **h** / **j** / **k** / **l** stay in the Columns, List, and Icons
+panes. **Tab** moves from the file list to the window header. **Shift+Tab**
+stays with the files. From the footer or other chrome outside the header and
+sidebar, the next **Tab** or arrow key returns to the file list.
 
-**Ctrl+Shift+B** stays with the file list while the mode is on. Show or hide
-the sidebar with the header toggle. **Ctrl+L** still edits the location bar.
-Menus, dialogs, text fields, and the shortcut reference keep their own keys.
+**Ctrl+Shift+B** focuses the sidebar when it is visible. A hidden sidebar stays
+hidden; the header toggle is what shows or hides it. **Ctrl+B** does not toggle
+it. Pressing **Ctrl+Shift+B** again returns to the files.
+
+In the sidebar, **j** / **k** and **Up** / **Down** move between places and
+device controls. **l**, **Enter**, and **Space** activate the focused place or
+device control. **h**, **Left**, and **Backspace** return to the files. Returning
+without activating keeps the file selection. After a place opens another folder,
+focus is on that listing.
+
+On a header control, **Enter** and **Space** activate it. **h** and **j** return
+to the files and do not change directory or run a file operation.
+
+**Ctrl+L** still edits the location bar. Menus, dialogs, text fields, and the
+shortcut reference keep their own keys. The file chooser uses these same
+round trips.
 
 ## Still bound
 

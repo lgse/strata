@@ -24,6 +24,11 @@ use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 mod commands;
 mod focus;
 mod items;
+mod sidebar;
+
+pub(in crate::ui) use sidebar::{
+    SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_chord,
+};
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
 type KeyResult = Option<Propagation>;
@@ -450,6 +455,17 @@ impl Dispatcher {
             self.window.close();
             return Some(Propagation::Stop);
         }
+        let focus = gtk::prelude::RootExt::focus(&self.window);
+        if self.sidebar.contains(&focus)
+            && let Some(result) = self.tenxer_sidebar(browser, key, modifiers)
+        {
+            return Some(result);
+        }
+        if self.tenxer_header_focused(&focus)
+            && let Some(result) = self.tenxer_header(browser, key, modifiers)
+        {
+            return Some(result);
+        }
         let icons = self.view.view_mode() == crate::ui::browser_modes::BrowserMode::Icons;
         let claimed = if icons {
             self.tenxer_icons(browser, key, modifiers)
@@ -494,6 +510,74 @@ impl Dispatcher {
             .then(|| event.focused.clone())
             .flatten();
         self.sidebar.enter(&previous);
+    }
+
+    /// Places and device controls. File verbs stay on the listing.
+    fn tenxer_sidebar(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
+        let chord = sidebar_chord(key, modifiers)?;
+        match chord {
+            SidebarChord::Move(delta) => {
+                move_sidebar_focus(&self.sidebar.widget, delta);
+            }
+            SidebarChord::Activate => self.activate_sidebar(browser),
+            SidebarChord::Leave => self.sidebar.restore(browser, true),
+            SidebarChord::Swallow => {}
+        }
+        Some(Propagation::Stop)
+    }
+
+    fn activate_sidebar(&self, browser: &Browser) {
+        let before = browser.active_location();
+        if !activate_sidebar_focus(&self.sidebar.widget) {
+            return;
+        }
+        if browser.active_location() != before {
+            self.sidebar.previous.replace(None);
+            if !self.view.item_view_has_focus() {
+                browser.focus_active();
+            }
+        }
+    }
+
+    fn tenxer_header_focused(&self, focus: &Option<gtk::Widget>) -> bool {
+        if self.top_bar.has_focus() || self.view.header_actions_have_focus() {
+            return true;
+        }
+        let panes = self.view.widget();
+        crate::ui::focus_navigation::contains_widget(&panes, focus.as_ref())
+            && !self.view.item_view_has_focus()
+    }
+
+    /// Enter and Space run the focused control. h and j return to the files.
+    fn tenxer_header(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
+        if modifiers
+            .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
+        {
+            return None;
+        }
+        if modifiers.contains(Modifiers::SHIFT_MASK) && !matches!(key, Key::Tab | Key::ISO_Left_Tab)
+        {
+            return Some(Propagation::Stop);
+        }
+        match key {
+            Key::h | Key::j => {
+                self.return_from_header(browser);
+                Some(Propagation::Stop)
+            }
+            Key::Return | Key::KP_Enter | Key::space => {
+                crate::ui::focus_navigation::activate(self.window.upcast_ref());
+                Some(Propagation::Stop)
+            }
+            Key::Delete => Some(Propagation::Stop),
+            _ => None,
+        }
+    }
+
+    fn return_from_header(&self, browser: &Browser) {
+        if self.view.header_actions_have_focus() && self.view.focus_items_from_header() {
+            return;
+        }
+        browser.focus_active();
     }
 }
 
