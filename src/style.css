@@ -6382,3 +6382,18 @@ popover.settings-action-library > contents {
 .settings-dialog.modal-constrained {
   min-width: 0;
 }
+
+/* Auto-hidden sidebar and address bar float over the content. */
+.autohide-edge {
+  background: transparent;
+}
+
+.autohide-sidebar {
+  background: @theme_surface;
+  box-shadow: 0 4px 16px alpha(@theme_bg, 0.45);
+}
+
+.autohide-header {
+  background: @theme_surface;
+  box-shadow: 0 4px 16px alpha(@theme_bg, 0.45);
+}

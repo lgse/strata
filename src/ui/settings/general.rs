@@ -27,6 +27,7 @@ pub(super) fn general_page(
     let preferences = page_content();
 
     append_browsing_options(&preferences, &manager);
+    append_layout_options(&preferences, &manager);
     append_sidebar_options(&preferences, &manager);
 
     append_heading(&preferences, "OPENING ITEMS");
@@ -280,6 +281,26 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
         },
     ] {
         append_preference_switch(&search, manager, switch);
+    }
+}
+
+fn append_layout_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) {
+    let layout = super::settings_group(content, "LAYOUT");
+    for switch in [
+        PreferenceSwitch {
+            title: "Auto-hide sidebar",
+            description: "Hide the sidebar until the pointer reaches the left edge of the window. Ctrl + B still shows it.",
+            read: PreferenceManager::auto_hide_sidebar,
+            write: PreferenceManager::set_auto_hide_sidebar,
+        },
+        PreferenceSwitch {
+            title: "Auto-hide address bar",
+            description: "Hide the address bar until the pointer reaches the top edge of the window. Ctrl + L still edits the location.",
+            read: PreferenceManager::auto_hide_header,
+            write: PreferenceManager::set_auto_hide_header,
+        },
+    ] {
+        append_preference_switch(&layout, manager, switch);
     }
 }
 
