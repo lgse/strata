@@ -2,7 +2,7 @@
 
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashSet, VecDeque},
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, RwLock, Weak,
@@ -813,7 +813,9 @@ struct ScheduledDirectory {
 
 impl PartialEq for ScheduledDirectory {
     fn eq(&self, other: &Self) -> bool {
-        self.task.virtual_work == other.task.virtual_work && self.sequence == other.sequence
+        self.task.virtual_work == other.task.virtual_work
+            && self.task.depth == other.task.depth
+            && self.sequence == other.sequence
     }
 }
 
@@ -921,7 +923,7 @@ fn build_index(
         .filter(|root| seen.insert(root.clone()))
         .collect();
     let boundaries = Arc::new(seen);
-    let root_overrides: std::collections::HashMap<PathBuf, ignore::overrides::Override> = roots
+    let root_overrides: HashMap<PathBuf, ignore::overrides::Override> = roots
         .iter()
         .map(|root| (root.clone(), build_root_overrides(root)))
         .collect();
@@ -966,10 +968,11 @@ fn build_index(
         }
         let overrides = root_overrides.get(&directory.root).expect("root overrides");
         let mut walker = directory_walker(&directory, overrides, boundaries.clone(), show_hidden);
+        let entry_depth = directory.depth.saturating_add(1);
         let mut seen_entries = 0;
         let mut processed_entries = 0;
-        let mut processed_files = 0;
         let mut slice_work = 0_usize;
+        let mut discovered_children = Vec::new();
         let exhausted = loop {
             if index.indexing_cancelled() {
                 return;
@@ -978,9 +981,7 @@ fn build_index(
                 coverage.time_limit = true;
                 break 'walk;
             }
-            if processed_files >= directory.batch_size
-                || processed_entries >= directory.batch_size.max(directory_batch_limit)
-            {
+            if processed_entries >= directory.batch_size.max(directory_batch_limit) {
                 break false;
             }
             let Some(result) = walker.next() else {
@@ -1010,9 +1011,6 @@ fn build_index(
             }
             let file_type = entry.file_type();
             let is_directory = file_type.is_some_and(|kind| kind.is_dir());
-            if !is_directory {
-                processed_files += 1;
-            }
             // Structural entries are cheap within a branch so nested documents progress
             // before dense runs of regular files consume the shared entry budget.
             slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
@@ -1024,8 +1022,14 @@ fn build_index(
                 MetadataValue::Unknown
             } else {
                 use std::os::unix::fs::MetadataExt;
-                entry
-                    .metadata()
+                // The walker reports the link's own mode (0777) for a symlink;
+                // the executable check needs the target's mode.
+                let metadata = if file_type.is_some_and(|kind| kind.is_symlink()) {
+                    std::fs::metadata(entry.path()).ok()
+                } else {
+                    entry.metadata().ok()
+                };
+                metadata
                     .map(|metadata| MetadataValue::Known(metadata.mode()))
                     .unwrap_or(MetadataValue::Unknown)
             };
@@ -1039,7 +1043,6 @@ fn build_index(
                 }
                 PathAdmission::Unique => {}
             }
-            let entry_depth = directory.depth.saturating_add(1);
             pending_items.push(SearchItem::with_metadata(
                 path.clone(),
                 &directory.root,
@@ -1052,27 +1055,8 @@ fn build_index(
                 // Keep one queue slot available for this slice's continuation. A child that
                 // cannot be admitted is omitted, while already queued work still completes.
                 if pending_directory_count < max_pending_directories.saturating_sub(1) {
-                    let child = ScheduledDirectory {
-                        task: DirectoryTask {
-                            path,
-                            root: directory.root.clone(),
-                            depth: entry_depth,
-                            probe_only: entry_depth >= max_depth,
-                            skipped_entries: 0,
-                            batch_size: initial_directory_batch,
-                            virtual_work: directory.virtual_work.saturating_add(slice_work),
-                        },
-                        sequence: next_sequence,
-                    };
-                    next_sequence = next_sequence.wrapping_add(1);
                     pending_directory_count += 1;
-                    if directory.depth == 0 {
-                        let mut child_branch = BinaryHeap::new();
-                        child_branch.push(child);
-                        new_branches.push(child_branch);
-                    } else {
-                        branch.push(child);
-                    }
+                    discovered_children.push(path);
                 } else {
                     coverage.directory_limit = true;
                 }
@@ -1087,10 +1071,36 @@ fn build_index(
             }
         };
         drop(walker);
+        // Children share this slice's final ordering key so the continuation
+        // stays ahead of every descendant via the depth tie-break while still
+        // accruing work against sibling subtrees.
+        let resume_work = directory.virtual_work.saturating_add(slice_work);
+        for path in discovered_children {
+            let child = ScheduledDirectory {
+                task: DirectoryTask {
+                    path,
+                    root: directory.root.clone(),
+                    depth: entry_depth,
+                    probe_only: entry_depth >= max_depth,
+                    skipped_entries: 0,
+                    batch_size: initial_directory_batch,
+                    virtual_work: resume_work,
+                },
+                sequence: next_sequence,
+            };
+            next_sequence = next_sequence.wrapping_add(1);
+            if directory.depth == 0 {
+                let mut child_branch = BinaryHeap::new();
+                child_branch.push(child);
+                new_branches.push(child_branch);
+            } else {
+                branch.push(child);
+            }
+        }
         if !exhausted {
             directory.skipped_entries = directory.skipped_entries.saturating_add(processed_entries);
             directory.batch_size = directory.batch_size.saturating_mul(2);
-            directory.virtual_work = directory.virtual_work.saturating_add(slice_work);
+            directory.virtual_work = resume_work;
             branch.push(ScheduledDirectory {
                 task: directory,
                 sequence: next_sequence,
