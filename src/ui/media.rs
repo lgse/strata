@@ -17,6 +17,8 @@ use crate::{
 mod audio;
 #[cfg(debug_assertions)]
 mod diagnostics;
+#[cfg(test)]
+mod tests;
 use audio::PcmOutput;
 
 const PAUSED_IDLE: Duration = Duration::from_secs(30);
@@ -53,6 +55,7 @@ mod imp {
         pub(super) position: Cell<u64>,
         pub(super) end: Cell<Option<u64>>,
         pub(super) last_progress: Cell<Option<Instant>>,
+        pub(super) spectrum: RefCell<[f32; 24]>,
     }
 
     #[glib::object_subclass]
@@ -158,6 +161,10 @@ glib::wrapper! {
 }
 
 impl DecodedMedia {
+    pub fn spectrum(&self) -> [f32; 24] {
+        *self.imp().spectrum.borrow()
+    }
+
     pub fn new(source: SandboxedMedia) -> Self {
         let obj: Self = glib::Object::new();
         obj.imp().source.replace(Some(source));
@@ -413,6 +420,15 @@ impl DecodedMedia {
                             .samples
                             .truncate(samples_left.min(media::AUDIO_BYTES as u64 / 4) as usize * 4);
                         if !frame.samples.is_empty() {
+                            let bands = compute_spectrum_bands(&frame.samples);
+                            let mut current = imp.spectrum.borrow_mut();
+                            for (i, &band) in bands.iter().enumerate() {
+                                if band > current[i] {
+                                    current[i] = band * 0.6 + current[i] * 0.4;
+                                } else {
+                                    current[i] = (band * 0.25 + current[i] * 0.75).max(0.0);
+                                }
+                            }
                             audio.push(
                                 std::mem::take(&mut frame.samples),
                                 media::timestamp(frame.tick - header.start_tick),
@@ -578,4 +594,108 @@ impl DecodedMedia {
             self.invalidate_contents();
         }
     }
+}
+
+fn compute_spectrum_bands(samples: &[u8]) -> [f32; 24] {
+    let mut bands = [0.0f32; 24];
+    let num_samples = samples.len() / 4;
+    if num_samples < 16 {
+        return bands;
+    }
+
+    const CHUNK: usize = 1024;
+    let mut re = [0.0f32; CHUNK];
+    let mut im = [0.0f32; CHUNK];
+
+    let take = num_samples.min(CHUNK);
+    for k in 0..take {
+        let left = i16::from_le_bytes([samples[k * 4], samples[k * 4 + 1]]) as f32 / 32768.0;
+        let right = i16::from_le_bytes([samples[k * 4 + 2], samples[k * 4 + 3]]) as f32 / 32768.0;
+        let window =
+            0.5 * (1.0 - (2.0 * std::f32::consts::PI * k as f32 / (CHUNK - 1) as f32).cos());
+        re[k] = (left + right) * 0.5 * window;
+    }
+
+    // Radix-2 in-place Cooley-Tukey FFT
+    let mut j = 0;
+    for i in 0..CHUNK - 1 {
+        if i < j {
+            re.swap(i, j);
+            im.swap(i, j);
+        }
+        let mut k = CHUNK / 2;
+        while k <= j {
+            j -= k;
+            k /= 2;
+        }
+        j += k;
+    }
+
+    let mut len = 2;
+    while len <= CHUNK {
+        let half = len / 2;
+        let angle = -2.0 * std::f32::consts::PI / len as f32;
+        let w_step_re = angle.cos();
+        let w_step_im = angle.sin();
+        let mut i = 0;
+        while i < CHUNK {
+            let mut w_re = 1.0f32;
+            let mut w_im = 0.0f32;
+            for k in 0..half {
+                let u_re = re[i + k];
+                let u_im = im[i + k];
+                let v_re = re[i + k + half] * w_re - im[i + k + half] * w_im;
+                let v_im = re[i + k + half] * w_im + im[i + k + half] * w_re;
+                re[i + k] = u_re + v_re;
+                im[i + k] = u_im + v_im;
+                re[i + k + half] = u_re - v_re;
+                im[i + k + half] = u_im - v_im;
+                let next_w_re = w_re * w_step_re - w_im * w_step_im;
+                let next_w_im = w_re * w_step_im + w_im * w_step_re;
+                w_re = next_w_re;
+                w_im = next_w_im;
+            }
+            i += len;
+        }
+        len *= 2;
+    }
+
+    // Normalized magnitude spectrum (first CHUNK / 2 bins)
+    let mut mags = [0.0f32; CHUNK / 2];
+    let norm_factor = 2.0 / CHUNK as f32;
+    for (k, mag) in mags.iter_mut().enumerate() {
+        *mag = (re[k] * re[k] + im[k] * im[k]).sqrt() * norm_factor;
+    }
+
+    // Logarithmic frequency bands matching Omaramp's spectrum.py
+    let min_f = 20.0f32;
+    let max_f = 16000.0f32;
+    let rate = 48000.0f32;
+    let mut bin_edges = [0usize; 25];
+    for (i, edge) in bin_edges.iter_mut().enumerate() {
+        let f = min_f * (max_f / min_f).powf(i as f32 / 24.0);
+        let b = (f * CHUNK as f32 / rate).round() as usize;
+        *edge = b.clamp(1, CHUNK / 2);
+    }
+    for i in 1..25 {
+        if bin_edges[i] <= bin_edges[i - 1] {
+            bin_edges[i] = bin_edges[i - 1] + 1;
+        }
+    }
+
+    for (i, band) in bands.iter_mut().enumerate() {
+        let lo = bin_edges[i].min(CHUNK / 2 - 1);
+        let hi = bin_edges[i + 1].min(CHUNK / 2);
+        let avg_mag = if hi > lo {
+            mags[lo..hi].iter().sum::<f32>() / (hi - lo) as f32
+        } else {
+            mags[lo]
+        };
+        let db = 20.0 * (avg_mag + 1e-10).log10();
+        let norm_val = ((db + 96.0) / 96.0).max(0.0);
+        let tilt = 1.0 + (i as f32 / 24.0) * 4.0;
+        *band = (norm_val * tilt).clamp(0.0, 1.0);
+    }
+
+    bands
 }
