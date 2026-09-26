@@ -1615,7 +1615,6 @@ fn focus_files(fixture: &KeyboardFixture) {
     wait_until(|| fixture.view.item_view_has_focus());
 }
 
-/// Walk the icon grid until `name` is the keyboard cursor.
 fn focus_icon(fixture: &KeyboardFixture, browser: &crate::app::Browser, name: &str) {
     focus_files(fixture);
     for key in [Key::k, Key::h] {

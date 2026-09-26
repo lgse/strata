@@ -67,7 +67,6 @@ def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, binding
 
 @pytest.mark.preferences(browser_mode="icons", type_to_search=False)
 def test_tenxer_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
-    """Home-row Icons motion, including an edge, an empty folder, search hits, and i."""
 
     strata.keyboard.press("ctrl+shift+m")
     strata.wait(

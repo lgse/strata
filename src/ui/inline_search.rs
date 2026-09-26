@@ -285,7 +285,6 @@ impl InlineSearch {
         state.collection.view.grab_focus()
     }
 
-    /// The focused search row, when results are on screen.
     pub(super) fn selected_anchor(&self) -> Option<(gtk::Widget, FileEntry)> {
         let state = self.state.as_ref()?;
         if state.stack.visible_child_name().as_deref() != Some("search") {
@@ -622,6 +621,9 @@ pub(super) fn wrap(
                 show_directory_listing(state);
                 return;
             }
+            let Some(root) = root() else {
+                return;
+            };
             state.stack.set_visible_child_name("search");
             if state.collection.sorted.n_items() == 0 {
                 state.status.set_text("Searching…");
@@ -632,9 +634,6 @@ pub(super) fn wrap(
                 .is_some_and(|browser| browser.preferences().show_hidden);
             let weak = Rc::downgrade(state);
             let browser = weak_browser.clone();
-            let Some(root) = root() else {
-                return;
-            };
             state.session.update(
                 super::search_session::SearchInput {
                     root,

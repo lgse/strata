@@ -453,8 +453,6 @@ impl Dispatcher {
         if claimed {
             return Some(Propagation::Stop);
         }
-        // Claim the conflicting default map. Still-bound shortcuts fall through
-        // to the existing commands.
         if claims_unbound_command(key, modifiers)
             || (self.view.item_view_has_focus() && claims_file_list_typing(key, modifiers))
         {
