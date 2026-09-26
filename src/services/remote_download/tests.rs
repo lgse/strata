@@ -30,6 +30,8 @@ fn remote_file_url_rejects_non_web_and_malformed_inputs() {
         "https:example.com",
         "example.com/file.pdf",
         "javascript:alert(1)",
+        "https://user:pass@example.com/f",
+        "https://user@example.com/f",
     ] {
         assert_eq!(remote_file_url(input), None, "{input}");
     }
@@ -116,7 +118,7 @@ fn download_writes_body_and_names_file_from_disposition() {
     let path = loop {
         match receiver.recv().expect("download event") {
             RemoteDownload::Finished(path) => break path,
-            RemoteDownload::Progress { .. } => continue,
+            RemoteDownload::Progress { .. } | RemoteDownload::Named(_) => continue,
             RemoteDownload::Failed(message) => panic!("download failed: {message}"),
         }
     };
@@ -147,7 +149,7 @@ fn download_reports_http_errors() {
     let receiver = download_remote(format!("{base}/missing"), Arc::new(AtomicBool::new(false)));
     let event = loop {
         match receiver.recv().expect("download event") {
-            RemoteDownload::Progress { .. } => continue,
+            RemoteDownload::Progress { .. } | RemoteDownload::Named(_) => continue,
             event => break event,
         }
     };
@@ -164,7 +166,9 @@ fn download_honors_precancelled_flag() {
     let receiver = download_remote("https://example.com/never".to_owned(), cancelled);
     match receiver.recv().expect("download event") {
         RemoteDownload::Failed(message) => assert!(message.contains("cancel"), "{message}"),
-        RemoteDownload::Progress { .. } | RemoteDownload::Finished(_) => {
+        RemoteDownload::Named(_)
+        | RemoteDownload::Progress { .. }
+        | RemoteDownload::Finished(_) => {
             panic!("cancelled download should not produce progress or a file")
         }
     }

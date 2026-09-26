@@ -267,7 +267,8 @@ pub(crate) fn run() -> glib::ExitCode {
     }
     crate::assets::register_icon_theme();
     crate::ui::prepare_portal_ui();
-    crate::services::prune_stale_downloads();
+    // Sweep off the main loop: a large stale download tree must not stall startup.
+    std::thread::spawn(crate::services::prune_stale_downloads);
 
     if service_failed.load(Ordering::SeqCst) {
         return glib::ExitCode::FAILURE;

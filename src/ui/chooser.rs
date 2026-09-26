@@ -435,6 +435,10 @@ impl ChooserState {
         self.finish(Err(PortalError::Cancelled("file chooser dismissed".into())));
     }
 
+    fn download_in_progress(&self) -> bool {
+        self.download_cancel.borrow().is_some()
+    }
+
     /// Stops an in-flight pasted-URL download. Returns whether one was running.
     fn cancel_download(&self) -> bool {
         let Some(cancelled) = self.download_cancel.borrow_mut().take() else {
@@ -449,15 +453,15 @@ impl ChooserState {
     /// Fetches a pasted `http(s)` URL into a temp file, then completes the
     /// request with it: the calling app receives a plain local path.
     fn open_remote(self: &Rc<Self>, url: &str) {
-        let supported = matches!(
-            &self.request.kind,
+        let unsupported = match &self.request.kind {
             ChooserKind::Open {
-                directory: false,
-                ..
-            } | ChooserKind::SaveFile { .. }
-        );
-        if !supported {
-            self.show_error("Remote links are files, not folders");
+                directory: true, ..
+            } => Some("Remote links are files, not folders"),
+            ChooserKind::SaveFiles { .. } => Some("Remote links are not supported here"),
+            _ => None,
+        };
+        if let Some(message) = unsupported {
+            self.show_error(message);
             return;
         }
         if self.completion.borrow().is_none() {
@@ -477,27 +481,36 @@ impl ChooserState {
             }),
         );
         self.accept_button.set_sensitive(false);
-        let receiver = download_remote(url.to_owned(), cancelled);
+        let receiver = download_remote(url.to_owned(), cancelled.clone());
         let state = Rc::downgrade(self);
         glib::timeout_add_local(Duration::from_millis(120), move || {
             let Some(state) = state.upgrade() else {
                 return glib::ControlFlow::Break;
             };
+            // Events only apply while this poller's attempt is the current
+            // one; a replaced or cancelled flag retires the poller.
+            let current = state
+                .download_cancel
+                .borrow()
+                .as_ref()
+                .is_some_and(|flag| Arc::ptr_eq(flag, &cancelled));
             match receiver.try_recv() {
-                Ok(RemoteDownload::Progress { downloaded, total }) => {
+                Ok(RemoteDownload::Named(name)) if current => {
+                    state.view.set_download_name(&name);
+                    glib::ControlFlow::Continue
+                }
+                Ok(RemoteDownload::Progress { downloaded, total }) if current => {
                     state.view.update_download_progress(downloaded, total);
                     glib::ControlFlow::Continue
                 }
-                Ok(RemoteDownload::Finished(path)) => {
+                Ok(RemoteDownload::Finished(path)) if current => {
                     state.view.dismiss_download_progress();
-                    // A cancelled fetch may still report Finished if the worker
-                    // passed its last flag check before the flag was set.
                     if state.download_cancel.borrow_mut().take().is_some() {
                         state.complete_remote(path);
                     }
                     glib::ControlFlow::Break
                 }
-                Ok(RemoteDownload::Failed(message)) => {
+                Ok(RemoteDownload::Failed(message)) if current => {
                     state.view.dismiss_download_progress();
                     state.accept_button.set_sensitive(true);
                     if state.download_cancel.borrow_mut().take().is_some() {
@@ -509,13 +522,8 @@ impl ChooserState {
                     }
                     glib::ControlFlow::Break
                 }
-                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
-                Err(TryRecvError::Disconnected) => {
-                    state.view.dismiss_download_progress();
-                    state.accept_button.set_sensitive(true);
-                    state.download_cancel.borrow_mut().take();
-                    glib::ControlFlow::Break
-                }
+                Err(TryRecvError::Empty) if current => glib::ControlFlow::Continue,
+                _ => glib::ControlFlow::Break,
             }
         });
     }
@@ -666,6 +674,7 @@ impl ChooserState {
     fn accept(self: &Rc<Self>) {
         if self.completion.borrow().is_none()
             || self.destination_check.get()
+            || self.download_in_progress()
             || visible_modal_layer(&self.window).is_some()
         {
             return;
@@ -857,6 +866,9 @@ impl ChooserState {
     }
 
     fn activate_file(self: &Rc<Self>, location: &Location) {
+        if self.download_in_progress() {
+            return;
+        }
         match &self.request.kind {
             ChooserKind::Open {
                 directory: false, ..

@@ -757,6 +757,10 @@ impl BrowserView {
         self.state.update_download_progress(downloaded, total);
     }
 
+    pub(crate) fn set_download_name(&self, name: &str) {
+        self.state.set_download_name(name);
+    }
+
     pub(crate) fn dismiss_download_progress(&self) {
         self.state.dismiss_download_progress();
     }
@@ -1287,7 +1291,7 @@ impl BrowserView {
                 .is_some_and(|focused| focused == entry || focused.is_ancestor(entry))
     }
 
-    pub fn location_text(&self) -> gtk::glib::GString {
+    pub(super) fn location_text(&self) -> gtk::glib::GString {
         self.state.location_entry.text()
     }
 

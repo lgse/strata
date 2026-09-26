@@ -376,6 +376,7 @@ impl ViewState {
         self.download_chip.replace(Some(DownloadChip {
             root: chip,
             overlay: self.overlay.clone(),
+            name,
             status,
             progress,
             indeterminate: Rc::new(Cell::new(true)),
@@ -383,6 +384,13 @@ impl ViewState {
         }));
         if let Some(chip) = self.download_chip.borrow().as_ref() {
             ensure_indeterminate_pulse(&chip.progress, &chip.indeterminate, &chip.pulse_source);
+        }
+    }
+
+    /// Applies the server-provided filename once response headers arrive.
+    pub(super) fn set_download_name(&self, name: &str) {
+        if let Some(chip) = self.download_chip.borrow().as_ref() {
+            chip.name.set_text(name);
         }
     }
 
@@ -422,6 +430,7 @@ impl ViewState {
 pub(super) struct DownloadChip {
     root: gtk::Box,
     overlay: gtk::Overlay,
+    name: gtk::Label,
     status: gtk::Label,
     progress: gtk::ProgressBar,
     indeterminate: Rc<Cell<bool>>,

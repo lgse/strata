@@ -27,6 +27,7 @@ pub(crate) const DOWNLOAD_PREFIX: &str = "strata-download-";
 
 #[derive(Debug)]
 pub(crate) enum RemoteDownload {
+    Named(String),
     Progress { downloaded: u64, total: Option<u64> },
     Finished(PathBuf),
     Failed(String),
@@ -41,7 +42,9 @@ pub(crate) fn remote_file_url(input: &str) -> Option<String> {
         return None;
     }
     match rest.split(['/', '?', '#']).next() {
-        Some(host) if !host.is_empty() => Some(input.to_owned()),
+        // Credentials in the authority are rejected like the location input's
+        // embedded-password rule instead of being passed to the fetch.
+        Some(host) if !host.is_empty() && !host.contains('@') => Some(input.to_owned()),
         _ => None,
     }
 }
@@ -103,6 +106,7 @@ fn fetch(
         .and_then(filename_from_disposition)
         .or_else(|| remote_file_name(url))
         .unwrap_or_else(|| "download".to_owned());
+    let _sent = progress.send(RemoteDownload::Named(name.clone()));
     let total = response
         .headers()
         .get("content-length")
