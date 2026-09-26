@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! One description of the keymap that is actually active.
-//!
-//! Settings → Keybindings, the F1 / `~` reference, and context-menu hints all
-//! read this module. 10xer rows list commands the dispatcher runs today.
-//! Planned letters stay out until those verbs exist.
-
 use super::browser_modes::BrowserMode;
 
 pub(crate) const EXPERIMENTAL_LABEL: &str = "(experimental feature, under active development)";
@@ -261,9 +255,6 @@ const DEFAULT_SETTINGS: &[Binding] = &[
     },
 ];
 
-/// Commands that still run while 10xer mode claims the conflicting defaults.
-/// View notes make this the all-view Settings overview; the F1 popover stays
-/// specific to the open view.
 const TENXER_SETTINGS: &[Binding] = &[
     Binding {
         category: "Navigation",
@@ -311,7 +302,13 @@ const TENXER_SETTINGS: &[Binding] = &[
         category: "Navigation",
         action: "First / last item",
         note: "G in List and Columns",
-        keys: "Home / G / End",
+        keys: "Home / G / End / Ctrl + ↑ / Ctrl + ↓",
+    },
+    Binding {
+        category: "Navigation",
+        action: "Go to Home",
+        note: "",
+        keys: "Alt + Home",
     },
     Binding {
         category: "Navigation",
@@ -330,6 +327,12 @@ const TENXER_SETTINGS: &[Binding] = &[
         action: "Select all",
         note: "",
         keys: "Ctrl + A",
+    },
+    Binding {
+        category: "Selection",
+        action: "Extend selection",
+        note: "",
+        keys: "Shift + ↑ / Shift + ↓",
     },
     Binding {
         category: "Selection",
@@ -647,6 +650,7 @@ fn tenxer_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
             shortcuts.extend_from_slice(&[
                 ("Backspace / Alt+↑", "Go to the parent folder"),
                 ("Alt+← / Alt+→", "Back / forward in history"),
+                ("Alt+Home", "Go to Home"),
                 ("Home / End", "First / last item"),
                 ("Ctrl+↑ / Ctrl+↓", "First / last item"),
                 ("PgUp / PgDn", "Move one page"),
@@ -669,6 +673,7 @@ fn tenxer_listing_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static s
     shortcuts.extend_from_slice(&[
         ("Enter / o", "Open the focused item"),
         ("H / L / Alt+← / Alt+→", "Back / forward in history"),
+        ("Alt+Home", "Go to Home"),
         ("Home", "First item"),
         ("G / End", "Last item"),
         ("Ctrl+↑ / Ctrl+↓", "First / last item"),
@@ -711,6 +716,7 @@ const TENXER_FILES: &[(&str, &str)] = &[
     ("F2", "Rename"),
     ("Ctrl+Shift+N", "Create a folder"),
     ("Ctrl+A", "Select all items in the focused pane"),
+    ("Shift+↑ / ↓", "Extend selection"),
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
 ];
@@ -785,8 +791,6 @@ fn default_hint(hint: ContextHint) -> &'static str {
     }
 }
 
-/// Letters such as `x`, `y`, `p`, `d`, `D`, `r`, and `i` are omitted: those
-/// verbs are not implemented, and `i` is not a preview shortcut.
 fn tenxer_hint(hint: ContextHint) -> &'static str {
     match hint {
         ContextHint::None

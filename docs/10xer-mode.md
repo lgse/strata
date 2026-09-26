@@ -18,7 +18,7 @@ Turn it on in **Settings → General → Browsing → 10xer mode**, or with
 **~** opens the in-app table of commands that currently run; **Settings →
 Keybindings** lists that same active map as an all-view overview. While the mode
 is on, Settings, the reference, and the footer tag show **(experimental feature,
-under active development)**. The tag text stays **OMA**.
+under active development)**. The tag text stays **10X**.
 
 Paste destinations, cursor versus filled selection, and pointer ownership stay
 as in [keyboard navigation](keyboard-navigation.md).
