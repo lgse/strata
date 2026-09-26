@@ -441,28 +441,28 @@ fn default_accels_never_bind_one_chord_twice() {
 }
 
 #[test]
-fn omastrata_accelerators_follow_the_saved_mode_across_windows() {
+fn tenxer_accelerators_follow_the_saved_mode_across_windows() {
     gtk_test(
-        "ui::window::tests::keyboard_policy::omastrata_accelerators_follow_the_saved_mode_across_windows",
+        "ui::window::tests::keyboard_policy::tenxer_accelerators_follow_the_saved_mode_across_windows",
         || {
             let preferences = PreferenceManager::shared();
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             let first = policy_window();
             assert_accelerators(&first, false);
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             assert_accelerators(&first, true);
             let enabled = accel_snapshot(&first);
             let second = policy_window();
             assert_eq!(accel_snapshot(&second), enabled);
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             assert_eq!(accel_snapshot(&first), enabled);
             first.destroy();
             settle_policy();
             assert_eq!(accel_snapshot(&second), enabled);
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             assert_accelerators(&second, false);
             let restored = accel_snapshot(&second);
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             assert_eq!(accel_snapshot(&second), restored);
             second.destroy();
         },
@@ -492,11 +492,11 @@ fn policy_window() -> gtk::ApplicationWindow {
     window
 }
 
-fn assert_accelerators(window: &gtk::ApplicationWindow, omastrata: bool) {
+fn assert_accelerators(window: &gtk::ApplicationWindow, tenxer: bool) {
     let application = window.application().expect("application");
     for (action, expected) in DEFAULT_ACCELS {
         let installed = application.accels_for_action(action);
-        let suppressed = omastrata
+        let suppressed = tenxer
             && matches!(
                 *action,
                 "win.jump-folder" | "win.open-terminal" | "win.toggle-arrow-scope"
@@ -504,7 +504,7 @@ fn assert_accelerators(window: &gtk::ApplicationWindow, omastrata: bool) {
         if suppressed {
             assert!(
                 installed.is_empty(),
-                "{action} stays bound while Omastrata is on: {installed:?}"
+                "{action} stays bound while 10xer is on: {installed:?}"
             );
             continue;
         }

@@ -554,17 +554,17 @@ const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
 ];
 
-/// Default-map accelerators the Omastrata table leaves unbound. Search and
+/// Default-map accelerators the 10xer table leaves unbound. Search and
 /// refresh stay installed; these three are removed while the mode is on.
-const OMASTRATA_SUPPRESSED_ACCELS: &[&str] = &[
+const TENXER_SUPPRESSED_ACCELS: &[&str] = &[
     "win.jump-folder",
     "win.open-terminal",
     "win.toggle-arrow-scope",
 ];
 
-pub(super) fn install_mode_accelerators(application: &gtk::Application, omastrata: bool) {
+pub(super) fn install_mode_accelerators(application: &gtk::Application, tenxer: bool) {
     for (action, accels) in DEFAULT_ACCELS {
-        let accels = if omastrata && OMASTRATA_SUPPRESSED_ACCELS.contains(action) {
+        let accels = if tenxer && TENXER_SUPPRESSED_ACCELS.contains(action) {
             &[][..]
         } else {
             *accels

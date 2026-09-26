@@ -47,14 +47,14 @@ pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) ->
     crate::ui::controls::pane_header_action(&button);
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |_| {
-        if crate::ui::omastrata_mode::chrome_suppressed() {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
             return;
         }
         if let Some(browser) = weak_browser.upgrade() {
             browser.retry_column(depth);
         }
     });
-    crate::ui::omastrata_mode::hide_while_enabled(&button);
+    crate::ui::tenxer_mode::hide_while_enabled(&button);
     button
 }
 
@@ -195,7 +195,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         crate::assets::icons::SETTINGS_2,
     )));
     crate::ui::controls::pane_header_action(&button);
-    crate::ui::omastrata_mode::hide_while_enabled(&button);
+    crate::ui::tenxer_mode::hide_while_enabled(&button);
     button
 }
 
@@ -209,7 +209,7 @@ pub(in crate::ui) fn column_sort_direction_toggle(
     button.set_child(Some(&icon));
     crate::ui::controls::pane_header_action(&button);
     sync_sort_direction_toggle(&button, &icon, preferences);
-    crate::ui::omastrata_mode::hide_sort_direction_while_enabled(&button);
+    crate::ui::tenxer_mode::hide_sort_direction_while_enabled(&button);
 
     let weak_browser = Rc::downgrade(browser);
     let icon_for_map = icon.clone();
@@ -223,7 +223,7 @@ pub(in crate::ui) fn column_sort_direction_toggle(
     });
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |button| {
-        if crate::ui::omastrata_mode::chrome_suppressed() {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
             return;
         }
         let Some(browser) = weak_browser.upgrade() else {

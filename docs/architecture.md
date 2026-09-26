@@ -354,22 +354,22 @@ introducing another browser controller. A stage returning `None` continues throu
 handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
 particular, editable controls and native single-pane selection must not fall through to
 browser commands. The file chooser retains its separate, restricted keyboard policy
-when Omastrata mode is off.
+when 10xer mode is off.
 
-When [Omastrata mode](omastrata-mode.md) is on, that dispatcher skips the default
-`h`/`j`/`k`/`l` arrow remap and command pipeline and runs `keyboard/omastrata.rs`
+When [10xer mode](10xer-mode.md) is on, that dispatcher skips the default
+`h`/`j`/`k`/`l` arrow remap and command pipeline and runs `keyboard/tenxer.rs`
 instead. The chooser installs the same dispatcher alongside its default map and
 delegates to it while the preference is on: **Enter** / **o** still confirm a
 file, **Esc** cancels after dismissing prompts or preview, and global search /
 Open With stay unavailable. Window-local browse / visual / chord / prompt state
-lives in `ui/omastrata_mode.rs`, not on `Browser`. Per-window preference bindings
+lives in `ui/tenxer_mode.rs`, not on `Browser`. Per-window preference bindings
 update the shared `gtk::Application` accelerators idempotently; window destruction
-does not restore them while other windows still use Omastrata mode.
+does not restore them while other windows still use 10xer mode.
 Chrome-visibility bindings hide pane Close/filter/refresh/sort in both
 interactive browsers and the chooser. Tab and arrow focus stay inside the
 Columns, List, and Icons panes; sidebar, header, and footer controls stay
 pointer-operated. The preference is
-`PreferenceManager::omastrata_mode` in `ui/preferences.rs`, not a theme setting.
+`PreferenceManager::tenxer_mode` in `ui/preferences.rs`, not a theme setting.
 
 Initial binding applies the saved mode without transition teardown. Real transitions
 clear hidden queries and forced recursion, prompts, chords, and preview key ownership.

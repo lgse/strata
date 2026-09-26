@@ -1,8 +1,8 @@
-# Omastrata mode
+# 10xer mode
 
 > This document is the target product specification, not a completion report.
 
-Omastrata mode is an opt-in Yazi-style browsing map. In **Settings → General → Browsing** the row is titled **Omastrata mode** and its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.** The footer shows **OMA** at the right, immediately before the item count, while the mode is on. It hides window Search and pane
+10xer mode is an opt-in Yazi-style browsing map. In **Settings → General → Browsing** the row is titled **10xer mode** and its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.** The footer shows **10X** at the right, immediately before the item count, while the mode is on. It hides window Search and pane
 Close/filter/refresh/sort chrome in interactive browsers, disables
 type-to-search, and uses the footer as the typed-command surface. List column
 headings stay clickable. The portal file chooser follows the same preference:
@@ -13,7 +13,7 @@ filter, or preview. **q** leaves the mode without cancelling. The chooser
 continues to disallow folder peeking and column mirroring, so **i** does not
 open a peek or an extra Miller column there.
 
-Turn it on in **Settings → General → Browsing → Omastrata mode**, or with
+Turn it on in **Settings → General → Browsing → 10xer mode**, or with
 **Ctrl+Shift+M**. The choice is saved and live-updates every window. **F1** or
 **~** opens the in-app table; **Settings → Keybindings** lists the same map.
 
@@ -24,7 +24,7 @@ as in [keyboard navigation](keyboard-navigation.md).
 
 | Key | Action |
 | --- | --- |
-| **Ctrl+Shift+M** | Toggle Omastrata mode |
+| **Ctrl+Shift+M** | Toggle 10xer mode |
 | **q** | Leave the mode. Does not close the window. |
 | **Q** | Close the current window |
 | **F1** / **~** | Show or hide this reference |
@@ -35,7 +35,7 @@ keep their own input handling.
 
 **Type to search**, **Keep arrows in file list**, and **Mirror columns selection**
 stay saved. While the mode is on they are unused, and those Settings rows show
-**Not used in Omastrata mode.**
+**Not used in 10xer mode.**
 
 Leaving the mode clears footer prompts (including typed credentials), chords,
 find highlights, retained filters/search results, a keyboard folder peek, and
@@ -332,7 +332,7 @@ Default-map hints that are unbound or remapped (**Y** for copy path, **Space** f
 
 These default-map shortcuts are unbound or remapped while the mode is on:
 
-| Default-map key | In Omastrata mode |
+| Default-map key | In 10xer mode |
 | --- | --- |
 | **Ctrl+Shift+K** | Unbound. Use **z** / **Z**. |
 | **Ctrl+T** | Unbound. Use the context menu. |

@@ -60,7 +60,7 @@ control that might be midway through synchronization.
 | Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Explicit field sorting updates the persisted defaults. Camera Photos libraries instead open in column-local Device order (see below). |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
-| Omastrata mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Off by default; toggle with `Ctrl+Shift+M`, `q`, or Settings → General → Browsing. |
+| 10xer mode | Interactive browsers and the portal file chooser bind pane Close/filter/refresh/sort chrome and the Yazi-style keymap at construction, including lazily rebuilt views. Window Search hides in interactive browsers. Window Close, chooser Accept/Cancel, and List column headings stay. Off by default; toggle with `Ctrl+Shift+M`, `q`, or Settings → General → Browsing. |
 | Include subfolders | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
 | Element glow | Shared semantic glow color is applied by `ThemeManager` when the appearance preferences change, before Settings opens and live across windows, dialogs, menus, and rebuilt views. Focus outlines and ordinary depth shadows are preserved. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
@@ -214,11 +214,11 @@ redundant path subtitles. The choice applies to pane filtering in Columns, Icons
 and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
 
-## Omastrata mode
+## 10xer mode
 
-In **Settings → General → Browsing**, **Omastrata mode** is off by default.
+In **Settings → General → Browsing**, **10xer mode** is off by default.
 Its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.**
-The footer shows **OMA** at the right, immediately before the item count, while the mode is on.
+The footer shows **10X** at the right, immediately before the item count, while the mode is on.
 It hides window Search and pane Close/filter/refresh/sort chrome in
 interactive browsers and the portal file chooser (window Close and chooser
 Accept/Cancel stay; List column headings stay),
@@ -229,7 +229,7 @@ the Yazi-style map with footer prompts (`/` `?` `f` `s` `a` `r` `g Space`
 Icons panes. The sidebar, window header, footer, and other controls outside
 those panes stay pointer-operated. **`s`** is current-folder recursive name search;
 **`S`** is unbound. Toggle with **Ctrl+Shift+M**, leave with **q**, close the window with **Q**. The
-preference is defined in `src/ui/preferences.rs`, saved as `omastrata_mode` in
+preference is defined in `src/ui/preferences.rs`, saved as `tenxer_mode` in
 `settings.toml`, and live-updates every window. Real mode transitions clear
 prompts and credentials, chords, find highlights, hidden filters/search
 (including forced recursion from **s**), and a keyboard folder peek. Leaving visual mode preserves the ordinary listing's filled selection;
@@ -241,10 +241,10 @@ Context-menu shortcut hints and **Settings → Keybindings** list the currently
 active map (including the kept Ctrl/F-key conventions). **Type to search**,
 **Keep arrows in file list**, and **Mirror columns selection** stay saved and
 editable; while the mode is on they are unused and those rows show the subtitle
-**Not used in Omastrata mode.** Cursor movement does not open a child column or
+**Not used in 10xer mode.** Cursor movement does not open a child column or
 a preview. **i** opens the next Miller column without focusing it, or toggles
 the folder-peek popover in List and Icons. See
-[Omastrata mode](omastrata-mode.md) for the keymap.
+[10xer mode](10xer-mode.md) for the keymap.
 
 ## Adding a preference
 

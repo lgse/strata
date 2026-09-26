@@ -168,7 +168,7 @@ fn install_browser_actions(
         let application = application.clone();
         preferences.bind_preference(
             window,
-            PreferenceManager::omastrata_mode,
+            PreferenceManager::tenxer_mode,
             move |_window, enabled| {
                 super::install_mode_accelerators(&application, enabled);
             },

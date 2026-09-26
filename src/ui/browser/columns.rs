@@ -841,14 +841,14 @@ impl ViewState {
             crate::ui::controls::pane_header_action(&close);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
-                if crate::ui::omastrata_mode::chrome_suppressed() {
+                if crate::ui::tenxer_mode::chrome_suppressed() {
                     return;
                 }
                 if let Some(browser) = weak_browser.upgrade() {
                     browser.close_column(depth);
                 }
             });
-            crate::ui::omastrata_mode::hide_while_enabled(&close);
+            crate::ui::tenxer_mode::hide_while_enabled(&close);
             header_actions.append(&close);
         }
         // Homogeneous pages keep column geometry stable as the action target changes.

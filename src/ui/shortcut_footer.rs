@@ -82,10 +82,10 @@ impl ShortcutFooter {
         paste.add_css_class("shortcut-footer-paste");
         paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
-        let tag = gtk::Label::new(Some(crate::ui::omastrata_mode::TAG_TEXT));
-        tag.add_css_class("omastrata-tag");
-        tag.set_tooltip_text(Some(crate::ui::omastrata_mode::TAG_NAME));
-        super::accessibility::set_label(&tag, crate::ui::omastrata_mode::TAG_NAME);
+        let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
+        tag.add_css_class("tenxer-tag");
+        tag.set_tooltip_text(Some(crate::ui::tenxer_mode::TAG_NAME));
+        super::accessibility::set_label(&tag, crate::ui::tenxer_mode::TAG_NAME);
         tag.set_visible(false);
         root.append(&paste);
         root.append(&tag);
@@ -236,7 +236,7 @@ impl ShortcutFooter {
         let tag = self.tag.downgrade();
         manager.bind_preference(
             &self.root,
-            super::preferences::PreferenceManager::omastrata_mode,
+            super::preferences::PreferenceManager::tenxer_mode,
             move |_, enabled| {
                 if let Some(tag) = tag.upgrade() {
                     tag.set_visible(enabled);
