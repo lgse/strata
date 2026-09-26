@@ -968,6 +968,10 @@ impl ModeViews {
         true
     }
 
+    pub fn cancel_list_restore(&mut self) {
+        self.list_navigation.borrow_mut().cancel();
+    }
+
     pub fn prepare_mode(&mut self, mode: BrowserMode) {
         if self.mode == mode {
             return;

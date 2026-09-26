@@ -303,7 +303,7 @@ impl Dispatcher {
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
-        if let Some(result) = self.tenxer_keys(key, modifiers) {
+        if let Some(result) = self.tenxer_keys(browser, key, modifiers) {
             return result;
         }
         let focused = gtk::prelude::RootExt::focus(&self.window);
@@ -416,7 +416,7 @@ impl Dispatcher {
         visible_popover_menu(self.window.upcast_ref())
     }
 
-    fn tenxer_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+    fn tenxer_keys(&self, browser: &Rc<Browser>, key: Key, modifiers: Modifiers) -> KeyResult {
         if visible_modal_layer(&self.window).is_some() {
             return None;
         }
@@ -439,6 +439,9 @@ impl Dispatcher {
         }
         if key == Key::Q && modifiers.contains(Modifiers::SHIFT_MASK) && !command {
             self.window.close();
+            return Some(Propagation::Stop);
+        }
+        if self.tenxer_listing(browser, key, modifiers) {
             return Some(Propagation::Stop);
         }
         if claims_unbound_command(key, modifiers)

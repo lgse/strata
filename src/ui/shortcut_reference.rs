@@ -260,7 +260,7 @@ const TENXER_SETTINGS: &[Binding] = &[
         category: "Navigation",
         action: "Move through items",
         note: "List and Columns",
-        keys: "↑ / ↓",
+        keys: "j / k / ↑ / ↓",
     },
     Binding {
         category: "Navigation",
@@ -270,33 +270,39 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Navigation",
-        action: "Move between column panes",
-        note: "Columns",
-        keys: "← / →",
+        action: "Go to parent folder",
+        note: "h / ← in List and Columns",
+        keys: "h / ← / Backspace / Alt + ↑",
+    },
+    Binding {
+        category: "Navigation",
+        action: "Open directory",
+        note: "List and Columns",
+        keys: "l / →",
+    },
+    Binding {
+        category: "Navigation",
+        action: "Open next column",
+        note: "Columns; focus stays in place",
+        keys: "i",
     },
     Binding {
         category: "Navigation",
         action: "Open item",
-        note: "",
-        keys: "Enter",
-    },
-    Binding {
-        category: "Navigation",
-        action: "Go to parent folder",
-        note: "",
-        keys: "Backspace / Alt + ↑",
+        note: "o in List and Columns",
+        keys: "Enter / o",
     },
     Binding {
         category: "Navigation",
         action: "Back / forward",
-        note: "",
-        keys: "Alt + ← / Alt + →",
+        note: "H / L in List and Columns",
+        keys: "H / L / Alt + ← / Alt + →",
     },
     Binding {
         category: "Navigation",
         action: "First / last item",
-        note: "",
-        keys: "Home / End / Ctrl + ↑ / Ctrl + ↓",
+        note: "G in List and Columns",
+        keys: "Home / G / End / Ctrl + ↑ / Ctrl + ↓",
     },
     Binding {
         category: "Navigation",
@@ -306,9 +312,15 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Navigation",
+        action: "Move half a page",
+        note: "List and Columns",
+        keys: "Ctrl + U / Ctrl + D",
+    },
+    Binding {
+        category: "Navigation",
         action: "Move one page",
-        note: "",
-        keys: "PgUp / PgDn",
+        note: "Ctrl + B / F in List and Columns",
+        keys: "Ctrl + B / Ctrl + F / PgUp / PgDn",
     },
     Binding {
         category: "Selection",
@@ -628,28 +640,44 @@ pub(crate) fn default_navigation(mode: BrowserMode) -> Vec<(&'static str, &'stat
 }
 
 fn tenxer_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
-    let mut shortcuts = match mode {
-        BrowserMode::Columns => vec![
-            ("↑ / ↓", "Move between items"),
-            ("← / →", "Parent pane / enter folder"),
-            ("Enter", "Open the focused item"),
-        ],
-        BrowserMode::Icons => vec![
-            ("↑ ↓ ← →", "Move spatially between tiles"),
-            ("Enter", "Open the focused item"),
-        ],
-        BrowserMode::List => vec![
-            ("↑ / ↓", "Move between file rows"),
-            ("Enter", "Open the focused item"),
-        ],
-    };
+    match mode {
+        BrowserMode::Columns | BrowserMode::List => tenxer_listing_navigation(mode),
+        BrowserMode::Icons => {
+            let mut shortcuts = vec![
+                ("↑ ↓ ← →", "Move spatially between tiles"),
+                ("Enter", "Open the focused item"),
+            ];
+            shortcuts.extend_from_slice(&[
+                ("Backspace / Alt+↑", "Go to the parent folder"),
+                ("Alt+← / Alt+→", "Back / forward in history"),
+                ("Alt+Home", "Go to Home"),
+                ("Home / End", "First / last item"),
+                ("Ctrl+↑ / Ctrl+↓", "First / last item"),
+                ("PgUp / PgDn", "Move one page"),
+            ]);
+            shortcuts
+        }
+    }
+}
+
+fn tenxer_listing_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
+    let mut shortcuts = vec![
+        ("j / k / ↑ / ↓", "Next / previous item"),
+        ("h / ← / Backspace / Alt+↑", "Go to the parent folder"),
+        ("l / →", "Open the focused directory"),
+    ];
+    if mode == BrowserMode::Columns {
+        shortcuts.push(("i", "Open the next column for the focused directory"));
+    }
     shortcuts.extend_from_slice(&[
-        ("Backspace / Alt+↑", "Go to the parent folder"),
-        ("Alt+← / Alt+→", "Back / forward in history"),
+        ("Enter / o", "Open the focused item"),
+        ("H / L / Alt+← / Alt+→", "Back / forward in history"),
         ("Alt+Home", "Go to Home"),
-        ("Home / End", "First / last item"),
+        ("Home", "First item"),
+        ("G / End", "Last item"),
         ("Ctrl+↑ / Ctrl+↓", "First / last item"),
-        ("PgUp / PgDn", "Move one page"),
+        ("Ctrl+U / Ctrl+D", "Move half a page"),
+        ("Ctrl+B / Ctrl+F / PgUp / PgDn", "Move one page"),
     ]);
     shortcuts
 }
@@ -676,7 +704,6 @@ const DEFAULT_FILES: &[(&str, &str)] = &[
 ];
 
 const TENXER_FILES: &[(&str, &str)] = &[
-    ("Enter", "Open the focused item"),
     ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
     ("Ctrl+V", "Paste into the indicated directory"),
     ("Delete", "Move selected items to Trash, when supported"),

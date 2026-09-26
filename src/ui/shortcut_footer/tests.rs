@@ -300,8 +300,14 @@ fn tenxer_reference_follows_the_active_map() {
             assert!(
                 columns
                     .iter()
-                    .any(|label| label == "Parent pane / enter folder")
+                    .any(|label| label == "Open the focused directory")
             );
+            assert!(
+                columns
+                    .iter()
+                    .any(|label| label == "Open the next column for the focused directory")
+            );
+            assert!(columns.iter().any(|label| label == "Move half a page"));
             assert!(!columns.iter().any(|label| label == "Toggle file preview"));
             assert!(
                 !columns
@@ -318,8 +324,9 @@ fn tenxer_reference_follows_the_active_map() {
             assert!(
                 !icons
                     .iter()
-                    .any(|label| label == "Parent pane / enter folder")
+                    .any(|label| label == "Open the focused directory")
             );
+            assert!(!icons.iter().any(|label| label == "Move half a page"));
 
             footer.handle_key(gdk::Key::F1, none);
             settle();
@@ -353,10 +360,16 @@ fn tenxer_reference_follows_the_active_map() {
 
             let other = ShortcutFooter::new(BrowserMode::List);
             other.bind_preferences(&manager);
+            let list = reference_labels(&other);
+            assert!(list.iter().any(|label| label == "Leave 10xer mode"));
             assert!(
-                reference_labels(&other)
+                list.iter()
+                    .any(|label| label == "Open the focused directory")
+            );
+            assert!(
+                !list
                     .iter()
-                    .any(|label| label == "Leave 10xer mode")
+                    .any(|label| label == "Open the next column for the focused directory")
             );
             manager.set_tenxer_mode(false);
             settle();
