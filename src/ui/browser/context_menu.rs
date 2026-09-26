@@ -1635,10 +1635,27 @@ pub(super) fn preview_context_entry(
     if let Some(position) = current_context_position(state, depth, position, &entry) {
         state.browser.preview(depth, position);
     } else {
-        if let Some(path) = entry.location.native_path() {
-            state.mode_views.borrow().select_search_result(path);
-        }
+        let path = entry
+            .location
+            .native_path()
+            .map(std::path::Path::to_path_buf);
         state.browser.request_preview(entry);
+        if let Some(path) = path {
+            let weak = Rc::downgrade(state);
+            // Grid reflow after opening the preview can replace search selection.
+            let frames = std::cell::Cell::new(0);
+            state.overlay.add_tick_callback(move |_, _| {
+                let frame = frames.get() + 1;
+                frames.set(frame);
+                if frame < 2 {
+                    return glib::ControlFlow::Continue;
+                }
+                if let Some(state) = weak.upgrade() {
+                    state.mode_views.borrow().select_search_result(&path);
+                }
+                glib::ControlFlow::Break
+            });
+        }
     }
 }
 
