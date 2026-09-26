@@ -23,13 +23,16 @@ fn a_completed_trash_operation_can_be_undone_once() {
         duration_seconds: MetadataValue::Unknown,
     };
 
+    assert!(!browser.can_undo());
     browser.delete(vec![entry], false);
 
     assert_eq!(
         pending_undo_entry(),
         Some(UndoEntry::Trash(vec![location.clone()]))
     );
+    assert!(browser.can_undo());
     assert!(browser.undo_last_trash());
+    assert!(!browser.can_undo());
     assert!(!browser.undo_last_trash());
 }
 
@@ -142,7 +145,9 @@ fn a_copy_that_created_nothing_leaves_the_previous_undo_current() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
     browser.delete(vec![fixture_entry("/fixture/report.txt")], false);
+    assert!(browser.can_undo());
     let request_id = browser.begin_operation();
+    assert!(!browser.can_undo());
     browser.transfer_operation.set(Some(false));
     browser
         .transfer_destination
@@ -154,6 +159,7 @@ fn a_copy_that_created_nothing_leaves_the_previous_undo_current() {
         locations: vec![Location::local("/fixture/note.txt")],
     });
 
+    assert!(browser.can_undo());
     assert_eq!(
         pending_undo_entry(),
         Some(UndoEntry::Trash(vec![Location::local(
@@ -306,15 +312,19 @@ fn a_cancelled_copy_records_the_destinations_it_reached() {
 
 #[test]
 fn a_partial_copy_undo_keeps_the_destinations_still_to_remove() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
     let first = Location::local("/fixture/archive/first.txt");
     let second = Location::local("/fixture/archive/second.txt");
     push_pending_undo(UndoEntry::Copy(vec![first.clone(), second.clone()]));
+    assert!(browser.can_undo());
     let (generation, _) = claim_pending_undo(None).expect("undo claim");
+    assert!(!browser.can_undo());
 
     mark_replay_item_completed(false, generation, &first);
     finish_undo(generation, false);
 
     assert_eq!(pending_undo_entry(), Some(UndoEntry::Copy(vec![second])));
+    assert!(browser.can_undo());
 }
 
 #[test]

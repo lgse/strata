@@ -1,0 +1,343 @@
+// SPDX-License-Identifier: MIT
+
+use super::*;
+use crate::model::Location;
+
+fn descendant<T: IsA<gtk::Widget> + glib::object::IsClass>(widget: &gtk::Widget) -> Option<T> {
+    if let Ok(found) = widget.clone().downcast::<T>() {
+        return Some(found);
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if let Some(found) = descendant(&widget) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn press(widget: &impl IsA<gtk::Widget>, key: Key, modifiers: ModifierType) -> bool {
+    let root = widget
+        .as_ref()
+        .root()
+        .map(|root| root.upcast::<gtk::Widget>())
+        .unwrap_or_else(|| widget.as_ref().clone());
+    let controllers = root.observe_controllers();
+    (0..controllers.n_items())
+        .filter_map(|i| {
+            controllers
+                .item(i)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .filter(|keys| keys.propagation_phase() == gtk::PropagationPhase::Capture)
+        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
+}
+
+fn wait_for(condition: impl Fn() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !condition() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "palette interaction completed"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+fn search(fixture: &Fixture, query: &str) -> gtk::Widget {
+    fixture
+        .window
+        .lookup_action("command-palette")
+        .expect("palette action")
+        .activate(None);
+    let layer = fixture
+        .layer("command-palette-backdrop")
+        .expect("palette layer");
+    assert!(layer.is_visible());
+    descendant::<gtk::Entry>(&layer)
+        .expect("palette search field")
+        .set_text(query);
+    layer
+}
+
+#[test]
+fn palette_keyboard_dismissal_modal_handoff_and_live_view_preferences() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_keyboard_dismissal_modal_handoff_and_live_view_preferences",
+        || {
+            let fixture = Fixture::new();
+            let second = Fixture::new();
+            fixture.content.browser.begin_location_edit();
+            let before = gtk::prelude::RootExt::focus(&fixture.window);
+            assert!(press(
+                &fixture.window,
+                Key::P,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
+            let layer = fixture
+                .layer("command-palette-backdrop")
+                .expect("palette layer");
+            assert!(layer.is_visible());
+            let field = descendant::<gtk::Entry>(&layer).expect("palette search field");
+            field.set_text("no such command zzzzz");
+            assert!(press(&layer, Key::Return, ModifierType::empty()));
+            assert!(layer.is_visible());
+            assert!(press(&layer, Key::Escape, ModifierType::empty()));
+            assert_eq!(gtk::prelude::RootExt::focus(&fixture.window), before);
+            fixture.content.browser.cancel_location_edit();
+
+            for (query, mode) in [
+                ("Switch to Icons", BrowserMode::Icons),
+                ("Switch to List", BrowserMode::List),
+                ("Switch to Columns", BrowserMode::Columns),
+            ] {
+                let layer = search(&fixture, query);
+                press(&layer, Key::Return, ModifierType::empty());
+                assert!(!layer.is_visible());
+                assert_eq!(fixture.content.browser.view_mode(), mode);
+                assert_eq!(second.content.browser.view_mode(), mode);
+                assert_eq!(fixture.preferences.browser_mode(), mode);
+            }
+            let layer = search(&fixture, "preferences");
+            press(&layer, Key::Return, ModifierType::empty());
+            assert!(!layer.is_visible());
+            assert!(
+                fixture
+                    .layer("settings-backdrop")
+                    .expect("settings layer")
+                    .is_visible()
+            );
+            fixture
+                .window
+                .lookup_action("command-palette")
+                .expect("palette action")
+                .activate(None);
+            assert!(!layer.is_visible(), "palette does not stack above Settings");
+            fixture.close();
+            second.close();
+        },
+    );
+}
+
+#[test]
+fn palette_file_commands_keep_selection_and_disabled_commands_do_not_run() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_file_commands_keep_selection_and_disabled_commands_do_not_run",
+        || {
+            let fixture = Fixture::new();
+            let directory = tempfile::tempdir().expect("fixture directory");
+            std::fs::write(directory.path().join("chosen.txt"), b"chosen").expect("chosen fixture");
+            std::fs::write(directory.path().join("other.txt"), b"other").expect("other fixture");
+            let view = &fixture.content.browser;
+            view.browser().navigate(Location::local(directory.path()));
+            wait_for(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                super::super::super::apply_browser_mode(view, &fixture.preferences, mode);
+                view.browser().select(0, 0);
+                view.browser().focus_active();
+                wait_for(|| view.item_view_has_focus());
+                let selected = view.browser().selected_entries();
+                let layer = search(&fixture, "copy path");
+                press(&layer, Key::Return, ModifierType::empty());
+                assert!(!layer.is_visible());
+                let text = glib::MainContext::default()
+                    .block_on(fixture.window.clipboard().read_text_future())
+                    .expect("read clipboard")
+                    .expect("copied path text");
+                assert_eq!(
+                    text.as_str(),
+                    selected[0]
+                        .location
+                        .native_path()
+                        .expect("local fixture path")
+                        .to_str()
+                        .expect("UTF-8 fixture path")
+                );
+                assert_eq!(
+                    view.browser().selected_entries()[0].location,
+                    selected[0].location
+                );
+                view.browser().clear_active_selection();
+                let layer = search(&fixture, "duplicate");
+                press(&layer, Key::Return, ModifierType::empty());
+                assert!(layer.is_visible(), "unavailable command keeps palette open");
+                assert_eq!(
+                    descendant::<gtk::Entry>(&layer)
+                        .expect("palette search field")
+                        .text(),
+                    "duplicate",
+                    "unavailable command preserves the query"
+                );
+                press(&layer, Key::Escape, ModifierType::empty());
+            }
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn palette_reopening_resets_scroll_after_escape_and_execution() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_reopening_resets_scroll_after_escape_and_execution",
+        || {
+            let fixture = Fixture::new();
+            for dismiss in [Key::Escape, Key::Return] {
+                let layer = search(&fixture, "");
+                let list = descendant::<gtk::ListBox>(&layer).expect("command list");
+                let scroller = list
+                    .ancestor(gtk::ScrolledWindow::static_type())
+                    .and_downcast::<gtk::ScrolledWindow>()
+                    .expect("command scroller");
+                let adjustment = scroller.vadjustment();
+                wait_for(|| adjustment.upper() > adjustment.page_size());
+                let command = std::iter::successors(list.row_at_index(0), |row| {
+                    list.row_at_index(row.index() + 1)
+                })
+                .find(|row| {
+                    descendant::<gtk::Label>(row.upcast_ref())
+                        .is_some_and(|label| label.text() == "Switch to Icons")
+                })
+                .expect("view command");
+                list.select_row(Some(&command));
+                adjustment.set_value(adjustment.upper());
+                assert!(adjustment.value() > adjustment.lower(), "list is scrolled");
+                assert!(press(&fixture.window, dismiss, ModifierType::empty()));
+                assert!(!layer.is_visible());
+                if dismiss == Key::Return {
+                    assert_eq!(fixture.content.browser.view_mode(), BrowserMode::Icons);
+                }
+                search(&fixture, "");
+                assert_eq!(
+                    adjustment.value(),
+                    adjustment.lower(),
+                    "reopening after {dismiss:?} starts at the top"
+                );
+                assert!(press(&fixture.window, Key::Escape, ModifierType::empty()));
+            }
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn palette_defers_keyboard_to_a_newer_error_dialog() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_defers_keyboard_to_a_newer_error_dialog",
+        || {
+            let fixture = Fixture::new();
+            let original_mode = fixture.content.browser.view_mode();
+            let layer = search(&fixture, "Switch to Icons");
+            crate::ui::modal::show_error_dialog(
+                &fixture.window,
+                "Unable to complete operation",
+                "Background copy failed",
+            );
+            let error = super::super::super::visible_modal_layer(&fixture.window)
+                .expect("foreground error dialog");
+            assert_ne!(error, layer);
+            for key in [Key::Return, Key::Up, Key::Down, Key::Escape] {
+                assert!(
+                    !press(&fixture.window, key, ModifierType::empty()),
+                    "window controllers must leave the key to the foreground dialog"
+                );
+            }
+            fixture
+                .window
+                .lookup_action("command-palette")
+                .expect("palette action")
+                .activate(None);
+            assert!(layer.is_visible());
+            assert_eq!(fixture.content.browser.view_mode(), original_mode);
+            let field = descendant::<gtk::Entry>(&layer).expect("palette search field");
+            assert_eq!(field.text(), "Switch to Icons");
+
+            let controllers = error.observe_controllers();
+            assert!(
+                (0..controllers.n_items())
+                    .filter_map(|index| {
+                        controllers
+                            .item(index)
+                            .and_downcast::<gtk::EventControllerKey>()
+                    })
+                    .any(|keys| keys.emit_by_name::<bool>(
+                        "key-pressed",
+                        &[&Key::Escape, &0u32, &ModifierType::empty()],
+                    ))
+            );
+            wait_for(|| error.parent().is_none());
+            assert!(layer.is_visible());
+            assert_eq!(field.text(), "Switch to Icons");
+            assert!(field.grab_focus_without_selecting());
+            assert!(press(&fixture.window, Key::Return, ModifierType::empty()));
+            assert!(!layer.is_visible());
+            assert_eq!(fixture.content.browser.view_mode(), BrowserMode::Icons);
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn palette_undo_becomes_available_after_background_copy_completes() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_undo_becomes_available_after_background_copy_completes",
+        || {
+            let fixture = Fixture::new();
+            let directory = tempfile::tempdir().expect("fixture directory");
+            let source = directory.path().join("original.txt");
+            let destination = directory.path().join("copies");
+            std::fs::write(&source, b"original").expect("source fixture");
+            std::fs::create_dir(&destination).expect("destination fixture");
+            let browser = fixture.content.browser.browser();
+            browser.navigate(Location::local(directory.path()));
+            wait_for(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            assert!(!browser.can_undo());
+            let layer = search(&fixture, "undo");
+
+            browser.transfer(
+                Location::local(&destination),
+                vec![crate::services::PasteItem {
+                    source: Location::local(&source),
+                    conflict: crate::services::TransferConflict::FailIfExists,
+                }],
+                false,
+                true,
+            );
+            wait_for(|| browser.can_undo());
+            let copied = destination.join("original.txt");
+            assert_eq!(std::fs::read(&copied).expect("completed copy"), b"original");
+            let field = descendant::<gtk::Entry>(&layer).expect("palette search field");
+            assert_eq!(field.text(), "undo");
+            let list = descendant::<gtk::ListBox>(&layer).expect("command list");
+            assert!(
+                list.selected_row().is_some(),
+                "Undo stays selected after copying"
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&fixture.window)
+                    .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer)),
+                "background completion keeps focus in the palette"
+            );
+            assert!(press(&layer, Key::Return, ModifierType::empty()));
+            assert!(
+                !layer.is_visible(),
+                "newly available Undo executes without reopening"
+            );
+            wait_for(|| !copied.exists() && !browser.can_undo());
+            assert_eq!(
+                std::fs::read(&source).expect("original survives Undo"),
+                b"original"
+            );
+            fixture.close();
+        },
+    );
+}

@@ -13,8 +13,12 @@ use super::{SidebarView, TypeToSearch, keyboard};
 
 mod input;
 mod layout;
+mod palette;
 mod search;
 mod settings;
+
+#[cfg(test)]
+mod tests;
 
 pub(super) struct WindowContent {
     pub(super) browser: BrowserView,
@@ -61,12 +65,25 @@ impl WindowContent {
         search::install(window, self, preferences);
         install_browser_actions(window, &self.browser, preferences);
         let notice = settings::install(window, self, preferences);
+        palette::install(window, self, preferences);
         window.set_child(Some(&self.overlay));
         let click_browser = self.browser.clone();
         let click_window = window.clone();
+        let commands_button = self.header.commands.clone();
         let click = gtk::GestureClick::new();
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         click.connect_pressed(move |_, _, x, y| {
+            let on_commands = click_window
+                .pick(x, y, gtk::PickFlags::DEFAULT)
+                .is_some_and(|target| {
+                    target == commands_button || target.is_ancestor(&commands_button)
+                });
+            if on_commands
+                || super::visible_modal_layer(&click_window)
+                    .is_some_and(|layer| layer.has_css_class("command-palette-backdrop"))
+            {
+                return;
+            }
             click_browser.dismiss_filter_on_outside_click(
                 click_window.upcast_ref::<gtk::Widget>(),
                 x,

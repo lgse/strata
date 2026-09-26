@@ -40,6 +40,7 @@ const MEDIA: &[Shortcut] = &[
 ];
 
 const TOOLS: &[Shortcut] = &[
+    ("Ctrl+Shift+P", "Open command palette"),
     ("Ctrl+F", "Filter the current pane"),
     ("Ctrl+K", "Open global search"),
     ("Ctrl+Shift+K", "Jump to a recent folder"),

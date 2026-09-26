@@ -44,6 +44,7 @@ mod events;
 pub(super) mod fly_to_trash;
 mod inline_edit;
 mod location;
+pub(in crate::ui) mod palette;
 mod pane_header;
 pub(in crate::ui) mod paths;
 mod peek;

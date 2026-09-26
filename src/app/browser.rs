@@ -1981,6 +1981,17 @@ impl Browser {
         peek_replay(redo)
     }
 
+    pub(crate) fn can_undo(&self) -> bool {
+        self.current_operation.get().is_none()
+            && PENDING_UNDO.with(|pending| {
+                pending
+                    .borrow()
+                    .history
+                    .last()
+                    .is_some_and(|latest| !latest.claimed)
+            })
+    }
+
     pub fn pending_undo_move(&self) -> Option<(u64, Vec<MoveRecord>)> {
         match self.pending_replay_entry(false)? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
