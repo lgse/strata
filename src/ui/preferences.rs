@@ -61,7 +61,7 @@ pub(in crate::ui) struct Preferences {
     #[serde(default)]
     arrow_navigation_scoped: bool,
     #[serde(default)]
-    omastrata_mode: bool,
+    tenxer_mode: bool,
     #[serde(default = "default_enabled")]
     filter_include_subfolders: bool,
     #[serde(default = "default_enabled")]
@@ -166,7 +166,7 @@ impl Default for Preferences {
             search_open_files_directly: false,
             type_to_search: true,
             arrow_navigation_scoped: false,
-            omastrata_mode: false,
+            tenxer_mode: false,
             filter_include_subfolders: true,
             show_keybinding_hints: true,
             reduce_motion: false,
@@ -603,24 +603,23 @@ impl PreferenceManager {
         self.save_preferences();
     }
 
-    pub fn omastrata_mode(&self) -> bool {
-        self.preferences.borrow().omastrata_mode
+    pub fn tenxer_mode(&self) -> bool {
+        self.preferences.borrow().tenxer_mode
     }
 
-    pub fn set_omastrata_mode(&self, enabled: bool) {
-        self.preferences.borrow_mut().omastrata_mode = enabled;
+    pub fn set_tenxer_mode(&self, enabled: bool) {
+        self.preferences.borrow_mut().tenxer_mode = enabled;
         self.save_preferences();
     }
 
-    /// Saved type-to-search is ignored while Omastrata mode is on.
     pub fn type_to_search_active(&self) -> bool {
-        self.type_to_search() && !self.omastrata_mode()
+        self.type_to_search() && !self.tenxer_mode()
     }
 
-    /// Arrows stay in the file panes while Omastrata mode is on.
+    /// Arrows stay in the file panes while 10xer mode is on.
     /// The saved preference applies only while that mode is off.
     pub fn arrow_navigation_scoped_active(&self) -> bool {
-        self.omastrata_mode() || self.arrow_navigation_scoped()
+        self.tenxer_mode() || self.arrow_navigation_scoped()
     }
 
     pub fn show_keybinding_hints(&self) -> bool {

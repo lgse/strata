@@ -56,8 +56,8 @@ impl KeyboardFixture {
         let preferences = PreferenceManager::shared();
         // Keyboard focus-return scenarios need a place to focus; the saved fixture hides all places.
         preferences.set_sidebar_show_home(true);
-        // The exhaustive fixture enables Omastrata, which replaces this default map.
-        preferences.set_omastrata_mode(false);
+        // The exhaustive fixture enables 10xer, which replaces this default map.
+        preferences.set_tenxer_mode(false);
         let directory = tempfile::tempdir().expect("fixture");
         for name in ["a.txt", "b.txt", "c.txt"] {
             std::fs::write(directory.path().join(name), b"preview").expect("fixture file");
@@ -202,14 +202,14 @@ fn wait_until(condition: impl Fn() -> bool) {
 }
 
 #[test]
-fn omastrata_keeps_keyboard_navigation_inside_the_file_panes() {
+fn tenxer_keeps_keyboard_navigation_inside_the_file_panes() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::omastrata_keeps_keyboard_navigation_inside_the_file_panes",
+        "ui::window::tests::keyboard_dispatch::tenxer_keeps_keyboard_navigation_inside_the_file_panes",
         || {
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
             preferences.set_arrow_navigation_scoped(false);
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 fixture.view.set_view_mode(mode);
                 fixture.window.present();
@@ -310,7 +310,7 @@ fn omastrata_keeps_keyboard_navigation_inside_the_file_panes() {
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
             assert!(!fixture.view.location_has_focus());
 
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             fixture.view.set_view_mode(BrowserMode::List);
             fixture.view.browser().select(0, 0);
             focus_files(&fixture);
@@ -321,15 +321,15 @@ fn omastrata_keeps_keyboard_navigation_inside_the_file_panes() {
 }
 
 #[test]
-fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
+fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts",
+        "ui::window::tests::keyboard_dispatch::tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts",
         || {
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
             preferences.set_type_to_search(true);
             preferences.set_arrow_navigation_scoped(true);
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             let jumps = Rc::new(Cell::new(0));
             let observed = jumps.clone();
             let action = gio::SimpleAction::new("jump-folder", None);
@@ -372,7 +372,7 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 assert!(!fixture.preview.is_open(), "{key:?} must not preview");
                 assert!(!fixture.view.rename_is_active(), "{key:?}");
                 assert!(
-                    preferences.omastrata_mode(),
+                    preferences.tenxer_mode(),
                     "{key:?} must not leave the mode"
                 );
             }
@@ -384,13 +384,13 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 assert!(!fixture.preview.is_open(), "{key:?} must not preview");
                 assert!(!fixture.view.rename_is_active(), "{key:?}");
                 assert!(
-                    preferences.omastrata_mode(),
+                    preferences.tenxer_mode(),
                     "{key:?} must not leave the mode"
                 );
             }
             select_named(&fixture, "folder");
             fixture.press(Key::p, ModifierType::empty());
-            assert_eq!(pins.get(), 0, "p must not pin while Omastrata is on");
+            assert_eq!(pins.get(), 0, "p must not pin while 10xer is on");
             fixture.view.browser().select(0, 0);
             focus_files(&fixture);
             let control = ModifierType::CONTROL_MASK;
@@ -409,7 +409,7 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             assert_eq!(
                 directory_names(fixture._directory.path()),
                 names_before_paging,
-                "Ctrl+D must not duplicate while Omastrata is on"
+                "Ctrl+D must not duplicate while 10xer is on"
             );
             fixture.view.browser().select(0, 0);
             focus_files(&fixture);
@@ -439,7 +439,7 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             );
             assert!(preferences.arrow_navigation_scoped());
             assert_eq!(fixture.selected(), [0]);
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
 
             let text_size = preferences.text_size().root_font_px();
             assert!(fixture.press(Key::plus, control));
@@ -512,7 +512,7 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             ] {
                 fixture.press(Key::q, modifier);
                 assert!(
-                    preferences.omastrata_mode(),
+                    preferences.tenxer_mode(),
                     "{modifier:?}+q must not leave the mode"
                 );
                 assert!(fixture.window.is_visible());
@@ -521,14 +521,14 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                     fixture.window.is_visible(),
                     "{modifier:?}+Shift+Q must not close the window"
                 );
-                assert!(preferences.omastrata_mode());
+                assert!(preferences.tenxer_mode());
             }
             assert_eq!(
                 directory_names(fixture._directory.path()),
                 names_before_quit
             );
             assert!(fixture.press(Key::q, ModifierType::empty()));
-            assert!(!preferences.omastrata_mode());
+            assert!(!preferences.tenxer_mode());
             assert!(fixture.window.is_visible());
             focus_files(&fixture);
             assert!(fixture.press(Key::s, ModifierType::empty()));
@@ -556,24 +556,24 @@ fn omastrata_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             assert_ne!(fixture.selected(), [0], "home row moves again");
             assert!(!fixture.press(Key::backslash, control));
             assert!(preferences.arrow_navigation_scoped());
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             let other = gtk::Window::new();
             other.present();
             assert!(fixture.press(Key::Q, ModifierType::SHIFT_MASK));
             assert!(!fixture.window.is_visible());
             assert!(other.is_visible());
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
         },
     );
 }
 
 #[test]
-fn appearance_menu_hides_space_preview_while_omastrata_is_on() {
+fn appearance_menu_hides_space_preview_while_tenxer_is_on() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::appearance_menu_hides_space_preview_while_omastrata_is_on",
+        "ui::window::tests::keyboard_dispatch::appearance_menu_hides_space_preview_while_tenxer_is_on",
         || {
             let preferences = PreferenceManager::shared();
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             let view = browser_for_window();
             let preview = PreviewDrawer::new(Rc::new(TextPreview), false);
             let menu = build_appearance_menu(&view, &view.browser(), preferences.clone(), &preview);
@@ -589,13 +589,13 @@ fn appearance_menu_hides_space_preview_while_omastrata_is_on() {
                 toggle.tooltip_text().as_deref(),
                 Some("Toggle preview panel while browsing (Space)")
             );
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             assert_eq!(preview_shortcut(&toggle), "");
             assert_eq!(
                 toggle.tooltip_text().as_deref(),
                 Some("Toggle preview panel while browsing")
             );
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             assert_eq!(preview_shortcut(&toggle), "Space");
             window.destroy();
         },
@@ -617,7 +617,7 @@ fn hidden_shortcut_button_keeps_prompt_chord_and_feedback_usable() {
         || {
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             preferences.set_show_keybinding_hints(false);
             fixture.shortcuts.bind_preferences(&preferences);
             pump(50);
@@ -666,7 +666,7 @@ fn hidden_shortcut_button_keeps_prompt_chord_and_feedback_usable() {
                 "Copied"
             ));
             assert!(fixture.shortcuts.chord().is_visible());
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             pump(50);
             assert!(!fixture.shortcuts.chord().is_visible());
             assert!(fixture.shortcuts.chord().text().is_empty());
@@ -693,13 +693,13 @@ fn widget_text_visible(widget: &gtk::Widget, text: &str) -> bool {
 }
 
 #[test]
-fn omastrata_entries_menus_and_reference_keep_their_keys() {
+fn tenxer_entries_menus_and_reference_keep_their_keys() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::omastrata_entries_menus_and_reference_keep_their_keys",
+        "ui::window::tests::keyboard_dispatch::tenxer_entries_menus_and_reference_keep_their_keys",
         || {
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             let names = directory_names(fixture._directory.path());
             focus_files(&fixture);
             assert!(fixture.press(Key::F2, ModifierType::empty()));
@@ -709,7 +709,7 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
             for key in [Key::q, Key::d, Key::p, Key::a] {
                 assert!(!fixture.press(key, ModifierType::empty()), "{key:?}");
                 assert_eq!(field.text(), "kept.txt");
-                assert!(preferences.omastrata_mode());
+                assert!(preferences.tenxer_mode());
                 assert_eq!(fixture.selected(), [0]);
                 assert_eq!(directory_names(fixture._directory.path()), names);
             }
@@ -730,7 +730,7 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
             for key in [Key::q, Key::d, Key::p, Key::a] {
                 assert!(!fixture.press(key, ModifierType::empty()), "{key:?}");
                 assert_eq!(location.text(), "kept-location");
-                assert!(preferences.omastrata_mode());
+                assert!(preferences.tenxer_mode());
                 assert_eq!(fixture.selected(), [0]);
                 assert_eq!(directory_names(fixture._directory.path()), names);
                 assert!(fixture.view.location_has_focus());
@@ -744,13 +744,13 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
                 Key::m,
                 ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK
             ));
-            assert!(!preferences.omastrata_mode());
+            assert!(!preferences.tenxer_mode());
             assert!(fixture.view.location_has_focus());
             assert!(fixture.press(
                 Key::m,
                 ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK
             ));
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
 
             focus_files(&fixture);
@@ -760,7 +760,7 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
                     .is_some_and(|popover| popover.is_visible())
             });
             fixture.press(Key::q, ModifierType::empty());
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
             assert_eq!(directory_names(fixture._directory.path()), names);
             assert_eq!(fixture.selected(), [0]);
             fixture.press(Key::Delete, ModifierType::empty());
@@ -781,7 +781,7 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
             fixture.press(Key::q, ModifierType::empty());
             fixture.press(Key::d, ModifierType::empty());
             fixture.press(Key::a, ModifierType::empty());
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
             assert_eq!(directory_names(fixture._directory.path()), names);
             assert_eq!(fixture.selected(), [0]);
             visible_menu(fixture.window.upcast_ref())
@@ -798,10 +798,10 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
                 Key::m,
                 ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
             );
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
             assert!(modal.is_visible());
             let capture = fixture.press(Key::comma, ModifierType::CONTROL_MASK);
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
             assert!(modal.has_focus() || capture);
 
             let (window, content) = composed_window();
@@ -853,7 +853,7 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
                 Key::m,
                 ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
             );
-            assert!(preferences.omastrata_mode());
+            assert!(preferences.tenxer_mode());
             assert!(blocking.is_visible());
             window.destroy();
         },
@@ -861,13 +861,13 @@ fn omastrata_entries_menus_and_reference_keep_their_keys() {
 }
 
 #[test]
-fn omastrata_list_and_columns_move_enter_and_traverse_history() {
+fn tenxer_list_and_columns_move_enter_and_traverse_history() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::omastrata_list_and_columns_move_enter_and_traverse_history",
+        "ui::window::tests::keyboard_dispatch::tenxer_list_and_columns_move_enter_and_traverse_history",
         || {
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             preferences.set_columns_mirror_selection(true);
             preferences.set_group_by_type(false);
             preferences.set_single_click_previews(true);
@@ -1151,7 +1151,7 @@ fn omastrata_list_and_columns_move_enter_and_traverse_history() {
             wait_loaded(&browser, 1);
             assert!(location_ends_with(browser.location_at(1), "nest"));
 
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             assert!(
                 fixture.view.columns_mirror_selection_enabled(),
                 "turning the mode off restores saved column mirroring"
@@ -1159,7 +1159,7 @@ fn omastrata_list_and_columns_move_enter_and_traverse_history() {
 
             browser.navigate(Location::local("/"));
             wait_loaded(&browser, 0);
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             focus_files(&fixture);
             let filesystem_root = browser.active_location();
             fixture.press(Key::h, ModifierType::empty());
@@ -1173,7 +1173,7 @@ fn omastrata_list_and_columns_move_enter_and_traverse_history() {
                     .is_some_and(|column| !column.loading)
             );
 
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             browser.navigate(Location::local(&root));
             wait_loaded(&browser, 0);
             fixture.view.set_view_mode(BrowserMode::List);
@@ -1191,7 +1191,7 @@ fn omastrata_list_and_columns_move_enter_and_traverse_history() {
             fixture.press(Key::b, ModifierType::CONTROL_MASK);
             assert!(!fixture.sidebar_toggle.is_active());
 
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             focus_files(&fixture);
             move_to_named(&fixture, &browser, "a.txt");
             let opened = Rc::new(RefCell::new(Vec::new()));
@@ -1232,13 +1232,13 @@ fn omastrata_list_and_columns_move_enter_and_traverse_history() {
 }
 
 #[test]
-fn omastrata_icons_move_spatially_open_explicitly_and_peek() {
+fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::omastrata_icons_move_spatially_open_explicitly_and_peek",
+        "ui::window::tests::keyboard_dispatch::tenxer_icons_move_spatially_open_explicitly_and_peek",
         || {
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
-            preferences.set_omastrata_mode(true);
+            preferences.set_tenxer_mode(true);
             preferences.set_folder_peeking(false);
             preferences.set_single_click_previews(true);
             let browser = fixture.view.browser();

@@ -242,6 +242,7 @@ pub(crate) fn content_family(content_type: &str) -> PreviewContent {
             "application/json"
                 | "application/ld+json"
                 | "application/toml"
+                | "application/yaml"
                 | "application/x-yaml"
                 | "application/xml"
                 | "application/javascript"

@@ -45,7 +45,7 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     content.append(&reference);
     let experimental = gtk::Label::new(None);
     experimental.add_css_class("settings-option-description");
-    experimental.add_css_class("omastrata-experimental");
+    experimental.add_css_class("tenxer-experimental");
     experimental.set_xalign(0.0);
     experimental.set_wrap(true);
     experimental.set_wrap_mode(gtk::pango::WrapMode::WordChar);
@@ -107,7 +107,7 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     let search_for_mode = search.clone();
     manager.bind_preference(
         &reference,
-        PreferenceManager::omastrata_mode,
+        PreferenceManager::tenxer_mode,
         move |_, enabled| {
             experimental_for_mode.set_text(if enabled {
                 shortcut_reference::EXPERIMENTAL_LABEL
@@ -122,11 +122,11 @@ pub(super) fn keybindings_page(manager: Rc<PreferenceManager>) -> gtk::Widget {
     scrollable_page(&content, Some("settings-keybindings-scroll"))
 }
 
-fn rebuild_bindings(list: &gtk::Box, groups: &KeybindingGroups, omastrata: bool) {
+fn rebuild_bindings(list: &gtk::Box, groups: &KeybindingGroups, tenxer: bool) {
     while let Some(child) = list.first_child() {
         list.remove(&child);
     }
-    let bindings = shortcut_reference::settings_bindings(omastrata);
+    let bindings = shortcut_reference::settings_bindings(tenxer);
     let mut built = Vec::new();
     let mut index = 0;
     while index < bindings.len() {

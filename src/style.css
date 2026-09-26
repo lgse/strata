@@ -2831,8 +2831,8 @@ entry.preview-command-entry selection {
 }
 
 .shortcut-footer-count,
-.omastrata-tag,
-.omastrata-experimental,
+.tenxer-tag,
+.tenxer-experimental,
 .shortcut-footer-chord,
 .shortcut-footer-feedback {
   color: @theme_text;

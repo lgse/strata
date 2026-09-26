@@ -1,7 +1,7 @@
 # Custom actions
 
 Custom actions add your own scripts to the file and folder context menus. In
-[Omastrata mode](omastrata-mode.md), **;** then **1**–**9** / **0** runs the first
+[10xer mode](10xer-mode.md), **;** then **1**–**9** / **0** runs the first
 ten matching actions on the focused item or filled selection.
 
 They are ordinary programs running with your permissions. There is no sandbox and
@@ -91,7 +91,7 @@ Code replacement can be undone in the editor; drafts for the other runtimes are 
 Escape or clicking outside closes only the dropdown, leaving the editor open.
 Searching, browsing, or applying a template never saves or executes it. Review
 and save the action, then launch it from its file/folder context menu or, in
-Omastrata mode, **;** then a digit.
+10xer mode, **;** then a digit.
 
 The documented Python starter and every Python recipe include the same maintained
 [`context()` reference](../data/actions/context-api.txt) as a module docstring.
@@ -299,7 +299,9 @@ Other properties are `parent` (invoking folder, not necessarily the working
 directory), `directory` (action directory), `run_directory` (private scratch,
 removed after the invocation), `action_id`, `version`, `metadata` (raw JSON),
 `mode`, `source`, and the optional 1-based per-item `position` and `total`.
-`ctx.log(message)` writes to captured stdout. `ctx.progress(processed,
+`ctx.log(message)` writes to captured stdout. Bytes that are not Unicode
+are escaped, so logging a native path still succeeds when the locale uses a
+strict UTF-8 stdout. `ctx.progress(processed,
 total=None, message=None)` reports invocation-local work; `ctx.output(path)`
 reports an absolute output path, but does not create a file. Output reporting is
 best-effort: names containing non-UTF-8 bytes cannot be represented by the JSON

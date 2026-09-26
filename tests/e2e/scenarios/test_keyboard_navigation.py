@@ -4,9 +4,6 @@
 from __future__ import annotations
 
 import pytest
-from PIL import Image
-
-from harness.interaction import keysym
 from harness.modes import ALL_MODES, COLUMNS_AND_ONE, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
@@ -69,13 +66,13 @@ def test_arrow_scope_keeps_focus_in_files_and_toggles_live(strata, mode, binding
 
 
 @pytest.mark.preferences(browser_mode="icons", type_to_search=False)
-def test_omastrata_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
+def test_tenxer_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
     """Home-row Icons motion, including an edge, an empty folder, search hits, and i."""
 
     strata.keyboard.press("ctrl+shift+m")
     strata.wait(
-        lambda: strata.environment.read_preferences().get("omastrata_mode") == "true",
-        "Omastrata mode to turn on",
+        lambda: strata.environment.read_preferences().get("tenxer_mode") == "true",
+        "10xer mode to turn on",
     )
     root = strata.current_directory()
     strata.keyboard.press("Home")
@@ -112,8 +109,8 @@ def test_omastrata_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
 
     strata.keyboard.press("ctrl+shift+m")
     strata.wait(
-        lambda: strata.environment.read_preferences().get("omastrata_mode") == "false",
-        "Omastrata mode to turn off",
+        lambda: strata.environment.read_preferences().get("tenxer_mode") == "false",
+        "10xer mode to turn off",
     )
     strata.keyboard.press("ctrl+f")
     strata.editable_field()
@@ -126,8 +123,8 @@ def test_omastrata_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
     )
     strata.keyboard.press("ctrl+shift+m")
     strata.wait(
-        lambda: strata.environment.read_preferences().get("omastrata_mode") == "true",
-        "Omastrata mode to turn on over search results",
+        lambda: strata.environment.read_preferences().get("tenxer_mode") == "true",
+        "10xer mode to turn on over search results",
     )
     before = strata.current_directory()
     shown = list(strata.matches())
@@ -137,6 +134,27 @@ def test_omastrata_icons_stay_on_tiles_at_edges_in_search_and_peek(strata):
     assert strata.matches() == shown, "directional keys dismissed the search results"
     assert strata.focused_name() in shown
     assert strata.peek() is None
+
+
+@pytest.mark.preferences(tenxer_mode=True, type_to_search=True)
+def test_tenxer_keeps_location_edit_and_skips_the_filter_shortcut(strata):
+    strata.select_entry("readme.md")
+    names = strata.entry_names()
+
+    strata.keyboard.press("ctrl+f")
+    strata.wait(
+        lambda: strata.window.find(role="text", states={"editable", "focused"}) is None,
+        "Ctrl+F does not open a filter while 10xer is on",
+    )
+    assert strata.entry_names() == names
+    assert strata.environment.read_preferences().get("tenxer_mode") == "true"
+
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("q")
+    strata.wait(lambda: "q" in field.text.lower(), "q is typed into the location field")
+    assert strata.environment.read_preferences().get("tenxer_mode") == "true"
+    assert strata.entry_names() == names
 
 
 @pytest.mark.preferences(browser_mode="icons")
