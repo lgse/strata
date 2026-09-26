@@ -299,6 +299,8 @@ fn generated_tool_content_is_pruned_without_hiding_tool_configuration() {
     let root = unique_fixture_root("tool-content");
     fs::create_dir_all(root.join(".cargo/registry")).expect("create Cargo registry fixture");
     fs::create_dir_all(root.join(".m2/repository")).expect("create Maven repository fixture");
+    fs::create_dir_all(root.join("go/pkg/mod/cache")).expect("create Go module cache fixture");
+    fs::create_dir_all(root.join("python/__pycache__")).expect("create Python pycache fixture");
     fs::write(root.join(".cargo/config-needle.toml"), b"[build]")
         .expect("write Cargo configuration fixture");
     fs::write(root.join(".m2/settings-needle.xml"), b"<settings />")
@@ -307,6 +309,10 @@ fn generated_tool_content_is_pruned_without_hiding_tool_configuration() {
         .expect("write generated Cargo fixture");
     fs::write(root.join(".m2/repository/artifact-needle"), b"generated")
         .expect("write generated Maven fixture");
+    fs::write(root.join("go/pkg/mod/cache/go-needle"), b"generated")
+        .expect("write generated Go fixture");
+    fs::write(root.join("python/__pycache__/pyc-needle"), b"generated")
+        .expect("write generated pycache fixture");
 
     let (search, events) = index_tree(root.clone(), true);
     search.query("needle");
@@ -326,6 +332,8 @@ fn generated_tool_content_is_pruned_without_hiding_tool_configuration() {
     assert!(names.contains(&"settings-needle.xml"));
     assert!(!names.contains(&"registry-needle"));
     assert!(!names.contains(&"artifact-needle"));
+    assert!(!names.contains(&"go-needle"));
+    assert!(!names.contains(&"pyc-needle"));
 }
 
 #[test]
