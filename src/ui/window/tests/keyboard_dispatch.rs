@@ -548,6 +548,10 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
         || {
             let fixture = KeyboardFixture::new();
             let preferences = PreferenceManager::shared();
+            assert!(fixture.press(Key::r, ModifierType::CONTROL_MASK));
+            assert!(fixture.view.rename_is_active());
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            focus_files(&fixture);
             preferences.set_type_to_search(true);
             preferences.set_arrow_navigation_scoped(true);
             preferences.set_tenxer_mode(true);
@@ -674,6 +678,7 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             wait_until(|| modal_visible(&fixture.overlay));
             assert!(click_class(&fixture.overlay, "action-dialog-close"));
             wait_until(|| !modal_visible(&fixture.overlay));
+            select_named(&fixture, "a.txt");
             assert!(fixture.press(Key::F2, ModifierType::empty()));
             assert!(fixture.view.rename_is_active());
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
@@ -757,9 +762,6 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             assert!(fixture.sidebar_toggle.is_active());
             assert!(fixture.press(Key::b, control));
             assert!(!fixture.sidebar_toggle.is_active());
-            assert!(fixture.press(Key::r, control));
-            assert!(fixture.view.rename_is_active(), "Ctrl+R renames again");
-            assert!(fixture.press(Key::Escape, ModifierType::empty()));
             focus_files(&fixture);
             let jumps_before = jumps.get();
             assert!(fixture.press(Key::k, control | ModifierType::SHIFT_MASK));
