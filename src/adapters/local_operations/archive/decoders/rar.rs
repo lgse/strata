@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Drives the sandboxed RAR-extraction helper (see [`crate::sandbox::archive`])
-//! and feeds its member stream into the same [`ExtractionSession`] every other
-//! archive format uses. No UnRAR call happens in this process; the FFI code
-//! that does lives only in [`crate::sandbox_helper::archive_rar`], confined to
-//! the bubblewrapped child.
+//! Feeds sandboxed RAR members through the shared extraction session.
 
 use super::super::{
     ArchiveError, archive_failed,
@@ -43,11 +39,7 @@ pub(in crate::adapters::local_operations::archive) fn extract_rar(
     session.finish(result, Vec::new)
 }
 
-/// The sandboxed stream reports every failure as a plain message, including
-/// one caused by `cancelled` itself (the child has no way to know it was
-/// asked to stop); `cancelled` is the single source of truth for whether an
-/// error means the operation was cancelled, matching how every other decoder
-/// in this module already treats that flag.
+// The child cannot observe the cancellation flag; only the parent classifies it.
 fn stream_error(message: String, cancelled: &AtomicBool) -> ArchiveError {
     if cancelled.load(Ordering::Relaxed) {
         ArchiveError::Cancelled

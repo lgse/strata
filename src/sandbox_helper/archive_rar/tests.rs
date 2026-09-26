@@ -4,11 +4,11 @@ use super::*;
 use crate::rar_extraction::{self as wire, Record};
 use std::io::Cursor;
 
-// local_operations::archive's own fixtures.rs cannot be reached from here
-// (both `local_operations` and `archive` are private modules), so these are
-// their own copies of the same physical files.
 const RAR_VERSION_FIXTURE: &[u8] = include_bytes!("../../../tests/fixtures/rar/version.rar");
 const RAR_ENCRYPTED_FIXTURE: &[u8] = include_bytes!("../../../tests/fixtures/rar/encrypted.rar");
+const RAR_ENCRYPTED_HEADERS_FIXTURE: &[u8] =
+    include_bytes!("../../../tests/fixtures/rar/comment-hpw-password.rar");
+const RAR_UNICODE_FIXTURE: &[u8] = include_bytes!("../../../tests/fixtures/rar/unicode.rar");
 
 #[test]
 fn excessive_native_dictionary_is_rejected() {
@@ -74,28 +74,16 @@ fn run_streams_the_version_fixture_in_wire_format() {
         wire::read_record(&mut reader).expect("real RAR fixture"),
         Record::File("VERSION".to_owned(), 11)
     );
-    let mut body = [0u8; 11];
-    std::io::Read::read_exact(&mut reader, &mut body).expect("real RAR fixture");
+    let mut body = Vec::new();
+    std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 11), &mut body)
+        .expect("real RAR fixture");
     assert_eq!(&body, b"unrar-0.4.0");
-    assert_eq!(
-        wire::read_file_trailer(&mut reader).expect("real RAR fixture"),
-        Ok(())
-    );
     assert_eq!(
         wire::read_record(&mut reader).expect("real RAR fixture"),
         Record::End
     );
 }
 
-// RAR_ENCRYPTED_FIXTURE has plain (unencrypted) headers, only its content is
-// encrypted — matching real archives, UnRAR asks for the password via the
-// UCM_NEEDPASSWORD callback before it ever emits a UCM_PROCESSDATA byte for
-// that member, so a missing/wrong password never reaches the sink at all.
-// `run()` itself still returns `Ok(())`: one member failing and reporting
-// that through its own trailer is, from the stream's own perspective, a
-// cleanly finished session — see `extract()`'s comment at its file-failure
-// branch. The archive-open-time error path (failing before any member
-// header at all) is covered separately by `run_reports_a_corrupt_archive`.
 #[test]
 fn run_reports_a_missing_password_as_a_file_trailer_failure() {
     let (_dir, archive) = write_fixture(RAR_ENCRYPTED_FIXTURE);
@@ -109,10 +97,14 @@ fn run_reports_a_missing_password_as_a_file_trailer_failure() {
         wire::read_record(&mut reader).expect("real RAR fixture"),
         Record::File(".gitignore".to_owned(), 18)
     );
+    let mut body = Vec::new();
+    let error = std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
+        .expect_err("missing password must fail before yielding contents");
     assert_eq!(
-        wire::read_file_trailer(&mut reader).expect("real RAR fixture"),
-        Err("A password is required to extract this archive.".to_owned())
+        error.to_string(),
+        "A password is required to extract this archive."
     );
+    assert!(body.is_empty());
 }
 
 #[test]
@@ -128,10 +120,11 @@ fn run_reports_a_wrong_password_as_a_file_trailer_failure() {
         wire::read_record(&mut reader).expect("real RAR fixture"),
         Record::File(".gitignore".to_owned(), 18)
     );
-    assert_eq!(
-        wire::read_file_trailer(&mut reader).expect("real RAR fixture"),
-        Err(MAYBE_BAD_PASSWORD.to_owned())
-    );
+    let mut body = Vec::new();
+    let error = std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
+        .expect_err("wrong password must fail before yielding contents");
+    assert_eq!(error.to_string(), MAYBE_BAD_PASSWORD);
+    assert!(body.is_empty());
 }
 
 #[test]
@@ -146,17 +139,70 @@ fn run_streams_an_encrypted_archive_with_the_correct_password() {
         wire::read_record(&mut reader).expect("real RAR fixture"),
         Record::File(".gitignore".to_owned(), 18)
     );
-    let mut body = [0u8; 18];
-    std::io::Read::read_exact(&mut reader, &mut body).expect("real RAR fixture");
+    let mut body = Vec::new();
+    std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
+        .expect("real RAR fixture");
     assert_eq!(&body, b"target\nCargo.lock\n");
-    assert_eq!(
-        wire::read_file_trailer(&mut reader).expect("real RAR fixture"),
-        Ok(())
-    );
     assert_eq!(
         wire::read_record(&mut reader).expect("real RAR fixture"),
         Record::End
     );
+}
+
+#[test]
+fn run_handles_encrypted_headers() {
+    let (_dir, archive) = write_fixture(RAR_ENCRYPTED_HEADERS_FIXTURE);
+    for (password, expected) in [
+        (None, "A password is required to extract this archive."),
+        (Some("wrong-password"), MAYBE_BAD_PASSWORD),
+    ] {
+        let mut buffer = Vec::new();
+        run(&archive, password, &mut buffer).expect_err("encrypted headers require a password");
+        let mut reader = Cursor::new(buffer);
+        wire::read_magic(&mut reader).expect("stream magic");
+        assert_eq!(
+            wire::read_record(&mut reader).expect("error record"),
+            Record::Error(expected.to_owned())
+        );
+    }
+    let mut buffer = Vec::new();
+    run(&archive, Some("password"), &mut buffer).expect("correct password");
+    let mut reader = Cursor::new(buffer);
+    wire::read_magic(&mut reader).expect("stream magic");
+    assert_eq!(
+        wire::read_record(&mut reader).expect("member"),
+        Record::File(".gitignore".to_owned(), 18)
+    );
+    let mut body = Vec::new();
+    std::io::Read::read_to_end(&mut wire::FileBody::new(&mut reader, 18), &mut body)
+        .expect("member contents");
+    assert_eq!(body, b"target\nCargo.lock\n");
+}
+
+#[test]
+fn run_handles_unicode_member_names() {
+    let (_dir, archive) = write_fixture(RAR_UNICODE_FIXTURE);
+    let mut buffer = Vec::new();
+    run(&archive, None, &mut buffer).expect("unicode archive");
+    let mut reader = Cursor::new(buffer);
+    wire::read_magic(&mut reader).expect("stream magic");
+    let mut names = Vec::new();
+    loop {
+        match wire::read_record(&mut reader).expect("member record") {
+            Record::File(name, size) => {
+                names.push(name);
+                std::io::copy(
+                    &mut wire::FileBody::new(&mut reader, size),
+                    &mut std::io::sink(),
+                )
+                .expect("member contents");
+            }
+            Record::Directory(name) => names.push(name),
+            Record::End => break,
+            Record::Error(error) => panic!("unexpected error: {error}"),
+        }
+    }
+    assert!(names.iter().any(|name| !name.is_ascii()));
 }
 
 #[test]

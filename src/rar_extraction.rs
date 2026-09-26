@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Wire format streamed from the sandboxed RAR-extraction helper (child) back
-//! to the trusted parent process over a pipe. The child only ever reads the
-//! untrusted archive and emits member bytes here; every real filesystem write
-//! still happens in the parent through the existing hardened destination
-//! handling, so this module carries no path or write authority of its own.
+//! Framed RAR member stream between the sandboxed decoder and the parent.
 
 use std::io::{self, Read, Write};
 
@@ -16,13 +12,8 @@ const MAX_TEXT_BYTES: u32 = 8192;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Record {
     Directory(String),
-    /// A file member's header; the caller must read exactly `size` bytes next,
-    /// then [`read_file_trailer`], before reading another record.
     File(String, u64),
-    /// The archive is fully enumerated; no further records follow.
     End,
-    /// An error not tied to one member's body (open, header, or password
-    /// failure); no further records follow.
     Error(String),
 }
 
@@ -63,14 +54,74 @@ fn write_header(writer: &mut impl Write, kind: u32, text: &str, size: u64) -> io
     writer.write_all(bytes)
 }
 
-/// A file member's body outcome, written after exactly `size` bytes have
-/// been streamed for that member.
+/// Each body chunk is length-prefixed so a decoder failure before the declared
+/// size cannot be mistaken for file contents.
+pub(crate) fn write_chunk(writer: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
+    let length = u32::try_from(bytes.len()).map_err(|_| invalid("RAR chunk is too large"))?;
+    writer.write_all(&length.to_le_bytes())?;
+    writer.write_all(bytes)
+}
+
 pub(crate) fn write_file_ok(writer: &mut impl Write) -> io::Result<()> {
+    writer.write_all(&0u32.to_le_bytes())?;
     write_trailer(writer, 0, "")
 }
 
 pub(crate) fn write_file_failed(writer: &mut impl Write, message: &str) -> io::Result<()> {
+    writer.write_all(&0u32.to_le_bytes())?;
     write_trailer(writer, 1, message)
+}
+
+/// The framed member reader validates the trailer before reporting EOF to the
+/// destination, so failed or truncated members are removed by ExtractionSession.
+pub(crate) struct FileBody<'a, R> {
+    reader: &'a mut R,
+    remaining: u64,
+    chunk_remaining: u32,
+    finished: bool,
+}
+
+impl<'a, R: Read> FileBody<'a, R> {
+    pub(crate) fn new(reader: &'a mut R, size: u64) -> Self {
+        Self {
+            reader,
+            remaining: size,
+            chunk_remaining: 0,
+            finished: false,
+        }
+    }
+}
+
+impl<R: Read> Read for FileBody<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if buffer.is_empty() || self.finished {
+            return Ok(0);
+        }
+        if self.chunk_remaining == 0 {
+            let mut length = [0; 4];
+            self.reader.read_exact(&mut length)?;
+            self.chunk_remaining = u32::from_le_bytes(length);
+            if self.chunk_remaining == 0 {
+                read_file_trailer(self.reader)?.map_err(|error| invalid(&error))?;
+                if self.remaining != 0 {
+                    return Err(invalid("RAR member produced fewer bytes than declared"));
+                }
+                self.finished = true;
+                return Ok(0);
+            }
+            if u64::from(self.chunk_remaining) > self.remaining {
+                return Err(invalid("RAR member produced more bytes than declared"));
+            }
+        }
+        let cap = buffer.len().min(self.chunk_remaining as usize);
+        let count = self.reader.read(&mut buffer[..cap])?;
+        if count == 0 {
+            return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
+        }
+        self.chunk_remaining -= count as u32;
+        self.remaining -= count as u64;
+        Ok(count)
+    }
 }
 
 fn write_trailer(writer: &mut impl Write, status: u32, message: &str) -> io::Result<()> {
@@ -102,8 +153,6 @@ pub(crate) fn read_record(reader: &mut impl Read) -> io::Result<Record> {
     }
 }
 
-/// Reads a file member's trailer, written after the caller has already
-/// consumed exactly that member's declared byte count.
 pub(crate) fn read_file_trailer(reader: &mut impl Read) -> io::Result<Result<(), String>> {
     let mut trailer = [0; 8];
     reader.read_exact(&mut trailer)?;

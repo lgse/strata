@@ -9,8 +9,6 @@ fn stream_error_reports_cancelled_when_the_flag_is_set_regardless_of_message() {
         stream_error("some unrelated failure".to_owned(), &cancelled),
         ArchiveError::Cancelled
     );
-    // Even the literal cancellation message from the child stays Cancelled,
-    // not a Failed(message) that would duplicate the same information.
     assert_eq!(
         stream_error("Operation cancelled".to_owned(), &cancelled),
         ArchiveError::Cancelled

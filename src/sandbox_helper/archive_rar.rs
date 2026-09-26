@@ -5,10 +5,7 @@
     reason = "UnRAR's safe wrapper cannot stream member output; keep FFI confined to this sandboxed child"
 )]
 
-//! Runs only inside the bubblewrapped RAR-extraction helper (see
-//! [`crate::sandbox::archive`]). Reads the untrusted archive and streams
-//! member bytes back over stdout using the [`crate::rar_extraction`] wire
-//! format; never writes to any real filesystem path itself.
+//! UnRAR FFI used by the sandboxed extraction helper.
 
 use std::{ffi::CString, io::Write, os::unix::ffi::OsStrExt, path::Path, ptr};
 
@@ -168,9 +165,6 @@ fn unrar_decode_error(error: unrar::error::UnrarError, password_supplied: bool) 
     }
 }
 
-/// Streams `archive_path`'s members to `writer` in the [`crate::rar_extraction`]
-/// wire format. Returns an error only for a failure not already reported as a
-/// wire-level error record (the caller should treat those as already handled).
 pub(super) fn run(
     archive_path: &Path,
     password: Option<&str>,
@@ -288,7 +282,7 @@ fn extract(
                         "Archive member `{name}` declared {size} bytes but produced more"
                     ));
                 }
-                writer.write_all(bytes).map_err(|error| error.to_string())?;
+                wire::write_chunk(writer, bytes).map_err(|error| error.to_string())?;
                 written += length;
                 Ok(())
             });
@@ -304,12 +298,7 @@ fn extract(
             match outcome {
                 Ok(()) => wire::write_file_ok(writer).map_err(|error| error.to_string())?,
                 Err(message) => {
-                    // The trailer already reports this member's failure; the
-                    // parent stops reading there, matching the original
-                    // in-process behavior of aborting the whole extraction
-                    // on the first member error. Exiting cleanly here (no
-                    // top-level error record) avoids a second, redundant
-                    // failure signal on the wire.
+                    // The trailer reports this error; a second error record would desynchronize the stream.
                     wire::write_file_failed(writer, &message).map_err(|error| error.to_string())?;
                     return Ok(());
                 }

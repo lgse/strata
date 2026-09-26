@@ -50,13 +50,6 @@ fn decode_fixture(
             progress,
             &cancelled,
         ),
-        // RAR extraction now always spawns a sandboxed helper (see
-        // sandbox::archive::stream_rar), which cannot run inside the cargo
-        // test harness binary; no caller here passes this variant. RAR's own
-        // coverage lives in sandbox_helper::archive_rar::tests (real UnRAR
-        // decode -> wire format, using real fixture archives) and
-        // sandbox::archive::tests (wire format -> ExtractionSession dispatch,
-        // using a fake in-memory stream).
         ArchiveFormat::Rar => unreachable!("no fixture test exercises RAR through this helper"),
     }
 }

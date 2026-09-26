@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-//! Sandboxed RAR extraction. UnRAR's C parser runs only in a bubblewrapped
-//! child with a read-only bind of the archive and no filesystem write access
-//! at all; it streams member bytes back over its stdout pipe using the
-//! [`crate::rar_extraction`] wire format. The parent never calls into UnRAR
-//! directly and performs every real destination write itself, unchanged.
+//! Runs UnRAR in a read-only bubblewrap child; the parent writes extracted members.
 
 use std::{
     fs,
@@ -19,12 +15,9 @@ use crate::rar_extraction as wire;
 
 use super::*;
 
-/// Bulk decompression, not a quick preview render: a legitimate large archive
-/// can need much more CPU than the shared preview budget.
+// Bulk extraction needs more CPU than a preview render.
 const RAR_CPU_TIME_LIMIT_SECS: u64 = 120;
-/// Applied per read attempt, not to the stream as a whole: as long as the
-/// child keeps producing *some* output, a large member can take as long as
-/// it needs. Only a genuine stall (hung or killed child) times out.
+// Limit stalls, not the total time spent extracting a large archive.
 const READ_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(crate) enum Member<'a> {
@@ -32,16 +25,6 @@ pub(crate) enum Member<'a> {
     File { size: u64, body: &'a mut dyn Read },
 }
 
-/// Streams `archive_path` through the sandboxed helper, calling `on_member`
-/// for each entry in archive order. `on_member` is responsible for the real
-/// destination write; this function only ever hands it a bounded reader over
-/// that member's declared byte count.
-///
-/// An `on_member` failure (including one caused by `cancelled` being set)
-/// stops the stream and terminates the child; the caller decides whether the
-/// resulting error means "cancelled" by checking `cancelled` itself, matching
-/// how [`crate::adapters`]'s extraction session already treats that flag as
-/// the single source of truth.
 pub(crate) fn stream_rar(
     archive_path: &Path,
     password: Option<&str>,
@@ -67,9 +50,6 @@ pub(crate) fn stream_rar(
     result
 }
 
-/// The record-parsing and dispatch logic, independent of where `reader`
-/// bytes actually come from — a real sandboxed child's pipe in production, a
-/// fixed in-memory fixture in tests.
 fn drive(
     mut reader: impl Read,
     mut on_member: impl FnMut(&str, Member<'_>) -> Result<(), String>,
@@ -82,7 +62,7 @@ fn drive(
             wire::Record::Error(message) => return Err(message),
             wire::Record::Directory(name) => on_member(&name, Member::Directory)?,
             wire::Record::File(name, size) => {
-                let mut body = (&mut reader).take(size);
+                let mut body = wire::FileBody::new(&mut reader, size);
                 on_member(
                     &name,
                     Member::File {
@@ -90,12 +70,8 @@ fn drive(
                         body: &mut body,
                     },
                 )?;
-                // The callback may stop reading before the declared size (an
-                // error partway through); drain the rest so the trailer
-                // that follows lines up on the wire regardless.
                 std::io::copy(&mut body, &mut std::io::sink())
                     .map_err(|error| error.to_string())?;
-                wire::read_file_trailer(&mut reader).map_err(|error| error.to_string())??;
             }
         }
     }

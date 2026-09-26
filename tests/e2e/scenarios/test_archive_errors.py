@@ -123,6 +123,8 @@ def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata,
     )
     assert dialog.find(role="label", name="Invalid password") is not None
     assert dialog.find(role="label", name="Unable to complete operation") is None
+    if source.suffix == ".rar":
+        assert not fixture.path(member).exists()
 
     if source.suffix == ".rar":
         collector = ArtifactCollector(test_name=f"rar-password-{source.stem}")

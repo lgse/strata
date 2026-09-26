@@ -23,22 +23,18 @@ fn directory_and_end_records_round_trip() {
 fn file_record_and_ok_trailer_round_trip() {
     let mut buffer = Vec::new();
     write_file_header(&mut buffer, "report.txt", 4).expect("wire protocol round trip");
-    buffer.extend_from_slice(b"data");
+    write_chunk(&mut buffer, b"data").expect("wire protocol round trip");
     write_file_ok(&mut buffer).expect("wire protocol round trip");
     let mut reader = Cursor::new(buffer);
     assert_eq!(
         read_record(&mut reader).expect("wire protocol round trip"),
         Record::File("report.txt".to_owned(), 4)
     );
-    let mut body = [0u8; 4];
-    reader
-        .read_exact(&mut body)
+    let mut body = FileBody::new(&mut reader, 4);
+    let mut content = Vec::new();
+    body.read_to_end(&mut content)
         .expect("wire protocol round trip");
-    assert_eq!(&body, b"data");
-    assert_eq!(
-        read_file_trailer(&mut reader).expect("wire protocol round trip"),
-        Ok(())
-    );
+    assert_eq!(content, b"data");
 }
 
 #[test]
@@ -46,10 +42,33 @@ fn file_trailer_failure_carries_the_message() {
     let mut buffer = Vec::new();
     write_file_failed(&mut buffer, "CRC mismatch").expect("wire protocol round trip");
     let mut reader = Cursor::new(buffer);
-    assert_eq!(
-        read_file_trailer(&mut reader).expect("wire protocol round trip"),
-        Err("CRC mismatch".to_owned())
-    );
+    assert!(FileBody::new(&mut reader, 4).read(&mut [0u8; 4]).is_err());
+}
+
+#[test]
+fn failed_member_with_no_body_reports_error_before_any_file_bytes() {
+    let mut buffer = Vec::new();
+    write_file_failed(&mut buffer, "A password is required").expect("fixture stream");
+    let mut reader = Cursor::new(buffer);
+    let mut body = FileBody::new(&mut reader, 18);
+    let mut contents = Vec::new();
+    let error = body
+        .read_to_end(&mut contents)
+        .expect_err("member must fail");
+    assert!(error.to_string().contains("password"));
+    assert!(contents.is_empty());
+}
+
+#[test]
+fn truncated_member_cannot_report_success() {
+    let mut buffer = Vec::new();
+    write_chunk(&mut buffer, b"abc").expect("fixture stream");
+    write_file_ok(&mut buffer).expect("fixture stream");
+    let mut reader = Cursor::new(buffer);
+    let mut body = FileBody::new(&mut reader, 5);
+    let mut contents = Vec::new();
+    assert!(body.read_to_end(&mut contents).is_err());
+    assert_eq!(contents, b"abc");
 }
 
 #[test]
@@ -75,8 +94,8 @@ fn magic_rejects_a_mismatched_stream() {
 #[test]
 fn oversized_text_length_is_rejected_before_allocating() {
     let mut buffer = Vec::new();
-    buffer.extend_from_slice(&0u32.to_le_bytes()); // kind: directory
-    buffer.extend_from_slice(&(16 * 1024 * 1024u32).to_le_bytes()); // claimed name length
+    buffer.extend_from_slice(&0u32.to_le_bytes());
+    buffer.extend_from_slice(&(16 * 1024 * 1024u32).to_le_bytes());
     buffer.extend_from_slice(&0u64.to_le_bytes());
     let mut reader = Cursor::new(buffer);
     assert!(read_record(&mut reader).is_err());
@@ -85,7 +104,7 @@ fn oversized_text_length_is_rejected_before_allocating() {
 #[test]
 fn end_record_rejects_a_nonempty_name_or_size() {
     let mut buffer = Vec::new();
-    buffer.extend_from_slice(&2u32.to_le_bytes()); // kind: end
+    buffer.extend_from_slice(&2u32.to_le_bytes());
     buffer.extend_from_slice(&1u32.to_le_bytes());
     buffer.extend_from_slice(&0u64.to_le_bytes());
     buffer.push(b'x');

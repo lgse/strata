@@ -15,7 +15,7 @@ fn drive_dispatches_directory_and_file_members_in_archive_order() {
     let reader = fixture_stream(|bytes| {
         wire::write_directory(bytes, "photos").expect("fixture stream");
         wire::write_file_header(bytes, "notes.txt", 5).expect("fixture stream");
-        bytes.extend_from_slice(b"hello");
+        wire::write_chunk(bytes, b"hello").expect("fixture stream");
         wire::write_file_ok(bytes).expect("fixture stream");
         wire::write_end(bytes).expect("fixture stream");
     });
@@ -62,10 +62,8 @@ fn drive_propagates_a_top_level_error_record_and_stops() {
 fn drive_propagates_a_file_trailer_failure_and_stops_before_end() {
     let reader = fixture_stream(|bytes| {
         wire::write_file_header(bytes, "broken.bin", 3).expect("fixture stream");
-        bytes.extend_from_slice(b"abc");
+        wire::write_chunk(bytes, b"abc").expect("fixture stream");
         wire::write_file_failed(bytes, "CRC mismatch").expect("fixture stream");
-        // A well-behaved child never writes more after a failed member, but
-        // even if it did, drive() must stop at the trailer, not read this.
         wire::write_end(bytes).expect("fixture stream");
     });
     let mut calls = 0;
@@ -97,12 +95,9 @@ fn drive_stops_immediately_when_on_member_fails() {
 
 #[test]
 fn drive_drains_a_body_the_callback_left_unread_before_the_trailer() {
-    // on_member can stop reading partway through a member (its own error);
-    // drive() must still consume the rest of the declared body so the
-    // trailer that follows lines up on the wire.
     let reader = fixture_stream(|bytes| {
         wire::write_file_header(bytes, "big.bin", 5).expect("fixture stream");
-        bytes.extend_from_slice(b"hello");
+        wire::write_chunk(bytes, b"hello").expect("fixture stream");
         wire::write_file_ok(bytes).expect("fixture stream");
         wire::write_end(bytes).expect("fixture stream");
     });
@@ -142,8 +137,6 @@ fn rar_extraction_command_binds_the_archive_read_only_with_no_output_directory()
     assert!(joined.contains(&format!("--as={ADDRESS_SPACE_LIMIT_BYTES}")));
     assert!(joined.contains(&format!("--cpu={RAR_CPU_TIME_LIMIT_SECS}")));
     assert!(joined.contains("--preview-helper extract-rar /input.rar"));
-    // The defining security property: no writable bind at all, unlike every
-    // other sandboxed operation which binds a private /output directory.
     assert!(!joined.contains("--bind"));
     assert!(!joined.contains("/output"));
     assert!(!joined.contains("--share-net"));
@@ -164,7 +157,5 @@ fn rar_extraction_command_threads_the_password_without_leaking_it_on_argv() {
         .collect::<Vec<_>>()
         .join(" ");
     assert!(!joined.contains("s3cret"));
-    // The trailing "0" tells the sandboxed helper to read the secret from
-    // the duplicated stdin descriptor instead.
     assert!(joined.trim_end().ends_with(" 0"));
 }
