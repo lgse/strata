@@ -1094,6 +1094,15 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 10px 12px;
 }
 
+.send-to-success {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px alpha(@theme_bg, 0.4);
+  margin: 12px;
+  padding: 10px 12px;
+}
+
 .form-message.warning {
   background: alpha(@theme_accent, 0.1);
   border: 1px solid alpha(@theme_accent, 0.46);
@@ -1230,6 +1239,54 @@ entry.form-control:disabled {
   background: alpha(@theme_muted, 0.3);
   border-color: alpha(@theme_border, 0.38);
   color: @theme_dim_text;
+}
+
+.destination-location-bar {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.54);
+  border-radius: 5px;
+  box-shadow: none;
+  min-height: 34px;
+  padding: 3px 9px;
+}
+
+.destination-location-bar:hover {
+  border-color: alpha(@theme_accent, 0.68);
+}
+
+.destination-location-bar:focus-within {
+  border-color: @theme_accent;
+  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.destination-location-bar.error,
+.destination-location-bar.error:hover,
+.destination-location-bar.error:focus-within {
+  border-color: @theme_danger;
+  box-shadow: 0 0 0 1px alpha(@theme_danger, 0.4);
+  outline: 2px solid @theme_danger;
+  outline-offset: -2px;
+}
+
+.destination-location-bar entry,
+.destination-location-bar entry:hover,
+.destination-location-bar entry:focus,
+.destination-location-bar entry:focus-visible,
+.destination-location-bar entry:focus-within,
+.destination-location-bar entry.error,
+.destination-location-bar entry.error:hover,
+.destination-location-bar entry.error:focus,
+.destination-location-bar entry.error:focus-visible,
+.destination-location-bar entry.error:focus-within {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+  outline: none;
+  padding: 0;
 }
 
 dropdown.form-control > button,

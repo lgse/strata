@@ -4,7 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     fs, io,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     rc::Rc,
 };
 
@@ -18,6 +18,8 @@ use crate::{
 };
 
 use super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
+
+pub(in crate::ui) const SEND_TO_RECENT_DESTINATIONS_LIMIT: usize = 3;
 
 mod bindings;
 #[cfg(test)]
@@ -148,6 +150,8 @@ pub(in crate::ui) struct Preferences {
     folder_colors: HashMap<String, String>,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     custom_icons: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    send_to_recent_destinations: HashMap<String, Vec<PathBuf>>,
 }
 
 impl Default for Preferences {
@@ -208,6 +212,7 @@ impl Default for Preferences {
             default_directory: None,
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
+            send_to_recent_destinations: HashMap::new(),
         }
     }
 }
@@ -304,6 +309,12 @@ fn normalized_volume(volume: f64) -> f64 {
     } else {
         1.0
     }
+}
+
+pub(in crate::ui) fn is_valid_send_to_relative_path(path: &Path) -> bool {
+    let mut components = path.components();
+    matches!(components.next(), Some(Component::Normal(_)))
+        && components.all(|component| matches!(component, Component::Normal(_)))
 }
 
 pub struct PreferenceManager {
@@ -728,6 +739,39 @@ impl PreferenceManager {
 
     pub fn set_default_directory(&self, path: Option<PathBuf>) {
         self.preferences.borrow_mut().default_directory = path;
+        self.save_preferences();
+    }
+
+    pub(in crate::ui) fn send_to_recent_destinations(&self, device_id: &str) -> Vec<PathBuf> {
+        self.preferences
+            .borrow()
+            .send_to_recent_destinations
+            .get(device_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(in crate::ui) fn remember_send_to_destination(
+        &self,
+        device_id: &str,
+        relative_path: &Path,
+        remove_relative_path: Option<&Path>,
+    ) {
+        if !is_valid_send_to_relative_path(relative_path) {
+            return;
+        }
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let recent = preferences
+                .send_to_recent_destinations
+                .entry(device_id.to_owned())
+                .or_default();
+            recent.retain(|path| {
+                path != relative_path && Some(path.as_path()) != remove_relative_path
+            });
+            recent.insert(0, relative_path.to_path_buf());
+            recent.truncate(SEND_TO_RECENT_DESTINATIONS_LIMIT);
+        }
         self.save_preferences();
     }
 

@@ -44,6 +44,10 @@ mod sidebar;
 mod unlock_argument;
 mod volume_password;
 
+pub(super) use devices::{
+    RemovableDestination, removable_destinations, resolve_removable_destination,
+};
+
 pub use open_argument::present_open;
 pub use unlock_argument::{UnlockTarget, present_unlock};
 
@@ -2612,11 +2616,11 @@ fn release_kind(action: MediaRelease) -> device_release::ReleaseKind {
     }
 }
 
-fn drive_can_unplug(drive: &gio::Drive) -> bool {
+pub(super) fn drive_can_unplug(drive: &gio::Drive) -> bool {
     drive.is_removable() || drive.is_media_removable() || drive.can_eject()
 }
 
-fn mount_can_unplug(mount: &gio::Mount) -> bool {
+pub(super) fn mount_can_unplug(mount: &gio::Mount) -> bool {
     if mount.can_eject() {
         return true;
     }
@@ -2626,7 +2630,7 @@ fn mount_can_unplug(mount: &gio::Mount) -> bool {
         .is_some_and(|drive| drive_can_unplug(&drive))
 }
 
-fn volume_can_unplug(volume: &gio::Volume) -> bool {
+pub(super) fn volume_can_unplug(volume: &gio::Volume) -> bool {
     if volume.can_eject() {
         return true;
     }

@@ -16,6 +16,7 @@ pub(super) struct CommandMenus {
     pub before: Vec<gio::Menu>,
     pub after: Vec<gio::Menu>,
     pub group: gio::SimpleActionGroup,
+    pub transfer_sections: Option<[gio::Menu; 2]>,
     _actions: Vec<gio::SimpleAction>,
     _controls: [gtk::Widget; 2],
     refresh: Vec<Rc<dyn Fn(bool)>>,
@@ -28,32 +29,44 @@ impl CommandMenus {
         popover: &gtk::PopoverMenu,
         dispatch: &MenuDispatch,
         navigation: &Rc<super::keyboard::NativeMenuNavigation>,
+        transfer_buttons: Option<&[gtk::Button; 2]>,
     ) -> Self {
         let group = gio::SimpleActionGroup::new();
         let mut actions = Vec::new();
         let mut refresh = Vec::new();
-        let before_models = sections(
+        let (before_models, _) = sections(
             before,
-            &group,
-            &mut actions,
-            popover,
-            &mut refresh,
-            dispatch,
-            navigation,
+            SectionContext {
+                group: &group,
+                actions: &mut actions,
+                popover,
+                updates: &mut refresh,
+                dispatch,
+                navigation,
+                transfer_buttons: None,
+            },
         );
-        let after_models = sections(
+        let (after_models, transfer_sections) = sections(
             after,
-            &group,
-            &mut actions,
-            popover,
-            &mut refresh,
-            dispatch,
-            navigation,
+            SectionContext {
+                group: &group,
+                actions: &mut actions,
+                popover,
+                updates: &mut refresh,
+                dispatch,
+                navigation,
+                transfer_buttons,
+            },
         );
+        let transfer_sections = match transfer_sections {
+            [Some(single), Some(multiple)] => Some([single, multiple]),
+            _ => None,
+        };
         Self {
             before: before_models,
             after: after_models,
             group,
+            transfer_sections,
             _actions: actions,
             _controls: [before.clone(), after.clone()],
             refresh,
@@ -67,18 +80,33 @@ impl CommandMenus {
     }
 }
 
+struct SectionContext<'a> {
+    group: &'a gio::SimpleActionGroup,
+    actions: &'a mut Vec<gio::SimpleAction>,
+    popover: &'a gtk::PopoverMenu,
+    updates: &'a mut Vec<Rc<dyn Fn(bool)>>,
+    dispatch: &'a MenuDispatch,
+    navigation: &'a Rc<super::keyboard::NativeMenuNavigation>,
+    transfer_buttons: Option<&'a [gtk::Button; 2]>,
+}
+
 fn sections(
     source: &gtk::Widget,
-    group: &gio::SimpleActionGroup,
-    actions: &mut Vec<gio::SimpleAction>,
-    popover: &gtk::PopoverMenu,
-    updates: &mut Vec<Rc<dyn Fn(bool)>>,
-    dispatch: &MenuDispatch,
-    navigation: &Rc<super::keyboard::NativeMenuNavigation>,
-) -> Vec<gio::Menu> {
+    context: SectionContext<'_>,
+) -> (Vec<gio::Menu>, [Option<gio::Menu>; 2]) {
+    let SectionContext {
+        group,
+        actions,
+        popover,
+        updates,
+        dispatch,
+        navigation,
+        transfer_buttons,
+    } = context;
     let mut rows = Vec::new();
     collect(source, &mut rows);
     let mut sections = vec![gio::Menu::new()];
+    let mut transfer_sections = [None, None];
     for row in rows {
         let Some(button) = row else {
             if sections.last().is_some_and(|section| section.n_items() > 0) {
@@ -104,6 +132,11 @@ fn sections(
         update_item(&item, &button);
         let index = section.n_items();
         section.append_item(&item);
+        if let Some(transfer_index) = transfer_buttons
+            .and_then(|buttons| buttons.iter().position(|candidate| candidate == &button))
+        {
+            transfer_sections[transfer_index] = Some(section.clone());
+        }
 
         let weak_button = button.downgrade();
         let weak_section = section.downgrade();
@@ -191,7 +224,7 @@ fn sections(
         actions.push(action);
     }
     sections.retain(|section| section.n_items() > 0);
-    sections
+    (sections, transfer_sections)
 }
 
 fn collect(widget: &gtk::Widget, rows: &mut Vec<Option<gtk::Button>>) {

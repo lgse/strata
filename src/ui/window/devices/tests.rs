@@ -63,6 +63,157 @@ fn encrypted_device_detection() {
 }
 
 #[test]
+fn removable_mount_policy_excludes_unsafe_roots_and_fixed_storage() {
+    let eligible = RemovableMountFacts {
+        shadowed: false,
+        native_root: true,
+        removable: true,
+        writable: true,
+        existing_directory: true,
+    };
+    assert!(removable_mount_is_eligible(eligible));
+
+    for (reason, facts) in [
+        (
+            "shadowed mount",
+            RemovableMountFacts {
+                shadowed: true,
+                ..eligible
+            },
+        ),
+        (
+            "non-native root",
+            RemovableMountFacts {
+                native_root: false,
+                ..eligible
+            },
+        ),
+        (
+            "fixed storage",
+            RemovableMountFacts {
+                removable: false,
+                ..eligible
+            },
+        ),
+        (
+            "read-only root",
+            RemovableMountFacts {
+                writable: false,
+                ..eligible
+            },
+        ),
+        (
+            "missing root",
+            RemovableMountFacts {
+                existing_directory: false,
+                ..eligible
+            },
+        ),
+    ] {
+        assert!(
+            !removable_mount_is_eligible(facts),
+            "{reason} must not be offered"
+        );
+    }
+}
+
+#[test]
+fn send_to_identity_uses_namespaced_volume_drive_unix_and_root_fallbacks() {
+    assert_eq!(
+        send_to_device_identity(
+            Some(" volume-id "),
+            Some("drive-id"),
+            Some("/dev/sdb1"),
+            Some("/dev/sdb"),
+            Some("file:///run/media/me/USB"),
+        )
+        .as_deref(),
+        Some("volume:volume-id")
+    );
+    assert_eq!(
+        send_to_device_identity(
+            Some("  "),
+            Some("drive-id"),
+            Some("/dev/sdb1"),
+            Some("/dev/sdb"),
+            Some("file:///usb"),
+        )
+        .as_deref(),
+        Some("drive:drive-id")
+    );
+    assert_eq!(
+        send_to_device_identity(
+            None,
+            None,
+            Some("/dev/sdb1"),
+            Some("/dev/sdb"),
+            Some("file:///usb")
+        )
+        .as_deref(),
+        Some("unix:/dev/sdb1")
+    );
+    assert_eq!(
+        send_to_device_identity(None, None, None, Some("/dev/sdb"), Some("file:///usb")).as_deref(),
+        Some("unix:/dev/sdb")
+    );
+    assert_eq!(
+        send_to_device_identity(None, None, Some(""), Some("/dev/sdb"), Some("file:///usb"))
+            .as_deref(),
+        Some("unix:/dev/sdb")
+    );
+    assert_eq!(
+        send_to_device_identity(
+            None,
+            None,
+            Some("  \t"),
+            Some("/dev/sdb"),
+            Some("file:///usb")
+        )
+        .as_deref(),
+        Some("unix:/dev/sdb")
+    );
+    assert_eq!(
+        send_to_device_identity(None, None, Some(""), None, Some("file:///usb")).as_deref(),
+        Some("root:file:///usb")
+    );
+    assert_eq!(
+        send_to_device_identity(Some("same"), Some("same"), None, None, Some("same")),
+        Some("volume:same".to_owned())
+    );
+    assert_eq!(
+        send_to_device_identity(None, Some("same"), None, None, Some("same")),
+        Some("drive:same".to_owned())
+    );
+    assert_eq!(
+        send_to_device_identity(Some("  "), Some(""), None, None, Some(" ")),
+        None
+    );
+}
+
+#[test]
+fn duplicate_send_to_identities_are_omitted_and_names_sort_deterministically() {
+    let destination = |id: &str, name: &str| RemovableDestination {
+        id: id.to_owned(),
+        name: name.to_owned(),
+        root: PathBuf::from(format!("/mnt/{id}")),
+    };
+    let mut unique = without_ambiguous_destinations(vec![
+        destination("duplicate", "Kingston"),
+        destination("duplicate", "Other name"),
+        destination("z", "sanDisk"),
+        destination("a", "SanDisk"),
+    ]);
+    sort_removable_destinations(&mut unique);
+    assert_eq!(
+        unique
+            .iter()
+            .map(|destination| (destination.name.as_str(), destination.id.as_str()))
+            .collect::<Vec<_>>(),
+        [("SanDisk", "a"), ("sanDisk", "z")]
+    );
+}
+
+#[test]
 fn padlock_emblem_decides_lock_state() {
     assert!(encrypted_device_is_locked(&["changes-prevent"], true));
     assert!(!encrypted_device_is_locked(&["changes-allow"], false));

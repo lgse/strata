@@ -145,6 +145,12 @@ def test_cancelled_extract_to_does_not_hijack_later_extract_here(strata):
     strata.open_context_menu(archive_name)
     strata.choose_menu_item("Extract to…")
     destination = fixture.path("leftover")
+    dialog = strata.wait_for_dialog()
+    crumb = strata.wait(
+        lambda: dialog.find(role="button", name=fixture.root.name),
+        "the current destination breadcrumb",
+    )
+    strata.pointer.click(crumb)
     field = strata.editable_field()
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text(str(destination))

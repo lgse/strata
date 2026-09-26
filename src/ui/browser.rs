@@ -18,6 +18,8 @@ use crate::ui::browser::location::{
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
 use crate::ui::browser::progress::FileProgressView;
+use crate::ui::browser::transfer::FinishedSendToCompletion;
+use crate::ui::browser::transfer::PendingSendToCompletion;
 use crate::ui::browser::transfer::duplicate_transfer;
 use crate::ui::browser::trash::TrashLoadingView;
 use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ModeViews};
@@ -136,6 +138,21 @@ impl Drop for GlobalActivity {
     }
 }
 
+#[cfg(test)]
+#[derive(Clone)]
+pub(super) struct SendToMenuTestOverride {
+    pub(super) destinations: Vec<crate::ui::RemovableDestination>,
+    pub(super) recent_destinations: std::collections::HashMap<String, Vec<std::path::PathBuf>>,
+    pub(super) handlers: SendToMenuHandlers,
+}
+
+#[derive(Clone)]
+pub(super) struct SendToMenuHandlers {
+    pub(super) activate_root: Rc<dyn Fn(String, Vec<Location>)>,
+    pub(super) activate_recent: Rc<dyn Fn(String, std::path::PathBuf, Vec<Location>)>,
+    pub(super) choose_folder: Rc<dyn Fn(String, Vec<Location>)>,
+}
+
 pub(super) struct ViewState {
     overlay: gtk::Overlay,
     location_control: gtk::Box,
@@ -181,6 +198,10 @@ pub(super) struct ViewState {
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
+    pending_send_to_completion: RefCell<Option<PendingSendToCompletion>>,
+    finished_send_to_completion: RefCell<Option<FinishedSendToCompletion>>,
+    send_to_success_widget: RefCell<Option<gtk::Widget>>,
+    send_to_success_generation: Cell<u64>,
     file_operation_progress: Cell<(usize, usize)>,
     transfer_progress: Cell<Option<(usize, u64, Option<u64>)>>,
     flushing_to_device: Cell<bool>,
@@ -216,6 +237,8 @@ pub(super) struct ViewState {
     drag_source_depth: Cell<Option<usize>>,
     suppress_scroll_after_drop: Cell<bool>,
     drop_active_depths: Cell<Option<(usize, usize)>>,
+    #[cfg(test)]
+    send_to_menu_test_override: RefCell<Option<SendToMenuTestOverride>>,
     browser: Rc<Browser>,
 }
 
@@ -547,6 +570,10 @@ impl BrowserView {
             pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
+            pending_send_to_completion: RefCell::new(None),
+            finished_send_to_completion: RefCell::new(None),
+            send_to_success_widget: RefCell::new(None),
+            send_to_success_generation: Cell::new(0),
             file_operation_progress: Cell::new((0, 0)),
             transfer_progress: Cell::new(None),
             flushing_to_device: Cell::new(false),
@@ -575,6 +602,8 @@ impl BrowserView {
             drag_source_depth: Cell::new(None),
             suppress_scroll_after_drop: Cell::new(false),
             drop_active_depths: Cell::new(None),
+            #[cfg(test)]
+            send_to_menu_test_override: RefCell::new(None),
             browser,
         });
 

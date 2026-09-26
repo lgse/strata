@@ -404,8 +404,13 @@ pub(in crate::ui) fn install_folder_context_menu(
     }
     remaining.append(&customize);
     remaining.append(&properties);
-    let action_section =
-        actions::ActionMenuSection::new(&content, &remaining, None, state.overlay.upcast_ref());
+    let action_section = actions::ActionMenuSection::new(
+        &content,
+        &remaining,
+        None,
+        state.overlay.upcast_ref(),
+        None,
+    );
     let popover = action_section.popover();
     bind_column_context_owner(state, &popover, depth);
 
@@ -904,6 +909,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         &remaining,
         Some(header.upcast_ref()),
         state.overlay.upcast_ref(),
+        Some([copy_to.clone(), copy_to_multiple.clone()]),
     );
     let popover = action_section.popover();
     bind_column_context_owner(state, &popover, depth);

@@ -84,6 +84,7 @@ pub mod icons {
     pub const ROUTE: &str = "strata-route";
     pub const SCISSORS: &str = "strata-scissors";
     pub const SEARCH: &str = "strata-search";
+    pub const SEND_HORIZONTAL: &str = "strata-send-horizontal";
     pub const SETTINGS: &str = "strata-settings";
     pub const SETTINGS_2: &str = "strata-settings-2";
     pub const REFRESH: &str = "strata-refresh";

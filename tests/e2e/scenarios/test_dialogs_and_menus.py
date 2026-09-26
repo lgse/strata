@@ -455,6 +455,16 @@ def compress_from_the_context_menu(strata, entry_name, archive_name):
     return field
 
 
+def _enter_destination_edit_mode(strata):
+    dialog = strata.wait_for_dialog()
+    crumb = strata.wait(
+        lambda: dialog.find(role="button", name=strata.fixture.root.name),
+        "the current destination breadcrumb",
+    )
+    strata.pointer.click(crumb)
+    return strata.editable_field()
+
+
 def test_an_invalid_archive_name_keeps_the_compress_dialog_open(strata):
     compress_from_the_context_menu(strata, "readme.md", "../escape")
 
@@ -487,7 +497,7 @@ def test_enter_submits_compress_and_extract_to_dialogs(strata):
         "Permanently delete",
     ])
     strata.choose_menu_item("Extract to…")
-    field = strata.editable_field()
+    field = _enter_destination_edit_mode(strata)
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text(str(destination))
     strata.wait(
@@ -508,7 +518,7 @@ def test_enter_submits_the_copy_to_dialog(strata):
 
     strata.open_context_menu("todo.txt")
     strata.choose_menu_item("Copy to…")
-    field = strata.editable_field()
+    field = _enter_destination_edit_mode(strata)
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text(str(destination))
     strata.wait(
