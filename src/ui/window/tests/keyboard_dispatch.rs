@@ -371,10 +371,7 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 assert!(!fixture.view.filter_has_focus(), "{key:?} must not search");
                 assert!(!fixture.preview.is_open(), "{key:?} must not preview");
                 assert!(!fixture.view.rename_is_active(), "{key:?}");
-                assert!(
-                    preferences.tenxer_mode(),
-                    "{key:?} must not leave the mode"
-                );
+                assert!(preferences.tenxer_mode(), "{key:?} must not leave the mode");
             }
             for key in [Key::j, Key::k] {
                 fixture.view.browser().select(0, 0);
