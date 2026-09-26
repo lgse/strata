@@ -21,7 +21,7 @@ pub(crate) const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 
 // Keep tool configuration searchable while pruning generated subtrees.
-const GENERATED_TREE_GLOBS: [&str; 12] = [
+const GENERATED_TREE_GLOBS: [&str; 14] = [
     "!**/.cache/",
     "!**/.cargo/registry/",
     "!**/.cargo/git/",
@@ -31,9 +31,11 @@ const GENERATED_TREE_GLOBS: [&str; 12] = [
     "!**/.m2/repository/",
     "!**/.npm/_cacache/",
     "!**/.bun/install/cache/",
+    "!**/go/pkg/mod/",
     "!**/node_modules/",
     "!**/target/",
     "!**/.venv/",
+    "!**/__pycache__/",
 ];
 
 /// Bounds worst-case index memory on an adversarially large tree. Each retained `SearchItem`
@@ -111,15 +113,6 @@ impl SearchItem {
             EntryKind::File
         };
         Self::with_metadata(path, root, is_directory, kind, MetadataValue::Unknown)
-    }
-
-    fn from_native(path: PathBuf, root: &Path, is_directory: bool, kind: EntryKind) -> Self {
-        use std::os::unix::fs::MetadataExt;
-
-        let mode = std::fs::metadata(&path)
-            .map(|metadata| MetadataValue::Known(metadata.mode()))
-            .unwrap_or(MetadataValue::Unknown);
-        Self::with_metadata(path, root, is_directory, kind, mode)
     }
 
     fn with_metadata(
@@ -838,21 +831,27 @@ impl Ord for ScheduledDirectory {
             .task
             .virtual_work
             .cmp(&self.task.virtual_work)
+            .then_with(|| other.task.depth.cmp(&self.task.depth))
             .then_with(|| other.sequence.cmp(&self.sequence))
     }
 }
 
-fn directory_walker(
-    task: &DirectoryTask,
-    boundaries: Arc<HashSet<PathBuf>>,
-    show_hidden: bool,
-) -> ignore::Walk {
-    let mut overrides = ignore::overrides::OverrideBuilder::new(&task.root);
+fn build_root_overrides(root: &Path) -> ignore::overrides::Override {
+    let mut overrides = ignore::overrides::OverrideBuilder::new(root);
     for generated_tree in GENERATED_TREE_GLOBS {
         overrides
             .add(generated_tree)
             .expect("valid generated-tree prune glob");
     }
+    overrides.build().expect("valid generated-tree prune globs")
+}
+
+fn directory_walker(
+    task: &DirectoryTask,
+    overrides: &ignore::overrides::Override,
+    boundaries: Arc<HashSet<PathBuf>>,
+    show_hidden: bool,
+) -> ignore::Walk {
     let mut builder = ignore::WalkBuilder::new(&task.path);
     builder
         .follow_links(false)
@@ -860,7 +859,7 @@ fn directory_walker(
         // `standard_filters` resets hidden-file filtering.
         .hidden(!show_hidden)
         .require_git(false)
-        .overrides(overrides.build().expect("valid generated-tree prune globs"))
+        .overrides(overrides.clone())
         .max_depth(Some(1))
         // Nested mounts are walked separately, never through both roots.
         .filter_entry(move |entry| entry.depth() == 0 || !boundaries.contains(entry.path()));
@@ -922,8 +921,13 @@ fn build_index(
         .filter(|root| seen.insert(root.clone()))
         .collect();
     let boundaries = Arc::new(seen);
+    let root_overrides: std::collections::HashMap<PathBuf, ignore::overrides::Override> = roots
+        .iter()
+        .map(|root| (root.clone(), build_root_overrides(root)))
+        .collect();
     let initial_directory_batch = initial_directory_batch.max(1);
     let max_pending_directories = max_pending_directories.max(1);
+    let directory_batch_limit = (max_entries / 100).clamp(1, 64);
     let mut pending_branches = VecDeque::new();
     let mut pending_directory_count = 0_usize;
     let mut next_sequence = 0_u64;
@@ -960,9 +964,11 @@ fn build_index(
         if index.indexing_cancelled() {
             return;
         }
-        let mut walker = directory_walker(&directory, boundaries.clone(), show_hidden);
+        let overrides = root_overrides.get(&directory.root).expect("root overrides");
+        let mut walker = directory_walker(&directory, overrides, boundaries.clone(), show_hidden);
         let mut seen_entries = 0;
         let mut processed_entries = 0;
+        let mut processed_files = 0;
         let mut slice_work = 0_usize;
         let exhausted = loop {
             if index.indexing_cancelled() {
@@ -972,7 +978,9 @@ fn build_index(
                 coverage.time_limit = true;
                 break 'walk;
             }
-            if processed_entries >= directory.batch_size {
+            if processed_files >= directory.batch_size
+                || processed_entries >= directory.batch_size.max(directory_batch_limit)
+            {
                 break false;
             }
             let Some(result) = walker.next() else {
@@ -1002,6 +1010,9 @@ fn build_index(
             }
             let file_type = entry.file_type();
             let is_directory = file_type.is_some_and(|kind| kind.is_dir());
+            if !is_directory {
+                processed_files += 1;
+            }
             // Structural entries are cheap within a branch so nested documents progress
             // before dense runs of regular files consume the shared entry budget.
             slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
@@ -1009,6 +1020,15 @@ fn build_index(
                 coverage.depth_limit = true;
                 continue;
             }
+            let mode = if is_directory {
+                MetadataValue::Unknown
+            } else {
+                use std::os::unix::fs::MetadataExt;
+                entry
+                    .metadata()
+                    .map(|metadata| MetadataValue::Known(metadata.mode()))
+                    .unwrap_or(MetadataValue::Unknown)
+            };
             let path = entry.into_path();
             let kind = file_type.map_or(EntryKind::Other, |kind| native_kind(kind, &path));
             match admit_path(&mut indexed_paths, &path, max_entries) {
@@ -1020,11 +1040,12 @@ fn build_index(
                 PathAdmission::Unique => {}
             }
             let entry_depth = directory.depth.saturating_add(1);
-            pending_items.push(SearchItem::from_native(
+            pending_items.push(SearchItem::with_metadata(
                 path.clone(),
                 &directory.root,
                 is_directory,
                 kind,
+                mode,
             ));
             indexed_entries += 1;
             if is_directory {

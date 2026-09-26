@@ -314,3 +314,27 @@ fn completed_events_include_the_final_batch_and_coverage() {
     assert!(items.is_empty());
     assert!(!indexing);
 }
+
+#[test]
+fn shallow_sibling_directories_are_discovered_before_descendants_starve_the_scheduler() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = fixture.path();
+    let project = root.join("Project");
+    fs::create_dir_all(&project).expect("create Project");
+    for i in 0..40 {
+        let dir = project.join(format!("repo-{i:02}"));
+        fs::create_dir_all(&dir).expect("create repo");
+        fs::create_dir_all(dir.join("src/nested")).expect("create nested");
+        fs::write(dir.join("src/nested/file.txt"), b"nested").expect("create file");
+    }
+    let target = project.join("rune");
+    fs::create_dir_all(&target).expect("create rune");
+
+    let (search, events) = index_tree(root.to_path_buf(), false);
+    search.query("rune");
+    let SearchEvent::Results { items, .. } = wait_for_results(&events).expect("results");
+    assert!(
+        items.iter().any(|item| item.path == target),
+        "target directory at depth 2 must be found even with many competing sibling repos"
+    );
+}

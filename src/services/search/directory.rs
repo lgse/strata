@@ -63,7 +63,22 @@ pub(super) fn build_index(
                 kind,
                 EntryKind::Directory | EntryKind::DirectorySymbolicLink
             );
-            pending.push(SearchItem::from_native(path, &root, is_directory, kind));
+            let mode = if is_directory {
+                MetadataValue::Unknown
+            } else {
+                use std::os::unix::fs::MetadataExt;
+                entry
+                    .metadata()
+                    .map(|metadata| MetadataValue::Known(metadata.mode()))
+                    .unwrap_or(MetadataValue::Unknown)
+            };
+            pending.push(SearchItem::with_metadata(
+                path,
+                &root,
+                is_directory,
+                kind,
+                mode,
+            ));
             count += 1;
             if pending.len() >= 256 {
                 append_index_items(index, &mut pending, true, coverage);
