@@ -1276,6 +1276,14 @@ impl BrowserView {
         self.state.location_stack.visible_child_name().as_deref() == Some("entry")
     }
 
+    pub(in crate::ui) fn connect_location_edit_changed(&self, changed: impl Fn(bool) + 'static) {
+        self.state
+            .location_stack
+            .connect_visible_child_name_notify(move |stack| {
+                changed(stack.visible_child_name().as_deref() == Some("entry"));
+            });
+    }
+
     pub(super) fn location_edit_contains(&self, target: &gtk::Widget) -> bool {
         let location_stack = self.state.location_stack.upcast_ref::<gtk::Widget>();
         target == location_stack || target.is_ancestor(location_stack)

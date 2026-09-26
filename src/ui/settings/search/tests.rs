@@ -13,6 +13,8 @@ fn ranks_exact_labels_aliases_and_small_typing_errors() {
         ("sidebar downloads", "general", "sidebar-places"),
         ("show network", "general", "sidebar-places"),
         ("show recent", "general", "sidebar-places"),
+        ("autohide sidebar", "general", "auto-hide-sidebar"),
+        ("hide toolbar", "general", "auto-hide-header"),
         ("tezt size", "theme", "text"),
         ("font size", "theme", "text"),
         ("nightly", "updates", "channel"),

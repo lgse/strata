@@ -128,6 +128,12 @@ fn separator_width(split: &gtk::Paned) -> i32 {
     })
 }
 
+/// An auto-hidden sidebar floats outside the split and must not be railed or reserved.
+fn docked_sidebar(binding: &BrowserBinding, content: &gtk::Paned) -> Option<Rc<SidebarState>> {
+    content.start_child()?;
+    binding.sidebar.as_ref().and_then(Weak::upgrade)
+}
+
 fn sidebar_width(content: &gtk::Paned) -> i32 {
     if content
         .start_child()
@@ -308,7 +314,7 @@ impl PreviewState {
                 .map_or_else(|| content.width(), |r| r.width());
             let needs_full = preferred_sidebar_width() + COLUMN_WIDTH + 1;
             let keep_railed = available > 0 && available < needs_full;
-            let sidebar = binding.sidebar.as_ref().and_then(Weak::upgrade);
+            let sidebar = docked_sidebar(binding, &content);
             if let Some(sidebar) = sidebar.as_ref() {
                 sidebar.set_rail(keep_railed);
             }
@@ -406,7 +412,7 @@ impl PreviewState {
             && let Some(binding) = self.sizing.binding.borrow().as_ref()
             && let Some(content) = binding.content.upgrade()
         {
-            let sidebar = binding.sidebar.as_ref().and_then(Weak::upgrade);
+            let sidebar = docked_sidebar(binding, &content);
             let visible = content
                 .start_child()
                 .is_some_and(|sidebar| sidebar.get_visible());

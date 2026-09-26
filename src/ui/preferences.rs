@@ -90,6 +90,10 @@ pub(in crate::ui) struct Preferences {
     list_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
+    #[serde(default)]
+    auto_hide_sidebar: bool,
+    #[serde(default)]
+    auto_hide_header: bool,
     #[serde(default = "default_enabled")]
     sidebar_show_home: bool,
     #[serde(default = "default_enabled")]
@@ -181,6 +185,8 @@ impl Default for Preferences {
             list_file_clicks: default_file_clicks(),
             list_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
+            auto_hide_sidebar: false,
+            auto_hide_header: false,
             sidebar_show_home: true,
             sidebar_show_trash: true,
             sidebar_show_network: true,
@@ -635,6 +641,24 @@ impl PreferenceManager {
         refresh: impl Fn(&gtk::Widget, bool) + 'static,
     ) {
         self.bind_preference(anchor, Self::show_keybinding_hints, refresh);
+    }
+
+    pub fn auto_hide_sidebar(&self) -> bool {
+        self.preferences.borrow().auto_hide_sidebar
+    }
+
+    pub fn set_auto_hide_sidebar(&self, enabled: bool) {
+        self.preferences.borrow_mut().auto_hide_sidebar = enabled;
+        self.save_preferences();
+    }
+
+    pub fn auto_hide_header(&self) -> bool {
+        self.preferences.borrow().auto_hide_header
+    }
+
+    pub fn set_auto_hide_header(&self, enabled: bool) {
+        self.preferences.borrow_mut().auto_hide_header = enabled;
+        self.save_preferences();
     }
 
     pub fn element_glow(&self) -> bool {

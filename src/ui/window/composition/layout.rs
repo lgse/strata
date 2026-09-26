@@ -22,7 +22,7 @@ use super::super::{
 };
 
 pub(super) struct Header {
-    widget: gtk::HeaderBar,
+    pub(super) widget: gtk::HeaderBar,
     pub(super) content: gtk::Box,
     pub(super) sidebar_toggle: gtk::ToggleButton,
     pub(super) search: gtk::Button,
@@ -102,18 +102,33 @@ pub(super) fn preview(browser: &BrowserView, preferences: &Rc<PreferenceManager>
     preview
 }
 
+pub(super) struct BrowserLayout {
+    pub(super) root: gtk::Box,
+    /// Hosts the floating sidebar and header while they auto-hide.
+    pub(super) stage: gtk::Overlay,
+    pub(super) sidebar_split: gtk::Paned,
+    pub(super) sidebar_floating: Rc<Cell<bool>>,
+}
+
 pub(super) fn browser_layout(
     browser: &BrowserView,
     preview: &PreviewDrawer,
     sidebar: &SidebarView,
     header: &Header,
-) -> gtk::Box {
+) -> BrowserLayout {
     let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
     root.append(&header.widget);
     bind_pin_handlers(browser, sidebar);
     let preview_for_print = preview.clone();
     browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
-    let content = browser_split(browser, sidebar, &header.sidebar_toggle, preview);
+    let sidebar_floating = Rc::new(Cell::new(false));
+    let content = browser_split(
+        browser,
+        sidebar,
+        &header.sidebar_toggle,
+        preview,
+        &sidebar_floating,
+    );
     let preview_split = gtk::Paned::new(gtk::Orientation::Horizontal);
     preview_split.add_css_class("preview-split");
     preview_split.set_wide_handle(false);
@@ -127,8 +142,16 @@ pub(super) fn browser_layout(
     preview_split.set_vexpand(true);
     preview.attach_split(&preview_split, &content, browser, Some(sidebar));
     browser.add_marquee_origin(&preview.widget(), gtk::PackType::End);
-    root.append(&preview_split);
-    root
+    let stage = gtk::Overlay::new();
+    stage.set_vexpand(true);
+    stage.set_child(Some(&preview_split));
+    root.append(&stage);
+    BrowserLayout {
+        root,
+        stage,
+        sidebar_split: content,
+        sidebar_floating,
+    }
 }
 
 fn bind_pin_handlers(browser: &BrowserView, sidebar: &SidebarView) {
@@ -155,6 +178,7 @@ fn browser_split(
     sidebar: &SidebarView,
     toggle: &gtk::ToggleButton,
     preview: &PreviewDrawer,
+    floating: &Rc<Cell<bool>>,
 ) -> gtk::Paned {
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
     content.add_css_class("sidebar-split");
@@ -168,8 +192,8 @@ fn browser_split(
     browser.add_marquee_origin(&sidebar.widget, gtk::PackType::Start);
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
-    bind_sidebar_toggle(&content, sidebar, toggle, preview);
-    bind_sidebar_layout(&content, sidebar, toggle, preview);
+    bind_sidebar_toggle(&content, sidebar, toggle, preview, floating);
+    bind_sidebar_layout(&content, sidebar, toggle, preview, floating);
     super::super::bind_sidebar_text_size(&content, sidebar);
     content
 }
@@ -179,12 +203,14 @@ fn bind_sidebar_layout(
     sidebar: &SidebarView,
     toggle: &gtk::ToggleButton,
     preview: &PreviewDrawer,
+    floating: &Rc<Cell<bool>>,
 ) {
     let weak_sidebar = Rc::downgrade(&sidebar.state);
     let weak_toggle = toggle.clone();
     let weak_preview = preview.clone();
+    let floating = floating.clone();
     content.add_tick_callback(move |content, _| {
-        if !weak_toggle.is_active() {
+        if !weak_toggle.is_active() || floating.get() {
             return glib::ControlFlow::Continue;
         }
         let Some(sidebar) = weak_sidebar.upgrade() else {
@@ -221,14 +247,19 @@ fn bind_sidebar_toggle(
     sidebar: &SidebarView,
     toggle: &gtk::ToggleButton,
     preview: &PreviewDrawer,
+    floating: &Rc<Cell<bool>>,
 ) {
     let generation = Rc::new(Cell::new(0));
     let animating = Rc::new(Cell::new(false));
     let constrained_toggle = toggle.clone();
     let constrained_animation = animating.clone();
     let constrained_sidebar = Rc::downgrade(&sidebar.state);
+    let constrained_floating = floating.clone();
     content.connect_position_notify(move |content| {
-        if !constrained_toggle.is_active() || constrained_animation.get() {
+        if !constrained_toggle.is_active()
+            || constrained_animation.get()
+            || constrained_floating.get()
+        {
             return;
         }
         let Some(state) = constrained_sidebar.upgrade() else {
@@ -249,7 +280,11 @@ fn bind_sidebar_toggle(
     let sidebar_widget = sidebar.widget.clone();
     let toggled_sidebar = Rc::downgrade(&sidebar.state);
     let toggled_preview = preview.clone();
+    let toggled_floating = floating.clone();
     toggle.connect_toggled(move |toggle| {
+        if toggled_floating.get() {
+            return;
+        }
         let open = toggle.is_active();
         let preview_open = toggled_preview.is_open();
         let window_width = content

@@ -42,6 +42,8 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
             "documents".into(),
             "desktop".into(),
         ],
+        auto_hide_sidebar: true,
+        auto_hide_header: true,
         sidebar_show_home: false,
         sidebar_show_trash: false,
         sidebar_show_network: false,

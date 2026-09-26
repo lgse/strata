@@ -360,6 +360,8 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.sidebar_order(),
                 non_default_preferences().sidebar_order
             );
+            assert!(manager.auto_hide_sidebar());
+            assert!(manager.auto_hide_header());
             assert!(!manager.sidebar_show_home());
             assert!(!manager.sidebar_show_trash());
             assert!(!manager.sidebar_show_network());
@@ -505,6 +507,8 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                     )
                 },
                 |m| m.set_sidebar_order(default_sidebar_order()),
+                |m| m.set_auto_hide_sidebar(false),
+                |m| m.set_auto_hide_header(false),
                 |m| m.set_sidebar_show_home(true),
                 |m| m.set_sidebar_show_trash(true),
                 |m| m.set_sidebar_show_network(true),

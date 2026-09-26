@@ -90,6 +90,18 @@ const TARGETS: &[Target] = &[
         aliases: "launch files quick preview",
     },
     Target {
+        id: "auto-hide-sidebar",
+        page: "general",
+        title: "Auto-hide sidebar",
+        aliases: "autohide layout compact collapse hover edge reveal places zen",
+    },
+    Target {
+        id: "auto-hide-header",
+        page: "general",
+        title: "Auto-hide address bar",
+        aliases: "autohide layout compact toolbar header location path top hover edge reveal zen",
+    },
+    Target {
         id: "sidebar-places",
         page: "general",
         title: "Items shown in sidebar",
