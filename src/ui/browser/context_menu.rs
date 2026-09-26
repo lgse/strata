@@ -1905,7 +1905,7 @@ fn bind_context_hint(button: &gtk::Button, shortcut: &gtk::Label, label: &str, h
     let label = label.to_owned();
     PreferenceManager::shared().bind_preference(
         shortcut,
-        PreferenceManager::omastrata_mode,
+        PreferenceManager::tenxer_mode,
         move |_, enabled| {
             let text = shortcut_reference::context_hint_for(hint, enabled);
             shown.set_text(text);

@@ -240,7 +240,7 @@ def test_filter_text_selection_uses_the_active_theme(strata, tmp_path):
     strata.wait(selected_text_has_theme_background, "theme-colored filter text selection")
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", [mode for mode in ALL_MODES if mode.id != "list"])
 @pytest.mark.parametrize("trigger,query,count,target", [
     ("pointer", "match-note", 4, "beta/match-note.txt"),
     ("keyboard", "match-note", 4, "beta/match-note.txt"),

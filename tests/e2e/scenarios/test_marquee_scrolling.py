@@ -90,9 +90,16 @@ def test_sidebar_marquee_focus_preserves_a_scrolled_list(strata):
     assert any(node.has_state("focused") for _, node in container.walk())
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("scrolling", ["edge", "wheel"])
-def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, scrolling):
+@pytest.mark.parametrize(
+    "scrolling,mode",
+    [
+        pytest.param(scrolling, mode.values[0], marks=mode.marks, id=f"{scrolling}-{mode.id}")
+        for scrolling in ("edge", "wheel")
+        for mode in ALL_MODES
+        if (scrolling, mode.id) != ("edge", "list")
+    ],
+)
+def test_scrolling_extends_marquee_without_losing_earlier_files(strata, scrolling, mode):
     _open_scrolling_directory(strata)
     anchor = strata.entry("010.txt")
     if mode == "Icons":

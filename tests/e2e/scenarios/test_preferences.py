@@ -97,12 +97,12 @@ def _close_button(window):
     return window.find(role="button", name="Close window")
 
 
-@pytest.mark.preferences(omastrata_mode=True)
-def test_enabled_omastrata_applies_before_settings_and_survives_restart(strata):
+@pytest.mark.preferences(tenxer_mode=True)
+def test_enabled_tenxer_applies_before_settings_and_survives_restart(strata):
     assert _search_button(strata.window) is None
     assert _close_button(strata.window) is not None
     strata.application.stop()
     strata.application.start()
     assert _search_button(strata.window) is None
     assert _close_button(strata.window) is not None
-    assert strata.environment.read_preferences().get("omastrata_mode") == "true"
+    assert strata.environment.read_preferences().get("tenxer_mode") == "true"

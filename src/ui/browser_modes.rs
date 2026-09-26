@@ -1741,7 +1741,7 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
     let shown_filter = revealer.clone();
     let focused_filter = entry.clone();
     button.connect_toggled(move |button| {
-        if crate::ui::omastrata_mode::chrome_suppressed() {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
             return;
         }
         shown_filter.set_reveal_child(button.is_active());
@@ -1751,7 +1751,7 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
             focused_filter.set_text("");
         }
     });
-    crate::ui::omastrata_mode::hide_filter_while_enabled(&button, &revealer);
+    crate::ui::tenxer_mode::hide_filter_while_enabled(&button, &revealer);
     (entry, revealer, button)
 }
 

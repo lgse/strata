@@ -256,10 +256,10 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<PreferenceManager>) 
             write: PreferenceManager::set_columns_mirror_selection,
         },
         PreferenceSwitch {
-            title: "Omastrata mode",
-            description: crate::ui::omastrata_mode::MODE_DESCRIPTION,
-            read: PreferenceManager::omastrata_mode,
-            write: PreferenceManager::set_omastrata_mode,
+            title: "10xer mode",
+            description: crate::ui::tenxer_mode::MODE_DESCRIPTION,
+            read: PreferenceManager::tenxer_mode,
+            write: PreferenceManager::set_tenxer_mode,
         },
     ] {
         append_preference_switch(&browsing, manager, switch);
@@ -300,12 +300,12 @@ fn append_preference_switch(
         switch.title,
         "Type to search" | "Keep arrows in file list" | "Mirror columns selection"
     ) {
-        bind_omastrata_unused_subtitle(&row, manager, switch.description);
+        bind_tenxer_unused_subtitle(&row, manager, switch.description);
     }
     if switch.title == "Include subfolders" {
         super::indent_row(&row);
     }
-    if switch.title == "Omastrata mode" {
+    if switch.title == "10xer mode" {
         append_experimental_label(&row, manager);
     }
     content.append(&row);
@@ -317,14 +317,14 @@ fn append_experimental_label(row: &gtk::Box, manager: &Rc<PreferenceManager>) {
     };
     let experimental = gtk::Label::new(None);
     experimental.add_css_class("settings-option-description");
-    experimental.add_css_class("omastrata-experimental");
+    experimental.add_css_class("tenxer-experimental");
     experimental.set_xalign(0.0);
     experimental.set_wrap(true);
     experimental.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     let label = experimental.clone();
     manager.bind_preference(
         &experimental,
-        PreferenceManager::omastrata_mode,
+        PreferenceManager::tenxer_mode,
         move |_, enabled| {
             label.set_text(if enabled {
                 crate::ui::shortcut_reference::EXPERIMENTAL_LABEL
@@ -337,7 +337,7 @@ fn append_experimental_label(row: &gtk::Box, manager: &Rc<PreferenceManager>) {
     copy.append(&experimental);
 }
 
-fn bind_omastrata_unused_subtitle(
+fn bind_tenxer_unused_subtitle(
     row: &gtk::Box,
     manager: &Rc<PreferenceManager>,
     normal: &'static str,
@@ -349,10 +349,10 @@ fn bind_omastrata_unused_subtitle(
     else {
         return;
     };
-    let unused = crate::ui::omastrata_mode::UNUSED_SUBTITLE;
+    let unused = crate::ui::tenxer_mode::UNUSED_SUBTITLE;
     manager.bind_preference(
         &description,
-        PreferenceManager::omastrata_mode,
+        PreferenceManager::tenxer_mode,
         move |widget, enabled| {
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
                 label.set_text(if enabled { unused } else { normal });

@@ -174,7 +174,7 @@ fn context_hints_follow_the_active_map() {
         "ui::browser::context_menu::tests::menus::context_hints_follow_the_active_map",
         || {
             let manager = crate::ui::preferences::PreferenceManager::shared();
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             let fixture = tempfile::tempdir().expect("menu fixture");
             let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
             view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
@@ -193,7 +193,7 @@ fn context_hints_follow_the_active_map() {
             assert!(hints.iter().any(|hint| hint == "Y"), "{hints:?}");
             menu.popdown();
             wait_until(|| !menu.is_mapped());
-            manager.set_omastrata_mode(true);
+            manager.set_tenxer_mode(true);
             let menu = open_menu(&view, Some("notes.txt"));
             let hints = label_texts(&menu);
             assert!(!hints.iter().any(|hint| hint == "Space"), "{hints:?}");

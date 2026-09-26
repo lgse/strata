@@ -60,7 +60,7 @@ impl BrowserView {
         self.bind_view_preference(
             manager,
             move |manager| {
-                interactive && manager.columns_mirror_selection() && !manager.omastrata_mode()
+                interactive && manager.columns_mirror_selection() && !manager.tenxer_mode()
             },
             Self::set_columns_mirror_selection,
         );

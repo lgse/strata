@@ -3,7 +3,7 @@
 //! One description of the keymap that is actually active.
 //!
 //! Settings → Keybindings, the F1 / `~` reference, and context-menu hints all
-//! read this module. Omastrata rows list commands the dispatcher runs today.
+//! read this module. 10xer rows list commands the dispatcher runs today.
 //! Planned letters stay out until those verbs exist.
 
 use super::browser_modes::BrowserMode;
@@ -261,10 +261,10 @@ const DEFAULT_SETTINGS: &[Binding] = &[
     },
 ];
 
-/// Commands that still run while Omastrata mode claims the conflicting defaults.
+/// Commands that still run while 10xer mode claims the conflicting defaults.
 /// View notes make this the all-view Settings overview; the F1 popover stays
 /// specific to the open view.
-const OMASTRATA_SETTINGS: &[Binding] = &[
+const TENXER_SETTINGS: &[Binding] = &[
     Binding {
         category: "Navigation",
         action: "Move through items",
@@ -471,13 +471,13 @@ const OMASTRATA_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Application",
-        action: "Toggle Omastrata mode",
+        action: "Toggle 10xer mode",
         note: "",
         keys: "Ctrl + Shift + M",
     },
     Binding {
         category: "Application",
-        action: "Leave Omastrata mode",
+        action: "Leave 10xer mode",
         note: "",
         keys: "q",
     },
@@ -489,29 +489,29 @@ const OMASTRATA_SETTINGS: &[Binding] = &[
     },
 ];
 
-pub(crate) fn settings_bindings(omastrata: bool) -> &'static [Binding] {
-    if omastrata {
-        OMASTRATA_SETTINGS
+pub(crate) fn settings_bindings(tenxer: bool) -> &'static [Binding] {
+    if tenxer {
+        TENXER_SETTINGS
     } else {
         DEFAULT_SETTINGS
     }
 }
 
 pub(crate) fn active_settings_bindings() -> &'static [Binding] {
-    settings_bindings(super::omastrata_mode::chrome_suppressed())
+    settings_bindings(super::tenxer_mode::chrome_suppressed())
 }
 
 pub(crate) fn reference_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
-    if super::omastrata_mode::chrome_suppressed() {
-        omastrata_sections(mode)
+    if super::tenxer_mode::chrome_suppressed() {
+        tenxer_sections(mode)
     } else {
         default_sections(mode)
     }
 }
 
-pub(crate) fn context_hint_for(hint: ContextHint, omastrata: bool) -> &'static str {
-    if omastrata {
-        omastrata_hint(hint)
+pub(crate) fn context_hint_for(hint: ContextHint, tenxer: bool) -> &'static str {
+    if tenxer {
+        tenxer_hint(hint)
     } else {
         default_hint(hint)
     }
@@ -542,7 +542,7 @@ fn default_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
     ]
 }
 
-fn omastrata_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
+fn tenxer_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
     vec![
         ReferenceSection {
             title: match mode {
@@ -550,19 +550,19 @@ fn omastrata_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
                 BrowserMode::Icons => "Icons navigation",
                 BrowserMode::List => "List navigation",
             },
-            rows: omastrata_navigation(mode),
+            rows: tenxer_navigation(mode),
         },
         ReferenceSection {
             title: "Files and selection",
-            rows: OMASTRATA_FILES.to_vec(),
+            rows: TENXER_FILES.to_vec(),
         },
         ReferenceSection {
-            title: "Omastrata mode",
-            rows: OMASTRATA_MODE.to_vec(),
+            title: "10xer mode",
+            rows: TENXER_MODE.to_vec(),
         },
         ReferenceSection {
             title: "Search and tools",
-            rows: OMASTRATA_TOOLS.to_vec(),
+            rows: TENXER_TOOLS.to_vec(),
         },
         ReferenceSection {
             title: "Preview media",
@@ -624,7 +624,7 @@ pub(crate) fn default_navigation(mode: BrowserMode) -> Vec<(&'static str, &'stat
     shortcuts
 }
 
-fn omastrata_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
+fn tenxer_navigation(mode: BrowserMode) -> Vec<(&'static str, &'static str)> {
     let mut shortcuts = match mode {
         BrowserMode::Columns => vec![
             ("↑ / ↓", "Move between items"),
@@ -671,7 +671,7 @@ const DEFAULT_FILES: &[(&str, &str)] = &[
     ("y / p", "Copy path / pin a folder (type-to-search off)"),
 ];
 
-const OMASTRATA_FILES: &[(&str, &str)] = &[
+const TENXER_FILES: &[(&str, &str)] = &[
     ("Enter", "Open the focused item"),
     ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
     ("Ctrl+V", "Paste into the indicated directory"),
@@ -688,10 +688,10 @@ const OMASTRATA_FILES: &[(&str, &str)] = &[
     ("Menu / Shift+F10", "Open the context menu"),
 ];
 
-const OMASTRATA_MODE: &[(&str, &str)] = &[
-    ("q", "Leave Omastrata mode"),
+const TENXER_MODE: &[(&str, &str)] = &[
+    ("q", "Leave 10xer mode"),
     ("Q", "Close the current window"),
-    ("Ctrl+Shift+M", "Toggle Omastrata mode"),
+    ("Ctrl+Shift+M", "Toggle 10xer mode"),
     ("F1 / ~", "Show or hide this reference"),
 ];
 
@@ -712,7 +712,7 @@ const DEFAULT_TOOLS: &[(&str, &str)] = &[
     ("F1", "Show or hide this reference"),
 ];
 
-const OMASTRATA_TOOLS: &[(&str, &str)] = &[
+const TENXER_TOOLS: &[(&str, &str)] = &[
     ("Ctrl+K", "Open global search"),
     ("Alt+Enter", "Open containing folder (global search)"),
     ("Ctrl+L", "Edit the location"),
@@ -760,7 +760,7 @@ fn default_hint(hint: ContextHint) -> &'static str {
 
 /// Letters such as `x`, `y`, `p`, `d`, `D`, `r`, and `i` are omitted: those
 /// verbs are not implemented, and `i` is not a preview shortcut.
-fn omastrata_hint(hint: ContextHint) -> &'static str {
+fn tenxer_hint(hint: ContextHint) -> &'static str {
     match hint {
         ContextHint::None
         | ContextHint::Preview

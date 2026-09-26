@@ -184,7 +184,7 @@ fn plain_control(modifiers: Modifiers) -> bool {
             .intersects(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
 }
 
-/// Default-map commands the Omastrata table leaves unbound. Still-bound chords
+/// Default-map commands the 10xer table leaves unbound. Still-bound chords
 /// are absent so the existing handlers keep them.
 fn claims_unbound_command(key: Key, modifiers: Modifiers) -> bool {
     let control_shift = {
@@ -307,7 +307,7 @@ impl Dispatcher {
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
-        if let Some(result) = self.omastrata_keys(key, modifiers) {
+        if let Some(result) = self.tenxer_keys(key, modifiers) {
             return result;
         }
         let focused = gtk::prelude::RootExt::focus(&self.window);
@@ -420,16 +420,16 @@ impl Dispatcher {
         visible_popover_menu(self.window.upcast_ref())
     }
 
-    fn omastrata_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
+    fn tenxer_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
         if visible_modal_layer(&self.window).is_some() {
             return None;
         }
         let preferences = &self.type_to_search.preferences;
-        if crate::ui::omastrata_mode::is_toggle_shortcut(key, modifiers) {
-            preferences.set_omastrata_mode(!preferences.omastrata_mode());
+        if crate::ui::tenxer_mode::is_toggle_shortcut(key, modifiers) {
+            preferences.set_tenxer_mode(!preferences.tenxer_mode());
             return Some(Propagation::Stop);
         }
-        if !preferences.omastrata_mode() {
+        if !preferences.tenxer_mode() {
             return None;
         }
         // Entries, menus, and the shortcut reference already returned. A focused
@@ -442,7 +442,7 @@ impl Dispatcher {
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
         if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
-            preferences.set_omastrata_mode(false);
+            preferences.set_tenxer_mode(false);
             return Some(Propagation::Stop);
         }
         if key == Key::Q && modifiers.contains(Modifiers::SHIFT_MASK) && !command {

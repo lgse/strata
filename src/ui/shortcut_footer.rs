@@ -44,13 +44,13 @@ impl ShortcutFooter {
         paste.add_css_class("shortcut-footer-paste");
         paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
-        let tag = gtk::Label::new(Some(crate::ui::omastrata_mode::TAG_TEXT));
-        tag.add_css_class("omastrata-tag");
-        tag.set_tooltip_text(Some(crate::ui::omastrata_mode::TAG_NAME));
-        super::accessibility::set_label(&tag, crate::ui::omastrata_mode::TAG_NAME);
+        let tag = gtk::Label::new(Some(crate::ui::tenxer_mode::TAG_TEXT));
+        tag.add_css_class("tenxer-tag");
+        tag.set_tooltip_text(Some(crate::ui::tenxer_mode::TAG_NAME));
+        super::accessibility::set_label(&tag, crate::ui::tenxer_mode::TAG_NAME);
         tag.set_visible(false);
         let tag_note = gtk::Label::new(None);
-        tag_note.add_css_class("omastrata-experimental");
+        tag_note.add_css_class("tenxer-experimental");
         tag_note.set_ellipsize(gtk::pango::EllipsizeMode::End);
         tag_note.set_max_width_chars(28);
         tag_note.set_visible(false);
@@ -113,7 +113,7 @@ impl ShortcutFooter {
         content.append(&note);
         let experimental = gtk::Label::new(None);
         experimental.add_css_class("shortcut-reference-note");
-        experimental.add_css_class("omastrata-experimental");
+        experimental.add_css_class("tenxer-experimental");
         experimental.set_xalign(0.0);
         experimental.set_wrap(true);
         experimental.set_visible(false);
@@ -267,7 +267,7 @@ impl ShortcutFooter {
         let primed = Rc::new(Cell::new(false));
         manager.bind_preference(
             &self.root,
-            super::preferences::PreferenceManager::omastrata_mode,
+            super::preferences::PreferenceManager::tenxer_mode,
             move |_, enabled| {
                 let starting = !primed.replace(true);
                 apply_experimental_label(&tag, &tag_note, &experimental, enabled);
@@ -516,7 +516,7 @@ impl ShortcutFooter {
         modifiers: gdk::ModifierType,
         reference_open: bool,
     ) -> bool {
-        if !super::preferences::PreferenceManager::shared().omastrata_mode() {
+        if !super::preferences::PreferenceManager::shared().tenxer_mode() {
             return false;
         }
         if modifiers.intersects(
@@ -547,7 +547,7 @@ fn apply_experimental_label(
     reference_note: &gtk::Label,
     enabled: bool,
 ) {
-    tag.set_text(crate::ui::omastrata_mode::TAG_TEXT);
+    tag.set_text(crate::ui::tenxer_mode::TAG_TEXT);
     tag.set_visible(enabled);
     let phrase = super::shortcut_reference::EXPERIMENTAL_LABEL;
     tag_note.set_text(if enabled { phrase } else { "" });
@@ -555,9 +555,9 @@ fn apply_experimental_label(
     reference_note.set_text(if enabled { phrase } else { "" });
     reference_note.set_visible(enabled);
     let announced = if enabled {
-        format!("{} {phrase}", crate::ui::omastrata_mode::TAG_NAME)
+        format!("{} {phrase}", crate::ui::tenxer_mode::TAG_NAME)
     } else {
-        crate::ui::omastrata_mode::TAG_NAME.to_owned()
+        crate::ui::tenxer_mode::TAG_NAME.to_owned()
     };
     tag.set_tooltip_text(Some(&announced));
     tag.update_property(&[

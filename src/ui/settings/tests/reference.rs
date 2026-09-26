@@ -22,7 +22,7 @@ fn keybindings_follow_the_active_map_across_windows() {
         "ui::settings::tests::reference::keybindings_follow_the_active_map_across_windows",
         || {
             let manager = PreferenceManager::shared();
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             let first = keybindings_page(manager.clone());
             let second = keybindings_page(manager.clone());
             let (general, _, _) = super::super::general::general_page(manager.clone());
@@ -30,23 +30,23 @@ fn keybindings_follow_the_active_map_across_windows() {
             let shows_default = |page: &gtk::Widget| {
                 let shown = visible_actions(page);
                 shown.contains(&"Quick preview".to_owned())
-                    && !shown.contains(&"Leave Omastrata mode".to_owned())
+                    && !shown.contains(&"Leave 10xer mode".to_owned())
                     && !page_text(page).contains(phrase)
             };
             assert!(shows_default(&first));
             assert!(shows_default(&second));
             assert!(!page_text(general.upcast_ref()).contains(phrase));
 
-            manager.set_omastrata_mode(true);
+            manager.set_tenxer_mode(true);
             for page in [&first, &second] {
                 let shown = visible_actions(page);
                 assert!(!shown.contains(&"Quick preview".to_owned()));
-                assert!(shown.contains(&"Leave Omastrata mode".to_owned()));
+                assert!(shown.contains(&"Leave 10xer mode".to_owned()));
                 assert!(page_text(page).contains(phrase));
             }
             assert!(page_text(general.upcast_ref()).contains(phrase));
 
-            manager.set_omastrata_mode(false);
+            manager.set_tenxer_mode(false);
             assert!(shows_default(&first));
             assert!(shows_default(&second));
             assert!(!page_text(general.upcast_ref()).contains(phrase));
