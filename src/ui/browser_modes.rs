@@ -845,7 +845,6 @@ impl ModeViews {
             .is_some_and(|pane| pane.search.focus_current())
     }
 
-    /// Anchor for an explicit folder peek. Search hits win over the hidden listing.
     pub(in crate::ui) fn keyboard_peek_target(&self) -> Option<(gtk::Widget, usize, Location)> {
         if let Some(pane) = self.single_pane()
             && pane.search.selected_entries().is_some()

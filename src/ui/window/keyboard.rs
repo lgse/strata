@@ -189,8 +189,6 @@ fn plain_control(modifiers: Modifiers) -> bool {
             .intersects(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
 }
 
-/// Default-map commands the 10xer table leaves unbound. Still-bound chords
-/// are absent so the existing handlers keep them.
 fn claims_unbound_command(key: Key, modifiers: Modifiers) -> bool {
     let control_shift = {
         let modifiers = command_modifiers(modifiers);
@@ -218,8 +216,6 @@ fn claims_unbound_command(key: Key, modifiers: Modifiers) -> bool {
     }
 }
 
-/// Home-row letters, type-to-search, and the plain y / p / Space defaults.
-/// q and Q stay available so the file list can leave the mode or close the window.
 fn claims_file_list_typing(key: Key, modifiers: Modifiers) -> bool {
     if command_modifiers(modifiers)
         .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)
@@ -437,14 +433,9 @@ impl Dispatcher {
         if !preferences.tenxer_mode() {
             return None;
         }
-        // Entries, menus, and the shortcut reference already returned. A focused
-        // popover or text control still keeps the key, including q / Q.
         if self.text_focused() || self.focus_in_popover() {
             return None;
         }
-        // Plain q leaves the mode. Shift+Q closes the window. List and Columns
-        // claim their own chords, including paging keys that otherwise filter,
-        // toggle the sidebar, or duplicate.
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
         if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {
@@ -475,8 +466,6 @@ impl Dispatcher {
         if claimed {
             return Some(Propagation::Stop);
         }
-        // Claim the conflicting default map. Still-bound shortcuts fall through
-        // to the existing commands.
         if claims_unbound_command(key, modifiers)
             || (self.view.item_view_has_focus() && claims_file_list_typing(key, modifiers))
         {
@@ -512,7 +501,6 @@ impl Dispatcher {
         self.sidebar.enter(&previous);
     }
 
-    /// Places and device controls. File verbs stay on the listing.
     fn tenxer_sidebar(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
         let chord = sidebar_chord(key, modifiers)?;
         match chord {
@@ -548,7 +536,6 @@ impl Dispatcher {
             && !self.view.item_view_has_focus()
     }
 
-    /// Enter and Space run the focused control. h and j return to the files.
     fn tenxer_header(&self, browser: &Browser, key: Key, modifiers: Modifiers) -> KeyResult {
         if modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK)

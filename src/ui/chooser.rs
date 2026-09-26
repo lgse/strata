@@ -1840,7 +1840,12 @@ fn install_shortcuts(
             && let Some(direction) =
                 vim_focus_direction(key).or_else(|| super::focus_navigation::arrow_direction(key))
         {
-            if direction == gtk::DirectionType::Right {
+            if preferences.tenxer_mode() {
+                browser.focus_active();
+                if super::focus_navigation::arrow_direction(key).is_none() {
+                    return glib::Propagation::Stop;
+                }
+            } else if direction == gtk::DirectionType::Right {
                 focus_before_sidebar.borrow_mut().take();
                 browser.focus_active();
             } else if !sidebar_widget.child_focus(direction) && direction == gtk::DirectionType::Up
@@ -1848,7 +1853,9 @@ fn install_shortcuts(
                 sidebar_toggle.grab_focus();
                 state.window.set_focus_visible(true);
             }
-            return glib::Propagation::Stop;
+            if !preferences.tenxer_mode() {
+                return glib::Propagation::Stop;
+            }
         }
         if key == gtk::gdk::Key::BackSpace
             && !control

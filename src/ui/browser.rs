@@ -1361,8 +1361,6 @@ impl BrowserView {
         }
     }
 
-    /// Opens or closes the folder-peek popover for the focused directory.
-    /// Hover peeking's keyboard suppression does not apply. Focus stays put.
     pub fn toggle_folder_peek(&self) {
         if self.state.peek.borrow().is_some() {
             self.state.browser.close_peek();
@@ -1845,8 +1843,6 @@ impl BrowserView {
         true
     }
 
-    /// Moves the keyboard cursor `steps` entries in displayed listing order.
-    /// Columns fall back to source order, which already follows the column sort.
     pub fn move_displayed_cursor(&self, direction: i32, steps: usize) {
         if direction == 0 {
             return;
@@ -1888,7 +1884,6 @@ impl BrowserView {
         }
     }
 
-    /// `half` moves half of one full page. Both ends stay inside the listing.
     pub fn page_displayed_cursor(&self, direction: i32, half: bool) {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let items = focused

@@ -55,9 +55,7 @@ impl KeyboardFixture {
     fn with_provider(provider: Rc<dyn crate::services::PreviewProvider>) -> Self {
         PreferenceManager::seed_saved_preferences_for_test();
         let preferences = PreferenceManager::shared();
-        // Keyboard focus-return scenarios need a place to focus; the saved fixture hides all places.
         preferences.set_sidebar_show_home(true);
-        // The exhaustive fixture enables 10xer, which replaces this default map.
         preferences.set_tenxer_mode(false);
         let directory = tempfile::tempdir().expect("fixture");
         for name in ["a.txt", "b.txt", "c.txt"] {
@@ -1838,7 +1836,6 @@ fn focus_files(fixture: &KeyboardFixture) {
     wait_until(|| fixture.view.item_view_has_focus());
 }
 
-/// Walk the icon grid until `name` is the keyboard cursor.
 fn focus_icon(fixture: &KeyboardFixture, browser: &crate::app::Browser, name: &str) {
     focus_files(fixture);
     for key in [Key::k, Key::h] {

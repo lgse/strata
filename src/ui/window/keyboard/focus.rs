@@ -29,8 +29,6 @@ impl Dispatcher {
             .or_else(|| self.sidebar_navigation(browser, event))
     }
 
-    /// Tab and arrows stay inside the Columns, List, and Icons panes.
-    /// Focus that is already on surrounding chrome returns to the file list.
     fn tenxer_pane_focus(&self, browser: &Browser, event: &mut KeyEvent) -> KeyResult {
         if event.text_has_focus() || self.focus_in_popover() {
             return None;

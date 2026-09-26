@@ -5,8 +5,6 @@ use gtk::{
     prelude::*,
 };
 
-/// Sidebar chords while 10xer mode is on. `None` means a modified command that
-/// the rest of the keymap still owns, such as Ctrl+L.
 pub(in crate::ui) enum SidebarChord {
     Move(i32),
     Activate,

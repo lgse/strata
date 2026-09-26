@@ -406,8 +406,6 @@ impl ViewState {
         glib::idle_add_local_once(move || revealer.set_reveal_child(true));
     }
 
-    /// Shows the peek for the focused directory after keyboard ownership is claimed.
-    /// `keyboard_navigation` closes a peek, so the caller checks the open state first.
     pub(in crate::ui) fn open_keyboard_peek(&self) {
         let Some((widget, depth, location)) = self.mode_views.borrow().keyboard_peek_target()
         else {

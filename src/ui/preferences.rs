@@ -616,8 +616,6 @@ impl PreferenceManager {
         self.type_to_search() && !self.tenxer_mode()
     }
 
-    /// Arrows stay in the file panes while 10xer mode is on.
-    /// The saved preference applies only while that mode is off.
     pub fn arrow_navigation_scoped_active(&self) -> bool {
         self.tenxer_mode() || self.arrow_navigation_scoped()
     }
