@@ -494,9 +494,9 @@ impl ShortcutFooter {
         status.append(&paste);
         status.append(&filter);
         status.append(&visual);
-        status.append(&chord);
         status.append(&feedback);
         status.append(&count);
+        status.append(&chord);
         // Last, so transient marks grow leftward and the pill stays in the corner.
         status.append(&tag);
         root.add_child(&status);

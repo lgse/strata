@@ -265,7 +265,7 @@ broken links report an error instead of guessing a type from the first item.
 ## Places
 
 Press **g**, then a second key. The chord stays armed while the footer **g-**
-pill is showing, and a panel over the pill lists the valid second keys; it
+pill is showing beside the **10X** pill, and a panel over the pill lists the valid second keys; it
 never takes focus, so the next key still completes the chord. Sidebar keycaps
 appear on Home (**h**), Downloads (**d**), Trash (**t**), Network (**n**),
 Recent (**r**), Documents (**k**), Pictures (**p**), Videos (**v**), and
