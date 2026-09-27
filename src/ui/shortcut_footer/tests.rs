@@ -386,13 +386,7 @@ fn tenxer_reference_follows_the_active_map() {
             for _ in 0..4 {
                 press_reference(&footer, gdk::Key::Tab);
                 settle();
-                assert!(
-                    footer
-                        .categories
-                        .first_child()
-                        .and_downcast::<gtk::Button>()
-                        .is_some_and(|button| button.has_focus())
-                );
+                assert!(footer.category_buttons()[0].has_focus());
                 press_reference(&footer, gdk::Key::Tab);
                 settle();
                 assert!(footer.scroll.has_focus());
@@ -411,13 +405,7 @@ fn tenxer_reference_follows_the_active_map() {
             assert!(!matches.iter().any(|label| label == "Leave 10xer mode"));
             footer.search.set_text("");
             settle();
-            let places = footer
-                .categories
-                .first_child()
-                .and_then(|all| all.next_sibling())
-                .and_then(|navigation| navigation.next_sibling())
-                .and_downcast::<gtk::Button>()
-                .expect("places category");
+            let places = footer.category_buttons()[2].clone();
             places.emit_clicked();
             let matches = reference_labels(&footer);
             assert!(matches.iter().any(|label| label == "Home / ~/.config"));
@@ -433,24 +421,13 @@ fn tenxer_reference_follows_the_active_map() {
                 press_reference(&footer, gdk::Key::Tab);
                 settle();
             }
-            footer
-                .categories
-                .first_child()
-                .and_downcast::<gtk::Button>()
-                .expect("all category")
-                .emit_clicked();
+            footer.category_buttons()[0].emit_clicked();
             let ctrl = gdk::ModifierType::CONTROL_MASK;
             assert_eq!(
                 footer.handle_key(gdk::Key::b, ctrl),
                 Some(glib::Propagation::Stop)
             );
-            assert!(
-                footer
-                    .categories
-                    .first_child()
-                    .and_downcast::<gtk::Button>()
-                    .is_some_and(|button| button.has_focus())
-            );
+            assert!(footer.category_buttons()[0].has_focus());
             assert_eq!(
                 footer.handle_key(gdk::Key::j, none),
                 Some(glib::Propagation::Stop)
@@ -474,6 +451,16 @@ fn tenxer_reference_follows_the_active_map() {
                     .iter()
                     .any(|label| label == "Leave 10xer mode")
             );
+            assert_eq!(
+                footer.handle_key(gdk::Key::Right, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[1].has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::h, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.category_buttons()[0].has_focus());
             assert_eq!(
                 footer.handle_key(gdk::Key::Tab, none),
                 Some(glib::Propagation::Stop)

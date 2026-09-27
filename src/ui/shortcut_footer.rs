@@ -23,7 +23,7 @@ pub(super) struct ShortcutFooter {
     more: gtk::MenuButton,
     popover: gtk::Popover,
     reference: gtk::Box,
-    categories: gtk::Box,
+    categories: gtk::FlowBox,
     sidebar: gtk::ScrolledWindow,
     search: gtk::Entry,
     selected_category: Rc<RefCell<String>>,
@@ -80,6 +80,7 @@ struct ReferenceLayout {
     header: glib::WeakRef<gtk::Box>,
     body: glib::WeakRef<gtk::Box>,
     sidebar: glib::WeakRef<gtk::ScrolledWindow>,
+    categories: glib::WeakRef<gtk::FlowBox>,
     scroll: glib::WeakRef<gtk::ScrolledWindow>,
     reference: glib::WeakRef<gtk::Box>,
     search: glib::WeakRef<gtk::Entry>,
@@ -95,6 +96,7 @@ impl ReferenceLayout {
             Some(header),
             Some(body),
             Some(sidebar),
+            Some(categories),
             Some(scroll),
             Some(reference),
             Some(search),
@@ -103,6 +105,7 @@ impl ReferenceLayout {
             self.header.upgrade(),
             self.body.upgrade(),
             self.sidebar.upgrade(),
+            self.categories.upgrade(),
             self.scroll.upgrade(),
             self.reference.upgrade(),
             self.search.upgrade(),
@@ -129,15 +132,39 @@ impl ReferenceLayout {
         if compact {
             body.add_css_class("compact");
             reference.add_css_class("compact");
+            categories.add_css_class("compact");
         } else {
             body.remove_css_class("compact");
             reference.remove_css_class("compact");
+            categories.remove_css_class("compact");
         }
-        sidebar.set_height_request(if compact {
-            (window.height() / 5).clamp(60, 100)
-        } else {
-            -1
-        });
+        categories.set_max_children_per_line(if compact { 20 } else { 1 });
+        if changed {
+            for button in category_buttons(&categories) {
+                if let Some(line) = button.child().and_downcast::<gtk::Box>() {
+                    if let Some(label) = line.first_child().and_downcast::<gtk::Label>() {
+                        label.set_hexpand(!compact);
+                    }
+                    if let Some(count) = line.last_child().and_downcast::<gtk::Label>() {
+                        count.set_visible(!compact);
+                    }
+                }
+                button.set_hexpand(!compact);
+                button.set_halign(if compact {
+                    gtk::Align::Start
+                } else {
+                    gtk::Align::Fill
+                });
+                if compact {
+                    button.add_css_class("action-library-category");
+                } else {
+                    button.remove_css_class("action-library-category");
+                }
+            }
+        }
+        sidebar.set_height_request(-1);
+        sidebar.set_propagate_natural_height(compact);
+        sidebar.set_max_content_height((window.height() / 4).clamp(60, 160));
         sidebar.set_vexpand(!compact);
         scroll.set_width_request(if compact {
             (window.width() - 80).max(1)
@@ -260,12 +287,20 @@ impl ShortcutFooter {
         content.append(&header);
         let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         body.add_css_class("shortcut-reference-body");
-        let categories = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let categories = gtk::FlowBox::new();
         categories.add_css_class("shortcut-reference-categories");
+        categories.set_selection_mode(gtk::SelectionMode::None);
+        categories.set_focusable(false);
+        categories.set_homogeneous(false);
+        categories.set_min_children_per_line(1);
+        categories.set_max_children_per_line(1);
+        categories.set_column_spacing(8);
+        categories.set_row_spacing(8);
         let sidebar = gtk::ScrolledWindow::builder()
             .child(&categories)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
             .build();
         sidebar.add_css_class("shortcut-reference-sidebar");
         body.append(&sidebar);
@@ -286,7 +321,7 @@ impl ShortcutFooter {
         let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         footer_note.add_css_class("shortcut-reference-footer");
         let note = gtk::Label::new(Some(
-            "Ctrl+B categories · Ctrl+F search · Ctrl+L list · ↑↓/j/k move · Tab cycle · Esc close",
+            "Ctrl+B categories · Ctrl+F search · Ctrl+L list · arrows/hjkl move · Tab cycle · Esc close",
         ));
         note.set_wrap(true);
         note.add_css_class("shortcut-reference-note");
@@ -314,6 +349,7 @@ impl ShortcutFooter {
             header: header.downgrade(),
             body: body.downgrade(),
             sidebar: sidebar.downgrade(),
+            categories: categories.downgrade(),
             scroll: scroll.downgrade(),
             reference: reference.downgrade(),
             search: search.downgrade(),
@@ -900,8 +936,18 @@ impl ShortcutFooter {
         }
         if !command_modifiers && category_focused {
             let direction = match key {
-                gdk::Key::Up | gdk::Key::KP_Up | gdk::Key::k => Some(-1),
-                gdk::Key::Down | gdk::Key::KP_Down | gdk::Key::j => Some(1),
+                gdk::Key::Up
+                | gdk::Key::KP_Up
+                | gdk::Key::Left
+                | gdk::Key::KP_Left
+                | gdk::Key::k
+                | gdk::Key::h => Some(-1),
+                gdk::Key::Down
+                | gdk::Key::KP_Down
+                | gdk::Key::Right
+                | gdk::Key::KP_Right
+                | gdk::Key::j
+                | gdk::Key::l => Some(1),
                 gdk::Key::Home => Some(-100),
                 gdk::Key::End => Some(100),
                 _ => None,
@@ -937,15 +983,7 @@ impl ShortcutFooter {
     }
 
     fn category_buttons(&self) -> Vec<gtk::Button> {
-        let mut buttons = Vec::new();
-        let mut child = self.categories.first_child();
-        while let Some(widget) = child {
-            child = widget.next_sibling();
-            if let Ok(button) = widget.downcast::<gtk::Button>() {
-                buttons.push(button);
-            }
-        }
-        buttons
+        category_buttons(&self.categories)
     }
 
     fn focus_search(&self) -> bool {
@@ -1055,9 +1093,21 @@ impl ShortcutFooter {
     }
 }
 
+fn category_buttons(categories: &gtk::FlowBox) -> Vec<gtk::Button> {
+    let mut buttons = Vec::new();
+    let mut child = categories.first_child();
+    while let Some(row) = child {
+        child = row.next_sibling();
+        if let Some(button) = row.first_child().and_downcast::<gtk::Button>() {
+            buttons.push(button);
+        }
+    }
+    buttons
+}
+
 fn rebuild_reference(
     reference: &gtk::Box,
-    categories: &gtk::Box,
+    categories: &gtk::FlowBox,
     search: &gtk::Entry,
     scroll: &gtk::ScrolledWindow,
     selected: &Rc<RefCell<String>>,
@@ -1081,18 +1131,31 @@ fn rebuild_reference(
     ) {
         let button = gtk::Button::new();
         button.add_css_class("shortcut-reference-category");
-        if *selected.borrow() == name {
+        let compact = categories.has_css_class("compact");
+        if compact {
+            button.add_css_class("action-library-category");
+        }
+        let is_selected = *selected.borrow() == name;
+        if is_selected {
             button.add_css_class("selected");
         }
+        button.update_state(&[gtk::accessible::State::Selected(Some(is_selected))]);
         let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let label = gtk::Label::new(Some(name));
-        label.set_hexpand(true);
+        label.set_hexpand(!compact);
         label.set_xalign(0.0);
         line.append(&label);
         let amount = gtk::Label::new(Some(&count.to_string()));
         amount.add_css_class("shortcut-reference-count");
+        amount.set_visible(!compact);
         line.append(&amount);
         button.set_child(Some(&line));
+        button.set_hexpand(!compact);
+        button.set_halign(if compact {
+            gtk::Align::Start
+        } else {
+            gtk::Align::Fill
+        });
         let reference = reference.downgrade();
         let weak_categories = categories.downgrade();
         let search = search.downgrade();
@@ -1107,12 +1170,12 @@ fn rebuild_reference(
                 search.upgrade(),
                 scroll.upgrade(),
             ) {
-                let mut child = categories.first_child();
-                while let Some(widget) = child {
-                    child = widget.next_sibling();
-                    widget.remove_css_class("selected");
+                for category in category_buttons(&categories) {
+                    category.remove_css_class("selected");
+                    category.update_state(&[gtk::accessible::State::Selected(Some(false))]);
                 }
                 button.add_css_class("selected");
+                button.update_state(&[gtk::accessible::State::Selected(Some(true))]);
                 render_reference(
                     &reference,
                     mode.get(),
@@ -1123,7 +1186,10 @@ fn rebuild_reference(
                 scroll.vadjustment().set_value(0.0);
             }
         });
-        categories.append(&button);
+        categories.insert(&button, -1);
+        if let Some(row) = button.parent() {
+            row.set_focusable(false);
+        }
     }
     render_reference(
         reference,
