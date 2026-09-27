@@ -62,7 +62,6 @@ struct CurrentHit {
 }
 
 impl CurrentHit {
-    /// Names longer than this may be ellipsized in a narrow footer.
     const NAME_MIN_CHARS: usize = 32;
 
     fn new() -> Self {
@@ -349,7 +348,6 @@ impl PromptBar {
         focused
     }
 
-    /// Clears the typed text so nothing lingers. Callers own where focus goes.
     fn close(&self) {
         self.kind.set(None);
         self.entry.set_text("");
@@ -435,7 +433,6 @@ impl ShortcutFooter {
         status.prepend(&more);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.set_hexpand(true);
-        // The hit path sits left, away from the marks and count on the right.
         status.insert_child_after(&current.root, Some(&more));
         status.insert_child_after(&spacer, Some(&current.root));
         let popover = gtk::Popover::builder()
@@ -919,8 +916,6 @@ impl ShortcutFooter {
         self.refresh_filter();
     }
 
-    /// Updates the `filter:` or `search:` mark, the current search hit, and
-    /// the count from the observed filter.
     pub(in crate::ui) fn refresh_filter(&self) {
         let source = self.filter_source.borrow().clone();
         let status = match source {
@@ -1012,12 +1007,10 @@ impl ShortcutFooter {
         self.clear_feedback();
     }
 
-    /// Covers the footer with `kind`'s prompt and focuses its entry.
     pub(in crate::ui) fn open_prompt(&self, kind: Prompt) -> bool {
         self.open_prompt_with(kind, "")
     }
 
-    /// Opens `kind`'s prompt pre-filled with `text`.
     pub(in crate::ui) fn open_prompt_with(&self, kind: Prompt, text: &str) -> bool {
         // An armed chord must stay visible, and the prompt covers its mark.
         self.chords.set(None);
@@ -1045,7 +1038,6 @@ impl ShortcutFooter {
             .then(|| self.filter.text().to_string())
     }
 
-    /// The current search hit's path as shown, and in full.
     #[cfg(test)]
     pub(in crate::ui) fn current_hit(&self) -> Option<(String, String)> {
         let current = &self.current;
@@ -1089,8 +1081,6 @@ impl ShortcutFooter {
             .then(|| self.prompt.label.text().to_string())
     }
 
-    /// Closes the prompt without moving focus; the caller returns it to the
-    /// listing.
     pub(in crate::ui) fn dismiss_prompt(&self) {
         self.prompt.close();
     }

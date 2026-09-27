@@ -252,7 +252,6 @@ pub(super) struct ColumnView {
 }
 
 impl ColumnView {
-    /// Applies filter text still waiting on its debounce.
     pub(super) fn flush_filter_query(&self) {
         if let Some(binding) = self.query_binding.borrow().as_ref() {
             binding.flush();

@@ -52,9 +52,8 @@ impl Dispatcher {
         Some(Propagation::Stop)
     }
 
-    /// Leaves visual mode, then closes an open preview, then dismisses the hits.
     fn dismiss_search_step(&self) {
-        if self.view.leave_visual() {
+        if self.view.leave_visual() || self.view.dismiss_find_highlight() {
             return;
         }
         if self.preview.is_enabled() {
@@ -103,7 +102,6 @@ impl Dispatcher {
                     return Propagation::Stop;
                 }
                 if self.shortcuts.open_prompt_kind() == Some(Prompt::Search) {
-                    // A nonempty search keeps its hits; an empty one cancels.
                     let text = self.shortcuts.prompt_text();
                     self.shortcuts.dismiss_prompt();
                     self.view.commit_listing_search(&text);
@@ -148,6 +146,8 @@ impl Dispatcher {
 
     fn return_to_listing(&self, browser: &Browser) {
         self.shortcuts.dismiss_prompt();
-        browser.focus_active();
+        if !self.view.focus_visible_results() {
+            browser.focus_active();
+        }
     }
 }

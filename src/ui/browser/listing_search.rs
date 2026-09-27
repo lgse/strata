@@ -15,7 +15,6 @@ use crate::{model::Location, ui::browser_modes::BrowserMode};
 
 #[derive(Default)]
 pub(super) struct SearchState {
-    /// The field the search borrowed and the **f** query it held.
     borrowed: RefCell<Option<(glib::WeakRef<gtk::Entry>, String)>>,
     /// A hit's Miller column is opening beside the hits, not replacing them.
     opening_hit_column: Cell<bool>,
@@ -52,7 +51,6 @@ impl BrowserView {
             .is_some_and(|location| location.native_path().is_some())
     }
 
-    /// The **f** query a showing search replaced.
     pub(super) fn saved_listing_filter(&self, target: &Target) -> String {
         self.state.listing_search.saved_filter(target)
     }
@@ -61,7 +59,6 @@ impl BrowserView {
         self.state.listing_search.borrowed.take();
     }
 
-    /// Whether recursive **s** hits replace the focused listing.
     pub(in crate::ui) fn listing_search_active(&self) -> bool {
         self.search_target().is_some()
     }
@@ -121,7 +118,6 @@ impl BrowserView {
         self.focus_filter_results(&target);
     }
 
-    /// Returns keyboard focus to the hits.
     pub(in crate::ui) fn focus_listing_search(&self) {
         if let Some(target) = self.search_target() {
             self.focus_filter_results(&target);
@@ -193,7 +189,6 @@ impl super::ViewState {
         }
     }
 
-    /// Carries a showing search into the rebuilt view's field.
     pub(super) fn carry_listing_search(&self, searching: bool) {
         if !searching {
             return;

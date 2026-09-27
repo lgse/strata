@@ -26,7 +26,6 @@ pub(super) struct FindState {
 type Rgb = (u16, u16, u16);
 
 thread_local! {
-    /// Accent (segment background) and theme background (segment text).
     static HIGHLIGHT_COLORS: Cell<Option<(Rgb, Rgb)>> = const { Cell::new(None) };
     /// Windows that have committed a find, so a theme change can recolor them.
     static FIND_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
@@ -66,8 +65,6 @@ fn register_find_view(state: &Rc<ViewState>) {
     });
 }
 
-/// Byte ranges of the case-insensitive, non-overlapping occurrences of `query`
-/// in `name`, left to right.
 pub(in crate::ui) fn match_ranges(name: &str, query: &str) -> Vec<Range<usize>> {
     let needle: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
     if needle.is_empty() {
@@ -129,8 +126,6 @@ fn highlight_attributes(text: &str, query: &str) -> Option<gtk::pango::AttrList>
     Some(attributes)
 }
 
-/// Highlights `query` in a name label (a `Label` or an Icons `Inscription`), or
-/// clears a previous highlight when `query` is `None`.
 pub(in crate::ui) fn highlight_name(widget: &gtk::Widget, query: Option<&str>) {
     if let Some(label) = widget.downcast_ref::<gtk::Label>() {
         let attributes = query.and_then(|query| highlight_attributes(&label.text(), query));
@@ -150,7 +145,6 @@ pub(in crate::ui) fn highlight_name(widget: &gtk::Widget, query: Option<&str>) {
 }
 
 impl ViewState {
-    /// The query whose matches listings should highlight, if any.
     pub(in crate::ui) fn find_highlight(&self) -> Option<String> {
         let find = self.find.borrow();
         (find.highlighted && !find.query.is_empty()).then(|| find.query.clone())
@@ -204,7 +198,6 @@ impl BrowserView {
         Some(self.find_next(&query, backward, listing_focused))
     }
 
-    /// The last committed query, if any.
     pub(in crate::ui) fn find_query(&self) -> Option<String> {
         let find = self.state.find.borrow();
         (!find.query.is_empty()).then(|| find.query.clone())
@@ -220,7 +213,6 @@ impl BrowserView {
         dismissed
     }
 
-    /// Forgets the committed query and its highlights.
     pub(in crate::ui) fn clear_find(&self) {
         let had_highlight = self.state.find.replace(FindState::default()).highlighted;
         if had_highlight {
@@ -254,6 +246,34 @@ impl BrowserView {
     }
 
     fn find_next(&self, query: &str, backward: bool, listing_focused: bool) -> bool {
+        if let Some(target) = self.filter_target()
+            && target.results_view().is_some()
+        {
+            let Some(results) = target.results() else {
+                return false;
+            };
+            let Some(hits) = target.hits() else {
+                return false;
+            };
+            let len = results.len();
+            if len == 0 {
+                return false;
+            }
+            let current = hits.cursor.map(|position| position as usize);
+            let found = (1..=len)
+                .map(|step| match (current, backward) {
+                    (Some(index), false) => (index + step) % len,
+                    (Some(index), true) => (index + len - step % len) % len,
+                    (None, false) => step - 1,
+                    (None, true) => len - step,
+                })
+                .find(|&index| !match_ranges(&results[index].name, query).is_empty());
+            let Some(index) = found else {
+                return false;
+            };
+            self.place_found_result(index as u32, listing_focused);
+            return true;
+        }
         let Some(depth) = self.focused_listing_depth() else {
             return false;
         };
