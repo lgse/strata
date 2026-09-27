@@ -586,6 +586,14 @@ impl BrowserView {
             .collect()
     }
 
+    /// Adds the result at `position` to the selection as Ctrl+click does.
+    #[cfg(test)]
+    pub(in crate::ui) fn extend_result_selection(&self, position: u32) -> bool {
+        self.filter_target()
+            .and_then(|target| target.hits())
+            .is_some_and(|hits| hits.selection.select_item(position, false))
+    }
+
     pub(in crate::ui) fn connect_filter_results_changed(&self, handler: Rc<dyn Fn()>) {
         self.state
             .listing_filter
