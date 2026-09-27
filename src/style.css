@@ -2987,7 +2987,8 @@ entry.form-control.shortcut-footer-prompt:focus-within {
   outline: none;
 }
 
-.tenxer-tag {
+.tenxer-tag,
+.shortcut-footer-chord-pill {
   color: @theme_accent;
   background-color: alpha(@theme_accent, 0.14);
   border: 1px solid alpha(@theme_accent, 0.4);

@@ -144,12 +144,13 @@ fn tenxer_go_chord_reaches_places_and_cancels_cleanly() {
             fixture.press(Key::g, ModifierType::empty());
             assert_eq!(fixture.shortcuts.chord().text(), "g-");
             assert!(fixture.shortcuts.chord().is_visible());
-            assert!(
-                fixture
-                    .shortcuts
-                    .chord_hint()
-                    .is_some_and(|hint| hint.contains("h home") && hint.contains("1–9 pins"))
-            );
+            let option = |key: &str, action: &str| (key.to_owned(), action.to_owned());
+            wait_until(|| {
+                fixture.shortcuts.chord_options().is_some_and(|options| {
+                    options.contains(&option("h", "Home"))
+                        && options.contains(&option("1–9", "Pins"))
+                })
+            });
             let keycaps = visible_keycaps(&fixture);
             for key in ["h", "d", "k", "p", "v", "1", "2"] {
                 assert!(
@@ -163,7 +164,7 @@ fn tenxer_go_chord_reaches_places_and_cancels_cleanly() {
             );
             fixture.press(Key::Escape, ModifierType::empty());
             assert!(!fixture.shortcuts.chord().is_visible());
-            assert_eq!(fixture.shortcuts.chord_hint(), None);
+            assert_eq!(fixture.shortcuts.chord_options(), None);
             assert!(visible_keycaps(&fixture).is_empty());
             fixture.press(Key::d, ModifierType::empty());
             pump(50);

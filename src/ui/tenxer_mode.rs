@@ -94,13 +94,25 @@ impl Chord {
         }
     }
 
-    pub(crate) fn hint(self) -> &'static str {
+    /// The second keys this chord accepts, with what each does.
+    pub(crate) fn options(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            Self::Go => {
-                "g first · f hit's folder · h home · d downloads · c config · t trash · n network · \
-                 r recent · k documents · p pictures · v videos · 1–9 pins · space path"
-            }
-            Self::PreviewTop => "g top",
+            Self::Go => &[
+                ("g", "First item"),
+                ("f", "Hit's folder"),
+                ("h", "Home"),
+                ("d", "Downloads"),
+                ("c", "Config"),
+                ("t", "Trash"),
+                ("n", "Network"),
+                ("r", "Recent"),
+                ("k", "Documents"),
+                ("p", "Pictures"),
+                ("v", "Videos"),
+                ("1–9", "Pins"),
+                ("Space", "Type a path"),
+            ],
+            Self::PreviewTop => &[("g", "Top")],
         }
     }
 }

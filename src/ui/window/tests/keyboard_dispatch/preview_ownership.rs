@@ -256,7 +256,9 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 assert_eq!(document_scroll(&fixture), top, "{mode:?}");
                 fixture.press(Key::G, ModifierType::SHIFT_MASK);
                 fixture.press(Key::g, ModifierType::empty());
-                assert_eq!(fixture.shortcuts.chord_hint().as_deref(), Some("g top"));
+                wait_until(|| {
+                    fixture.shortcuts.chord_options() == Some(vec![("g".into(), "Top".into())])
+                });
                 fixture.press(Key::g, ModifierType::empty());
                 assert_eq!(document_scroll(&fixture), top, "{mode:?} g g");
                 fixture.press(Key::g, ModifierType::empty());

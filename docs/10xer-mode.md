@@ -2,7 +2,7 @@
 
 > This document is the target product specification, not a completion report.
 
-10xer mode is an opt-in Yazi-style browsing map. In **Settings → General → Browsing** the row is titled **10xer mode** and its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.** The footer shows a compact **10X** pill at the right, immediately before the item count, while the mode is on. It hides window Search and pane
+10xer mode is an opt-in Yazi-style browsing map. In **Settings → General → Browsing** the row is titled **10xer mode** and its subtitle is **Opinionated keyboard-centric mode with Yazi-style navigation. Disables some features. Toggle with Ctrl-Shift-M.** The footer shows a compact **10X** pill in its far right corner, after the item count, while the mode is on. It hides window Search and pane
 Close/filter/refresh/sort chrome in interactive browsers, disables
 type-to-search, and uses the footer as the typed-command surface. List column
 headings stay clickable. The portal file chooser follows the same preference:
@@ -265,10 +265,11 @@ broken links report an error instead of guessing a type from the first item.
 ## Places
 
 Press **g**, then a second key. The chord stays armed while the footer **g-**
-mark is showing. Sidebar keycaps appear on Home (**h**), Downloads (**d**),
-Trash (**t**), Network (**n**), Recent (**r**), Documents (**k**), Pictures
-(**p**), Videos (**v**), and visible PINNED rows (**1**–**9** in display
-order), plus a short list of valid second keys. **,**, **c**, and **;** show
+pill is showing, and a panel over the pill lists the valid second keys; it
+never takes focus, so the next key still completes the chord. Sidebar keycaps
+appear on Home (**h**), Downloads (**d**), Trash (**t**), Network (**n**),
+Recent (**r**), Documents (**k**), Pictures (**p**), Videos (**v**), and
+visible PINNED rows (**1**–**9** in display order). **,**, **c**, and **;** show
 the same kind of list (sort options / copy path or name / matching custom
 actions) while armed. The second key completes only that chord: **, a** /
 **, m** / **, s** / **, e** sort instead of create / search, and search-result

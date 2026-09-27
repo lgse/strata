@@ -10,6 +10,7 @@ use std::{
 use gtk::{gdk, glib, prelude::*};
 
 use candidates::Candidates;
+use chord_panel::ChordPanel;
 
 use super::{
     browser::FilterStatus,
@@ -111,27 +112,31 @@ impl CurrentHit {
     }
 }
 
-/// The armed chord and its footer mark. The chord is armed exactly while the
-/// mark is showing.
+/// The armed chord, its footer pill, and the panel of second keys over it.
+/// The chord is armed exactly while the pill is showing.
 #[derive(Clone)]
 struct ChordIndicator {
     armed: Rc<Cell<Option<Chord>>>,
     mark: glib::WeakRef<gtk::Label>,
-    hint: glib::WeakRef<gtk::Label>,
+    panel: ChordPanel,
     listeners: Rc<RefCell<Vec<ChordListener>>>,
 }
 
 impl ChordIndicator {
     fn set(&self, chord: Option<Chord>) {
+        let previous = self.armed.replace(chord);
         if let Some(mark) = self.mark.upgrade() {
             mark.set_text(chord.map_or("", Chord::mark));
             mark.set_visible(chord.is_some());
+            match chord {
+                Some(chord) if previous != Some(chord) => {
+                    self.panel.show(&mark, chord, self.armed.clone());
+                }
+                Some(_) => {}
+                None => self.panel.hide(),
+            }
         }
-        if let Some(hint) = self.hint.upgrade() {
-            hint.set_text(chord.map_or("", Chord::hint));
-            hint.set_visible(chord.is_some());
-        }
-        if self.armed.replace(chord) != chord {
+        if previous != chord {
             for listener in self.listeners.borrow().iter() {
                 listener(chord);
             }
@@ -465,16 +470,12 @@ impl ShortcutFooter {
         super::accessibility::set_label(&tag, crate::ui::tenxer_mode::TAG_NAME);
         tag.set_visible(false);
         let chord = gtk::Label::new(None);
-        chord.add_css_class("shortcut-footer-chord");
+        chord.add_css_class("shortcut-footer-chord-pill");
         chord.set_visible(false);
-        let chord_hint = gtk::Label::new(None);
-        chord_hint.add_css_class("shortcut-footer-chord-hint");
-        chord_hint.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        chord_hint.set_visible(false);
         let chords = ChordIndicator {
             armed: Rc::new(Cell::new(None)),
             mark: chord.downgrade(),
-            hint: chord_hint.downgrade(),
+            panel: ChordPanel::attach(&chord),
             listeners: Rc::new(RefCell::new(Vec::new())),
         };
         let visual = gtk::Label::new(None);
@@ -494,11 +495,10 @@ impl ShortcutFooter {
         status.append(&filter);
         status.append(&visual);
         status.append(&chord);
-        status.append(&chord_hint);
-        // Transient marks grow leftward so the pill stays put.
-        status.append(&tag);
         status.append(&feedback);
         status.append(&count);
+        // Last, so transient marks grow leftward and the pill stays in the corner.
+        status.append(&tag);
         root.add_child(&status);
         root.add_child(&prompt.bar);
         let show_hints = Rc::new(Cell::new(true));
@@ -772,7 +772,6 @@ impl ShortcutFooter {
             more.clone().upcast(),
             tag.clone().upcast(),
             chord.clone().upcast(),
-            chord_hint.clone().upcast(),
             visual.clone().upcast(),
             filter.clone().upcast(),
             current.root.clone().upcast(),
@@ -1249,10 +1248,10 @@ impl ShortcutFooter {
         self.chords.mark.upgrade().expect("chord mark")
     }
 
+    /// The keys and actions listed over the chord pill while its panel is open.
     #[cfg(test)]
-    pub(in crate::ui) fn chord_hint(&self) -> Option<String> {
-        let hint = self.chords.hint.upgrade()?;
-        hint.is_visible().then(|| hint.text().to_string())
+    pub(in crate::ui) fn chord_options(&self) -> Option<Vec<(String, String)>> {
+        self.chords.panel.shown_options()
     }
 
     pub(in crate::ui) fn prompt_is_visible(&self) -> bool {
@@ -1982,5 +1981,6 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
 }
 
 mod candidates;
+mod chord_panel;
 #[cfg(test)]
 mod tests;
