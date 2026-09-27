@@ -720,6 +720,36 @@ const TENXER_PLACE_CHORDS: &[PlaceChord] = &[
     PlaceChord {
         binding: Binding {
             category: "Places",
+            action: "Jump to a visited folder",
+            note: "Ranked by match, visit count, and recency",
+            keys: "z",
+        },
+        reference_keys: "",
+        reference_label: "Jump to a visited folder",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Jump to a recent folder",
+            note: "Most recent visit first",
+            keys: "Z",
+        },
+        reference_keys: "",
+        reference_label: "Jump to a recent folder",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Choose a visited folder",
+            note: "In the jump or recent prompt",
+            keys: "↑ / ↓",
+        },
+        reference_keys: "↑ / ↓ in jump › / recent ›",
+        reference_label: "Choose a visited folder",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
             action: "Top of the document or first archive member",
             note: "Preview",
             keys: "g g",

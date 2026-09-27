@@ -94,6 +94,7 @@ impl WindowContent {
                 },
                 shortcuts: self.footer.shortcuts.clone(),
                 folders: Rc::new(crate::ui::go_completion::GioFolders),
+                history: crate::services::NavigationHistory::shared(),
             },
         );
         notice

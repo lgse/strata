@@ -342,8 +342,8 @@ listing row closes the prompt and keeps that selection.
 | **n** / **N** | Repeat the last find. **N** reverses. |
 | **f** | Filter this listing (hides non-matches). The footer shows `filter: …` until dismissed. |
 | **s** | Recursive name search in the current folder (cap 100). The footer shows `search: …` until dismissed. Prompt **Esc** keeps hits; listing **Esc** follows the precedence above. |
-| **z** | Jump to a visited folder (fuzzy + frecency) |
-| **Z** | Jump to a recent folder (last visit) |
+| **z** | Jump to a visited folder (name match, then frecency) |
+| **Z** | Jump to a recently visited folder (last visit first) |
 | **a** | Create |
 | **r** | Rename |
 | **Tab** / **Shift+Tab** | Cycle matching folders in the go prompt |
@@ -398,9 +398,18 @@ window discards the previous query's pending hits; a view change keeps the
 search. A folder without a local path, such as Network, flashes
 `Nothing to search`.
 
-**z** / **Z** use Strata folder history, not a zoxide database. Empty input
-still lists candidates; **Up** / **Down** pick a row, **Enter** goes there.
-A miss shows `No matching folders` and does not navigate.
+**z** (`jump ›`) and **Z** (`recent ›`) pick from the folders Strata has
+opened, the same saved history as the default map's **Ctrl+Shift+K**, not a
+zoxide database. **z** ranks by name match first, then by how often and how
+recently each folder was opened; **Z** keeps matching folders in last-visit
+order. The folder already open is left out. Candidates list above the footer
+as you type, including for empty input, with the first one chosen. **Up** /
+**Down** choose another row (wrapping) while the entry keeps focus, and
+**Enter** or a click opens the chosen folder once. Editing the text lists
+fresh candidates and chooses the first again. A miss shows
+`No matching folders`, and **Enter** then leaves the prompt open without
+navigating. **Esc**, focus loss, a replacing prompt, and leaving the mode close
+the prompt without opening a candidate.
 
 ## Search results
 

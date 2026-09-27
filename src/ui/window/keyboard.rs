@@ -13,6 +13,7 @@ use gtk::{
 
 use crate::{
     app::Browser,
+    services::NavigationHistory,
     ui::{
         browser::BrowserView,
         go_completion::{FolderSource, GoCompletion},
@@ -46,6 +47,8 @@ pub(super) struct Bindings {
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
     pub folders: Rc<dyn FolderSource>,
+    /// Visited folders for **z** / **Z**.
+    pub history: Rc<NavigationHistory>,
 }
 
 pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bindings: Bindings) {
@@ -60,6 +63,7 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         type_to_search: bindings.type_to_search,
         shortcuts: bindings.shortcuts,
         go: GoCompletion::new(bindings.folders),
+        history: bindings.history,
         sidebar: SidebarFocus {
             state: sidebar.state.clone(),
             widget: sidebar.widget.clone(),
@@ -82,6 +86,7 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
         go_on_destroy.invalidate();
     });
     bind_go_completion(&dispatcher);
+    bind_history_prompts(&dispatcher);
     let preferences = dispatcher.type_to_search.preferences.clone();
     release_preview_keys_on_mode_exit(window, &dispatcher.preview, &weak_browser);
     clear_find_on_mode_exit(window, &dispatcher, &weak_browser);
@@ -195,6 +200,30 @@ fn bind_go_completion(dispatcher: &Dispatcher) {
             hint.show(None, None);
         }
     });
+}
+
+/// **z** / **Z** list history candidates for the text as it is edited, and a
+/// clicked candidate opens like **Enter**.
+fn bind_history_prompts(dispatcher: &Dispatcher) {
+    let shortcuts = dispatcher.shortcuts.clone();
+    let history = dispatcher.history.clone();
+    let browser = Rc::downgrade(&dispatcher.view.browser());
+    dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
+        if let Some(browser) = browser.upgrade() {
+            prompts::show_history_candidates(&shortcuts, &history, &browser, kind);
+        }
+    });
+    let shortcuts = dispatcher.shortcuts.clone();
+    let browser = Rc::downgrade(&dispatcher.view.browser());
+    dispatcher
+        .shortcuts
+        .connect_candidate_activated(move |path| {
+            shortcuts.dismiss_prompt();
+            if let Some(browser) = browser.upgrade() {
+                browser.focus_active();
+                browser.navigate(crate::model::Location::local(path));
+            }
+        });
 }
 
 /// Leaving 10xer mode forgets the find, footer filters, and search, and hands a focused
@@ -403,6 +432,7 @@ struct Dispatcher {
     type_to_search: TypeToSearch,
     shortcuts: ShortcutFooter,
     go: GoCompletion,
+    history: Rc<NavigationHistory>,
 }
 
 struct KeyEvent {

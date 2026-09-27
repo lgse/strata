@@ -2,11 +2,14 @@
 
 use std::{
     cell::{Cell, RefCell},
+    path::PathBuf,
     rc::Rc,
     time::Duration,
 };
 
 use gtk::{gdk, glib, prelude::*};
+
+use candidates::Candidates;
 
 use super::{
     browser::FilterStatus,
@@ -285,6 +288,7 @@ struct PromptBar {
     resets: PromptResetListeners,
     /// Set while a [`PromptSink`] replaces the text, which is not an edit.
     replacing: Rc<Cell<bool>>,
+    candidates: Rc<Candidates>,
 }
 
 #[derive(Clone)]
@@ -296,6 +300,7 @@ struct WeakPromptBar {
     kind: Rc<Cell<Option<Prompt>>>,
     resets: PromptResetListeners,
     replacing: Rc<Cell<bool>>,
+    candidates: Rc<Candidates>,
 }
 
 impl PromptBar {
@@ -316,6 +321,7 @@ impl PromptBar {
         bar.append(&label);
         bar.append(&entry);
         bar.append(&hint);
+        let candidates = Candidates::attach(&entry);
         Self {
             bar,
             label,
@@ -324,6 +330,7 @@ impl PromptBar {
             kind: Rc::new(Cell::new(None)),
             resets: Rc::default(),
             replacing: Rc::default(),
+            candidates,
         }
     }
 
@@ -336,6 +343,7 @@ impl PromptBar {
             kind: self.kind.clone(),
             resets: self.resets.clone(),
             replacing: self.replacing.clone(),
+            candidates: self.candidates.clone(),
         }
     }
 
@@ -350,6 +358,7 @@ impl PromptBar {
 
     fn reset(&self) {
         self.set_hint(None);
+        self.candidates.clear();
         for listener in self.resets.borrow().iter() {
             listener();
         }
@@ -404,6 +413,7 @@ impl WeakPromptBar {
             kind: self.kind.clone(),
             resets: self.resets.clone(),
             replacing: self.replacing.clone(),
+            candidates: self.candidates.clone(),
         })
     }
 }
@@ -1178,6 +1188,46 @@ impl ShortcutFooter {
         self.prompt.close();
     }
 
+    /// Lists `paths` above the open prompt with the first one chosen.
+    pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>) {
+        if self.prompt.bar.is_visible() {
+            self.prompt.candidates.set(paths);
+        }
+    }
+
+    pub(in crate::ui) fn step_candidate(&self, delta: i32) {
+        self.prompt.candidates.step(delta);
+    }
+
+    pub(in crate::ui) fn chosen_candidate(&self) -> Option<PathBuf> {
+        self.prompt.candidates.chosen()
+    }
+
+    /// The chosen candidate's 0-based index and the candidate count.
+    pub(in crate::ui) fn candidate_position(&self) -> Option<(usize, usize)> {
+        self.prompt.candidates.position()
+    }
+
+    /// Runs `listener` with a candidate clicked in the list.
+    pub(in crate::ui) fn connect_candidate_activated(&self, listener: impl Fn(PathBuf) + 'static) {
+        self.prompt.candidates.connect_activated(listener);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn candidates(&self) -> Vec<PathBuf> {
+        self.prompt.candidates.paths()
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn candidates_shown(&self) -> bool {
+        self.prompt.candidates.is_shown()
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn click_candidate(&self, index: usize) {
+        self.prompt.candidates.activate(index);
+    }
+
     pub(in crate::ui) fn arm_chord(&self, chord: Chord) {
         self.chords.set(Some(chord));
     }
@@ -1931,5 +1981,6 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
     parent.append(&section);
 }
 
+mod candidates;
 #[cfg(test)]
 mod tests;

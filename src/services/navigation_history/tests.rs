@@ -92,3 +92,31 @@ fn repeated_visits_update_one_entry() {
     assert_eq!(entries[0].rank, 2.0);
     assert_eq!(entries[0].last_accessed, 20);
 }
+
+#[test]
+fn recent_orders_matches_by_last_visit_not_frequency() {
+    let directory = tempfile::tempdir().expect("history directory");
+    let history = NavigationHistory::open(directory.path().join("history.json"));
+    let frequent = PathBuf::from("/work/alpha-frequent");
+    let latest = PathBuf::from("/work/alpha-latest");
+    let unrelated = PathBuf::from("/work/beta");
+    for visit in 0..20 {
+        history.record_at(&frequent, 100 + visit);
+    }
+    history.record_at(&unrelated, 150);
+    history.record_at(&latest, 200);
+
+    let paths = |query| {
+        history
+            .recent(query)
+            .into_iter()
+            .map(|item| item.path)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        paths(""),
+        vec![latest.clone(), unrelated.clone(), frequent.clone()]
+    );
+    assert_eq!(paths("alpha"), vec![latest, frequent]);
+    assert!(paths("zzz").is_empty());
+}

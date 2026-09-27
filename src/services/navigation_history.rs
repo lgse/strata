@@ -80,7 +80,7 @@ impl NavigationHistory {
         self.record_at(path, unix_time());
     }
 
-    fn record_at(&self, path: &Path, now: u64) {
+    pub(crate) fn record_at(&self, path: &Path, now: u64) {
         if !path.is_absolute() {
             return;
         }
@@ -140,6 +140,32 @@ impl NavigationHistory {
             .into_iter()
             .take(MAX_RESULTS)
             .map(|(_, _, item)| item)
+            .collect()
+    }
+
+    /// Folders matching `query`, most recently visited first.
+    pub(crate) fn recent(&self, query: &str) -> Vec<SearchItem> {
+        let query = fold_for_search(query.trim());
+        let mut matches = self
+            .entries
+            .borrow()
+            .iter()
+            .filter_map(|entry| {
+                let item = SearchItem::for_history(entry.path.clone());
+                (query.is_empty() || item.fuzzy_score(&query).is_some())
+                    .then_some((entry.last_accessed, item))
+            })
+            .collect::<Vec<_>>();
+        matches.sort_unstable_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| left.1.path.cmp(&right.1.path))
+        });
+        matches
+            .into_iter()
+            .take(MAX_RESULTS)
+            .map(|(_, item)| item)
             .collect()
     }
 }

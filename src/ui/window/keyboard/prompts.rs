@@ -11,9 +11,11 @@ use gtk::{
 use super::{Dispatcher, KeyResult, command_modifiers};
 use crate::{
     app::Browser,
+    model::Location,
+    services::NavigationHistory,
     ui::{
         go_completion::{Context, Step},
-        shortcut_footer::PromptSink,
+        shortcut_footer::{PromptSink, ShortcutFooter},
         tenxer_mode::Prompt,
     },
 };
@@ -24,8 +26,8 @@ fn plain(modifiers: Modifiers) -> bool {
 }
 
 impl Dispatcher {
-    /// **/**, **?**, **n**, **N**, **f**, **s**, and the filter and search
-    /// **Esc** steps from the listing. Shift is ignored because some layouts
+    /// **/**, **?**, **n**, **N**, **f**, **s**, **z**, **Z**, and the filter
+    /// and search **Esc** steps from the listing. Shift is ignored because some layouts
     /// type **/** with it and **?** / **N** always need it.
     pub(super) fn tenxer_prompt_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
         if !plain(modifiers) || !self.view.item_view_has_focus() {
@@ -34,6 +36,17 @@ impl Dispatcher {
         match key {
             Key::slash | Key::KP_Divide => self.shortcuts.open_prompt(Prompt::Find),
             Key::question => self.shortcuts.open_prompt(Prompt::FindBackward),
+            Key::z | Key::Z => {
+                let kind = if key == Key::z {
+                    Prompt::Jump
+                } else {
+                    Prompt::Recent
+                };
+                let opened = self.shortcuts.open_prompt(kind);
+                let browser = self.view.browser();
+                show_history_candidates(&self.shortcuts, &self.history, &browser, kind);
+                opened
+            }
             Key::n | Key::N => {
                 self.repeat_find(key == Key::N);
                 return Some(Propagation::Stop);
@@ -106,7 +119,9 @@ impl Dispatcher {
                     key == Key::ISO_Left_Tab || modifiers.contains(Modifiers::SHIFT_MASK);
                 self.complete_folder(browser, backward);
             }
-            Key::Escape if kind == Some(Prompt::Go) => self.return_to_listing(browser),
+            Key::Escape if kind.is_some_and(|kind| kind == Prompt::Go || kind.picks_history()) => {
+                self.return_to_listing(browser)
+            }
             Key::Escape => {
                 if self.shortcuts.open_prompt_kind() == Some(Prompt::Filter) {
                     self.shortcuts.dismiss_prompt();
@@ -125,6 +140,17 @@ impl Dispatcher {
                 self.return_to_listing(browser);
             }
             Key::Return | Key::KP_Enter => self.submit_prompt(browser),
+            Key::Up | Key::KP_Up | Key::Down | Key::KP_Down
+                if kind.is_some_and(Prompt::picks_history) =>
+            {
+                let delta = if matches!(key, Key::Up | Key::KP_Up) {
+                    -1
+                } else {
+                    1
+                };
+                self.shortcuts.step_candidate(delta);
+                show_candidate_hint(&self.shortcuts);
+            }
             Key::Up | Key::KP_Up => self.view.step_cursor_unfocused(-1),
             Key::Down | Key::KP_Down => self.view.step_cursor_unfocused(1),
             _ => return Propagation::Proceed,
@@ -152,6 +178,19 @@ impl Dispatcher {
                     self.view.keyboard_navigation();
                     self.view.open_typed_location(&text);
                 }
+                return;
+            }
+            Some(Prompt::Jump | Prompt::Recent) => {
+                // Closing clears the candidates, so only this one can open.
+                let Some(path) = self.shortcuts.chosen_candidate() else {
+                    show_candidate_hint(&self.shortcuts);
+                    return;
+                };
+                self.return_to_listing(browser);
+                self.view.keyboard_navigation();
+                self.view
+                    .browser()
+                    .navigate_with_selection(Location::local(path), true);
                 return;
             }
             _ if text.is_empty() => true,
@@ -199,6 +238,47 @@ impl Dispatcher {
             browser.focus_active();
         }
     }
+}
+
+/// Lists the history folders for the open **jump ›** or **recent ›** text,
+/// leaving out the folder already open.
+pub(super) fn show_history_candidates(
+    shortcuts: &ShortcutFooter,
+    history: &NavigationHistory,
+    browser: &Browser,
+    kind: Prompt,
+) {
+    if !kind.picks_history() || shortcuts.open_prompt_kind() != Some(kind) {
+        return;
+    }
+    let text = shortcuts.prompt_text();
+    let items = if kind == Prompt::Jump {
+        history.search(&text)
+    } else {
+        history.recent(&text)
+    };
+    let current = browser
+        .active_location()
+        .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
+    let paths = items
+        .into_iter()
+        .map(|item| item.path)
+        .filter(|path| Some(path) != current.as_ref())
+        .collect();
+    shortcuts.show_candidates(paths);
+    show_candidate_hint(shortcuts);
+}
+
+fn show_candidate_hint(shortcuts: &ShortcutFooter) {
+    let Some(kind) = shortcuts.open_prompt_kind() else {
+        return;
+    };
+    let hint = match shortcuts.candidate_position() {
+        None => Some("No matching folders".to_owned()),
+        Some((_, 1)) => None,
+        Some((index, count)) => Some(format!("{} of {count}", index + 1)),
+    };
+    shortcuts.prompt_sink(kind).show(None, hint.as_deref());
 }
 
 fn show_step(sink: &PromptSink, step: Step) {
