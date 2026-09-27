@@ -28,7 +28,6 @@ pub(in crate::ui::window) enum GoTarget {
     FirstItem,
     /// The folder holding the search hit under the cursor.
     HitFolder,
-    /// The footer **go ›** prompt for a typed path or URI.
     Prompt,
     /// `validate` routes URI places through mount-aware validation.
     Place {

@@ -408,7 +408,6 @@ impl WeakPromptBar {
     }
 }
 
-/// Updates an open prompt without keeping the footer alive.
 pub(in crate::ui) struct PromptSink {
     prompt: WeakPromptBar,
     kind: Prompt,
@@ -1118,7 +1117,6 @@ impl ShortcutFooter {
             .then(|| self.prompt.hint.text().to_string())
     }
 
-    /// A weak handle for updating the prompt of `kind` after background work.
     pub(in crate::ui) fn prompt_sink(&self, kind: Prompt) -> PromptSink {
         PromptSink {
             prompt: self.prompt.downgrade(),

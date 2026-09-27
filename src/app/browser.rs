@@ -1753,8 +1753,6 @@ impl Browser {
         Some(read(entries.get(range)?))
     }
 
-    /// Names of the folders `depth` shows, plus its hidden folders when
-    /// `include_hidden`.
     pub(crate) fn folder_names(
         &self,
         depth: usize,

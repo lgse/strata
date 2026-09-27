@@ -167,8 +167,6 @@ impl Dispatcher {
         }
     }
 
-    /// **Tab** / **Shift+Tab** in **go ›**. The prompt keeps focus and its text
-    /// whether or not a folder matches.
     fn complete_folder(&self, browser: &Browser, backward: bool) {
         let text = self.shortcuts.prompt_text();
         let current = browser

@@ -84,7 +84,6 @@ fn enable_tenxer(fixture: &KeyboardFixture) {
     pump(50);
 }
 
-/// Adds folders beside the fixture's a.txt, b.txt, and c.txt.
 fn seed_folders(fixture: &KeyboardFixture, names: &[&str]) -> PathBuf {
     let root = fixture._directory.path().to_path_buf();
     for name in names {

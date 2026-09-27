@@ -45,7 +45,6 @@ pub(super) struct Bindings {
     pub preview: PreviewDrawer,
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
-    /// Lists folders for **go ›** completion.
     pub folders: Rc<dyn FolderSource>,
 }
 

@@ -16,7 +16,6 @@ use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 pub(crate) type Reply = Result<Vec<Vec<Child>>, Unreadable>;
 
-/// Answers each enumeration only when the test says so.
 #[derive(Default)]
 pub(crate) struct Controlled {
     requests: RefCell<Vec<(PathBuf, oneshot::Sender<Reply>)>>,
@@ -31,13 +30,11 @@ impl Controlled {
             .collect()
     }
 
-    /// Whether the enumeration was still waiting for this answer.
     pub(crate) fn reply(&self, index: usize, reply: Reply) -> bool {
         let (_, sender) = self.requests.borrow_mut().remove(index);
         sender.send(reply).is_ok()
     }
 
-    /// The pending enumeration was dropped, cancelling its I/O.
     pub(crate) fn abandoned(&self, index: usize) -> bool {
         self.requests.borrow()[index].1.is_canceled()
     }
@@ -359,7 +356,6 @@ fn pending_enumeration_is_cancelled_by_edits_and_never_answers_late() {
     idle();
     assert_eq!(source.requested(), vec![PathBuf::from("/slow/")]);
 
-    // The typed text changed, so the dispatcher invalidates.
     completion.invalidate();
     assert!(!completion.is_pending());
     settle(|| source.abandoned(0));

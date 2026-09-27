@@ -362,10 +362,7 @@ fn credentials_from_location_input(
 
 pub(super) enum TypedLocation {
     Navigating,
-    /// `sanitized` is the input without its URI credentials.
-    Mounting {
-        sanitized: String,
-    },
+    Mounting { sanitized: String },
 }
 
 #[derive(Clone)]
