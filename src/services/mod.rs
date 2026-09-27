@@ -2,6 +2,7 @@
 
 pub(crate) mod actions;
 pub(crate) mod camera_preview;
+pub(crate) mod connections;
 mod document;
 pub(crate) mod document_media;
 pub(crate) mod docx;
@@ -15,6 +16,7 @@ mod navigation_history;
 mod operations;
 mod preview;
 mod release_channel;
+pub(crate) mod remote;
 pub(crate) mod rtf;
 mod search;
 pub(crate) mod table;
@@ -34,9 +36,9 @@ pub(crate) use document::{
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-    UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
-    validate_uri_credentials,
+    UriCredentials, sanitize_uri_credentials, validate_uri_credentials,
 };
+pub use remote::backend_unavailable_message;
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
 pub use jobs::{

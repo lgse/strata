@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
-    validate_uri_credentials,
+    LocationValidationError, UriCredentials, sanitize_uri_credentials, validate_uri_credentials,
 };
 
 #[test]
@@ -76,19 +75,6 @@ fn malformed_uris_fail_without_echoing_input() {
         LocationValidationError::InvalidUri.to_string(),
         "Enter a valid URI."
     );
-}
-
-#[test]
-fn backend_unavailable_message_names_the_known_smb_package() {
-    let message = backend_unavailable_message("smb://host/share");
-    assert!(message.contains("smb://"));
-    assert!(message.contains("gvfs-smb"));
-}
-
-#[test]
-fn backend_unavailable_message_falls_back_for_unknown_schemes() {
-    let message = backend_unavailable_message("dav://host/path");
-    assert!(message.contains("dav://"));
 }
 
 #[test]
