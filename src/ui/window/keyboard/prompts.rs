@@ -61,26 +61,9 @@ impl Dispatcher {
                     true
                 }
             },
-            Key::Escape if self.view.listing_search_active() => {
-                self.dismiss_search_step();
-                return Some(Propagation::Stop);
-            }
-            Key::Escape if self.view.clear_listing_filter() => return Some(Propagation::Stop),
             _ => return None,
         };
         Some(Propagation::Stop)
-    }
-
-    fn dismiss_search_step(&self) {
-        if self.view.leave_visual() || self.view.dismiss_find_highlight() {
-            return;
-        }
-        if self.preview.is_enabled() {
-            self.preview.close();
-            self.view.focus_listing_search();
-            return;
-        }
-        self.view.dismiss_listing_search();
     }
 
     fn repeat_find(&self, reverse: bool) {

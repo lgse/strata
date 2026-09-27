@@ -27,6 +27,7 @@ use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 
 pub(super) mod chords;
 mod commands;
+mod escape;
 mod files;
 mod focus;
 mod items;
@@ -667,6 +668,9 @@ impl Dispatcher {
             && let Some(result) = self.tenxer_header(browser, key, modifiers)
         {
             return Some(result);
+        }
+        if key == Key::Escape && !command && !self.inline_editing_active() {
+            return self.tenxer_escape(browser);
         }
         if let Some(result) = self
             .tenxer_prompt_keys(key, modifiers)

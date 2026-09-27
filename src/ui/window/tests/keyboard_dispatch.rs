@@ -12,6 +12,7 @@ use super::super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
+mod escape_precedence;
 mod file_commands;
 mod folder_jump;
 mod footer_prompt;

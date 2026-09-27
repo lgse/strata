@@ -160,3 +160,79 @@ def test_shift_after_escape_starts_on_the_focused_entry(strata, mode, had_range)
     strata.keyboard.press(f"shift+{next_key}")
     strata.wait_for_selection(second, root)
     strata.wait_for_focused_entry(second[-1])
+
+
+TENXER = pytest.mark.preferences(
+    tenxer_mode=True,
+    type_to_search=False,
+    single_click_previews=False,
+    filter_include_subfolders=False,
+)
+ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
+
+
+def _footer_mark(strata, name):
+    return strata.window.find(role="label", name=name) is not None
+
+
+@TENXER
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_escape_dismisses_filter_preview_then_fill(strata, mode):
+    root = strata.fixture.root.name
+    strata.select_entry("readme.md", root)
+    strata.keyboard.press("f")
+    strata.editable_field()
+    strata.keyboard.type_text("todo")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: _footer_mark(strata, "filter: todo"), "the filter to commit")
+    strata.wait_for_focused_entry("todo.txt")
+    strata.keyboard.press("i")
+    strata.wait(strata.preview, "i to open the preview")
+    panes = strata.pane_names()
+
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.entry_names(root) == ROOT_ENTRIES, "Esc to clear the filter")
+    assert not _footer_mark(strata, "filter: todo")
+    assert strata.preview() is not None
+    strata.wait_for_selection(["readme.md"], root)
+
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.preview() is None, "Esc to close the preview")
+    strata.wait_for_selection(["readme.md"], root)
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    assert strata.pane_names() == panes
+    assert strata.entry_names(root) == ROOT_ENTRIES
+
+
+@TENXER
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_tenxer_escape_closes_a_peek_but_never_a_column(strata, mode):
+    root = strata.fixture.root.name
+    strata.keyboard.press("Home")
+    strata.wait_for_focused_entry("archive")
+    strata.keyboard.press("space")
+    strata.wait_for_selection(["archive"], root)
+    strata.wait_for_focused_entry("documents")
+    strata.keyboard.press("i")
+    if mode == "Columns":
+        strata.wait(lambda: strata.pane_names() == [root, "documents"], "i to open a column")
+    else:
+        strata.wait(strata.peek, "i to open the folder peek")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: strata.peek() is None, "Esc to close the peek")
+        strata.wait_for_selection(["archive"], root)
+    panes = strata.pane_names()
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    assert strata.pane_names() == panes
+    strata.wait_for_focused_entry("documents")

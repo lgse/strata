@@ -118,12 +118,6 @@ impl BrowserView {
         self.focus_filter_results(&target);
     }
 
-    pub(in crate::ui) fn focus_listing_search(&self) {
-        if let Some(target) = self.search_target() {
-            self.focus_filter_results(&target);
-        }
-    }
-
     /// Puts back the **f** filter the search replaced, or the directory.
     pub(in crate::ui) fn dismiss_listing_search(&self) -> bool {
         let borrowed = self.state.listing_search.borrowed.borrow().is_some();

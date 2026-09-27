@@ -137,7 +137,7 @@ impl Dispatcher {
         None
     }
 
-    fn close_preview(&self, browser: &Browser) {
+    pub(super) fn close_preview(&self, browser: &Browser) {
         self.preview.close();
         self.return_from_preview(browser);
     }

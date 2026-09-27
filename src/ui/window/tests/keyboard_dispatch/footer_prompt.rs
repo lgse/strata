@@ -22,7 +22,7 @@ fn seed_report_names(fixture: &KeyboardFixture) {
 
 /// Bound name labels (Columns and List) or inscriptions (Icons) that carry
 /// find highlight attributes, including views not currently shown.
-fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
+pub(super) fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
     fn collect(widget: &gtk::Widget, names: &mut Vec<String>) {
         if let Some(label) = widget.downcast_ref::<gtk::Label>()
             && label.attributes().is_some()
@@ -47,7 +47,7 @@ fn highlighted_names(widget: &gtk::Widget) -> Vec<String> {
     names
 }
 
-fn type_and_submit(fixture: &KeyboardFixture, prompt: Key, text: &str) {
+pub(super) fn type_and_submit(fixture: &KeyboardFixture, prompt: Key, text: &str) {
     assert!(fixture.press(prompt, ModifierType::empty()));
     assert!(fixture.shortcuts.prompt_has_focus());
     fixture.shortcuts.prompt().set_text(text);
@@ -55,7 +55,7 @@ fn type_and_submit(fixture: &KeyboardFixture, prompt: Key, text: &str) {
     assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
 }
 
-fn enable_tenxer(fixture: &KeyboardFixture) -> Rc<PreferenceManager> {
+pub(super) fn enable_tenxer(fixture: &KeyboardFixture) -> Rc<PreferenceManager> {
     let preferences = PreferenceManager::shared();
     fixture.shortcuts.bind_preferences(&preferences);
     preferences.set_tenxer_mode(true);
@@ -325,7 +325,7 @@ fn leaving_tenxer_mode_clears_find_in_every_window() {
 /// Adds alpha-report.txt, beta.txt, gamma-report.md, and a reports folder
 /// holding deep-report.txt. "report" names two files and the folder here, and
 /// the nested file only with Include subfolders on.
-fn seed_filter_tree(fixture: &KeyboardFixture) {
+pub(super) fn seed_filter_tree(fixture: &KeyboardFixture) {
     let root = fixture._directory.path();
     for name in ["alpha-report.txt", "beta.txt", "gamma-report.md"] {
         std::fs::write(root.join(name), b"filter").expect("fixture file");
@@ -340,7 +340,7 @@ fn seed_filter_tree(fixture: &KeyboardFixture) {
 }
 
 const IMMEDIATE_REPORTS: [&str; 3] = ["alpha-report.txt", "gamma-report.md", "reports"];
-const ALL_REPORTS: [&str; 4] = [
+pub(super) const ALL_REPORTS: [&str; 4] = [
     "alpha-report.txt",
     "deep-report.txt",
     "gamma-report.md",
@@ -353,7 +353,7 @@ fn result_names(fixture: &KeyboardFixture) -> Vec<String> {
     names
 }
 
-fn wait_results(fixture: &KeyboardFixture, expected: &[&str]) {
+pub(super) fn wait_results(fixture: &KeyboardFixture, expected: &[&str]) {
     let deadline = Instant::now() + Duration::from_secs(8);
     while result_names(fixture) != expected {
         assert!(
@@ -366,7 +366,7 @@ fn wait_results(fixture: &KeyboardFixture, expected: &[&str]) {
     }
 }
 
-fn selected_result_names(fixture: &KeyboardFixture) -> Vec<String> {
+pub(super) fn selected_result_names(fixture: &KeyboardFixture) -> Vec<String> {
     let mut names: Vec<_> = fixture
         .view
         .selected_search_results()
@@ -393,7 +393,7 @@ fn revealed_filter_funnels(widget: &gtk::Widget) -> usize {
     count
 }
 
-fn commit_filter(fixture: &KeyboardFixture, text: &str) {
+pub(super) fn commit_filter(fixture: &KeyboardFixture, text: &str) {
     type_and_submit(fixture, Key::f, text);
     wait_until(|| fixture.view.item_view_has_focus());
 }
@@ -642,7 +642,7 @@ fn type_search(fixture: &KeyboardFixture, text: &str) {
     fixture.shortcuts.prompt().set_text(text);
 }
 
-fn commit_search(fixture: &KeyboardFixture, text: &str) {
+pub(super) fn commit_search(fixture: &KeyboardFixture, text: &str) {
     type_search(fixture, text);
     assert!(fixture.press(Key::Return, ModifierType::empty()));
     assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
@@ -990,7 +990,7 @@ fn tenxer_go_hit_folder_reveals_the_cursor_hit() {
     );
 }
 
-fn hit_cursor(fixture: &KeyboardFixture) -> Option<String> {
+pub(super) fn hit_cursor(fixture: &KeyboardFixture) -> Option<String> {
     fixture
         .view
         .selected_search_result()
@@ -1015,7 +1015,7 @@ fn hit_names(order: &[String], positions: &[usize]) -> Vec<String> {
 
 /// Moves the cursor onto `name` with real keys where the view has a linear
 /// order; Icons focus the hit directly.
-fn cursor_to_hit(fixture: &KeyboardFixture, name: &str) {
+pub(super) fn cursor_to_hit(fixture: &KeyboardFixture, name: &str) {
     if fixture.view.view_mode() == BrowserMode::Icons {
         let path = fixture
             ._directory
