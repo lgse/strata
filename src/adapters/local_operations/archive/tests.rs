@@ -4,8 +4,8 @@ use super::{
     ArchiveError, copy_with_big_buf,
     decoders::{extract_7z_from_reader, extract_tar},
     fixtures::{
-        compression_stages, extract_zip, never_cancelled, test_file_entry, write_7z_entries,
-        write_tar_entries, write_zip_stored,
+        HomeTrashGuard, compression_stages, extract_zip, never_cancelled, tempdir_on_home_device,
+        test_file_entry, write_7z_entries, write_tar_entries, write_zip_stored,
     },
 };
 use crate::{
@@ -102,10 +102,11 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
+    let root = tempdir_on_home_device()?;
     let destination = root.path().join("destination");
     let source = root.path().join("source.txt");
     let archive = destination.join("existing.zip");
+    let _trash = HomeTrashGuard::new(&archive);
     fs::create_dir(&destination)?;
     fs::write(&source, b"replacement")?;
     fs::write(&archive, b"original")?;
@@ -449,10 +450,6 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
         ),
         (
             "fake.tar.gz",
-            "This file is not a valid archive or is damaged.",
-        ),
-        (
-            "fake.rar",
             "This file is not a valid archive or is damaged.",
         ),
         ("missing.zip", "No such file"),

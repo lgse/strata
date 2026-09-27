@@ -840,9 +840,50 @@ impl ModeViews {
         self.single_pane()?.search.selected_entry()
     }
 
+    pub fn focus_search_results(&self) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.focus_current())
+    }
+
+    pub(in crate::ui) fn keyboard_peek_target(&self) -> Option<(gtk::Widget, usize, Location)> {
+        if let Some(pane) = self.single_pane()
+            && pane.search.selected_entries().is_some()
+        {
+            let (widget, entry) = pane.search.selected_anchor()?;
+            return entry
+                .is_directory()
+                .then_some((widget, pane.depth, entry.location));
+        }
+        let (depth, position, entry) = self.browser.focused_item()?;
+        if !entry.is_directory() {
+            return None;
+        }
+        let pane = self.panes_at(depth).into_iter().next()?;
+        for section in pane.item_sections() {
+            let Some(view_position) =
+                view_position_for_source(&pane.model, Some(&section.view_model), position)
+            else {
+                continue;
+            };
+            let Some(widget) = section.bound_items.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == view_position).then(|| bound.widget.upgrade())?
+            }) else {
+                continue;
+            };
+            return Some((widget, depth, entry.location));
+        }
+        None
+    }
+
     pub fn focus_search_result(&self, path: &std::path::Path) -> bool {
         self.single_pane()
             .is_some_and(|pane| pane.search.focus_result(path))
+    }
+
+    pub fn select_search_result(&self, path: &std::path::Path) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.select_result(path))
     }
 
     pub fn select_all_search_results(&self) -> bool {
@@ -961,6 +1002,10 @@ impl ModeViews {
         }
         pane.focus_view().grab_focus();
         true
+    }
+
+    pub fn cancel_list_restore(&mut self) {
+        self.list_navigation.borrow_mut().cancel();
     }
 
     pub fn prepare_mode(&mut self, mode: BrowserMode) {
@@ -1736,6 +1781,9 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
     let shown_filter = revealer.clone();
     let focused_filter = entry.clone();
     button.connect_toggled(move |button| {
+        if crate::ui::tenxer_mode::chrome_suppressed() {
+            return;
+        }
         shown_filter.set_reveal_child(button.is_active());
         if button.is_active() {
             focused_filter.grab_focus();
@@ -1743,6 +1791,7 @@ pub(crate) fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk:
             focused_filter.set_text("");
         }
     });
+    crate::ui::tenxer_mode::hide_filter_while_enabled(&button, &revealer);
     (entry, revealer, button)
 }
 
@@ -2038,13 +2087,15 @@ fn build_icons_pane(
         false,
         context.click.multiple_selection.clone(),
     );
+    let browser_for_search = context.browser.clone();
     let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
-        context
-            .browser
-            .location_at(depth)
-            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
+        move || {
+            browser_for_search
+                .location_at(depth)
+                .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
+        },
         &context.browser,
         search_collection_options(
             super::inline_search::SearchPresentation::Icons {
@@ -3016,12 +3067,15 @@ fn build_list_pane(
         // ListView still reveals focused rows vertically.
         viewport.set_scroll_to_focus(false);
     }
+    let browser_for_search = browser.clone();
     let search = super::inline_search::wrap(
         &table_scroll,
         &filter_entry,
-        browser
-            .location_at(depth)
-            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
+        move || {
+            browser_for_search
+                .location_at(depth)
+                .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
+        },
         &browser,
         search_collection_options(
             super::inline_search::SearchPresentation::Rows,

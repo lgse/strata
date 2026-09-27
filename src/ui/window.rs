@@ -44,6 +44,13 @@ mod sidebar;
 mod unlock_argument;
 mod volume_password;
 
+pub(super) use devices::{
+    RemovableDestination, removable_destinations, resolve_removable_destination,
+};
+pub(in crate::ui) use keyboard::{
+    SidebarChord, activate_sidebar_focus, move_sidebar_focus, sidebar_chord,
+};
+
 pub use open_argument::present_open;
 pub use unlock_argument::{UnlockTarget, present_unlock};
 
@@ -123,7 +130,7 @@ pub(super) enum TypeToSearchQuery {
 
 impl TypeToSearch {
     fn show(&self, query: TypeToSearchQuery) -> bool {
-        self.preferences.type_to_search()
+        self.preferences.type_to_search_active()
             && match query {
                 TypeToSearchQuery::Empty => self.view.show_filter(),
                 TypeToSearchQuery::Character(character) => {
@@ -554,6 +561,23 @@ const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.toggle-arrow-scope", &["<Primary>backslash"]),
 ];
 
+const TENXER_SUPPRESSED_ACCELS: &[&str] = &[
+    "win.jump-folder",
+    "win.open-terminal",
+    "win.toggle-arrow-scope",
+];
+
+pub(super) fn install_mode_accelerators(application: &gtk::Application, tenxer: bool) {
+    for (action, accels) in DEFAULT_ACCELS {
+        let accels = if tenxer && TENXER_SUPPRESSED_ACCELS.contains(action) {
+            &[][..]
+        } else {
+            *accels
+        };
+        application.set_accels_for_action(action, accels);
+    }
+}
+
 fn is_refresh_shortcut(key: gtk::gdk::Key) -> bool {
     key == gtk::gdk::Key::F5
 }
@@ -771,9 +795,13 @@ pub(super) fn build_appearance_menu(
     let (row, check, _) = appearance_row(
         crate::assets::icons::EYE,
         "Preview panel",
-        "Space",
+        "",
         preview.is_enabled(),
     );
+    let preview_shortcut = gtk::Label::new(None);
+    preview_shortcut.add_css_class("folder-context-shortcut");
+    row.append(&preview_shortcut);
+    row.reorder_child_after(&check, Some(&preview_shortcut));
     let preview_toggle = gtk::ToggleButton::builder()
         .child(&row)
         .has_frame(false)
@@ -781,7 +809,25 @@ pub(super) fn build_appearance_menu(
     preview_toggle.add_css_class("appearance-option");
     preview_toggle.add_css_class("preview-panel-option");
     super::accessibility::set_label(&preview_toggle, "Preview panel");
-    preview_toggle.set_tooltip_text(Some("Toggle preview panel while browsing (Space)"));
+    let shortcut_label = preview_shortcut.clone();
+    let tooltip_toggle = preview_toggle.clone();
+    preferences.bind_preference(
+        &preview_shortcut,
+        PreferenceManager::tenxer_mode,
+        move |_, enabled| {
+            let text = crate::ui::shortcut_reference::context_hint_for(
+                crate::ui::shortcut_reference::ContextHint::Preview,
+                enabled,
+            );
+            shortcut_label.set_text(text);
+            shortcut_label.set_visible(!text.is_empty());
+            tooltip_toggle.set_tooltip_text(Some(if text.is_empty() {
+                "Toggle preview panel while browsing"
+            } else {
+                "Toggle preview panel while browsing (Space)"
+            }));
+        },
+    );
     let actions = gio::SimpleActionGroup::new();
     actions.add_action(&preview.action());
     preview_toggle.insert_action_group("preview", Some(&actions));
@@ -1655,6 +1701,11 @@ impl SidebarState {
         for (index, (_, row)) in rows.iter().enumerate() {
             set_sidebar_row_active(row, selected == Some(index));
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn places_for_test(&self) -> gtk::Box {
+        self.widget.clone()
     }
 
     pub(super) fn focus_active_place(&self) -> bool {
@@ -2612,11 +2663,11 @@ fn release_kind(action: MediaRelease) -> device_release::ReleaseKind {
     }
 }
 
-fn drive_can_unplug(drive: &gio::Drive) -> bool {
+pub(super) fn drive_can_unplug(drive: &gio::Drive) -> bool {
     drive.is_removable() || drive.is_media_removable() || drive.can_eject()
 }
 
-fn mount_can_unplug(mount: &gio::Mount) -> bool {
+pub(super) fn mount_can_unplug(mount: &gio::Mount) -> bool {
     if mount.can_eject() {
         return true;
     }
@@ -2626,7 +2677,7 @@ fn mount_can_unplug(mount: &gio::Mount) -> bool {
         .is_some_and(|drive| drive_can_unplug(&drive))
 }
 
-fn volume_can_unplug(volume: &gio::Volume) -> bool {
+pub(super) fn volume_can_unplug(volume: &gio::Volume) -> bool {
     if volume.can_eject() {
         return true;
     }

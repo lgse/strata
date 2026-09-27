@@ -9,6 +9,7 @@ mod metrics;
 mod model;
 mod portal;
 mod portal_setup;
+mod rar_extraction;
 mod sandbox;
 mod sandbox_helper;
 mod services;

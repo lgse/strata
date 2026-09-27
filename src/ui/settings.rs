@@ -18,6 +18,9 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+mod tests;
+
 mod about;
 mod actions;
 mod bindings;

@@ -158,6 +158,9 @@ impl Browser {
             }
             OperationEvent::TransferProgress {
                 completed_items,
+                completed_files,
+                total_files,
+                current_file,
                 transferred_bytes,
                 total_bytes,
                 created_location,
@@ -168,6 +171,9 @@ impl Browser {
                 }
                 BrowserEvent::TransferProgress {
                     completed_items: *completed_items,
+                    completed_files: *completed_files,
+                    total_files: *total_files,
+                    current_file: current_file.clone(),
                     transferred_bytes: *transferred_bytes,
                     total_bytes: *total_bytes,
                 }
@@ -251,6 +257,7 @@ impl Browser {
 
     fn finish_operation(self: &Rc<Self>, context: &OperationContext, event: OperationEvent) {
         self.current_operation.set(None);
+        self.transfer_cancel_pending.set(false);
         if context.rename && self.rename_operation.get() == Some(context.request_id) {
             self.rename_operation.set(None);
         }

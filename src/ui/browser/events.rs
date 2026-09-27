@@ -16,6 +16,7 @@ use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
+use crate::ui::browser::transfer::FinishedSendToCompletion;
 use crate::ui::browser::trash::retryable_delete_entries;
 use crate::ui::browser_modes::BrowserMode;
 use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
@@ -627,19 +628,43 @@ impl ViewState {
                     "Cancelling will not undo completed changes",
                     Rc::new(move || browser.cancel_file_operation()),
                 );
-                self.update_transfer_progress(0, 0, None);
+                self.update_transfer_progress(0, 0, None, 0, None);
             }
             BrowserEvent::TransferProgress {
                 completed_items,
+                completed_files,
+                total_files,
+                current_file,
                 transferred_bytes,
                 total_bytes,
             } => {
-                self.update_transfer_progress(*completed_items, *transferred_bytes, *total_bytes);
+                self.transfer_current_file.replace(current_file.clone());
+                self.update_transfer_progress(
+                    *completed_items,
+                    *completed_files,
+                    *total_files,
+                    *transferred_bytes,
+                    *total_bytes,
+                );
             }
             BrowserEvent::FlushingToDevice => self.show_device_flush_status(),
+            BrowserEvent::TransferCancellationPending => show_error_dialog(
+                &self.overlay,
+                "Transfer cancellation pending",
+                "The device may still be writing. Wait for the transfer to finish or fail before starting another file operation. Do not unplug until you can safely eject it.",
+            ),
             BrowserEvent::TransferFinished { moved_locations } => {
                 if !moved_locations.is_empty() {
                     self.complete_cut_transfer(moved_locations);
+                }
+                // TransferFinished also fires on failure; defer feedback until TransferCompleted.
+                if let Some(completion) = self.pending_send_to_completion.take() {
+                    let progress_shown = self.file_progress_view.borrow().is_some();
+                    self.finished_send_to_completion
+                        .replace(Some(FinishedSendToCompletion {
+                            completion,
+                            progress_shown,
+                        }));
                 }
                 self.dismiss_file_operation_progress();
                 self.prune_stale_search_results();
@@ -702,6 +727,8 @@ impl ViewState {
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
                 self.pending_new_entry.take();
+                self.pending_send_to_completion.take();
+                self.finished_send_to_completion.take();
                 self.clear_delete_animation();
                 self.dismiss_file_operation_progress();
                 self.pending_archive_destination.take();
@@ -729,6 +756,8 @@ impl ViewState {
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
                 self.pending_archive_destination.take();
+                self.pending_send_to_completion.take();
+                self.finished_send_to_completion.take();
                 let retryable_entries = retryable_delete_entries(
                     self.pending_delete_entries.take(),
                     retryable_locations,
@@ -759,6 +788,8 @@ impl ViewState {
                 self.suppress_scroll_after_drop.set(false);
                 self.drop_active_depths.set(None);
                 self.pending_archive_destination.take();
+                self.pending_send_to_completion.take();
+                self.finished_send_to_completion.take();
                 self.browser.refresh_after_cancellation(affected_locations);
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
@@ -923,6 +954,14 @@ impl ViewState {
             }
             BrowserEvent::TransferCompleted => {
                 self.suppress_scroll_after_drop.set(false);
+                if let Some(finished) = self.finished_send_to_completion.take()
+                    && !finished.progress_shown
+                {
+                    self.show_send_to_success(
+                        &finished.completion.device_name,
+                        finished.completion.item_count,
+                    );
+                }
                 if let Some((source_depth, destination_depth)) =
                     self.drop_active_depths.replace(None)
                 {

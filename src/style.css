@@ -1094,6 +1094,15 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 10px 12px;
 }
 
+.send-to-success {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px alpha(@theme_bg, 0.4);
+  margin: 12px;
+  padding: 10px 12px;
+}
+
 .form-message.warning {
   background: alpha(@theme_accent, 0.1);
   border: 1px solid alpha(@theme_accent, 0.46);
@@ -1104,6 +1113,47 @@ headerbar menubutton.header-action > button:focus-visible {
   color: @theme_accent;
   min-height: 18px;
   min-width: 18px;
+}
+
+.transfer-progress-dialog .action-dialog {
+  min-width: 600px;
+}
+
+.transfer-progress-dialog .action-dialog-body {
+  padding: 24px 28px;
+}
+
+.transfer-pending-warning {
+  padding: 12px 16px;
+  background: @theme_surface;
+  color: @theme_danger;
+  border: 1px solid @theme_danger;
+  border-radius: 10px;
+}
+
+.transfer-progress-caption {
+  color: @theme_dim_text;
+  font-size: 0.76em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.transfer-progress-bytes {
+  color: @theme_text;
+  font-size: 1.12em;
+  font-weight: 600;
+}
+
+.transfer-progress-percent {
+  color: @theme_accent;
+  font-size: 1.85em;
+  font-weight: 700;
+}
+
+.transfer-progress-footer {
+  color: @theme_dim_text;
+  font-size: 0.82em;
 }
 
 .modal-progress trough {
@@ -1230,6 +1280,54 @@ entry.form-control:disabled {
   background: alpha(@theme_muted, 0.3);
   border-color: alpha(@theme_border, 0.38);
   color: @theme_dim_text;
+}
+
+.destination-location-bar {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.54);
+  border-radius: 5px;
+  box-shadow: none;
+  min-height: 34px;
+  padding: 3px 9px;
+}
+
+.destination-location-bar:hover {
+  border-color: alpha(@theme_accent, 0.68);
+}
+
+.destination-location-bar:focus-within {
+  border-color: @theme_accent;
+  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.destination-location-bar.error,
+.destination-location-bar.error:hover,
+.destination-location-bar.error:focus-within {
+  border-color: @theme_danger;
+  box-shadow: 0 0 0 1px alpha(@theme_danger, 0.4);
+  outline: 2px solid @theme_danger;
+  outline-offset: -2px;
+}
+
+.destination-location-bar entry,
+.destination-location-bar entry:hover,
+.destination-location-bar entry:focus,
+.destination-location-bar entry:focus-visible,
+.destination-location-bar entry:focus-within,
+.destination-location-bar entry.error,
+.destination-location-bar entry.error:hover,
+.destination-location-bar entry.error:focus,
+.destination-location-bar entry.error:focus-visible,
+.destination-location-bar entry.error:focus-within {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+  outline: none;
+  padding: 0;
 }
 
 dropdown.form-control > button,
@@ -2830,9 +2928,39 @@ entry.preview-command-entry selection {
   font-size: 0.85em;
 }
 
-.shortcut-footer-count {
+.shortcut-footer-count,
+.tenxer-tag,
+.tenxer-experimental,
+.shortcut-footer-chord,
+.shortcut-footer-feedback {
   color: @theme_text;
   font-weight: normal;
+}
+
+.shortcut-footer-prompt {
+  color: @theme_text;
+  background: @theme_surface;
+  border: 1px solid @theme_border;
+  border-radius: 4px;
+  min-height: 20px;
+  padding: 0 6px;
+}
+
+.shortcut-footer-prompt:hover {
+  border-color: @theme_accent;
+}
+
+.shortcut-footer-prompt:focus,
+.shortcut-footer-prompt:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+  border-color: @theme_accent;
+}
+
+.shortcut-footer-prompt:disabled {
+  color: @theme_dim_text;
+  background: @theme_bg;
+  border-color: @theme_border;
 }
 
 .shortcut-footer-paste {
@@ -2845,8 +2973,7 @@ entry.preview-command-entry selection {
   font-weight: bold;
 }
 
-.shortcut-footer-button > button,
-.shortcut-reference-close {
+.shortcut-footer-button > button {
   background: transparent;
   color: @theme_text;
   border: 1px solid transparent;
@@ -2857,29 +2984,25 @@ entry.preview-command-entry selection {
   padding: 0 6px;
 }
 
-.shortcut-footer-button > button:hover,
-.shortcut-reference-close:hover {
+.shortcut-footer-button > button:hover {
   background: @theme_highlight;
   color: @theme_text;
   border-color: @theme_border;
 }
 
 .shortcut-footer-button > button:active,
-.shortcut-footer-button > button:checked,
-.shortcut-reference-close:active {
+.shortcut-footer-button > button:checked {
   background: @theme_highlight;
   color: @theme_text;
   border-color: @theme_accent;
 }
 
-.shortcut-footer-button > button:focus-visible,
-.shortcut-reference-close:focus-visible {
+.shortcut-footer-button > button:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-.shortcut-footer-button > button:disabled,
-.shortcut-reference-close:disabled {
+.shortcut-footer-button > button:disabled {
   color: @theme_dim_text;
   background: @theme_surface;
 }
@@ -2918,6 +3041,7 @@ entry.preview-command-entry selection {
   font-size: 0.9em;
 }
 
+.shortcut-popover scrolledwindow:focus,
 .shortcut-popover scrolledwindow:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;

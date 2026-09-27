@@ -91,10 +91,17 @@ fn classifies_common_preview_content_types() {
         content_family("text/x-rust"),
         PreviewContent::Text { .. }
     ));
-    assert!(matches!(
-        content_family("application/problem+json"),
-        PreviewContent::Text { .. }
-    ));
+    for content_type in [
+        "application/toml",
+        "application/yaml",
+        "application/x-yaml",
+        "application/problem+json",
+    ] {
+        assert!(
+            matches!(content_family(content_type), PreviewContent::Text { .. }),
+            "{content_type} should preview as text"
+        );
+    }
     assert_eq!(
         content_family("application/octet-stream"),
         PreviewContent::Unsupported

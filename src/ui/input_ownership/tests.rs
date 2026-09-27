@@ -11,6 +11,12 @@ fn parked_pointer_cannot_override_keyboard_navigation() {
     assert_eq!(input.destination(Some(0), Some(2), Some(2), 3), Some(2));
     assert!(!input.pointer_motion((50.0, 100.0)));
     assert_eq!(input.destination(Some(1), Some(2), Some(2), 3), Some(2));
+    input.keyboard_navigation();
+    assert_eq!(
+        input.destination(Some(1), Some(2), Some(2), 3),
+        Some(2),
+        "the next keyboard command still targets the focused column"
+    );
     assert!(input.pointer_motion((51.0, 100.0)));
     assert_eq!(input.destination(Some(1), Some(2), Some(2), 3), Some(1));
 }

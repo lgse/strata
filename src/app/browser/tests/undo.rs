@@ -204,6 +204,9 @@ fn undoing_a_copy_removes_the_destination_names_the_paste_reported() {
         emit(OperationEvent::TransferProgress {
             request_id,
             completed_items: 1,
+            completed_files: 1,
+            total_files: None,
+            current_file: None,
             transferred_bytes: 0,
             total_bytes: None,
             created_location: Some(created.clone()),
@@ -287,6 +290,9 @@ fn a_cancelled_copy_records_the_destinations_it_reached() {
     emit(OperationEvent::TransferProgress {
         request_id,
         completed_items: 1,
+        completed_files: 1,
+        total_files: None,
+        current_file: None,
         transferred_bytes: 0,
         total_bytes: None,
         created_location: Some(created.clone()),
@@ -925,6 +931,9 @@ fn a_paste_mixing_plain_copies_and_a_merge_records_one_merge_undo() {
     emit(OperationEvent::TransferProgress {
         request_id,
         completed_items: 1,
+        completed_files: 1,
+        total_files: None,
+        current_file: None,
         transferred_bytes: 0,
         total_bytes: None,
         created_location: Some(copied.clone()),
@@ -1483,6 +1492,9 @@ fn a_replaced_copy_records_the_overwritten_original_for_undo() {
     emit(OperationEvent::TransferProgress {
         request_id,
         completed_items: 1,
+        completed_files: 1,
+        total_files: None,
+        current_file: None,
         transferred_bytes: 0,
         total_bytes: None,
         created_location: Some(target.clone()),

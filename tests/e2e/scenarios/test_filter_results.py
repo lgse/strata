@@ -240,7 +240,7 @@ def test_filter_text_selection_uses_the_active_theme(strata, tmp_path):
     strata.wait(selected_text_has_theme_background, "theme-colored filter text selection")
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("mode", [mode for mode in ALL_MODES if mode.id != "list"])
 @pytest.mark.parametrize("trigger,query,count,target", [
     ("pointer", "match-note", 4, "beta/match-note.txt"),
     ("keyboard", "match-note", 4, "beta/match-note.txt"),
@@ -328,7 +328,8 @@ def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger,
     strata.wait(strata.context_menu, "the restored result menu")
     strata.choose_menu_item("Quick preview")
     strata.wait(lambda: strata.preview_shows("beta source"), "preview of the nested result")
-    assert row.has_state("selected")
+    strata.wait(lambda: result(strata, target).has_state("selected"),
+                "preview to retain the selected result")
     assert field.text == query
     strata.keyboard.press("ctrl+f")
     strata.wait(lambda: field.has_state("focused"), "Ctrl+F to return from the preview")

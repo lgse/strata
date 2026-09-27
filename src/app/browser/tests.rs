@@ -601,6 +601,9 @@ impl OperationProvider for ImmediateOperationProvider {
             emit(OperationEvent::TransferProgress {
                 request_id: request.id,
                 completed_items: index + 1,
+                completed_files: index + 1,
+                total_files: None,
+                current_file: None,
                 transferred_bytes: 0,
                 total_bytes: None,
                 created_location: (!request.move_sources)

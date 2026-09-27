@@ -169,6 +169,112 @@ fn a_cancel_after_the_flush_starts_does_not_report_success() -> Result<(), Box<d
 }
 
 #[test]
+fn failed_final_flush_reports_that_writes_may_still_be_pending() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("usb");
+    fs::create_dir(&destination)?;
+    let source = root.path().join("photo.bin");
+    fs::write(&source, b"pixels")?;
+    let _guard = RemovableFlushGuard::install(root.path(), Some(io::ErrorKind::Other), false);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(106),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    pump_until_transfer(&events);
+    assert!(matches!(terminal_transfer(&events.borrow()),
+        Some(OperationEvent::TransferFailed { message, .. })
+        if message.contains("writes may still be pending") && message.contains("wait for safe eject")));
+    Ok(())
+}
+
+#[test]
+fn failed_flush_after_cancel_reports_that_writes_may_still_be_pending() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("usb");
+    fs::create_dir(&destination)?;
+    let _guard = RemovableFlushGuard::install(root.path(), Some(io::ErrorKind::Other), false);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let emit: Rc<dyn Fn(OperationEvent)> = Rc::new(move |event| emitted.borrow_mut().push(event));
+    glib::MainContext::default().block_on(stop_transfer(
+        &[destination],
+        &emit,
+        OperationRequestId(105),
+        TransferStop {
+            completed: Vec::new(),
+            failed: Vec::new(),
+            not_attempted: Vec::new(),
+            affected_locations: HashSet::new(),
+            failure: None,
+            skip_flush: false,
+        },
+    ));
+    assert!(
+        matches!(events.borrow().last(), Some(OperationEvent::TransferFailed { message, .. })
+        if message.contains("writes may still be pending") && message.contains("wait for safe eject"))
+    );
+    assert!(!sync_probe_observations().is_empty());
+    Ok(())
+}
+
+#[test]
+fn fat32_limit_failure_does_not_start_an_uncancellable_device_flush() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("usb");
+    fs::create_dir(&destination)?;
+    let _guard = RemovableFlushGuard::install(root.path(), None, false);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let emit: Rc<dyn Fn(OperationEvent)> = Rc::new(move |event| emitted.borrow_mut().push(event));
+    glib::MainContext::default().block_on(stop_transfer(
+        &[destination],
+        &emit,
+        OperationRequestId(104),
+        TransferStop {
+            completed: Vec::new(),
+            failed: Vec::new(),
+            not_attempted: Vec::new(),
+            affected_locations: HashSet::new(),
+            failure: Some("A file exceeds the FAT32 limit".to_owned()),
+            skip_flush: true,
+        },
+    ));
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::TransferFailed { .. })
+    ));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::FlushingToDevice { .. }))
+    );
+    assert!(sync_probe_observations().is_empty());
+    Ok(())
+}
+
+#[test]
 fn bytes_already_written_are_flushed_before_transfer_failure() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

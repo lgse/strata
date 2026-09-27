@@ -59,19 +59,20 @@ fn copy_recursively_fat_family(
 }
 
 use super::{
-    LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider, MergeHooks, MergePlan, MountTable,
-    RestoreEntry, StageCopy, StageOverwrite, StagedOriginalLookup, TransferProgressTracker,
-    await_cancellable, bounded_local_delete_worker_count, copy_failure_after_cleanup,
-    copy_new_recursively, copy_new_remote_file_with, copy_recursively,
+    FAT32_MAX_FILE_SIZE, LocalDeleteRoot, LocalFileIdentity, LocalOperationProvider, MergeHooks,
+    MergePlan, MountTable, RestoreEntry, StageCopy, StageOverwrite, StagedOriginalLookup,
+    TransferProgressTracker, TransferStop, await_cancellable, bounded_local_delete_worker_count,
+    copy_failure_after_cleanup, copy_failure_on_fat32, copy_new_recursively,
+    copy_new_recursively_with_progress, copy_new_remote_file_with, copy_recursively,
     copy_recursively_with_progress, deletion_error_message, deletion_error_summary,
-    duplicate_candidate_name, fat_sanitized_name, home_trash_entries_at, io_error,
-    is_trash_unsupported_failure, local_file_identity, merge_local, merge_local_with, move_local,
-    move_local_with, open_local_parent_directory, operation_error_summary, parallel_delete_local,
-    parse_copy_suffix, permanently_delete_local, permanently_delete_local_path_if_unchanged,
-    replace_local, replace_local_with, run_merge_undo, set_force_cross_volume_for_test,
-    set_removable_roots_for_test, set_sync_observer, sync_probe_observations, target_is_fat_family,
-    transfer_is_noop, trash_stage_overwrite, unique_fat_sibling_name, validated_child,
-    was_cancelled,
+    duplicate_candidate_name, fat_sanitized_name, fat32_file_size_limit, home_trash_entries_at,
+    io_error, is_trash_unsupported_failure, local_file_identity, merge_local, merge_local_with,
+    move_local, move_local_with, open_local_parent_directory, operation_error_summary,
+    parallel_delete_local, parse_copy_suffix, permanently_delete_local,
+    permanently_delete_local_path_if_unchanged, replace_local, replace_local_with, run_merge_undo,
+    set_force_cross_volume_for_test, set_removable_roots_for_test, set_sync_observer,
+    stop_transfer, sync_probe_observations, target_is_fat_family, transfer_is_noop, transfer_sizes,
+    trash_stage_overwrite, unique_fat_sibling_name, validated_child, was_cancelled,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},

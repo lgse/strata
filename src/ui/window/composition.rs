@@ -98,6 +98,31 @@ impl WindowContent {
         notice
     }
 
+    #[cfg(test)]
+    pub(super) fn search_button(&self) -> &gtk::Button {
+        &self.header.search
+    }
+
+    #[cfg(test)]
+    pub(super) fn settings_button(&self) -> &gtk::Button {
+        &self.header.settings
+    }
+
+    #[cfg(test)]
+    pub(super) fn close_button(&self) -> &gtk::Button {
+        &self.header.close
+    }
+
+    #[cfg(test)]
+    pub(super) fn footer(&self) -> &crate::ui::shortcut_footer::ShortcutFooter {
+        &self.footer.shortcuts
+    }
+
+    #[cfg(test)]
+    pub(super) fn overlay(&self) -> &gtk::Overlay {
+        &self.overlay
+    }
+
     pub(super) fn connect_cleanup(self, window: &gtk::ApplicationWindow) {
         let browser = self.browser.browser();
         let sidebar = self.sidebar;
@@ -137,9 +162,16 @@ fn install_browser_actions(
         toggle_preferences.set_arrow_navigation_scoped(next);
     });
     window.add_action(&toggle_action);
+    // The set lives on the application, so it follows the saved mode rather
+    // than whichever window was constructed or destroyed last.
     if let Some(application) = window.application() {
-        for (action, accels) in super::DEFAULT_ACCELS {
-            application.set_accels_for_action(action, accels);
-        }
+        let application = application.clone();
+        preferences.bind_preference(
+            window,
+            PreferenceManager::tenxer_mode,
+            move |_window, enabled| {
+                super::install_mode_accelerators(&application, enabled);
+            },
+        );
     }
 }

@@ -20,6 +20,7 @@ use crate::services::{
     model_preview::MAX_MODEL_INPUT_BYTES,
 };
 
+pub(crate) mod archive;
 pub(crate) mod browser;
 pub(crate) mod media;
 pub(crate) mod metadata;
@@ -27,10 +28,11 @@ pub(crate) mod raw_metadata;
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
+pub(crate) const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const TEMPORARY_STORAGE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_RASTER_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_TEXT_LAYER_BYTES: u64 = 8 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -152,6 +154,13 @@ impl ParseOperation {
         matches!(self, Self::PreviewMedia(_))
     }
 
+    fn needs_media_libraries(&self) -> bool {
+        matches!(
+            self,
+            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata
+        )
+    }
+
     fn output_name(&self) -> &'static str {
         if matches!(
             self,
@@ -237,6 +246,7 @@ pub(crate) struct ParseOutput {
     pub(crate) data: Vec<u8>,
     pub(crate) page: i32,
     pub(crate) pages: i32,
+    pub(crate) text_layer: Option<crate::services::PdfTextLayer>,
 }
 
 pub(crate) fn parse(
@@ -329,6 +339,7 @@ fn parse_sandboxed(
             data,
             page: 0,
             pages: 0,
+            text_layer: None,
         });
     }
 
@@ -428,7 +439,21 @@ fn parse_sandboxed(
         });
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
-    Ok(ParseOutput { data, page, pages })
+    // A page without an extractable text layer (scanned images, malformed layout)
+    // still previews; selection just stays unavailable there.
+    let text_layer = if matches!(operation, ParseOperation::PreviewPdf(_)) {
+        read_private_output(&output.path().join("result.text"), MAX_TEXT_LAYER_BYTES)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    } else {
+        None
+    };
+    Ok(ParseOutput {
+        data,
+        page,
+        pages,
+        text_layer,
+    })
 }
 
 // A memfd avoids named-file residue and dependence on TMPDIR's O_TMPFILE support.
@@ -534,7 +559,7 @@ fn wait_for_renderer_reporting(
     }
 }
 
-fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
+fn runtime_command(bwrap: &Path, needs_media_libraries: bool) -> Command {
     let mut command = Command::new(bwrap);
     command.args([
         "--unshare-all",
@@ -587,12 +612,7 @@ fn runtime_command(bwrap: &Path, operation: ParseOperation) -> Command {
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
-    if matches!(
-        operation,
-        ParseOperation::ThumbnailVideo
-            | ParseOperation::PreviewMedia(_)
-            | ParseOperation::MediaMetadata
-    ) {
+    if needs_media_libraries {
         // Debian-family FFmpeg libraries resolve BLAS/LAPACK through these links.
         // Expose only the runtime files, not the system alternatives directory.
         for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
@@ -619,7 +639,7 @@ fn sandbox_command(
     media_backend: MediaPreviewBackend,
     devices: &[PathBuf],
 ) -> Command {
-    let mut command = runtime_command(bwrap, operation.clone());
+    let mut command = runtime_command(bwrap, operation.needs_media_libraries());
     let sandbox_input = sandbox_input_path(input);
     command.arg("--ro-bind").arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);

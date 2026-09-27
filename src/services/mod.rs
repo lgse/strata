@@ -63,7 +63,8 @@ pub use operations::{
 };
 pub use preview::{
     ArchiveDirectory, ArchiveFileEntry, ArchiveNode, ArchivePreviewTree, MediaPreviewSize,
-    ModelPreviewStage, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
+    ModelPreviewStage, PdfTextLayer, Preview, PreviewContent, PreviewEvent, PreviewProvider,
+    PreviewRequest,
     PreviewRequestId, SandboxedMedia, SecretString, archive_preview_tree,
 };
 pub(crate) use preview::{

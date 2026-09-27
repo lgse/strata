@@ -9,7 +9,8 @@ use crate::services::{
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
-    folder_input_path, resolve_destination_path, setup_transfer_search,
+    DestinationLocationBar, TransferSearchScope, folder_input_path, hand_off_destination_focus,
+    resolve_destination_path, setup_transfer_search,
 };
 use crate::ui::browser::entry::item_count_label;
 use crate::ui::browser::paths::{
@@ -25,8 +26,13 @@ use crate::ui::modal::{
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::time::Duration;
+
+type RemovableRootResolver = Rc<dyn Fn(&str) -> Option<PathBuf>>;
+
+const SEND_TO_SUCCESS_DURATION: Duration = Duration::from_secs(2);
 
 #[cfg(test)]
 mod tests;
@@ -46,11 +52,61 @@ struct TransferCollision {
     mergeable: bool,
 }
 
+#[derive(Clone)]
+pub(super) struct SendToTransferContext {
+    pub(super) device_name: String,
+}
+
+#[derive(Clone)]
+pub(super) struct PendingSendToCompletion {
+    pub(super) device_name: String,
+    pub(super) item_count: usize,
+}
+
+#[derive(Clone)]
+pub(super) struct FinishedSendToCompletion {
+    pub(super) completion: PendingSendToCompletion,
+    pub(super) progress_shown: bool,
+}
+
+fn send_to_display_name(id: &str, root: &Path) -> String {
+    crate::ui::removable_destinations()
+        .into_iter()
+        .find(|destination| destination.id == id)
+        .map(|destination| destination.name)
+        .or_else(|| {
+            root.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_else(|| root.to_string_lossy().into_owned())
+}
+
 /// Which non-destructive resolutions a conflict prompt offers.
 #[derive(Clone, Copy, Default)]
 struct ConflictActions {
     keep_both: bool,
     merge: bool,
+}
+
+struct TransferDialogOptions {
+    base: PathBuf,
+    search_root: PathBuf,
+    root_limit: Option<PathBuf>,
+    root_label: Option<String>,
+    allow_create: bool,
+    completion: TransferDialogCompletion,
+}
+
+#[derive(Clone)]
+enum TransferDialogCompletion {
+    CopyMove {
+        move_sources: bool,
+    },
+    SendTo {
+        device_id: String,
+        opened_root: PathBuf,
+        resolve: RemovableRootResolver,
+    },
 }
 
 fn location_exists(location: &Location) -> bool {
@@ -243,7 +299,170 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
-        self.start_transfer_with_reveal(destination, sources, move_sources, true);
+        self.start_transfer_with_reveal(destination, sources, move_sources, true, None);
+    }
+
+    pub(super) fn send_to_removable_device(self: &Rc<Self>, id: String, sources: Vec<Location>) {
+        self.send_to_removable_device_with_resolver(
+            &id,
+            sources,
+            crate::ui::resolve_removable_destination,
+        );
+    }
+
+    pub(super) fn send_to_removable_device_with_resolver(
+        self: &Rc<Self>,
+        id: &str,
+        sources: Vec<Location>,
+        resolve: impl FnOnce(&str) -> Option<PathBuf>,
+    ) {
+        let Some(destination) = resolve(id) else {
+            show_error_dialog(
+                &self.overlay,
+                "Destination unavailable",
+                "The removable device is no longer available.",
+            );
+            return;
+        };
+        let device_name = send_to_display_name(id, &destination);
+        self.send_to(
+            Location::local(destination),
+            sources,
+            SendToTransferContext { device_name },
+        );
+    }
+
+    pub(super) fn send_to_recent_destination(
+        self: &Rc<Self>,
+        id: String,
+        relative: PathBuf,
+        sources: Vec<Location>,
+    ) {
+        self.send_to_recent_destination_with_resolver(
+            &id,
+            &relative,
+            sources,
+            crate::ui::resolve_removable_destination,
+        );
+    }
+
+    pub(super) fn send_to_recent_destination_with_resolver(
+        self: &Rc<Self>,
+        id: &str,
+        relative: &Path,
+        sources: Vec<Location>,
+        resolve: impl FnOnce(&str) -> Option<PathBuf>,
+    ) {
+        if !crate::ui::preferences::is_valid_send_to_relative_path(relative) {
+            show_error_dialog(
+                &self.overlay,
+                "Destination unavailable",
+                "The removable device or folder is no longer available.",
+            );
+            return;
+        }
+        let Some(current_root) = resolve(id)
+            .and_then(|root| crate::ui::browser::destination::canonical_existing_directory(&root))
+        else {
+            show_error_dialog(
+                &self.overlay,
+                "Destination unavailable",
+                "The removable device or folder is no longer available.",
+            );
+            return;
+        };
+        let Some(destination) = crate::ui::browser::destination::canonical_directory_within(
+            &current_root,
+            &current_root.join(relative),
+        ) else {
+            show_error_dialog(
+                &self.overlay,
+                "Destination unavailable",
+                "The removable device or folder is no longer available.",
+            );
+            return;
+        };
+        let Ok(relative_destination) = destination.strip_prefix(&current_root) else {
+            show_error_dialog(
+                &self.overlay,
+                "Destination unavailable",
+                "The removable device or folder is no longer available.",
+            );
+            return;
+        };
+        if !crate::ui::preferences::is_valid_send_to_relative_path(relative_destination) {
+            show_error_dialog(
+                &self.overlay,
+                "Destination unavailable",
+                "The removable device or folder is no longer available.",
+            );
+            return;
+        }
+        crate::ui::preferences::PreferenceManager::shared().remember_send_to_destination(
+            id,
+            relative_destination,
+            Some(relative),
+        );
+        let device_name = send_to_display_name(id, &current_root);
+        self.send_to(
+            Location::local(destination),
+            sources,
+            SendToTransferContext { device_name },
+        );
+    }
+
+    pub(super) fn send_to(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        send_to: SendToTransferContext,
+    ) {
+        self.start_transfer_with_reveal(destination, sources, false, false, Some(send_to));
+    }
+
+    fn send_to_success_text(device_name: &str, item_count: usize) -> String {
+        if item_count == 1 {
+            format!("Copied to {device_name}")
+        } else {
+            format!("{item_count} items copied to {device_name}")
+        }
+    }
+
+    /// Shows transient success feedback for a fast Send-to whose transfer
+    /// finished before the normal progress UI became visible. Replaces any
+    /// still-visible notice and restarts its dismissal timer.
+    pub(super) fn show_send_to_success(self: &Rc<Self>, device_name: &str, item_count: usize) {
+        if let Some(widget) = self.send_to_success_widget.take() {
+            self.overlay.remove_overlay(&widget);
+        }
+        let generation = self.send_to_success_generation.get().saturating_add(1);
+        self.send_to_success_generation.set(generation);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.add_css_class("send-to-success");
+        row.set_halign(gtk::Align::Center);
+        row.set_valign(gtk::Align::Start);
+        row.set_can_target(false);
+        let icon = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
+        icon.set_can_target(false);
+        row.append(&icon);
+        let label = gtk::Label::new(Some(&Self::send_to_success_text(device_name, item_count)));
+        label.set_can_target(false);
+        row.append(&label);
+        self.overlay.add_overlay(&row);
+        self.send_to_success_widget
+            .replace(Some(row.clone().upcast()));
+        let weak_state = Rc::downgrade(self);
+        let weak_row = row.downgrade();
+        glib::timeout_add_local_once(SEND_TO_SUCCESS_DURATION, move || {
+            let (Some(state), Some(row)) = (weak_state.upgrade(), weak_row.upgrade()) else {
+                return;
+            };
+            if state.send_to_success_generation.get() != generation {
+                return;
+            }
+            state.send_to_success_widget.take();
+            state.overlay.remove_overlay(&row);
+        });
     }
 
     fn start_drop_transfer(
@@ -253,7 +472,7 @@ impl ViewState {
         move_sources: bool,
     ) {
         let reveal = crate::ui::preferences::PreferenceManager::shared().open_folder_after_drop();
-        self.start_transfer_with_reveal(destination, sources, move_sources, reveal);
+        self.start_transfer_with_reveal(destination, sources, move_sources, reveal, None);
     }
 
     /// Paste and explicit "move/copy to" reveal their result independently of
@@ -264,6 +483,7 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
         reveal: bool,
+        send_to: Option<SendToTransferContext>,
     ) {
         if is_trash_location(&destination)
             || destination.is_recent_location()
@@ -289,7 +509,14 @@ impl ViewState {
                 }),
             }
         }
-        self.resolve_transfer_collisions(destination, collisions, accepted, move_sources, reveal);
+        self.resolve_transfer_collisions(
+            destination,
+            collisions,
+            accepted,
+            move_sources,
+            reveal,
+            send_to,
+        );
     }
 
     fn resolve_transfer_collisions(
@@ -299,6 +526,7 @@ impl ViewState {
         accepted: Vec<PasteItem>,
         move_sources: bool,
         reveal: bool,
+        send_to: Option<SendToTransferContext>,
     ) {
         if collisions.is_empty() {
             let source_depth = self
@@ -314,6 +542,17 @@ impl ViewState {
                         .position(|location| location == destination);
                     self.drop_active_depths
                         .set(source_depth.zip(destination_depth));
+                }
+                // A new dispatch abandons any previous operation, so stale
+                // completion state must not leak into this transfer's outcome.
+                self.pending_send_to_completion.take();
+                self.finished_send_to_completion.take();
+                if let Some(send_to) = send_to {
+                    self.pending_send_to_completion
+                        .replace(Some(PendingSendToCompletion {
+                            device_name: send_to.device_name,
+                            item_count: accepted.len(),
+                        }));
                 }
             }
             self.browser
@@ -338,6 +577,7 @@ impl ViewState {
             )
         };
         let state = self.clone();
+        let send_to_conflict = send_to.clone();
         // Move undo/reveal assumes an unrenamed `transfer_target`.
         let apply_to_all_visible = !collisions.is_empty();
         let skip_visible = !accepted.is_empty() || !collisions.is_empty();
@@ -404,6 +644,7 @@ impl ViewState {
                     accepted,
                     move_sources,
                     reveal,
+                    send_to_conflict.clone(),
                 );
             }),
         );
@@ -691,6 +932,76 @@ impl ViewState {
         {
             return;
         }
+        let base = self
+            .browser
+            .active_location()
+            .and_then(|location| location.native_path().map(Path::to_path_buf))
+            .unwrap_or_else(glib::home_dir);
+        self.show_destination_dialog(
+            entries.into_iter().map(|entry| entry.location).collect(),
+            TransferDialogOptions {
+                base,
+                search_root: glib::home_dir(),
+                root_limit: None,
+                root_label: None,
+                allow_create: true,
+                completion: TransferDialogCompletion::CopyMove { move_sources },
+            },
+        );
+    }
+
+    pub(super) fn show_send_to_folder_dialog(self: &Rc<Self>, id: String, sources: Vec<Location>) {
+        self.show_send_to_folder_dialog_with_resolver(
+            id,
+            sources,
+            Rc::new(crate::ui::resolve_removable_destination),
+        );
+    }
+
+    pub(super) fn show_send_to_folder_dialog_with_resolver(
+        self: &Rc<Self>,
+        id: String,
+        sources: Vec<Location>,
+        resolve: RemovableRootResolver,
+    ) {
+        if sources.is_empty() {
+            return;
+        }
+        let Some(root) = resolve(&id)
+            .and_then(|root| crate::ui::browser::destination::canonical_existing_directory(&root))
+        else {
+            show_error_dialog(
+                &self.overlay,
+                "Destination unavailable",
+                "The removable device is no longer available.",
+            );
+            return;
+        };
+        self.show_destination_dialog(
+            sources,
+            TransferDialogOptions {
+                base: root.clone(),
+                search_root: root.clone(),
+                root_limit: Some(root.clone()),
+                root_label: crate::ui::removable_destinations()
+                    .into_iter()
+                    .find(|destination| destination.id == id)
+                    .map(|destination| destination.name),
+                allow_create: false,
+                completion: TransferDialogCompletion::SendTo {
+                    device_id: id,
+                    opened_root: root,
+                    resolve,
+                },
+            },
+        );
+    }
+
+    fn show_destination_dialog(
+        self: &Rc<Self>,
+        sources: Vec<Location>,
+        options: TransferDialogOptions,
+    ) {
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -699,27 +1010,39 @@ impl ViewState {
             return;
         };
 
-        let base = self
-            .browser
-            .active_location()
-            .and_then(|location| location.native_path().map(Path::to_path_buf))
-            .unwrap_or_else(glib::home_dir);
+        let TransferDialogOptions {
+            base,
+            search_root,
+            root_limit,
+            root_label,
+            allow_create,
+            completion,
+        } = options;
+        let move_sources = match &completion {
+            TransferDialogCompletion::CopyMove { move_sources } => *move_sources,
+            TransferDialogCompletion::SendTo { .. } => false,
+        };
+        let (icon, title, confirm_label) = match &completion {
+            TransferDialogCompletion::CopyMove { move_sources: true } => {
+                (crate::assets::icons::FOLDER_INPUT, "Move to", "Move here")
+            }
+            TransferDialogCompletion::CopyMove {
+                move_sources: false,
+            } => (crate::assets::icons::FOLDER_OUTPUT, "Copy to", "Copy here"),
+            TransferDialogCompletion::SendTo { .. } => (
+                crate::assets::icons::SEND_HORIZONTAL,
+                "Send to",
+                "Copy here",
+            ),
+        };
         let layout = modal_layout(
-            if move_sources {
-                crate::assets::icons::FOLDER
-            } else {
-                crate::assets::icons::COPY
-            },
-            if move_sources { "Move to" } else { "Copy to" },
+            icon,
+            title,
             &format!(
                 "Choose a destination for {}",
-                item_count_label(entries.len())
+                item_count_label(sources.len())
             ),
-            if move_sources {
-                "Move here"
-            } else {
-                "Copy here"
-            },
+            confirm_label,
         );
         layout.content.add_css_class("wide");
         let field_label = form_label("Destination folder");
@@ -729,7 +1052,14 @@ impl ViewState {
         field.set_text(&folder_input_path(&base));
         field.set_position(-1);
         layout.body.append(&field_label);
-        layout.body.append(&field);
+        let location_bar = DestinationLocationBar::wrap(
+            field.clone(),
+            base.clone(),
+            search_root.clone(),
+            root_limit.clone(),
+            root_label.clone(),
+        );
+        layout.body.append(&location_bar.widget());
 
         let suggestions = gtk::Box::new(gtk::Orientation::Vertical, 2);
         suggestions.add_css_class("transfer-suggestions");
@@ -762,12 +1092,18 @@ impl ViewState {
         let suggestions_error = error.clone();
         let changed_confirm = confirm.clone();
         let changed_creation = pending_creation.clone();
+        let select_bar = location_bar.clone();
         setup_transfer_search(
             &field,
             &suggestions_box,
             &generation,
-            base.clone(),
-            self.browser.preferences().show_hidden,
+            TransferSearchScope {
+                base: base.clone(),
+                search_root: search_root.clone(),
+                root_limit: root_limit.clone(),
+                show_hidden: self.browser.preferences().show_hidden,
+            },
+            Rc::new(move |path: &Path| select_bar.select_directory(path)),
             move |field| {
                 field.remove_css_class("error");
                 suggestions_error.set_visible(false);
@@ -823,17 +1159,70 @@ impl ViewState {
         let confirm_creating = creating_destination.clone();
         let confirm_cancel = cancel.clone();
         let confirm_close = close.clone();
-        let sources = entries
-            .iter()
-            .map(|entry| entry.location.clone())
-            .collect::<Vec<_>>();
+        let completion = completion.clone();
         confirm.connect_clicked(move |button| {
             let path =
                 resolve_destination_path(&confirm_field.text(), &confirm_base, &glib::home_dir());
+            if let TransferDialogCompletion::SendTo {
+                device_id,
+                opened_root,
+                resolve,
+            } = &completion
+            {
+                let Some(current_root) = resolve(device_id).and_then(|root| {
+                    crate::ui::browser::destination::canonical_existing_directory(&root)
+                }) else {
+                    confirm_error.remove_css_class("warning");
+                    confirm_error.add_css_class("error");
+                    confirm_error.set_text("The removable device is no longer available.");
+                    confirm_error.set_visible(true);
+                    confirm_field.add_css_class("error");
+                    confirm_field.grab_focus();
+                    return;
+                };
+                let Some(destination) =
+                    crate::ui::browser::destination::rebind_directory_within_root(
+                        opened_root,
+                        &path,
+                        &current_root,
+                    )
+                else {
+                    confirm_error.remove_css_class("warning");
+                    confirm_error.add_css_class("error");
+                    confirm_error
+                        .set_text("Choose an existing folder inside this removable device.");
+                    confirm_error.set_visible(true);
+                    confirm_field.add_css_class("error");
+                    confirm_field.grab_focus();
+                    return;
+                };
+                if let Ok(relative_destination) = destination.strip_prefix(&current_root) {
+                    crate::ui::preferences::PreferenceManager::shared()
+                        .remember_send_to_destination(device_id, relative_destination, None);
+                }
+                let device_name = send_to_display_name(device_id, opened_root);
+                transfer_state.send_to(
+                    Location::local(destination),
+                    sources.clone(),
+                    SendToTransferContext { device_name },
+                );
+                hand_off_destination_focus(&confirm_field, button);
+                dismiss_modal_layer(&confirm_layer, &confirm_overlay, confirm_root.as_ref());
+                return;
+            }
             if path.exists() && !path.is_dir() {
                 confirm_error.remove_css_class("warning");
                 confirm_error.add_css_class("error");
                 confirm_error.set_text("The destination exists, but it is not a folder.");
+                confirm_error.set_visible(true);
+                confirm_field.add_css_class("error");
+                confirm_field.grab_focus();
+                return;
+            }
+            if !path.exists() && !allow_create {
+                confirm_error.remove_css_class("warning");
+                confirm_error.add_css_class("error");
+                confirm_error.set_text("Choose an existing folder.");
                 confirm_error.set_visible(true);
                 confirm_field.add_css_class("error");
                 confirm_field.grab_focus();
@@ -866,6 +1255,7 @@ impl ViewState {
                     .collect();
                 transfer_state.pending_select.borrow_mut().extend(names);
                 transfer_state.start_transfer(Location::local(path), sources.clone(), move_sources);
+                hand_off_destination_focus(&confirm_field, button);
                 dismiss_modal_layer(&confirm_layer, &confirm_overlay, confirm_root.as_ref());
                 return;
             }
@@ -908,6 +1298,7 @@ impl ViewState {
                             created_sources,
                             move_sources,
                         );
+                        hand_off_destination_focus(&created_field, &created_button);
                         dismiss_modal_layer(
                             &created_layer,
                             &created_overlay,
@@ -973,6 +1364,6 @@ impl ViewState {
         layer.add_controller(escape);
 
         field.emit_by_name::<()>("changed", &[]);
-        field.grab_focus();
+        location_bar.focus_browse();
     }
 }

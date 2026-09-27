@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use std::path::PathBuf;
 
 /// Deliberately exhaustive: adding a stored preference requires extending this
 /// fixture, and the setter-coverage test fails until the new setter is exercised.
@@ -17,6 +18,7 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
         search_open_files_directly: true,
         type_to_search: false,
         arrow_navigation_scoped: true,
+        tenxer_mode: true,
         filter_include_subfolders: false,
         show_keybinding_hints: false,
         reduce_motion: true,
@@ -74,6 +76,16 @@ pub(in crate::ui) fn non_default_preferences() -> Preferences {
             "/fixture/folder".into(),
             crate::assets::icons::HOME.into(),
         )]),
+        send_to_recent_destinations: HashMap::from([
+            (
+                "volume:fixture-kingston".into(),
+                vec![PathBuf::from("Academia/2026"), PathBuf::from("Teaching")],
+            ),
+            (
+                "volume:fixture-sandisk".into(),
+                vec![PathBuf::from("Backup")],
+            ),
+        ]),
     }
 }
 

@@ -295,6 +295,47 @@ fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box
 }
 
 #[test]
+fn cancelling_a_new_file_copy_removes_the_incomplete_stage() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::File::create(&source)?.set_len(64 * 1024 * 1024)?;
+    fs::write(root.path().join("keep.txt"), b"keep")?;
+    let cancellable = gio::Cancellable::new();
+    let cancel_on_write = cancellable.clone();
+    let progress = TransferProgressTracker::new(
+        OperationRequestId(88),
+        Some(64 * 1024 * 1024),
+        Some(1),
+        Rc::new(move |event| {
+            if matches!(
+                event,
+                OperationEvent::TransferProgress {
+                    transferred_bytes: 1..,
+                    ..
+                }
+            ) {
+                cancel_on_write.cancel();
+            }
+        }),
+    );
+    let result = glib::MainContext::default().block_on(copy_new_recursively_with_progress(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        cancellable,
+        Some(progress),
+    ));
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Cancelled)));
+    assert!(!target.exists());
+    assert_eq!(fs::read_dir(root.path())?.count(), 2);
+    assert_eq!(fs::read(root.path().join("keep.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
 fn copying_and_replacing_symlinks_accepts_an_aliased_destination() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -362,6 +403,22 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
         "the error should name the entry: {error}"
     );
     assert!(!target.join("pipe").exists());
+    fs::remove_dir_all(&target)?;
+    let staged = glib::MainContext::default().block_on(copy_new_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+    ));
+    assert!(staged.is_err());
+    assert!(
+        !target.exists(),
+        "failed new copies must not expose partial trees"
+    );
+    assert_eq!(
+        fs::read_dir(root.path())?.count(),
+        1,
+        "failed stages are removed"
+    );
     Ok(())
 }
 

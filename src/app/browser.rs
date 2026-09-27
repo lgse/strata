@@ -185,10 +185,14 @@ pub enum BrowserEvent {
     },
     TransferProgress {
         completed_items: usize,
+        completed_files: usize,
+        total_files: Option<usize>,
+        current_file: Option<String>,
         transferred_bytes: u64,
         total_bytes: Option<u64>,
     },
     FlushingToDevice,
+    TransferCancellationPending,
     TransferFinished {
         moved_locations: Vec<Location>,
     },
@@ -722,6 +726,7 @@ pub struct Browser {
     navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
+    transfer_cancel_pending: Cell<bool>,
     current_operation: Cell<Option<OperationRequestId>>,
     last_started_operation: Cell<Option<OperationRequestId>>,
     rename_operation: Cell<Option<OperationRequestId>>,
@@ -779,6 +784,7 @@ impl Browser {
             navigation_cleanup: RefCell::new(None),
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
+            transfer_cancel_pending: Cell::new(false),
             current_operation: Cell::new(None),
             last_started_operation: Cell::new(None),
             rename_operation: Cell::new(None),
@@ -1754,7 +1760,7 @@ impl Browser {
             });
             return None;
         };
-        let request_id = self.begin_operation();
+        let request_id = self.try_begin_operation()?;
         self.rename_operation.set(Some(request_id));
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
@@ -1828,7 +1834,9 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let Some(request_id) = self.try_begin_operation() else {
+            return;
+        };
         let refresh_parent = parent.clone();
         let load = provider.create_directory(
             CreateDirectoryRequest {
@@ -1862,7 +1870,9 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let Some(request_id) = self.try_begin_operation() else {
+            return;
+        };
         let refresh_parent = parent.clone();
         let load = provider.create_file(
             CreateFileRequest {
@@ -1892,7 +1902,9 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let Some(request_id) = self.try_begin_operation() else {
+            return;
+        };
         self.transfer_operation.set(Some(move_sources));
         self.state.borrow_mut().set_selectionless_removals(
             items
@@ -1935,7 +1947,9 @@ impl Browser {
             return;
         };
         let total = entries.len();
-        let request_id = self.begin_operation();
+        let Some(request_id) = self.try_begin_operation() else {
+            return;
+        };
         self.deletion_operation.set(true);
         self.deletion_permanent.set(permanent);
         self.emit(BrowserEvent::DeletionStarted { total });
@@ -1961,7 +1975,9 @@ impl Browser {
             return;
         };
         let total = items.len();
-        let request_id = self.begin_operation();
+        let Some(request_id) = self.try_begin_operation() else {
+            return;
+        };
         self.restoration_operation.set(true);
         self.emit(BrowserEvent::RestorationStarted { total });
         let load = provider.restore(
@@ -2443,7 +2459,9 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let Some(request_id) = self.try_begin_operation() else {
+            return;
+        };
         self.archive_operation.set(true);
         let load = provider.compress(
             CompressRequest {
@@ -2473,7 +2491,9 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let Some(request_id) = self.try_begin_operation() else {
+            return;
+        };
         self.archive_operation.set(true);
         let load = provider.extract(
             ExtractRequest {
@@ -2489,7 +2509,18 @@ impl Browser {
     }
 
     pub fn cancel_file_operation(&self) {
+        if self.current_operation.get().is_some() && self.transfer_operation.get().is_some() {
+            self.transfer_cancel_pending.set(true);
+        }
         self.operation_load.borrow_mut().take();
+    }
+
+    fn try_begin_operation(&self) -> Option<OperationRequestId> {
+        if self.transfer_cancel_pending.get() {
+            self.emit(BrowserEvent::TransferCancellationPending);
+            return None;
+        }
+        Some(self.begin_operation())
     }
 
     pub(crate) fn is_current_operation(&self, request_id: OperationRequestId) -> bool {

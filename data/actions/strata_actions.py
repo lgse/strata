@@ -132,7 +132,11 @@ class Context:
         self._emit({"event": "output", "path": path})
 
     def log(self, message: str) -> None:
-        print(message, flush=True)
+        # Ordinary UTF-8 locales such as en_US.UTF-8 use a strict stdout handler.
+        # C.UTF-8 uses surrogateescape. Native paths carry lone surrogates, so
+        # escape them before writing or the action fails only on some machines.
+        sys.stdout.buffer.write(f"{message}\n".encode("utf-8", "backslashreplace"))
+        sys.stdout.flush()
 
     def _emit(self, event: dict) -> None:
         if not self._progress_path:
