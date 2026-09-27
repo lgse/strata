@@ -292,20 +292,15 @@ pub(super) fn reveal_selection(
     advance(&scroll.vadjustment(), f64::from(direction) * page.distance);
 }
 
-/// How far a cursor-only move travelled, which decides how its reveal scrolls.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum CursorMotion {
     /// One entry. Focus-follow scrolling already keeps the cursor in sight.
     Step,
-    /// A full or half page.
     Page,
-    /// The first or last entry.
     Jump,
 }
 
-/// Scrolls a cursor-only move to `position` when the caller knows the row.
-/// Grid pages still move by a page of pixels; jumps and list rows focus that row
-/// instead of the minimum filled position. A single step never pages the viewport.
+/// Grid pages scroll by pixels; list rows and jumps follow the cursor, not the fill.
 pub(super) fn reveal_cursor(
     view: &gtk::Widget,
     scroll: &gtk::ScrolledWindow,

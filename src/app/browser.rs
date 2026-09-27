@@ -1639,8 +1639,6 @@ impl Browser {
         }
     }
 
-    /// Starts a `kind` range at the cursor. Repeating the active kind leaves it.
-    /// Returns false when the pane has no cursor item to anchor on.
     pub fn toggle_visual(&self, kind: VisualKind, order: Option<&[usize]>) -> bool {
         if self.visual_kind() == Some(kind) {
             self.leave_visual();
@@ -1654,8 +1652,6 @@ impl Browser {
         true
     }
 
-    /// Keeps the live range or starts a Shift+arrow run at the cursor. Returns
-    /// false when the pane has no cursor item to anchor on.
     pub fn begin_extend(&self, order: Option<&[usize]>) -> bool {
         let begun = self.state.borrow_mut().begin_extend(order);
         let Some((depth, focused)) = begun else {
@@ -1678,12 +1674,10 @@ impl Browser {
         true
     }
 
-    /// Recomputes an active range after the cursor moved some other way.
     pub fn refresh_visual(&self, order: Option<&[usize]>) -> bool {
         self.emit_visual_fill(order)
     }
 
-    /// Ends an active range and keeps its fill.
     pub fn leave_visual(&self) -> bool {
         let valid = self.visual_kind().is_some();
         if !self.state.borrow_mut().leave_visual() || !valid {

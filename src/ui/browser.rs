@@ -1546,7 +1546,6 @@ impl BrowserView {
         }
     }
 
-    /// Selects the keyboard pane, ignoring the pointer-hovered column.
     pub fn select_focused_pane(&self) -> bool {
         self.keyboard_navigation();
         let Some(depth) = self.focused_listing_depth() else {
@@ -1556,7 +1555,6 @@ impl BrowserView {
         self.state.browser.select_visible(depth)
     }
 
-    /// Inverts the keyboard pane. Rename stays on F2.
     pub fn invert_focused_pane(&self) -> bool {
         self.keyboard_navigation();
         let Some(depth) = self.focused_listing_depth() else {
@@ -1566,8 +1564,6 @@ impl BrowserView {
         self.state.browser.invert_visible(depth)
     }
 
-    /// Toggles the cursor item and advances one row. A visual range toggles in
-    /// place instead. Returns false when the pane is empty.
     pub fn toggle_cursor_and_advance(&self) -> bool {
         self.keyboard_navigation();
         let Some(depth) = self.focused_listing_depth() else {
@@ -1585,8 +1581,6 @@ impl BrowserView {
         true
     }
 
-    /// Starts a visual range at the cursor of the keyboard pane, or leaves the
-    /// active range when `kind` repeats it. Returns false when the pane is empty.
     pub fn toggle_visual(&self, kind: crate::app::VisualKind) -> bool {
         self.keyboard_navigation();
         let Some(depth) = self.focused_listing_depth() else {
@@ -1597,9 +1591,6 @@ impl BrowserView {
         self.state.browser.toggle_visual(kind, order.as_deref())
     }
 
-    /// Prepares Shift+arrow motion in the keyboard pane: a visual range keeps
-    /// walking, otherwise a run starts at the cursor over the committed fill.
-    /// Returns false when the pane is empty.
     pub fn begin_extend(&self) -> bool {
         self.keyboard_navigation();
         let Some(depth) = self.focused_listing_depth() else {
@@ -1610,8 +1601,6 @@ impl BrowserView {
         self.state.browser.begin_extend(order.as_deref())
     }
 
-    /// Recomputes an active range after a cursor move that bypassed the model,
-    /// such as native Icons grid motion.
     pub fn refresh_visual(&self) {
         if let Some(depth) = self.state.browser.active_depth() {
             let order = self.displayed_order(depth);
@@ -2042,8 +2031,6 @@ impl BrowserView {
         }
     }
 
-    /// View position of the model cursor in `view`, so a reveal follows the cursor
-    /// rather than the first filled row.
     fn cursor_view_position(&self, view: &gtk::Widget) -> Option<u32> {
         let (depth, source, _) = self.state.browser.focused_item()?;
         let columns = self.state.columns.borrow();

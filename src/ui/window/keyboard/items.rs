@@ -402,8 +402,6 @@ impl Dispatcher {
         true
     }
 
-    /// Shift+Up/Down walks from the run's anchor on top of the kept fill, or
-    /// extends the active visual range.
     fn extend_tenxer_cursor(&self, browser: &Rc<Browser>, arrow: Key) {
         if !self.view.begin_extend() {
             self.shortcuts.show_feedback("Nothing to select");
@@ -427,7 +425,6 @@ impl Dispatcher {
         }
     }
 
-    /// `Ctrl+Up` and `Ctrl+Down` move only the cursor, the same way Home and End do.
     fn tenxer_first_or_last(&self, key: Key) -> bool {
         let direction = match key {
             Key::Up | Key::KP_Up => -1,
@@ -568,8 +565,7 @@ fn extend_arrow(key: Key) -> Option<Key> {
     }
 }
 
-/// Whether a key press leaves a Shift+arrow run going. Modifier presses do, so
-/// releasing and pressing Shift again continues from the same anchor.
+/// Modifier presses keep a Shift+arrow run alive across Shift releases.
 pub(super) fn continues_extend(key: Key, modifiers: Modifiers) -> bool {
     let modifier_key = matches!(
         key,

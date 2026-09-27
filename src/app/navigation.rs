@@ -920,7 +920,6 @@ impl NavigationState {
         true
     }
 
-    /// Toggles the active cursor in the committed fill and leaves the cursor put.
     /// A load cursor is not a fill: the first Space adds that item.
     pub fn toggle_cursor_fill(&mut self) -> CursorToggle {
         let Some(depth) = self
@@ -955,12 +954,10 @@ impl NavigationState {
         }
     }
 
-    /// Selects every visible entry in one pane and keeps the cursor where it is.
     pub fn select_visible(&mut self, depth: usize) -> Option<(usize, Vec<usize>)> {
         self.replace_visible(depth, true)
     }
 
-    /// Inverts the visible fill in one pane. Other panes are left alone.
     pub fn invert_visible(&mut self, depth: usize) -> Option<(usize, Vec<usize>)> {
         self.replace_visible(depth, false)
     }
@@ -992,7 +989,6 @@ impl NavigationState {
         Some((focused, positions))
     }
 
-    /// Writes one pane's fill and cursor. `commit` clears a load cursor.
     pub fn install_pane_fill(&mut self, depth: usize, positions: &[usize], cursor: usize) -> bool {
         let Some(column) = self.columns.get_mut(depth) else {
             return false;
@@ -1014,8 +1010,7 @@ impl NavigationState {
         true
     }
 
-    /// Moves the cursor without replacing a committed fill.
-    /// Leaving a load cursor drops that uncommitted highlight.
+    /// Leaving a load cursor drops its uncommitted highlight.
     pub fn place_cursor(&mut self, depth: usize, position: usize) -> Option<bool> {
         let column = self.columns.get_mut(depth)?;
         if position >= column.entries.len() {
@@ -1026,8 +1021,7 @@ impl NavigationState {
         Some(cleared)
     }
 
-    /// Starts a range at the cursor of the active pane. The current committed
-    /// fill is kept as the base; a load cursor is not part of it.
+    /// A load cursor is not included in the range's base fill.
     pub fn start_visual(
         &mut self,
         kind: VisualKind,
@@ -1036,9 +1030,6 @@ impl NavigationState {
         self.start_range(kind, false, order)
     }
 
-    /// Keeps a live visual range or Shift+arrow run in the active pane, or starts
-    /// a run at its cursor over the committed fill. Returns the range's pane and
-    /// cursor, or `None` when the pane has no cursor item to anchor on.
     pub fn begin_extend(&mut self, order: Option<&[usize]>) -> Option<(usize, usize)> {
         if let Some(depth) = self.live_range().map(|range| range.depth) {
             return self.columns[depth].selected.map(|cursor| (depth, cursor));
@@ -1047,7 +1038,6 @@ impl NavigationState {
             .map(|(depth, focused, _)| (depth, focused))
     }
 
-    /// Ends a Shift+arrow run and keeps its fill. A visual range is left alone.
     pub fn end_extend(&mut self) {
         if self.visual.as_ref().is_some_and(|range| range.extend) {
             self.visual = None;
@@ -1086,8 +1076,7 @@ impl NavigationState {
         self.refresh_visual(Some(&order))
     }
 
-    /// Recomputes the fill from the anchor to the cursor. A range whose pane,
-    /// anchor, or cursor is gone ends and keeps the fill it last produced.
+    /// A range whose pane, anchor, or cursor disappears keeps its last fill.
     pub fn refresh_visual(
         &mut self,
         order: Option<&[usize]>,
@@ -1137,7 +1126,6 @@ impl NavigationState {
         Some((depth, focused, selected_position_list(column)))
     }
 
-    /// Flips the cursor item in the walked fill without moving the cursor.
     pub fn toggle_visual_cursor(
         &mut self,
         order: Option<&[usize]>,
@@ -1160,7 +1148,6 @@ impl NavigationState {
         self.refresh_visual(order)
     }
 
-    /// Detaches the range across a cursor move that reports a widget selection.
     pub fn take_visual(&mut self) -> Option<VisualRange> {
         self.visual.take()
     }
@@ -1169,13 +1156,11 @@ impl NavigationState {
         self.visual = range;
     }
 
-    /// Ends the range and keeps the fill it produced.
     pub fn leave_visual(&mut self) -> bool {
         self.visual.take().is_some()
     }
 
-    /// The active range kind, if its pane and anchor are still listed. A
-    /// Shift+arrow run is not a visual mode.
+    /// A Shift+arrow run is not a visual mode.
     pub fn visual_kind(&self) -> Option<VisualKind> {
         self.live_range()
             .filter(|range| !range.extend)
@@ -1545,7 +1530,6 @@ impl NavigationState {
             .map(|(depth, position, _)| (depth, position))
     }
 
-    /// Moves the cursor in displayed order and keeps a committed fill.
     pub fn page_cursor(
         &mut self,
         direction: i32,
@@ -1607,7 +1591,6 @@ impl NavigationState {
         true
     }
 
-    /// Makes `depth` the active pane. Moving to another pane ends a range.
     fn activate_pane(&mut self, depth: usize) {
         if self
             .visual
@@ -1770,7 +1753,6 @@ fn focus_only(column: &mut ColumnState, position: usize) {
     column.selection_anchor = Some(location);
 }
 
-/// Returns whether the uncommitted load highlight was cleared.
 fn place_cursor(column: &mut ColumnState, position: usize) -> bool {
     let moved = column.selected != Some(position);
     let mut cleared = false;
@@ -1784,7 +1766,6 @@ fn place_cursor(column: &mut ColumnState, position: usize) -> bool {
     cleared
 }
 
-/// The caller's displayed order when it lists this pane, else source order.
 fn displayed_order(column: &ColumnState, order: Option<&[usize]>) -> Vec<usize> {
     match order {
         Some(order)
