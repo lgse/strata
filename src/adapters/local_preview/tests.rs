@@ -762,6 +762,7 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
+            model_palette: crate::services::ModelPalette::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));

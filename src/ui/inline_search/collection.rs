@@ -672,7 +672,6 @@ pub(super) fn build_collection(
         let Some(entry) = collection_entry(&sorted_for_activate, position) else {
             return;
         };
-        // Pointer releases are handled above; GTK activation is keyboard-only.
         if pointer_activation.activation().is_none() {
             activate(entry);
         }

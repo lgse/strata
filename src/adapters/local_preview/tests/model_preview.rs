@@ -75,6 +75,7 @@ fn model_requests_reuse_only_matching_size_and_palette_without_ui_state() {
                     data: vec![1, 2, 3],
                     page: 0,
                     pages: 0,
+                    text_layer: None,
                 })
             },
         );
