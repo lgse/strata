@@ -29,8 +29,6 @@ fn file_progress_delay() -> Duration {
     FILE_PROGRESS_DELAY
 }
 
-/// Tests of fast-operation feedback must not depend on how quickly a loaded
-/// CI filesystem finishes a small copy.
 #[cfg(test)]
 pub(super) fn set_file_progress_delay_for_test(delay: Duration) {
     FILE_PROGRESS_DELAY_OVERRIDE.with(|cell| cell.set(Some(delay)));

@@ -169,7 +169,6 @@ pub(super) struct ViewState {
     mode: Cell<BrowserMode>,
     columns: RefCell<Vec<ColumnView>>,
     hovered_column: Cell<Option<usize>>,
-    // The preview drawer holds the keys, so no column is the keyboard destination.
     preview_owns_keys: Cell<bool>,
     context_menu_column: Cell<Option<usize>>,
     context_menu_generation: Cell<u64>,

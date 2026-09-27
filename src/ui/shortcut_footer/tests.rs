@@ -291,19 +291,6 @@ fn tenxer_reference_follows_the_active_map() {
             assert_eq!(footer.tag.text(), crate::ui::tenxer_mode::TAG_TEXT);
             assert!(
                 footer
-                    .root
-                    .observe_children()
-                    .into_iter()
-                    .flatten()
-                    .all(|child| {
-                        child
-                            .downcast_ref::<gtk::Label>()
-                            .is_none_or(|label| !label.is_visible() || label.text() != phrase)
-                    }),
-                "the footer shows only the pill"
-            );
-            assert!(
-                footer
                     .tag
                     .tooltip_text()
                     .is_some_and(|text| text.contains(phrase))

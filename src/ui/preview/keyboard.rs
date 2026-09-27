@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Keyboard ownership for 10xer mode: the listing hands keys to the drawer and
-//! each preview surface decides what those keys do. In 10xer mode any focus
-//! inside the drawer owns the keys, including a password prompt that takes
-//! focus by itself. The content box is focusable only while it holds the keys
-//! for a surface that has no focusable widget yet, so default Tab order is
-//! unchanged.
-
 use super::*;
 use crate::ui::browser::{BrowserView, WeakBrowserView};
 
@@ -32,13 +25,10 @@ pub(in crate::ui) enum DocumentScroll {
 }
 
 impl PreviewDrawer {
-    /// The browser whose Miller columns yield their keyboard-destination bar
-    /// while the drawer owns the keys.
     pub(in crate::ui) fn bind_keyboard_view(&self, view: &BrowserView) {
         self.state.keyboard_view.replace(Some(view.downgrade()));
     }
 
-    /// Whether keyboard focus is anywhere inside the drawer.
     pub(in crate::ui) fn owns_focus(&self, focused: Option<&gtk::Widget>) -> bool {
         let pane = self.state.pane.upcast_ref::<gtk::Widget>();
         focused.is_some_and(|focused| focused == pane || focused.is_ancestor(pane))
@@ -48,8 +38,6 @@ impl PreviewDrawer {
         self.state.surface(focused)
     }
 
-    /// Moves keys into the open drawer. A drawer suspended for lack of room
-    /// takes them when it is shown again for the same file.
     pub(in crate::ui) fn take_keyboard(&self) -> bool {
         self.state.take_keyboard()
     }
@@ -58,7 +46,6 @@ impl PreviewDrawer {
         self.state.scroll_document(motion)
     }
 
-    /// Plain media keys for a keyboard-owned media preview.
     pub(in crate::ui) fn media_key(&self, key: gtk::gdk::Key) -> bool {
         self.has_video() && self.state.media_command(key)
     }
@@ -97,7 +84,6 @@ impl PreviewState {
     pub(super) fn install_keyboard_ownership(self: &Rc<Self>) {
         let focus = gtk::EventControllerFocus::new();
         let weak = Rc::downgrade(self);
-        // Rebuilt archive rows and self-focusing password prompts re-enter here.
         focus.connect_enter(move |_| {
             if let Some(state) = weak.upgrade()
                 && super::super::preferences::PreferenceManager::shared().tenxer_mode()
@@ -115,8 +101,6 @@ impl PreviewState {
         self.pane.add_controller(focus);
     }
 
-    /// The owner bar replaces the Miller column's destination bar while the
-    /// drawer holds the keys.
     pub(super) fn set_keyboard_owner(&self, owned: bool) {
         if owned {
             self.pane.add_css_class(OWNER_CLASS);
@@ -159,15 +143,12 @@ impl PreviewState {
         true
     }
 
-    /// Called when a suspended drawer is shown again.
     pub(super) fn resume_keyboard_claim(self: &Rc<Self>) {
         if self.claim_on_resume.replace(false) {
             self.take_keyboard();
         }
     }
 
-    /// The document's own widget, so its select-all and copy handlers receive
-    /// **Ctrl+A** / **Ctrl+C**.
     fn document_key_target(&self) -> Option<gtk::Widget> {
         fn visit(widget: &gtk::Widget) -> Option<gtk::Widget> {
             if !widget.is_visible() {
@@ -213,8 +194,7 @@ impl PreviewState {
         true
     }
 
-    /// Replacing content destroys its focused child; keep the keys in the drawer
-    /// instead of letting them fall to an unrelated widget.
+    // Replacing content can detach the focused child before the new one exists.
     pub(super) fn content_owns_keys(&self) -> bool {
         self.pane.has_css_class(OWNER_CLASS)
             && self
@@ -246,8 +226,6 @@ impl PreviewState {
         }
     }
 
-    /// Focus that moved inside the drawer by itself (a password prompt, rebuilt
-    /// archive rows) still owns the keys in 10xer mode.
     pub(super) fn reassert_keyboard_owner(&self) {
         let inside = self
             .pane
@@ -261,15 +239,12 @@ impl PreviewState {
         }
     }
 
-    /// A newly rendered interactive surface inherits keys owned by the content box.
     pub(super) fn hand_keys_to(&self, widget: &impl IsA<gtk::Widget>) {
         if self.content.has_focus() {
             widget.grab_focus();
         }
     }
 
-    /// A document that finished rendering after **l** takes the keys from the
-    /// placeholder content box.
     pub(super) fn hand_keys_to_document(&self) {
         if self.content.has_focus()
             && let Some(document) = self.document_key_target()
@@ -304,8 +279,7 @@ impl PreviewState {
         }
     }
 
-    /// The tallest scrollable view in the content, which is the document body
-    /// rather than a breadcrumb strip or metadata scroller.
+    // Breadcrumb and metadata scrollers must not displace the document body.
     fn primary_scroll(&self) -> Option<gtk::ScrolledWindow> {
         fn visit(widget: &gtk::Widget, best: &mut Option<gtk::ScrolledWindow>) {
             if !widget.is_visible() {
@@ -359,7 +333,6 @@ impl PreviewState {
     }
 }
 
-/// Read-only source text is a document, not a text field.
 fn accepts_typing(focused: &gtk::Widget) -> bool {
     let view = focused
         .downcast_ref::<gtk::TextView>()

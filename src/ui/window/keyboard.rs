@@ -98,7 +98,6 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
     window.add_controller(wheel);
 }
 
-/// Leaving 10xer mode ends preview key ownership but keeps the drawer open.
 fn release_preview_keys_on_mode_exit(
     window: &gtk::ApplicationWindow,
     preview: &PreviewDrawer,

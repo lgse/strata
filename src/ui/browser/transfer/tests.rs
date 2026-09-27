@@ -1365,10 +1365,7 @@ struct SendToToastFixture {
 }
 
 fn open_send_to_toast_browser(fixture_name: &str, files: &[&str]) -> SendToToastFixture {
-    // The toast is for sends that finish before delayed progress appears. Under
-    // full-suite I/O load a two-file copy and device flush can outlast the real
-    // 350 ms delay, which correctly suppresses the toast and fails these checks.
-    // Visible-progress coverage uses an immediate-progress item count instead.
+    // Avoid racing the real progress timer under full-suite I/O load.
     crate::ui::browser::progress::set_file_progress_delay_for_test(std::time::Duration::from_secs(
         60,
     ));

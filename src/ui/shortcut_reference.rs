@@ -21,7 +21,6 @@ pub(crate) struct ReferenceSection {
 pub(crate) enum ContextHint {
     None,
     Preview,
-    /// The file chooser previews with Space only; it has no 10xer `i` preview.
     ChooserPreview,
     CopyPath,
     CopyPaths,

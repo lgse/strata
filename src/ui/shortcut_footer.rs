@@ -595,8 +595,6 @@ fn rebuild_reference(reference: &gtk::Box, mode: BrowserMode) {
     }
 }
 
-/// The footer shows only the pill; the experimental note lives in its tooltip,
-/// accessible description, and the shortcut reference.
 fn apply_experimental_label(tag: &gtk::Label, reference_note: &gtk::Label, enabled: bool) {
     tag.set_text(crate::ui::tenxer_mode::TAG_TEXT);
     tag.set_visible(enabled);

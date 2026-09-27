@@ -692,7 +692,6 @@ impl PreviewState {
         if self.current.borrow().as_ref() == Some(&entry) && self.current_request.get().is_some() {
             return;
         }
-        // A suspended l stays pending until this file changes or the drawer closes.
         self.claim_on_resume.set(false);
         if !self.revealer.reveals_child() {
             self.show(entry, depth);
@@ -760,7 +759,7 @@ impl PreviewState {
         self.set_enabled(false);
         self.clear_target();
         self.cancel_print();
-        // Destroying a focused prompt does not always report a focus leave.
+        // GTK can omit focus-leave when the focused prompt is destroyed.
         self.content.set_focusable(false);
         self.set_keyboard_owner(false);
     }

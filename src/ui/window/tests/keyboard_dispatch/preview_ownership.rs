@@ -5,7 +5,6 @@ use crate::services::{ArchiveDirectory, ArchiveNode, ArchivePreviewTree};
 
 const LONG_LINES: usize = 600;
 
-/// Serves a long document, an archive tree, and a password-protected archive.
 struct OwnershipPreview;
 
 impl PreviewProvider for OwnershipPreview {
@@ -78,7 +77,7 @@ fn ownership_fixture() -> KeyboardFixture {
     preferences.set_tenxer_mode(true);
     preferences.set_group_by_type(false);
     let browser = fixture.view.browser();
-    // The window wires cursor-follow; the shared fixture does not.
+    // The shared fixture does not wire the window's cursor-follow behavior.
     fixture.preview.observe_browser(&browser);
     fixture.view.refresh();
     wait_loaded(&browser, 0);
