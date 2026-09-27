@@ -1469,7 +1469,11 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
             fixture.view.set_icons_thumbnail_size(48);
             fixture.view.set_view_mode(BrowserMode::Icons);
             focus_files(&fixture);
-            wait_until(|| rendered_name(&fixture.view.widget(), "tile-00.txt"));
+            wait_until(|| {
+                source_names(&browser)
+                    .iter()
+                    .any(|name| name == "tile-00.txt")
+            });
 
             let origin = browser.active_location();
             let aliases = [
