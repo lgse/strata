@@ -17,6 +17,7 @@ use std::{
 };
 
 use super::{Cancellation, ParseOperation, metadata::MediaMetadata};
+use crate::services::ModelFormat;
 use wire::{Operation, Response};
 
 mod process;
@@ -146,6 +147,8 @@ pub(crate) fn thumbnail(
         ParseOperation::ThumbnailRaw => Operation::Raw,
         ParseOperation::ThumbnailPdf => Operation::Pdf,
         ParseOperation::ThumbnailVideo => Operation::Video,
+        ParseOperation::ThumbnailModel(ModelFormat::ThreeMf) => Operation::ThreeMfThumbnail,
+        ParseOperation::ThumbnailModel(ModelFormat::FreeCad) => Operation::FreeCadThumbnail,
         _ => return Err("Not a browser thumbnail operation".into()),
     };
     let result = request(pool(), path, operation, cancellation)?;
@@ -211,6 +214,8 @@ fn parse_operation(operation: Operation) -> ParseOperation {
         Operation::Raw => ParseOperation::ThumbnailRaw,
         Operation::Pdf => ParseOperation::ThumbnailPdf,
         Operation::Video => ParseOperation::ThumbnailVideo,
+        Operation::ThreeMfThumbnail => ParseOperation::ThumbnailModel(ModelFormat::ThreeMf),
+        Operation::FreeCadThumbnail => ParseOperation::ThumbnailModel(ModelFormat::FreeCad),
         Operation::ImageMetadata | Operation::MediaMetadata => ParseOperation::MediaMetadata,
         Operation::PreviewImage => ParseOperation::PreviewImage,
         Operation::DocumentMermaid => ParseOperation::DocumentMermaid,
@@ -239,7 +244,15 @@ fn request(
         operation,
         Operation::ImageMetadata | Operation::MediaMetadata
     );
-    if !metadata_only && operation != Operation::Video && key.size > super::MAX_RASTER_INPUT_BYTES {
+    let input_limit = if matches!(
+        operation,
+        Operation::ThreeMfThumbnail | Operation::FreeCadThumbnail
+    ) {
+        crate::services::model_preview::MAX_MODEL_INPUT_BYTES
+    } else {
+        super::MAX_RASTER_INPUT_BYTES
+    };
+    if !metadata_only && operation != Operation::Video && key.size > input_limit {
         return Err("Browser input exceeds the supported size limit".into());
     }
     let entry = cache_entry(&pool.cache, key.clone(), operation);
@@ -478,6 +491,8 @@ impl Pool {
             Operation::Raw
                 | Operation::Pdf
                 | Operation::Video
+                | Operation::ThreeMfThumbnail
+                | Operation::FreeCadThumbnail
                 | Operation::ImageMetadata
                 | Operation::MediaMetadata
         );

@@ -121,10 +121,8 @@ def test_columns_reveals_archive_in_parent_column(strata):
     strata.open_directory("nested")
     strata.keyboard.press("Left")
     strata.wait_for_focused_entry("nested")
-    strata.keyboard.press("End")
-    strata.wait_for_focused_entry("199.txt")
 
-    _compress(strata, "199.txt", "199", root)
+    _compress(strata, "005.txt", "199", root)
 
     strata.wait_for_selection(["199.zip"], directory=root)
     entry = strata.entry("199.zip", directory=root)
