@@ -198,7 +198,12 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     );
     assert_eq!(
         footer.handle_key(gdk::Key::Tab, none),
-        Some(glib::Propagation::Proceed)
+        Some(glib::Propagation::Stop)
+    );
+    assert!(
+        gtk::prelude::RootExt::focus(&window)
+            .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                || focus.is_ancestor(&footer.search))
     );
     assert_eq!(
         footer.handle_key(gdk::Key::Escape, none),
@@ -402,6 +407,81 @@ fn tenxer_reference_follows_the_active_map() {
                 .and_downcast::<gtk::Button>()
                 .expect("all category")
                 .emit_clicked();
+            let ctrl = gdk::ModifierType::CONTROL_MASK;
+            assert_eq!(
+                footer.handle_key(gdk::Key::b, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                footer
+                    .categories
+                    .first_child()
+                    .and_downcast::<gtk::Button>()
+                    .is_some_and(|button| button.has_focus())
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::j, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Move half a page")
+            );
+            assert!(
+                !reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Leave 10xer mode")
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::k, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                reference_labels(&footer)
+                    .iter()
+                    .any(|label| label == "Leave 10xer mode")
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::Tab, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            let before = footer.scroll.vadjustment().value();
+            assert_eq!(
+                footer.handle_key(gdk::Key::j, none),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.vadjustment().value() > before);
+            assert_eq!(
+                footer.handle_key(gdk::Key::f, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search))
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::l, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            assert_eq!(
+                footer.handle_key(gdk::Key::f, ctrl),
+                Some(glib::Propagation::Stop)
+            );
+            assert_eq!(
+                footer.handle_key(gdk::Key::Tab, gdk::ModifierType::SHIFT_MASK),
+                Some(glib::Propagation::Stop)
+            );
+            assert!(footer.scroll.has_focus());
+            entry.grab_focus();
+            assert!(
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search))
+            );
             press_reference(&footer, gdk::Key::F1);
             settle();
             assert!(

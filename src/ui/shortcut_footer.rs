@@ -24,7 +24,6 @@ pub(super) struct ShortcutFooter {
     popover: gtk::Popover,
     reference: gtk::Box,
     categories: gtk::Box,
-    reference_count: gtk::Label,
     search: gtk::Entry,
     selected_category: Rc<RefCell<String>>,
     scroll: gtk::ScrolledWindow,
@@ -170,12 +169,10 @@ impl ShortcutFooter {
         content.append(&body);
         let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         footer_note.add_css_class("shortcut-reference-footer");
-        let count_note = gtk::Label::new(None);
-        count_note.add_css_class("shortcut-reference-note");
-        footer_note.append(&count_note);
         let note = gtk::Label::new(Some(
-            "Media controls use Ctrl+Alt. Text fields and dialogs keep native controls.",
+            "Ctrl+B categories · Ctrl+F search · Ctrl+L list · ↑↓/j/k move · Tab cycle · Esc close",
         ));
+        note.set_wrap(true);
         note.add_css_class("shortcut-reference-note");
         note.set_hexpand(true);
         note.set_xalign(0.0);
@@ -202,6 +199,10 @@ impl ShortcutFooter {
         let weak_more_for_position = more.downgrade();
         let backdrop = Rc::new(RefCell::new(None::<(gtk::Overlay, gtk::Box)>));
         let open_backdrop = backdrop.clone();
+        let focus_trap = Rc::new(RefCell::new(None::<(gtk::Window, glib::SignalHandlerId)>));
+        let open_focus_trap = focus_trap.clone();
+        let trap_search = search.downgrade();
+        let trap_popover = popover.downgrade();
         popover.connect_show(move |popover| {
             let Some(scroll) = weak_scroll.upgrade() else {
                 return;
@@ -217,9 +218,37 @@ impl ShortcutFooter {
                     layer.set_valign(gtk::Align::Fill);
                     layer.set_hexpand(true);
                     layer.set_vexpand(true);
+                    let click = gtk::GestureClick::new();
+                    let dismiss = weak_more_for_position.clone();
+                    click.connect_released(move |_, _, _, _| {
+                        if let Some(more) = dismiss.upgrade() {
+                            more.popdown();
+                        }
+                    });
+                    layer.add_controller(click);
                     overlay.add_overlay(&layer);
                     *open_backdrop.borrow_mut() = Some((overlay, layer));
                 }
+                let search = trap_search.clone();
+                let trapped_popover = trap_popover.clone();
+                let id = window.connect_focus_widget_notify(move |window| {
+                    let Some(popover) = trapped_popover
+                        .upgrade()
+                        .filter(|popover| popover.is_visible())
+                    else {
+                        return;
+                    };
+                    let Some(focus) = gtk::prelude::RootExt::focus(window) else {
+                        return;
+                    };
+                    if focus != *popover.upcast_ref::<gtk::Widget>()
+                        && !focus.is_ancestor(&popover)
+                        && let Some(search) = search.upgrade()
+                    {
+                        search.grab_focus();
+                    }
+                });
+                *open_focus_trap.borrow_mut() = Some((window.clone(), id));
                 scroll.vadjustment().set_value(scroll.vadjustment().lower());
                 scroll.set_height_request((window.height() - 160).clamp(140, 620));
                 scroll.set_width_request((window.width() - 260).clamp(200, 1200));
@@ -261,11 +290,15 @@ impl ShortcutFooter {
             Rc::new(RefCell::new(None));
         let restored_focus = focus_before.clone();
         let close_backdrop = backdrop;
+        let close_focus_trap = focus_trap;
         let weak_more = more.downgrade();
         let closed_hints = show_hints.clone();
         let closed_pending = pending_popup.clone();
         let weak_popover = popover.downgrade();
         popover.connect_closed(move |_| {
+            if let Some((window, id)) = close_focus_trap.borrow_mut().take() {
+                window.disconnect(id);
+            }
             if let Some((overlay, layer)) = close_backdrop.borrow_mut().take() {
                 overlay.remove_overlay(&layer);
                 if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
@@ -330,7 +363,6 @@ impl ShortcutFooter {
             popover,
             reference,
             categories,
-            reference_count: count_note,
             search,
             selected_category,
             scroll,
@@ -372,7 +404,6 @@ impl ShortcutFooter {
         let tag = self.tag.downgrade();
         let reference = self.reference.downgrade();
         let categories = self.categories.downgrade();
-        let reference_count = self.reference_count.downgrade();
         let search = self.search.downgrade();
         let selected = self.selected_category.clone();
         let scroll = self.scroll.downgrade();
@@ -401,18 +432,14 @@ impl ShortcutFooter {
                     clear_transient(&feedback, &prompt);
                     chords.set(None);
                 }
-                if let (Some(categories), Some(search), Some(scroll), Some(count)) = (
-                    categories.upgrade(),
-                    search.upgrade(),
-                    scroll.upgrade(),
-                    reference_count.upgrade(),
-                ) {
+                if let (Some(categories), Some(search), Some(scroll)) =
+                    (categories.upgrade(), search.upgrade(), scroll.upgrade())
+                {
                     rebuild_reference(
                         &reference,
                         &categories,
                         &search,
                         &scroll,
-                        &count,
                         &selected,
                         &view_mode,
                     );
@@ -487,7 +514,6 @@ impl ShortcutFooter {
             &self.categories,
             &self.search,
             &self.scroll,
-            &self.reference_count,
             &self.selected_category,
             &self.view_mode,
         );
@@ -671,52 +697,119 @@ impl ShortcutFooter {
             self.more.popdown();
             return Some(glib::Propagation::Stop);
         }
-        let search_focused = self
-            .search
-            .root()
-            .and_then(|root| root.focus())
-            .is_some_and(|focus| {
-                focus == *self.search.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.search)
-            });
-        if search_focused
-            && !command_modifiers
-            && matches!(
-                key,
-                gdk::Key::Up | gdk::Key::Down | gdk::Key::Page_Up | gdk::Key::Page_Down
-            )
+        let keys = modifiers
+            & (gdk::ModifierType::CONTROL_MASK
+                | gdk::ModifierType::ALT_MASK
+                | gdk::ModifierType::SUPER_MASK
+                | gdk::ModifierType::SHIFT_MASK);
+        if keys == gdk::ModifierType::CONTROL_MASK {
+            let focused = match key {
+                gdk::Key::b => self.focus_category(),
+                gdk::Key::f => self.search.grab_focus(),
+                gdk::Key::l => self.scroll.grab_focus(),
+                _ => false,
+            };
+            if focused {
+                return Some(glib::Propagation::Stop);
+            }
+        }
+        let focus = self.search.root().and_then(|root| root.focus());
+        let search_focused = focus.as_ref().is_some_and(|focus| {
+            focus == self.search.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.search)
+        });
+        let category_focused = focus
+            .as_ref()
+            .is_some_and(|focus| focus.is_ancestor(&self.categories));
+        let list_focused = focus.as_ref().is_some_and(|focus| {
+            focus == self.scroll.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.scroll)
+        });
+        if matches!(key, gdk::Key::Tab | gdk::Key::ISO_Left_Tab) && !command_modifiers {
+            let backwards =
+                keys.contains(gdk::ModifierType::SHIFT_MASK) || key == gdk::Key::ISO_Left_Tab;
+            if search_focused {
+                if backwards {
+                    self.scroll.grab_focus();
+                } else {
+                    self.focus_category();
+                }
+            } else if category_focused {
+                if backwards {
+                    self.search.grab_focus();
+                } else {
+                    self.scroll.grab_focus();
+                }
+            } else if list_focused && backwards {
+                self.focus_category();
+            } else {
+                self.search.grab_focus();
+            }
+            return Some(glib::Propagation::Stop);
+        }
+        if !command_modifiers && category_focused {
+            let direction = match key {
+                gdk::Key::Up | gdk::Key::KP_Up | gdk::Key::k => Some(-1),
+                gdk::Key::Down | gdk::Key::KP_Down | gdk::Key::j => Some(1),
+                gdk::Key::Home => Some(-100),
+                gdk::Key::End => Some(100),
+                _ => None,
+            };
+            if let Some(direction) = direction {
+                self.move_category(direction);
+                return Some(glib::Propagation::Stop);
+            }
+            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::space) {
+                return Some(glib::Propagation::Proceed);
+            }
+        }
+        if !command_modifiers
+            && ((list_focused)
+                || (search_focused
+                    && matches!(
+                        key,
+                        gdk::Key::Up | gdk::Key::Down | gdk::Key::Page_Up | gdk::Key::Page_Down
+                    )))
             && self.scroll_reference(key)
         {
             return Some(glib::Propagation::Stop);
         }
         if search_focused
             && (!command_modifiers
-                || (modifiers == gdk::ModifierType::CONTROL_MASK
+                || (keys == gdk::ModifierType::CONTROL_MASK
                     && matches!(key, gdk::Key::a | gdk::Key::c | gdk::Key::v | gdk::Key::x)))
         {
             return Some(glib::Propagation::Proceed);
         }
-        if !command_modifiers && self.scroll_reference(key) {
-            return Some(glib::Propagation::Stop);
+        // No browsing shortcut may operate on files while the reference is open.
+        Some(glib::Propagation::Stop)
+    }
+
+    fn category_buttons(&self) -> Vec<gtk::Button> {
+        let mut buttons = Vec::new();
+        let mut child = self.categories.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if let Ok(button) = widget.downcast::<gtk::Button>() {
+                buttons.push(button);
+            }
         }
-        // The reference is read-only: never let a shortcut operate on files behind it.
-        Some(
-            if !command_modifiers
-                && matches!(
-                    key,
-                    gdk::Key::Tab
-                        | gdk::Key::ISO_Left_Tab
-                        | gdk::Key::Home
-                        | gdk::Key::End
-                        | gdk::Key::Return
-                        | gdk::Key::KP_Enter
-                        | gdk::Key::space
-                )
-            {
-                glib::Propagation::Proceed
-            } else {
-                glib::Propagation::Stop
-            },
-        )
+        buttons
+    }
+
+    fn focus_category(&self) -> bool {
+        self.category_buttons()
+            .into_iter()
+            .find(|button| button.has_css_class("selected"))
+            .is_some_and(|button| button.grab_focus())
+    }
+
+    fn move_category(&self, delta: isize) {
+        let buttons = self.category_buttons();
+        let Some(index) = buttons.iter().position(|button| button.has_focus()) else {
+            return;
+        };
+        let next = (index as isize + delta).clamp(0, buttons.len() as isize - 1) as usize;
+        buttons[next].grab_focus();
+        buttons[next].emit_clicked();
     }
 
     fn scroll_reference(&self, key: gdk::Key) -> bool {
@@ -733,10 +826,24 @@ impl ShortcutFooter {
             page
         };
         let delta = match key {
-            gdk::Key::Up | gdk::Key::KP_Up | gdk::Key::Left | gdk::Key::KP_Left => -step,
-            gdk::Key::Down | gdk::Key::KP_Down | gdk::Key::Right | gdk::Key::KP_Right => step,
+            gdk::Key::Up | gdk::Key::KP_Up | gdk::Key::Left | gdk::Key::KP_Left | gdk::Key::k => {
+                -step
+            }
+            gdk::Key::Down
+            | gdk::Key::KP_Down
+            | gdk::Key::Right
+            | gdk::Key::KP_Right
+            | gdk::Key::j => step,
             gdk::Key::Page_Up | gdk::Key::KP_Page_Up => -page_step,
             gdk::Key::Page_Down | gdk::Key::KP_Page_Down => page_step,
+            gdk::Key::Home => {
+                adjustment.set_value(adjustment.lower());
+                return true;
+            }
+            gdk::Key::End => {
+                adjustment.set_value((adjustment.upper() - page).max(adjustment.lower()));
+                return true;
+            }
             _ => return false,
         };
         let limit = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
@@ -771,7 +878,6 @@ fn rebuild_reference(
     categories: &gtk::Box,
     search: &gtk::Entry,
     scroll: &gtk::ScrolledWindow,
-    count_label: &gtk::Label,
     selected: &Rc<RefCell<String>>,
     mode: &Rc<Cell<BrowserMode>>,
 ) {
@@ -786,7 +892,6 @@ fn rebuild_reference(
         *selected.borrow_mut() = String::from("All");
     }
     let total: usize = sections.iter().map(|section| section.rows.len()).sum();
-    count_label.set_text(&format!("{total} shortcuts"));
     for (name, count) in std::iter::once(("All", total)).chain(
         sections
             .iter()
@@ -810,27 +915,23 @@ fn rebuild_reference(
         let weak_categories = categories.downgrade();
         let search = search.downgrade();
         let scroll = scroll.downgrade();
-        let count_label = count_label.downgrade();
         let selected = selected.clone();
         let mode = mode.clone();
-        button.connect_clicked(move |_| {
+        button.connect_clicked(move |button| {
             *selected.borrow_mut() = name.to_owned();
-            if let (Some(reference), Some(categories), Some(search), Some(scroll), Some(count)) = (
+            if let (Some(reference), Some(categories), Some(search), Some(scroll)) = (
                 reference.upgrade(),
                 weak_categories.upgrade(),
                 search.upgrade(),
                 scroll.upgrade(),
-                count_label.upgrade(),
             ) {
-                rebuild_reference(
-                    &reference,
-                    &categories,
-                    &search,
-                    &scroll,
-                    &count,
-                    &selected,
-                    &mode,
-                );
+                let mut child = categories.first_child();
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    widget.remove_css_class("selected");
+                }
+                button.add_css_class("selected");
+                render_reference(&reference, mode.get(), name, &search.text());
                 scroll.vadjustment().set_value(0.0);
             }
         });
