@@ -18,6 +18,9 @@ fn stale_progress_and_terminals_cannot_contaminate_a_replacement_transfer() {
     let stale_progress = OperationEvent::TransferProgress {
         request_id: stale_id,
         completed_items: 1,
+        completed_files: 1,
+        total_files: Some(1),
+        current_file: None,
         transferred_bytes: 10,
         total_bytes: Some(10),
         created_location: Some(Location::local("/fixture/destination/stale")),
@@ -38,6 +41,9 @@ fn stale_progress_and_terminals_cannot_contaminate_a_replacement_transfer() {
     current(OperationEvent::TransferProgress {
         request_id,
         completed_items: 1,
+        completed_files: 1,
+        total_files: Some(1),
+        current_file: Some("current.iso".into()),
         transferred_bytes: 20,
         total_bytes: Some(20),
         created_location: Some(created.clone()),
@@ -59,6 +65,14 @@ fn stale_progress_and_terminals_cannot_contaminate_a_replacement_transfer() {
         })
         .collect();
     assert_eq!(reveals, vec![vec![created]]);
+    assert!(events.iter().any(|event| matches!(
+        event,
+        BrowserEvent::TransferProgress {
+            current_file: Some(file),
+            completed_files: 1,
+            ..
+        } if file == "current.iso"
+    )));
     assert_eq!(
         events
             .iter()
@@ -66,6 +80,48 @@ fn stale_progress_and_terminals_cannot_contaminate_a_replacement_transfer() {
             .count(),
         1
     );
+}
+
+#[test]
+fn cancelling_transfer_blocks_new_mutations_until_its_terminal_event() {
+    let (browser, events, _) = scripted_browser(ScriptedSource::manual(vec![], vec![]));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    let callback = browser.operation_callback(request_id, false, HashSet::new());
+    browser.cancel_file_operation();
+    assert!(browser.transfer_cancel_pending.get());
+    assert!(browser.try_begin_operation().is_none());
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.transfer(
+        Location::local("/fixture/destination"),
+        vec![PasteItem {
+            source: Location::local("/fixture/source"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+        false,
+    );
+    assert!(browser.is_current_operation(request_id));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferStarted { .. }))
+    );
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferCancellationPending))
+    );
+    callback(OperationEvent::TransferFailed {
+        request_id,
+        completed_locations: Vec::new(),
+        message: "The device could not finish writing".into(),
+    });
+    assert!(!browser.transfer_cancel_pending.get());
+    assert!(!browser.is_current_operation(request_id));
+    assert!(browser.try_begin_operation().is_some());
 }
 
 #[test]

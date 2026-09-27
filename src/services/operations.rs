@@ -273,6 +273,9 @@ pub enum OperationEvent {
     TransferProgress {
         request_id: OperationRequestId,
         completed_items: usize,
+        completed_files: usize,
+        total_files: Option<usize>,
+        current_file: Option<String>,
         transferred_bytes: u64,
         total_bytes: Option<u64>,
         created_location: Option<Location>,

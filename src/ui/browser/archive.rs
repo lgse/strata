@@ -19,7 +19,8 @@ use crate::model::{FileEntry, Location};
 use crate::services::{ArchiveFormat, TransferConflict, validate_basename};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
-    folder_input_path, resolve_destination_path, setup_transfer_search,
+    DestinationLocationBar, TransferSearchScope, folder_input_path, hand_off_destination_focus,
+    resolve_destination_path, setup_transfer_search,
 };
 use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
 use crate::ui::browser::paths::compact_display_path;
@@ -75,6 +76,7 @@ impl ViewState {
     ///   still dismiss.
     fn build_archive_modal(
         self: &Rc<Self>,
+        icon: &str,
         title: &str,
         subtitle: &str,
         confirm_label: &str,
@@ -88,12 +90,7 @@ impl ViewState {
             return (gtk::Box::default(), gtk::Button::default(), Rc::new(|| {}));
         };
 
-        let layout = modal_layout(
-            crate::assets::icons::FILE_ARCHIVE,
-            title,
-            subtitle,
-            confirm_label,
-        );
+        let layout = modal_layout(icon, title, subtitle, confirm_label);
         let layer = modal_layer(
             &layout.content,
             &window_overlay,
@@ -308,6 +305,7 @@ impl ViewState {
         let dirty_password = password_entry.clone();
         let dirty_confirm = confirm_entry.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
+            crate::assets::icons::PACKAGE_PLUS,
             &title,
             &subtitle,
             "Compress",
@@ -491,6 +489,7 @@ impl ViewState {
         let extract_initial_text = folder_input_path(&base);
         let dirty_field = field.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
+            crate::assets::icons::FOLDER_ARCHIVE,
             "Extract to",
             &entry.display_name,
             "Extract here",
@@ -498,7 +497,9 @@ impl ViewState {
         );
         let field_label = form_label("Destination folder");
         body.append(&field_label);
-        body.append(&field);
+        let location_bar =
+            DestinationLocationBar::wrap(field.clone(), base.clone(), glib::home_dir(), None, None);
+        body.append(&location_bar.widget());
 
         let suggestions = gtk::Box::new(gtk::Orientation::Vertical, 2);
         suggestions.add_css_class("transfer-suggestions");
@@ -523,12 +524,18 @@ impl ViewState {
         let generation = Rc::new(Cell::new(0_u64));
         let suggestions_box = suggestions.clone();
         let extract_error = error.clone();
+        let select_bar = location_bar.clone();
         setup_transfer_search(
             &field,
             &suggestions_box,
             &generation,
-            base.clone(),
-            self.browser.preferences().show_hidden,
+            TransferSearchScope {
+                base: base.clone(),
+                search_root: glib::home_dir(),
+                root_limit: None,
+                show_hidden: self.browser.preferences().show_hidden,
+            },
+            Rc::new(move |path: &Path| select_bar.select_directory(path)),
             move |field| {
                 field.remove_css_class("error");
                 extract_error.set_visible(false);
@@ -541,7 +548,7 @@ impl ViewState {
         let confirm_base = base.clone();
         let extract_entry = entry.clone();
         let dismiss_for_confirm = dismiss.clone();
-        confirm.connect_clicked(move |_| {
+        confirm.connect_clicked(move |button| {
             let path =
                 resolve_destination_path(&confirm_field.text(), &confirm_base, &glib::home_dir());
             if path.exists() && !path.is_dir() {
@@ -562,11 +569,12 @@ impl ViewState {
             extract_state
                 .browser
                 .extract(extract_entry.clone(), dest, false, None);
+            hand_off_destination_focus(&confirm_field, button);
             dismiss_for_confirm();
         });
 
         submit_on_enter(&body, &confirm);
-        field.grab_focus();
+        location_bar.focus_browse();
     }
 
     /// Prompts for a password after a password-capable extract failed.
@@ -585,6 +593,7 @@ impl ViewState {
         password_entry.set_show_peek_icon(true);
         let dirty_password = password_entry.clone();
         let (body, confirm, dismiss) = self.build_archive_modal(
+            crate::assets::icons::FILE_ARCHIVE,
             "Extract",
             &entry.display_name,
             "Extract",

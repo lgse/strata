@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-use std::{path::PathBuf, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use gtk::{gio, prelude::*};
 
@@ -11,11 +16,15 @@ use crate::{
     ui::actions::{action_icon, folder_input, inputs_for_entries, native_paths, run_action},
 };
 
-use super::super::ViewState;
+use super::super::{SendToMenuHandlers, ViewState};
+
+const SEND_TO_DEVICE_NAME_MAX_CHARS: i32 = 15;
 
 pub(super) struct ActionMenuSection {
     popover: gtk::PopoverMenu,
     model: gio::Menu,
+    pub(super) transfer_sections: Option<[gio::Menu; 2]>,
+    send_to_row_indices: RefCell<[Option<i32>; 2]>,
     root_model: gio::Menu,
     header: Option<gtk::Widget>,
     owner: gtk::glib::WeakRef<gtk::Widget>,
@@ -31,6 +40,7 @@ impl ActionMenuSection {
         after: &impl IsA<gtk::Widget>,
         header: Option<&gtk::Widget>,
         anchor: &gtk::Widget,
+        transfer_buttons: Option<[gtk::Button; 2]>,
     ) -> Self {
         let model = gio::Menu::new();
         let root = gio::Menu::new();
@@ -51,6 +61,7 @@ impl ActionMenuSection {
             &popover,
             &dispatch,
             &navigation,
+            transfer_buttons.as_ref(),
         );
         popover.insert_action_group("builtin", Some(&commands.group));
         if let Some(header) = header {
@@ -104,9 +115,12 @@ impl ActionMenuSection {
             }
         });
         refresh_presentation(&popover, &navigation);
+        let transfer_sections = commands.transfer_sections.clone();
         Self {
             popover,
             model,
+            transfer_sections,
+            send_to_row_indices: RefCell::new([None, None]),
             root_model: root,
             header: header.cloned(),
             owner: anchor.downgrade(),
@@ -152,14 +166,110 @@ impl ActionMenuSection {
         entries: &[FileEntry],
         parent: Option<PathBuf>,
     ) {
+        #[cfg(test)]
+        if let Some(test_override) = state.send_to_menu_test_override.borrow().clone() {
+            self.rebuild_for_selection_with_destinations(
+                state,
+                entries,
+                parent,
+                test_override.destinations,
+                test_override.recent_destinations,
+                test_override.handlers,
+            );
+            return;
+        }
+
+        let weak_state = Rc::downgrade(state);
+        let activate_root: Rc<dyn Fn(String, Vec<Location>)> = Rc::new(move |id, sources| {
+            if let Some(state) = weak_state.upgrade() {
+                state.send_to_removable_device(id, sources);
+            }
+        });
+        let weak_state = Rc::downgrade(state);
+        let choose_folder: Rc<dyn Fn(String, Vec<Location>)> = Rc::new(move |id, sources| {
+            if let Some(state) = weak_state.upgrade() {
+                state.show_send_to_folder_dialog(id, sources);
+            }
+        });
+        let weak_state = Rc::downgrade(state);
+        let activate_recent: Rc<dyn Fn(String, PathBuf, Vec<Location>)> =
+            Rc::new(move |id, relative, sources| {
+                if let Some(state) = weak_state.upgrade() {
+                    state.send_to_recent_destination(id, relative, sources);
+                }
+            });
+        let handlers = SendToMenuHandlers {
+            activate_root,
+            activate_recent,
+            choose_folder,
+        };
+        let destinations = crate::ui::removable_destinations();
+        let preferences = crate::ui::preferences::PreferenceManager::shared();
+        let recent_destinations = destinations
+            .iter()
+            .map(|destination| {
+                (
+                    destination.id.clone(),
+                    preferences.send_to_recent_destinations(&destination.id),
+                )
+            })
+            .collect();
+        self.rebuild_for_selection_with_destinations(
+            state,
+            entries,
+            parent,
+            destinations,
+            recent_destinations,
+            handlers,
+        );
+    }
+
+    pub(super) fn rebuild_for_selection_with_destinations(
+        &self,
+        state: &Rc<ViewState>,
+        entries: &[FileEntry],
+        parent: Option<PathBuf>,
+        destinations: Vec<crate::ui::RemovableDestination>,
+        recent_destinations: HashMap<String, Vec<PathBuf>>,
+        handlers: SendToMenuHandlers,
+    ) {
+        self.clear();
+        let sources: Vec<_> = entries.iter().map(|entry| entry.location.clone()).collect();
+        if let Some(transfer_index) = match sources.len() {
+            0 => None,
+            1 => Some(0),
+            _ => Some(1),
+        } && let Some(transfer_sections) = &self.transfer_sections
+        {
+            let send_to = gio::Menu::new();
+            append_send_to_menu(
+                &send_to,
+                &self.actions,
+                &self.dispatch,
+                &destinations,
+                &recent_destinations,
+                &sources,
+                handlers,
+            );
+            if send_to.n_items() > 0 {
+                let section = &transfer_sections[transfer_index];
+                let row_index = section.n_items();
+                let devices = send_to.item_link(0, "submenu").expect("Send to submenu");
+                let item = gio::MenuItem::new_submenu(Some("Send to…"), &devices);
+                item.set_icon(&gio::ThemedIcon::new(crate::assets::icons::SEND_HORIZONTAL));
+                section.append_item(&item);
+                self.send_to_row_indices.borrow_mut()[transfer_index] = Some(row_index);
+            }
+        }
+
         let (Some(inputs), Some(paths), Some(parent)) =
             (inputs_for_entries(entries), native_paths(entries), parent)
         else {
-            self.clear();
+            refresh_presentation(&self.popover, &self.navigation);
             return;
         };
         let catalog = crate::ui::actions::shared().catalog();
-        self.rebuild(
+        self.rebuild_custom_actions(
             state,
             &catalog.matches(&inputs),
             paths,
@@ -169,12 +279,13 @@ impl ActionMenuSection {
     }
 
     pub(super) fn rebuild_for_folder(&self, state: &Rc<ViewState>, location: &Location) {
+        self.clear();
         let (Some(input), Some(path)) = (folder_input(location), location.native_path()) else {
-            self.clear();
+            refresh_presentation(&self.popover, &self.navigation);
             return;
         };
         let catalog = crate::ui::actions::shared().catalog();
-        self.rebuild(
+        self.rebuild_custom_actions(
             state,
             &catalog.matches(std::slice::from_ref(&input)),
             vec![path.to_path_buf()],
@@ -184,13 +295,20 @@ impl ActionMenuSection {
     }
 
     fn clear(&self) {
+        if let Some(transfer_sections) = &self.transfer_sections {
+            for (index, row_index) in self.send_to_row_indices.borrow_mut().iter_mut().enumerate() {
+                if let Some(row_index) = row_index.take() {
+                    transfer_sections[index].remove(row_index);
+                }
+            }
+        }
         self.model.remove_all();
         for name in self.actions.list_actions() {
             self.actions.remove_action(&name);
         }
     }
 
-    fn rebuild(
+    fn rebuild_custom_actions(
         &self,
         state: &Rc<ViewState>,
         matched: &[MatchedAction],
@@ -198,7 +316,6 @@ impl ActionMenuSection {
         parent: PathBuf,
         source: InvocationSource,
     ) {
-        self.clear();
         let submenu = gio::Menu::new();
         for (index, matched) in matched.iter().enumerate() {
             let name = format!("run-{index}");
@@ -251,6 +368,125 @@ impl ActionMenuSection {
     }
 }
 
+pub(super) fn append_send_to_menu(
+    model: &gio::Menu,
+    actions: &gio::SimpleActionGroup,
+    dispatch: &super::commands::MenuDispatch,
+    destinations: &[crate::ui::RemovableDestination],
+    recent_destinations: &HashMap<String, Vec<PathBuf>>,
+    sources: &[Location],
+    handlers: SendToMenuHandlers,
+) {
+    if destinations.is_empty() || sources.is_empty() {
+        return;
+    }
+    let devices = gio::Menu::new();
+    for (index, destination) in destinations.iter().enumerate() {
+        let name = format!("send-to-{index}");
+        let id = destination.id.clone();
+        let selected = sources.to_vec();
+        let activate_root = handlers.activate_root.clone();
+        let root_dispatch = dispatch.clone();
+        let action = gio::SimpleAction::new(&name, None);
+        action.connect_activate(move |_, _| {
+            let id = id.clone();
+            let selected = selected.clone();
+            let activate_root = activate_root.clone();
+            root_dispatch.defer(move || activate_root(id, selected));
+        });
+        actions.add_action(&action);
+
+        let root = gio::Menu::new();
+        root.append(Some("Drive root"), Some(&format!("custom.{name}")));
+        let recent_paths = recent_destinations
+            .get(&destination.id)
+            .map(|paths| valid_recent_destinations(&destination.root, paths))
+            .unwrap_or_default();
+        for (recent_index, relative) in recent_paths.into_iter().enumerate() {
+            let recent_name = format!("send-to-recent-{index}-{recent_index}");
+            let id = destination.id.clone();
+            let selected = sources.to_vec();
+            let relative_path = relative.clone();
+            let activate_recent = handlers.activate_recent.clone();
+            let recent_dispatch = dispatch.clone();
+            let recent_action = gio::SimpleAction::new(&recent_name, None);
+            recent_action.connect_activate(move |_, _| {
+                let id = id.clone();
+                let relative = relative_path.clone();
+                let selected = selected.clone();
+                let activate_recent = activate_recent.clone();
+                recent_dispatch.defer(move || activate_recent(id, relative, selected));
+            });
+            actions.add_action(&recent_action);
+            root.append(
+                Some(&format!(
+                    "{} (recent)",
+                    relative.to_string_lossy().replace('_', "__")
+                )),
+                Some(&format!("custom.{recent_name}")),
+            );
+        }
+        let folder_name = format!("choose-folder-{index}");
+        let id = destination.id.clone();
+        let selected = sources.to_vec();
+        let choose_folder = handlers.choose_folder.clone();
+        let folder_dispatch = dispatch.clone();
+        let folder_action = gio::SimpleAction::new(&folder_name, None);
+        folder_action.connect_activate(move |_, _| {
+            let id = id.clone();
+            let selected = selected.clone();
+            let choose_folder = choose_folder.clone();
+            folder_dispatch.defer(move || choose_folder(id, selected));
+        });
+        actions.add_action(&folder_action);
+        let choose = gio::Menu::new();
+        choose.append(
+            Some("Choose folder…"),
+            Some(&format!("custom.{folder_name}")),
+        );
+        let device = gio::Menu::new();
+        device.append_section(None, &root);
+        device.append_section(None, &choose);
+        let item = gio::MenuItem::new_submenu(Some(&destination.name.replace('_', "__")), &device);
+        item.set_icon(&gio::ThemedIcon::new(icons::HARD_DRIVE));
+        item.set_attribute_value("x-strata-send-to-device", Some(&true.to_variant()));
+        item.set_attribute_value("x-strata-tooltip", Some(&destination.name.to_variant()));
+        devices.append_item(&item);
+    }
+    model.append_submenu(Some("Send to…"), &devices);
+}
+
+fn valid_recent_destinations(root: &Path, persisted: &[PathBuf]) -> Vec<PathBuf> {
+    let Some(canonical_root) = crate::ui::browser::destination::canonical_existing_directory(root)
+    else {
+        return Vec::new();
+    };
+    let mut seen_relative = HashSet::new();
+    let mut seen_destinations = HashSet::new();
+    let mut valid = Vec::new();
+    for relative in persisted {
+        if !crate::ui::preferences::is_valid_send_to_relative_path(relative)
+            || !seen_relative.insert(relative)
+        {
+            continue;
+        }
+        let Some(destination) = crate::ui::browser::destination::canonical_directory_within(
+            &canonical_root,
+            &canonical_root.join(relative),
+        ) else {
+            continue;
+        };
+        if destination == canonical_root || !seen_destinations.insert(destination) {
+            continue;
+        }
+        valid.push(relative.clone());
+        if valid.len() == crate::ui::preferences::SEND_TO_RECENT_DESTINATIONS_LIMIT {
+            break;
+        }
+    }
+    valid
+}
+
 pub(super) fn refresh_presentation(
     root: &gtk::PopoverMenu,
     navigation: &Rc<super::keyboard::NativeMenuNavigation>,
@@ -267,7 +503,9 @@ struct ItemPresentation {
     label: String,
     description: String,
     tooltip: Option<String>,
+    submenu: Option<gio::MenuModel>,
     icon_size: i32,
+    send_to_device: bool,
     danger: bool,
     custom: bool,
 }
@@ -284,10 +522,15 @@ fn collect_presentations(model: &gio::MenuModel, items: &mut Vec<ItemPresentatio
                 label: label.replace("__", "_"),
                 description: string("x-strata-description").unwrap_or_default(),
                 tooltip: string("x-strata-tooltip"),
+                submenu: model.item_link(index, "submenu"),
                 icon_size: model
                     .item_attribute_value(index, "x-strata-icon-size", None)
                     .and_then(|value| value.get::<i32>())
                     .unwrap_or(15),
+                send_to_device: model
+                    .item_attribute_value(index, "x-strata-send-to-device", None)
+                    .and_then(|value| value.get::<bool>())
+                    .unwrap_or(false),
                 danger: model
                     .item_attribute_value(index, "x-strata-danger", None)
                     .and_then(|value| value.get::<bool>())
@@ -410,15 +653,15 @@ fn present_native_items(
         && let Some(label) = children
             .iter()
             .find_map(|child| child.downcast_ref::<gtk::Label>())
-        && let Some(item) = items
-            .iter()
-            .find(|item| item.label == label.text())
-            .cloned()
+        && let Some(item) = native_item_presentation(widget, label.text().as_str(), items)
     {
         let initialized = widget.has_css_class("strata-native-menu-item");
         widget.add_css_class("strata-native-menu-item");
         label.set_hexpand(true);
-        if item.custom {
+        if item.send_to_device {
+            label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            label.set_max_width_chars(SEND_TO_DEVICE_NAME_MAX_CHARS);
+        } else if item.custom {
             label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             label.set_max_width_chars(24);
         }
@@ -461,6 +704,27 @@ fn label_menu_item(widget: &gtk::Widget, item: &ItemPresentation) {
         gtk::accessible::Property::Label(&item.label),
         gtk::accessible::Property::Description(&item.description),
     ]);
+}
+
+fn native_item_presentation(
+    widget: &gtk::Widget,
+    label: &str,
+    items: &[ItemPresentation],
+) -> Option<ItemPresentation> {
+    let popover = widget
+        .find_property("popover")
+        .and_then(|_| widget.property::<Option<gtk::Popover>>("popover"))
+        .and_then(|popover| popover.downcast::<gtk::PopoverMenu>().ok());
+
+    if let Some(popover) = popover {
+        let submenu = popover.menu_model()?;
+        return items
+            .iter()
+            .find(|item| item.submenu.as_ref() == Some(&submenu))
+            .cloned();
+    }
+
+    items.iter().find(|item| item.label == label).cloned()
 }
 
 fn bind_menu_icon(image: &gtk::Image, name: &str) {

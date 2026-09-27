@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    collections::HashMap,
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
 };
@@ -69,6 +70,163 @@ pub(super) fn device_identity(
                 .filter(|value| !value.is_empty())
                 .map(ToOwned::to_owned)
         })
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::ui) struct RemovableDestination {
+    pub id: String,
+    pub name: String,
+    pub root: PathBuf,
+}
+
+#[derive(Clone, Copy)]
+struct RemovableMountFacts {
+    shadowed: bool,
+    native_root: bool,
+    removable: bool,
+    writable: bool,
+    existing_directory: bool,
+}
+
+fn removable_mount_is_eligible(facts: RemovableMountFacts) -> bool {
+    !facts.shadowed
+        && facts.native_root
+        && facts.removable
+        && facts.writable
+        && facts.existing_directory
+}
+
+fn send_to_device_identity(
+    volume_uuid: Option<&str>,
+    drive_uuid: Option<&str>,
+    volume_unix_device: Option<&str>,
+    drive_unix_device: Option<&str>,
+    root_uri: Option<&str>,
+) -> Option<String> {
+    let unix_device = volume_unix_device
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            drive_unix_device
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        });
+    [
+        ("volume", volume_uuid),
+        ("drive", drive_uuid),
+        ("unix", unix_device),
+        ("root", root_uri),
+    ]
+    .into_iter()
+    .find_map(|(namespace, value)| {
+        value
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("{namespace}:{value}"))
+    })
+}
+
+fn send_to_mount_identity(mount: &gio::Mount) -> Option<String> {
+    let volume = mount.volume();
+    let drive = mount
+        .drive()
+        .or_else(|| volume.as_ref().and_then(|volume| volume.drive()));
+    let root = mount.root();
+    let root_uri = root.uri();
+    let volume_uuid = volume.as_ref().and_then(|volume| volume.uuid());
+    let drive_uuid = drive
+        .as_ref()
+        .and_then(|drive| drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UUID.as_str()));
+    let volume_unix_device = volume
+        .as_ref()
+        .and_then(|volume| volume.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()));
+    let drive_unix_device = drive
+        .as_ref()
+        .and_then(|drive| drive.identifier(gio::VOLUME_IDENTIFIER_KIND_UNIX_DEVICE.as_str()));
+    send_to_device_identity(
+        volume_uuid.as_deref(),
+        drive_uuid.as_deref(),
+        volume_unix_device.as_deref(),
+        drive_unix_device.as_deref(),
+        Some(root_uri.as_str()),
+    )
+}
+
+fn root_is_writable_directory(root: &gio::File) -> bool {
+    root.query_info(
+        "standard::type,access::can-write",
+        gio::FileQueryInfoFlags::NONE,
+        None::<&gio::Cancellable>,
+    )
+    .is_ok_and(|info| {
+        info.file_type() == gio::FileType::Directory && info.boolean("access::can-write")
+    })
+}
+
+fn destination_for_mount(mount: &gio::Mount) -> Option<RemovableDestination> {
+    let root_file = mount.root();
+    let root = root_file.path()?;
+    let volume = mount.volume();
+    let removable =
+        super::mount_can_unplug(mount) || volume.as_ref().is_some_and(super::volume_can_unplug);
+    let facts = RemovableMountFacts {
+        shadowed: mount.is_shadowed(),
+        native_root: true,
+        removable,
+        writable: root_is_writable_directory(&root_file),
+        existing_directory: root.is_dir(),
+    };
+    if !removable_mount_is_eligible(facts) {
+        return None;
+    }
+    Some(RemovableDestination {
+        id: send_to_mount_identity(mount)?,
+        name: mount.name().to_string(),
+        root,
+    })
+}
+
+fn without_ambiguous_destinations(
+    destinations: Vec<RemovableDestination>,
+) -> Vec<RemovableDestination> {
+    let mut counts = HashMap::new();
+    for destination in &destinations {
+        *counts.entry(destination.id.clone()).or_insert(0usize) += 1;
+    }
+    destinations
+        .into_iter()
+        .filter(|destination| counts.get(&destination.id) == Some(&1))
+        .collect()
+}
+
+fn sort_removable_destinations(destinations: &mut [RemovableDestination]) {
+    destinations.sort_by(|left, right| {
+        left.name
+            .to_lowercase()
+            .cmp(&right.name.to_lowercase())
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+pub(in crate::ui) fn removable_destinations() -> Vec<RemovableDestination> {
+    let monitor = gio::VolumeMonitor::get();
+    let mut destinations = without_ambiguous_destinations(
+        monitor
+            .mounts()
+            .iter()
+            .filter_map(destination_for_mount)
+            .collect(),
+    );
+    sort_removable_destinations(&mut destinations);
+    destinations
+}
+
+pub(in crate::ui) fn resolve_removable_destination(id: &str) -> Option<PathBuf> {
+    let destination = removable_destinations()
+        .into_iter()
+        .find(|destination| destination.id == id)?;
+    let root = std::fs::canonicalize(destination.root).ok()?;
+    root_is_writable_directory(&gio::File::for_path(&root)).then_some(root)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

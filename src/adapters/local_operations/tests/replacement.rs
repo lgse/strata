@@ -39,6 +39,32 @@ fn replacement_publication_preserves_concurrent_arrivals() -> Result<(), Box<dyn
 }
 
 #[test]
+fn replacement_publication_reports_a_stage_it_cannot_remove() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let target = root.path().join("target");
+    fs::write(&target, b"existing")?;
+    let staged = StagedSibling::create(root.path(), false)?;
+    let staged_path = staged.path().to_owned();
+    fs::remove_file(&staged_path)?;
+    fs::create_dir(&staged_path)?;
+    let error = glib::MainContext::default()
+        .block_on(publish_staged_replacement(staged, target.clone()))
+        .expect_err("concurrent destination prevents publication");
+    assert!(
+        error
+            .message()
+            .contains("incomplete copy could not be removed")
+    );
+    assert!(staged_path.is_dir());
+    assert_eq!(fs::read(target)?, b"existing");
+    fs::remove_dir(staged_path)?;
+    Ok(())
+}
+
+#[test]
 fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
