@@ -1798,6 +1798,7 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut], compac
     heading.append(&count);
     let divider = gtk::Separator::new(gtk::Orientation::Horizontal);
     divider.set_hexpand(true);
+    divider.set_valign(gtk::Align::Center);
     heading.append(&divider);
     section.append(&heading);
     let grid = gtk::Grid::new();

@@ -3142,7 +3142,9 @@ entry.form-control.shortcut-footer-prompt:focus-within {
 }
 
 .shortcut-reference-results separator {
-  background: alpha(@theme_accent, 0.4);
+  background: @theme_accent;
+  border: 0;
+  padding: 0;
   min-height: 1px;
 }
 
