@@ -481,6 +481,10 @@ impl ShortcutFooter {
         hint.is_visible().then(|| hint.text().to_string())
     }
 
+    pub(in crate::ui) fn prompt_is_visible(&self) -> bool {
+        gtk::prelude::WidgetExt::is_visible(&self.prompt)
+    }
+
     pub(in crate::ui) fn prompt_has_focus(&self) -> bool {
         gtk::prelude::WidgetExt::is_visible(&self.prompt)
             && self

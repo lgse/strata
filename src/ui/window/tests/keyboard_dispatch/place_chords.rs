@@ -168,11 +168,29 @@ fn tenxer_go_chord_reaches_places_and_cancels_cleanly() {
             pump(50);
             assert_eq!(browser.active_location(), origin, "Esc left no pending d");
 
+            for (key, path, feedback) in [
+                (Key::d, &places.downloads, "No Downloads folder"),
+                (
+                    Key::k,
+                    &places.home.join("Documents"),
+                    "No Documents folder",
+                ),
+                (Key::p, &places.pictures, "No Pictures folder"),
+                (Key::v, &places.home.join("Videos"), "No Videos folder"),
+                (Key::c, &places.config, "No .config folder"),
+            ] {
+                if path.exists() {
+                    std::fs::remove_dir_all(path).expect("remove place");
+                }
+                chord(&fixture, key);
+                assert_eq!(fixture.shortcuts.feedback_text(), feedback, "g {key:?}");
+                pump(20);
+                assert_eq!(browser.active_location(), origin, "g {key:?} stays");
+                std::fs::create_dir_all(path).expect("restore place");
+            }
             for (key, feedback) in [
                 (Key::z, "Unknown chord"),
                 (Key::q, "Unknown chord"),
-                (Key::k, "No Documents folder"),
-                (Key::v, "No Videos folder"),
                 (Key::_3, "No pin 3"),
             ] {
                 chord(&fixture, key);
@@ -245,6 +263,201 @@ fn tenxer_go_chord_reaches_places_and_cancels_cleanly() {
                 fixture.shortcuts.armed_chord(),
                 None,
                 "window destruction cancels"
+            );
+        },
+    );
+}
+
+fn shortcut_reference_visible(fixture: &KeyboardFixture) -> bool {
+    widget_with_class(fixture.window.upcast_ref(), "shortcut-popover")
+        .is_some_and(|popover| popover.is_visible())
+}
+
+fn arm_go(fixture: &KeyboardFixture) {
+    focus_files(fixture);
+    fixture.shortcuts.dismiss_feedback();
+    fixture.press(Key::g, ModifierType::empty());
+    assert_eq!(
+        fixture.shortcuts.armed_chord(),
+        Some(crate::ui::tenxer_mode::Chord::Go)
+    );
+    assert_eq!(fixture.shortcuts.chord().text(), "g-");
+}
+
+fn assert_place_key_does_not_jump(
+    fixture: &KeyboardFixture,
+    origin: &Option<crate::model::Location>,
+) {
+    focus_files(fixture);
+    fixture.press(Key::d, ModifierType::empty());
+    pump(50);
+    assert_eq!(fixture.view.browser().active_location(), *origin);
+    assert_eq!(fixture.shortcuts.armed_chord(), None);
+}
+
+#[test]
+fn armed_chord_yields_to_earlier_capture_handlers() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::place_chords::armed_chord_yields_to_earlier_capture_handlers",
+        || {
+            let places = disposable_places();
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_sidebar_show_downloads(true);
+            fixture.shortcuts.bind_preferences(&preferences);
+            let origin = fixture.view.browser().active_location();
+            preferences.set_text_size(crate::ui::preferences::TextSize::new(20));
+
+            for (key, expected) in [(Key::plus, 21), (Key::minus, 19), (Key::_0, 13)] {
+                preferences.set_text_size(crate::ui::preferences::TextSize::new(20));
+                arm_go(&fixture);
+                assert!(fixture.press(key, ModifierType::CONTROL_MASK));
+                assert_eq!(fixture.shortcuts.armed_chord(), None, "{key:?} clears g-");
+                assert!(!fixture.shortcuts.chord().is_visible());
+                assert_eq!(preferences.text_size().root_font_px(), expected, "{key:?}");
+                assert_place_key_does_not_jump(&fixture, &origin);
+            }
+
+            for key in [Key::F1, Key::asciitilde, Key::grave] {
+                let modifiers = if key == Key::grave {
+                    ModifierType::SHIFT_MASK
+                } else {
+                    ModifierType::empty()
+                };
+                arm_go(&fixture);
+                assert!(fixture.press(key, modifiers), "{key:?}");
+                assert_eq!(fixture.shortcuts.armed_chord(), None, "{key:?} clears g-");
+                wait_until(|| shortcut_reference_visible(&fixture));
+                assert_place_key_does_not_jump(&fixture, &origin);
+                assert!(fixture.press(Key::Escape, ModifierType::empty()));
+                wait_until(|| !shortcut_reference_visible(&fixture));
+                assert_eq!(fixture.view.browser().active_location(), origin);
+            }
+
+            arm_go(&fixture);
+            assert!(fixture.press(Key::F1, ModifierType::empty()));
+            wait_until(|| shortcut_reference_visible(&fixture));
+            fixture
+                .shortcuts
+                .arm_chord(crate::ui::tenxer_mode::Chord::Go);
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            assert_eq!(fixture.shortcuts.armed_chord(), None, "Escape clears g-");
+            wait_until(|| !shortcut_reference_visible(&fixture));
+            assert_place_key_does_not_jump(&fixture, &origin);
+
+            arm_go(&fixture);
+            assert!(fixture.press(Key::F1, ModifierType::empty()));
+            wait_until(|| shortcut_reference_visible(&fixture));
+            fixture
+                .shortcuts
+                .arm_chord(crate::ui::tenxer_mode::Chord::Go);
+            fixture.shortcuts.dismiss_feedback();
+            assert!(fixture.press(Key::Delete, ModifierType::empty()));
+            assert_eq!(
+                fixture.shortcuts.armed_chord(),
+                None,
+                "a key swallowed by the open reference clears g-"
+            );
+            assert!(shortcut_reference_visible(&fixture));
+            assert_ne!(
+                fixture.shortcuts.feedback_text(),
+                "Unknown chord",
+                "Delete is consumed by the reference"
+            );
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            wait_until(|| !shortcut_reference_visible(&fixture));
+            assert_place_key_does_not_jump(&fixture, &origin);
+
+            preferences.set_show_keybinding_hints(false);
+            pump(20);
+            arm_go(&fixture);
+            assert!(fixture.press(Key::F1, ModifierType::empty()));
+            assert_eq!(fixture.shortcuts.armed_chord(), None);
+            assert!(
+                !shortcut_reference_visible(&fixture),
+                "a hidden shortcuts button defers the popover"
+            );
+            fixture
+                .shortcuts
+                .arm_chord(crate::ui::tenxer_mode::Chord::Go);
+            fixture.shortcuts.dismiss_feedback();
+            assert!(fixture.press(Key::Down, ModifierType::empty()));
+            assert_eq!(
+                fixture.shortcuts.armed_chord(),
+                None,
+                "a key swallowed by the pending reference clears g-"
+            );
+            assert_ne!(fixture.shortcuts.feedback_text(), "Unknown chord");
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            pump(50);
+            assert!(!shortcut_reference_visible(&fixture));
+            assert_place_key_does_not_jump(&fixture, &origin);
+            preferences.set_show_keybinding_hints(true);
+
+            let scroll =
+                widget_with_class(fixture.view.widget().upcast_ref(), "browser-listing-scroll")
+                    .and_then(|widget| widget.downcast::<gtk::ScrolledWindow>().ok())
+                    .expect("listing scroll");
+            arm_go(&fixture);
+            assert!(crate::ui::scrolling::begin_autoscroll_for_test(&scroll));
+            assert!(crate::ui::scrolling::autoscroll_is_running());
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            assert!(!crate::ui::scrolling::autoscroll_is_running());
+            assert_eq!(
+                fixture.shortcuts.armed_chord(),
+                None,
+                "autoscroll Escape clears g-"
+            );
+            assert_place_key_does_not_jump(&fixture, &origin);
+
+            let _places = places;
+        },
+    );
+}
+
+#[test]
+fn settings_and_footer_list_the_same_place_chords() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::place_chords::settings_and_footer_list_the_same_place_chords",
+        || {
+            PreferenceManager::shared().set_tenxer_mode(true);
+            let settings: Vec<_> = crate::ui::shortcut_reference::settings_bindings(true)
+                .iter()
+                .filter(|binding| binding.category == "Places")
+                .copied()
+                .collect();
+            let sections = crate::ui::shortcut_reference::reference_sections(BrowserMode::Columns);
+            let footer = &sections
+                .iter()
+                .find(|section| section.title == "Places")
+                .expect("footer place rows")
+                .rows;
+            assert_eq!(settings.len(), footer.len());
+            for (binding, row) in settings.iter().zip(footer) {
+                let (chord, meaning) = *row;
+                assert!(
+                    meaning == binding.action || meaning == binding.note,
+                    "{chord} names {meaning:?}; settings action {:?} note {:?}",
+                    binding.action,
+                    binding.note
+                );
+                assert!(
+                    chord == binding.keys || chord.strip_prefix(binding.keys).is_some(),
+                    "{chord} vs {}",
+                    binding.keys
+                );
+            }
+            let preview = "Top of the document or first archive member";
+            assert!(
+                settings
+                    .iter()
+                    .any(|binding| binding.action == preview && binding.note == "Preview")
+            );
+            assert!(
+                footer.iter().any(|(chord, meaning)| {
+                    *chord == "g g in the preview" && *meaning == preview
+                })
             );
         },
     );

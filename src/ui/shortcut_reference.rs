@@ -319,42 +319,6 @@ const TENXER_SETTINGS: &[Binding] = &[
         keys: "Alt + Home",
     },
     Binding {
-        category: "Places",
-        action: "First item",
-        note: "",
-        keys: "g g",
-    },
-    Binding {
-        category: "Places",
-        action: "Home / ~/.config",
-        note: "",
-        keys: "g h / g c",
-    },
-    Binding {
-        category: "Places",
-        action: "Downloads / Documents / Pictures / Videos",
-        note: "",
-        keys: "g d / g k / g p / g v",
-    },
-    Binding {
-        category: "Places",
-        action: "Trash / Network / Recent",
-        note: "",
-        keys: "g t / g n / g r",
-    },
-    Binding {
-        category: "Places",
-        action: "Pinned place",
-        note: "Visible PINNED rows in sidebar order",
-        keys: "g 1–9",
-    },
-    Binding {
-        category: "Places",
-        action: "Cancel a pending chord",
-        note: "",
-        keys: "Esc",
-    },
-    Binding {
         category: "Navigation",
         action: "Move half a page",
         note: "",
@@ -614,9 +578,123 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
 ];
 
+/// One catalog for Settings → Keybindings and the footer shortcut reference.
+/// `reference_keys` / `reference_label` are the footer row; an empty key uses
+/// `binding.keys`. The label is the binding action, or its note when that note
+/// is the footer wording (pinned places).
+struct PlaceChord {
+    binding: Binding,
+    reference_keys: &'static str,
+    reference_label: &'static str,
+}
+
+const TENXER_PLACE_CHORDS: &[PlaceChord] = &[
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "First item",
+            note: "",
+            keys: "g g",
+        },
+        reference_keys: "",
+        reference_label: "First item",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Home / ~/.config",
+            note: "",
+            keys: "g h / g c",
+        },
+        reference_keys: "",
+        reference_label: "Home / ~/.config",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Downloads / Documents / Pictures / Videos",
+            note: "",
+            keys: "g d / g k / g p / g v",
+        },
+        reference_keys: "",
+        reference_label: "Downloads / Documents / Pictures / Videos",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Trash / Network / Recent",
+            note: "",
+            keys: "g t / g n / g r",
+        },
+        reference_keys: "",
+        reference_label: "Trash / Network / Recent",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Pinned place",
+            note: "Visible PINNED rows in sidebar order",
+            keys: "g 1–9",
+        },
+        reference_keys: "",
+        reference_label: "Visible PINNED rows in sidebar order",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Top of the document or first archive member",
+            note: "Preview",
+            keys: "g g",
+        },
+        reference_keys: "g g in the preview",
+        reference_label: "Top of the document or first archive member",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Cancel a pending chord",
+            note: "",
+            keys: "Esc",
+        },
+        reference_keys: "Esc after g",
+        reference_label: "Cancel a pending chord",
+    },
+];
+
+fn tenxer_settings() -> &'static [Binding] {
+    use std::sync::OnceLock;
+    static ALL: OnceLock<Vec<Binding>> = OnceLock::new();
+    ALL.get_or_init(|| {
+        let mut bindings = TENXER_SETTINGS.to_vec();
+        let insert_at = bindings
+            .iter()
+            .position(|binding| binding.action == "Move half a page")
+            .expect("10xer place chords sit before half-page movement");
+        for (offset, place) in TENXER_PLACE_CHORDS.iter().enumerate() {
+            bindings.insert(insert_at + offset, place.binding);
+        }
+        bindings
+    })
+    .as_slice()
+}
+
+fn tenxer_place_rows() -> Vec<(&'static str, &'static str)> {
+    TENXER_PLACE_CHORDS
+        .iter()
+        .map(|place| {
+            let keys = if place.reference_keys.is_empty() {
+                place.binding.keys
+            } else {
+                place.reference_keys
+            };
+            (keys, place.reference_label)
+        })
+        .collect()
+}
+
 pub(crate) fn settings_bindings(tenxer: bool) -> &'static [Binding] {
     if tenxer {
-        TENXER_SETTINGS
+        tenxer_settings()
     } else {
         DEFAULT_SETTINGS
     }
@@ -679,7 +757,7 @@ fn tenxer_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
         },
         ReferenceSection {
             title: "Places",
-            rows: TENXER_PLACES.to_vec(),
+            rows: tenxer_place_rows(),
         },
         ReferenceSection {
             title: "Files and selection",
@@ -863,22 +941,6 @@ const DEFAULT_FILES: &[(&str, &str)] = &[
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
     ("y / p", "Copy path / pin a folder (type-to-search off)"),
-];
-
-const TENXER_PLACES: &[(&str, &str)] = &[
-    ("g g", "First item"),
-    ("g h / g c", "Home / ~/.config"),
-    (
-        "g d / g k / g p / g v",
-        "Downloads / Documents / Pictures / Videos",
-    ),
-    ("g t / g n / g r", "Trash / Network / Recent"),
-    ("g 1–9", "Visible PINNED rows in sidebar order"),
-    (
-        "g g in the preview",
-        "Top of the document or first archive member",
-    ),
-    ("Esc after g", "Cancel the chord"),
 ];
 
 const TENXER_FILES: &[(&str, &str)] = &[
