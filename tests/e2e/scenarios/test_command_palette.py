@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""Command discovery, focus handoff and file targeting through real input."""
 
 import pytest
 
