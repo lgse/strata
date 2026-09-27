@@ -415,7 +415,7 @@ fn tenxer_create_prompt_makes_exact_files_and_folders() {
                 plain(&fixture, Key::Return);
             };
 
-            for name in ["new.txt", "  spaced  ", "caf\u{e9} \u{2713}"] {
+            for name in ["new.txt", "  spaced  ", "日本語 ✓"] {
                 submit(name);
                 assert_eq!(fixture.shortcuts.open_prompt_kind(), None);
                 wait_until(|| directory.join(name).is_file());
