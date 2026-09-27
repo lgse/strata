@@ -3078,8 +3078,7 @@ entry.preview-command-entry selection {
 
 .shortcut-popover scrolledwindow:focus,
 .shortcut-popover scrolledwindow:focus-visible {
-  outline: 2px solid @theme_accent;
-  outline-offset: -2px;
+  outline: none;
 }
 
 .columns {
