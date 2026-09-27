@@ -112,8 +112,7 @@ impl CurrentHit {
     }
 }
 
-/// The armed chord, its footer pill, and the panel of second keys over it.
-/// The chord is armed exactly while the pill is showing.
+/// The chord is armed only while its pill is visible.
 #[derive(Clone)]
 struct ChordIndicator {
     armed: Rc<Cell<Option<Chord>>>,
@@ -497,7 +496,6 @@ impl ShortcutFooter {
         status.append(&feedback);
         status.append(&count);
         status.append(&chord);
-        // Last, so transient marks grow leftward and the pill stays in the corner.
         status.append(&tag);
         root.add_child(&status);
         root.add_child(&prompt.bar);
@@ -1187,7 +1185,6 @@ impl ShortcutFooter {
         self.prompt.close();
     }
 
-    /// Lists `paths` above the open prompt with the first one chosen.
     pub(in crate::ui) fn show_candidates(&self, paths: Vec<PathBuf>) {
         if self.prompt.bar.is_visible() {
             self.prompt.candidates.set(paths);
@@ -1202,12 +1199,10 @@ impl ShortcutFooter {
         self.prompt.candidates.chosen()
     }
 
-    /// The chosen candidate's 0-based index and the candidate count.
     pub(in crate::ui) fn candidate_position(&self) -> Option<(usize, usize)> {
         self.prompt.candidates.position()
     }
 
-    /// Runs `listener` with a candidate clicked in the list.
     pub(in crate::ui) fn connect_candidate_activated(&self, listener: impl Fn(PathBuf) + 'static) {
         self.prompt.candidates.connect_activated(listener);
     }
@@ -1248,7 +1243,6 @@ impl ShortcutFooter {
         self.chords.mark.upgrade().expect("chord mark")
     }
 
-    /// The keys and actions listed over the chord pill while its panel is open.
     #[cfg(test)]
     pub(in crate::ui) fn chord_options(&self) -> Option<Vec<(String, String)>> {
         self.chords.panel.shown_options()

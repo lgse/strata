@@ -171,7 +171,6 @@ impl Dispatcher {
             }
             return Some(Propagation::Stop);
         }
-        // 10xer mode keeps Ctrl+B for paging, so its sidebar toggle is Ctrl+N.
         let toggles_sidebar = if self.type_to_search.preferences.tenxer_mode() {
             matches!(event.key, Key::n | Key::N)
         } else {

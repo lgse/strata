@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! The second keys of an armed chord, listed in a panel over its footer pill.
-//! Nothing in the panel takes focus, so the next key still reaches the chord.
-
 use std::{cell::Cell, rc::Rc};
 
 use gtk::{glib, prelude::*};
@@ -25,7 +22,6 @@ impl ChordPanel {
             .has_arrow(false)
             .autohide(false)
             .position(gtk::PositionType::Top)
-            // The pill sits at the footer's right end; grow leftward into the window.
             .halign(gtk::Align::End)
             .can_focus(false)
             .focusable(false)
@@ -48,8 +44,6 @@ impl ChordPanel {
         }
     }
 
-    /// Lists `chord`'s options and opens once the pill is placed, unless
-    /// `armed` has moved on by then.
     pub(super) fn show(&self, pill: &gtk::Label, chord: Chord, armed: Rc<Cell<Option<Chord>>>) {
         let (Some(popover), Some(options)) = (self.popover.upgrade(), self.options.upgrade())
         else {
@@ -82,7 +76,6 @@ impl ChordPanel {
         }
     }
 
-    /// The listed keys and actions while the panel is open.
     #[cfg(test)]
     pub(super) fn shown_options(&self) -> Option<Vec<(String, String)>> {
         let popover = self.popover.upgrade()?;
@@ -107,7 +100,6 @@ impl ChordPanel {
     }
 }
 
-/// Two key/action column pairs, filled top to bottom.
 fn fill(grid: &gtk::Grid, options: &[(&str, &str)]) {
     while let Some(child) = grid.first_child() {
         grid.remove(&child);

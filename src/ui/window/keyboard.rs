@@ -47,7 +47,6 @@ pub(super) struct Bindings {
     pub type_to_search: TypeToSearch,
     pub shortcuts: ShortcutFooter,
     pub folders: Rc<dyn FolderSource>,
-    /// Visited folders for **z** / **Z**.
     pub history: Rc<NavigationHistory>,
 }
 
@@ -202,8 +201,6 @@ fn bind_go_completion(dispatcher: &Dispatcher) {
     });
 }
 
-/// **z** / **Z** list history candidates for the text as it is edited, and a
-/// clicked candidate opens like **Enter**.
 fn bind_history_prompts(dispatcher: &Dispatcher) {
     let shortcuts = dispatcher.shortcuts.clone();
     let history = dispatcher.history.clone();
@@ -214,15 +211,23 @@ fn bind_history_prompts(dispatcher: &Dispatcher) {
         }
     });
     let shortcuts = dispatcher.shortcuts.clone();
-    let browser = Rc::downgrade(&dispatcher.view.browser());
+    let view = dispatcher.view.clone();
     dispatcher
         .shortcuts
         .connect_candidate_activated(move |path| {
-            shortcuts.dismiss_prompt();
-            if let Some(browser) = browser.upgrade() {
-                browser.focus_active();
-                browser.navigate(crate::model::Location::local(path));
+            if !shortcuts
+                .open_prompt_kind()
+                .is_some_and(crate::ui::tenxer_mode::Prompt::picks_history)
+            {
+                return;
             }
+            shortcuts.dismiss_prompt();
+            if !view.focus_visible_results() {
+                view.browser().focus_active();
+            }
+            view.keyboard_navigation();
+            view.browser()
+                .navigate_with_selection(crate::model::Location::local(path), true);
         });
 }
 

@@ -7,14 +7,10 @@ use crate::ui::tenxer_mode::Prompt;
 
 const DAY: u64 = 24 * 60 * 60;
 
-/// Visited folders whose text match, visit count, and last visit disagree.
 struct Places {
     _root: tempfile::TempDir,
-    /// Thirty visits two days ago; contains "report".
     frequent: PathBuf,
-    /// One visit three weeks ago; named exactly "report".
     exact: PathBuf,
-    /// One visit a minute ago.
     latest: PathBuf,
 }
 
@@ -218,6 +214,10 @@ fn tenxer_history_prompts_end_without_opening_the_chosen_folder() {
             fixture.shortcuts.click_candidate(2);
             assert_closed_without_candidates(&fixture);
             wait_until(|| browser.active_location() == Some(Location::local(&places.exact)));
+            wait_loaded(&browser, 0);
+            let generation = browser.navigation_generation();
+            pump(100);
+            assert_eq!(browser.navigation_generation(), generation);
         },
     );
 }

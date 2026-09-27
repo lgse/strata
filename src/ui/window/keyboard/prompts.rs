@@ -26,9 +26,7 @@ fn plain(modifiers: Modifiers) -> bool {
 }
 
 impl Dispatcher {
-    /// **/**, **?**, **n**, **N**, **f**, **s**, **z**, **Z**, and the filter
-    /// and search **Esc** steps from the listing. Shift is ignored because some layouts
-    /// type **/** with it and **?** / **N** always need it.
+    /// Shift is ignored because some layouts type **/** with it and **?** / **N** need it.
     pub(super) fn tenxer_prompt_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
         if !plain(modifiers) || !self.view.item_view_has_focus() {
             return None;
@@ -181,7 +179,6 @@ impl Dispatcher {
                 return;
             }
             Some(Prompt::Jump | Prompt::Recent) => {
-                // Closing clears the candidates, so only this one can open.
                 let Some(path) = self.shortcuts.chosen_candidate() else {
                     show_candidate_hint(&self.shortcuts);
                     return;
@@ -240,8 +237,6 @@ impl Dispatcher {
     }
 }
 
-/// Lists the history folders for the open **jump ›** or **recent ›** text,
-/// leaving out the folder already open.
 pub(super) fn show_history_candidates(
     shortcuts: &ShortcutFooter,
     history: &NavigationHistory,
@@ -252,19 +247,14 @@ pub(super) fn show_history_candidates(
         return;
     }
     let text = shortcuts.prompt_text();
+    let current = browser.active_location();
+    let excluded = current.as_ref().and_then(Location::native_path);
     let items = if kind == Prompt::Jump {
-        history.search(&text)
+        history.search_excluding(&text, excluded)
     } else {
-        history.recent(&text)
+        history.recent_excluding(&text, excluded)
     };
-    let current = browser
-        .active_location()
-        .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
-    let paths = items
-        .into_iter()
-        .map(|item| item.path)
-        .filter(|path| Some(path) != current.as_ref())
-        .collect();
+    let paths = items.into_iter().map(|item| item.path).collect();
     shortcuts.show_candidates(paths);
     show_candidate_hint(shortcuts);
 }

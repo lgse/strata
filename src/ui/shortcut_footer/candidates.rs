@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Folder candidates listed above a history prompt. Nothing in the list takes
-//! focus, so the prompt keeps its text editing while a row is chosen.
-
 use std::{
     cell::{Cell, RefCell},
     path::{Path, PathBuf},
@@ -99,7 +96,6 @@ impl Candidates {
         self.activated.replace(Some(Rc::new(listener)));
     }
 
-    /// Replaces every row and chooses the first.
     pub(super) fn set(&self, paths: Vec<PathBuf>) {
         while let Some(row) = self.list.first_child() {
             self.list.remove(&row);
@@ -134,7 +130,6 @@ impl Candidates {
         self.set(Vec::new());
     }
 
-    /// Moves the choice by `delta`, wrapping at either end.
     pub(super) fn step(&self, delta: i32) {
         let count = self.paths.borrow().len();
         if count == 0 {
@@ -149,7 +144,6 @@ impl Candidates {
         self.paths.borrow().get(self.chosen.get()).cloned()
     }
 
-    /// The chosen row's 0-based index and the row count.
     pub(super) fn position(&self) -> Option<(usize, usize)> {
         let count = self.paths.borrow().len();
         (count > 0).then(|| (self.chosen.get(), count))

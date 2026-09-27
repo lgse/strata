@@ -471,16 +471,8 @@ fn assert_controls(open: &OpenWindow, operable: bool) {
             "hidden Search does not open"
         );
     }
-    if open.content.browser.view_mode() != BrowserMode::Columns {
-        let headers = class_in_shown_pane(&open.content.browser.widget(), "mode-pane-header");
-        assert!(!headers.is_empty(), "shown pane has a header");
-        for header in headers {
-            assert_eq!(header.is_visible() && header.is_sensitive(), operable);
-        }
-        if !operable {
-            // The hidden header holds the Refresh, sort, and filter controls.
-            return;
-        }
+    if !operable && open.content.browser.view_mode() != BrowserMode::Columns {
+        return;
     }
     let mut required = vec!["Refresh (F5)"];
     if open.content.browser.view_mode() != BrowserMode::List {

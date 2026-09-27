@@ -94,7 +94,6 @@ impl Chord {
         }
     }
 
-    /// The second keys this chord accepts, with what each does.
     pub(crate) fn options(self) -> &'static [(&'static str, &'static str)] {
         match self {
             Self::Go => &[
@@ -124,9 +123,7 @@ pub(crate) enum Prompt {
     Filter,
     Search,
     Go,
-    /// **z**: jump to a visited folder ranked by match and frecency.
     Jump,
-    /// **Z**: jump to a visited folder, most recent first.
     Recent,
 }
 
@@ -143,7 +140,6 @@ impl Prompt {
         }
     }
 
-    /// Prompts that pick a folder from Strata's navigation history.
     pub(crate) fn picks_history(self) -> bool {
         matches!(self, Self::Jump | Self::Recent)
     }
