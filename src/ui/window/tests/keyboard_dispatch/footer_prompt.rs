@@ -339,7 +339,7 @@ pub(super) fn seed_filter_tree(fixture: &KeyboardFixture) {
     fixture.shortcuts.observe_browser(&browser);
 }
 
-const IMMEDIATE_REPORTS: [&str; 3] = ["alpha-report.txt", "gamma-report.md", "reports"];
+pub(super) const IMMEDIATE_REPORTS: [&str; 3] = ["alpha-report.txt", "gamma-report.md", "reports"];
 pub(super) const ALL_REPORTS: [&str; 4] = [
     "alpha-report.txt",
     "deep-report.txt",

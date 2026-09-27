@@ -1,20 +1,22 @@
 // SPDX-License-Identifier: MIT
 
 use super::footer_prompt::{
-    ALL_REPORTS, commit_filter, commit_search, cursor_to_hit, enable_tenxer, highlighted_names,
-    hit_cursor, seed_filter_tree, selected_result_names, type_and_submit, wait_results,
+    ALL_REPORTS, IMMEDIATE_REPORTS, commit_filter, commit_search, cursor_to_hit, enable_tenxer,
+    highlighted_names, hit_cursor, seed_filter_tree, selected_result_names, type_and_submit,
+    wait_results,
 };
 use super::*;
 
 /// What a single **Esc** may end. While search results show, `fill` is the
 /// hits a file verb would take (the fill, else the cursor hit); otherwise it is
-/// the directory fill.
+/// the directory fill, and `hits` is the same for **f** results.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct Held {
     chord: bool,
     prompt: bool,
     peek: bool,
     filter: Option<String>,
+    hits: Vec<String>,
     search: bool,
     highlights: bool,
     visual: bool,
@@ -26,11 +28,17 @@ struct Held {
 fn held(fixture: &KeyboardFixture) -> Held {
     let browser = fixture.view.browser();
     let search = fixture.view.listing_search_active();
+    let filter = fixture.view.listing_filter();
     Held {
         chord: fixture.shortcuts.armed_chord().is_some(),
         prompt: fixture.shortcuts.open_prompt_kind().is_some(),
         peek: fixture.view.widget().has_css_class("peek-open"),
-        filter: fixture.view.listing_filter(),
+        hits: if search || filter.is_none() {
+            Vec::new()
+        } else {
+            selected_result_names(fixture)
+        },
+        filter,
         search,
         highlights: !highlighted_names(&fixture.view.widget()).is_empty(),
         visual: fixture.shortcuts.visual_text().is_some(),
@@ -106,6 +114,7 @@ fn listing_with_filter(fixture: &KeyboardFixture) -> Held {
     open_preview(fixture);
     Held {
         filter: filtered("alpha"),
+        hits: names(&["alpha-report.txt"]),
         highlights: true,
         preview: true,
         fill: names(&["b.txt"]),
@@ -148,6 +157,7 @@ fn cases() -> Vec<Case> {
     };
     let mut after_filter = vec![Held {
         filter: filtered("alpha"),
+        hits: names(&["alpha-report.txt"]),
         highlights: true,
         preview: true,
         fill: names(&["b.txt"]),
@@ -231,6 +241,7 @@ fn cases() -> Vec<Case> {
                 },
                 Held {
                     filter: filtered("gamma"),
+                    hits: names(&["gamma-report.md"]),
                     ..Held::default()
                 },
                 Held::default(),
@@ -247,6 +258,7 @@ fn cases() -> Vec<Case> {
                 Held {
                     peek: true,
                     filter: filtered("reports"),
+                    hits: names(&["reports"]),
                     highlights: true,
                     ..Held::default()
                 }
@@ -254,6 +266,7 @@ fn cases() -> Vec<Case> {
             steps: vec![
                 Held {
                     filter: filtered("reports"),
+                    hits: names(&["reports"]),
                     highlights: true,
                     ..Held::default()
                 },
@@ -287,6 +300,44 @@ fn cases() -> Vec<Case> {
                 },
                 Held::default(),
             ],
+        },
+        Case {
+            name: "f results: visual ends before the filter",
+            modes: ALL_MODES,
+            setup: Box::new(|fixture| {
+                commit_filter(fixture, "report");
+                wait_results(fixture, &IMMEDIATE_REPORTS);
+                cursor_to_hit(fixture, "alpha-report.txt");
+                plain(fixture, Key::v);
+                Held {
+                    filter: filtered("report"),
+                    hits: names(&["alpha-report.txt"]),
+                    visual: true,
+                    ..Held::default()
+                }
+            }),
+            steps: vec![
+                Held {
+                    filter: filtered("report"),
+                    hits: names(&["alpha-report.txt"]),
+                    ..Held::default()
+                },
+                Held::default(),
+            ],
+        },
+        Case {
+            name: "the sidebar takes the listing steps",
+            modes: ALL_MODES,
+            setup: Box::new(|fixture| {
+                let before = listing_with_filter(fixture);
+                fixture
+                    .sidebar
+                    .widget
+                    .child_focus(gtk::DirectionType::TabForward);
+                wait_until(|| sidebar_has_focus(fixture));
+                before
+            }),
+            steps: listing_tail(),
         },
         Case {
             name: "an armed chord cancels before the listing",

@@ -211,15 +211,18 @@ With no prompt or chord, each press takes the first applicable step:
 - **Recursive `s` results:** leave visual mode (keep the fill), dismiss find
   highlights, close an open preview, then dismiss the results. Dismissal restores an earlier committed
   **f** filter if one existed; otherwise it restores the directory listing.
-- **Ordinary listing or `f` results:** dismiss the hidden filter, dismiss find
-  highlights, leave visual mode (keep the fill), close an open preview, then
-  clear the selection.
+- **Ordinary listing or `f` results:** leave visual mode over the `f` results
+  (keep the fill), dismiss the hidden filter, dismiss find highlights, leave
+  visual mode (keep the fill), close an open preview, then clear the selection.
+  A fill made on the `f` results goes away with them.
 
 While the preview owns keys, **Esc** closes the drawer before any other step
 and returns keys to the listing. Unlike **h** while the preview owns keys, the
 preview-close step actually closes the drawer. Leaving visual mode or closing a preview can therefore require an
 extra **Esc** before retained search results disappear. Once nothing is left to
 dismiss, **Esc** does nothing: it never closes a Miller column or the window.
+The sidebar and header controls take the same steps; clearing a filter or
+closing the preview from there returns focus to the file list.
 
 ## Files
 

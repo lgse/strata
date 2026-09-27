@@ -27,7 +27,10 @@ impl Dispatcher {
                 || self.close_open_preview(browser)
                 || self.view.dismiss_listing_search();
         }
-        self.view.clear_listing_filter()
+        // A range over f results lives on those results, so it must end
+        // before the filter that shows them.
+        self.view.leave_result_visual()
+            || self.view.clear_listing_filter()
             || self.view.dismiss_find_highlight()
             || self.view.leave_visual()
             || self.close_open_preview(browser)
