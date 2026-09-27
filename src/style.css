@@ -3046,14 +3046,65 @@ entry.preview-command-entry selection {
   background: @theme_surface;
   color: @theme_text;
   border: 1px solid @theme_border;
-  border-radius: 8px;
-  padding: 14px;
+  border-radius: 12px;
+  padding: 0;
   box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
+}
+
+.shortcut-reference-header,
+.shortcut-reference-footer {
+  padding: 14px 20px;
+}
+
+.shortcut-reference-header {
+  border-bottom: 1px solid @theme_border;
+}
+
+.shortcut-reference-footer {
+  border-top: 1px solid @theme_border;
 }
 
 .shortcut-reference-title {
   color: @theme_text;
   font-weight: 600;
+}
+
+.shortcut-reference-body {
+  min-height: 240px;
+}
+
+.shortcut-reference-categories {
+  min-width: 180px;
+  padding: 12px 0;
+  border-right: 1px solid @theme_border;
+}
+
+.shortcut-reference-category {
+  background: transparent;
+  color: @theme_dim_text;
+  border: 0;
+  border-radius: 0;
+  padding: 9px 18px;
+}
+
+.shortcut-reference-category:hover,
+.shortcut-reference-category:focus-visible {
+  background: alpha(@theme_accent, 0.1);
+  color: @theme_text;
+}
+
+.shortcut-reference-category.selected {
+  background: alpha(@theme_accent, 0.16);
+  color: @theme_text;
+  border-left: 3px solid @theme_accent;
+}
+
+.shortcut-reference-search {
+  min-width: 150px;
+}
+
+.shortcut-reference-results {
+  padding: 20px 24px;
 }
 
 .shortcut-reference-heading {
@@ -3063,16 +3114,20 @@ entry.preview-command-entry selection {
 
 .shortcut-reference-key {
   color: @theme_text;
-  font-weight: 600;
+  background: alpha(@theme_text, 0.06);
+  border: 1px solid @theme_border;
+  border-radius: 5px;
+  padding: 2px 6px;
   font-size: 0.9em;
 }
 
-.shortcut-reference-description,
-.shortcut-reference-note {
+.shortcut-reference-description {
   color: @theme_text;
 }
 
-.shortcut-reference-note {
+.shortcut-reference-note,
+.shortcut-reference-count {
+  color: @theme_dim_text;
   font-size: 0.9em;
 }
 

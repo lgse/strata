@@ -82,14 +82,15 @@ fn footer_tracks_modes_and_shields_files_while_open() {
             .reference
             .first_child()
             .and_then(|section| section.first_child())
+            .and_then(|heading| heading.first_child())
             .and_downcast::<gtk::Label>()
             .expect("navigation reference heading");
         assert_eq!(
             heading.text(),
             match mode {
-                BrowserMode::Columns => "Columns navigation",
-                BrowserMode::Icons => "Icons navigation",
-                BrowserMode::List => "List navigation",
+                BrowserMode::Columns => "COLUMNS NAVIGATION",
+                BrowserMode::Icons => "ICONS NAVIGATION",
+                BrowserMode::List => "LIST NAVIGATION",
             }
         );
         assert!(footer.widget().is_visible());
@@ -181,12 +182,18 @@ fn footer_tracks_modes_and_shields_files_while_open() {
     );
     assert!(footer.popover.is_visible());
     assert!(footer.popover.child_focus(gtk::DirectionType::TabForward));
+    footer.search.grab_focus();
     assert_eq!(
         footer.handle_key(gdk::Key::Delete, none),
-        Some(glib::Propagation::Stop)
+        Some(glib::Propagation::Proceed)
     );
     assert_eq!(
         footer.handle_key(gdk::Key::v, gdk::ModifierType::CONTROL_MASK),
+        Some(glib::Propagation::Proceed)
+    );
+    footer.scroll.grab_focus();
+    assert_eq!(
+        footer.handle_key(gdk::Key::Delete, none),
         Some(glib::Propagation::Stop)
     );
     assert_eq!(
@@ -355,11 +362,35 @@ fn tenxer_reference_follows_the_active_map() {
             assert!(footer.popover.is_visible());
             assert!(
                 gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
-                    focus == *footer.scroll.upcast_ref::<gtk::Widget>()
-                        || focus.is_ancestor(&footer.scroll)
+                    focus == *footer.search.upcast_ref::<gtk::Widget>()
+                        || focus.is_ancestor(&footer.search)
                 }),
                 "the open reference takes keyboard focus"
             );
+            footer.search.set_text("half a page");
+            settle();
+            let matches = reference_labels(&footer);
+            assert!(matches.iter().any(|label| label == "Move half a page"));
+            assert!(!matches.iter().any(|label| label == "Leave 10xer mode"));
+            footer.search.set_text("");
+            settle();
+            let places = footer
+                .categories
+                .first_child()
+                .and_then(|all| all.next_sibling())
+                .and_then(|navigation| navigation.next_sibling())
+                .and_downcast::<gtk::Button>()
+                .expect("places category");
+            places.emit_clicked();
+            let matches = reference_labels(&footer);
+            assert!(matches.iter().any(|label| label == "Home / ~/.config"));
+            assert!(!matches.iter().any(|label| label == "Move half a page"));
+            footer
+                .categories
+                .first_child()
+                .and_downcast::<gtk::Button>()
+                .expect("all category")
+                .emit_clicked();
             press_reference(&footer, gdk::Key::F1);
             settle();
             assert!(
@@ -372,9 +403,11 @@ fn tenxer_reference_follows_the_active_map() {
             footer.handle_key(gdk::Key::asciitilde, none);
             settle();
             assert!(footer.popover.is_visible());
+            footer.search.grab_focus();
+            settle();
             assert_eq!(
                 footer.handle_key(gdk::Key::Delete, none),
-                Some(glib::Propagation::Stop)
+                Some(glib::Propagation::Proceed)
             );
             footer.handle_key(gdk::Key::Escape, none);
             settle();
@@ -448,7 +481,7 @@ fn press_reference(footer: &ShortcutFooter, key: gdk::Key) {
 fn reference_pairs(labels: &[String], key: &str, action: &str) -> bool {
     labels
         .windows(2)
-        .any(|pair| pair[0] == key && pair[1] == action)
+        .any(|pair| pair[0] == action && pair[1] == key)
 }
 
 fn reference_labels(footer: &ShortcutFooter) -> Vec<String> {

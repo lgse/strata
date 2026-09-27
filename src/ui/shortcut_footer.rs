@@ -23,6 +23,10 @@ pub(super) struct ShortcutFooter {
     more: gtk::MenuButton,
     popover: gtk::Popover,
     reference: gtk::Box,
+    categories: gtk::Box,
+    reference_count: gtk::Label,
+    search: gtk::SearchEntry,
+    selected_category: Rc<RefCell<String>>,
     scroll: gtk::ScrolledWindow,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
@@ -128,71 +132,99 @@ impl ShortcutFooter {
         root.insert_child_after(&spacer, Some(&more));
         let popover = gtk::Popover::builder()
             .position(gtk::PositionType::Top)
-            .halign(gtk::Align::Start)
+            .halign(gtk::Align::Center)
             .has_arrow(false)
             .build();
         popover.add_css_class("shortcut-popover");
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        let title = gtk::Label::builder()
-            .label("Keyboard shortcuts")
-            .xalign(0.0)
-            .hexpand(true)
-            .build();
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        header.add_css_class("shortcut-reference-header");
+        let title = gtk::Label::new(Some("Keyboard shortcuts"));
         title.add_css_class("shortcut-reference-title");
-        content.append(&title);
-        let dismiss_note = gtk::Label::builder()
-            .label("Press F1 again to close.")
-            .xalign(0.0)
-            .wrap(true)
-            .build();
+        header.append(&title);
+        let dismiss_note = gtk::Label::new(Some("F1 to close"));
         dismiss_note.add_css_class("shortcut-reference-note");
-        content.append(&dismiss_note);
-        let note = gtk::Label::builder()
-            .label("Media controls use Ctrl+Alt. Plain keys keep browsing; text fields and dialogs keep native controls.")
-            .xalign(0.0).wrap(true).build();
-        note.add_css_class("shortcut-reference-note");
-        content.append(&note);
-        let experimental = gtk::Label::new(None);
-        experimental.add_css_class("shortcut-reference-note");
-        experimental.add_css_class("tenxer-experimental");
-        experimental.set_xalign(0.0);
-        experimental.set_wrap(true);
-        experimental.set_visible(false);
-        content.append(&experimental);
-        let reference = gtk::Box::new(gtk::Orientation::Vertical, 16);
+        header.append(&dismiss_note);
+        let search = gtk::SearchEntry::new();
+        search.set_placeholder_text(Some("Search actions or keys…"));
+        search.set_hexpand(true);
+        search.add_css_class("shortcut-reference-search");
+        header.append(&search);
+        content.append(&header);
+        let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        body.add_css_class("shortcut-reference-body");
+        let categories = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        categories.add_css_class("shortcut-reference-categories");
+        body.append(&categories);
+        let reference = gtk::Box::new(gtk::Orientation::Vertical, 24);
+        reference.add_css_class("shortcut-reference-results");
+        let selected_category = Rc::new(RefCell::new(String::from("All")));
         let scroll = gtk::ScrolledWindow::builder()
             .child(&reference)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .propagate_natural_height(true)
-            .max_content_height(440)
-            .width_request(420)
+            .max_content_height(620)
             .focusable(true)
             .build();
         scroll.add_css_class("shortcut-reference-scroll");
-        content.append(&scroll);
+        body.append(&scroll);
+        content.append(&body);
+        let footer_note = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        footer_note.add_css_class("shortcut-reference-footer");
+        let count_note = gtk::Label::new(None);
+        count_note.add_css_class("shortcut-reference-note");
+        footer_note.append(&count_note);
+        let note = gtk::Label::new(Some(
+            "Media controls use Ctrl+Alt. Text fields and dialogs keep native controls.",
+        ));
+        note.add_css_class("shortcut-reference-note");
+        note.set_hexpand(true);
+        note.set_xalign(0.0);
+        footer_note.append(&note);
+        let experimental = gtk::Label::new(None);
+        experimental.add_css_class("shortcut-reference-note");
+        experimental.add_css_class("tenxer-experimental");
+        experimental.set_visible(false);
+        footer_note.append(&experimental);
+        content.append(&footer_note);
         popover.set_child(Some(&content));
+        let search_reference = reference.downgrade();
+        let view_mode = Rc::new(Cell::new(mode));
+        let search_mode = view_mode.clone();
+        let search_category = selected_category.clone();
+        search.connect_search_changed(move |entry| {
+            if let Some(reference) = search_reference.upgrade() {
+                render_reference(
+                    &reference,
+                    search_mode.get(),
+                    &search_category.borrow(),
+                    &entry.text(),
+                );
+            }
+        });
         let weak_scroll = scroll.downgrade();
         let weak_popover = popover.downgrade();
+        let weak_search = search.downgrade();
         popover.connect_show(move |popover| {
             let Some(scroll) = weak_scroll.upgrade() else {
                 return;
             };
             if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
                 scroll.vadjustment().set_value(scroll.vadjustment().lower());
-                scroll.set_max_content_height((window.height() - 150).clamp(100, 440));
-                scroll.set_width_request((window.width() - 60).clamp(260, 420));
+                scroll.set_max_content_height((window.height() - 160).clamp(140, 620));
+                scroll.set_width_request((window.width() - 260).clamp(200, 1200));
             }
-            let scroll = scroll.downgrade();
+            let search = weak_search.clone();
             let popover = weak_popover.clone();
             // Show runs before the popover can take focus; grab it once mapped.
             glib::idle_add_local_once(move || {
                 if popover
                     .upgrade()
                     .is_some_and(|popover| popover.is_visible())
-                    && let Some(scroll) = scroll.upgrade()
+                    && let Some(search) = search.upgrade()
                 {
-                    scroll.grab_focus();
+                    search.grab_focus();
                 }
             });
         });
@@ -262,6 +294,10 @@ impl ShortcutFooter {
             more,
             popover,
             reference,
+            categories,
+            reference_count: count_note,
+            search,
+            selected_category,
             scroll,
             focus_before,
             status_widgets,
@@ -272,7 +308,7 @@ impl ShortcutFooter {
             prompt,
             chords,
             visual,
-            view_mode: Rc::new(Cell::new(mode)),
+            view_mode,
         };
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -302,6 +338,11 @@ impl ShortcutFooter {
         let tag = self.tag.downgrade();
         let experimental = self.experimental.downgrade();
         let reference = self.reference.downgrade();
+        let categories = self.categories.downgrade();
+        let reference_count = self.reference_count.downgrade();
+        let search = self.search.downgrade();
+        let selected = self.selected_category.clone();
+        let scroll = self.scroll.downgrade();
         let view_mode = self.view_mode.clone();
         let feedback = self.feedback.downgrade();
         let prompt = self.prompt.downgrade();
@@ -330,7 +371,22 @@ impl ShortcutFooter {
                     clear_transient(&feedback, &prompt);
                     chords.set(None);
                 }
-                rebuild_reference(&reference, view_mode.get());
+                if let (Some(categories), Some(search), Some(scroll), Some(count)) = (
+                    categories.upgrade(),
+                    search.upgrade(),
+                    scroll.upgrade(),
+                    reference_count.upgrade(),
+                ) {
+                    rebuild_reference(
+                        &reference,
+                        &categories,
+                        &search,
+                        &scroll,
+                        &count,
+                        &selected,
+                        &view_mode,
+                    );
+                }
             },
         );
         let show_hints = self.show_hints.clone();
@@ -396,7 +452,15 @@ impl ShortcutFooter {
 
     pub fn set_mode(&self, mode: BrowserMode) {
         self.view_mode.set(mode);
-        rebuild_reference(&self.reference, mode);
+        rebuild_reference(
+            &self.reference,
+            &self.categories,
+            &self.search,
+            &self.scroll,
+            &self.reference_count,
+            &self.selected_category,
+            &self.view_mode,
+        );
     }
 
     pub(in crate::ui) fn show_feedback(&self, text: &str) {
@@ -577,6 +641,30 @@ impl ShortcutFooter {
             self.more.popdown();
             return Some(glib::Propagation::Stop);
         }
+        let search_focused = self
+            .search
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focus| {
+                focus == *self.search.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&self.search)
+            });
+        if search_focused
+            && !command_modifiers
+            && matches!(
+                key,
+                gdk::Key::Up | gdk::Key::Down | gdk::Key::Page_Up | gdk::Key::Page_Down
+            )
+            && self.scroll_reference(key)
+        {
+            return Some(glib::Propagation::Stop);
+        }
+        if search_focused
+            && (!command_modifiers
+                || (modifiers == gdk::ModifierType::CONTROL_MASK
+                    && matches!(key, gdk::Key::a | gdk::Key::c | gdk::Key::v | gdk::Key::x)))
+        {
+            return Some(glib::Propagation::Proceed);
+        }
         if !command_modifiers && self.scroll_reference(key) {
             return Some(glib::Propagation::Stop);
         }
@@ -648,12 +736,107 @@ impl ShortcutFooter {
     }
 }
 
-fn rebuild_reference(reference: &gtk::Box, mode: BrowserMode) {
+fn rebuild_reference(
+    reference: &gtk::Box,
+    categories: &gtk::Box,
+    search: &gtk::SearchEntry,
+    scroll: &gtk::ScrolledWindow,
+    count_label: &gtk::Label,
+    selected: &Rc<RefCell<String>>,
+    mode: &Rc<Cell<BrowserMode>>,
+) {
+    while let Some(child) = categories.first_child() {
+        categories.remove(&child);
+    }
+    let sections = super::shortcut_reference::reference_sections(mode.get());
+    if !sections
+        .iter()
+        .any(|section| section.title == selected.borrow().as_str())
+    {
+        *selected.borrow_mut() = String::from("All");
+    }
+    let total: usize = sections.iter().map(|section| section.rows.len()).sum();
+    count_label.set_text(&format!("{total} shortcuts"));
+    for (name, count) in std::iter::once(("All", total)).chain(
+        sections
+            .iter()
+            .map(|section| (section.title, section.rows.len())),
+    ) {
+        let button = gtk::Button::new();
+        button.add_css_class("shortcut-reference-category");
+        if *selected.borrow() == name {
+            button.add_css_class("selected");
+        }
+        let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let label = gtk::Label::new(Some(name));
+        label.set_hexpand(true);
+        label.set_xalign(0.0);
+        line.append(&label);
+        let amount = gtk::Label::new(Some(&count.to_string()));
+        amount.add_css_class("shortcut-reference-count");
+        line.append(&amount);
+        button.set_child(Some(&line));
+        let reference = reference.downgrade();
+        let weak_categories = categories.downgrade();
+        let search = search.downgrade();
+        let scroll = scroll.downgrade();
+        let count_label = count_label.downgrade();
+        let selected = selected.clone();
+        let mode = mode.clone();
+        button.connect_clicked(move |_| {
+            *selected.borrow_mut() = name.to_owned();
+            if let (Some(reference), Some(categories), Some(search), Some(scroll), Some(count)) = (
+                reference.upgrade(),
+                weak_categories.upgrade(),
+                search.upgrade(),
+                scroll.upgrade(),
+                count_label.upgrade(),
+            ) {
+                rebuild_reference(
+                    &reference,
+                    &categories,
+                    &search,
+                    &scroll,
+                    &count,
+                    &selected,
+                    &mode,
+                );
+                scroll.vadjustment().set_value(0.0);
+            }
+        });
+        categories.append(&button);
+    }
+    render_reference(reference, mode.get(), &selected.borrow(), &search.text());
+}
+
+fn render_reference(reference: &gtk::Box, mode: BrowserMode, selected: &str, query: &str) {
     while let Some(child) = reference.first_child() {
         reference.remove(&child);
     }
+    let query = query.trim().to_lowercase();
+    let mut found = false;
     for section in super::shortcut_reference::reference_sections(mode) {
-        append_section(reference, section.title, &section.rows);
+        if selected != "All" && selected != section.title {
+            continue;
+        }
+        let rows: Vec<_> = section
+            .rows
+            .into_iter()
+            .filter(|(key, action)| {
+                query.is_empty()
+                    || key.to_lowercase().contains(&query)
+                    || action.to_lowercase().contains(&query)
+            })
+            .collect();
+        if !rows.is_empty() {
+            found = true;
+            append_section(reference, section.title, &rows);
+        }
+    }
+    if !found {
+        let empty = gtk::Label::new(Some("No matching shortcuts"));
+        empty.add_css_class("shortcut-reference-note");
+        reference.append(&empty);
     }
 }
 
@@ -836,18 +1019,24 @@ fn refresh_paste_availability(
 }
 
 fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut]) {
-    let section = gtk::Box::new(gtk::Orientation::Vertical, 7);
-    let heading = gtk::Label::builder().label(title).xalign(0.0).build();
-    heading.add_css_class("shortcut-reference-heading");
+    let section = gtk::Box::new(gtk::Orientation::Vertical, 16);
+    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    let label = gtk::Label::new(Some(&title.to_uppercase()));
+    label.add_css_class("shortcut-reference-heading");
+    heading.append(&label);
+    let count = gtk::Label::new(Some(&shortcuts.len().to_string()));
+    count.add_css_class("shortcut-reference-count");
+    heading.append(&count);
+    let divider = gtk::Separator::new(gtk::Orientation::Horizontal);
+    divider.set_hexpand(true);
+    heading.append(&divider);
     section.append(&heading);
-    for (key, action) in shortcuts {
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 14);
-        let key = gtk::Label::builder()
-            .label(*key)
-            .xalign(0.0)
-            .width_chars(17)
-            .build();
-        key.add_css_class("shortcut-reference-key");
+    let grid = gtk::Grid::new();
+    grid.set_column_spacing(48);
+    grid.set_row_spacing(12);
+    for (index, (key, action)) in shortcuts.iter().enumerate() {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        row.add_css_class("shortcut-reference-row");
         let action = gtk::Label::builder()
             .label(*action)
             .xalign(0.0)
@@ -856,10 +1045,13 @@ fn append_section(parent: &gtk::Box, title: &str, shortcuts: &[Shortcut]) {
             .wrap_mode(gtk::pango::WrapMode::WordChar)
             .build();
         action.add_css_class("shortcut-reference-description");
-        row.append(&key);
         row.append(&action);
-        section.append(&row);
+        let keys = gtk::Label::new(Some(key));
+        keys.add_css_class("shortcut-reference-key");
+        row.append(&keys);
+        grid.attach(&row, (index % 2) as i32, (index / 2) as i32, 1, 1);
     }
+    section.append(&grid);
     parent.append(&section);
 }
 
