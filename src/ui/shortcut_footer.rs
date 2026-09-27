@@ -23,7 +23,7 @@ pub(super) struct ShortcutFooter {
     more: gtk::MenuButton,
     popover: gtk::Popover,
     reference: gtk::Box,
-    categories: gtk::FlowBox,
+    categories: gtk::Box,
     sidebar: gtk::ScrolledWindow,
     search: gtk::Entry,
     selected_category: Rc<RefCell<String>>,
@@ -80,7 +80,7 @@ struct ReferenceLayout {
     header: glib::WeakRef<gtk::Box>,
     body: glib::WeakRef<gtk::Box>,
     sidebar: glib::WeakRef<gtk::ScrolledWindow>,
-    categories: glib::WeakRef<gtk::FlowBox>,
+    categories: glib::WeakRef<gtk::Box>,
     scroll: glib::WeakRef<gtk::ScrolledWindow>,
     reference: glib::WeakRef<gtk::Box>,
     search: glib::WeakRef<gtk::Entry>,
@@ -138,7 +138,7 @@ impl ReferenceLayout {
             reference.remove_css_class("compact");
             categories.remove_css_class("compact");
         }
-        categories.set_max_children_per_line(if compact { 20 } else { 1 });
+        categories.set_spacing(if compact { 8 } else { 0 });
         if changed {
             for button in category_buttons(&categories) {
                 if let Some(line) = button.child().and_downcast::<gtk::Box>() {
@@ -161,6 +161,9 @@ impl ReferenceLayout {
                     button.remove_css_class("action-library-category");
                 }
             }
+        }
+        if compact || changed {
+            reflow_categories(&categories, compact, (window.width() - 104).max(1));
         }
         sidebar.set_height_request(-1);
         sidebar.set_propagate_natural_height(compact);
@@ -287,15 +290,9 @@ impl ShortcutFooter {
         content.append(&header);
         let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         body.add_css_class("shortcut-reference-body");
-        let categories = gtk::FlowBox::new();
+        let categories = gtk::Box::new(gtk::Orientation::Vertical, 0);
         categories.add_css_class("shortcut-reference-categories");
-        categories.set_selection_mode(gtk::SelectionMode::None);
-        categories.set_focusable(false);
-        categories.set_homogeneous(false);
-        categories.set_min_children_per_line(1);
-        categories.set_max_children_per_line(1);
-        categories.set_column_spacing(8);
-        categories.set_row_spacing(8);
+        categories.set_valign(gtk::Align::Start);
         let sidebar = gtk::ScrolledWindow::builder()
             .child(&categories)
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -1093,21 +1090,65 @@ impl ShortcutFooter {
     }
 }
 
-fn category_buttons(categories: &gtk::FlowBox) -> Vec<gtk::Button> {
+fn category_buttons(categories: &gtk::Box) -> Vec<gtk::Button> {
     let mut buttons = Vec::new();
     let mut child = categories.first_child();
     while let Some(row) = child {
         child = row.next_sibling();
-        if let Some(button) = row.first_child().and_downcast::<gtk::Button>() {
-            buttons.push(button);
+        let mut item = row.first_child();
+        while let Some(widget) = item {
+            item = widget.next_sibling();
+            if let Ok(button) = widget.downcast::<gtk::Button>() {
+                buttons.push(button);
+            }
         }
     }
     buttons
 }
 
+fn reflow_categories(categories: &gtk::Box, compact: bool, width: i32) {
+    let buttons = category_buttons(categories);
+    let focused = buttons.iter().position(|button| button.has_focus());
+    for button in &buttons {
+        if let Some(row) = button.parent().and_downcast::<gtk::Box>() {
+            row.remove(button);
+        }
+    }
+    while let Some(row) = categories.first_child() {
+        categories.remove(&row);
+    }
+    let mut row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    row.set_vexpand(false);
+    categories.append(&row);
+    let mut occupied = 0;
+    for button in &buttons {
+        let natural = button.measure(gtk::Orientation::Horizontal, -1).1;
+        let needed = if occupied == 0 {
+            natural
+        } else {
+            occupied + 8 + natural
+        };
+        if compact && occupied > 0 && needed > width {
+            row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            row.set_vexpand(false);
+            categories.append(&row);
+            occupied = 0;
+        } else {
+            occupied = if occupied == 0 { natural } else { needed };
+        }
+        row.append(button);
+        if occupied == 0 {
+            occupied = natural;
+        }
+    }
+    if let Some(index) = focused {
+        buttons[index].grab_focus();
+    }
+}
+
 fn rebuild_reference(
     reference: &gtk::Box,
-    categories: &gtk::FlowBox,
+    categories: &gtk::Box,
     search: &gtk::Entry,
     scroll: &gtk::ScrolledWindow,
     selected: &Rc<RefCell<String>>,
@@ -1186,10 +1227,17 @@ fn rebuild_reference(
                 scroll.vadjustment().set_value(0.0);
             }
         });
-        categories.insert(&button, -1);
-        if let Some(row) = button.parent() {
-            row.set_focusable(false);
-        }
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.set_vexpand(false);
+        row.append(&button);
+        categories.append(&row);
+    }
+    if categories.has_css_class("compact") {
+        let width = categories
+            .root()
+            .and_downcast::<gtk::Window>()
+            .map_or(400, |window| (window.width() - 104).max(1));
+        reflow_categories(categories, true, width);
     }
     render_reference(
         reference,

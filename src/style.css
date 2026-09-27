@@ -3078,12 +3078,6 @@ entry.preview-command-entry selection {
   padding: 12px 0;
 }
 
-.shortcut-reference-categories > flowboxchild {
-  background: transparent;
-  border: 0;
-  padding: 0;
-}
-
 .shortcut-reference-body.compact .shortcut-reference-categories {
   padding: 10px 12px;
 }
@@ -3134,6 +3128,13 @@ entry.preview-command-entry selection {
 .shortcut-reference-body.compact .shortcut-reference-category.selected {
   background: alpha(@theme_accent, 0.2);
   border-color: @theme_accent;
+}
+
+.shortcut-reference-body.compact .shortcut-reference-category:focus,
+.shortcut-reference-body.compact .shortcut-reference-category:focus-visible {
+  border-color: @theme_accent;
+  box-shadow: 0 0 0 1px @theme_accent;
+  outline: none;
 }
 
 .shortcut-reference-search {
