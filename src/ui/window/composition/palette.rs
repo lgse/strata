@@ -6,15 +6,16 @@ use gtk::{gdk, gio, glib, prelude::*};
 
 use crate::ui::{
     blur::BlurBin,
-    browser::{BrowserView, PinStatus, palette::FileCommand},
+    browser::{BrowserView, palette::PaletteTarget},
     preferences::PreferenceManager,
-    shortcut_footer::ShortcutFooter,
 };
 
 use super::WindowContent;
-use catalogue::{COMMANDS, Command};
+use catalogue::COMMANDS;
+use commands::Commands;
 
 mod catalogue;
+mod commands;
 #[cfg(test)]
 mod tests;
 
@@ -30,19 +31,11 @@ struct Palette {
     scroller: gtk::ScrolledWindow,
     empty: gtk::Label,
     browser: BrowserView,
-    preferences: Rc<PreferenceManager>,
-    sidebar: gtk::ToggleButton,
-    shortcuts: ShortcutFooter,
+    commands: Commands,
+    target: RefCell<Option<PaletteTarget>>,
     blurred_root: BlurBin,
     focus_before: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     rows: RefCell<Vec<usize>>,
-    states: RefCell<Vec<CommandState>>,
-}
-
-struct CommandState {
-    label: &'static str,
-    reason: Option<&'static str>,
-    current: bool,
 }
 
 pub(super) fn install(
@@ -102,13 +95,11 @@ pub(super) fn install(
         scroller,
         empty,
         browser: content.browser.clone(),
-        preferences: preferences.clone(),
-        sidebar: content.header.sidebar_toggle.clone(),
-        shortcuts: content.footer.shortcuts.clone(),
+        commands: Commands::new(window, content, preferences),
+        target: RefCell::new(None),
         blurred_root: content.blurred_root.clone(),
         focus_before: RefCell::new(None),
         rows: RefCell::new(Vec::new()),
-        states: RefCell::new(Vec::new()),
     });
     let weak = Rc::downgrade(&palette);
     palette.layer.connect_has_focus_notify(move |layer| {
@@ -174,26 +165,17 @@ impl Palette {
         {
             return;
         }
-        self.field.set_text("");
-        self.present(&window);
-        let scroll = self.scroller.vadjustment();
-        scroll.set_value(scroll.lower());
-    }
-
-    fn present(&self, window: &gtk::ApplicationWindow) {
         self.focus_before
-            .replace(gtk::prelude::RootExt::focus(window).map(|w| w.downgrade()));
-        self.browser.prepare_palette();
-        self.states.replace(
-            COMMANDS
-                .iter()
-                .map(|spec| self.state(spec.command, spec.label))
-                .collect(),
-        );
+            .replace(gtk::prelude::RootExt::focus(&window).map(|w| w.downgrade()));
+        self.target
+            .replace(Some(self.browser.capture_palette_target()));
+        self.field.set_text("");
         self.render();
         self.blurred_root.set_blurred(true);
         self.layer.set_visible(true);
         self.field.grab_focus_without_selecting();
+        let scroll = self.scroller.vadjustment();
+        scroll.set_value(scroll.lower());
     }
 
     fn hide(&self) {
@@ -209,42 +191,11 @@ impl Palette {
         }
     }
 
-    fn state(&self, command: Command, default_label: &'static str) -> CommandState {
-        let mut state = CommandState {
-            label: default_label,
-            reason: None,
-            current: false,
-        };
-        match command {
-            Command::Hidden if self.preferences.sort_preferences().show_hidden => {
-                state.label = "Hide hidden files";
-            }
-            Command::Sidebar if self.sidebar.is_active() => state.label = "Hide sidebar",
-            Command::View(mode) => state.current = self.browser.view_mode() == mode,
-            Command::File(file) => {
-                state.reason = self.browser.palette_file_unavailable(file);
-                if file == FileCommand::Pin
-                    && self.browser.palette_pin_status() == PinStatus::Pinned
-                {
-                    state.label = "Unpin folder";
-                }
-            }
-            Command::Terminal => {
-                if self.browser.palette_terminal_location().is_none() {
-                    state.reason = Some("Open a local folder first");
-                }
-            }
-            Command::Filter | Command::Refresh | Command::Location
-                if self.browser.browser().active_location().is_none() =>
-            {
-                state.reason = Some("Open a folder first");
-            }
-            _ => {}
-        }
-        state
-    }
-
     fn render(&self) {
+        let target = self.target.borrow();
+        let Some(target) = target.as_ref() else {
+            return;
+        };
         while let Some(row) = self.list.row_at_index(0) {
             self.list.remove(&row);
         }
@@ -280,12 +231,9 @@ impl Palette {
                 row.set_header(None::<&gtk::Widget>);
             }
         });
-        let states = self.states.borrow();
         for &index in &rows {
-            let Some(state) = states.get(index) else {
-                continue;
-            };
             let spec = &COMMANDS[index];
+            let state = self.commands.state(spec, target);
             let row = gtk::ListBoxRow::new();
             row.add_css_class("search-result");
             crate::ui::accessibility::set_label(&row, state.label);
@@ -371,54 +319,31 @@ impl Palette {
         let Some(index) = self.rows.borrow().get(row as usize).copied() else {
             return;
         };
-        let command = COMMANDS[index].command;
-        self.hide();
-        if self.state(command, COMMANDS[index].label).reason.is_some() {
-            if let Some(window) = self.window.upgrade() {
-                self.present(&window);
-                let position = self
-                    .rows
-                    .borrow()
-                    .iter()
-                    .position(|candidate| *candidate == index);
-                if let Some(row) =
-                    position.and_then(|position| self.list.row_at_index(position as i32))
-                {
-                    self.list.select_row(Some(&row));
-                    row.grab_focus();
-                    self.field.grab_focus_without_selecting();
-                }
+        let target = self.target.borrow();
+        let Some(target) = target.as_ref() else {
+            return;
+        };
+        if self
+            .commands
+            .execute(&COMMANDS[index], target, || self.hide())
+            .is_err()
+        {
+            self.render();
+            let position = self
+                .rows
+                .borrow()
+                .iter()
+                .position(|candidate| *candidate == index);
+            if let Some(row) =
+                position.and_then(|position| self.list.row_at_index(position as i32))
+            {
+                self.list.select_row(Some(&row));
+                row.grab_focus();
+                self.field.grab_focus_without_selecting();
             }
             return;
         }
-        match command {
-            Command::Search => self.action("search"),
-            Command::RecentFolders => self.action("jump-folder"),
-            Command::Settings => self.action("settings"),
-            Command::Terminal => self.browser.execute_palette_terminal(),
-            Command::Refresh => self.action("refresh"),
-            Command::Filter => {
-                self.browser.show_filter();
-            }
-            Command::Location => self.browser.begin_location_edit(),
-            Command::Shortcuts => {
-                self.shortcuts
-                    .handle_key(gdk::Key::F1, gdk::ModifierType::empty());
-            }
-            Command::View(mode) => {
-                super::super::apply_browser_mode(&self.browser, &self.preferences, mode);
-            }
-            Command::Hidden => self.browser.browser().toggle_hidden(),
-            Command::Sidebar => self.sidebar.set_active(!self.sidebar.is_active()),
-            Command::File(file) => self.browser.execute_palette_file(file),
-        }
         RECENT_COMMANDS.with(|recent| record_recent(&mut recent.borrow_mut(), index));
-    }
-
-    fn action(&self, name: &str) {
-        if let Some(window) = self.window.upgrade() {
-            gio::prelude::ActionGroupExt::activate_action(&window, name, None);
-        }
     }
 }
 

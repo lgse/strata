@@ -13,8 +13,15 @@ pub(in crate::ui) enum FileCommand {
     Undo,
 }
 
+pub(in crate::ui) struct PaletteTarget {
+    depth: Option<usize>,
+    location: Option<Location>,
+    entries: Vec<FileEntry>,
+    search_results: bool,
+}
+
 impl BrowserView {
-    pub(in crate::ui) fn prepare_palette(&self) {
+    pub(in crate::ui) fn capture_palette_target(&self) -> PaletteTarget {
         self.state.cancel_click_rename();
         self.state
             .input_ownership
@@ -22,6 +29,14 @@ impl BrowserView {
             .keyboard_navigation();
         self.state.sync_mode_selection();
         self.state.refresh_destination_style();
+        let depth = self.state.destination_depth();
+        let search_entries = self.palette_search_entries();
+        PaletteTarget {
+            depth,
+            location: depth.and_then(|depth| self.state.browser.location_at(depth)),
+            search_results: search_entries.is_some(),
+            entries: search_entries.unwrap_or_else(|| self.state.browser.selected_entries()),
+        }
     }
 
     fn palette_search_entries(&self) -> Option<Vec<FileEntry>> {
@@ -38,33 +53,39 @@ impl BrowserView {
         filtered.then(|| self.selected_search_results()).flatten()
     }
 
-    fn palette_entries(&self) -> Vec<FileEntry> {
-        if let Some(entries) = self.palette_search_entries() {
-            return entries;
+    pub(in crate::ui) fn palette_target_unavailable(
+        &self,
+        target: &PaletteTarget,
+    ) -> Option<&'static str> {
+        let location = target
+            .depth
+            .and_then(|depth| self.state.browser.location_at(depth));
+        if target.location.is_none() {
+            Some("Open a folder first")
+        } else if location != target.location {
+            Some("The originating folder changed; reopen the palette")
+        } else {
+            None
         }
-        self.state.sync_mode_selection();
-        self.state.browser.selected_entries()
     }
 
-    pub(in crate::ui) fn palette_terminal_location(&self) -> Option<Location> {
-        selected_terminal_location(&self.palette_entries())
-            .or_else(|| {
-                self.state
-                    .destination_depth()
-                    .and_then(|depth| self.state.browser.location_at(depth))
-            })
+    pub(in crate::ui) fn palette_terminal_location(
+        &self,
+        target: &PaletteTarget,
+    ) -> Option<Location> {
+        selected_terminal_location(&target.entries)
+            .or_else(|| target.location.clone())
             .filter(|location| location.native_path().is_some())
     }
 
-    pub(in crate::ui) fn execute_palette_terminal(&self) {
-        if let Some(location) = self.palette_terminal_location() {
+    pub(in crate::ui) fn execute_palette_terminal(&self, target: &PaletteTarget) {
+        if let Some(location) = self.palette_terminal_location(target) {
             launch_terminal(&location, &self.state.overlay);
         }
     }
 
-    pub(in crate::ui) fn palette_pin_status(&self) -> PinStatus {
-        let entries = self.palette_entries();
-        let [entry] = entries.as_slice() else {
+    pub(in crate::ui) fn palette_pin_status(&self, target: &PaletteTarget) -> PinStatus {
+        let [entry] = target.entries.as_slice() else {
             return PinStatus::Unavailable;
         };
         if !entry.is_directory() || is_trash_location(&entry.location) {
@@ -80,16 +101,18 @@ impl BrowserView {
     pub(in crate::ui) fn palette_file_unavailable(
         &self,
         command: FileCommand,
+        target: &PaletteTarget,
     ) -> Option<&'static str> {
-        let entries = self.palette_entries();
+        if command != FileCommand::Undo
+            && let Some(reason) = self.palette_target_unavailable(target)
+        {
+            return Some(reason);
+        }
+        let entries = &target.entries;
         match command {
             FileCommand::NewFolder => {
-                let location = self
-                    .state
-                    .destination_depth()
-                    .and_then(|depth| self.state.browser.location_at(depth));
-                (!location.is_some_and(|location| {
-                    !is_trash_location(&location) && !location.is_recent_location()
+                (!target.location.as_ref().is_some_and(|location| {
+                    !is_trash_location(location) && !location.is_recent_location()
                 }))
                 .then_some("Open a folder first")
             }
@@ -99,7 +122,7 @@ impl BrowserView {
                 if entries.is_empty() {
                     Some("Select an item first")
                 } else {
-                    duplicate_transfer(&entries)
+                    duplicate_transfer(entries)
                         .is_none()
                         .then_some("Select items in the same folder outside Trash")
                 }
@@ -116,40 +139,58 @@ impl BrowserView {
                     None
                 }
             }
-            FileCommand::Pin => (self.palette_pin_status() == PinStatus::Unavailable)
+            FileCommand::Pin => (self.palette_pin_status(target) == PinStatus::Unavailable)
                 .then_some("Select a pinnable folder"),
         }
     }
 
-    pub(in crate::ui) fn execute_palette_file(&self, command: FileCommand) {
-        if self.palette_file_unavailable(command).is_some() {
-            return;
-        }
-        let entries = self.palette_entries();
+    pub(in crate::ui) fn execute_palette_file(
+        &self,
+        command: FileCommand,
+        target: &PaletteTarget,
+    ) {
+        let entries = &target.entries;
         match command {
-            FileCommand::NewFolder => self.create_new_folder(),
+            FileCommand::NewFolder => {
+                if let (Some(depth), Some(location)) = (target.depth, target.location.as_ref()) {
+                    self.state.begin_new_entry(depth, location.clone(), true);
+                }
+            }
             FileCommand::Rename => {
-                if self.palette_search_entries().is_some() {
+                if let Some(depth) = target.depth {
+                    let position = (!target.search_results)
+                        .then(|| self.state.browser.column_snapshot(depth))
+                        .flatten()
+                        .and_then(|column| {
+                            (0..column.count).find(|position| {
+                                self.state
+                                    .browser
+                                    .entry_at(depth, *position)
+                                    .is_some_and(|entry| entry.location == entries[0].location)
+                            })
+                        });
                     context_menu::rename_context_entry(
                         &self.state,
-                        self.state.destination_depth().unwrap_or(0),
-                        None,
+                        depth,
+                        position,
                         entries[0].clone(),
                     );
-                } else {
-                    self.state.begin_rename();
                 }
             }
             FileCommand::Duplicate => {
-                if let Some((destination, sources)) = duplicate_transfer(&entries) {
+                if let Some((destination, sources)) = duplicate_transfer(entries) {
                     self.state.start_transfer(destination, sources, false);
                 }
             }
-            FileCommand::CopyPaths => copy_locations(&entries),
-            FileCommand::Properties => self.state.show_entry_properties(entries[0].clone()),
+            FileCommand::CopyPaths => copy_locations(entries),
+            FileCommand::Properties => {
+                if let Some(depth) = target.depth {
+                    self.state.show_entry_properties_at(entries[0].clone(), depth);
+                }
+            }
             FileCommand::Pin => {
                 let entry = &entries[0];
-                if self.palette_pin_status() == PinStatus::Pinned {
+                if self.palette_pin_status(target) == PinStatus::Pinned {
                     if let Some(handler) = self.state.unpin_handler.borrow().as_ref() {
                         handler(&entry.location);
                     }

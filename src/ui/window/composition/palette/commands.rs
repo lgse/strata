@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: MIT
+
+use std::rc::Rc;
+
+use gtk::{gdk, gio, glib, prelude::*};
+
+use crate::ui::{
+    browser::{
+        BrowserView, PinStatus,
+        palette::{FileCommand, PaletteTarget},
+    },
+    preferences::PreferenceManager,
+    shortcut_footer::ShortcutFooter,
+};
+
+use super::{
+    super::WindowContent,
+    catalogue::{Command, CommandSpec},
+};
+
+pub(super) struct Commands {
+    window: glib::WeakRef<gtk::ApplicationWindow>,
+    browser: BrowserView,
+    preferences: Rc<PreferenceManager>,
+    sidebar: gtk::ToggleButton,
+    shortcuts: ShortcutFooter,
+}
+
+pub(super) struct CommandState {
+    pub label: &'static str,
+    pub reason: Option<&'static str>,
+    pub current: bool,
+}
+
+impl Commands {
+    pub(super) fn new(
+        window: &gtk::ApplicationWindow,
+        content: &WindowContent,
+        preferences: &Rc<PreferenceManager>,
+    ) -> Self {
+        Self {
+            window: window.downgrade(),
+            browser: content.browser.clone(),
+            preferences: preferences.clone(),
+            sidebar: content.header.sidebar_toggle.clone(),
+            shortcuts: content.footer.shortcuts.clone(),
+        }
+    }
+
+    pub(super) fn state(&self, spec: &CommandSpec, target: &PaletteTarget) -> CommandState {
+        let mut state = CommandState {
+            label: spec.label,
+            reason: None,
+            current: false,
+        };
+        match spec.command {
+            Command::Hidden if self.preferences.sort_preferences().show_hidden => {
+                state.label = "Hide hidden files";
+            }
+            Command::Sidebar if self.sidebar.is_active() => state.label = "Hide sidebar",
+            Command::View(mode) => state.current = self.browser.view_mode() == mode,
+            Command::File(file) => {
+                state.reason = self.browser.palette_file_unavailable(file, target);
+                if file == FileCommand::Pin
+                    && self.browser.palette_pin_status(target) == PinStatus::Pinned
+                {
+                    state.label = "Unpin folder";
+                }
+            }
+            Command::Terminal => {
+                state.reason = self.browser.palette_target_unavailable(target).or_else(|| {
+                    self.browser
+                        .palette_terminal_location(target)
+                        .is_none()
+                        .then_some("Open a local folder first")
+                });
+            }
+            Command::Filter if self.preferences.tenxer_mode() => {
+                state.reason = Some("Pane filtering is unavailable in 10xer mode");
+            }
+            Command::Filter | Command::Refresh | Command::Location => {
+                state.reason = self.browser.palette_target_unavailable(target);
+            }
+            _ => {}
+        }
+        state
+    }
+
+    pub(super) fn execute(
+        &self,
+        spec: &CommandSpec,
+        target: &PaletteTarget,
+        dismiss: impl FnOnce(),
+    ) -> Result<(), &'static str> {
+        if let Some(reason) = self.state(spec, target).reason {
+            return Err(reason);
+        }
+        dismiss();
+        match spec.command {
+            Command::Search => self.action("search"),
+            Command::RecentFolders => self.action("jump-folder"),
+            Command::Settings => self.action("settings"),
+            Command::Terminal => self.browser.execute_palette_terminal(target),
+            Command::Refresh => self.action("refresh"),
+            Command::Filter => {
+                self.browser.show_filter();
+            }
+            Command::Location => self.browser.begin_location_edit(),
+            Command::Shortcuts => {
+                self.shortcuts
+                    .handle_key(gdk::Key::F1, gdk::ModifierType::empty());
+            }
+            Command::View(mode) => {
+                super::super::super::apply_browser_mode(&self.browser, &self.preferences, mode);
+            }
+            Command::Hidden => self.browser.browser().toggle_hidden(),
+            Command::Sidebar => self.sidebar.set_active(!self.sidebar.is_active()),
+            Command::File(file) => self.browser.execute_palette_file(file, target),
+        }
+        Ok(())
+    }
+
+    fn action(&self, name: &str) {
+        if let Some(window) = self.window.upgrade() {
+            gio::prelude::ActionGroupExt::activate_action(&window, name, None);
+        }
+    }
+}

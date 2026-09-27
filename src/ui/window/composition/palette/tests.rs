@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::ui::browser::palette::FileCommand;
+use catalogue::Command;
 
 #[test]
 fn command_search_supports_aliases_fuzzy_input_and_no_matches() {

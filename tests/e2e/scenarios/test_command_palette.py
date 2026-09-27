@@ -135,6 +135,17 @@ def test_palette_creates_pins_duplicates_and_undoes(strata):
     )
 
     strata.select_entry_with_keyboard("todo.txt")
+    run_command(strata, "rename")
+    editor = strata.wait(
+        lambda: strata.window.find(role="text", states={"focused"}),
+        "unfiltered rename editor",
+    )
+    assert "todo" in editor.text
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("palette-renamed.txt")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path("palette-renamed.txt").exists(), "renamed file")
+    strata.select_entry_with_keyboard("palette-renamed.txt")
     before = set(strata.fixture.names())
     run_command(strata, "duplicate")
     copied = strata.wait(lambda: set(strata.fixture.names()) - before, "duplicate created")
@@ -144,7 +155,7 @@ def test_palette_creates_pins_duplicates_and_undoes(strata):
     assert strata.fixture.path(name).read_text() == "todo\n"
     run_command(strata, "undo")
     strata.wait(lambda: set(strata.fixture.names()) == before, "duplicate undone")
-    assert strata.fixture.path("todo.txt").read_text() == "todo\n"
+    assert strata.fixture.path("palette-renamed.txt").read_text() == "todo\n"
 
 
 def test_palette_folder_creation_uses_focused_pane_despite_pointer_hover(strata):

@@ -118,9 +118,19 @@ commands by name or alias (for example, `mkdir` or `preferences`). Use **Up/Down
 to choose a command, wrapping between the first and last results, **Enter** to run
 it, and **Escape** to close the palette and restore focus. Unavailable commands
 explain what is needed before they can run.
-The palette preserves the originating pane and selection, and closes before
-opening another dialog or starting an inline rename. Finish an active inline
-edit before opening it.
+
+The palette remembers which pane and files you selected when you opened it.
+Changing the selection afterwards won't change which files a command uses. If
+that pane closes or shows a different folder, reopen the palette to use commands
+on its files.
+
+Commands are checked again when you run them. For example, Undo can start working
+once a background copy finishes, without reopening the palette. If a command
+can't run, the palette stays open and keeps your search text. Pane filtering
+isn't available in 10xer mode.
+
+The palette closes before opening another dialog or a rename field. Finish any
+rename you're already editing before opening it.
 
 With an empty query, the last five invoked commands appear under **Recents**,
 followed by the remaining commands grouped by purpose. Recents are shared across

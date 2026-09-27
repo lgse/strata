@@ -163,6 +163,27 @@ fn palette_file_commands_keep_selection_and_disabled_commands_do_not_run() {
                     view.browser().selected_entries()[0].location,
                     selected[0].location
                 );
+                let layer = search(&fixture, "copy path");
+                view.browser().select(0, 1);
+                descendant::<gtk::Entry>(&layer)
+                    .expect("palette field")
+                    .grab_focus_without_selecting();
+                press(&layer, Key::Return, ModifierType::empty());
+                assert!(!layer.is_visible());
+                let text = glib::MainContext::default()
+                    .block_on(fixture.window.clipboard().read_text_future())
+                    .expect("read clipboard")
+                    .expect("copied path");
+                assert_eq!(
+                    text.as_str(),
+                    selected[0]
+                        .location
+                        .native_path()
+                        .expect("local target")
+                        .to_str()
+                        .expect("UTF-8 target"),
+                    "selection changes must not retarget an open palette"
+                );
                 view.browser().clear_active_selection();
                 let layer = search(&fixture, "duplicate");
                 press(&layer, Key::Return, ModifierType::empty());
@@ -176,6 +197,52 @@ fn palette_file_commands_keep_selection_and_disabled_commands_do_not_run() {
                 );
                 press(&layer, Key::Escape, ModifierType::empty());
             }
+            fixture.close();
+        },
+    );
+}
+
+#[test]
+fn palette_rejects_replaced_panes_and_rechecks_live_mode_restrictions() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_rejects_replaced_panes_and_rechecks_live_mode_restrictions",
+        || {
+            let fixture = Fixture::new();
+            let first = tempfile::tempdir().expect("first folder");
+            let second = tempfile::tempdir().expect("second folder");
+            let view = &fixture.content.browser;
+            view.browser().navigate(Location::local(first.path()));
+            wait_for(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            let layer = search(&fixture, "mkdir");
+            view.browser().navigate(Location::local(second.path()));
+            wait_for(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+            let field = descendant::<gtk::Entry>(&layer).expect("palette field");
+            field.grab_focus_without_selecting();
+            press(&layer, Key::Return, ModifierType::empty());
+            assert!(layer.is_visible());
+            assert_eq!(field.text(), "mkdir");
+            assert!(!view.new_entry_is_active());
+            assert_eq!(std::fs::read_dir(first.path()).unwrap().count(), 0);
+            assert_eq!(std::fs::read_dir(second.path()).unwrap().count(), 0);
+            press(&layer, Key::Escape, ModifierType::empty());
+
+            fixture.preferences.set_tenxer_mode(true);
+            let layer = search(&fixture, "filter current pane");
+            press(&layer, Key::Return, ModifierType::empty());
+            assert!(layer.is_visible());
+            assert!(!view.filter_has_focus());
+            fixture.preferences.set_tenxer_mode(false);
+            press(&layer, Key::Return, ModifierType::empty());
+            assert!(!layer.is_visible());
+            assert!(view.filter_has_focus());
             fixture.close();
         },
     );
