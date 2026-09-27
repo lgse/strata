@@ -4,7 +4,7 @@
 //! completes or cancels that chord and reaches no other handler. Text-size
 //! shortcuts, shortcut-reference keys, and Escape while autoscroll is running
 //! are earlier capture handlers: they drop the mark first, then run, the same
-//! way Ctrl+, opens Settings over a canceled chord.
+//! way Ctrl+, opens Settings or Ctrl+Shift+P opens the palette over a canceled chord.
 
 use std::rc::Rc;
 
@@ -113,6 +113,16 @@ impl Dispatcher {
         }
         let mods = command_modifiers(modifiers);
         self.shortcuts.cancel_chord();
+        if matches!(key, Key::p | Key::P)
+            && mods == Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK
+        {
+            let _ = gtk::prelude::WidgetExt::activate_action(
+                &self.window,
+                "win.command-palette",
+                None,
+            );
+            return Some(Propagation::Stop);
+        }
         // Settings opens over a canceled chord.
         if key == Key::comma && mods == Modifiers::CONTROL_MASK {
             return None;

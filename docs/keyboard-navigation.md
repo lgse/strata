@@ -132,6 +132,7 @@ If a command can't run, the palette stays open.
 Shortcut hints follow the active keymap, even if you change it in another window
 while the palette is open. Commands without a shortcut in 10xer mode show no hint.
 Pane filtering isn't available in 10xer mode.
+If you've started a 10xer key sequence, Ctrl+Shift+P cancels it and opens the palette.
 
 The palette closes before opening another dialog or a rename field. Finish any
 rename you're already editing before opening it.

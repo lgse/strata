@@ -139,6 +139,46 @@ fn palette_keyboard_dismissal_modal_handoff_and_live_view_preferences() {
 }
 
 #[test]
+fn palette_shortcut_cancels_an_armed_tenxer_chord() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_shortcut_cancels_an_armed_tenxer_chord",
+        || {
+            let fixture = Fixture::new();
+            let directory = tempfile::tempdir().expect("fixture directory");
+            std::fs::write(directory.path().join("chosen.txt"), b"chosen").expect("fixture file");
+            let browser = fixture.content.browser.browser();
+            browser.navigate(Location::local(directory.path()));
+            wait_for(|| {
+                browser.column_snapshot(0).is_some_and(|column| !column.loading)
+            });
+            fixture.preferences.set_tenxer_mode(true);
+            browser.focus_active();
+            wait_for(|| fixture.content.browser.item_view_has_focus());
+            let shortcuts = &fixture.content.footer.shortcuts;
+            assert!(press(&fixture.window, Key::g, ModifierType::empty()));
+            assert_eq!(
+                shortcuts.armed_chord(),
+                Some(crate::ui::tenxer_mode::Chord::Go)
+            );
+            assert!(press(
+                &fixture.window,
+                Key::P,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
+            let layer = fixture
+                .layer("command-palette-backdrop")
+                .expect("palette layer");
+            assert!(layer.is_visible());
+            assert_eq!(shortcuts.armed_chord(), None);
+            assert_ne!(shortcuts.feedback_text(), "Unknown chord");
+            press(&layer, Key::Escape, ModifierType::empty());
+            assert_eq!(browser.active_location(), Some(Location::local(directory.path())));
+            fixture.close();
+        },
+    );
+}
+
+#[test]
 fn palette_file_commands_keep_selection_and_disabled_commands_do_not_run() {
     gtk_test(
         "ui::window::composition::tests::palette::palette_file_commands_keep_selection_and_disabled_commands_do_not_run",

@@ -179,7 +179,9 @@ def test_palette_folder_creation_uses_focused_pane_despite_pointer_hover(strata)
 @pytest.mark.preferences(tenxer_mode=True)
 def test_palette_tenxer_hints_match_rename_and_duplicate_actions(strata):
     strata.select_entry_with_keyboard("todo.txt")
+    strata.keyboard.press("g")
     open_palette(strata, "rename selected item")
+    assert strata.window.find(role="label", name="Unknown chord") is None
     rename = strata.window.find(role="list item", name="Rename selected item")
     assert rename.find(role="label", name="F2") is not None
     assert rename.find(role="label", name="F2 / Ctrl+R") is None
