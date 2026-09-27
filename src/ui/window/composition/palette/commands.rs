@@ -11,6 +11,7 @@ use crate::ui::{
     },
     preferences::PreferenceManager,
     shortcut_footer::ShortcutFooter,
+    shortcut_reference::{ContextHint, context_hint_for},
 };
 
 use super::{
@@ -26,10 +27,12 @@ pub(super) struct Commands {
     shortcuts: ShortcutFooter,
 }
 
+#[derive(PartialEq)]
 pub(super) struct CommandState {
     pub label: &'static str,
     pub reason: Option<&'static str>,
     pub current: bool,
+    pub shortcut: &'static str,
 }
 
 impl Commands {
@@ -52,6 +55,7 @@ impl Commands {
             label: spec.label,
             reason: None,
             current: false,
+            shortcut: self.shortcut(spec),
         };
         match spec.command {
             Command::Hidden if self.preferences.sort_preferences().show_hidden => {
@@ -84,6 +88,20 @@ impl Commands {
             _ => {}
         }
         state
+    }
+
+    fn shortcut(&self, spec: &CommandSpec) -> &'static str {
+        let tenxer = self.preferences.tenxer_mode();
+        match spec.command {
+            Command::File(FileCommand::Rename) => context_hint_for(ContextHint::Rename, tenxer),
+            Command::File(FileCommand::Duplicate) => {
+                context_hint_for(ContextHint::Duplicate, tenxer)
+            }
+            Command::Terminal => context_hint_for(ContextHint::Terminal, tenxer),
+            Command::Filter | Command::RecentFolders | Command::Sidebar if tenxer => "",
+            Command::Shortcuts if tenxer => "F1 / ~",
+            _ => spec.shortcut,
+        }
     }
 
     pub(super) fn execute(

@@ -110,12 +110,10 @@ impl BrowserView {
         }
         let entries = &target.entries;
         match command {
-            FileCommand::NewFolder => {
-                (!target.location.as_ref().is_some_and(|location| {
-                    !is_trash_location(location) && !location.is_recent_location()
-                }))
-                .then_some("Open a folder first")
-            }
+            FileCommand::NewFolder => (!target.location.as_ref().is_some_and(|location| {
+                !is_trash_location(location) && !location.is_recent_location()
+            }))
+            .then_some("Open a folder first"),
             FileCommand::Undo => (!self.state.browser.can_undo()).then_some("Nothing to undo"),
             FileCommand::CopyPaths => entries.is_empty().then_some("Select an item first"),
             FileCommand::Duplicate => {
@@ -144,11 +142,7 @@ impl BrowserView {
         }
     }
 
-    pub(in crate::ui) fn execute_palette_file(
-        &self,
-        command: FileCommand,
-        target: &PaletteTarget,
-    ) {
+    pub(in crate::ui) fn execute_palette_file(&self, command: FileCommand, target: &PaletteTarget) {
         let entries = &target.entries;
         match command {
             FileCommand::NewFolder => {
@@ -185,7 +179,8 @@ impl BrowserView {
             FileCommand::CopyPaths => copy_locations(entries),
             FileCommand::Properties => {
                 if let Some(depth) = target.depth {
-                    self.state.show_entry_properties_at(entries[0].clone(), depth);
+                    self.state
+                        .show_entry_properties_at(entries[0].clone(), depth);
                 }
             }
             FileCommand::Pin => {

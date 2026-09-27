@@ -124,10 +124,14 @@ Changing the selection afterwards won't change which files a command uses. If
 that pane closes or shows a different folder, reopen the palette to use commands
 on its files.
 
-Commands are checked again when you run them. For example, Undo can start working
-once a background copy finishes, without reopening the palette. If a command
-can't run, the palette stays open and keeps your search text. Pane filtering
-isn't available in 10xer mode.
+The palette updates commands as things change, including when a background copy
+finishes in another window and Undo becomes available. Your search text and
+selected command stay put. Commands are also checked again when you run them.
+If a command can't run, the palette stays open.
+
+Shortcut hints follow the active keymap, even if you change it in another window
+while the palette is open. Commands without a shortcut in 10xer mode show no hint.
+Pane filtering isn't available in 10xer mode.
 
 The palette closes before opening another dialog or a rename field. Finish any
 rename you're already editing before opening it.

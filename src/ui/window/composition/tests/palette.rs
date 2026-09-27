@@ -17,6 +17,23 @@ fn descendant<T: IsA<gtk::Widget> + glib::object::IsClass>(widget: &gtk::Widget)
     None
 }
 
+fn has_label(widget: &gtk::Widget, text: &str) -> bool {
+    if widget
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.text() == text)
+    {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if has_label(&widget, text) {
+            return true;
+        }
+    }
+    false
+}
+
 fn press(widget: &impl IsA<gtk::Widget>, key: Key, modifiers: ModifierType) -> bool {
     let root = widget
         .as_ref()
@@ -230,8 +247,18 @@ fn palette_rejects_replaced_panes_and_rechecks_live_mode_restrictions() {
             assert!(layer.is_visible());
             assert_eq!(field.text(), "mkdir");
             assert!(!view.new_entry_is_active());
-            assert_eq!(std::fs::read_dir(first.path()).unwrap().count(), 0);
-            assert_eq!(std::fs::read_dir(second.path()).unwrap().count(), 0);
+            assert_eq!(
+                std::fs::read_dir(first.path())
+                    .expect("first folder entries")
+                    .count(),
+                0
+            );
+            assert_eq!(
+                std::fs::read_dir(second.path())
+                    .expect("second folder entries")
+                    .count(),
+                0
+            );
             press(&layer, Key::Escape, ModifierType::empty());
 
             fixture.preferences.set_tenxer_mode(true);
@@ -350,11 +377,62 @@ fn palette_defers_keyboard_to_a_newer_error_dialog() {
 }
 
 #[test]
+fn palette_shortcuts_follow_live_keymap_changes_across_windows() {
+    gtk_test(
+        "ui::window::composition::tests::palette::palette_shortcuts_follow_live_keymap_changes_across_windows",
+        || {
+            let fixture = Fixture::new();
+            let second = Fixture::new();
+            for (query, default_hint, tenxer_hint) in [
+                ("rename selected item", "F2 / Ctrl+R", "F2"),
+                ("duplicate selected items", "Ctrl+D", ""),
+                ("show sidebar", "Ctrl+B", ""),
+                ("open terminal here", "Ctrl+T", ""),
+                ("filter current pane", "Ctrl+F", ""),
+                ("jump to a recent folder", "Ctrl+Shift+K", ""),
+                ("show keyboard shortcuts", "F1", "F1 / ~"),
+            ] {
+                let layer = search(&fixture, query);
+                let other = search(&second, query);
+                for enabled in [true, false] {
+                    for layer in [&layer, &other] {
+                        assert!(has_label(
+                            layer,
+                            if enabled { default_hint } else { tenxer_hint }
+                        ));
+                    }
+                    fixture.preferences.set_tenxer_mode(enabled);
+                    for layer in [&layer, &other] {
+                        let expected = if enabled { tenxer_hint } else { default_hint };
+                        wait_for(|| has_label(layer, expected));
+                        assert!(!has_label(
+                            layer,
+                            if enabled { default_hint } else { tenxer_hint }
+                        ));
+                        assert_eq!(
+                            descendant::<gtk::Entry>(layer)
+                                .expect("palette field")
+                                .text(),
+                            query
+                        );
+                    }
+                }
+                press(&layer, Key::Escape, ModifierType::empty());
+                press(&other, Key::Escape, ModifierType::empty());
+            }
+            fixture.close();
+            second.close();
+        },
+    );
+}
+
+#[test]
 fn palette_undo_becomes_available_after_background_copy_completes() {
     gtk_test(
         "ui::window::composition::tests::palette::palette_undo_becomes_available_after_background_copy_completes",
         || {
             let fixture = Fixture::new();
+            let second = Fixture::new();
             let directory = tempfile::tempdir().expect("fixture directory");
             let source = directory.path().join("original.txt");
             let destination = directory.path().join("copies");
@@ -369,6 +447,12 @@ fn palette_undo_becomes_available_after_background_copy_completes() {
             });
             assert!(!browser.can_undo());
             let layer = search(&fixture, "undo");
+            let other = search(&second, "undo");
+            for layer in [&layer, &other] {
+                assert!(has_label(layer, "Nothing to undo"));
+            }
+            let list = descendant::<gtk::ListBox>(&layer).expect("command list");
+            let selected = list.selected_row().expect("selected Undo");
 
             browser.transfer(
                 Location::local(&destination),
@@ -380,15 +464,14 @@ fn palette_undo_becomes_available_after_background_copy_completes() {
                 true,
             );
             wait_for(|| browser.can_undo());
+            for layer in [&layer, &other] {
+                wait_for(|| !has_label(layer, "Nothing to undo"));
+            }
             let copied = destination.join("original.txt");
             assert_eq!(std::fs::read(&copied).expect("completed copy"), b"original");
             let field = descendant::<gtk::Entry>(&layer).expect("palette search field");
             assert_eq!(field.text(), "undo");
-            let list = descendant::<gtk::ListBox>(&layer).expect("command list");
-            assert!(
-                list.selected_row().is_some(),
-                "Undo stays selected after copying"
-            );
+            assert_eq!(list.selected_row().as_ref(), Some(&selected));
             assert!(
                 gtk::prelude::RootExt::focus(&fixture.window)
                     .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer)),
@@ -400,11 +483,13 @@ fn palette_undo_becomes_available_after_background_copy_completes() {
                 "newly available Undo executes without reopening"
             );
             wait_for(|| !copied.exists() && !browser.can_undo());
+            wait_for(|| has_label(&other, "Nothing to undo"));
             assert_eq!(
                 std::fs::read(&source).expect("original survives Undo"),
                 b"original"
             );
             fixture.close();
+            second.close();
         },
     );
 }

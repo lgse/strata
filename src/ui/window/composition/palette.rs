@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use gtk::{gdk, gio, glib, prelude::*};
 
@@ -12,7 +12,7 @@ use crate::ui::{
 
 use super::WindowContent;
 use catalogue::COMMANDS;
-use commands::Commands;
+use commands::{CommandState, Commands};
 
 mod catalogue;
 mod commands;
@@ -35,7 +35,8 @@ struct Palette {
     target: RefCell<Option<PaletteTarget>>,
     blurred_root: BlurBin,
     focus_before: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
-    rows: RefCell<Vec<usize>>,
+    rows: RefCell<Vec<CommandRow>>,
+    refresh_source: RefCell<Option<glib::SourceId>>,
 }
 
 pub(super) fn install(
@@ -100,6 +101,41 @@ pub(super) fn install(
         blurred_root: content.blurred_root.clone(),
         focus_before: RefCell::new(None),
         rows: RefCell::new(Vec::new()),
+        refresh_source: RefCell::new(None),
+    });
+    let weak = Rc::downgrade(&palette);
+    preferences.bind_preference(
+        &palette.layer,
+        PreferenceManager::tenxer_mode,
+        move |_, _| {
+            if let Some(palette) = weak.upgrade() {
+                palette.refresh();
+            }
+        },
+    );
+    let weak = Rc::downgrade(&palette);
+    palette.layer.connect_map(move |_| {
+        let Some(palette) = weak.upgrade() else {
+            return;
+        };
+        let weak = Rc::downgrade(&palette);
+        // Undo history spans windows and has no change signal.
+        let source = glib::timeout_add_local(Duration::from_millis(200), move || {
+            let Some(palette) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            palette.refresh();
+            glib::ControlFlow::Continue
+        });
+        palette.refresh_source.replace(Some(source));
+    });
+    let weak = Rc::downgrade(&palette);
+    palette.layer.connect_unmap(move |_| {
+        if let Some(palette) = weak.upgrade()
+            && let Some(source) = palette.refresh_source.take()
+        {
+            source.remove();
+        }
     });
     let weak = Rc::downgrade(&palette);
     palette.layer.connect_has_focus_notify(move |layer| {
@@ -231,46 +267,38 @@ impl Palette {
                 row.set_header(None::<&gtk::Widget>);
             }
         });
+        let mut commands = Vec::with_capacity(rows.len());
         for &index in &rows {
             let spec = &COMMANDS[index];
             let state = self.commands.state(spec, target);
-            let row = gtk::ListBoxRow::new();
-            row.add_css_class("search-result");
-            crate::ui::accessibility::set_label(&row, state.label);
-            row.update_property(&[gtk::accessible::Property::Description(
-                state.reason.unwrap_or(if recent.contains(&index) {
-                    "Recents"
-                } else {
-                    spec.group
-                }),
-            )]);
-            let content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-            let text = gtk::Box::new(gtk::Orientation::Vertical, 3);
-            text.set_hexpand(true);
-            let label = gtk::Label::new(Some(state.label));
-            label.set_xalign(0.0);
-            label.add_css_class("search-result-name");
-            text.append(&label);
-            if let Some(reason) = state.reason {
-                let reason = gtk::Label::new(Some(reason));
-                reason.set_xalign(0.0);
-                reason.add_css_class("search-result-path");
-                text.append(&reason);
-                row.add_css_class("command-unavailable");
-            }
-            content.append(&text);
-            let hint = gtk::Label::new(Some(if state.current {
-                "Current"
+            let group = if recent.contains(&index) {
+                "Recents"
             } else {
-                spec.shortcut
-            }));
-            hint.add_css_class("search-hint");
-            content.append(&hint);
-            row.set_child(Some(&content));
-            self.list.append(&row);
+                spec.group
+            };
+            let row = CommandRow::new(index, group, state);
+            self.list.append(&row.widget);
+            commands.push(row);
         }
-        self.rows.replace(rows);
+        self.rows.replace(commands);
         self.list.select_row(self.list.row_at_index(0).as_ref());
+    }
+
+    fn refresh(&self) {
+        if !self.layer.is_visible() {
+            return;
+        }
+        let target = self.target.borrow();
+        let Some(target) = target.as_ref() else {
+            return;
+        };
+        for row in self.rows.borrow_mut().iter_mut() {
+            let state = self.commands.state(&COMMANDS[row.command], target);
+            if state != row.state {
+                row.state = state;
+                row.update();
+            }
+        }
     }
 
     fn key(&self, key: gdk::Key, modifiers: gdk::ModifierType) -> glib::Propagation {
@@ -316,7 +344,7 @@ impl Palette {
     }
 
     fn activate(&self, row: i32) {
-        let Some(index) = self.rows.borrow().get(row as usize).copied() else {
+        let Some(index) = self.rows.borrow().get(row as usize).map(|row| row.command) else {
             return;
         };
         let target = self.target.borrow();
@@ -333,9 +361,8 @@ impl Palette {
                 .rows
                 .borrow()
                 .iter()
-                .position(|candidate| *candidate == index);
-            if let Some(row) =
-                position.and_then(|position| self.list.row_at_index(position as i32))
+                .position(|candidate| candidate.command == index);
+            if let Some(row) = position.and_then(|position| self.list.row_at_index(position as i32))
             {
                 self.list.select_row(Some(&row));
                 row.grab_focus();
@@ -344,6 +371,61 @@ impl Palette {
             return;
         }
         RECENT_COMMANDS.with(|recent| record_recent(&mut recent.borrow_mut(), index));
+    }
+}
+
+struct CommandRow {
+    command: usize,
+    group: &'static str,
+    state: CommandState,
+    widget: gtk::ListBoxRow,
+}
+
+impl CommandRow {
+    fn new(command: usize, group: &'static str, state: CommandState) -> Self {
+        let row = Self {
+            command,
+            group,
+            state,
+            widget: gtk::ListBoxRow::new(),
+        };
+        row.widget.add_css_class("search-result");
+        row.update();
+        row
+    }
+
+    fn update(&self) {
+        let state = &self.state;
+        crate::ui::accessibility::set_label(&self.widget, state.label);
+        self.widget
+            .update_property(&[gtk::accessible::Property::Description(
+                state.reason.unwrap_or(self.group),
+            )]);
+        let content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        text.set_hexpand(true);
+        let label = gtk::Label::new(Some(state.label));
+        label.set_xalign(0.0);
+        label.add_css_class("search-result-name");
+        text.append(&label);
+        if let Some(reason) = state.reason {
+            let reason = gtk::Label::new(Some(reason));
+            reason.set_xalign(0.0);
+            reason.add_css_class("search-result-path");
+            text.append(&reason);
+            self.widget.add_css_class("command-unavailable");
+        } else {
+            self.widget.remove_css_class("command-unavailable");
+        }
+        content.append(&text);
+        let hint = gtk::Label::new(Some(if state.current {
+            "Current"
+        } else {
+            state.shortcut
+        }));
+        hint.add_css_class("search-hint");
+        content.append(&hint);
+        self.widget.set_child(Some(&content));
     }
 }
 

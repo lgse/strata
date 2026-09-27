@@ -175,3 +175,32 @@ def test_palette_folder_creation_uses_focused_pane_despite_pointer_hover(strata)
         "folder in focused pane",
     )
     assert not strata.fixture.path("in-documents").exists()
+
+
+@pytest.mark.preferences(tenxer_mode=True)
+def test_palette_tenxer_hints_match_rename_and_duplicate_actions(strata):
+    strata.select_entry_with_keyboard("todo.txt")
+    open_palette(strata, "rename selected item")
+    rename = strata.window.find(role="list item", name="Rename selected item")
+    assert rename.find(role="label", name="F2") is not None
+    assert rename.find(role="label", name="F2 / Ctrl+R") is None
+    strata.keyboard.press("Escape")
+    strata.keyboard.press("F2")
+    editor = strata.wait(
+        lambda: strata.window.find(role="text", states={"focused"}),
+        "rename editor opened by advertised shortcut",
+    )
+    assert "todo" in editor.text
+    strata.keyboard.press("Escape")
+
+    strata.select_entry_with_keyboard("todo.txt")
+    strata.keyboard.press("space")
+    strata.wait_for_selection(["todo.txt"], directory=strata.fixture.root.name)
+    before = set(strata.fixture.names())
+    open_palette(strata, "duplicate selected items")
+    duplicate = strata.window.find(role="list item", name="Duplicate selected items")
+    assert duplicate.find(role="label", name="Ctrl+D") is None
+    strata.keyboard.press("Return")
+    copied = strata.wait(lambda: set(strata.fixture.names()) - before, "duplicate from palette")
+    assert len(copied) == 1
+    assert strata.fixture.path(copied.pop()).read_text() == "todo\n"
