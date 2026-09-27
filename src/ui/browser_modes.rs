@@ -3347,6 +3347,7 @@ fn pane_base(
     super::accessibility::describe_pane(&shell, title, mode);
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     header.add_css_class("mode-pane-header");
+    super::tenxer_mode::hide_while_enabled(&header);
     let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     heading_box.set_hexpand(true);
     heading_box.set_valign(gtk::Align::Center);
