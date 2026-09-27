@@ -25,6 +25,8 @@ impl ChordPanel {
             .has_arrow(false)
             .autohide(false)
             .position(gtk::PositionType::Top)
+            // The pill sits at the footer's right end; grow leftward into the window.
+            .halign(gtk::Align::End)
             .can_focus(false)
             .focusable(false)
             .child(&options)
