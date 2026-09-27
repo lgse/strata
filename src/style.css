@@ -3520,7 +3520,7 @@ menubutton.column-header-action > button:active {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.55);
   border-radius: 9px;
-  box-shadow: 0 0 14px alpha(@theme_accent, 0.16), 0 8px 24px alpha(@theme_shadow, 0.32);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.16), 0 8px 24px alpha(@theme_shadow, 0.32);
   padding: 4px;
 }
 
