@@ -3179,6 +3179,11 @@ entry.preview-command-entry selection {
   outline: none;
 }
 
+.shortcut-reference-scroll:focus,
+.shortcut-reference-scroll:focus-visible {
+  background: alpha(@theme_accent, 0.06);
+}
+
 .columns {
   background: @theme_bg;
   color: @theme_text;

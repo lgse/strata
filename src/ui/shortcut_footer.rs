@@ -1128,7 +1128,7 @@ fn reflow_categories(categories: &gtk::Box, compact: bool, width: i32) {
         } else {
             occupied + 8 + natural
         };
-        if compact && occupied > 0 && needed > width {
+        if occupied > 0 && (!compact || needed > width) {
             row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             row.set_vexpand(false);
             categories.append(&row);
