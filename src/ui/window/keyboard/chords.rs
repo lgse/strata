@@ -113,14 +113,10 @@ impl Dispatcher {
         }
         let mods = command_modifiers(modifiers);
         self.shortcuts.cancel_chord();
-        if matches!(key, Key::p | Key::P)
-            && mods == Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK
+        if matches!(key, Key::p | Key::P) && mods == Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK
         {
-            let _ = gtk::prelude::WidgetExt::activate_action(
-                &self.window,
-                "win.command-palette",
-                None,
-            );
+            let _ =
+                gtk::prelude::WidgetExt::activate_action(&self.window, "win.command-palette", None);
             return Some(Propagation::Stop);
         }
         // Settings opens over a canceled chord.

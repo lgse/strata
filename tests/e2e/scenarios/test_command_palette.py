@@ -27,6 +27,13 @@ def run_command(strata, query):
 
 def test_palette_keyboard_recent_commands_and_settings_handoff(strata):
     strata.select_entry_with_keyboard("todo.txt")
+    open_palette(strata, "term")
+    strata.keyboard.press("ctrl+shift+p")
+    strata.wait(
+        lambda: strata.window.find(role="text", name="Search commands") is None,
+        "palette closed by its opening shortcut",
+    )
+    strata.wait_for_selection(["todo.txt"], directory=strata.fixture.root.name)
     field = open_palette(strata, "term")
     for direction, character, expected in [("Down", "i", "termi"), ("Up", "n", "termin")]:
         strata.keyboard.press(direction)

@@ -99,7 +99,9 @@ impl Commands {
             {
                 ""
             }
-            Command::File(FileCommand::CopyPaths) => context_hint_for(ContextHint::CopyPaths, tenxer),
+            Command::File(FileCommand::CopyPaths) => {
+                context_hint_for(ContextHint::CopyPaths, tenxer)
+            }
             Command::File(FileCommand::Pin) => context_hint_for(ContextHint::Pin, tenxer),
             Command::File(FileCommand::Rename) => context_hint_for(ContextHint::Rename, tenxer),
             Command::File(FileCommand::Duplicate) => {

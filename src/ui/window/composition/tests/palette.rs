@@ -103,6 +103,24 @@ fn palette_keyboard_dismissal_modal_handoff_and_live_view_preferences() {
             assert!(layer.is_visible());
             assert!(press(&layer, Key::Escape, ModifierType::empty()));
             assert_eq!(gtk::prelude::RootExt::focus(&fixture.window), before);
+            assert!(press(
+                &fixture.window,
+                Key::P,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
+            field.set_text("preserve focus");
+            assert!(press(&layer, Key::p, ModifierType::CONTROL_MASK));
+            assert!(
+                layer.is_visible(),
+                "plain Ctrl+P does not toggle the palette"
+            );
+            assert!(press(
+                &layer,
+                Key::P,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
+            assert!(!layer.is_visible());
+            assert_eq!(gtk::prelude::RootExt::focus(&fixture.window), before);
             fixture.content.browser.cancel_location_edit();
 
             for (query, mode) in [
@@ -149,7 +167,9 @@ fn palette_shortcut_cancels_an_armed_tenxer_chord() {
             let browser = fixture.content.browser.browser();
             browser.navigate(Location::local(directory.path()));
             wait_for(|| {
-                browser.column_snapshot(0).is_some_and(|column| !column.loading)
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
             });
             fixture.preferences.set_tenxer_mode(true);
             browser.focus_active();
@@ -172,7 +192,10 @@ fn palette_shortcut_cancels_an_armed_tenxer_chord() {
             assert_eq!(shortcuts.armed_chord(), None);
             assert_ne!(shortcuts.feedback_text(), "Unknown chord");
             press(&layer, Key::Escape, ModifierType::empty());
-            assert_eq!(browser.active_location(), Some(Location::local(directory.path())));
+            assert_eq!(
+                browser.active_location(),
+                Some(Location::local(directory.path()))
+            );
             fixture.close();
         },
     );
@@ -303,7 +326,10 @@ fn palette_rejects_replaced_panes_and_rechecks_live_mode_restrictions() {
 
             for (uri, reason) in [
                 ("trash:///", "Folders can't be created in Trash"),
-                ("recent:///", "Open a folder outside Recent to create a folder"),
+                (
+                    "recent:///",
+                    "Open a folder outside Recent to create a folder",
+                ),
             ] {
                 let location = Location::uri(uri);
                 view.browser().navigate(location.clone());
@@ -403,6 +429,11 @@ fn palette_defers_keyboard_to_a_newer_error_dialog() {
                     "window controllers must leave the key to the foreground dialog"
                 );
             }
+            assert!(!press(
+                &fixture.window,
+                Key::P,
+                ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK,
+            ));
             fixture
                 .window
                 .lookup_action("command-palette")
@@ -451,7 +482,11 @@ fn palette_shortcuts_follow_live_keymap_changes_across_windows() {
             for fixture in [&fixture, &second] {
                 let browser = fixture.content.browser.browser();
                 browser.navigate(Location::local(directory.path()));
-                wait_for(|| browser.column_snapshot(0).is_some_and(|column| !column.loading));
+                wait_for(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
                 browser.select(0, 0);
             }
             for (query, default_hint, tenxer_hint) in [

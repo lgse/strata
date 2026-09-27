@@ -302,6 +302,13 @@ impl Palette {
     }
 
     fn key(&self, key: gdk::Key, modifiers: gdk::ModifierType) -> glib::Propagation {
+        if matches!(key, gdk::Key::p | gdk::Key::P)
+            && modifiers.contains(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::SHIFT_MASK)
+            && !modifiers.intersects(gdk::ModifierType::ALT_MASK | gdk::ModifierType::SUPER_MASK)
+        {
+            self.hide();
+            return glib::Propagation::Stop;
+        }
         match key {
             gdk::Key::Escape => self.hide(),
             gdk::Key::Return | gdk::Key::KP_Enter => {

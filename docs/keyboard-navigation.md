@@ -116,8 +116,8 @@ close the preview. In [10xer mode](10xer-mode.md#preview-keyboard-ownership),
 Press **Ctrl+Shift+P** or use the header's **Command palette** button to find
 commands by name or alias (for example, `mkdir` or `preferences`). Use **Up/Down**
 to choose a command, wrapping between the first and last results, **Enter** to run
-it, and **Escape** to close the palette and restore focus. Unavailable commands
-explain what is needed before they can run.
+it, and **Escape** or **Ctrl+Shift+P** to close the palette and restore focus.
+Unavailable commands explain what is needed before they can run.
 
 The palette remembers which pane and files you selected when you opened it.
 Changing the selection afterwards won't change which files a command uses. If
