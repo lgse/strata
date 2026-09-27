@@ -77,3 +77,30 @@ pub(crate) fn is_toggle_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::Modifi
             .intersects(gtk::gdk::ModifierType::ALT_MASK | gtk::gdk::ModifierType::SUPER_MASK)
         && matches!(key, gtk::gdk::Key::m | gtk::gdk::Key::M)
 }
+
+/// A pending two-key command. While armed, the next key belongs to it alone.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Chord {
+    /// **g** from the listing: first item or a place.
+    Go,
+    /// **g** while a document or archive preview owns the keys: only **g g**.
+    PreviewTop,
+}
+
+impl Chord {
+    pub(crate) fn mark(self) -> &'static str {
+        match self {
+            Self::Go | Self::PreviewTop => "g-",
+        }
+    }
+
+    pub(crate) fn hint(self) -> &'static str {
+        match self {
+            Self::Go => {
+                "g first · h home · d downloads · c config · t trash · n network · r recent · \
+                 k documents · p pictures · v videos · 1–9 pins"
+            }
+            Self::PreviewTop => "g top",
+        }
+    }
+}

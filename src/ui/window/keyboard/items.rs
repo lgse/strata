@@ -15,6 +15,7 @@ use crate::{
     ui::{
         browser_modes::BrowserMode,
         preview::preview_target,
+        tenxer_mode::Chord,
         window::{
             SinglePaneArrow, home_directory, jump_direction, page_direction,
             sidebar_focus_direction, single_pane_arrow_action,
@@ -293,6 +294,7 @@ impl Dispatcher {
             }
             Key::space if !search => self.toggle_tenxer_cursor(),
             Key::v if !search => self.toggle_visual(VisualKind::Select),
+            Key::g => self.shortcuts.arm_chord(Chord::Go),
             _ => return false,
         }
         true
@@ -492,6 +494,7 @@ impl Dispatcher {
             Key::h | Key::Left | Key::KP_Left | Key::BackSpace => self.go_parent(),
             Key::l | Key::Right | Key::KP_Right => self.enter_preview(browser),
             Key::o | Key::Return | Key::KP_Enter => self.activate_focused(),
+            Key::g => self.shortcuts.arm_chord(Chord::Go),
             Key::i if self.toggle_file_preview(browser) => {}
             Key::i => {
                 if self.view.view_mode() != BrowserMode::Columns {
@@ -561,9 +564,8 @@ fn extend_arrow(key: Key) -> Option<Key> {
     }
 }
 
-/// Modifier presses keep a Shift+arrow run alive across Shift releases.
-pub(super) fn continues_extend(key: Key, modifiers: Modifiers) -> bool {
-    let modifier_key = matches!(
+pub(super) fn is_modifier_key(key: Key) -> bool {
+    matches!(
         key,
         Key::Shift_L
             | Key::Shift_R
@@ -577,8 +579,12 @@ pub(super) fn continues_extend(key: Key, modifiers: Modifiers) -> bool {
             | Key::Meta_R
             | Key::ISO_Level3_Shift
             | Key::Caps_Lock
-    );
-    modifier_key
+    )
+}
+
+/// Modifier presses keep a Shift+arrow run alive across Shift releases.
+pub(super) fn continues_extend(key: Key, modifiers: Modifiers) -> bool {
+    is_modifier_key(key)
         || (super::command_modifiers(modifiers) == Modifiers::SHIFT_MASK
             && extend_arrow(key).is_some())
 }

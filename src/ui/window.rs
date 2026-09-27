@@ -1074,6 +1074,9 @@ pub(super) struct SidebarState {
     pub(in crate::ui) rail: Cell<bool>,
     pub(in crate::ui) saved_width: Cell<Option<i32>>,
     update_label: gtk::Label,
+    keycaps: RefCell<Vec<gtk::Label>>,
+    keycaps_shown: Cell<bool>,
+    visible_pins: RefCell<Vec<Location>>,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -1230,6 +1233,8 @@ impl SidebarState {
             self.widget.remove(&child);
         }
         self.place_rows.borrow_mut().clear();
+        self.keycaps.borrow_mut().clear();
+        self.visible_pins.borrow_mut().clear();
 
         self.append_static_places();
         self.append_devices();
@@ -1324,6 +1329,7 @@ impl SidebarState {
                 row.set_tooltip_text(Some(&location.display_path()));
             }
         }
+        self.sync_keycaps();
     }
 }
 
@@ -1336,6 +1342,9 @@ fn sync_sidebar_button(button: &gtk::Button, rail: bool) {
         while let Some(widget) = child {
             child = widget.next_sibling();
             if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+                if label.has_css_class("sidebar-keycap") {
+                    continue;
+                }
                 if rail {
                     button.set_tooltip_text(Some(label.label().as_str()));
                 }
@@ -1431,6 +1440,7 @@ impl SidebarState {
                 }
                 let location = Location::local(home_directory());
                 let row = self.append_place(crate::assets::icons::HOME, "Home", location.clone());
+                self.add_keycap(&row, "h");
                 if !self.local_only {
                     self.attach_place_context_menu(&row, location, |state| {
                         state.preference_manager.set_sidebar_show_home(false);
@@ -1450,6 +1460,7 @@ impl SidebarState {
                 let location = Location::uri("network:///");
                 let row =
                     self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
+                self.add_keycap(&row, "n");
                 self.attach_place_context_menu(&row, location, |state| {
                     state.preference_manager.set_sidebar_show_network(false);
                 });
@@ -1479,10 +1490,13 @@ impl SidebarState {
             && let Some(path) = glib::user_special_dir(directory)
                 .filter(|path| should_show_standard_place(place, path, &home_directory()))
         {
-            if self.local_only {
-                self.append_place(icon, name, Location::local(path));
+            let row = if self.local_only {
+                self.append_place(icon, name, Location::local(path))
             } else {
-                self.append_reorderable_place(place, icon, name, Location::local(path));
+                self.append_reorderable_place(place, icon, name, Location::local(path))
+            };
+            if let Some(key) = standard_place_chord_key(place) {
+                self.add_keycap(&row, key);
             }
         }
     }
@@ -1502,12 +1516,17 @@ impl SidebarState {
                 self.append_separator();
             }
             self.append_heading("PINNED");
-            for (index, location, name) in pinned {
-                if self.local_only {
+            for (ordinal, (index, location, name)) in pinned.into_iter().enumerate() {
+                self.visible_pins.borrow_mut().push(location.clone());
+                let row = if self.local_only {
                     let row = self.append_place(crate::assets::icons::FOLDER, &name, location);
                     row.add_css_class("sidebar-pinned-row");
+                    row
                 } else {
-                    self.append_pinned_place(index, &name, location);
+                    self.append_pinned_place(index, &name, location)
+                };
+                if let Some(key) = PIN_CHORD_KEYS.get(ordinal) {
+                    self.add_keycap(&row, key);
                 }
             }
         }
@@ -1786,6 +1805,7 @@ impl SidebarState {
         let location = Location::uri("recent:///");
         let row = sidebar_button(crate::assets::icons::CLOCK, "Recent");
         row.set_tooltip_text(Some("recent:///"));
+        self.add_keycap(&row, "r");
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
         self.make_place_reorderable(&row, "recent");
         self.widget.append(&row);
@@ -1795,6 +1815,7 @@ impl SidebarState {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, "Trash");
         row.set_tooltip_text(Some("trash:///"));
+        self.add_keycap(&row, "t");
         self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         let menu = super::accessibility::menu_box();
@@ -1931,7 +1952,7 @@ impl SidebarState {
         icon: &str,
         name: &str,
         location: Location,
-    ) {
+    ) -> gtk::Button {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
         self.bind_place_row(&row, location.clone(), PlaceNavigation::Direct);
@@ -1949,6 +1970,7 @@ impl SidebarState {
 
         self.make_place_reorderable(&row, id);
         self.widget.append(&row);
+        row
     }
 
     fn make_place_reorderable(self: &Rc<Self>, row: &gtk::Button, id: &'static str) {
@@ -2234,7 +2256,12 @@ impl SidebarState {
         row.add_controller(context);
     }
 
-    fn append_pinned_place(self: &Rc<Self>, index: usize, name: &str, location: Location) {
+    fn append_pinned_place(
+        self: &Rc<Self>,
+        index: usize,
+        name: &str,
+        location: Location,
+    ) -> gtk::Button {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
         row.add_css_class("sidebar-pinned-row");
         self.make_pinned_row_reorderable(&row, index);
@@ -2242,6 +2269,36 @@ impl SidebarState {
         self.attach_place_context_menu(&row, location, move |state| {
             state.unpin_location(&unpinned_location);
         });
+        row
+    }
+
+    /// Keycaps name the second key of the **g** place chord while it is armed.
+    fn add_keycap(&self, row: &gtk::Button, key: &str) {
+        let Some(content) = row.child().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        let keycap = gtk::Label::new(Some(key));
+        keycap.add_css_class("sidebar-keycap");
+        keycap.set_visible(self.keycaps_shown.get() && !self.rail.get());
+        content.append(&keycap);
+        self.keycaps.borrow_mut().push(keycap);
+    }
+
+    pub(in crate::ui) fn show_place_keycaps(&self, shown: bool) {
+        self.keycaps_shown.set(shown);
+        self.sync_keycaps();
+    }
+
+    fn sync_keycaps(&self) {
+        let visible = self.keycaps_shown.get() && !self.rail.get();
+        for keycap in self.keycaps.borrow().iter() {
+            keycap.set_visible(visible);
+        }
+    }
+
+    /// Pinned places in sidebar display order, excluding rows the sidebar hides.
+    pub(in crate::ui) fn visible_pins(&self) -> Vec<Location> {
+        self.visible_pins.borrow().clone()
     }
 
     fn attach_place_context_menu(
@@ -3404,6 +3461,18 @@ fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
         order.insert(position, id);
     }
     order
+}
+
+const PIN_CHORD_KEYS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+fn standard_place_chord_key(id: &str) -> Option<&'static str> {
+    match id {
+        "documents" => Some("k"),
+        "downloads" => Some("d"),
+        "pictures" => Some("p"),
+        "videos" => Some("v"),
+        _ => None,
+    }
 }
 
 fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDirectory)> {

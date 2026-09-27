@@ -173,6 +173,9 @@ impl SidebarState {
             rail: Cell::new(false),
             saved_width: Cell::new(None),
             update_label,
+            keycaps: RefCell::new(Vec::new()),
+            keycaps_shown: Cell::new(false),
+            visible_pins: RefCell::new(Vec::new()),
         })
     }
 

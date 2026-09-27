@@ -42,6 +42,7 @@ pub(super) fn install(
         preferences: preferences.clone(),
         notice: notice.clone(),
         guard,
+        shortcuts: content.footer.shortcuts.clone(),
     });
     let clicked_settings = launcher.clone();
     content
@@ -73,6 +74,7 @@ struct SettingsLauncher {
     preferences: Rc<PreferenceManager>,
     notice: UpdateNoticeHandler,
     guard: InstallGuard,
+    shortcuts: crate::ui::shortcut_footer::ShortcutFooter,
 }
 
 impl SettingsLauncher {
@@ -100,6 +102,7 @@ impl SettingsLauncher {
                 return;
             }
         }
+        self.shortcuts.cancel_chord();
         let layer = self.layer();
         self.blurred_root.set_blurred(true);
         layer.set_visible(true);

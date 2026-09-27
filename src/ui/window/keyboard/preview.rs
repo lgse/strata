@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: MIT
 
+//! 10xer preview keyboard ownership. Keys a surface does not use are swallowed
+//! so they can never act on the listing hidden behind the drawer.
+
 use std::rc::Rc;
 
 use gtk::{
@@ -10,7 +13,10 @@ use gtk::{
 use super::{Dispatcher, KeyResult, command_modifiers};
 use crate::{
     app::Browser,
-    ui::preview::{DocumentScroll, PreviewSurface, preview_target},
+    ui::{
+        preview::{DocumentScroll, PreviewSurface, preview_target},
+        tenxer_mode::Chord,
+    },
 };
 
 impl Dispatcher {
@@ -19,11 +25,14 @@ impl Dispatcher {
             .filter(|focused| self.preview.owns_focus(Some(focused)))
     }
 
+    /// Read-only source text inside the drawer takes preview keys, not typing.
     pub(super) fn preview_document_focused(&self) -> bool {
         self.preview_focus()
             .is_some_and(|focused| self.preview.surface(&focused) != PreviewSurface::Text)
     }
 
+    /// Text fields inside the drawer keep typed text and editing shortcuts,
+    /// including characters the footer would otherwise claim.
     pub(super) fn tenxer_preview_text(
         &self,
         browser: &Browser,
@@ -57,6 +66,7 @@ impl Dispatcher {
             return Some(result);
         }
         let mods = command_modifiers(modifiers);
+        // `i` toggled the preview open from the listing; from inside it, it closes.
         if key == Key::i && mods.is_empty() {
             self.close_preview(browser);
             return Some(Propagation::Stop);
@@ -72,6 +82,13 @@ impl Dispatcher {
             if matches!(key, Key::Tab) && mods.is_empty() {
                 return Some(Propagation::Proceed);
             }
+        }
+        if key == Key::g
+            && mods.is_empty()
+            && matches!(surface, PreviewSurface::Document | PreviewSurface::Archive)
+        {
+            self.shortcuts.arm_chord(Chord::PreviewTop);
+            return Some(Propagation::Stop);
         }
         let handled = match surface {
             PreviewSurface::Document => self.preview_document_key(key, mods),
@@ -94,11 +111,14 @@ impl Dispatcher {
             && matches!(key, Key::c | Key::a)
             && surface != PreviewSurface::Media
         {
+            // The focused document widget selects all or copies its own text.
             return Some(Propagation::Proceed);
         }
         Some(Propagation::Stop)
     }
 
+    /// **Esc** closes the drawer; **Shift+Tab** returns keys to the listing
+    /// with the drawer still open. Both work on every preview surface.
     fn leave_or_close_preview(
         &self,
         browser: &Browser,
@@ -213,6 +233,24 @@ impl Dispatcher {
         )
     }
 
+    /// **g g** in an owning document or archive preview.
+    pub(super) fn preview_to_top(&self) -> bool {
+        let Some(focused) = self.preview_focus() else {
+            return false;
+        };
+        match self.preview.surface(&focused) {
+            PreviewSurface::Document => {
+                self.preview.scroll_document(DocumentScroll::Start);
+            }
+            PreviewSurface::Archive => {
+                self.preview.archive_edge(false);
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// **J** / **K** scroll whatever the drawer shows without moving focus.
     pub(super) fn scroll_open_preview(&self, key: Key) {
         if !self.preview.is_open() {
             return;
@@ -221,6 +259,8 @@ impl Dispatcher {
             .scroll_document(DocumentScroll::Line(if key == Key::J { 1 } else { -1 }));
     }
 
+    /// **i** on a file opens or closes the preview and leaves focus in the
+    /// listing. Directories keep their Miller column or folder peek.
     pub(super) fn toggle_file_preview(&self, browser: &Rc<Browser>) -> bool {
         let entry = if self.view.selected_search_results().is_some() {
             self.view.selected_search_result()
@@ -241,6 +281,8 @@ impl Dispatcher {
         true
     }
 
+    /// List and Columns **l** / **→** on a file: open the drawer if needed and
+    /// hand it the keys. Never launches the file.
     pub(super) fn enter_preview(&self, browser: &Rc<Browser>) {
         self.view.keyboard_navigation();
         let search = self.view.selected_search_results().is_some();
@@ -266,6 +308,7 @@ impl Dispatcher {
     }
 }
 
+/// Window-level commands that neither read nor change the listing.
 fn passes_through_preview(key: Key, mods: Modifiers) -> bool {
     let plain = mods.is_empty();
     let control = mods == Modifiers::CONTROL_MASK;

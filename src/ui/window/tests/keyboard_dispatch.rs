@@ -12,6 +12,7 @@ use super::super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
+mod place_chords;
 mod preview_ownership;
 
 use crate::ui::{
@@ -1330,7 +1331,9 @@ fn hidden_shortcut_button_keeps_prompt_chord_and_feedback_usable() {
             assert!(!button.is_visible());
             assert!(fixture.shortcuts.tag_visible());
             fixture.shortcuts.show_prompt();
-            fixture.shortcuts.arm_chord("g-");
+            fixture
+                .shortcuts
+                .arm_chord(crate::ui::tenxer_mode::Chord::Go);
             fixture.shortcuts.show_feedback("Copied");
             assert!(gtk::prelude::WidgetExt::is_visible(
                 fixture.shortcuts.prompt()

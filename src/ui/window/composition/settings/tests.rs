@@ -21,6 +21,9 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
                 preferences: PreferenceManager::shared(),
                 notice: Rc::new(|_| {}),
                 guard: settings::install_guard(),
+                shortcuts: crate::ui::shortcut_footer::ShortcutFooter::new(
+                    crate::ui::browser_modes::BrowserMode::Columns,
+                ),
             };
             let action = crate::ui::modal::modal_layer(
                 &gtk::Button::with_label("Action"),
@@ -39,7 +42,11 @@ fn settings_launcher_refuses_to_open_over_another_modal() {
             assert_eq!(gtk::prelude::RootExt::focus(&window), focus);
 
             overlay.remove_overlay(&action);
+            launcher
+                .shortcuts
+                .arm_chord(crate::ui::tenxer_mode::Chord::Go);
             launcher.show();
+            assert_eq!(launcher.shortcuts.armed_chord(), None);
             let settings = launcher.layer.borrow().clone().expect("Settings layer");
             assert!(settings.is_visible());
             assert!(launcher.button.has_css_class("active"));
