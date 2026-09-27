@@ -445,7 +445,18 @@ fn palette_shortcuts_follow_live_keymap_changes_across_windows() {
         || {
             let fixture = Fixture::new();
             let second = Fixture::new();
+            let directory = tempfile::tempdir().expect("fixture directory");
+            std::fs::create_dir(directory.path().join("pinnable")).expect("pinnable folder");
+            fixture.preferences.set_type_to_search(false);
+            for fixture in [&fixture, &second] {
+                let browser = fixture.content.browser.browser();
+                browser.navigate(Location::local(directory.path()));
+                wait_for(|| browser.column_snapshot(0).is_some_and(|column| !column.loading));
+                browser.select(0, 0);
+            }
             for (query, default_hint, tenxer_hint) in [
+                ("copy selected paths", "Y", ""),
+                ("pin folder", "P", ""),
                 ("rename selected item", "F2 / Ctrl+R", "F2"),
                 ("duplicate selected items", "Ctrl+D", ""),
                 ("show sidebar", "Ctrl+B", ""),
@@ -454,6 +465,10 @@ fn palette_shortcuts_follow_live_keymap_changes_across_windows() {
                 ("jump to a recent folder", "Ctrl+Shift+K", ""),
                 ("show keyboard shortcuts", "F1", "F1 / ~"),
             ] {
+                for fixture in [&fixture, &second] {
+                    fixture.content.browser.browser().focus_active();
+                    wait_for(|| fixture.content.browser.item_view_has_focus());
+                }
                 let layer = search(&fixture, query);
                 let other = search(&second, query);
                 for enabled in [true, false] {
@@ -479,9 +494,31 @@ fn palette_shortcuts_follow_live_keymap_changes_across_windows() {
                         );
                     }
                 }
+                if matches!(query, "copy selected paths" | "pin folder") {
+                    for enabled in [true, false] {
+                        fixture.preferences.set_type_to_search(enabled);
+                        for layer in [&layer, &other] {
+                            assert_eq!(has_label(layer, default_hint), !enabled);
+                        }
+                    }
+                }
                 press(&layer, Key::Escape, ModifierType::empty());
                 press(&other, Key::Escape, ModifierType::empty());
             }
+            fixture.content.browser.browser().focus_active();
+            wait_for(|| fixture.content.browser.item_view_has_focus());
+            let layer = search(&fixture, "pin folder");
+            assert!(has_label(&layer, "P"));
+            press(&layer, Key::Return, ModifierType::empty());
+            let layer = search(&fixture, "pin folder");
+            assert!(has_label(&layer, "Unpin folder"));
+            assert!(!has_label(&layer, "P"));
+            press(&layer, Key::Return, ModifierType::empty());
+            fixture.content.browser.begin_location_edit();
+            let layer = search(&fixture, "copy selected paths");
+            assert!(!has_label(&layer, "Y"));
+            press(&layer, Key::Escape, ModifierType::empty());
+            fixture.content.browser.cancel_location_edit();
             fixture.close();
             second.close();
         },

@@ -106,7 +106,7 @@ pub(super) fn install(
     let weak = Rc::downgrade(&palette);
     preferences.bind_preference(
         &palette.layer,
-        PreferenceManager::tenxer_mode,
+        |manager| (manager.tenxer_mode(), manager.type_to_search_active()),
         move |_, _| {
             if let Some(palette) = weak.upgrade() {
                 palette.refresh();

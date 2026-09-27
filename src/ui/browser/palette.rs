@@ -18,6 +18,13 @@ pub(in crate::ui) struct PaletteTarget {
     location: Option<Location>,
     entries: Vec<FileEntry>,
     search_results: bool,
+    item_shortcuts: bool,
+}
+
+impl PaletteTarget {
+    pub(in crate::ui) fn accepts_item_shortcuts(&self) -> bool {
+        self.item_shortcuts
+    }
 }
 
 impl BrowserView {
@@ -35,6 +42,7 @@ impl BrowserView {
             depth,
             location: depth.and_then(|depth| self.state.browser.location_at(depth)),
             search_results: search_entries.is_some(),
+            item_shortcuts: self.item_view_has_focus() && search_entries.is_none(),
             entries: search_entries.unwrap_or_else(|| self.state.browser.selected_entries()),
         }
     }

@@ -132,6 +132,8 @@ If a command can't run, the palette stays open.
 Shortcut hints follow the active keymap, even if you change it in another window
 while the palette is open. Commands without a shortcut in 10xer mode show no hint.
 Pane filtering isn't available in 10xer mode.
+Copy Paths and Pin show their letter shortcuts only when you opened the palette
+from the ordinary file list with type-to-search off. Unpin has no shortcut.
 If you've started a 10xer key sequence, Ctrl+Shift+P cancels it and opens the palette.
 
 The palette closes before opening another dialog or a rename field. Finish any

@@ -111,6 +111,7 @@ def test_palette_rename_targets_filtered_selection(strata, mode):
     assert strata.fixture.path("readme.md").read_text() == "# Fixture\n"
 
 
+@pytest.mark.preferences(type_to_search=False)
 def test_palette_creates_pins_duplicates_and_undoes(strata):
     run_command(strata, "mkdir")
     strata.wait(
@@ -122,12 +123,19 @@ def test_palette_creates_pins_duplicates_and_undoes(strata):
     strata.keyboard.press("Return")
     strata.wait(lambda: strata.fixture.path("palette-folder").is_dir(), "new folder")
     strata.wait_for_selection(["palette-folder"], directory=strata.fixture.root.name)
-    run_command(strata, "pin folder")
+    open_palette(strata, "pin folder")
+    pin = strata.window.find(role="list item", name="Pin folder")
+    assert pin.find(role="label", name="P") is not None
+    strata.keyboard.press("Escape")
+    strata.keyboard.press("p")
     strata.wait(
         lambda: strata.window.find(role="button", name="palette-folder"),
         "pinned folder in sidebar",
     )
-    run_command(strata, "unpin folder")
+    open_palette(strata, "unpin folder")
+    unpin = strata.window.find(role="list item", name="Unpin folder")
+    assert unpin.find(role="label", name="P") is None
+    strata.keyboard.press("Return")
     strata.wait(
         lambda: strata.window.find(role="button", name="palette-folder") is None,
         "folder unpinned",

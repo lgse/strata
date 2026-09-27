@@ -55,7 +55,7 @@ impl Commands {
             label: spec.label,
             reason: None,
             current: false,
-            shortcut: self.shortcut(spec),
+            shortcut: self.shortcut(spec, target),
         };
         match spec.command {
             Command::Hidden if self.preferences.sort_preferences().show_hidden => {
@@ -69,6 +69,7 @@ impl Commands {
                     && self.browser.palette_pin_status(target) == PinStatus::Pinned
                 {
                     state.label = "Unpin folder";
+                    state.shortcut = "";
                 }
             }
             Command::Terminal => {
@@ -90,9 +91,16 @@ impl Commands {
         state
     }
 
-    fn shortcut(&self, spec: &CommandSpec) -> &'static str {
+    fn shortcut(&self, spec: &CommandSpec, target: &PaletteTarget) -> &'static str {
         let tenxer = self.preferences.tenxer_mode();
         match spec.command {
+            Command::File(FileCommand::CopyPaths | FileCommand::Pin)
+                if self.preferences.type_to_search_active() || !target.accepts_item_shortcuts() =>
+            {
+                ""
+            }
+            Command::File(FileCommand::CopyPaths) => context_hint_for(ContextHint::CopyPaths, tenxer),
+            Command::File(FileCommand::Pin) => context_hint_for(ContextHint::Pin, tenxer),
             Command::File(FileCommand::Rename) => context_hint_for(ContextHint::Rename, tenxer),
             Command::File(FileCommand::Duplicate) => {
                 context_hint_for(ContextHint::Duplicate, tenxer)
