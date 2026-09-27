@@ -172,6 +172,7 @@ pub struct ThemeManager {
     previewing: Cell<bool>,
     appearance: RefCell<AppearancePreferences>,
     theme_listeners: ThemeListeners,
+    active_model_palette: Cell<crate::services::ModelPalette>,
 }
 
 impl ThemeManager {
@@ -210,6 +211,10 @@ impl ThemeManager {
             previewing: Cell::new(false),
             appearance: RefCell::new(appearance),
             theme_listeners: ThemeListeners::default(),
+            active_model_palette: Cell::new(crate::services::ModelPalette {
+                accent: 0,
+                surface: 0,
+            }),
         });
         let weak = Rc::downgrade(&manager);
         preferences.observe(Rc::new(move || {
@@ -238,6 +243,10 @@ impl ThemeManager {
 
     pub fn selected_id(&self) -> String {
         self.preferences.selected_theme_id()
+    }
+
+    pub(crate) fn active_model_palette(&self) -> crate::services::ModelPalette {
+        self.active_model_palette.get()
     }
 
     /// Applies the current value immediately, then only changes to that value.
@@ -376,6 +385,16 @@ impl ThemeManager {
     }
 
     fn apply_tokens(&self, tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
+        let color = |value: &str| {
+            let rgba = gdk::RGBA::parse(value).unwrap_or(gdk::RGBA::BLACK);
+            let channel = |value: f32| (value * 255.).round() as u32;
+            (channel(rgba.red()) << 16) | (channel(rgba.green()) << 8) | channel(rgba.blue())
+        };
+        self.active_model_palette
+            .set(crate::services::ModelPalette {
+                accent: color(&tokens.accent),
+                surface: color(&tokens.surface),
+            });
         super::document_media::apply_theme(tokens);
         let root_font_px = snapped_root_font_px(
             self.preferences.text_size().root_font_px(),
@@ -399,6 +418,7 @@ impl ThemeManager {
         stage_source_style_scheme(tokens, source_palette);
         style_document_buffers(tokens);
         style_document_views(tokens);
+        self.theme_listeners.notify(self);
     }
 
     fn on_preferences_changed(&self) {

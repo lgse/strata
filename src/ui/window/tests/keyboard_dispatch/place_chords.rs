@@ -288,7 +288,9 @@ fn assert_place_key_does_not_jump(
     fixture: &KeyboardFixture,
     origin: &Option<crate::model::Location>,
 ) {
-    focus_files(fixture);
+    if !shortcut_reference_visible(fixture) {
+        focus_files(fixture);
+    }
     fixture.press(Key::d, ModifierType::empty());
     pump(50);
     assert_eq!(fixture.view.browser().active_location(), *origin);
@@ -353,6 +355,7 @@ fn armed_chord_yields_to_earlier_capture_handlers() {
                 .shortcuts
                 .arm_chord(crate::ui::tenxer_mode::Chord::Go);
             fixture.shortcuts.dismiss_feedback();
+            assert!(fixture.press(Key::l, ModifierType::CONTROL_MASK));
             assert!(fixture.press(Key::Delete, ModifierType::empty()));
             assert_eq!(
                 fixture.shortcuts.armed_chord(),
