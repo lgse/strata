@@ -301,6 +301,28 @@ fn palette_rejects_replaced_panes_and_rechecks_live_mode_restrictions() {
             );
             press(&layer, Key::Escape, ModifierType::empty());
 
+            for (uri, reason) in [
+                ("trash:///", "Folders can't be created in Trash"),
+                ("recent:///", "Open a folder outside Recent to create a folder"),
+            ] {
+                let location = Location::uri(uri);
+                view.browser().navigate(location.clone());
+                let layer = search(&fixture, "mkdir");
+                assert!(has_label(&layer, reason));
+                assert!(!has_label(&layer, "Open a folder first"));
+                press(&layer, Key::Return, ModifierType::empty());
+                assert!(layer.is_visible());
+                assert!(!view.new_entry_is_active());
+                assert_eq!(view.browser().active_location(), Some(location));
+                press(&layer, Key::Escape, ModifierType::empty());
+            }
+            view.browser().navigate(Location::local(second.path()));
+            wait_for(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+
             fixture.preferences.set_tenxer_mode(true);
             let layer = search(&fixture, "filter current pane");
             press(&layer, Key::Return, ModifierType::empty());

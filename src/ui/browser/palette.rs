@@ -110,10 +110,15 @@ impl BrowserView {
         }
         let entries = &target.entries;
         match command {
-            FileCommand::NewFolder => (!target.location.as_ref().is_some_and(|location| {
-                !is_trash_location(location) && !location.is_recent_location()
-            }))
-            .then_some("Open a folder first"),
+            FileCommand::NewFolder => match target.location.as_ref() {
+                Some(location) if is_trash_location(location) => {
+                    Some("Folders can't be created in Trash")
+                }
+                Some(location) if location.is_recent_location() => {
+                    Some("Open a folder outside Recent to create a folder")
+                }
+                _ => None,
+            },
             FileCommand::Undo => (!self.state.browser.can_undo()).then_some("Nothing to undo"),
             FileCommand::CopyPaths => entries.is_empty().then_some("Select an item first"),
             FileCommand::Duplicate => {
