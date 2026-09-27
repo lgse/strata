@@ -26,6 +26,7 @@ fn prepared_selection_rejects_changed_targets() {
     let selection = OpenWithSelection {
         locations: vec![location.clone()],
         files: vec![gio_file_for_location(&location)],
+        content_types: vec!["text/plain".to_string()],
         recommended_apps: vec![],
         other_apps: vec![],
         default: None,
