@@ -94,6 +94,9 @@ impl BrowserView {
             let saved = self.state.listing_search.saved_filter(&target);
             target.apply(&saved, false);
         } else if self.supports_listing_search(&target) {
+            // The hidden directory's range would otherwise keep the footer
+            // mark and the first Esc. Its fill stays, and the prompt keeps focus.
+            self.state.browser.take_visual();
             self.clear_other_column_filters(&target);
             target.apply(query, true);
         }

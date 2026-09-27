@@ -4,7 +4,8 @@
 //! own selection, apart from the hidden directory's, so a fill made with
 //! **Space** or **v** / **V** is the results' selection. Motion over a fill
 //! moves only the keyboard cursor. A selection changed any other way, such as
-//! by the pointer or a new query, ends the fill and its range.
+//! by the pointer or a new query, ends the fill and its range; the next fill
+//! starts from that selection unless it is only the cursor.
 
 use std::cell::RefCell;
 
@@ -35,10 +36,16 @@ pub(super) struct ResultSelection {
     fill: RefCell<Option<Fill>>,
 }
 
-fn same(left: &gtk::Bitset, right: &gtk::Bitset) -> bool {
-    let difference = left.copy();
-    difference.difference(right);
-    difference.is_empty()
+/// The selection a new fill starts from. Outside a fill the cursor alone is
+/// selected without being part of any fill.
+fn adopted(hits: &Hits) -> gtk::Bitset {
+    let selected = hits.selection.selection();
+    let cursor_only = selected.size() == 1 && hits.cursor.is_some_and(|at| selected.contains(at));
+    if cursor_only {
+        gtk::Bitset::new_empty()
+    } else {
+        selected
+    }
 }
 
 fn focus_hit(hits: &Hits, position: u32) {
@@ -77,7 +84,7 @@ impl ViewState {
         let target = self.filter_target()?;
         let hits = target.hits()?;
         let live = fill.owner.upgrade().as_ref() == Some(target.entry())
-            && same(&fill.written, &hits.selection.selection());
+            && fill.written.equals(&hits.selection.selection());
         live.then_some((target, hits, fill))
     }
 
@@ -156,20 +163,17 @@ impl BrowserView {
             return Some(false);
         }
         let cursor = hits.cursor.unwrap_or(0).min(count - 1);
-        let (live, mut fill) = match self.state.take_result_fill() {
-            Some((_, _, fill)) => (true, fill),
-            None => (
-                false,
-                Fill {
-                    owner: self.filter_target()?.entry().downgrade(),
-                    written: gtk::Bitset::new_empty(),
-                    range: None,
-                },
-            ),
+        let mut fill = match self.state.take_result_fill() {
+            Some((_, _, fill)) => fill,
+            None => Fill {
+                owner: self.filter_target()?.entry().downgrade(),
+                written: adopted(&hits),
+                range: None,
+            },
         };
         let toggled = |selected: &gtk::Bitset| {
             let selected = selected.copy();
-            if live && selected.contains(cursor) {
+            if selected.contains(cursor) {
                 selected.remove(cursor);
             } else {
                 selected.add(cursor);
@@ -215,8 +219,7 @@ impl BrowserView {
                 }
                 fill.written
             }
-            // A cursor-only selection is not part of the fill.
-            None => gtk::Bitset::new_empty(),
+            None => adopted(&hits),
         };
         let mut fill = Fill {
             owner: target.entry().downgrade(),
