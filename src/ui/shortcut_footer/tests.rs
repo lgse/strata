@@ -272,8 +272,10 @@ fn tenxer_reference_follows_the_active_map() {
             let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
             root.append(&entry);
             root.append(footer.widget());
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
             let window = gtk::Window::builder()
-                .child(&root)
+                .child(&overlay)
                 .default_width(640)
                 .default_height(480)
                 .build();
@@ -361,6 +363,15 @@ fn tenxer_reference_follows_the_active_map() {
             settle();
             assert!(footer.popover.is_visible());
             assert!(
+                overlay
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .any(|child| child
+                        .downcast_ref::<gtk::Widget>()
+                        .is_some_and(|widget| widget.has_css_class("search-backdrop")))
+            );
+            assert!(
                 gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
                     focus == *footer.search.upcast_ref::<gtk::Widget>()
                         || focus.is_ancestor(&footer.search)
@@ -396,6 +407,15 @@ fn tenxer_reference_follows_the_active_map() {
             assert!(
                 !footer.popover.is_visible(),
                 "F1 from the open reference closes it"
+            );
+            assert!(
+                !overlay
+                    .observe_children()
+                    .into_iter()
+                    .flatten()
+                    .any(|child| child
+                        .downcast_ref::<gtk::Widget>()
+                        .is_some_and(|widget| widget.has_css_class("search-backdrop")))
             );
             assert!(gtk::prelude::RootExt::focus(&window).is_some_and(|focus| {
                 focus == *entry.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&entry)

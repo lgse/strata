@@ -3045,10 +3045,10 @@ entry.preview-command-entry selection {
 .shortcut-popover > contents {
   background: @theme_surface;
   color: @theme_text;
-  border: 1px solid @theme_border;
-  border-radius: 12px;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
   padding: 0;
-  box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
+  box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
 }
 
 .shortcut-reference-header,
@@ -3101,6 +3101,11 @@ entry.preview-command-entry selection {
 
 .shortcut-reference-search {
   min-width: 150px;
+}
+
+.shortcut-reference-results separator {
+  background: alpha(@theme_accent, 0.4);
+  min-height: 1px;
 }
 
 .shortcut-reference-results {

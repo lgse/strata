@@ -25,13 +25,12 @@ pub(super) struct ShortcutFooter {
     reference: gtk::Box,
     categories: gtk::Box,
     reference_count: gtk::Label,
-    search: gtk::SearchEntry,
+    search: gtk::Entry,
     selected_category: Rc<RefCell<String>>,
     scroll: gtk::ScrolledWindow,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
     tag: gtk::Label,
-    experimental: gtk::Label,
     feedback: gtk::Label,
     feedback_epoch: Rc<Cell<u64>>,
     prompt: gtk::Entry,
@@ -141,11 +140,11 @@ impl ShortcutFooter {
         header.add_css_class("shortcut-reference-header");
         let title = gtk::Label::new(Some("Keyboard shortcuts"));
         title.add_css_class("shortcut-reference-title");
+        title.set_hexpand(true);
+        title.set_xalign(0.0);
         header.append(&title);
-        let dismiss_note = gtk::Label::new(Some("F1 to close"));
-        dismiss_note.add_css_class("shortcut-reference-note");
-        header.append(&dismiss_note);
-        let search = gtk::SearchEntry::new();
+        let search = gtk::Entry::new();
+        search.add_css_class("form-control");
         search.set_placeholder_text(Some("Search actions or keys…"));
         search.set_hexpand(true);
         search.add_css_class("shortcut-reference-search");
@@ -163,8 +162,7 @@ impl ShortcutFooter {
             .child(&reference)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
-            .propagate_natural_height(true)
-            .max_content_height(620)
+            .height_request(440)
             .focusable(true)
             .build();
         scroll.add_css_class("shortcut-reference-scroll");
@@ -182,18 +180,13 @@ impl ShortcutFooter {
         note.set_hexpand(true);
         note.set_xalign(0.0);
         footer_note.append(&note);
-        let experimental = gtk::Label::new(None);
-        experimental.add_css_class("shortcut-reference-note");
-        experimental.add_css_class("tenxer-experimental");
-        experimental.set_visible(false);
-        footer_note.append(&experimental);
         content.append(&footer_note);
         popover.set_child(Some(&content));
         let search_reference = reference.downgrade();
         let view_mode = Rc::new(Cell::new(mode));
         let search_mode = view_mode.clone();
         let search_category = selected_category.clone();
-        search.connect_search_changed(move |entry| {
+        search.connect_changed(move |entry| {
             if let Some(reference) = search_reference.upgrade() {
                 render_reference(
                     &reference,
@@ -206,14 +199,49 @@ impl ShortcutFooter {
         let weak_scroll = scroll.downgrade();
         let weak_popover = popover.downgrade();
         let weak_search = search.downgrade();
+        let weak_more_for_position = more.downgrade();
+        let backdrop = Rc::new(RefCell::new(None::<(gtk::Overlay, gtk::Box)>));
+        let open_backdrop = backdrop.clone();
         popover.connect_show(move |popover| {
             let Some(scroll) = weak_scroll.upgrade() else {
                 return;
             };
             if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
+                if let Some(overlay) = window.child().and_downcast::<gtk::Overlay>() {
+                    if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
+                        root.set_blurred(true);
+                    }
+                    let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                    layer.add_css_class("search-backdrop");
+                    layer.set_halign(gtk::Align::Fill);
+                    layer.set_valign(gtk::Align::Fill);
+                    layer.set_hexpand(true);
+                    layer.set_vexpand(true);
+                    overlay.add_overlay(&layer);
+                    *open_backdrop.borrow_mut() = Some((overlay, layer));
+                }
                 scroll.vadjustment().set_value(scroll.vadjustment().lower());
-                scroll.set_max_content_height((window.height() - 160).clamp(140, 620));
+                scroll.set_height_request((window.height() - 160).clamp(140, 620));
                 scroll.set_width_request((window.width() - 260).clamp(200, 1200));
+                if let Some(more) = weak_more_for_position.upgrade() {
+                    let panel_height = popover
+                        .child()
+                        .map(|child| child.measure(gtk::Orientation::Vertical, -1).1)
+                        .unwrap_or(0)
+                        .min(window.height() - 40);
+                    let anchor = gtk::graphene::Point::new(
+                        window.width() as f32 / 2.0,
+                        (window.height() + panel_height) as f32 / 2.0,
+                    );
+                    if let Some(point) = window.compute_point(&more, &anchor) {
+                        popover.set_pointing_to(Some(&gdk::Rectangle::new(
+                            point.x().round() as i32,
+                            point.y().round() as i32,
+                            1,
+                            1,
+                        )));
+                    }
+                }
             }
             let search = weak_search.clone();
             let popover = weak_popover.clone();
@@ -232,11 +260,18 @@ impl ShortcutFooter {
         let focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>> =
             Rc::new(RefCell::new(None));
         let restored_focus = focus_before.clone();
+        let close_backdrop = backdrop;
         let weak_more = more.downgrade();
         let closed_hints = show_hints.clone();
         let closed_pending = pending_popup.clone();
         let weak_popover = popover.downgrade();
         popover.connect_closed(move |_| {
+            if let Some((overlay, layer)) = close_backdrop.borrow_mut().take() {
+                overlay.remove_overlay(&layer);
+                if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
+                    root.set_blurred(false);
+                }
+            }
             let restored_focus = restored_focus.clone();
             let closed_pending = closed_pending.clone();
             let weak_more = weak_more.clone();
@@ -302,7 +337,6 @@ impl ShortcutFooter {
             focus_before,
             status_widgets,
             tag,
-            experimental,
             feedback,
             feedback_epoch: Rc::new(Cell::new(0)),
             prompt,
@@ -336,7 +370,6 @@ impl ShortcutFooter {
 
     pub fn bind_preferences(&self, manager: &super::preferences::PreferenceManager) {
         let tag = self.tag.downgrade();
-        let experimental = self.experimental.downgrade();
         let reference = self.reference.downgrade();
         let categories = self.categories.downgrade();
         let reference_count = self.reference_count.downgrade();
@@ -355,14 +388,11 @@ impl ShortcutFooter {
                 let Some(tag) = tag.upgrade() else {
                     return;
                 };
-                let Some(experimental) = experimental.upgrade() else {
-                    return;
-                };
                 let Some(reference) = reference.upgrade() else {
                     return;
                 };
                 let starting = !primed.replace(true);
-                apply_experimental_label(&tag, &experimental, enabled);
+                apply_experimental_label(&tag, enabled);
                 if !starting
                     && !enabled
                     && let Some(feedback) = feedback.upgrade()
@@ -739,7 +769,7 @@ impl ShortcutFooter {
 fn rebuild_reference(
     reference: &gtk::Box,
     categories: &gtk::Box,
-    search: &gtk::SearchEntry,
+    search: &gtk::Entry,
     scroll: &gtk::ScrolledWindow,
     count_label: &gtk::Label,
     selected: &Rc<RefCell<String>>,
@@ -840,14 +870,11 @@ fn render_reference(reference: &gtk::Box, mode: BrowserMode, selected: &str, que
     }
 }
 
-/// The footer shows only the pill; the experimental note lives in its tooltip,
-/// accessible description, and the shortcut reference.
-fn apply_experimental_label(tag: &gtk::Label, reference_note: &gtk::Label, enabled: bool) {
+/// Keep the experimental caveat in the pill's tooltip and accessible description.
+fn apply_experimental_label(tag: &gtk::Label, enabled: bool) {
     tag.set_text(crate::ui::tenxer_mode::TAG_TEXT);
     tag.set_visible(enabled);
     let phrase = super::shortcut_reference::EXPERIMENTAL_LABEL;
-    reference_note.set_text(if enabled { phrase } else { "" });
-    reference_note.set_visible(enabled);
     let announced = if enabled {
         format!("{} {phrase}", crate::ui::tenxer_mode::TAG_NAME)
     } else {
