@@ -3069,14 +3069,23 @@ entry.preview-command-entry selection {
   font-weight: 600;
 }
 
-.shortcut-reference-body {
-  min-height: 240px;
+.shortcut-reference-sidebar {
+  min-width: 225px;
+  border-right: 1px solid @theme_border;
 }
 
 .shortcut-reference-categories {
-  min-width: 225px;
   padding: 12px 0;
-  border-right: 1px solid @theme_border;
+}
+
+.shortcut-reference-body.compact .shortcut-reference-sidebar {
+  min-width: 0;
+  border-right: 0;
+  border-bottom: 1px solid @theme_border;
+}
+
+.shortcut-reference-body.compact .shortcut-reference-results {
+  padding: 12px 16px;
 }
 
 .shortcut-reference-category {
