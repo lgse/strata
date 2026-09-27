@@ -118,6 +118,12 @@ pub(super) fn start(
                     suffix += 1;
                     continue;
                 }
+                Err(error) if error.matches(gio::IOErrorEnum::Exists) => {
+                    emit(OperationEvent::Failed {
+                        request_id: id,
+                        message: format!("\u{201c}{candidate}\u{201d} already exists"),
+                    });
+                }
                 Err(error) if was_cancelled(&error) => {
                     emit(cancelled_event(
                         id,

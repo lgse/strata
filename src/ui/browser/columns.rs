@@ -563,8 +563,8 @@ pub(super) fn set_active_path_style(row: &gtk::Box, active: bool, immediate: boo
     }
 }
 
-pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
-    if cut {
+pub(super) fn set_mark_path_style(row: &gtk::Box, mark: super::clipboard::ClipboardMark) {
+    if mark == super::clipboard::ClipboardMark::Cut {
         row.add_css_class("cut");
     } else {
         row.remove_css_class("cut");
@@ -573,7 +573,7 @@ pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
         .first_child()
         .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
     {
-        icon.set_cut(cut);
+        icon.set_mark(mark);
     }
 }
 

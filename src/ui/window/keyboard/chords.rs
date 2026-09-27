@@ -132,6 +132,7 @@ impl Dispatcher {
             && match chord {
                 Chord::Go => self.complete_go(browser, key),
                 Chord::PreviewTop => key == Key::g && self.preview_to_top(),
+                Chord::Copy => self.complete_copy(key),
             };
         if !completed {
             self.shortcuts.show_feedback("Unknown chord");

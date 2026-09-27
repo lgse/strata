@@ -416,27 +416,45 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
     Binding {
         category: "Files",
-        action: "Cut",
-        note: "",
-        keys: "Ctrl + X",
+        action: "Yank / cut",
+        note: "The selection, or the focused item",
+        keys: "y / x / Ctrl + C / Ctrl + X",
     },
     Binding {
         category: "Files",
-        action: "Copy",
+        action: "Clear copy and cut marks",
         note: "",
-        keys: "Ctrl + C",
+        keys: "Y / X",
     },
     Binding {
         category: "Files",
-        action: "Paste",
+        action: "Paste, focusing Keep Both on conflicts",
         note: "",
-        keys: "Ctrl + V",
+        keys: "p",
+    },
+    Binding {
+        category: "Files",
+        action: "Paste, focusing Replace on conflicts",
+        note: "",
+        keys: "P / Ctrl + V",
+    },
+    Binding {
+        category: "Files",
+        action: "Copy path / name",
+        note: "",
+        keys: "c c / c n",
     },
     Binding {
         category: "Files",
         action: "Rename",
         note: "",
         keys: "F2",
+    },
+    Binding {
+        category: "Files",
+        action: "Create a file or folder",
+        note: "End the name with / for a folder",
+        keys: "a",
     },
     Binding {
         category: "Files",
@@ -447,14 +465,14 @@ const TENXER_SETTINGS: &[Binding] = &[
     Binding {
         category: "Files",
         action: "Move to Trash",
-        note: "",
-        keys: "Delete",
+        note: "After confirming",
+        keys: "d / Delete",
     },
     Binding {
         category: "Files",
         action: "Delete permanently",
-        note: "",
-        keys: "Shift + Delete",
+        note: "After confirming",
+        keys: "D / Shift + Delete",
     },
     Binding {
         category: "Files",
@@ -1058,10 +1076,15 @@ const DEFAULT_FILES: &[(&str, &str)] = &[
 ];
 
 const TENXER_FILES: &[(&str, &str)] = &[
+    ("y / x", "Yank / cut the selection, or the focused item"),
+    ("Y / X", "Clear copy and cut marks"),
+    ("p", "Paste; Keep Both is focused on conflicts"),
+    ("P / Ctrl+V", "Paste; Replace is focused on conflicts"),
+    ("d / Delete", "Move to Trash after confirming"),
+    ("D / Shift+Delete", "Delete permanently after confirming"),
+    ("a", "Create a file; end with / for a folder"),
+    ("c c / c n", "Copy path / name"),
     ("Ctrl+C / Ctrl+X", "Copy / cut selected items"),
-    ("Ctrl+V", "Paste into the indicated directory"),
-    ("Delete", "Move selected items to Trash, when supported"),
-    ("Shift+Delete", "Permanently delete selected items"),
     (
         "Ctrl+Z / Ctrl+Shift+Z",
         "Undo / redo the last file operation",
@@ -1176,6 +1199,13 @@ fn default_hint(hint: ContextHint) -> &'static str {
 fn tenxer_hint(hint: ContextHint) -> &'static str {
     match hint {
         ContextHint::Preview => "i",
+        ContextHint::Cut => "x",
+        ContextHint::Copy => "y",
+        ContextHint::Paste => "p",
+        ContextHint::Trash => "d",
+        // Menus show letter keys in upper case, so D needs its Shift spelled out.
+        ContextHint::PermanentDelete => "Shift+D",
+        // Menu accelerators cannot show the c c chord.
         ContextHint::None
         | ContextHint::ChooserPreview
         | ContextHint::CopyPath

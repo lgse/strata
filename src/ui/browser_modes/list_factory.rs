@@ -2,7 +2,6 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
     rc::{Rc, Weak},
 };
 
@@ -13,12 +12,16 @@ use super::{
     TransferHandlerSlot, assemble_list_row, entry_mode, entry_size, entry_type,
     install_list_drag_drop, install_modified_selection_click, install_preview_click,
     list_row_parts, metadata_fill_position, register_bound_mode_item, register_list_column_cell,
-    set_label_if_changed, set_mode_cut_style,
+    set_label_if_changed, set_mode_mark_style,
 };
 use crate::{
     app::Browser,
-    model::{FileEntry, Location},
-    ui::{accessibility, browser, thumbnail},
+    model::FileEntry,
+    ui::{
+        accessibility,
+        browser::{self, ClipboardMark, ClipboardMarks, mark_in},
+        thumbnail,
+    },
 };
 
 pub(super) struct ListFactory {
@@ -29,7 +32,7 @@ pub(super) struct ListFactory {
     pub(super) previews: Rc<Cell<bool>>,
     pub(super) activation: Rc<Cell<ClickActivation>>,
     pub(super) transfers: TransferHandlerSlot,
-    pub(super) cuts: Rc<RefCell<HashSet<Location>>>,
+    pub(super) marks: Rc<RefCell<ClipboardMarks>>,
     pub(super) columns: ListColumnLayout,
     pub(super) scrolling: Rc<Cell<bool>>,
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
@@ -159,8 +162,8 @@ impl ListFactory {
             binding.request_thumbnail_and_metadata(&row);
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
-            let is_cut = self.cuts.borrow().contains(&binding.entry.location);
-            set_mode_cut_style(&row.widget, is_cut);
+            let mark = mark_in(&self.marks.borrow(), &binding.entry.location);
+            set_mode_mark_style(&row.widget, mark);
             binding.refresh_details(&row);
         }
         row.icon.set_hidden(binding.entry.is_hidden);
@@ -227,7 +230,7 @@ impl ListRow {
     }
 
     fn clear(&self) {
-        set_mode_cut_style(&self.widget, false);
+        set_mode_mark_style(&self.widget, ClipboardMark::None);
         thumbnail::show_fallback_icon(&self.icon, crate::assets::icons::DOCUMENTS, 18);
         self.icon.set_hidden(false);
         self.icon.set_base_opacity(1.0);
@@ -286,7 +289,7 @@ pub(super) fn refresh_list_section(
     depth: usize,
     source_index: &SourceIndexMap,
     section: &PaneSection,
-    cuts: &HashSet<Location>,
+    marks: &ClipboardMarks,
 ) {
     section.bound_items.borrow().iter().for_each(|bound| {
         let Some(row) = bound
@@ -309,9 +312,8 @@ pub(super) fn refresh_list_section(
         let Some(entry) = browser.entry_at(depth, position) else {
             return;
         };
-        let is_cut = cuts.contains(&entry.location);
         let is_hidden = entry.is_hidden;
-        set_mode_cut_style(&row.widget, is_cut);
+        set_mode_mark_style(&row.widget, mark_in(marks, &entry.location));
         row.name.set_opacity(if is_hidden { 0.65 } else { 1.0 });
         crate::util::set_modified_date(&row.modified, Some(&entry), "—");
         row.icon.set_hidden(is_hidden);

@@ -14,6 +14,7 @@ use crate::{
     model::Location,
     services::NavigationHistory,
     ui::{
+        browser::CreateRefusal,
         go_completion::{Context, Step},
         shortcut_footer::{PromptSink, ShortcutFooter},
         tenxer_mode::Prompt,
@@ -117,7 +118,11 @@ impl Dispatcher {
                     key == Key::ISO_Left_Tab || modifiers.contains(Modifiers::SHIFT_MASK);
                 self.complete_folder(browser, backward);
             }
-            Key::Escape if kind.is_some_and(|kind| kind == Prompt::Go || kind.picks_history()) => {
+            Key::Escape
+                if kind.is_some_and(|kind| {
+                    matches!(kind, Prompt::Go | Prompt::Create) || kind.picks_history()
+                }) =>
+            {
                 self.return_to_listing(browser)
             }
             Key::Escape => {
@@ -190,6 +195,10 @@ impl Dispatcher {
                     .navigate_with_selection(Location::local(path), true);
                 return;
             }
+            Some(Prompt::Create) => {
+                self.submit_create(browser, &text);
+                return;
+            }
             _ if text.is_empty() => true,
             Some(kind @ (Prompt::Find | Prompt::FindBackward)) => {
                 self.view.find(&text, kind == Prompt::FindBackward, false)
@@ -227,6 +236,26 @@ impl Dispatcher {
             show_step(&later, step)
         });
         show_step(&sink, step);
+    }
+
+    /// An invalid or occupied name keeps the prompt open so it can be fixed.
+    fn submit_create(&self, browser: &Browser, text: &str) {
+        let hint = match self.view.create_typed_entry(text) {
+            Ok(()) => return self.return_to_listing(browser),
+            Err(CreateRefusal::Invalid(message)) => message.to_owned(),
+            Err(CreateRefusal::Exists(name)) => {
+                format!("\u{201c}{name}\u{201d} already exists")
+            }
+            Err(CreateRefusal::Unsupported) => {
+                self.return_to_listing(browser);
+                self.shortcuts
+                    .show_feedback("Can\u{2019}t create items here");
+                return;
+            }
+        };
+        self.shortcuts
+            .prompt_sink(Prompt::Create)
+            .show(None, Some(&hint));
     }
 
     fn return_to_listing(&self, browser: &Browser) {

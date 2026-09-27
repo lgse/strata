@@ -339,9 +339,9 @@ impl InlineSearch {
         )
     }
 
-    pub fn refresh_cut_rows(&self) {
+    pub fn refresh_mark_rows(&self) {
         if let Some(state) = self.state.as_ref() {
-            state.collection.refresh_cut_rows();
+            state.collection.refresh_mark_rows();
         }
     }
 

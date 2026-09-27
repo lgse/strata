@@ -2,16 +2,16 @@
 
 use super::{
     BoundRow, PendingActivationKind, PendingPointerActivation, column_size_text,
-    set_active_path_style, set_cut_path_style, should_activate_single_click,
+    set_active_path_style, set_mark_path_style, should_activate_single_click,
     should_preview_pointer_press,
 };
 use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            PreparedFileDrop, drag_actions_for_modifiers, drag_icon_with_count, file_drag_content,
-            file_drop_action, file_drop_commit, locations_equal, locations_from_file_list_value,
-            prepare_file_drop_target, shared_cut_locations,
+            ClipboardMark, PreparedFileDrop, clipboard_mark, drag_actions_for_modifiers,
+            drag_icon_with_count, file_drag_content, file_drop_action, file_drop_commit,
+            locations_from_file_list_value, prepare_file_drop_target,
         },
         collection::{ViewMap, activate_recursive_search_result, cancel_source},
         entry::{
@@ -839,13 +839,11 @@ pub(super) fn column_rows(
         let immediate =
             browser.as_ref().and_then(|browser| browser.active_depth()) == Some(depth + 1);
         set_active_path_style(&row, active, immediate);
-        set_cut_path_style(
+        set_mark_path_style(
             &row,
-            entry.as_ref().is_some_and(|entry| {
-                shared_cut_locations()
-                    .iter()
-                    .any(|cut| locations_equal(cut, &entry.location))
-            }),
+            entry
+                .as_ref()
+                .map_or(ClipboardMark::None, |entry| clipboard_mark(&entry.location)),
         );
         if let Some(entry) = entry.as_ref() {
             let mode_active = state
@@ -892,7 +890,7 @@ pub(super) fn column_rows(
         } else {
             crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);
             icon.set_hidden(false);
-            icon.set_cut(false);
+            icon.set_mark(ClipboardMark::None);
             icon.set_base_opacity(0.72);
             chevron.set_visible(false);
         }
