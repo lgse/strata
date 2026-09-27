@@ -154,6 +154,7 @@ pub(crate) enum Hint {
     Unreadable,
     TooMany,
     Uri,
+    OtherHome,
 }
 
 impl Hint {
@@ -163,6 +164,7 @@ impl Hint {
             Self::Unreadable => "Can\u{2019}t read that folder \u{2014} check the path",
             Self::TooMany => "Too many entries \u{2014} refine the path",
             Self::Uri => "URIs are not completed",
+            Self::OtherHome => "Only ~ and ~/ are supported",
         }
     }
 }
@@ -260,8 +262,9 @@ pub(crate) struct Context<'a> {
     pub(crate) current: Option<&'a Path>,
     pub(crate) home: &'a Path,
     pub(crate) show_hidden: bool,
-    /// The folder names the open listing shows.
-    pub(crate) listing: &'a dyn Fn() -> Vec<OsString>,
+    /// The folder names the open listing shows, plus its hidden folders when
+    /// asked.
+    pub(crate) listing: &'a dyn Fn(bool) -> Vec<OsString>,
 }
 
 struct Cycle {
@@ -356,6 +359,8 @@ impl GoCompletion {
         let Some(scope) = scope(text, context.current, context.home) else {
             return Step::Hint(if looks_like_uri(text) {
                 Hint::Uri
+            } else if text.starts_with('~') {
+                Hint::OtherHome
             } else {
                 Hint::NoMatch
             });
@@ -363,7 +368,7 @@ impl GoCompletion {
         match scope {
             Scope::Listing { prefix } => {
                 let mut matches = Matches::new(&prefix, true, None);
-                for name in (context.listing)() {
+                for name in (context.listing)(prefix.starts_with('.')) {
                     if let Err(hint) = matches.offer(&name, true) {
                         return Step::Hint(hint);
                     }

@@ -111,7 +111,6 @@ pub(crate) enum Prompt {
     FindBackward,
     Filter,
     Search,
-    /// **g Space**: go to a typed path or URI.
     Go,
 }
 

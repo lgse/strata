@@ -79,11 +79,14 @@ fn file(name: &str) -> Child {
     }
 }
 
-fn no_listing() -> Vec<OsString> {
+fn no_listing(_include_hidden: bool) -> Vec<OsString> {
     Vec::new()
 }
 
-fn context<'a>(current: Option<&'a Path>, listing: &'a dyn Fn() -> Vec<OsString>) -> Context<'a> {
+fn context<'a>(
+    current: Option<&'a Path>,
+    listing: &'a dyn Fn(bool) -> Vec<OsString>,
+) -> Context<'a> {
     Context {
         current,
         home: Path::new("/home/fixture"),
@@ -174,7 +177,7 @@ fn uri_input_is_never_completed_even_with_slashes_or_credentials() {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("main context");
     let source = Rc::new(Controlled::default());
     let completion = GoCompletion::new(source.clone());
-    let listing = || vec![OsString::from("smb:")];
+    let listing = |_| vec![OsString::from("smb:")];
     let (delivered, deliver) = recorder();
     for text in [
         "sftp://user:secret@host.invalid/srv/",
@@ -207,9 +210,11 @@ fn uri_input_is_never_completed_even_with_slashes_or_credentials() {
 fn listing_completion_cycles_matching_folders_both_ways() {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("main context");
     let completion = GoCompletion::new(Rc::new(Controlled::default()));
-    let listing = || {
+    let listing = |include_hidden: bool| {
+        let hidden = include_hidden.then_some(".dotfiles");
         ["docs", "Downloads", "Documents", "music"]
             .into_iter()
+            .chain(hidden)
             .map(OsString::from)
             .collect()
     };
@@ -249,6 +254,17 @@ fn listing_completion_cycles_matching_folders_both_ways() {
     assert_eq!(
         completion.step("zz", false, &context, never()),
         Step::Hint(Hint::NoMatch)
+    );
+    completion.invalidate();
+    assert_eq!(
+        completion.step(".d", false, &context, never()),
+        complete(".dotfiles/", 0, 1),
+        "a dot prefix asks the listing for its hidden folders"
+    );
+    completion.invalidate();
+    assert_eq!(
+        completion.step("~other", false, &context, never()),
+        Step::Hint(Hint::OtherHome)
     );
 }
 
@@ -435,7 +451,7 @@ fn failures_and_limits_keep_the_text_with_a_hint() {
         assert_eq!(*delivered.borrow(), vec![expected]);
     }
 
-    let crowded = || {
+    let crowded = |_| {
         (0..=MAX_MATCHING_FOLDERS)
             .map(|index| OsString::from(format!("d{index}")))
             .collect()

@@ -315,7 +315,8 @@ and hidden folders appear when the listing shows them or the prefix starts with
 `.`. A completion keeps the typed form (relative, `~/`, or absolute) and ends in
 `/`, so the next **Tab** after typing more descends. Beside the entry the footer
 shows the position in the cycle (`2 of 5`) or why nothing changed. No match
-keeps the typed text and focus with `No matching folders`.
+keeps the typed text and focus with `No matching folders`; another user's
+home (`~name`) shows `Only ~ and ~/ are supported`.
 
 Slash-containing and home-folder completion uses cancellable background GIO
 work and shows `Listing folders…` while it runs; the prompt keeps accepting

@@ -175,10 +175,10 @@ impl Dispatcher {
             .active_location()
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
         let home = gtk::glib::home_dir();
-        let listing = || {
+        let listing = |include_hidden| {
             browser
                 .active_depth()
-                .map(|depth| browser.visible_folder_names(depth))
+                .map(|depth| browser.folder_names(depth, include_hidden))
                 .unwrap_or_default()
         };
         let context = Context {

@@ -335,7 +335,7 @@ fn tenxer_go_tab_cycles_matching_folders_from_real_folders() {
             std::fs::create_dir_all(home.join("Projects")).expect("home folder");
             let fixture = fixture_with(Rc::new(GioFolders));
             enable_tenxer(&fixture);
-            let root = seed_folders(&fixture, &["alpha", "Alder", "beta"]);
+            let root = seed_folders(&fixture, &["alpha", "Alder", "beta", ".alcove"]);
             std::fs::create_dir(root.join("alpha/inner")).expect("nested folder");
             std::fs::write(root.join("alpine.txt"), b"file").expect("fixture file");
             let browser = fixture.view.browser();
@@ -383,6 +383,16 @@ fn tenxer_go_tab_cycles_matching_folders_from_real_folders() {
                 Some("No matching folders")
             );
             assert!(fixture.shortcuts.prompt_has_focus());
+
+            browser.toggle_hidden();
+            assert!(!browser.preferences().show_hidden);
+            fixture.shortcuts.prompt().set_text(".al");
+            tab(&fixture);
+            assert_eq!(
+                prompt_text(&fixture),
+                ".alcove/",
+                "a dot prefix completes hidden folders the listing hides"
+            );
 
             fixture.shortcuts.prompt().set_text("al");
             tab(&fixture);

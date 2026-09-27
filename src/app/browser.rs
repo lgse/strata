@@ -1753,9 +1753,14 @@ impl Browser {
         Some(read(entries.get(range)?))
     }
 
-    /// Names of the folders `depth` shows, honoring its hidden-file setting.
-    pub(crate) fn visible_folder_names(&self, depth: usize) -> Vec<std::ffi::OsString> {
-        self.state.borrow().visible_folder_names(depth)
+    /// Names of the folders `depth` shows, plus its hidden folders when
+    /// `include_hidden`.
+    pub(crate) fn folder_names(
+        &self,
+        depth: usize,
+        include_hidden: bool,
+    ) -> Vec<std::ffi::OsString> {
+        self.state.borrow().folder_names(depth, include_hidden)
     }
 
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
