@@ -2,6 +2,8 @@
 """Real browser requests reuse bounded sandbox supervisors across navigation."""
 
 import hashlib
+import io
+import zipfile
 import os
 import re
 import signal
@@ -38,13 +40,22 @@ def fixture_tree(fixture_tree):
         directory.mkdir()
         for index in range(6):
             Image.new("RGB", (320 + index, 180), (40, 160, 80)).save(directory / f"photo-{index}.png")
+        preview = io.BytesIO()
+        Image.new("RGB", (32, 32), (220, 40, 80)).save(preview, format="PNG")
+        for name, member in [("model.3mf", "Metadata/thumbnail.png"), ("model.FCStd", "thumbnails/Thumbnail.png")]:
+            with zipfile.ZipFile(directory / name, "w") as package:
+                package.writestr("3D/3dmodel.model", b"geometry must not be parsed")
+                package.writestr(member, preview.getvalue())
+                if name.endswith("3mf"):
+                    package.writestr("Metadata/broken-thumbnail.png", b"invalid image")
+        (directory / "plain.stl").write_text("solid empty\nendsolid\n")
     return fixture_tree
 
 
 def _folder_cached(strata, test_environment, folder):
     bucket = test_environment.cache_home / "thumbnails" / "large"
     return all((bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")).is_file()
-               for path in strata.fixture.path(folder).glob("*.png"))
+               for path in strata.fixture.path(folder).iterdir() if path.suffix != ".stl")
 
 
 def _worker_pids(strata):
@@ -104,7 +115,16 @@ def test_browser_workers_reuse_processes_and_preserve_source_details(strata, mod
             strata.wait(lambda width=width: strata.window.find(role="label", name=f"{width}×180"),
                         "second folder image dimensions")
     assert starts() <= 2, "navigation must reuse the process-wide pool"
-    assert strata.application.log().count("browser worker completed") >= 12
+    assert strata.application.log().count("browser worker completed") >= 16
+    bucket = test_environment.cache_home / "thumbnails" / "large"
+    for folder in ["photos-a", "photos-b"]:
+        for name in ["model.3mf", "model.FCStd"]:
+            path = strata.fixture.path(folder) / name
+            cached_image = bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")
+            with Image.open(cached_image) as image:
+                assert image.convert("RGB").getpixel((0, 0)) == (220, 40, 80)
+        path = strata.fixture.path(folder) / "plain.stl"
+        assert not (bucket / (hashlib.md5(path.as_uri().encode()).hexdigest() + ".png")).exists()
     if persistent:
         pid = _worker_pids(strata)[-1]
         status = Path(f"/proc/{pid}/status").read_text()
