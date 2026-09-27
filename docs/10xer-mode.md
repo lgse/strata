@@ -104,7 +104,7 @@ Each preview surface owns a fixed set of keys. A key a surface does not use is
 swallowed rather than passed to the listing behind it, so no key held by a
 preview can launch, move, rename, delete, paste into, or select listing items.
 Window commands that do not touch the listing (**q**, **Q**, **F1**, **F5**,
-**Ctrl+K**, **Ctrl+L**, **Ctrl+,**, **Ctrl+1**–**3**, **Ctrl+H**,
+**Ctrl+K**, **Ctrl+L**, **Ctrl+,**, **Ctrl+1**–**3**, **Ctrl+H**, **Ctrl+N**,
 **Ctrl+Shift+B**, **Ctrl+Shift+M**, and text size) still work. Inside a text
 field only **F1** and **Ctrl+Shift+M** still work; every other key is typed or
 edits the text.
@@ -439,9 +439,10 @@ panes. **Tab** moves from the file list to the window header. **Shift+Tab**
 stays with the files. From the footer or other chrome outside the header and
 sidebar, the next **Tab** or arrow key returns to the file list.
 
-**Ctrl+Shift+B** focuses the sidebar when it is visible. A hidden sidebar stays
-hidden; the header toggle is what shows or hides it. **Ctrl+B** does not toggle
-it. Pressing **Ctrl+Shift+B** again returns to the files.
+**Ctrl+N** shows or hides the sidebar, like the header toggle, and passes
+through while the preview owns the keys. **Ctrl+B** pages up instead of
+toggling it. **Ctrl+Shift+B** focuses the sidebar when it is visible; a hidden
+sidebar stays hidden. Pressing **Ctrl+Shift+B** again returns to the files.
 
 In the sidebar, **j** / **k** and **Up** / **Down** move between places and
 device controls. **l**, **Enter**, and **Space** activate the focused place or
@@ -492,7 +493,7 @@ These default-map shortcuts are unbound or remapped while the mode is on:
 | **Ctrl+\\** | Unbound. Arrows never leave the file list. |
 | **Ctrl+D** | Half page down. Duplicate is dropped. |
 | **Ctrl+F** | Full page down. Filter is **f**. |
-| **Ctrl+B** | Full page up. Sidebar toggle is the header button. |
+| **Ctrl+B** | Full page up. Sidebar toggle is **Ctrl+N**. |
 | **Ctrl+R** | Invert selection. Rename is **r** / **F2**. |
 | **y** / **p** (default map) | Yank / paste. Path copy is **c c**; jump to an existing pin with **g** then a digit. |
 | **Space** | Toggle selection. In List and Columns, preview is **l** / **→**. |

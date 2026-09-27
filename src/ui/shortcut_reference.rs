@@ -505,6 +505,12 @@ const TENXER_SETTINGS: &[Binding] = &[
         keys: "Ctrl + 0",
     },
     Binding {
+        category: "View",
+        action: "Toggle sidebar",
+        note: "Ctrl + B pages up in 10xer mode",
+        keys: "Ctrl + N",
+    },
+    Binding {
         category: "Preview",
         action: "Toggle the preview",
         note: "On a file; focus stays in the listing",
@@ -1111,6 +1117,7 @@ const TENXER_TOOLS: &[(&str, &str)] = &[
         "Activate the focused control",
     ),
     ("h / j in the header", "Return to the files"),
+    ("Ctrl+N", "Show or hide the sidebar"),
     ("Ctrl+Shift+B", "Focus the sidebar when it is visible"),
     (
         "j / k / ↑ / ↓ in the sidebar",

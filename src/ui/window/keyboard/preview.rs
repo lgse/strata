@@ -319,7 +319,11 @@ fn passes_through_preview(key: Key, mods: Modifiers) -> bool {
     let control_shift = mods == Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK;
     match key {
         Key::F1 | Key::F5 if plain => true,
-        Key::k | Key::K | Key::l | Key::comma | Key::h | Key::H | Key::period if control => true,
+        Key::k | Key::K | Key::l | Key::comma | Key::h | Key::H | Key::period | Key::n | Key::N
+            if control =>
+        {
+            true
+        }
         Key::_1 | Key::_2 | Key::_3 if control => true,
         Key::plus | Key::minus | Key::equal | Key::_0 | Key::KP_Add | Key::KP_Subtract
             if control =>

@@ -1710,6 +1710,14 @@ fn tenxer_list_and_columns_move_enter_and_traverse_history() {
             assert!(!fixture.view.filter_has_focus());
             assert!(fixture.sidebar_toggle.is_active());
             assert!(!fixture.preview.is_open());
+            fixture.press(Key::n, ModifierType::CONTROL_MASK);
+            assert!(
+                !fixture.sidebar_toggle.is_active(),
+                "Ctrl+N hides the sidebar"
+            );
+            assert!(fixture.view.item_view_has_focus());
+            fixture.press(Key::n, ModifierType::CONTROL_MASK);
+            assert!(fixture.sidebar_toggle.is_active(), "Ctrl+N shows it again");
 
             browser.set_sort(0, SortKey::Name, SortDirection::Descending);
             wait_until(|| {
@@ -1938,6 +1946,11 @@ fn tenxer_list_and_columns_move_enter_and_traverse_history() {
             assert!(fixture.sidebar_toggle.is_active());
             fixture.press(Key::b, ModifierType::CONTROL_MASK);
             assert!(!fixture.sidebar_toggle.is_active());
+            fixture.press(Key::n, ModifierType::CONTROL_MASK);
+            assert!(
+                !fixture.sidebar_toggle.is_active(),
+                "Ctrl+N toggles only in 10xer mode"
+            );
 
             preferences.set_tenxer_mode(true);
             focus_files(&fixture);

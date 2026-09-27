@@ -270,6 +270,20 @@ fn tenxer_preview_owns_document_keys_until_returned() {
                 assert_eq!(focused_name(&browser), "long.txt", "{mode:?}");
                 assert_eq!(fixture.selected(), selection, "{mode:?}");
 
+                let sidebar_shown = fixture.sidebar_toggle.is_active();
+                fixture.press(Key::n, ModifierType::CONTROL_MASK);
+                assert_ne!(
+                    fixture.sidebar_toggle.is_active(),
+                    sidebar_shown,
+                    "{mode:?} Ctrl+N passes through the preview"
+                );
+                assert!(
+                    preview_has_focus(&fixture),
+                    "{mode:?} Ctrl+N keeps the keys"
+                );
+                fixture.press(Key::n, ModifierType::CONTROL_MASK);
+                assert_eq!(fixture.sidebar_toggle.is_active(), sidebar_shown);
+
                 fixture.press(Key::h, ModifierType::empty());
                 wait_until(|| fixture.view.item_view_has_focus());
                 assert!(fixture.preview.is_open(), "{mode:?} h keeps the drawer");
