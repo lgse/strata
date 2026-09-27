@@ -278,6 +278,16 @@ impl InlineSearch {
             .collect()
     }
 
+    pub(in crate::ui) fn visit_result_name_labels(&self, visit: &impl Fn(&gtk::Widget)) {
+        if let Some(state) = self.showing_results() {
+            for bound in state.collection.bound.borrow().iter() {
+                if let Some(label) = bound.rename_label.upgrade() {
+                    visit(&label);
+                }
+            }
+        }
+    }
+
     pub(in crate::ui) fn focus_current(&self) -> bool {
         let Some(state) = self.state.as_ref() else {
             return false;
@@ -406,7 +416,6 @@ impl InlineSearch {
         }
     }
 
-    /// Whether a nonempty filter shows results instead of filtering the listing.
     pub(super) fn replaces_listing(&self) -> bool {
         self.state.is_some()
     }
@@ -417,7 +426,6 @@ impl InlineSearch {
             .filter(|state| state.stack.visible_child_name().as_deref() == Some("search"))
     }
 
-    /// Applies filter text still waiting on its debounce.
     pub(in crate::ui) fn flush_query(&self) {
         if let Some(state) = self.state.as_ref()
             && let Some(binding) = state.query_binding.borrow().as_ref()
@@ -440,13 +448,10 @@ impl InlineSearch {
             .map(apply)
     }
 
-    /// The displayed results, in display order, while they replace the
-    /// directory listing.
     pub(in crate::ui) fn results(&self) -> Option<Vec<SearchItem>> {
         Some(self.showing_results()?.collection.items())
     }
 
-    /// The result under the cursor while results replace the listing.
     pub(in crate::ui) fn current_result(&self) -> Option<SearchItem> {
         let collection = &self.showing_results()?.collection;
         collection.item(collection.current_position()?)
@@ -456,8 +461,6 @@ impl InlineSearch {
         Some(self.showing_results()?.collection.view.clone())
     }
 
-    /// The results' own selection, view, and cursor while they replace the
-    /// listing.
     pub(in crate::ui) fn hits(&self) -> Option<(gtk::MultiSelection, gtk::Widget, Option<u32>)> {
         let collection = &self.showing_results()?.collection;
         Some((

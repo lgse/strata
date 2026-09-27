@@ -343,7 +343,6 @@ impl FilterQueryBinding {
         }
     }
 
-    /// Restarts the query for the current text in the current scope.
     pub(in crate::ui) fn requery(&self) {
         cancel_source(&self.pending);
         if let (Some(entry), Some(callback)) = (self.entry.upgrade(), self.callback.upgrade()) {

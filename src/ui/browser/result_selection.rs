@@ -26,7 +26,6 @@ struct Range {
 
 struct Fill {
     owner: glib::WeakRef<gtk::Entry>,
-    /// The selection this fill last wrote.
     written: gtk::Bitset,
     range: Option<Range>,
 }
@@ -44,7 +43,7 @@ fn adopted(hits: &Hits) -> gtk::Bitset {
     if cursor_only {
         gtk::Bitset::new_empty()
     } else {
-        selected
+        selected.copy()
     }
 }
 
@@ -56,7 +55,8 @@ fn focus_hit(hits: &Hits, position: u32) {
 fn write(hits: &Hits, fill: &mut Fill, selected: gtk::Bitset) {
     hits.selection
         .set_selection(&selected, &gtk::Bitset::new_range(0, hits.count()));
-    fill.written = selected;
+    // GTK may mutate its selection bitset in place; keep an independent snapshot.
+    fill.written = selected.copy();
 }
 
 /// Rewrites the range from its anchor to `cursor` over its base fill.
@@ -88,6 +88,23 @@ impl ViewState {
         live.then_some((target, hits, fill))
     }
 
+    fn take_or_adopt_result_fill(&self) -> Option<(Target, Hits, Fill)> {
+        if let Some(fill) = self.take_result_fill() {
+            return Some(fill);
+        }
+        let target = self.filter_target()?;
+        let hits = target.hits()?;
+        let selected = adopted(&hits);
+        (!selected.is_empty()).then(|| {
+            let fill = Fill {
+                owner: target.entry().downgrade(),
+                written: selected,
+                range: None,
+            };
+            (target, hits, fill)
+        })
+    }
+
     fn keep_result_fill(&self, fill: Fill) {
         self.result_selection.fill.replace(Some(fill));
     }
@@ -107,6 +124,16 @@ impl ViewState {
         self.result_selection.fill.take();
     }
 
+    pub(super) fn remember_result_selection(&self, target: &Target) {
+        if let Some(hits) = target.hits() {
+            self.keep_result_fill(Fill {
+                owner: target.entry().downgrade(),
+                written: hits.selection.selection().copy(),
+                range: None,
+            });
+        }
+    }
+
     pub(super) fn result_visual_kind(&self) -> Option<VisualKind> {
         let (_, _, fill) = self.take_result_fill()?;
         let kind = fill.range.as_ref().map(|range| range.kind);
@@ -119,7 +146,7 @@ impl BrowserView {
     /// Moves the cursor over a filled result list without rewriting its fill,
     /// extending a range. Returns `false` without a fill.
     pub(super) fn step_filled_results(&self, direction: i32, steps: usize) -> bool {
-        let Some((_, hits, mut fill)) = self.state.take_result_fill() else {
+        let Some((_, hits, mut fill)) = self.state.take_or_adopt_result_fill() else {
             return false;
         };
         if let Some(cursor) = results_step_target(hits.cursor, hits.count(), direction, steps) {
@@ -133,10 +160,11 @@ impl BrowserView {
     /// Runs a native grid move that selects the cell it reaches, then puts
     /// back the fill, extending a range to the new cursor.
     pub(in crate::ui) fn keep_result_fill(&self, motion: impl FnOnce()) {
-        let Some((_, _, mut fill)) = self.state.take_result_fill() else {
+        let Some((_, _, mut fill)) = self.state.take_or_adopt_result_fill() else {
             motion();
             return;
         };
+        fill.written = fill.written.copy();
         motion();
         let Some(hits) = self.filter_target().and_then(|target| target.hits()) else {
             return;
@@ -237,7 +265,6 @@ impl BrowserView {
         Some(true)
     }
 
-    /// Ends a range over results and keeps its fill.
     pub(in crate::ui) fn leave_result_visual(&self) -> bool {
         let Some((_, _, mut fill)) = self.state.take_result_fill() else {
             return false;

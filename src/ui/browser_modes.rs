@@ -968,7 +968,6 @@ impl ModeViews {
         ))
     }
 
-    /// Filters whose funnel is closed: 10xer footer filters.
     pub(in crate::ui) fn hidden_filter_entries(&self) -> Vec<gtk::Entry> {
         self.icons_panes
             .iter()
@@ -1428,8 +1427,6 @@ impl ModeViews {
         self.cursor_keeps_focus.set(keep);
     }
 
-    /// The visible collection view showing `source` of pane `depth`, and its
-    /// position there.
     pub(in crate::ui) fn cursor_view(
         &self,
         depth: usize,
@@ -1443,7 +1440,6 @@ impl ModeViews {
         })
     }
 
-    /// Calls `visit` with the name label of every bound Icons and List item.
     pub(in crate::ui) fn visit_name_labels(&self, visit: impl Fn(&gtk::Widget)) {
         for pane in self.all_panes() {
             for section in pane.item_sections() {
@@ -1453,6 +1449,7 @@ impl ModeViews {
                     }
                 }
             }
+            pane.search.visit_result_name_labels(&visit);
         }
     }
 

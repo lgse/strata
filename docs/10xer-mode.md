@@ -379,8 +379,8 @@ on the first hit when there is one. It does not open that hit. A following
 **Enter** opens it through ordinary item activation, not **Open search results
 directly**. **Ctrl+K** global search is unchanged. **Esc** from the prompt keeps
 the hits so **v** / **V** / Space / **i** can use them (and **→** in List and
-Columns). From those results, **Esc** dismisses visual mode and an open preview
-before dismissing search, as described above. In List and Columns, **h** dismisses
+Columns). From those results, **Esc** dismisses visual mode, find highlights, and an open
+preview before dismissing search, as described above. In List and Columns, **h** dismisses
 search directly unless the preview owns keys, in which case it first returns to
 the hits without closing the preview. In Icons, **h** / **j** / **k** / **l** and
 arrows move among the result icons and do not dismiss search or open an item.

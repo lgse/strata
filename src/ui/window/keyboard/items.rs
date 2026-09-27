@@ -335,8 +335,8 @@ impl Dispatcher {
         }
         self.view.keyboard_navigation();
         if search {
-            self.view.focus_search_results();
             self.view.keep_result_fill(|| {
+                self.view.focus_search_results();
                 crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
             });
             return true;
@@ -454,7 +454,6 @@ impl Dispatcher {
             Key::f | Key::F | Key::Page_Down | Key::KP_Page_Down => (1, false),
             _ => return false,
         };
-        // Search hits swallow paging rather than moving the hidden directory cursor.
         if !self.view.listing_search_active() {
             self.view.page_displayed_cursor(direction, half);
         }
@@ -558,8 +557,6 @@ impl Dispatcher {
         self.view.activate_focused();
     }
 
-    /// **Space** and **v** / **V** fill results through their own selection.
-    /// A Columns filter over the directory's rows has none.
     fn selection_keys_blocked(&self) -> bool {
         self.view.selected_search_results().is_some() && !self.view.results_replace_listing()
     }
@@ -586,8 +583,6 @@ impl Dispatcher {
     }
 }
 
-/// **Home** / **End** and paging on recursive **s** hits; **g g** / **G**
-/// reach their ends.
 fn swallowed_on_hits(key: Key) -> bool {
     matches!(
         key,

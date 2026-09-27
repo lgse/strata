@@ -105,16 +105,11 @@ impl Chord {
     }
 }
 
-/// A footer text prompt. Its label replaces the footer while it is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Prompt {
-    /// **/**: find forward in this listing.
     Find,
-    /// **?**: find backward in this listing.
     FindBackward,
-    /// **f**: filter this listing as you type.
     Filter,
-    /// **s**: search names below this folder as you type.
     Search,
     /// **g Space**: go to a typed path or URI.
     Go,
