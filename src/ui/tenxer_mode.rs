@@ -99,7 +99,7 @@ impl Chord {
         match self {
             Self::Go => &[
                 ("g", "First item"),
-                ("f", "Hit's folder"),
+                ("f", "Follow search result"),
                 ("h", "Home"),
                 ("d", "Downloads"),
                 ("c", "Config"),

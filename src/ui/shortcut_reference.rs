@@ -650,12 +650,12 @@ const TENXER_PLACE_CHORDS: &[PlaceChord] = &[
     PlaceChord {
         binding: Binding {
             category: "Places",
-            action: "Folder holding the search hit",
+            action: "Follow search result",
             note: "Selects the hit and ends the search",
             keys: "g f",
         },
         reference_keys: "",
-        reference_label: "Folder holding the search hit",
+        reference_label: "Follow search result",
     },
     PlaceChord {
         binding: Binding {

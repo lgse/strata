@@ -279,7 +279,7 @@ actions) while armed. The second key completes only that chord: **, a** /
 | Second key | Destination |
 | --- | --- |
 | **g** | First item |
-| **f** | Search results: the folder holding the hit under the cursor, with that item selected. Ends the search. Without hits: `Nothing to reveal`. |
+| **f** | Follow search result: open the folder holding the hit under the cursor, with that item selected. Ends the search. Without hits: `Nothing to reveal`. |
 | **h** | Home |
 | **d** | Downloads. Missing: `No Downloads folder`. |
 | **c** | Config (`~/.config`) |
@@ -423,7 +423,7 @@ While **s** results are showing:
 | **Enter** | With focus already on the results, activate the focused hit once through ordinary open. **Enter** in the **f** or **s** prompt only applies that prompt. |
 | **i** | Directory hit: open an unfocused Miller column, or toggle folder peek. File hit: toggle the preview. Neither takes preview ownership. |
 | **h** | List and Columns: leave preview keyboard ownership, or dismiss search (restoring an earlier **f** filter if present). Icons: move to the next result icon. |
-| **g f** | Open the folder holding the focused hit and select it there. Ends the search without restoring an **f** filter, so the item is visible; **H** returns. |
+| **g f** | Follow search result: open the folder holding the focused hit and select it there. Ends the search without restoring an **f** filter, so the item is visible; **H** returns. |
 
 **Space** does not preview search rows. Use **g g** / **G** to reach the first /
 last result; **Home** / **End** and paging keys are swallowed on result lists
