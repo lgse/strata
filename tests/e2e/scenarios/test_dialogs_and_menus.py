@@ -506,11 +506,12 @@ def test_enter_submits_compress_and_extract_to_dialogs(strata):
 
     strata.keyboard.press("Return")
 
+    extracted = destination / "readme.md"
+    # Extraction creates each member before streaming its bytes into place.
     strata.wait(
-        lambda: (destination / "readme.md").exists(),
-        "Enter to extract into the destination",
+        lambda: extracted.is_file() and extracted.read_text() == "# Fixture\n",
+        "Enter to extract the complete member into the destination",
     )
-    assert (destination / "readme.md").read_text() == "# Fixture\n"
 
 
 def test_enter_submits_the_copy_to_dialog(strata):

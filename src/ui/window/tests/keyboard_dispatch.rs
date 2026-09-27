@@ -149,6 +149,21 @@ impl Drop for KeyboardFixture {
     }
 }
 
+fn focused_widget_shows(window: &gtk::ApplicationWindow, name: &str) -> bool {
+    let Some(focused) = gtk::prelude::RootExt::focus(window) else {
+        return false;
+    };
+    if focused.is::<gtk::ListView>() || focused.is::<gtk::GridView>() {
+        return false;
+    }
+    rendered_name(&focused, name)
+        && ["a.txt", "b.txt", "c.txt"]
+            .into_iter()
+            .filter(|candidate| *candidate != name && rendered_name(&focused, candidate))
+            .count()
+            == 0
+}
+
 fn rendered_name(widget: &gtk::Widget, name: &str) -> bool {
     if !widget.is_mapped()
         || widget.width() <= 0
@@ -256,7 +271,8 @@ fn tenxer_keeps_keyboard_navigation_inside_the_file_panes() {
                 focus_files(&fixture);
                 if mode == BrowserMode::Columns {
                     assert!(fixture.press(Key::Down, ModifierType::empty()));
-                    assert_eq!(fixture.selected(), [1], "{mode:?}");
+                    assert_eq!(fixture.selected(), [0], "{mode:?} Down keeps the fill");
+                    assert_eq!(focused_index(&fixture.view.browser()), 1, "{mode:?}");
                     assert!(fixture.view.item_view_has_focus());
                 }
 
@@ -540,6 +556,462 @@ fn tenxer_sidebar_and_header_round_trips() {
 }
 
 #[test]
+fn tenxer_space_selects_the_cursor_and_motion_keeps_the_fill() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::tenxer_space_selects_the_cursor_and_motion_keeps_the_fill",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_group_by_type(false);
+            let browser = fixture.view.browser();
+            fixture.shortcuts.observe_browser(&browser);
+            fixture.view.set_icons_thumbnail_size(48);
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                fixture.view.set_view_mode(mode);
+                focus_files(&fixture);
+                browser.select(0, 0);
+                assert!(browser.clear_active_selection());
+                focus_files(&fixture);
+                assert!(browser.selected_positions(0).is_empty());
+                assert_eq!(focused_name(&browser), "a.txt");
+
+                assert!(fixture.press(Key::space, ModifierType::empty()));
+                assert!(!fixture.preview.is_open(), "{mode:?}");
+                assert_eq!(focused_name(&browser), "b.txt", "{mode:?}");
+                assert_eq!(fill_names(&browser), ["a.txt"], "{mode:?}");
+                if mode == BrowserMode::Columns {
+                    wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+                }
+
+                fixture.press(Key::space, ModifierType::empty());
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                assert_eq!(fill_names(&browser), ["a.txt", "b.txt"], "{mode:?}");
+                assert!(!fixture.preview.is_open(), "{mode:?}");
+
+                fixture.press(Key::Home, ModifierType::empty());
+                assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
+                assert_eq!(fill_names(&browser), ["a.txt", "b.txt"], "{mode:?}");
+
+                fixture.press(Key::a, ModifierType::CONTROL_MASK);
+                assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "b.txt", "c.txt"],
+                    "{mode:?}"
+                );
+                fixture.press(Key::End, ModifierType::empty());
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "b.txt", "c.txt"],
+                    "{mode:?}"
+                );
+
+                fixture.press(Key::r, ModifierType::CONTROL_MASK);
+                assert!(!fixture.view.rename_is_active(), "{mode:?}");
+                assert!(fill_names(&browser).is_empty(), "{mode:?}");
+                fixture.press(Key::Home, ModifierType::empty());
+                assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
+                assert!(fill_names(&browser).is_empty(), "{mode:?}");
+
+                fixture.press(Key::a, ModifierType::CONTROL_MASK);
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "b.txt", "c.txt"],
+                    "{mode:?}"
+                );
+                fixture.press(Key::Down, ModifierType::CONTROL_MASK);
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "b.txt", "c.txt"],
+                    "{mode:?} Ctrl+Down keeps the fill"
+                );
+                fixture.press(Key::Up, ModifierType::CONTROL_MASK);
+                assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "b.txt", "c.txt"],
+                    "{mode:?} Ctrl+Up keeps the fill"
+                );
+
+                if mode == BrowserMode::Icons {
+                    fixture.press(Key::r, ModifierType::CONTROL_MASK);
+                    assert!(fill_names(&browser).is_empty(), "{mode:?}");
+                    fixture.press(Key::Home, ModifierType::empty());
+                    fixture.press(Key::space, ModifierType::empty());
+                    assert_eq!(fill_names(&browser), ["a.txt"], "{mode:?}");
+                    assert_eq!(focused_name(&browser), "b.txt", "{mode:?}");
+                    wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+                    fixture.press(Key::Right, ModifierType::empty());
+                    assert_eq!(
+                        focused_name(&browser),
+                        "c.txt",
+                        "{mode:?} Right moves from b.txt to c.txt"
+                    );
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt"],
+                        "{mode:?} Right keeps a one-item fill"
+                    );
+                    fixture.press(Key::a, ModifierType::CONTROL_MASK);
+                    fixture.press(Key::r, ModifierType::CONTROL_MASK);
+                    fixture.press(Key::Home, ModifierType::empty());
+                    assert!(fill_names(&browser).is_empty(), "{mode:?}");
+                    assert_eq!(focused_name(&browser), "a.txt", "{mode:?}");
+                    wait_until(|| focused_widget_shows(&fixture.window, "a.txt"));
+                    fixture.press(Key::Right, ModifierType::empty());
+                    assert_ne!(focused_name(&browser), "a.txt", "{mode:?}");
+                    assert!(
+                        fill_names(&browser).is_empty(),
+                        "{mode:?} Right keeps an empty fill"
+                    );
+                }
+            }
+
+            std::fs::create_dir(fixture._directory.path().join("empty")).expect("empty");
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            fixture.view.set_view_mode(BrowserMode::List);
+            focus_files(&fixture);
+            move_to_named(&fixture, &browser, "empty");
+            fixture.press(Key::Return, ModifierType::empty());
+            wait_until(|| {
+                browser
+                    .active_location()
+                    .is_some_and(|location| location.display_path().ends_with("empty"))
+                    && entry_count(&browser) == 0
+            });
+            focus_files(&fixture);
+            fixture.press(Key::space, ModifierType::empty());
+            assert_eq!(
+                fixture.shortcuts.feedback_text(),
+                "Nothing to select",
+                "an empty folder flashes instead of selecting a path marker"
+            );
+            assert!(browser.selected_entries().is_empty());
+            assert!(!fixture.preview.is_open());
+            wait_until(|| fixture.shortcuts.feedback_text().is_empty());
+            for key in [Key::a, Key::r] {
+                fixture.press(key, ModifierType::CONTROL_MASK);
+                assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
+                wait_until(|| fixture.shortcuts.feedback_text().is_empty());
+            }
+
+            focus_files(&fixture);
+            fixture.press(Key::space, ModifierType::empty());
+            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
+            fixture.press(Key::BackSpace, ModifierType::empty());
+            assert!(
+                fixture.shortcuts.feedback_text().is_empty(),
+                "leaving the empty folder clears the flash"
+            );
+            wait_loaded(&browser, 0);
+            fixture.view.set_view_mode(BrowserMode::Columns);
+            focus_files(&fixture);
+            move_to_named(&fixture, &browser, "empty");
+            fixture.press(Key::i, ModifierType::empty());
+            wait_loaded(&browser, 1);
+            fixture.press(Key::a, ModifierType::CONTROL_MASK);
+            assert!(browser.selected_positions(0).len() > 1);
+            assert!(
+                browser.selected_positions(1).is_empty(),
+                "Ctrl+A stays in the focused pane"
+            );
+        },
+    );
+}
+
+#[test]
+fn tenxer_columns_click_on_the_cursor_replaces_the_fill() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::tenxer_columns_click_on_the_cursor_replaces_the_fill",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_group_by_type(false);
+            fixture.view.set_view_mode(BrowserMode::Columns);
+            let browser = fixture.view.browser();
+            focus_files(&fixture);
+            assert!(browser.clear_active_selection());
+            focus_files(&fixture);
+
+            fixture.press(Key::End, ModifierType::empty());
+            assert_eq!(focused_name(&browser), "c.txt");
+            fixture.press(Key::space, ModifierType::empty());
+            assert_eq!(fill_names(&browser), ["c.txt"]);
+            assert_eq!(focused_name(&browser), "c.txt");
+            fixture.press(Key::Up, ModifierType::empty());
+            assert_eq!(focused_name(&browser), "b.txt");
+            assert_eq!(fill_names(&browser), ["c.txt"]);
+            wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+
+            assert!(
+                press_file_row(&fixture.view.widget(), "b.txt"),
+                "b.txt row accepts the click"
+            );
+            assert_eq!(
+                fill_names(&browser),
+                ["b.txt"],
+                "clicking the cursor replaces the filled selection"
+            );
+            assert_eq!(focused_name(&browser), "b.txt");
+        },
+    );
+}
+
+#[test]
+fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::tenxer_visual_ranges_select_unset_and_keep_the_fill",
+        || {
+            let fixture = KeyboardFixture::new();
+            let preferences = PreferenceManager::shared();
+            preferences.set_tenxer_mode(true);
+            preferences.set_group_by_type(false);
+            let browser = fixture.view.browser();
+            fixture.shortcuts.observe_browser(&browser);
+            fixture.view.set_icons_thumbnail_size(48);
+            for name in ["d.txt", "e.txt"] {
+                std::fs::write(fixture._directory.path().join(name), b"preview").expect("file");
+            }
+            fixture.view.refresh();
+            wait_until(|| entry_count(&browser) == 5);
+            let none = ModifierType::empty();
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                let (next, previous) = if mode == BrowserMode::Icons {
+                    (Key::Right, Key::Left)
+                } else {
+                    (Key::j, Key::k)
+                };
+                fixture.view.set_view_mode(mode);
+                focus_files(&fixture);
+                browser.select(0, 0);
+                browser.clear_active_selection();
+                focus_files(&fixture);
+                fixture.press(Key::Home, none);
+                fixture.press(Key::space, none);
+                fixture.press(Key::End, none);
+                assert_eq!(focused_name(&browser), "e.txt", "{mode:?}");
+                assert_eq!(fill_names(&browser), ["a.txt"], "{mode:?}");
+
+                assert!(fixture.press(Key::v, none));
+                assert_eq!(fill_names(&browser), ["a.txt", "e.txt"], "{mode:?}");
+                assert_eq!(fixture.shortcuts.visual_text().as_deref(), Some("VISUAL"));
+                fixture.press(previous, none);
+                fixture.press(previous, none);
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "c.txt", "d.txt", "e.txt"],
+                    "{mode:?} v walks a range"
+                );
+                fixture.press(Key::space, none);
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?} Space stays put");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "d.txt", "e.txt"],
+                    "{mode:?}"
+                );
+                assert!(!fixture.preview.is_open(), "{mode:?}");
+
+                fixture.press(Key::Escape, none);
+                assert_eq!(fixture.shortcuts.visual_text(), None, "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "d.txt", "e.txt"],
+                    "{mode:?}"
+                );
+                fixture.press(previous, none);
+                assert_eq!(focused_name(&browser), "b.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "d.txt", "e.txt"],
+                    "{mode:?} motion after Escape keeps the fill"
+                );
+
+                assert!(fixture.press(Key::V, ModifierType::SHIFT_MASK));
+                assert_eq!(fixture.shortcuts.visual_text().as_deref(), Some("UNSET"));
+                fixture.press(next, none);
+                fixture.press(next, none);
+                assert_eq!(focused_name(&browser), "d.txt", "{mode:?}");
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "e.txt"],
+                    "{mode:?} V subtracts the walked span"
+                );
+                fixture.press(Key::V, ModifierType::SHIFT_MASK);
+                assert_eq!(fixture.shortcuts.visual_text(), None, "{mode:?}");
+                fixture.press(next, none);
+                assert_eq!(fill_names(&browser), ["a.txt", "e.txt"], "{mode:?}");
+
+                fixture.press(Key::v, none);
+                fixture.press(previous, none);
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "d.txt", "e.txt"],
+                    "{mode:?} a new v anchors at the cursor"
+                );
+                fixture.press(Key::Escape, none);
+                assert_eq!(
+                    fill_names(&browser),
+                    ["a.txt", "d.txt", "e.txt"],
+                    "{mode:?}"
+                );
+                fixture.press(Key::Escape, none);
+                assert!(
+                    fill_names(&browser).is_empty(),
+                    "{mode:?} the next Escape clears the fill"
+                );
+
+                let shift = ModifierType::SHIFT_MASK;
+                fixture.press(Key::Home, none);
+                fixture.press(Key::space, none);
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+                }
+                fixture.press(next, none);
+                assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "c.txt"));
+                    assert!(fixture.press(Key::Down, shift));
+                    let fill = fill_names(&browser);
+                    let focused = focused_name(&browser);
+                    for name in ["a.txt", "c.txt", focused.as_str()] {
+                        assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
+                    }
+                } else {
+                    assert!(fixture.press(Key::Down, shift));
+                    fixture.press(Key::Down, shift);
+                    assert_eq!(focused_name(&browser), "e.txt", "{mode:?}");
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "c.txt", "d.txt", "e.txt"],
+                        "{mode:?} Shift+Down extends from the cursor over the fill"
+                    );
+                    fixture.press(Key::Up, shift);
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "c.txt", "d.txt"],
+                        "{mode:?} reversing shrinks the run"
+                    );
+                    fixture.press(previous, none);
+                    assert_eq!(focused_name(&browser), "c.txt", "{mode:?}");
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "c.txt", "d.txt"],
+                        "{mode:?} other motion ends the run and keeps the fill"
+                    );
+                    fixture.press(Key::Up, shift);
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "b.txt", "c.txt", "d.txt"],
+                        "{mode:?} the next run anchors at the cursor"
+                    );
+                }
+                assert_eq!(fixture.shortcuts.visual_text(), None, "{mode:?}");
+                fixture.press(Key::Escape, none);
+
+                fixture.press(Key::Home, none);
+                fixture.press(Key::v, none);
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "a.txt"));
+                }
+                fixture.press(next, none);
+                if mode == BrowserMode::Icons {
+                    wait_until(|| focused_widget_shows(&fixture.window, "b.txt"));
+                }
+                fixture.press(Key::Down, shift);
+                assert_eq!(
+                    fixture.shortcuts.visual_text().as_deref(),
+                    Some("VISUAL"),
+                    "{mode:?} Shift+Down keeps the visual range"
+                );
+                if mode == BrowserMode::Icons {
+                    let fill = fill_names(&browser);
+                    assert!(
+                        fill.starts_with(&["a.txt".into(), "b.txt".into()]),
+                        "{fill:?}"
+                    );
+                } else {
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "b.txt", "c.txt"],
+                        "{mode:?} Shift+Down walks the visual range"
+                    );
+                }
+                fixture.press(Key::Escape, none);
+                fixture.press(Key::Escape, none);
+            }
+
+            std::fs::create_dir(fixture._directory.path().join("empty")).expect("empty");
+            fixture.view.refresh();
+            wait_loaded(&browser, 0);
+            fixture.view.set_view_mode(BrowserMode::List);
+            move_to_named(&fixture, &browser, "empty");
+            fixture.press(Key::v, none);
+            fixture.press(Key::Return, none);
+            assert_eq!(
+                fixture.shortcuts.visual_text(),
+                None,
+                "navigation ends the range"
+            );
+            wait_loaded(&browser, 0);
+            assert_eq!(entry_count(&browser), 0);
+            focus_files(&fixture);
+            fixture.press(Key::v, none);
+            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
+            assert_eq!(fixture.shortcuts.visual_text(), None);
+            wait_until(|| fixture.shortcuts.feedback_text().is_empty());
+            fixture.press(Key::Down, ModifierType::SHIFT_MASK);
+            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
+        },
+    );
+}
+
+fn press_file_row(widget: &gtk::Widget, name: &str) -> bool {
+    let Some(row) = file_row_named(widget, name) else {
+        return false;
+    };
+    let controllers = row.observe_controllers();
+    let Some(click) = (0..controllers.n_items()).find_map(|index| {
+        controllers
+            .item(index)
+            .and_then(|controller| controller.downcast::<gtk::GestureClick>().ok())
+    }) else {
+        return false;
+    };
+    click.emit_by_name::<()>("pressed", &[&1i32, &8.0f64, &8.0f64]);
+    true
+}
+
+fn file_row_named(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
+    if widget.has_css_class("file-row") && rendered_name(widget, name) {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        if let Some(found) = file_row_named(&current, name) {
+            return Some(found);
+        }
+        child = current.next_sibling();
+    }
+    None
+}
+
+fn fill_names(browser: &crate::app::Browser) -> Vec<String> {
+    let mut names: Vec<_> = browser
+        .selected_entries()
+        .into_iter()
+        .map(|entry| entry.display_name)
+        .collect();
+    names.sort();
+    names
+}
+
+#[test]
 fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts",
@@ -582,7 +1054,7 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             });
             focus_files(&fixture);
             let names = directory_names(fixture._directory.path());
-            for key in [Key::s, Key::S, Key::y, Key::space] {
+            for key in [Key::s, Key::S, Key::y] {
                 fixture.view.browser().select(0, 0);
                 focus_files(&fixture);
                 fixture.press(key, ModifierType::empty());
@@ -596,6 +1068,16 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 assert!(!fixture.view.rename_is_active(), "{key:?}");
                 assert!(preferences.tenxer_mode(), "{key:?} must not leave the mode");
             }
+            fixture.view.browser().select(0, 0);
+            focus_files(&fixture);
+            fixture.press(Key::space, ModifierType::empty());
+            assert_ne!(
+                fixture.selected(),
+                [0],
+                "Space toggles the cursor instead of previewing"
+            );
+            assert!(!fixture.preview.is_open());
+            assert!(!fixture.view.rename_is_active());
             for key in [Key::j, Key::k] {
                 fixture.view.browser().select(0, 0);
                 focus_files(&fixture);
@@ -630,11 +1112,14 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
             );
             fixture.view.browser().select(0, 0);
             focus_files(&fixture);
-            for key in [Key::r, Key::backslash] {
-                fixture.press(key, control);
-                assert_eq!(fixture.selected(), [0], "{key:?}");
-                assert!(!fixture.view.rename_is_active(), "{key:?}");
-            }
+            fixture.press(Key::r, control);
+            assert_ne!(fixture.selected(), [0], "Ctrl+R inverts the pane");
+            assert!(!fixture.view.rename_is_active());
+            fixture.view.browser().select(0, 0);
+            focus_files(&fixture);
+            fixture.press(Key::backslash, control);
+            assert_eq!(fixture.selected(), [0]);
+            assert!(!fixture.view.rename_is_active());
             let children = child_commands();
             fixture.press(Key::t, control);
             pump(200);

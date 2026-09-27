@@ -1380,6 +1380,18 @@ impl ModeViews {
         self.suppress_focus_scroll.set(true);
     }
 
+    pub fn view_position_in(&self, view: &gtk::Widget, depth: usize, source: usize) -> Option<u32> {
+        let panes = self.visible_panes();
+        let pane = panes.iter().find(|pane| pane.depth == depth)?;
+        pane.item_sections().into_iter().find_map(|section| {
+            if section.view == *view {
+                section.source_to_view(&pane.model, source)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn focus_visible_pane(&self, depth: usize) {
         if self.rename_is_active() {
             return;
@@ -4843,7 +4855,30 @@ fn sync_browser_selection(
     positions.sort_unstable();
     positions.dedup();
     let focused = focused.or_else(|| positions.last().copied());
+    if super::marquee::is_updating_selection() {
+        browser.commit_selection();
+    }
     browser.set_selection(depth, &positions, focused);
+    let model = browser.selected_positions(depth);
+    if model != positions {
+        for section in sections.borrow().iter() {
+            let selected = gtk::Bitset::new_empty();
+            let count = section.view_model.n_items();
+            for view_position in 0..count {
+                if source_index
+                    .of_view_position(&section.view_model, view_position)
+                    .is_some_and(|source| model.contains(&source))
+                {
+                    selected.add(view_position);
+                }
+            }
+            section.syncing.set(true);
+            section
+                .selection
+                .set_selection(&selected, &gtk::Bitset::new_range(0, count));
+            section.syncing.set(false);
+        }
+    }
 }
 
 fn focused_section_item(

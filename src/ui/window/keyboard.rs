@@ -436,6 +436,9 @@ impl Dispatcher {
         if self.text_focused() || self.focus_in_popover() {
             return None;
         }
+        if !items::continues_extend(key, modifiers) {
+            browser.end_extend();
+        }
         let command = modifiers
             .intersects(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK | Modifiers::SUPER_MASK);
         if key == Key::q && !modifiers.contains(Modifiers::SHIFT_MASK) && !command {

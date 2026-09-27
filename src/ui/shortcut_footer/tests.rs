@@ -376,6 +376,18 @@ fn tenxer_reference_follows_the_active_map() {
                     .any(|label| label == "Open the focused directory")
             );
             assert!(
+                reference_pairs(&list, "Space", "Toggle the focused item and move down"),
+                "the List reference lists Space for the toggle action"
+            );
+            assert!(
+                reference_pairs(&list, "Ctrl+R", "Invert the selection"),
+                "the List reference lists Ctrl+R for invert"
+            );
+            assert!(
+                reference_pairs(&list, "v / V", "Visual select / visual unset"),
+                "the List reference lists v and V for visual ranges"
+            );
+            assert!(
                 !list
                     .iter()
                     .any(|label| label == "Open the next column for the focused directory")
@@ -391,7 +403,12 @@ fn tenxer_reference_follows_the_active_map() {
             );
             for shown in [&footer, &other] {
                 let labels = reference_labels(shown);
-                assert!(labels.iter().any(|label| label == "Toggle file preview"));
+                assert!(reference_pairs(&labels, "Space", "Toggle file preview"));
+                assert!(
+                    !labels
+                        .iter()
+                        .any(|label| label == "Toggle the focused item and move down")
+                );
                 assert!(!labels.iter().any(|label| label == "Leave 10xer mode"));
             }
             window.destroy();
@@ -413,6 +430,12 @@ fn press_reference(footer: &ShortcutFooter, key: gdk::Key) {
         controller.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &gdk::ModifierType::empty()]),
         "{key:?} should be handled by the open reference"
     );
+}
+
+fn reference_pairs(labels: &[String], key: &str, action: &str) -> bool {
+    labels
+        .windows(2)
+        .any(|pair| pair[0] == key && pair[1] == action)
 }
 
 fn reference_labels(footer: &ShortcutFooter) -> Vec<String> {

@@ -10,7 +10,7 @@ use gtk::{
 
 use super::{Dispatcher, KeyEvent, KeyResult};
 use crate::{
-    app::Browser,
+    app::{Browser, VisualKind},
     model::Location,
     ui::{
         browser_modes::BrowserMode,
@@ -47,6 +47,9 @@ impl Dispatcher {
     }
 
     pub(super) fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
+        if self.type_to_search.preferences.tenxer_mode() && self.view.leave_visual() {
+            return Some(Propagation::Stop);
+        }
         if self.preview.is_enabled() {
             self.preview.close();
             browser.focus_active();
@@ -256,7 +259,9 @@ impl Dispatcher {
             return false;
         }
         if mods == Modifiers::CONTROL_MASK {
-            return self.tenxer_control_page(key);
+            return self.tenxer_control_page(key)
+                || self.tenxer_first_or_last(key)
+                || self.tenxer_selection_command(key);
         }
         if mods == Modifiers::ALT_MASK {
             return self.tenxer_alt_navigation(browser, key);
@@ -268,12 +273,7 @@ impl Dispatcher {
             return false;
         }
         if let Some(arrow) = crate::ui::focus_navigation::spatial_arrow(key) {
-            self.view.keyboard_navigation();
-            if search {
-                self.view.focus_search_results();
-            }
-            crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
-            return true;
+            return self.move_icon_cursor(browser, arrow, search);
         }
         match key {
             Key::Home | Key::KP_Home if !search => self.jump_displayed(-1),
@@ -287,9 +287,64 @@ impl Dispatcher {
             Key::Page_Down | Key::KP_Page_Down if !search => {
                 self.view.page_displayed_cursor(1, false)
             }
+            Key::space if !search => self.toggle_tenxer_cursor(),
+            Key::v if !search => self.toggle_visual(VisualKind::Select),
             _ => return false,
         }
         true
+    }
+
+    /// Grid motion keeps every committed fill, including a singleton and an empty
+    /// inverted fill. A load cursor still follows GTK's spatial move.
+    fn move_icon_cursor(&self, browser: &Rc<Browser>, arrow: Key, search: bool) -> bool {
+        if !search && browser.visual_kind().is_some() {
+            self.move_icon_range(browser, arrow);
+            return true;
+        }
+        let preserved = (!search).then_some(()).and_then(|_| {
+            let depth = browser.active_depth()?;
+            if browser.selection_is_load_cursor() {
+                return None;
+            }
+            let positions = browser.selected_positions(depth);
+            let cursor = browser
+                .focused_item()
+                .filter(|(item_depth, _, _)| *item_depth == depth)
+                .map(|(_, position, _)| position)?;
+            Some((depth, positions, cursor))
+        });
+        if let Some((depth, _, cursor)) = preserved.clone() {
+            browser.install_pane_fill(depth, &[cursor], cursor);
+        }
+        self.view.keyboard_navigation();
+        if search {
+            self.view.focus_search_results();
+        }
+        crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
+        if let Some((depth, positions, _)) = preserved {
+            let cursor = browser
+                .focused_item()
+                .filter(|(item_depth, _, _)| *item_depth == depth)
+                .map(|(_, position, _)| position)
+                .unwrap_or(0);
+            browser.install_pane_fill(depth, &positions, cursor);
+        }
+        true
+    }
+
+    /// GTK moves the grid cursor over a single-item selection; the walked range
+    /// is then recomputed from the anchor in displayed order.
+    fn move_icon_range(&self, browser: &Rc<Browser>, arrow: Key) {
+        let Some((depth, cursor, _)) = browser.focused_item() else {
+            return;
+        };
+        self.view.keyboard_navigation();
+        // GTK's selection echo would otherwise end the range as a pointer change.
+        let range = browser.take_visual();
+        browser.install_pane_fill(depth, &[cursor], cursor);
+        crate::ui::focus_navigation::activate_native_arrow(&self.window, arrow);
+        browser.restore_visual(range);
+        self.view.refresh_visual();
     }
 
     fn activate_icons(&self, browser: &Rc<Browser>) {
@@ -316,7 +371,9 @@ impl Dispatcher {
         }
         let mods = super::command_modifiers(modifiers);
         if mods == Modifiers::CONTROL_MASK {
-            return self.tenxer_control_page(key);
+            return self.tenxer_control_page(key)
+                || self.tenxer_first_or_last(key)
+                || self.tenxer_selection_command(key);
         }
         if mods == Modifiers::ALT_MASK {
             return self.tenxer_alt_navigation(browser, key);
@@ -328,6 +385,54 @@ impl Dispatcher {
             return false;
         }
         self.tenxer_plain(browser, key)
+    }
+
+    fn tenxer_selection_command(&self, key: Key) -> bool {
+        if self.view.selected_search_results().is_some() {
+            return false;
+        }
+        let filled = match key {
+            Key::a | Key::A => self.view.select_focused_pane(),
+            Key::r | Key::R => self.view.invert_focused_pane(),
+            _ => return false,
+        };
+        if !filled {
+            self.shortcuts.show_feedback("Nothing to select");
+        }
+        true
+    }
+
+    fn extend_tenxer_cursor(&self, browser: &Rc<Browser>, arrow: Key) {
+        if !self.view.begin_extend() {
+            self.shortcuts.show_feedback("Nothing to select");
+        } else if self.view.view_mode() == BrowserMode::Icons {
+            self.move_icon_range(browser, arrow);
+        } else {
+            self.view
+                .move_displayed_cursor(if arrow == Key::Up { -1 } else { 1 }, 1);
+        }
+    }
+
+    fn toggle_visual(&self, kind: VisualKind) {
+        if !self.view.toggle_visual(kind) {
+            self.shortcuts.show_feedback("Nothing to select");
+        }
+    }
+
+    fn toggle_tenxer_cursor(&self) {
+        if !self.view.toggle_cursor_and_advance() {
+            self.shortcuts.show_feedback("Nothing to select");
+        }
+    }
+
+    fn tenxer_first_or_last(&self, key: Key) -> bool {
+        let direction = match key {
+            Key::Up | Key::KP_Up => -1,
+            Key::Down | Key::KP_Down => 1,
+            _ => return false,
+        };
+        self.jump_displayed(direction);
+        true
     }
 
     fn tenxer_control_page(&self, key: Key) -> bool {
@@ -353,7 +458,16 @@ impl Dispatcher {
     }
 
     fn tenxer_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
+        if let Some(arrow) = extend_arrow(key)
+            && self.view.selected_search_results().is_none()
+        {
+            self.extend_tenxer_cursor(browser, arrow);
+            return true;
+        }
         match key {
+            Key::V if self.view.selected_search_results().is_none() => {
+                self.toggle_visual(VisualKind::Unset);
+            }
             Key::G => self.jump_displayed(1),
             Key::H => self.go_back(browser),
             Key::L => self.go_forward(browser),
@@ -381,6 +495,18 @@ impl Dispatcher {
             }
             Key::Page_Up | Key::KP_Page_Up => self.view.page_displayed_cursor(-1, false),
             Key::Page_Down | Key::KP_Page_Down => self.view.page_displayed_cursor(1, false),
+            Key::space => {
+                if self.view.selected_search_results().is_some() {
+                    return false;
+                }
+                self.toggle_tenxer_cursor();
+            }
+            Key::v => {
+                if self.view.selected_search_results().is_some() {
+                    return false;
+                }
+                self.toggle_visual(VisualKind::Select);
+            }
             _ => return false,
         }
         true
@@ -429,4 +555,34 @@ impl Dispatcher {
             browser.show_child(depth, entry.location);
         }
     }
+}
+
+fn extend_arrow(key: Key) -> Option<Key> {
+    match key {
+        Key::Up | Key::KP_Up => Some(Key::Up),
+        Key::Down | Key::KP_Down => Some(Key::Down),
+        _ => None,
+    }
+}
+
+/// Modifier presses keep a Shift+arrow run alive across Shift releases.
+pub(super) fn continues_extend(key: Key, modifiers: Modifiers) -> bool {
+    let modifier_key = matches!(
+        key,
+        Key::Shift_L
+            | Key::Shift_R
+            | Key::Control_L
+            | Key::Control_R
+            | Key::Alt_L
+            | Key::Alt_R
+            | Key::Super_L
+            | Key::Super_R
+            | Key::Meta_L
+            | Key::Meta_R
+            | Key::ISO_Level3_Shift
+            | Key::Caps_Lock
+    );
+    modifier_key
+        || (super::command_modifiers(modifiers) == Modifiers::SHIFT_MASK
+            && extend_arrow(key).is_some())
 }

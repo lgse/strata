@@ -346,6 +346,29 @@ fn install_result_interactions(
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     pointer_activation.install(&click);
+    // GTK's single-click-activate mode also selects whatever the pointer enters, including
+    // results that reflow under a stationary pointer, so plain clicks activate here instead.
+    let weak_item = item.downgrade();
+    let selection_for_release = selection.clone();
+    let model_for_release = model.clone();
+    let pointer_for_release = pointer_activation.clone();
+    let single_click = interactions.behavior.single_click.clone();
+    crate::ui::pointer::connect_click_release(&click, item, move |gesture, press_count, _, _| {
+        if press_count != 1 || pointer_for_release.activation() != Some(true) {
+            return;
+        }
+        // Claiming keeps GTK's release-time selection from collapsing a preserved group.
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if selection_for_release.selection().size() > 1 {
+            return;
+        }
+        if let Some(entry) = weak_item
+            .upgrade()
+            .and_then(|item| collection_entry(&model_for_release, item.position()))
+        {
+            single_click(entry);
+        }
+    });
     let weak_item = item.downgrade();
     let selection_for_press = selection.clone();
     let anchor_for_press = anchor.clone();
@@ -385,29 +408,6 @@ fn install_result_interactions(
             widget.grab_focus();
         }
         focus_items_for_press();
-    });
-    let weak_item = item.downgrade();
-    let model_for_release = model.clone();
-    let selection_for_release = selection.clone();
-    let pointer_for_release = pointer_activation.clone();
-    let single_click = interactions.behavior.single_click.clone();
-    click.connect_released(move |gesture, presses, x, y| {
-        if pointer_for_release.activation() != Some(true)
-            || selection_for_release.selection().size() > 1
-            || !gesture.widget().is_some_and(|widget| widget.contains(x, y))
-        {
-            return;
-        }
-        let Some(entry) = weak_item
-            .upgrade()
-            .and_then(|item| collection_entry(&model_for_release, item.position()))
-        else {
-            return;
-        };
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-        if presses == 1 {
-            single_click(entry);
-        }
     });
 
     let drag = gtk::DragSource::builder()
@@ -668,11 +668,12 @@ pub(super) fn build_collection(
         });
     }
     let sorted_for_activate = sorted.clone();
+    // Ignore GTK activation after a pointer release; it would dispatch a second open.
     let dispatch_activate: Rc<dyn Fn(u32)> = Rc::new(move |position| {
-        let Some(entry) = collection_entry(&sorted_for_activate, position) else {
+        if pointer_activation.activation().is_some() {
             return;
-        };
-        if pointer_activation.activation().is_none() {
+        }
+        if let Some(entry) = collection_entry(&sorted_for_activate, position) {
             activate(entry);
         }
     });

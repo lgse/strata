@@ -233,6 +233,8 @@ pub(super) struct ColumnView {
     pub(super) listing_scroll: gtk::ScrolledWindow,
     pub(super) marquee: crate::ui::marquee::Marquee,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
+    /// Bumped by each cursor restore so an older pending restore cannot land late.
+    pub(super) cursor_restore_generation: Rc<Cell<u64>>,
     pub(super) folder_context_trigger: Rc<dyn Fn(f64, f64)>,
     pub(super) item_context_trigger: Rc<dyn Fn(f64, f64)>,
     pub(super) entry_count: Rc<Cell<usize>>,
@@ -400,15 +402,25 @@ pub(super) fn scroll_column_to(column: &ColumnView, position: u32) {
 pub(super) fn restore_column_cursor(column: &ColumnView, position: u32) {
     let list = column.list.downgrade();
     let rows = column.bound_rows.clone();
+    let generations = column.cursor_restore_generation.clone();
+    let generation = generations.get().wrapping_add(1);
+    generations.set(generation);
     glib::idle_add_local_once(move || {
         let Some(list) = list.upgrade() else { return };
         let frames = Cell::new(0u8);
         list.add_tick_callback(move |list, _| {
+            if generations.get() != generation {
+                return glib::ControlFlow::Break;
+            }
             let focused = list.root().and_then(|root| root.focus());
-            if !focused
-                .as_ref()
-                .is_some_and(|focused| focused == list || list.is_ancestor(focused))
-            {
+            // `is_ancestor` is true when the receiver sits inside the argument.
+            // Restore while focus is the list or one of its rows, and also while
+            // a parent of the list still holds focus. An inline name editor also
+            // sits inside a row and must keep the focus it took after this queued.
+            if !focused.as_ref().is_some_and(|focused| {
+                (focused == list || focused.is_ancestor(list) || list.is_ancestor(focused))
+                    && !crate::ui::focus_navigation::editable(focused)
+            }) {
                 return glib::ControlFlow::Break;
             }
             let cursor = rows.borrow().iter().find_map(|bound| {
@@ -956,9 +968,25 @@ impl ViewState {
                     .find_map(|(filtered, source)| (*filtered == position).then_some(*source))
             });
             if let Some(state) = weak_selection_state.upgrade() {
+                // Marquee and row-gesture writes own the selection. A later focus
+                // echo of the cursor does not, and must not replace a committed fill.
+                if crate::ui::marquee::is_updating_selection() || state.pointer_owns_selection.get()
+                {
+                    state.browser.commit_selection();
+                }
                 state
                     .browser
                     .set_selection(depth, &source_positions, focused_source);
+                let model = state.browser.selected_positions(depth);
+                if model != source_positions {
+                    let filtered: Vec<u32> = model
+                        .iter()
+                        .filter_map(|position| map_for_selection.view_position(*position))
+                        .collect();
+                    syncing_selection_changed.set(true);
+                    apply_selection_plan(selection, selection.n_items(), &filtered);
+                    syncing_selection_changed.set(false);
+                }
                 state.refresh_destination_style();
             }
         });
@@ -1556,6 +1584,7 @@ impl ViewState {
             listing_scroll: scroll,
             marquee,
             bound_rows,
+            cursor_restore_generation: Rc::new(Cell::new(0)),
             folder_context_trigger,
             item_context_trigger,
             entry_count,
