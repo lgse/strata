@@ -27,6 +27,7 @@ pub(super) struct ShortcutFooter {
     sidebar: gtk::ScrolledWindow,
     search: gtk::Entry,
     selected_category: Rc<RefCell<String>>,
+    active_area: Rc<Cell<ReferenceArea>>,
     scroll: gtk::ScrolledWindow,
     focus_before: Rc<RefCell<Option<glib::WeakRef<gtk::Widget>>>>,
     status_widgets: Rc<RefCell<Vec<gtk::Widget>>>,
@@ -65,6 +66,13 @@ impl ChordIndicator {
             }
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReferenceArea {
+    Search,
+    Categories,
+    Results,
 }
 
 #[derive(Clone)]
@@ -260,11 +268,11 @@ impl ShortcutFooter {
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .build();
         sidebar.add_css_class("shortcut-reference-sidebar");
-        sidebar.set_focusable(true);
         body.append(&sidebar);
         let reference = gtk::Box::new(gtk::Orientation::Vertical, 24);
         reference.add_css_class("shortcut-reference-results");
         let selected_category = Rc::new(RefCell::new(String::from("All")));
+        let active_area = Rc::new(Cell::new(ReferenceArea::Search));
         let scroll = gtk::ScrolledWindow::builder()
             .child(&reference)
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -322,8 +330,12 @@ impl ShortcutFooter {
         let focus_trap = Rc::new(RefCell::new(None::<(gtk::Window, glib::SignalHandlerId)>));
         let open_focus_trap = focus_trap.clone();
         let trap_search = search.downgrade();
+        let trap_sidebar = sidebar.downgrade();
+        let trap_scroll = scroll.downgrade();
+        let trap_area = active_area.clone();
         let trap_popover = popover.downgrade();
         popover.connect_show(move |popover| {
+            trap_area.set(ReferenceArea::Search);
             if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
                 if let Some(overlay) = window.child().and_downcast::<gtk::Overlay>() {
                     if let Some(root) = overlay.child().and_downcast::<super::blur::BlurBin>() {
@@ -347,6 +359,9 @@ impl ShortcutFooter {
                     *open_backdrop.borrow_mut() = Some((overlay, layer));
                 }
                 let search = trap_search.clone();
+                let sidebar = trap_sidebar.clone();
+                let scroll = trap_scroll.clone();
+                let area = trap_area.clone();
                 let trapped_popover = trap_popover.clone();
                 let id = window.connect_focus_widget_notify(move |window| {
                     let Some(popover) = trapped_popover
@@ -358,11 +373,29 @@ impl ShortcutFooter {
                     let Some(focus) = gtk::prelude::RootExt::focus(window) else {
                         return;
                     };
-                    if focus != *popover.upcast_ref::<gtk::Widget>()
-                        && !focus.is_ancestor(&popover)
-                        && let Some(search) = search.upgrade()
+                    if focus != *popover.upcast_ref::<gtk::Widget>() && !focus.is_ancestor(&popover)
                     {
-                        search.grab_focus();
+                        if let Some(search) = search.upgrade() {
+                            search.grab_focus();
+                        }
+                        return;
+                    }
+                    if let (Some(search), Some(sidebar), Some(scroll)) =
+                        (search.upgrade(), sidebar.upgrade(), scroll.upgrade())
+                    {
+                        if focus == *search.upcast_ref::<gtk::Widget>()
+                            || focus.is_ancestor(&search)
+                        {
+                            area.set(ReferenceArea::Search);
+                        } else if focus == *sidebar.upcast_ref::<gtk::Widget>()
+                            || focus.is_ancestor(&sidebar)
+                        {
+                            area.set(ReferenceArea::Categories);
+                        } else if focus == *scroll.upcast_ref::<gtk::Widget>()
+                            || focus.is_ancestor(&scroll)
+                        {
+                            area.set(ReferenceArea::Results);
+                        }
                     }
                 });
                 *open_focus_trap.borrow_mut() = Some((window.clone(), id));
@@ -481,6 +514,7 @@ impl ShortcutFooter {
             sidebar,
             search,
             selected_category,
+            active_area,
             scroll,
             focus_before,
             status_widgets,
@@ -821,8 +855,8 @@ impl ShortcutFooter {
         if keys == gdk::ModifierType::CONTROL_MASK {
             let focused = match key {
                 gdk::Key::b => self.focus_category(),
-                gdk::Key::f => self.search.grab_focus(),
-                gdk::Key::l => self.scroll.grab_focus(),
+                gdk::Key::f => self.focus_search(),
+                gdk::Key::l => self.focus_results(),
                 _ => false,
             };
             if focused {
@@ -842,22 +876,25 @@ impl ShortcutFooter {
         if matches!(key, gdk::Key::Tab | gdk::Key::ISO_Left_Tab) && !command_modifiers {
             let backwards =
                 keys.contains(gdk::ModifierType::SHIFT_MASK) || key == gdk::Key::ISO_Left_Tab;
-            if search_focused {
-                if backwards {
-                    self.scroll.grab_focus();
-                } else {
+            let current = if search_focused {
+                ReferenceArea::Search
+            } else if category_focused {
+                ReferenceArea::Categories
+            } else if list_focused {
+                ReferenceArea::Results
+            } else {
+                self.active_area.get()
+            };
+            match (current, backwards) {
+                (ReferenceArea::Search, false) | (ReferenceArea::Results, true) => {
                     self.focus_category();
                 }
-            } else if category_focused {
-                if backwards {
-                    self.search.grab_focus();
-                } else {
-                    self.scroll.grab_focus();
+                (ReferenceArea::Categories, false) | (ReferenceArea::Search, true) => {
+                    self.focus_results();
                 }
-            } else if list_focused && backwards {
-                self.focus_category();
-            } else {
-                self.search.grab_focus();
+                (ReferenceArea::Results, false) | (ReferenceArea::Categories, true) => {
+                    self.focus_search();
+                }
             }
             return Some(glib::Propagation::Stop);
         }
@@ -911,11 +948,32 @@ impl ShortcutFooter {
         buttons
     }
 
+    fn focus_search(&self) -> bool {
+        let focused = self.search.grab_focus();
+        if focused {
+            self.active_area.set(ReferenceArea::Search);
+        }
+        focused
+    }
+
+    fn focus_results(&self) -> bool {
+        let focused = self.scroll.grab_focus();
+        if focused {
+            self.active_area.set(ReferenceArea::Results);
+        }
+        focused
+    }
+
     fn focus_category(&self) -> bool {
-        self.category_buttons()
+        let focused = self
+            .category_buttons()
             .into_iter()
             .find(|button| button.has_css_class("selected"))
-            .is_some_and(|button| button.grab_focus())
+            .is_some_and(|button| button.grab_focus());
+        if focused {
+            self.active_area.set(ReferenceArea::Categories);
+        }
+        focused
     }
 
     fn move_category(&self, delta: isize) {

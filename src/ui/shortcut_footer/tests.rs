@@ -383,32 +383,27 @@ fn tenxer_reference_follows_the_active_map() {
                 }),
                 "the open reference takes keyboard focus"
             );
-            assert_eq!(
-                footer.handle_key(gdk::Key::Tab, none),
-                Some(glib::Propagation::Stop)
-            );
-            assert!(
-                footer
-                    .categories
-                    .first_child()
-                    .and_downcast::<gtk::Button>()
-                    .is_some_and(|button| button.has_focus())
-            );
-            assert!(footer.sidebar.grab_focus());
-            assert_eq!(
-                footer.handle_key(gdk::Key::Tab, none),
-                Some(glib::Propagation::Stop)
-            );
-            assert!(footer.scroll.has_focus());
-            assert_eq!(
-                footer.handle_key(gdk::Key::Tab, none),
-                Some(glib::Propagation::Stop)
-            );
-            assert!(
-                gtk::prelude::RootExt::focus(&window)
-                    .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
-                        || focus.is_ancestor(&footer.search))
-            );
+            for _ in 0..4 {
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(
+                    footer
+                        .categories
+                        .first_child()
+                        .and_downcast::<gtk::Button>()
+                        .is_some_and(|button| button.has_focus())
+                );
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.scroll.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(
+                    gtk::prelude::RootExt::focus(&window)
+                        .is_some_and(|focus| focus == *footer.search.upcast_ref::<gtk::Widget>()
+                            || focus.is_ancestor(&footer.search))
+                );
+            }
             footer.search.set_text("half a page");
             settle();
             let matches = reference_labels(&footer);
@@ -427,6 +422,17 @@ fn tenxer_reference_follows_the_active_map() {
             let matches = reference_labels(&footer);
             assert!(matches.iter().any(|label| label == "Home / ~/.config"));
             assert!(!matches.iter().any(|label| label == "Move half a page"));
+            footer.search.grab_focus();
+            for _ in 0..2 {
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(places.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+                assert!(footer.scroll.has_focus());
+                press_reference(&footer, gdk::Key::Tab);
+                settle();
+            }
             footer
                 .categories
                 .first_child()
