@@ -167,7 +167,7 @@ impl Dispatcher {
             }
         }
         if let Some(direction) = page_direction(event.key)
-            && self.view.page_selection(direction)
+            && self.view.page_selection(direction, event.shift())
         {
             return Some(Propagation::Stop);
         }
@@ -424,6 +424,14 @@ impl Dispatcher {
         }
     }
 
+    fn extend_tenxer_page(&self, direction: i32) {
+        if self.view.begin_extend() {
+            self.view.page_displayed_cursor(direction, false);
+        } else {
+            self.shortcuts.show_feedback("Nothing to select");
+        }
+    }
+
     fn toggle_visual(&self, kind: VisualKind) {
         if !self.view.toggle_visual(kind) {
             self.shortcuts.show_feedback("Nothing to select");
@@ -471,11 +479,15 @@ impl Dispatcher {
     }
 
     fn tenxer_shifted(&self, browser: &Rc<Browser>, key: Key) -> bool {
-        if let Some(arrow) = extend_arrow(key)
-            && self.view.selected_search_results().is_none()
-        {
-            self.extend_tenxer_cursor(browser, arrow);
-            return true;
+        if self.view.selected_search_results().is_none() {
+            if let Some(arrow) = extend_arrow(key) {
+                self.extend_tenxer_cursor(browser, arrow);
+                return true;
+            }
+            if let Some(direction) = page_direction(key) {
+                self.extend_tenxer_page(direction);
+                return true;
+            }
         }
         match key {
             Key::V if !self.selection_keys_blocked() => {
@@ -627,5 +639,5 @@ pub(super) fn is_modifier_key(key: Key) -> bool {
 pub(super) fn continues_extend(key: Key, modifiers: Modifiers) -> bool {
     is_modifier_key(key)
         || (super::command_modifiers(modifiers) == Modifiers::SHIFT_MASK
-            && extend_arrow(key).is_some())
+            && (extend_arrow(key).is_some() || page_direction(key).is_some()))
 }

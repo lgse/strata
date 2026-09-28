@@ -1539,20 +1539,44 @@ impl NavigationState {
         self.shift_cursor(direction, page, order, false)
     }
 
-    fn shift_cursor(
+    /// Extends the range from its anchor to the entry one page away, for
+    /// `Shift+Page Up` and `Shift+Page Down`.
+    pub fn extend_page_selection(
         &mut self,
         direction: i32,
         page: usize,
         order: Option<&[usize]>,
-        replace_fill: bool,
-    ) -> Option<(usize, usize, bool)> {
+    ) -> Option<(usize, usize, Vec<usize>)> {
+        let (depth, visible, position) = self.page_target(direction, page, order)?;
+        let column = self.columns.get_mut(depth)?;
+        let anchored = column
+            .selection_anchor
+            .as_ref()
+            .is_some_and(|anchor| column.entries.iter().any(|entry| &entry.location == anchor));
+        // A cleared fill keeps a leftover anchor. Start the range at the cursor.
+        if column.selected_locations.is_empty() || !anchored {
+            column.selection_anchor = column
+                .selected
+                .and_then(|cursor| column.entries.get(cursor))
+                .map(|entry| entry.location.clone());
+        }
+        let positions = self.extend_visual_selection(depth, position, &visible)?;
+        Some((depth, position, positions))
+    }
+
+    fn page_target(
+        &self,
+        direction: i32,
+        page: usize,
+        order: Option<&[usize]>,
+    ) -> Option<(usize, Vec<usize>, usize)> {
         if direction == 0 {
             return None;
         }
         let depth = self
             .active_column
             .or_else(|| self.columns.len().checked_sub(1))?;
-        let column = self.columns.get_mut(depth)?;
+        let column = self.columns.get(depth)?;
         let visible: Vec<usize> = match order {
             Some(order) if !order.is_empty() => order.to_vec(),
             _ => visible_positions(column),
@@ -1572,6 +1596,18 @@ impl NavigationState {
             (Some(current), false) => current.saturating_add(steps).min(last),
         };
         let position = visible[target];
+        Some((depth, visible, position))
+    }
+
+    fn shift_cursor(
+        &mut self,
+        direction: i32,
+        page: usize,
+        order: Option<&[usize]>,
+        replace_fill: bool,
+    ) -> Option<(usize, usize, bool)> {
+        let (depth, _, position) = self.page_target(direction, page, order)?;
+        let column = self.columns.get_mut(depth)?;
         let cleared = if replace_fill {
             self.visual = None;
             focus_only(column, position);

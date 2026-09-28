@@ -2870,6 +2870,21 @@ impl Browser {
         }
     }
 
+    pub fn extend_page_selection(&self, direction: i32, page: usize, order: Option<&[usize]>) {
+        let extended = self
+            .state
+            .borrow_mut()
+            .extend_page_selection(direction, page, order);
+        if let Some((depth, focused, positions)) = extended {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions,
+                focused,
+                take_focus: true,
+            });
+        }
+    }
+
     pub fn extend_selection(&self, direction: i32) {
         let extended = self.state.borrow_mut().extend_selection(direction);
         if let Some((depth, focused, positions)) = extended {
