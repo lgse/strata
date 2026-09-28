@@ -3052,6 +3052,10 @@ entry.form-control.shortcut-footer-prompt:focus-within {
   box-shadow: 0 0 14px alpha(@theme_glow, 0.24);
 }
 
+.shortcut-chord-popover > contents {
+  padding: 8px;
+}
+
 .shortcut-reference-header,
 .shortcut-reference-footer {
   padding: 14px 20px;

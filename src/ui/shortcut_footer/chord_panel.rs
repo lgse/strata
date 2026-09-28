@@ -28,6 +28,7 @@ impl ChordPanel {
             .child(&options)
             .build();
         popover.add_css_class("shortcut-popover");
+        popover.add_css_class("shortcut-chord-popover");
         popover.set_offset(0, -6);
         popover.set_parent(pill);
         let weak_popover = popover.downgrade();
