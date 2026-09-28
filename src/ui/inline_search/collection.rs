@@ -295,7 +295,7 @@ impl ResultCollection {
         self.gesture_selection.borrow_mut().take();
     }
 
-    pub(super) fn refresh_cut_rows(&self) {
+    pub(super) fn refresh_mark_rows(&self) {
         self.bound.borrow_mut().retain(|bound| {
             let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
                 return false;
@@ -304,7 +304,7 @@ impl ResultCollection {
                 self.item(item.position()),
                 widget.downcast_ref::<gtk::Box>(),
             ) {
-                crate::ui::browser::set_cut_result_style(row, &Location::local(&result.path));
+                crate::ui::browser::set_mark_result_style(row, &Location::local(&result.path));
             }
             true
         });

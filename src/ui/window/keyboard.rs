@@ -27,6 +27,7 @@ use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 
 pub(super) mod chords;
 mod commands;
+mod files;
 mod focus;
 mod items;
 mod preview;
@@ -193,12 +194,19 @@ fn bind_go_completion(dispatcher: &Dispatcher) {
     let hint = dispatcher
         .shortcuts
         .prompt_sink(crate::ui::tenxer_mode::Prompt::Go);
-    dispatcher.shortcuts.connect_prompt_changed(move |kind, _| {
-        if kind == crate::ui::tenxer_mode::Prompt::Go {
-            go.invalidate();
-            hint.show(None, None);
-        }
-    });
+    let create_hint = dispatcher
+        .shortcuts
+        .prompt_sink(crate::ui::tenxer_mode::Prompt::Create);
+    dispatcher
+        .shortcuts
+        .connect_prompt_changed(move |kind, _| match kind {
+            crate::ui::tenxer_mode::Prompt::Go => {
+                go.invalidate();
+                hint.show(None, None);
+            }
+            crate::ui::tenxer_mode::Prompt::Create => create_hint.show(None, None),
+            _ => {}
+        });
 }
 
 fn bind_history_prompts(dispatcher: &Dispatcher) {
@@ -660,7 +668,10 @@ impl Dispatcher {
         {
             return Some(result);
         }
-        if let Some(result) = self.tenxer_prompt_keys(key, modifiers) {
+        if let Some(result) = self
+            .tenxer_prompt_keys(key, modifiers)
+            .or_else(|| self.tenxer_file_keys(key, modifiers))
+        {
             return Some(result);
         }
         let icons = self.view.view_mode() == crate::ui::browser_modes::BrowserMode::Icons;

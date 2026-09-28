@@ -233,7 +233,7 @@ cursor or **v** then motion → **y** / **x** → **h** / **l** / **g h** / **g 
 | Key | Action |
 | --- | --- |
 | **y** / **x** | Yank / cut the selection (or the focused item) |
-| **p** | Paste. Keep Both is focused on conflicts when that button is offered. |
+| **p** | Paste. Keep Both is focused on conflicts when that button is offered; otherwise Replace is. |
 | **P** | Paste. Replace is focused on conflicts. **Ctrl+V** does the same. |
 | **Y** / **X** | Clear copy/cut marks and this process's clipboard payload. Does not wipe another application's clipboard. |
 | **d** / **Delete** | Move to Trash with confirmation |
@@ -254,8 +254,39 @@ disabled actions, filter misses, non-native locations, and an 11th match are
 omitted. A vacant slot flashes `No action N` and does not run a different
 action. See [custom actions](custom-actions.md).
 
+**y** / **x** / **d** / **c c** / **c n** take the focused pane's fill, or its
+cursor item when nothing is filled, including on **f** and **s** results. A
+hovered row, a parent folder, and a Miller column's open-path marker are never
+targets. **y** and **Ctrl+C** show the copy icon on those items, and **x** and
+**Ctrl+X** show scissors; cut wins when both could apply. The marks follow
+view changes and every window, and go away when another application takes the
+clipboard. Nothing moves until a paste completes, and a completed cut move
+clears its marks.
+
+**p** / **P** / **Ctrl+V** paste into the same directory as the default map's
+**Ctrl+V** (see [keyboard navigation](keyboard-navigation.md#input-precedence)),
+and pasting never changes pointer or keyboard ownership. Focusing a conflict
+button does not choose it: nothing changes until you accept, and Cancel or
+**Esc** leaves both items untouched. Keep Both is offered only for copies.
+
+**d** / **Delete** show a **Move to Trash?** confirmation with its confirm button
+focused. **D** / **Shift+Delete**, and **d** inside Trash, show the permanent
+deletion confirmation with Cancel focused, so **Enter** cancels. Errors appear in
+the usual operation dialogs, and **Ctrl+Z** undoes what the default map can undo.
+
+**a** opens `create ›` in the footer. **Enter** creates an empty file with exactly
+the typed name in the keyboard-focused folder; spaces and Unicode are kept. A
+trailing `/` makes a folder instead and is removed before the name is checked. An
+empty name, `.`, `..`, or a name containing `/` keeps the prompt open with the
+reason, and so does a name already taken (including by a broken link), so you
+can fix it. Nothing is renumbered, replaced, or followed. **Esc**, focus leaving
+the prompt, a clicked row, another prompt, leaving the mode, or closing the
+window discard the name. **Ctrl+Shift+N** still adds a numbered **new folder**
+and renames it in place. Trash and Recent flash `Can’t create items here`.
+
 Empty folder: **y** / **x** / **d** / **r** / **Space** flash
-`Nothing to yank` / `cut` / `delete` / `rename` / `select`. **i** in an empty
+`Nothing to yank` / `cut` / `delete` / `rename` / `select`, and **c c** /
+**c n** flash `Nothing to copy`. **i** in an empty
 folder does nothing; on an unpreviewable file it flashes `Nothing to preview`. In
 List and Columns, empty-folder and unpreviewable-file **l** / **→** flash
 `Nothing to preview`. Empty clipboard **p** flashes `Nothing to paste`.
@@ -467,7 +498,7 @@ These GUI conventions stay available alongside the Yazi verbs:
 
 | Key | Action |
 | --- | --- |
-| **Ctrl+C** / **Ctrl+X** / **Ctrl+V** | Copy / cut / paste. **Ctrl+V** focuses Replace on conflicts, like **P**. |
+| **Ctrl+C** / **Ctrl+X** / **Ctrl+V** | Copy / cut / paste the selection as in the default map. **Ctrl+V** focuses Replace on conflicts, like **P**. |
 | **Delete** / **Shift+Delete** | Trash / permanent delete (same as **d** / **D**, with confirmation) |
 | **F2** | Footer rename (same as **r**) |
 | **F5** | Refresh |

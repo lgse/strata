@@ -85,12 +85,14 @@ pub(crate) enum Chord {
     Go,
     /// **g** while a document or archive preview owns the keys: only **g g**.
     PreviewTop,
+    Copy,
 }
 
 impl Chord {
     pub(crate) fn mark(self) -> &'static str {
         match self {
             Self::Go | Self::PreviewTop => "g-",
+            Self::Copy => "c-",
         }
     }
 
@@ -112,6 +114,7 @@ impl Chord {
                 ("Space", "Type a path"),
             ],
             Self::PreviewTop => &[("g", "Top")],
+            Self::Copy => &[("c", "Copy path"), ("n", "Copy name")],
         }
     }
 }
@@ -125,6 +128,7 @@ pub(crate) enum Prompt {
     Go,
     Jump,
     Recent,
+    Create,
 }
 
 impl Prompt {
@@ -137,6 +141,7 @@ impl Prompt {
             Self::Go => "go \u{203a}",
             Self::Jump => "jump \u{203a}",
             Self::Recent => "recent \u{203a}",
+            Self::Create => "create \u{203a}",
         }
     }
 
@@ -153,6 +158,7 @@ impl Prompt {
             Self::Go => "Go to a path or URI",
             Self::Jump => "Jump to a visited folder",
             Self::Recent => "Jump to a recently visited folder",
+            Self::Create => "Create a file, or a folder ending in /",
         }
     }
 }

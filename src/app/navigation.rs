@@ -1434,6 +1434,36 @@ impl NavigationState {
             .collect()
     }
 
+    /// The pane's committed fill in listing order, or its cursor item when
+    /// nothing is filled. A load cursor is not a fill, and another pane's
+    /// open-path marker is never a target.
+    pub fn command_entries(&self, depth: usize) -> Vec<FileEntry> {
+        let Some(column) = self.columns.get(depth) else {
+            return Vec::new();
+        };
+        let visible = |entry: &FileEntry| column.preferences.show_hidden || !entry.is_hidden;
+        if column.load_cursor.is_none() && !column.selected_locations.is_empty() {
+            let filled: Vec<FileEntry> = column
+                .entries
+                .iter()
+                .filter(|entry| {
+                    visible(entry) && column.selected_locations.contains(&entry.location)
+                })
+                .cloned()
+                .collect();
+            if !filled.is_empty() {
+                return filled;
+            }
+        }
+        column
+            .selected
+            .and_then(|position| column.entries.get(position))
+            .filter(|entry| visible(entry))
+            .cloned()
+            .into_iter()
+            .collect()
+    }
+
     pub fn selection_is_load_cursor(&self) -> bool {
         self.active_column
             .and_then(|depth| self.columns.get(depth))

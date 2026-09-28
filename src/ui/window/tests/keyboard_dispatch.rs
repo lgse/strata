@@ -12,6 +12,7 @@ use super::super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
+mod file_commands;
 mod folder_jump;
 mod footer_prompt;
 mod go_prompt;
@@ -1144,8 +1145,12 @@ fn tenxer_file_list_skips_conflicting_defaults_and_keeps_bound_shortcuts() {
                 assert!(preferences.tenxer_mode(), "{key:?} must not leave the mode");
             }
             select_named(&fixture, "folder");
+            fixture.press(Key::Y, ModifierType::SHIFT_MASK);
+            fixture.shortcuts.dismiss_feedback();
             fixture.press(Key::p, ModifierType::empty());
             assert_eq!(pins.get(), 0, "p must not pin while 10xer is on");
+            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to paste");
+            fixture.shortcuts.dismiss_feedback();
             fixture.view.browser().select(0, 0);
             focus_files(&fixture);
             let control = ModifierType::CONTROL_MASK;

@@ -1822,6 +1822,10 @@ impl Browser {
         self.state.borrow().selected_entries()
     }
 
+    pub fn command_entries(&self, depth: usize) -> Vec<FileEntry> {
+        self.state.borrow().command_entries(depth)
+    }
+
     pub fn selection_is_load_cursor(&self) -> bool {
         self.state.borrow().selection_is_load_cursor()
     }
@@ -2029,6 +2033,14 @@ impl Browser {
             self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
         );
         self.install_operation_load(request_id, load);
+    }
+
+    pub fn create_exact_entry(self: &Rc<Self>, parent: Location, name: String, directory: bool) {
+        if directory {
+            self.create_directory_with_naming(parent, name, false);
+        } else {
+            self.create_file_with_naming(parent, name, false);
+        }
     }
 
     pub fn create_new_file(self: &Rc<Self>, parent: Location) {

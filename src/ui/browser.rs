@@ -43,6 +43,7 @@ mod dissolve_delete;
 mod entry;
 mod entry_animation;
 mod events;
+mod file_commands;
 pub(in crate::ui) mod find;
 pub(super) mod fly_to_trash;
 mod inline_edit;
@@ -61,12 +62,16 @@ mod result_selection;
 mod transfer;
 mod trash;
 
+#[cfg(test)]
+pub(super) use crate::ui::browser::clipboard::clipboard_mark;
 pub(in crate::ui) use crate::ui::browser::clipboard::drag_icon_with_count;
+pub(super) use crate::ui::browser::clipboard::{
+    ClipboardMark, ClipboardMarks, file_drag_content, mark_in, set_mark_result_style,
+};
 pub(crate) use crate::ui::browser::clipboard::{
     PreparedFileDrop, drag_actions_for_modifiers, file_drop_action, file_drop_commit,
     locations_from_file_list_value, prepare_file_drop_target,
 };
-pub(super) use crate::ui::browser::clipboard::{file_drag_content, set_cut_result_style};
 pub(crate) use crate::ui::browser::collection::{
     ActivePaneFilter, debounce_filter_entry, detach_collection_view, filter_placeholder,
     focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
@@ -83,6 +88,7 @@ pub(super) use crate::ui::browser::entry::{
     FOLDER_TYPE_GROUP, OTHER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value,
     format_file_size, icon_for_name, metadata_needs_fill, model_type_group, rounded_size_and_unit,
 };
+pub(crate) use crate::ui::browser::file_commands::{ConflictFocus, CreateRefusal, Yank};
 pub(super) use crate::ui::browser::inline_edit::{queue_rename, reveal_rename_row};
 pub(in crate::ui) use crate::ui::browser::listing_filter::{
     FilterStatus, results_step_target, scroll_results_to, selected_cursor,
@@ -1411,8 +1417,13 @@ impl BrowserView {
     }
 
     pub fn create_new_folder(&self) {
-        let mode = self.view_mode();
-        let depth = if mode == BrowserMode::Columns {
+        if let Some((depth, location)) = self.new_entry_parent() {
+            self.state.begin_new_entry(depth, location, true);
+        }
+    }
+
+    fn new_entry_parent(&self) -> Option<(usize, Location)> {
+        let depth = if self.view_mode() == BrowserMode::Columns {
             new_folder_destination_depth(
                 self.state.focused_column_depth(),
                 self.state.browser.active_depth(),
@@ -1420,15 +1431,11 @@ impl BrowserView {
             )
         } else {
             self.state.browser.active_depth()
-        };
-        if let Some((depth, location)) = depth.and_then(|depth| {
-            self.state
-                .browser
-                .location_at(depth)
-                .map(|location| (depth, location))
-        }) {
-            self.state.begin_new_entry(depth, location, true);
-        }
+        }?;
+        self.state
+            .browser
+            .location_at(depth)
+            .map(|location| (depth, location))
     }
 
     pub(in crate::ui) fn set_preview_owns_keys(&self, owned: bool) {
@@ -1494,19 +1501,23 @@ impl BrowserView {
     }
 
     pub fn paste(&self) {
+        if let Some(location) = self.paste_location() {
+            self.state.paste_into(location);
+        }
+    }
+
+    fn paste_location(&self) -> Option<Location> {
         self.state.sync_mode_selection();
         let selected = self.state.browser.selected_entries();
         let column = self
             .state
             .destination_depth()
             .and_then(|depth| self.state.browser.location_at(depth));
-        if let Some(location) = paste_destination(
+        paste_destination(
             &selected,
             column,
             self.state.browser.selection_is_load_cursor(),
-        ) {
-            self.state.paste_into(location);
-        }
+        )
     }
 
     pub fn copy_selection(&self) -> bool {
@@ -1760,15 +1771,18 @@ impl BrowserView {
         if entries.is_empty() {
             return false;
         }
-        let in_trash = self
-            .state
+        let in_trash = self.focused_location_is_trash();
+        self.state.request_delete(entries, permanent || in_trash);
+        true
+    }
+
+    fn focused_location_is_trash(&self) -> bool {
+        self.state
             .focused_column_depth()
             .and_then(|depth| self.state.browser.location_at(depth))
             .or_else(|| self.state.browser.active_location())
             .as_ref()
-            .is_some_and(is_trash_location);
-        self.state.request_delete(entries, permanent || in_trash);
-        true
+            .is_some_and(is_trash_location)
     }
 
     pub fn undo_last_operation(&self) -> bool {

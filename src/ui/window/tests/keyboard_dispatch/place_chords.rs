@@ -169,6 +169,10 @@ fn tenxer_go_chord_reaches_places_and_cancels_cleanly() {
             fixture.press(Key::d, ModifierType::empty());
             pump(50);
             assert_eq!(browser.active_location(), origin, "Esc left no pending d");
+            wait_until(|| modal_visible(&fixture.overlay));
+            assert!(click_class(&fixture.overlay, "action-dialog-close"));
+            wait_until(|| !modal_visible(&fixture.overlay));
+            focus_files(&fixture);
 
             for (key, path, feedback) in [
                 (Key::d, &places.downloads, "No Downloads folder"),
@@ -247,6 +251,11 @@ fn tenxer_go_chord_reaches_places_and_cancels_cleanly() {
                 Some(Location::local(&places.home)),
                 "mode exit left no pending g"
             );
+            if modal_visible(&fixture.overlay) {
+                assert!(click_class(&fixture.overlay, "action-dialog-close"));
+                wait_until(|| !modal_visible(&fixture.overlay));
+            }
+            focus_files(&fixture);
 
             fixture.press(Key::g, ModifierType::empty());
             fixture.press(Key::comma, ModifierType::CONTROL_MASK);
@@ -291,10 +300,16 @@ fn assert_place_key_does_not_jump(
     fixture: &KeyboardFixture,
     origin: &Option<crate::model::Location>,
 ) {
-    if !shortcut_reference_visible(fixture) {
+    let reference = shortcut_reference_visible(fixture);
+    if !reference {
         focus_files(fixture);
     }
     fixture.press(Key::d, ModifierType::empty());
+    if !reference {
+        wait_until(|| modal_visible(&fixture.overlay));
+        assert!(click_class(&fixture.overlay, "action-dialog-close"));
+        wait_until(|| !modal_visible(&fixture.overlay));
+    }
     pump(50);
     assert_eq!(fixture.view.browser().active_location(), *origin);
     assert_eq!(fixture.shortcuts.armed_chord(), None);

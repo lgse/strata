@@ -194,9 +194,27 @@ fn context_hints_follow_the_active_map() {
             let menu = open_menu(&view, Some("notes.txt"));
             let hints = label_texts(&menu);
             assert!(!hints.iter().any(|hint| hint == "Space"), "{hints:?}");
-            assert!(!hints.iter().any(|hint| hint == "Y"), "{hints:?}");
             assert!(hints.iter().any(|hint| hint == "F2"), "{hints:?}");
-            assert!(hints.iter().any(|hint| hint == "Ctrl+C"), "{hints:?}");
+            let after = |label: &str| {
+                hints
+                    .iter()
+                    .position(|hint| hint == label)
+                    .and_then(|index| hints.get(index + 1))
+                    .map(String::as_str)
+            };
+            for (label, hint) in [
+                ("Cut", "X"),
+                ("Copy", "Y"),
+                ("Move to Trash", "D"),
+                ("Permanently delete", "Shift+D"),
+                ("Copy path", "Copy name"),
+            ] {
+                assert_eq!(after(label), Some(hint), "{hints:?}");
+            }
+            assert!(
+                !hints.iter().any(|hint| hint.starts_with("Ctrl+")),
+                "{hints:?}"
+            );
             assert!(
                 hints.iter().any(|hint| hint == "I"),
                 "GTK renders the i accelerator as I: {hints:?}"

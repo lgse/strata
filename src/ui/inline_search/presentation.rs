@@ -143,7 +143,7 @@ impl ResultWidgets {
                 size,
             );
         }
-        browser::set_cut_result_style(&self.widget, &Location::local(&result.path));
+        browser::set_mark_result_style(&self.widget, &Location::local(&result.path));
     }
 }
 
