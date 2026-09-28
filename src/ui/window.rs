@@ -40,6 +40,7 @@ mod device_release;
 mod devices;
 mod keyboard;
 mod open_argument;
+mod remote_places;
 mod sidebar;
 mod unlock_argument;
 mod volume_password;
@@ -1076,6 +1077,10 @@ pub(super) struct SidebarState {
     keycaps: RefCell<Vec<gtk::Label>>,
     keycaps_shown: Cell<bool>,
     visible_pins: RefCell<Vec<Location>>,
+    saved_connections: RefCell<Vec<crate::services::connections::SavedConnection>>,
+    /// Rows whose tooltip isn't their location, such as saved connections.
+    row_tooltips: RefCell<Vec<(gtk::Button, String)>>,
+    connections_watch: RefCell<Option<Rc<dyn Fn()>>>,
 }
 
 /// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
@@ -1234,8 +1239,11 @@ impl SidebarState {
         self.place_rows.borrow_mut().clear();
         self.keycaps.borrow_mut().clear();
         self.visible_pins.borrow_mut().clear();
+        self.row_tooltips.borrow_mut().clear();
 
         self.append_static_places();
+        // Connections query live mounts, so like devices they wait for first paint.
+        self.append_connections();
         self.append_devices();
         self.sync_active_place();
         self.schedule_scroll_restore();
@@ -1309,6 +1317,8 @@ impl SidebarState {
             widget_child = child.next_sibling();
             if let Ok(heading) = child.clone().downcast::<gtk::Label>() {
                 heading.set_visible(!rail);
+            } else if child.has_css_class("sidebar-heading-row") {
+                child.set_visible(!rail);
             } else if let Ok(button) = child.clone().downcast::<gtk::Button>() {
                 sync_sidebar_button(&button, rail);
             } else if child.has_css_class("sidebar-device") {
@@ -1326,6 +1336,9 @@ impl SidebarState {
         if !rail {
             for (location, row) in self.place_rows.borrow().iter() {
                 row.set_tooltip_text(Some(&location.display_path()));
+            }
+            for (row, tooltip) in self.row_tooltips.borrow().iter() {
+                row.set_tooltip_text(Some(tooltip));
             }
         }
         self.sync_keycaps();
@@ -1456,13 +1469,36 @@ impl SidebarState {
                 if self.local_only || !self.preference_manager.sidebar_show_network() {
                     return;
                 }
-                let location = Location::uri("network:///");
+                let location = Location::uri(crate::services::remote::NETWORK_ROOT_URI);
                 let row =
                     self.append_place(crate::assets::icons::NETWORK, "Network", location.clone());
                 self.add_keycap(&row, "n");
-                self.attach_place_context_menu(&row, location, |state| {
-                    state.preference_manager.set_sidebar_show_network(false);
-                });
+                let weak = Rc::downgrade(self);
+                let view = self.view.clone();
+                remote_places::attach_row_menu(
+                    &row,
+                    vec![
+                        remote_places::RowAction::new(
+                            crate::assets::icons::PLUS,
+                            "Add connection…",
+                            self.add_connection_action(),
+                        ),
+                        remote_places::RowAction::new(
+                            crate::assets::icons::PIN,
+                            "Unpin",
+                            move || {
+                                if let Some(state) = weak.upgrade() {
+                                    state.preference_manager.set_sidebar_show_network(false);
+                                }
+                            },
+                        ),
+                        remote_places::RowAction::new(
+                            crate::assets::icons::INFO,
+                            "Properties",
+                            move || view.show_location_properties(&location),
+                        ),
+                    ],
+                );
                 self.make_place_reorderable(&row, place);
             }
             "recent" => {
@@ -1576,6 +1612,7 @@ impl SidebarState {
             .mounts()
             .into_iter()
             .filter(|mount| !mount.is_shadowed())
+            .filter(|mount| !self.mount_has_connection_row(mount))
             .filter(|mount| {
                 !mount
                     .volume()
@@ -1598,8 +1635,8 @@ impl SidebarState {
         location: Location,
         mount: gio::Mount,
     ) -> Option<device_release::DeviceIds> {
-        if is_smb_location(&location) {
-            self.append_smb_mount(name, location, mount);
+        if remote_places::is_network_location(&location) {
+            self.append_network_mount(name, location, mount);
             return None;
         }
         let ids = device_release::ids_for_mount(&mount);
@@ -2187,74 +2224,6 @@ impl SidebarState {
         Some(ids)
     }
 
-    fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
-        let properties_location = location.clone();
-        let row = self.append_place(crate::assets::icons::NETWORK, name, location);
-        let menu = super::accessibility::menu_box();
-        menu.add_css_class("folder-context-menu");
-        let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
-        let disconnect = sidebar_context_option(crate::assets::icons::UNPLUG, "Disconnect", true);
-        disconnect.add_css_class("danger");
-        menu.append(&properties);
-        menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-        menu.append(&disconnect);
-        let popover = gtk::Popover::builder()
-            .child(&menu)
-            .autohide(true)
-            .has_arrow(false)
-            .build();
-        popover.add_css_class("folder-context-popover");
-        popover.set_parent(&row);
-
-        let properties_popover = popover.downgrade();
-        let properties_view = self.view.clone();
-        properties.connect_clicked(move |_| {
-            if let Some(popover) = properties_popover.upgrade() {
-                popover.popdown();
-            }
-            properties_view.show_location_properties(&properties_location);
-        });
-
-        let disconnect_popover = popover.downgrade();
-        let parent = self.view.widget();
-        disconnect.connect_clicked(move |_| {
-            if let Some(popover) = disconnect_popover.upgrade() {
-                popover.popdown();
-            }
-            let window = parent.root().and_downcast::<gtk::Window>();
-            let operation = gtk::MountOperation::new(window.as_ref());
-            let mount = mount.clone();
-            let error_parent = parent.clone();
-            glib::MainContext::default().spawn_local(async move {
-                if let Err(error) = mount
-                    .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                    .await
-                    && !error.matches(gio::IOErrorEnum::Cancelled)
-                {
-                    show_error_dialog(&error_parent, "Unable to disconnect", &error.to_string());
-                }
-            });
-        });
-
-        let context = gtk::GestureClick::new();
-        context.set_button(3);
-        let weak_popover = popover.downgrade();
-        context.connect_pressed(move |gesture, _, x, y| {
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            let Some(popover) = weak_popover.upgrade() else {
-                return;
-            };
-            popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-                x.round() as i32,
-                y.round() as i32,
-                1,
-                1,
-            )));
-            popover.popup();
-        });
-        row.add_controller(context);
-    }
-
     fn append_pinned_place(
         self: &Rc<Self>,
         index: usize,
@@ -2618,13 +2587,6 @@ fn remove_pinned_place(places: &mut Vec<(Location, String)>, location: &Location
     let original_len = places.len();
     places.retain(|(pinned, _)| pinned != location);
     places.len() != original_len
-}
-
-fn is_smb_location(location: &Location) -> bool {
-    location.uri_value().is_some_and(|uri| {
-        uri.get(..4)
-            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("smb:"))
-    })
 }
 
 /// Safe-removal action for a sidebar device row. Eject is preferred whenever

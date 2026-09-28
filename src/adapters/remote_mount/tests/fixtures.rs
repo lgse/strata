@@ -4,13 +4,7 @@
 //! WebDAV/DAVS servers. `scripts/remote-fixtures.py test` starts the servers,
 //! isolates GVfs on a private session bus, and runs these ignored tests.
 
-use std::{
-    cell::RefCell,
-    collections::VecDeque,
-    path::PathBuf,
-    rc::Rc,
-    time::Duration,
-};
+use std::{cell::RefCell, collections::VecDeque, path::PathBuf, rc::Rc, time::Duration};
 
 use gtk::gio::prelude::*;
 use serde::Deserialize;
@@ -91,7 +85,10 @@ impl ScriptedPrompter {
     }
 
     fn next(&self) -> Answer {
-        self.answers.borrow_mut().pop_front().unwrap_or(Answer::Cancel)
+        self.answers
+            .borrow_mut()
+            .pop_front()
+            .unwrap_or(Answer::Cancel)
     }
 }
 
@@ -101,7 +98,6 @@ impl MountPrompter for ScriptedPrompter {
             retry: request.retry,
             passphrase: request.is_passphrase(),
         });
-        let request = request;
         match self.next() {
             Answer::Credentials(user, password) => {
                 let user = if user.is_empty() {
@@ -183,11 +179,7 @@ fn list(uri: &str) -> Result<Vec<String>, glib::Error> {
 }
 
 fn unmount(uri: &str) {
-    let session = MountSession::new(
-        gio::MountOperation::new(),
-        None,
-        ScriptedPrompter::new([]),
-    );
+    let session = MountSession::new(gio::MountOperation::new(), None, ScriptedPrompter::new([]));
     run(async {
         let mount = gio::File::for_uri(uri)
             .find_enclosing_mount(None::<&gio::Cancellable>)
@@ -242,7 +234,7 @@ fn sftp_password_sign_in_retries_after_a_wrong_password_and_browses() {
             Answer::Credentials("", fixture.password.clone()),
         ],
     );
-    assert_eq!(attempt.resolution, MountResolution::Mounted);
+    assert_eq!(attempt.resolution, MountResolution::Succeeded);
     assert_eq!(
         attempt.asked,
         [
@@ -257,7 +249,10 @@ fn sftp_password_sign_in_retries_after_a_wrong_password_and_browses() {
             },
         ]
     );
-    assert!(fixture.known_hosts.exists(), "an accepted key is remembered");
+    assert!(
+        fixture.known_hosts.exists(),
+        "an accepted key is remembered"
+    );
     let names = list(&uri).expect("browse the mounted share");
     assert!(names.contains(&"hello.txt".to_owned()), "{names:?}");
     assert!(names.contains(&"nested".to_owned()), "{names:?}");
@@ -291,7 +286,7 @@ fn sftp_key_authentication_needs_no_password() {
     forget_host_keys(&fixture);
     let uri = sftp_uri(&fixture, &fixture.key_user);
     let attempt = mount(&uri, [Answer::Choose(0)]);
-    assert_eq!(attempt.resolution, MountResolution::Mounted);
+    assert_eq!(attempt.resolution, MountResolution::Succeeded);
     assert_eq!(
         attempt.asked,
         [Asked::Question(MountQuestionKind::HostIdentity)]
@@ -313,7 +308,7 @@ fn sftp_encrypted_keys_ask_for_their_passphrase() {
             Answer::Credentials("", fixture.passphrase.clone()),
         ],
     );
-    assert_eq!(attempt.resolution, MountResolution::Mounted);
+    assert_eq!(attempt.resolution, MountResolution::Succeeded);
     assert!(
         attempt.asked.contains(&Asked::Password {
             retry: false,
@@ -387,7 +382,7 @@ fn assert_signs_in_and_browses(protocol: RemoteProtocol, endpoint: &Endpoint, tr
     answers.push(Answer::Credentials("", "wrong-password".into()));
     answers.push(Answer::Credentials("", endpoint.password.clone()));
     let attempt = mount(&uri, answers);
-    assert_eq!(attempt.resolution, MountResolution::Mounted, "{uri}");
+    assert_eq!(attempt.resolution, MountResolution::Succeeded, "{uri}");
     let retried = attempt
         .asked
         .iter()
@@ -426,7 +421,10 @@ fn ftp_bad_credentials_can_be_abandoned() {
     let fixture = fixtures().ftp;
     let attempt = mount(
         &endpoint_uri(RemoteProtocol::Ftp, &fixture),
-        [Answer::Credentials("", "wrong-password".into()), Answer::Cancel],
+        [
+            Answer::Credentials("", "wrong-password".into()),
+            Answer::Cancel,
+        ],
     );
     assert_eq!(attempt.resolution, MountResolution::Cancelled);
 }
@@ -435,7 +433,10 @@ fn ftp_bad_credentials_can_be_abandoned() {
 #[ignore = "requires scripts/remote-fixtures.py"]
 fn ftps_untrusted_certificates_need_a_decision() {
     let fixture = fixtures().ftps;
-    assert!(plaintext_destination(&Location::uri(endpoint_uri(RemoteProtocol::Ftps, &fixture))).is_none());
+    assert!(
+        plaintext_destination(&Location::uri(endpoint_uri(RemoteProtocol::Ftps, &fixture)))
+            .is_none()
+    );
     assert_untrusted_certificate_is_a_question(RemoteProtocol::Ftps, &fixture);
     assert_signs_in_and_browses(RemoteProtocol::Ftps, &fixture, true);
 }

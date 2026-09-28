@@ -486,9 +486,12 @@ impl ViewState {
                         column.syncing_selection.set(false);
                     }
                     stop_column_spinner(column);
-                    column
-                        .presentation
-                        .show_error(&format!("Unable to read this directory\n{message}"));
+                    column.presentation.show_error(
+                        &crate::services::remote::directory_failure_text(
+                            self.browser.location_at(*depth).as_ref(),
+                            message,
+                        ),
+                    );
                     set_column_busy(column, false);
                 }
             }

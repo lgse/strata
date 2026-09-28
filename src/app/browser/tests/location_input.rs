@@ -205,6 +205,15 @@ fn location_input_rejects_unsupported_uri_schemes() {
         ));
         assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
     }
+    let Err(LocationValidationError::UnsupportedScheme(message)) =
+        browser.navigate_input("HTTPS://cloud.example/dav")
+    else {
+        panic!("web addresses are not file locations");
+    };
+    assert!(
+        message.contains("davs://"),
+        "web addresses point to WebDAV without being reinterpreted: {message}"
+    );
 
     assert_eq!(browser.navigate_input("SMB://host/share"), Ok(()));
     assert_eq!(

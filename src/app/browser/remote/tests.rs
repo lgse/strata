@@ -377,3 +377,80 @@ fn observer_can_reenter_queue_and_cleanup_without_refcell_panic() {
             | BrowserEvent::EntriesInserted { depth: 0, .. }
     )));
 }
+
+#[derive(Default)]
+struct CancellationSource {
+    cancelled: Rc<RefCell<usize>>,
+    requests: Rc<RefCell<Vec<Location>>>,
+}
+
+impl FileSource for CancellationSource {
+    fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+    fn enumerate(&self, request: DirectoryRequest, _: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        self.requests.borrow_mut().push(request.location);
+        let cancelled = self.cancelled.clone();
+        LoadHandle::new(move || *cancelled.borrow_mut() += 1)
+    }
+}
+
+#[test]
+fn a_disconnected_mount_leaves_a_retryable_column_in_place() {
+    let _guard = ASYNC_MAIN_CONTEXT_DEFAULT.lock().expect("async test lock");
+    let source = Rc::new(CancellationSource::default());
+    let cancelled = source.cancelled.clone();
+    let requests = source.requests.clone();
+    let browser = Browser::new(source);
+    let root = Location::uri("sftp://example.test/root");
+    browser.navigate(root.clone());
+    browser.descend(0, Location::uri("sftp://example.test/root/child"));
+    assert_eq!(
+        browser
+            .location_at(1)
+            .map(|location| location.display_name()),
+        Some("child".into())
+    );
+    let stale = browser
+        .state
+        .borrow()
+        .request_id_for_depth(0)
+        .expect("root request");
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let within = |root: &'static str| {
+        let root = Location::uri(root);
+        move |location: &Location| location == &root || location.is_within(&root)
+    };
+    browser.mark_unavailable(within("sftp://elsewhere.test/root"), "gone");
+    assert!(
+        events.borrow().is_empty(),
+        "unrelated mounts don't affect the view"
+    );
+
+    browser.mark_unavailable(within("sftp://example.test/root"), "disconnected");
+    assert_eq!(
+        browser.active_location(),
+        Some(root.clone()),
+        "the view stays put"
+    );
+    assert_eq!(browser.location_at(1), None, "deeper columns close");
+    assert_eq!(*cancelled.borrow(), 2, "both stale loads are cancelled");
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::LoadFailed { depth: 0, message } if message == "disconnected"
+    )));
+
+    batch(&browser, stale, [1]);
+    assert_eq!(
+        inserted_rows(&events.borrow()),
+        0,
+        "stale results are ignored"
+    );
+
+    let before = requests.borrow().len();
+    browser.retry_column(0);
+    assert_eq!(requests.borrow()[before..], [root]);
+}

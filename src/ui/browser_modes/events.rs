@@ -450,7 +450,10 @@ impl Pane {
         }
         self.spinner.stop();
         self.status
-            .set_label(&format!("Unable to read this directory\n{message}"));
+            .set_label(&crate::services::remote::directory_failure_text(
+                self.location.as_ref(),
+                message,
+            ));
         self.status.add_css_class("error");
         self.loading.show("status");
     }

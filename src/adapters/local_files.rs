@@ -26,7 +26,7 @@ use crate::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
         backend_unavailable_message, is_hidden_name, is_image_path, is_media_path,
-        native_hidden_names, native_kind,
+        native_hidden_names, native_kind, remote,
     },
 };
 
@@ -255,6 +255,11 @@ fn uri_validation_result(
     location: &Location,
     result: Result<gio::FileInfo, glib::Error>,
 ) -> Result<(), LocationValidationError> {
+    // The Network root always opens so its column can explain discovery
+    // problems while direct address entry stays available.
+    if remote::is_network_root(location) {
+        return Ok(());
+    }
     let info = result.map_err(|error| {
         if error.matches(gio::IOErrorEnum::NotMounted) {
             LocationValidationError::NotMounted(location.clone())
@@ -263,7 +268,7 @@ fn uri_validation_result(
                 location.uri_value().unwrap_or_default(),
             ))
         } else {
-            LocationValidationError::Unavailable(error.to_string())
+            LocationValidationError::Unavailable(remote::load_failure_message(location, &error))
         }
     })?;
     match info.file_type() {
@@ -1039,7 +1044,7 @@ impl FileSource for LocalFileSource {
                     );
                     emit(DirectoryEvent::Failed {
                         request_id,
-                        message: error.to_string(),
+                        message: remote::load_failure_message(&location, &error),
                     });
                     return;
                 }
@@ -1124,7 +1129,7 @@ impl FileSource for LocalFileSource {
                         );
                         emit(DirectoryEvent::Failed {
                             request_id,
-                            message: error.to_string(),
+                            message: remote::load_failure_message(&location, &error),
                         });
                         break;
                     }

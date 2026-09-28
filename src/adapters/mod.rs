@@ -8,9 +8,9 @@ mod local_files;
 mod local_jobs;
 mod local_operations;
 mod local_preview;
+pub(crate) mod remote_mount;
 pub(crate) mod trash;
 pub(crate) mod trash_restore;
-pub(crate) mod remote_mount;
 mod volume;
 
 pub(crate) use file_manager1::{RevealRequest, export_file_manager};

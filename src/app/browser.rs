@@ -3636,6 +3636,47 @@ impl Browser {
         self.refresh_column(depth);
     }
 
+    /// A mount serving some columns went away. Their loads and monitors are
+    /// cancelled, deeper columns close, and the first affected column is left
+    /// failed with `message` so it can be retried rather than navigating away.
+    pub fn mark_unavailable(self: &Rc<Self>, affected: impl Fn(&Location) -> bool, message: &str) {
+        let first = {
+            let state = self.state.borrow();
+            (0..)
+                .map_while(|depth| state.location_at(depth).map(|location| (depth, location)))
+                .find(|(_, location)| affected(location))
+                .map(|(depth, _)| depth)
+        };
+        let Some(depth) = first else {
+            return;
+        };
+        self.close_column(depth + 1);
+        let request_id = self.new_request_id();
+        if self
+            .state
+            .borrow_mut()
+            .reload_column(depth, request_id)
+            .is_none()
+        {
+            return;
+        }
+        self.emit(BrowserEvent::ColumnReloaded { depth });
+        if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
+            *load = LoadHandle::new(|| {});
+        }
+        if let Some(monitor) = self.monitors.borrow_mut().get_mut(depth) {
+            *monitor = None;
+        }
+        self.discard_column_work(depth);
+        let failed = self.state.borrow_mut().fail(request_id, message.to_owned());
+        if let Some(depth) = failed {
+            self.emit(BrowserEvent::LoadFailed {
+                depth,
+                message: message.to_owned(),
+            });
+        }
+    }
+
     fn refresh_column(self: &Rc<Self>, depth: usize) {
         self.refresh_column_with_reveal(depth, None);
     }
@@ -3664,6 +3705,10 @@ impl Browser {
         if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
             *load = handle;
         }
+        self.discard_column_work(depth);
+    }
+
+    fn discard_column_work(&self, depth: usize) {
         self.metadata_loads.borrow_mut().remove(&depth);
         self.metadata_pending.borrow_mut().remove(&depth);
         self.remote.borrow_mut().clear_depth(depth);
@@ -3829,6 +3874,9 @@ fn location_from_input_with_home(
     let scheme_end = input.find("://").unwrap_or_default();
     let scheme = &input[..scheme_end];
     let normalized = scheme.to_ascii_lowercase();
+    if let Some(hint) = crate::services::remote::web_address_hint(&normalized) {
+        return Err(LocationValidationError::UnsupportedScheme(hint.to_owned()));
+    }
     if !matches!(
         normalized.as_str(),
         "smb" | "sftp" | "ftp" | "ftps" | "dav" | "davs" | "trash" | "network" | "recent"

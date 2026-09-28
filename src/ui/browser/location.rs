@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::gio_file_for_location;
+pub(super) use crate::adapters::remote_mount::{MountCredentials, MountStrategy};
+use crate::adapters::remote_mount::{
+    MountPrompter, MountSession, PasswordReply, PasswordRequest, QuestionReply,
+};
 use crate::model::Location;
+use crate::services::remote::{
+    MountQuestion, MountResolution, RemoteDestination, RemoteErrorContext, RemoteFailure,
+    RemoteProtocol, plaintext_destination, redact_endpoints,
+};
 use crate::services::{
     LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
 };
@@ -123,6 +130,7 @@ fn show_authentication_dialog(
         return None;
     };
 
+    let passphrase = crate::adapters::remote_mount::requests_passphrase(message);
     let layout = modal_layout(
         crate::assets::icons::KEY,
         "Authentication required",
@@ -141,7 +149,11 @@ fn show_authentication_dialog(
     layout.body.append(&explanation);
     if authentication_failed {
         let error_text = wrap_dialog_text(
-            "Those credentials weren’t accepted. Check the username, domain, and password, then try again.",
+            if passphrase {
+                "That passphrase wasn’t accepted. Check it, then try again."
+            } else {
+                "Those credentials weren’t accepted. Check the username, domain, and password, then try again."
+            },
             AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
         );
         let error = gtk::Label::new(Some(&error_text));
@@ -170,7 +182,11 @@ fn show_authentication_dialog(
     let password = form_password_entry();
     password.set_show_peek_icon(true);
     if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
-        append_authentication_field(&credentials, "Password", &password);
+        append_authentication_field(
+            &credentials,
+            if passphrase { "Passphrase" } else { "Password" },
+            &password,
+        );
     }
 
     let (connect_as_control, connect_as_buttons) =
@@ -188,7 +204,11 @@ fn show_authentication_dialog(
         segmented_control(&["Don't remember", "Until logout", "Forever"], 0);
     if flags.contains(gio::AskPasswordFlags::SAVING_SUPPORTED) {
         let remember_field = gtk::Box::new(gtk::Orientation::Vertical, 5);
-        remember_field.append(&form_label("Password storage"));
+        remember_field.append(&form_label(if passphrase {
+            "Passphrase storage"
+        } else {
+            "Password storage"
+        }));
         remember_field.append(&remember);
         layout.body.append(&remember_field);
     }
@@ -274,7 +294,7 @@ fn show_authentication_dialog(
             save: password_save_for_selection(selected),
         };
         if let Some(operation) = connect_operation.as_ref() {
-            apply_mount_credentials(operation, &credentials);
+            credentials.apply_to(operation);
         }
         dismiss_modal_layer(&connect_layer, &connect_overlay, connect_root.as_ref());
         if let Some(operation) = connect_operation.as_ref() {
@@ -368,47 +388,14 @@ pub(super) enum TypedLocation {
     },
 }
 
-#[derive(Clone)]
-pub(super) struct MountCredentials {
-    anonymous: bool,
-    username: String,
-    domain: String,
-    password: String,
-    save: gio::PasswordSave,
-}
-
-impl MountCredentials {
-    fn default_for_prompt() -> Self {
-        Self {
-            anonymous: false,
-            username: glib::user_name().to_string_lossy().into_owned(),
-            domain: "WORKGROUP".to_owned(),
-            password: String::new(),
-            save: gio::PasswordSave::Never,
-        }
+fn default_prompt_credentials() -> MountCredentials {
+    MountCredentials {
+        anonymous: false,
+        username: glib::user_name().to_string_lossy().into_owned(),
+        domain: "WORKGROUP".to_owned(),
+        password: String::new(),
+        save: gio::PasswordSave::Never,
     }
-}
-
-fn apply_mount_credentials(operation: &gio::MountOperation, credentials: &MountCredentials) {
-    operation.set_anonymous(credentials.anonymous);
-    if credentials.anonymous {
-        return;
-    }
-    operation.set_username(Some(&credentials.username));
-    if !credentials.domain.is_empty() {
-        operation.set_domain(Some(&credentials.domain));
-    }
-    operation.set_password(Some(&credentials.password));
-    operation.set_password_save(credentials.save);
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum MountStrategy {
-    /// The location itself is accessible but sits on an unmounted volume.
-    EnclosingVolume,
-    /// The location is itself the mountable target (an SMB share, a
-    /// "Connect to Server" bookmark, ...).
-    Mountable,
 }
 
 fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
@@ -418,43 +405,45 @@ fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
     }
 }
 
-fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
-    if location.uri_value().is_none() {
-        return false;
-    }
-    if error.matches(gio::IOErrorEnum::PermissionDenied) {
-        return true;
-    }
-
-    // GVfs' SMB backend reports rejected credentials as G_IO_ERROR_FAILED on
-    // some versions, preserving the useful distinction only in its message.
-    let message = error.message().to_ascii_lowercase();
-    [
-        "permission denied",
-        "authentication failed",
-        "logon failure",
-        "invalid credentials",
-    ]
-    .iter()
-    .any(|reason| message.contains(reason))
+/// SMB and some other backends reject a password by failing the operation
+/// instead of prompting again; Strata then asks once more itself.
+fn mount_failure_needs_credentials(
+    location: &Location,
+    failure: RemoteFailure,
+    result: &Result<(), glib::Error>,
+) -> bool {
+    location.uri_value().is_some()
+        && failure == RemoteFailure::AuthenticationFailed
+        && result.is_err()
 }
 
-/// Decides what, if anything, to tell the user about a failed mount attempt.
-/// A user-initiated cancel (the GTK credential dialog's Cancel button, or a
-/// backend that already reported the failure to the operation itself) should
-/// quietly return to the prior state rather than surface an alarming error,
-/// per lgse/strata#20's "cancelling authentication returns to the prior
-/// committed location" requirement.
-fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<String> {
-    if mount_error_is_cancelled(error) {
+/// The sanitized explanation for a failed connection, or `None` when the
+/// user cancelled.
+fn mount_failure_message(
+    location: &Location,
+    failure: RemoteFailure,
+    result: &Result<(), glib::Error>,
+) -> Option<String> {
+    if failure == RemoteFailure::Cancelled {
         return None;
     }
-    if error.matches(gio::IOErrorEnum::NotSupported)
-        && let Some(uri) = location.uri_value()
-    {
-        return Some(backend_unavailable_message(uri));
+    let Some(uri) = location.uri_value() else {
+        return result.as_ref().err().map(ToString::to_string);
+    };
+    let protocol = RemoteProtocol::for_location(location);
+    match failure {
+        RemoteFailure::BackendMissing => Some(backend_unavailable_message(uri)),
+        RemoteFailure::Other => Some(match result {
+            Err(error) if protocol.is_some() => format!(
+                "{}\n{}",
+                RemoteFailure::Other.guidance(protocol),
+                redact_endpoints(error.message())
+            ),
+            Err(error) => error.to_string(),
+            Ok(()) => RemoteFailure::Other.guidance(protocol),
+        }),
+        failure => Some(failure.guidance(protocol)),
     }
-    Some(error.to_string())
 }
 
 fn mount_error_is_cancelled(error: &glib::Error) -> bool {
@@ -465,6 +454,78 @@ enum MountTarget {
     Location(Location, MountStrategy),
     Volume(gio::Volume),
     Drive(gio::Drive),
+}
+
+struct MountOutcome {
+    result: Result<(), glib::Error>,
+    resolution: MountResolution,
+    credentials: Option<MountCredentials>,
+    details: Option<MountPromptDetails>,
+}
+
+struct ViewPrompter {
+    overlay: gtk::Overlay,
+    active_prompt: Rc<RefCell<Option<gtk::Box>>>,
+    state: std::rc::Weak<ViewState>,
+    progress_name: Option<String>,
+    progress_keys: DeviceKeys,
+    progress_encrypted: bool,
+}
+
+impl ViewPrompter {
+    fn replace_prompt(&self, prompt: Option<gtk::Box>) {
+        if let Some(state) = self.state.upgrade() {
+            state.dismiss_unlock_progress(&self.progress_keys);
+        }
+        if let Some(previous) = self.active_prompt.replace(prompt) {
+            dismiss_authentication_prompt(&self.overlay, &previous);
+        }
+    }
+}
+
+impl MountPrompter for ViewPrompter {
+    fn ask_password(&self, request: PasswordRequest, reply: PasswordReply) {
+        self.replace_prompt(None);
+        let reply = Rc::new(RefCell::new(Some(reply)));
+        let cancel_reply = reply.clone();
+        let progress_state = self.state.clone();
+        let progress_name = self.progress_name.clone();
+        let progress_keys = self.progress_keys.clone();
+        let progress_encrypted = self.progress_encrypted;
+        let prompt = show_authentication_dialog(
+            &self.overlay,
+            None,
+            &request.message,
+            (&request.default_user, &request.default_domain),
+            request.flags,
+            request.retry,
+            MountDialogHandlers {
+                submitted: Some(Rc::new(move |credentials| {
+                    if let Some(reply) = reply.borrow_mut().take() {
+                        reply.submit(credentials);
+                    }
+                    if let (Some(state), Some(name)) =
+                        (progress_state.upgrade(), progress_name.as_ref())
+                        && progress_encrypted
+                    {
+                        state.present_unlock_progress(&progress_keys, name);
+                    }
+                })),
+                cancelled: Some(Rc::new(move || {
+                    if let Some(reply) = cancel_reply.borrow_mut().take() {
+                        reply.cancel();
+                    }
+                })),
+            },
+        );
+        self.active_prompt.replace(prompt);
+    }
+
+    fn ask_question(&self, question: MountQuestion, reply: QuestionReply) {
+        self.replace_prompt(None);
+        let prompt = crate::ui::remote_prompts::show_mount_question(&self.overlay, question, reply);
+        self.active_prompt.replace(prompt);
+    }
 }
 
 fn volume_error_is_authentication_failure(error: &glib::Error) -> bool {
@@ -923,6 +984,22 @@ async fn wait_for_foreign_drive_start(
 }
 
 impl BrowserView {
+    /// A mount session whose prompts use this view's Strata dialogs.
+    pub(in crate::ui) fn mount_session(&self) -> MountSession {
+        MountSession::new(
+            gio::MountOperation::new(),
+            None,
+            Rc::new(ViewPrompter {
+                overlay: self.state.overlay.clone(),
+                active_prompt: Rc::default(),
+                state: Rc::downgrade(&self.state),
+                progress_name: None,
+                progress_keys: DeviceKeys::new([], []),
+                progress_encrypted: false,
+            }),
+        )
+    }
+
     pub(crate) fn mount_volume(&self, volume: gio::Volume) {
         self.state.mount_device_volume(volume, None, false, true);
     }
@@ -1002,7 +1079,13 @@ impl ViewState {
         self.mount_target(
             MountTarget::Volume(volume.clone()),
             credentials,
-            move |state, result, attempted, details| {
+            move |state,
+                  MountOutcome {
+                      result,
+                      credentials: attempted,
+                      details,
+                      ..
+                  }| {
                 if !result
                     .as_ref()
                     .err()
@@ -1116,7 +1199,13 @@ impl ViewState {
         self.mount_target(
             MountTarget::Drive(drive.clone()),
             credentials,
-            move |state, result, attempted, details| {
+            move |state,
+                  MountOutcome {
+                      result,
+                      credentials: attempted,
+                      details,
+                      ..
+                  }| {
                 if !result
                     .as_ref()
                     .err()
@@ -1349,33 +1438,76 @@ impl ViewState {
         strategy: MountStrategy,
         credentials: Option<MountCredentials>,
     ) {
-        self.mount_location(
-            location.clone(),
-            strategy,
-            credentials,
-            move |state, result, attempted_credentials, prompt_details| {
-                if mount_result_is_ok(&result) {
-                    state.browser.navigate(location.clone());
-                    state.location_stack.set_visible_child_name("breadcrumbs");
-                    state.browser.focus_active();
-                } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_navigation(
-                            location.clone(),
-                            strategy,
-                            attempted_credentials,
-                            prompt_details,
-                        );
-                    } else {
+        let weak = Rc::downgrade(self);
+        self.confirm_transport(&location.clone(), move |connect| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if !connect {
+                state.restore_after_cancelled_connection();
+                return;
+            }
+            state.mount_location(
+                location.clone(),
+                strategy,
+                credentials.clone(),
+                move |state, outcome| match outcome.resolution {
+                    MountResolution::Succeeded => {
+                        state.browser.navigate(location.clone());
                         state.location_stack.set_visible_child_name("breadcrumbs");
-                        state.restore_location_text();
-                        if let Some(message) = mount_failure_message(&location, &error) {
-                            show_error_dialog(&state.overlay, "Unable to connect", &message);
+                        state.browser.focus_active();
+                        crate::ui::connections::offer_to_save(&state.overlay, &location);
+                    }
+                    MountResolution::Cancelled => state.restore_after_cancelled_connection(),
+                    MountResolution::Failed(failure) => {
+                        if mount_failure_needs_credentials(&location, failure, &outcome.result) {
+                            state.prompt_to_retry_navigation(
+                                location.clone(),
+                                strategy,
+                                outcome.credentials,
+                                outcome.details,
+                            );
+                        } else {
+                            state.location_stack.set_visible_child_name("breadcrumbs");
+                            state.restore_location_text();
+                            state.report_connection_failure(&location, failure, &outcome.result);
                         }
                     }
-                }
-            },
-        );
+                },
+            );
+        });
+    }
+
+    /// Cancelling a sign-in or trust decision returns to the prior committed
+    /// location without adding history.
+    fn restore_after_cancelled_connection(&self) {
+        self.location_stack.set_visible_child_name("breadcrumbs");
+        self.restore_location_text();
+        self.browser.focus_active();
+    }
+
+    /// Plaintext protocols are confirmed once per server and session before a
+    /// new connection is attempted; other locations continue immediately.
+    fn confirm_transport(&self, location: &Location, on_decision: impl FnOnce(bool) + 'static) {
+        match plaintext_destination(location) {
+            Some(destination) => crate::ui::remote_prompts::confirm_plaintext_connection(
+                &self.overlay,
+                &destination,
+                on_decision,
+            ),
+            None => on_decision(true),
+        }
+    }
+
+    fn report_connection_failure(
+        &self,
+        location: &Location,
+        failure: RemoteFailure,
+        result: &Result<(), glib::Error>,
+    ) {
+        if let Some(message) = mount_failure_message(location, failure, result) {
+            show_error_dialog(&self.overlay, failure.title(), &message);
+        }
     }
 
     fn mount_then_descend(
@@ -1394,28 +1526,71 @@ impl ViewState {
         strategy: MountStrategy,
         credentials: Option<MountCredentials>,
     ) {
-        self.mount_location(
-            location.clone(),
-            strategy,
-            credentials,
-            move |state, result, attempted_credentials, prompt_details| {
-                if mount_result_is_ok(&result) {
-                    state.browser.descend(parent_depth, location.clone());
-                } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_descend(
-                            parent_depth,
-                            location.clone(),
-                            strategy,
-                            attempted_credentials,
-                            prompt_details,
-                        );
-                    } else if let Some(message) = mount_failure_message(&location, &error) {
-                        show_error_dialog(&state.overlay, "Unable to connect", &message);
+        let weak = Rc::downgrade(self);
+        self.confirm_transport(&location.clone(), move |connect| {
+            let Some(state) = weak.upgrade().filter(|_| connect) else {
+                return;
+            };
+            state.mount_location(
+                location.clone(),
+                strategy,
+                credentials.clone(),
+                move |state, outcome| match outcome.resolution {
+                    MountResolution::Succeeded => {
+                        state.browser.descend(parent_depth, location.clone());
+                        crate::ui::connections::offer_to_save(&state.overlay, &location);
                     }
-                }
-            },
-        );
+                    MountResolution::Cancelled => {}
+                    MountResolution::Failed(failure) => {
+                        if mount_failure_needs_credentials(&location, failure, &outcome.result) {
+                            state.prompt_to_retry_descend(
+                                parent_depth,
+                                location.clone(),
+                                strategy,
+                                outcome.credentials,
+                                outcome.details,
+                            );
+                        } else {
+                            state.report_connection_failure(&location, failure, &outcome.result);
+                        }
+                    }
+                },
+            );
+        });
+    }
+
+    /// Reconnects a column whose remote mount went away, then reloads it.
+    pub(super) fn reconnect_column(self: &Rc<Self>, depth: usize) {
+        let Some(location) = self
+            .browser
+            .location_at(depth)
+            .filter(|location| RemoteProtocol::for_location(location).is_some())
+        else {
+            self.browser.retry_column(depth);
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        self.confirm_transport(&location.clone(), move |connect| {
+            let Some(state) = weak.upgrade().filter(|_| connect) else {
+                return;
+            };
+            state.mount_location(
+                location.clone(),
+                MountStrategy::EnclosingVolume,
+                None,
+                move |state, outcome| match outcome.resolution {
+                    MountResolution::Succeeded => {
+                        if state.browser.location_at(depth).as_ref() == Some(&location) {
+                            state.browser.retry_column(depth);
+                        }
+                    }
+                    MountResolution::Cancelled => {}
+                    MountResolution::Failed(failure) => {
+                        state.report_connection_failure(&location, failure, &outcome.result);
+                    }
+                },
+            );
+        });
     }
 
     fn prompt_to_retry_navigation(
@@ -1501,7 +1676,7 @@ impl ViewState {
     ) {
         let authentication_failed = previous_credentials.is_some();
         let defaults = previous_credentials.unwrap_or_else(|| {
-            let mut defaults = MountCredentials::default_for_prompt();
+            let mut defaults = default_prompt_credentials();
             if !details.default_user.is_empty() {
                 defaults.username.clone_from(&details.default_user);
             }
@@ -1529,12 +1704,7 @@ impl ViewState {
         location: Location,
         strategy: MountStrategy,
         credentials: Option<MountCredentials>,
-        on_result: impl Fn(
-            &Rc<Self>,
-            Result<(), glib::Error>,
-            Option<MountCredentials>,
-            Option<MountPromptDetails>,
-        ) + 'static,
+        on_result: impl Fn(&Rc<Self>, MountOutcome) + 'static,
     ) {
         self.mount_target(
             MountTarget::Location(location, strategy),
@@ -1745,16 +1915,8 @@ impl ViewState {
         self: &Rc<Self>,
         target: MountTarget,
         credentials: Option<MountCredentials>,
-        on_result: impl Fn(
-            &Rc<Self>,
-            Result<(), glib::Error>,
-            Option<MountCredentials>,
-            Option<MountPromptDetails>,
-        ) + 'static,
+        on_result: impl Fn(&Rc<Self>, MountOutcome) + 'static,
     ) {
-        let Some(window) = self.overlay.root().and_downcast::<gtk::Window>() else {
-            return;
-        };
         let (unlock_name, unlock_keys, encrypted) = match &target {
             MountTarget::Volume(volume) => (
                 Some(volume.name().to_string()),
@@ -1775,123 +1937,90 @@ impl ViewState {
             state: self.clone(),
         }
         .begin_global_activity("Connecting…");
-        // A native gtk::MountOperation (rather than a bare gio::MountOperation)
-        // is required so GTK's own "ask-question" dialog handles host-key and
-        // certificate trust decisions for us; we only override "ask-password"
-        // below with Strata's own dialog, stopping that one signal's default
-        // handler so the two don't both try to reply.
-        let operation = gtk::MountOperation::new(Some(&window));
-        let prompt_overlay = self.overlay.clone();
         let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
-        let prompt_for_signal = active_prompt.clone();
-        let prompt_details = Rc::new(RefCell::new(None::<MountPromptDetails>));
-        let details_for_signal = prompt_details.clone();
-        let attempted_credentials = Rc::new(RefCell::new(credentials.clone()));
-        let attempts_for_signal = attempted_credentials.clone();
-        let supplied_credentials = Rc::new(RefCell::new(credentials));
-        let credentials_for_signal = supplied_credentials.clone();
-        let already_prompted = Cell::new(credentials_for_signal.borrow().is_some());
-        let progress_state = Rc::downgrade(self);
-        let progress_name = unlock_name;
-        let progress_keys = unlock_keys;
-        let progress_encrypted = encrypted;
-        operation.connect_ask_password(
-            move |operation, message, default_user, default_domain, flags| {
-                // Suppress GtkMountOperation's own native password dialog: we
-                // reply ourselves (immediately or via our custom prompt)
-                // below. "ask-question" is deliberately left unconnected so
-                // its native default handler still runs for host-key/cert
-                // trust prompts.
-                operation.stop_signal_emission_by_name("ask-password");
-                details_for_signal.replace(Some(MountPromptDetails {
-                    message: message.to_owned(),
-                    default_user: default_user.to_owned(),
-                    default_domain: default_domain.to_owned(),
-                    flags,
-                }));
-                if let Some(credentials) = credentials_for_signal.borrow_mut().take() {
-                    apply_mount_credentials(operation.upcast_ref(), &credentials);
-                    operation.reply(gio::MountOperationResult::Handled);
-                    return;
-                }
-                if let Some(state) = progress_state.upgrade() {
-                    state.dismiss_unlock_progress(&progress_keys);
-                }
-                if let Some(previous) = prompt_for_signal.borrow_mut().take() {
-                    dismiss_authentication_prompt(&prompt_overlay, &previous);
-                }
-                let retry = already_prompted.replace(true);
-                let prompt = show_authentication_dialog(
-                    &prompt_overlay,
-                    Some(operation.upcast_ref()),
-                    message,
-                    (default_user, default_domain),
-                    flags,
-                    retry,
-                    MountDialogHandlers {
-                        submitted: Some(Rc::new({
-                            let attempts_for_signal = attempts_for_signal.clone();
-                            let progress_state = progress_state.clone();
-                            let progress_name = progress_name.clone();
-                            let progress_keys = progress_keys.clone();
-                            move |credentials| {
-                                attempts_for_signal.replace(Some(credentials));
-                                if let (Some(state), Some(name)) =
-                                    (progress_state.upgrade(), progress_name.as_ref())
-                                    && progress_encrypted
-                                {
-                                    state.present_unlock_progress(&progress_keys, name);
-                                }
-                            }
-                        })),
-                        cancelled: None,
-                    },
-                );
-                prompt_for_signal.replace(prompt);
-            },
+        // A plain GIO operation: every prompt, including backend trust
+        // questions, is answered by Strata's own dialogs rather than GTK's.
+        let session = MountSession::new(
+            gio::MountOperation::new(),
+            credentials,
+            Rc::new(ViewPrompter {
+                overlay: self.overlay.clone(),
+                active_prompt: active_prompt.clone(),
+                state: Rc::downgrade(self),
+                progress_name: unlock_name,
+                progress_keys: unlock_keys,
+                progress_encrypted: encrypted,
+            }),
         );
         let weak = Rc::downgrade(self);
         let result_overlay = self.overlay.clone();
         glib::MainContext::default().spawn_local(async move {
             let _activity = activity;
-            let result = match target {
+            let result = match &target {
                 MountTarget::Volume(volume) => {
                     volume
-                        .mount_future(gio::MountMountFlags::NONE, Some(&operation))
+                        .mount_future(gio::MountMountFlags::NONE, Some(session.operation()))
                         .await
                 }
                 MountTarget::Drive(drive) => {
                     drive
-                        .start_future(gio::DriveStartFlags::NONE, Some(&operation))
+                        .start_future(gio::DriveStartFlags::NONE, Some(session.operation()))
                         .await
                 }
                 MountTarget::Location(location, strategy) => {
-                    let file = gio_file_for_location(&location);
-                    match strategy {
-                        MountStrategy::EnclosingVolume => {
-                            file.mount_enclosing_volume_future(
-                                gio::MountMountFlags::NONE,
-                                Some(&operation),
-                            )
-                            .await
-                        }
-                        MountStrategy::Mountable => file
-                            .mount_mountable_future(gio::MountMountFlags::NONE, Some(&operation))
-                            .await
-                            .map(|_| ()),
-                    }
+                    session.mount(location, *strategy).await
                 }
             };
             if let Some(prompt) = active_prompt.borrow_mut().take() {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
             }
+            let resolution = session.resolve(&result, RemoteErrorContext::Mount);
+            let details = session
+                .last_password_request()
+                .map(|request| MountPromptDetails {
+                    message: request.message,
+                    default_user: request.default_user,
+                    default_domain: request.default_domain,
+                    flags: request.flags,
+                });
             if let Some(state) = weak.upgrade() {
                 on_result(
                     &state,
-                    result,
-                    attempted_credentials.borrow().clone(),
-                    prompt_details.borrow().clone(),
+                    MountOutcome {
+                        result,
+                        resolution,
+                        credentials: session.attempted_credentials(),
+                        details,
+                    },
                 );
+            }
+        });
+    }
+
+    /// Keeps browsing columns in place when their remote mount disappears,
+    /// leaving a retryable unavailable state instead of navigating away.
+    pub(super) fn install_remote_disconnect_watch(self: &Rc<Self>) {
+        let monitor = gio::VolumeMonitor::get();
+        let weak = Rc::downgrade(self);
+        let handler = monitor.connect_mount_removed(move |_, mount| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(root) = RemoteDestination::parse(&mount.root().uri()) else {
+                return;
+            };
+            state.browser.mark_unavailable(
+                |location| {
+                    RemoteDestination::for_location(location)
+                        .is_some_and(|destination| destination.is_served_by(&root))
+                },
+                &RemoteFailure::Disconnected.guidance(None),
+            );
+        });
+        let handler = RefCell::new(Some(handler));
+        self.overlay.connect_destroy(move |_| {
+            if let Some(handler) = handler.take() {
+                monitor.disconnect(handler);
             }
         });
     }

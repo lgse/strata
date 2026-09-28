@@ -27,9 +27,15 @@ fn written(store: &ConnectionStore) -> Value {
 fn saved_connections_round_trip_with_a_versioned_sanitized_record() {
     let mut store = ConnectionStore::empty();
     let saved = store
-        .add_with_id(draft("Backups", "sftp://alice:hunter2@Server:2222/srv/"), "id-1".into())
+        .add_with_id(
+            draft("Backups", "sftp://alice:hunter2@Server:2222/srv/"),
+            "id-1".into(),
+        )
         .expect("added");
-    assert_eq!(saved.destination().canonical_uri(), "sftp://alice@server:2222/srv");
+    assert_eq!(
+        saved.destination().canonical_uri(),
+        "sftp://alice@server:2222/srv"
+    );
 
     let file = written(&store);
     assert_eq!(
@@ -44,7 +50,7 @@ fn saved_connections_round_trip_with_a_versioned_sanitized_record() {
             }],
         })
     );
-    let reloaded = ConnectionStore::parse(&store.to_json().unwrap());
+    let reloaded = ConnectionStore::parse(&store.to_json().expect("should succeed"));
     assert_eq!(reloaded.connections(), vec![saved]);
 }
 
@@ -58,16 +64,24 @@ fn secrets_never_reach_the_connection_file() {
         ]}"#,
     );
     store
-        .add_with_id(
-            draft("C", "smb://carol;password=pw@nas/share"),
-            "c".into(),
-        )
+        .add_with_id(draft("C", "smb://carol;password=pw@nas/share"), "c".into())
         .expect("added");
-    let text = String::from_utf8(store.to_json().unwrap()).unwrap();
-    for secret in ["top", "\"pw\"", ":pw@", "passphrase", "auth_token", "\"z\"", "password"] {
+    let text = String::from_utf8(store.to_json().expect("should succeed")).expect("should succeed");
+    for secret in [
+        "top",
+        "\"pw\"",
+        ":pw@",
+        "passphrase",
+        "auth_token",
+        "\"z\"",
+        "password",
+    ] {
         assert!(!text.contains(secret), "{secret:?} leaked into {text}");
     }
-    assert!(text.contains("\"colour\": \"blue\""), "unknown fields survive: {text}");
+    assert!(
+        text.contains("\"colour\": \"blue\""),
+        "unknown fields survive: {text}"
+    );
 }
 
 #[test]
@@ -79,7 +93,11 @@ fn unknown_fields_entries_and_legacy_files_are_preserved() {
             "not an object"
         ],"sort":"name"}"#,
     );
-    assert_eq!(store.read_only_reason(), None, "unversioned files are version 1");
+    assert_eq!(
+        store.read_only_reason(),
+        None,
+        "unversioned files are version 1"
+    );
     assert_eq!(store.connections().len(), 1);
     let file = written(&store);
     assert_eq!(file["version"], 1);
@@ -110,10 +128,18 @@ fn newer_and_unreadable_files_are_never_rewritten() {
         Err(ConnectionStoreError::NewerVersion(7))
     ));
 
-    for contents in [&b"{broken"[..], b"[]", br#"{"version":"one"}"#, br#"{"connections":{}}"#] {
+    for contents in [
+        &b"{broken"[..],
+        b"[]",
+        br#"{"version":"one"}"#,
+        br#"{"connections":{}}"#,
+    ] {
         let store = ConnectionStore::parse(contents);
         assert!(
-            matches!(store.read_only_reason(), Some(ConnectionStoreError::Unreadable(_))),
+            matches!(
+                store.read_only_reason(),
+                Some(ConnectionStoreError::Unreadable(_))
+            ),
             "{:?}",
             String::from_utf8_lossy(contents)
         );
@@ -124,7 +150,9 @@ fn newer_and_unreadable_files_are_never_rewritten() {
 #[test]
 fn exact_duplicates_are_rejected_but_distinct_destinations_are_allowed() {
     let mut store = ConnectionStore::empty();
-    store.add(draft("Data", "sftp://alice@host/data")).expect("added");
+    store
+        .add(draft("Data", "sftp://alice@host/data"))
+        .expect("added");
     for duplicate in ["sftp://alice@HOST:22/data/", "sftp://alice@host//data/."] {
         assert_eq!(
             store.add(draft("Again", duplicate)),
@@ -139,19 +167,27 @@ fn exact_duplicates_are_rejected_but_distinct_destinations_are_allowed() {
         "sftp://alice@host/other",
         "ftps://alice@host/data",
     ] {
-        store.add(draft(distinct, distinct)).unwrap_or_else(|error| {
-            panic!("{distinct:?} should be allowed: {error}");
-        });
+        store
+            .add(draft(distinct, distinct))
+            .unwrap_or_else(|error| {
+                panic!("{distinct:?} should be allowed: {error}");
+            });
     }
 }
 
 #[test]
 fn rename_edit_and_remove_change_only_the_named_record() {
     let mut store = ConnectionStore::empty();
-    let first = store.add(draft("First", "smb://nas/media")).unwrap();
-    let second = store.add(draft("Second", "smb://nas/backup")).unwrap();
+    let first = store
+        .add(draft("First", "smb://nas/media"))
+        .expect("should succeed");
+    let second = store
+        .add(draft("Second", "smb://nas/backup"))
+        .expect("should succeed");
 
-    let renamed = store.rename(&first.id, "  Movies  ").unwrap();
+    let renamed = store
+        .rename(&first.id, "  Movies  ")
+        .expect("should succeed");
     assert_eq!(renamed.name, "Movies");
     assert_eq!(renamed.destination(), first.destination());
     assert_eq!(
@@ -165,7 +201,7 @@ fn rename_edit_and_remove_change_only_the_named_record() {
     );
     let edited = store
         .update(&second.id, draft("Archive", "smb://nas/archive"))
-        .unwrap();
+        .expect("should succeed");
     assert_eq!(edited.id, second.id);
     assert_eq!(
         store.update(&first.id, draft("Movies", "smb://nas/media/")),
@@ -176,7 +212,10 @@ fn rename_edit_and_remove_change_only_the_named_record() {
         "editing a record may keep its own destination"
     );
 
-    assert_eq!(store.remove(&first.id).unwrap().name, "Movies");
+    assert_eq!(
+        store.remove(&first.id).expect("should succeed").name,
+        "Movies"
+    );
     assert_eq!(store.remove(&first.id), Err(ConnectionStoreError::NotFound));
     assert_eq!(store.connections(), vec![edited]);
 }
@@ -184,7 +223,9 @@ fn rename_edit_and_remove_change_only_the_named_record() {
 #[test]
 fn saved_connections_find_locations_they_contain() {
     let mut store = ConnectionStore::empty();
-    let share = store.add(draft("Share", "smb://nas/share")).unwrap();
+    let share = store
+        .add(draft("Share", "smb://nas/share"))
+        .expect("should succeed");
     assert_eq!(
         store.containing(&Location::uri("smb://nas/share/folder/deeper")),
         Some(share)
@@ -215,7 +256,11 @@ fn forms_build_sanitized_destinations_for_every_protocol() {
             "sftp://host:2222/srv/data",
             "data on host",
         ),
-        (form(RemoteProtocol::Ftp, "ftp.example.com"), "ftp://ftp.example.com/", "ftp.example.com"),
+        (
+            form(RemoteProtocol::Ftp, "ftp.example.com"),
+            "ftp://ftp.example.com/",
+            "ftp.example.com",
+        ),
         (
             ConnectionForm {
                 port: "21".into(),
@@ -243,7 +288,9 @@ fn forms_build_sanitized_destinations_for_every_protocol() {
         ),
     ];
     for (form, uri, name) in cases {
-        let draft = form.validate().unwrap_or_else(|error| panic!("{form:?}: {error:?}"));
+        let draft = form
+            .validate()
+            .unwrap_or_else(|error| panic!("{form:?}: {error:?}"));
         assert_eq!(draft.destination.canonical_uri(), uri);
         assert_eq!(draft.name, name);
     }
@@ -261,11 +308,14 @@ fn webdav_forms_normalize_https_endpoints_to_davs() {
     let plain = form(RemoteProtocol::Davs, "http://cloud.example:8080/dav")
         .validate()
         .expect("HTTP endpoint");
-    assert_eq!(plain.destination.canonical_uri(), "dav://cloud.example:8080/dav");
+    assert_eq!(
+        plain.destination.canonical_uri(),
+        "dav://cloud.example:8080/dav"
+    );
     assert_eq!(
         form(RemoteProtocol::Sftp, "https://cloud.example/")
             .validate()
-            .unwrap_err()
+            .expect_err("should be rejected")
             .field,
         ConnectionFormField::Server
     );
@@ -277,7 +327,10 @@ fn forms_reject_invalid_fields_and_embedded_passwords() {
     let cases = [
         (form(RemoteProtocol::Sftp, "  "), Field::Server),
         (form(RemoteProtocol::Sftp, "host/path"), Field::Server),
-        (form(RemoteProtocol::Sftp, "sftp://bob:pw@host/"), Field::Server),
+        (
+            form(RemoteProtocol::Sftp, "sftp://bob:pw@host/"),
+            Field::Server,
+        ),
         (
             ConnectionForm {
                 port: "70000".into(),
@@ -323,10 +376,17 @@ fn forms_reject_invalid_fields_and_embedded_passwords() {
         ),
     ];
     for (form, field) in cases {
-        assert_eq!(form.validate().unwrap_err().field, field, "{form:?}");
+        assert_eq!(
+            form.validate().expect_err("should be rejected").field,
+            field,
+            "{form:?}"
+        );
     }
     assert_eq!(
-        ConnectionForm::default().validate().unwrap_err().field,
+        ConnectionForm::default()
+            .validate()
+            .expect_err("should be rejected")
+            .field,
         Field::Server
     );
 }
@@ -340,9 +400,9 @@ fn edit_forms_round_trip_saved_connections() {
         "davs://host/my%20files",
         "ftp://host/",
     ] {
-        let saved = store.add(draft(uri, uri)).unwrap();
+        let saved = store.add(draft(uri, uri)).expect("should succeed");
         let form = ConnectionForm::from_connection(&saved);
-        let rebuilt = form.validate().unwrap();
+        let rebuilt = form.validate().expect("should succeed");
         assert!(
             rebuilt.destination.same_destination(saved.destination()),
             "{uri}: {:?}",

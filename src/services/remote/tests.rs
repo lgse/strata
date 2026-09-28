@@ -9,19 +9,31 @@ fn destination(uri: &str) -> RemoteDestination {
 #[test]
 fn canonical_destinations_normalize_every_identity_part() {
     for (input, canonical) in [
-        ("SFTP://Server.Example.COM/home/", "sftp://server.example.com/home"),
+        (
+            "SFTP://Server.Example.COM/home/",
+            "sftp://server.example.com/home",
+        ),
         ("sftp://server:22/home", "sftp://server/home"),
         ("sftp://server:2222/home", "sftp://server:2222/home"),
         ("ftps://server:21/", "ftps://server/"),
         ("davs://server:443/dav", "davs://server/dav"),
         ("dav://server:80/dav/", "dav://server/dav"),
-        ("smb://server:445/share//folder/", "smb://server/share/folder"),
+        (
+            "smb://server:445/share//folder/",
+            "smb://server/share/folder",
+        ),
         ("sftp://server/a/./b/../c", "sftp://server/a/c"),
-        ("sftp://server/%7euser/%2fslash", "sftp://server/~user/%2Fslash"),
+        (
+            "sftp://server/%7euser/%2fslash",
+            "sftp://server/~user/%2Fslash",
+        ),
         ("sftp://server/with%20space", "sftp://server/with%20space"),
         ("sftp://alice@server/", "sftp://alice@server/"),
         ("sftp://alice:secret@server/", "sftp://alice@server/"),
-        ("smb://alice;password=secret@server/share", "smb://alice@server/share"),
+        (
+            "smb://alice;password=secret@server/share",
+            "smb://alice@server/share",
+        ),
         ("sftp://[FE80::1]:2222/", "sftp://[fe80::1]:2222/"),
         ("sftp://server.example./", "sftp://server.example/"),
     ] {
@@ -60,7 +72,10 @@ fn duplicate_identity_distinguishes_users_ports_and_destinations() {
         "sftp://alice@other/data",
         "ftps://alice@server/data",
     ] {
-        assert!(!base.same_destination(&destination(different)), "{different:?}");
+        assert!(
+            !base.same_destination(&destination(different)),
+            "{different:?}"
+        );
     }
     assert!(
         destination("smb://server/Share/Folder")
@@ -103,7 +118,10 @@ fn server_keys_ignore_the_path() {
 
 #[test]
 fn default_names_describe_the_destination() {
-    assert_eq!(destination("smb://nas/media").default_name(), "media on nas");
+    assert_eq!(
+        destination("smb://nas/media").default_name(),
+        "media on nas"
+    );
     assert_eq!(destination("sftp://host/").default_name(), "host");
     assert_eq!(
         destination("davs://cloud/remote.php/dav/files/alice%20b").default_name(),
@@ -183,17 +201,57 @@ fn remote_errors_map_to_actionable_failures() {
     use gio::IOErrorEnum as Io;
     let cases = [
         (Io::Cancelled, "cancelled", RemoteFailure::Cancelled),
-        (Io::FailedHandled, "Password dialog cancelled", RemoteFailure::Cancelled),
-        (Io::NotSupported, "Operation not supported", RemoteFailure::BackendMissing),
-        (Io::HostNotFound, "Hostname not known", RemoteFailure::HostNotFound),
+        (
+            Io::FailedHandled,
+            "Password dialog cancelled",
+            RemoteFailure::Cancelled,
+        ),
+        (
+            Io::NotSupported,
+            "Operation not supported",
+            RemoteFailure::BackendMissing,
+        ),
+        (
+            Io::HostNotFound,
+            "Hostname not known",
+            RemoteFailure::HostNotFound,
+        ),
         (Io::Failed, "No route to host", RemoteFailure::HostNotFound),
-        (Io::ConnectionRefused, "Connection refused by server", RemoteFailure::ConnectionRefused),
-        (Io::TimedOut, "Timed out when logging in", RemoteFailure::TimedOut),
-        (Io::Failed, "Host key verification failed", RemoteFailure::HostKeyRejected),
-        (Io::Failed, "Unacceptable TLS certificate", RemoteFailure::CertificateRejected),
-        (Io::Failed, "Too many authentication failures", RemoteFailure::AuthenticationFailed),
-        (Io::Failed, "Failed to mount Windows share: Permission denied", RemoteFailure::AuthenticationFailed),
-        (Io::PermissionDenied, "Permission denied", RemoteFailure::AuthenticationFailed),
+        (
+            Io::ConnectionRefused,
+            "Connection refused by server",
+            RemoteFailure::ConnectionRefused,
+        ),
+        (
+            Io::TimedOut,
+            "Timed out when logging in",
+            RemoteFailure::TimedOut,
+        ),
+        (
+            Io::Failed,
+            "Host key verification failed",
+            RemoteFailure::HostKeyRejected,
+        ),
+        (
+            Io::Failed,
+            "Unacceptable TLS certificate",
+            RemoteFailure::CertificateRejected,
+        ),
+        (
+            Io::Failed,
+            "Too many authentication failures",
+            RemoteFailure::AuthenticationFailed,
+        ),
+        (
+            Io::Failed,
+            "Failed to mount Windows share: Permission denied",
+            RemoteFailure::AuthenticationFailed,
+        ),
+        (
+            Io::PermissionDenied,
+            "Permission denied",
+            RemoteFailure::AuthenticationFailed,
+        ),
         (Io::NotMounted, "not mounted", RemoteFailure::Disconnected),
         (Io::Busy, "Target is busy", RemoteFailure::Busy),
         (Io::Failed, "Invalid reply received", RemoteFailure::Other),
@@ -248,14 +306,17 @@ fn a_decline_during_the_operation_resolves_as_cancelled() {
         MountResolution::Failed(RemoteFailure::HostKeyRejected),
         "a changed host key the user was never asked about is a failure"
     );
-    let already = Err(glib::Error::new(gio::IOErrorEnum::AlreadyMounted, "mounted"));
+    let already = Err(glib::Error::new(
+        gio::IOErrorEnum::AlreadyMounted,
+        "mounted",
+    ));
     assert_eq!(
         resolve_mount_result(&already, false, RemoteErrorContext::Mount, true),
-        MountResolution::Mounted
+        MountResolution::Succeeded
     );
     assert_eq!(
         resolve_mount_result(&Ok(()), true, RemoteErrorContext::Mount, true),
-        MountResolution::Mounted
+        MountResolution::Succeeded
     );
     let refused = Err(glib::Error::new(
         gio::IOErrorEnum::NotSupported,
@@ -292,7 +353,11 @@ fn trust_questions_are_classified_and_never_default_to_acceptance() {
         &["Yes".into(), "No".into()],
     );
     assert_eq!(certificate.kind, MountQuestionKind::Certificate);
-    assert!(certificate.detail.contains("certificate authority is not known"));
+    assert!(
+        certificate
+            .detail
+            .contains("certificate authority is not known")
+    );
     assert!(certificate.is_risky_choice(0));
 
     let other = MountQuestion::classify("Replace the file?", &["Replace".into(), "Skip".into()]);
@@ -331,8 +396,8 @@ fn only_plaintext_protocols_need_a_transport_warning() {
 fn every_remote_protocol_gets_network_presentation() {
     for protocol in RemoteProtocol::ALL {
         let root = format!("{}://host/", protocol.scheme());
-        assert_eq!(mount_protocol(&root), Some(protocol));
+        assert_eq!(RemoteProtocol::for_uri(&root), Some(protocol));
     }
-    assert_eq!(mount_protocol("file:///media/usb"), None);
-    assert_eq!(mount_protocol("mtp://phone/"), None);
+    assert_eq!(RemoteProtocol::for_uri("file:///media/usb"), None);
+    assert_eq!(RemoteProtocol::for_uri("mtp://phone/"), None);
 }

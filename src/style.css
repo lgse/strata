@@ -2160,6 +2160,42 @@ scrollbar.horizontal > range > trough > slider {
   padding: 1px 10px 2px;
 }
 
+.sidebar-heading-row {
+  padding-right: 2px;
+}
+
+.sidebar-heading-row .sidebar-heading-action {
+  margin: 0;
+  min-height: 20px;
+  min-width: 20px;
+}
+
+.sidebar-connection-row.offline label {
+  color: @theme_dim_text;
+}
+
+.connection-save-offer {
+  background: @theme_surface;
+  border: 1px solid @theme_border;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px alpha(@theme_shadow, 0.35);
+  color: @theme_text;
+  padding: 8px 10px 8px 14px;
+}
+
+.connection-transport-note {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.connection-transport-note.warning {
+  color: @theme_danger;
+}
+
+.mount-question-detail {
+  font-size: 0.9em;
+}
+
 paned > separator {
   background: alpha(@theme_border, 0.6);
   min-width: 1px;

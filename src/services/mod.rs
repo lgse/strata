@@ -38,7 +38,6 @@ pub use file_source::{
     LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
     UriCredentials, sanitize_uri_credentials, validate_uri_credentials,
 };
-pub use remote::backend_unavailable_message;
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
 pub use jobs::{
@@ -71,6 +70,7 @@ pub(crate) use preview::{
     is_non_executable_extensionless_dotfile, normalize_preview_text, split_archive_name,
     supports_remote_video,
 };
+pub use remote::backend_unavailable_message;
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
     VolumeIdentity, VolumeRelation, drop_commit, transferable_drop_sources, volume_relation,

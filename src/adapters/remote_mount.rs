@@ -43,6 +43,7 @@ pub(crate) struct MountCredentials {
 }
 
 impl MountCredentials {
+    #[cfg(test)]
     pub(crate) fn password(username: &str, password: &str) -> Self {
         Self {
             anonymous: false,
@@ -53,7 +54,7 @@ impl MountCredentials {
         }
     }
 
-    fn apply(&self, operation: &gio::MountOperation) {
+    pub(crate) fn apply_to(&self, operation: &gio::MountOperation) {
         operation.set_anonymous(self.anonymous);
         if self.anonymous {
             return;
@@ -80,10 +81,15 @@ pub(crate) struct PasswordRequest {
 }
 
 impl PasswordRequest {
-    /// An SSH key passphrase rather than an account password.
+    #[cfg(test)]
     pub(crate) fn is_passphrase(&self) -> bool {
-        self.message.to_lowercase().contains("passphrase")
+        requests_passphrase(&self.message)
     }
+}
+
+/// A key or volume passphrase rather than an account password.
+pub(crate) fn requests_passphrase(message: &str) -> bool {
+    message.to_lowercase().contains("passphrase")
 }
 
 pub(crate) trait MountPrompter {
@@ -139,7 +145,7 @@ pub(crate) struct PasswordReply {
 impl PasswordReply {
     pub(crate) fn submit(self, credentials: MountCredentials) {
         self.answered.set(true);
-        credentials.apply(&self.operation);
+        credentials.apply_to(&self.operation);
         self.session.borrow_mut().attempted = Some(credentials);
         self.operation.reply(gio::MountOperationResult::Handled);
     }
@@ -262,13 +268,20 @@ impl MountSession {
         location: &Location,
         strategy: MountStrategy,
     ) -> Result<(), glib::Error> {
-        self.scheme
-            .replace(location.uri_value().and_then(glib::Uri::parse_scheme).map(|scheme| scheme.to_string()));
+        self.scheme.replace(
+            location
+                .uri_value()
+                .and_then(glib::Uri::parse_scheme)
+                .map(|scheme| scheme.to_string()),
+        );
         let file = gio_file_for_location(location);
         match strategy {
             MountStrategy::EnclosingVolume => {
-                file.mount_enclosing_volume_future(gio::MountMountFlags::NONE, Some(&self.operation))
-                    .await
+                file.mount_enclosing_volume_future(
+                    gio::MountMountFlags::NONE,
+                    Some(&self.operation),
+                )
+                .await
             }
             MountStrategy::Mountable => file
                 .mount_mountable_future(gio::MountMountFlags::NONE, Some(&self.operation))
@@ -298,7 +311,7 @@ fn connect_prompts(
             let step = password_session.borrow_mut().next_password_step();
             let retry = match step {
                 PasswordStep::UseSupplied(credentials) => {
-                    credentials.apply(operation);
+                    credentials.apply_to(operation);
                     operation.reply(gio::MountOperationResult::Handled);
                     return;
                 }
@@ -353,7 +366,11 @@ fn question_arguments(
     choices_index: usize,
 ) -> Option<(gio::MountOperation, String, Vec<String>)> {
     let operation = values.first()?.get::<gio::MountOperation>().ok()?;
-    let message = values.get(1)?.get::<Option<String>>().ok()?.unwrap_or_default();
+    let message = values
+        .get(1)?
+        .get::<Option<String>>()
+        .ok()?
+        .unwrap_or_default();
     let choices = values
         .get(choices_index)?
         .get::<Vec<String>>()

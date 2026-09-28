@@ -669,6 +669,7 @@ impl BrowserView {
         state.install_input_ownership();
         state.install_column_peek_targets();
         state.install_drag_autoscroll();
+        state.install_remote_disconnect_watch();
         if interactive {
             columns::install_resize_edges(&state);
         }

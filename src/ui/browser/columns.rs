@@ -1335,13 +1335,16 @@ impl ViewState {
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
         let retry = gtk::Button::with_label("Retry");
         retry.add_css_class("retry-button");
-        let weak_browser = Rc::downgrade(&self.browser);
+        let weak_state = Rc::downgrade(self);
         retry.connect_clicked(move |_| {
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.retry_column(depth);
+            if let Some(state) = weak_state.upgrade() {
+                state.reconnect_column(depth);
             }
         });
         let presentation = LoadPresentation::new(&scroll, Some(retry));
+        presentation.set_empty_text(crate::services::remote::directory_empty_message(Some(
+            location,
+        )));
         let rows_for_marquee = bound_rows.clone();
         let weak_for_clear = Rc::downgrade(self);
         let returning_to_column = Rc::new(Cell::new(false));

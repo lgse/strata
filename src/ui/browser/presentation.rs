@@ -8,6 +8,7 @@ pub(super) struct LoadPresentation {
     loading: crate::ui::loading_skeleton::DelayedLoading,
     message: gtk::Label,
     retry: Option<gtk::Button>,
+    empty_text: std::rc::Rc<std::cell::RefCell<String>>,
 }
 
 impl LoadPresentation {
@@ -44,7 +45,13 @@ impl LoadPresentation {
             loading,
             message,
             retry,
+            empty_text: std::rc::Rc::new(std::cell::RefCell::new("This directory is empty".into())),
         }
+    }
+
+    /// Some locations explain an empty listing, such as undiscovered networks.
+    pub(super) fn set_empty_text(&self, text: String) {
+        self.empty_text.replace(text);
     }
 
     pub(super) fn show_loading(&self) {
@@ -59,7 +66,7 @@ impl LoadPresentation {
     }
 
     pub(super) fn show_empty(&self) {
-        self.message.set_text("This directory is empty");
+        self.message.set_text(&self.empty_text.borrow());
         self.message.remove_css_class("error");
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(false);

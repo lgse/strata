@@ -8,7 +8,11 @@ use std::{
 
 use gtk::{gio, glib, prelude::*};
 
-use crate::{adapters::location_for_file, model::Location};
+use crate::{
+    adapters::{location_for_file, remote_mount::MountSession},
+    model::Location,
+    services::remote::plaintext_destination,
+};
 
 use super::{BrowserView, WeakBrowserView, present_target};
 
@@ -34,15 +38,15 @@ enum Kind {
 }
 
 struct OpenRequest {
-    operation: gtk::MountOperation,
+    session: MountSession,
     timer: RefCell<Option<glib::SourceId>>,
     active: Cell<bool>,
 }
 
 impl OpenRequest {
-    fn new(operation: gtk::MountOperation) -> Rc<Self> {
+    fn new(session: MountSession) -> Rc<Self> {
         Rc::new(Self {
-            operation,
+            session,
             timer: RefCell::new(None),
             active: Cell::new(true),
         })
@@ -53,24 +57,31 @@ impl OpenRequest {
         if let Some(timer) = self.timer.take() {
             timer.remove();
         }
-        self.operation.set_parent(None::<&gtk::Window>);
     }
 
     fn abort(&self) {
         if self.active.replace(false) {
-            self.operation.reply(gio::MountOperationResult::Aborted);
+            self.session
+                .operation()
+                .reply(gio::MountOperationResult::Aborted);
         }
         if let Some(timer) = self.timer.take() {
             timer.remove();
         }
-        self.operation.set_parent(None::<&gtk::Window>);
     }
+}
+
+/// What mounting an unmounted argument needs: Strata's prompts and a parent
+/// for the plaintext-transport confirmation.
+struct MountAccess<'a> {
+    session: &'a MountSession,
+    parent: &'a gtk::Widget,
 }
 
 fn classify(browser: BrowserView, file: gio::File, location: Location) -> Rc<OpenRequest> {
     let generation = browser.browser().bump_navigation_generation();
-    let parent = browser.overlay().root().and_downcast::<gtk::Window>();
-    let request = OpenRequest::new(gtk::MountOperation::new(parent.as_ref()));
+    let request = OpenRequest::new(browser.mount_session());
+    let parent: gtk::Widget = browser.overlay().upcast();
     let cleanup_request = request.clone();
     browser.set_navigation_cleanup(move || cleanup_request.abort());
 
@@ -89,7 +100,11 @@ fn classify(browser: BrowserView, file: gio::File, location: Location) -> Rc<Ope
     let retry_location = location.clone();
     let query_request = request.clone();
     glib::MainContext::default().spawn_local(async move {
-        let outcome = query_kind(&file, Some(&query_request.operation)).await;
+        let access = MountAccess {
+            session: &query_request.session,
+            parent: &parent,
+        };
+        let outcome = query_kind(&file, Some(access)).await;
         let Some(browser) = weak.upgrade() else {
             query_request.abort();
             return;
@@ -113,7 +128,7 @@ fn classify(browser: BrowserView, file: gio::File, location: Location) -> Rc<Ope
 /// A no-follow fallback preserves broken native symlinks as revealable entries.
 async fn query_kind(
     file: &gio::File,
-    operation: Option<&gtk::MountOperation>,
+    access: Option<MountAccess<'_>>,
 ) -> Result<Kind, glib::Error> {
     let mut mounted = false;
     loop {
@@ -131,14 +146,17 @@ async fn query_kind(
                     _ => Kind::File,
                 });
             }
-            Err(error)
-                if !mounted
-                    && operation.is_some()
-                    && error.matches(gio::IOErrorEnum::NotMounted) =>
-            {
+            Err(error) if !mounted && error.matches(gio::IOErrorEnum::NotMounted) => {
+                let Some(access) = access.as_ref() else {
+                    return Err(error);
+                };
                 mounted = true;
+                confirm_transport(file, access.parent).await?;
                 if let Err(error) = file
-                    .mount_enclosing_volume_future(gio::MountMountFlags::NONE, operation)
+                    .mount_enclosing_volume_future(
+                        gio::MountMountFlags::NONE,
+                        Some(access.session.operation()),
+                    )
                     .await
                     && !error.matches(gio::IOErrorEnum::AlreadyMounted)
                 {
@@ -159,6 +177,27 @@ async fn query_kind(
                 };
             }
         }
+    }
+}
+
+/// Unencrypted servers are confirmed before a new connection is made.
+async fn confirm_transport(file: &gio::File, parent: &gtk::Widget) -> Result<(), glib::Error> {
+    let Some(destination) =
+        location_for_file(file).and_then(|location| plaintext_destination(&location))
+    else {
+        return Ok(());
+    };
+    let (sender, receiver) = futures_channel::oneshot::channel();
+    crate::ui::remote_prompts::confirm_plaintext_connection(parent, &destination, move |connect| {
+        let _ = sender.send(connect);
+    });
+    if receiver.await.unwrap_or(false) {
+        Ok(())
+    } else {
+        Err(glib::Error::new(
+            gio::IOErrorEnum::Cancelled,
+            "The unencrypted connection was cancelled",
+        ))
     }
 }
 

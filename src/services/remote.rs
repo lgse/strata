@@ -413,8 +413,7 @@ pub fn is_network_root(location: &Location) -> bool {
         .is_some_and(|uri| uri.trim_end_matches('/') == "network:")
 }
 
-const DIRECT_ENTRY_HINT: &str =
-    "Press Ctrl+L to enter a server address directly, such as smb://server/share or sftp://server/folder.";
+const DIRECT_ENTRY_HINT: &str = "Press Ctrl+L to enter a server address directly, such as smb://server/share or sftp://server/folder.";
 
 /// Schemes whose GVfs backends advertise hosts and shares under `network:///`.
 const DISCOVERY_SCHEMES: [&str; 3] = ["dns-sd", "smb", "wsdd"];
@@ -445,11 +444,18 @@ pub fn directory_empty_text<S: AsRef<str>>(
     }
 }
 
+/// [`directory_empty_text`] for the discovery backends installed here.
+pub fn directory_empty_message(location: Option<&Location>) -> String {
+    let schemes = gio::Vfs::default().supported_uri_schemes();
+    directory_empty_text(location, &schemes)
+}
+
 pub fn directory_failure_text(location: Option<&Location>, message: &str) -> String {
     if location.is_some_and(is_network_root) {
         return message.to_owned();
     }
-    let heading = if location.is_some_and(|location| RemoteProtocol::for_location(location).is_some())
+    let heading = if location
+        .is_some_and(|location| RemoteProtocol::for_location(location).is_some())
         && message == RemoteFailure::Disconnected.guidance(None)
     {
         "This location is unavailable"
@@ -566,9 +572,7 @@ impl RemoteFailure {
                  server's administrator to install a valid certificate."
                 .into(),
             Self::BackendMissing => "Support for this protocol isn't installed.".into(),
-            Self::Disconnected => {
-                "This location was disconnected. Use Retry to reconnect.".into()
-            }
+            Self::Disconnected => "This location was disconnected. Use Retry to reconnect.".into(),
             Self::Busy => "Files on this connection are still in use. Close them, then try \
                  again."
                 .into(),
@@ -588,7 +592,11 @@ pub fn classify_remote_error(error: &glib::Error, context: RemoteErrorContext) -
     if error.matches(Io::NotSupported) && context != RemoteErrorContext::Unmount {
         return RemoteFailure::BackendMissing;
     }
-    if mentions(&["host key verification failed", "host key", "remote host identification"]) {
+    if mentions(&[
+        "host key verification failed",
+        "host key",
+        "remote host identification",
+    ]) {
         return RemoteFailure::HostKeyRejected;
     }
     if error.kind::<gio::TlsError>().is_some()
@@ -599,7 +607,11 @@ pub fn classify_remote_error(error: &glib::Error, context: RemoteErrorContext) -
     if error.matches(Io::HostNotFound)
         || error.matches(Io::HostUnreachable)
         || error.matches(Io::NetworkUnreachable)
-        || mentions(&["hostname not known", "no route to host", "name or service not known"])
+        || mentions(&[
+            "hostname not known",
+            "no route to host",
+            "name or service not known",
+        ])
     {
         return RemoteFailure::HostNotFound;
     }
@@ -742,10 +754,10 @@ impl MountQuestion {
     }
 }
 
-/// The mount operation outcome as a user decision rather than a GIO error.
+/// A mount or unmount outcome as a user decision rather than a GIO error.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MountResolution {
-    Mounted,
+    Succeeded,
     Cancelled,
     Failed(RemoteFailure),
 }
@@ -762,8 +774,8 @@ pub fn resolve_mount_result(
     backend_available: bool,
 ) -> MountResolution {
     match result {
-        Ok(()) => MountResolution::Mounted,
-        Err(error) if error.matches(gio::IOErrorEnum::AlreadyMounted) => MountResolution::Mounted,
+        Ok(()) => MountResolution::Succeeded,
+        Err(error) if error.matches(gio::IOErrorEnum::AlreadyMounted) => MountResolution::Succeeded,
         Err(_) if declined => MountResolution::Cancelled,
         Err(error) => match classify_remote_error(error, context) {
             RemoteFailure::Cancelled => MountResolution::Cancelled,
@@ -806,9 +818,4 @@ pub fn plaintext_secure_alternative(protocol: RemoteProtocol) -> Option<RemotePr
         RemoteProtocol::Dav => Some(RemoteProtocol::Davs),
         _ => None,
     }
-}
-
-/// Network presentation for a GVfs mount root, independent of protocol.
-pub fn mount_protocol(root_uri: &str) -> Option<RemoteProtocol> {
-    RemoteProtocol::for_uri(root_uri)
 }

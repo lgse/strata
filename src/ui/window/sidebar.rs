@@ -35,6 +35,14 @@ pub(in crate::ui) fn build_sidebar(
     state.observe_navigation_and_trash();
     let (handlers, mount_handler) = connect_device_changes(&state);
     let recent_setting_handler = connect_recent_setting_changes(&state);
+    let weak = Rc::downgrade(&state);
+    state
+        .connections_watch
+        .replace(Some(crate::ui::connections::watch_connections(move || {
+            if let Some(state) = weak.upgrade() {
+                state.queue_rebuild();
+            }
+        })));
     // Device discovery remains deferred to the window's first-paint callback.
     state.append_static_places();
     state.sync_active_place();
@@ -176,6 +184,9 @@ impl SidebarState {
             keycaps: RefCell::new(Vec::new()),
             keycaps_shown: Cell::new(false),
             visible_pins: RefCell::new(Vec::new()),
+            saved_connections: RefCell::new(Vec::new()),
+            row_tooltips: RefCell::new(Vec::new()),
+            connections_watch: RefCell::new(None),
         })
     }
 

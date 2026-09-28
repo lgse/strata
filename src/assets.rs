@@ -85,9 +85,12 @@ pub mod icons {
     pub const SCISSORS: &str = "strata-scissors";
     pub const SEARCH: &str = "strata-search";
     pub const SEND_HORIZONTAL: &str = "strata-send-horizontal";
+    pub const SERVER: &str = "strata-server";
+    pub const SERVER_OFF: &str = "strata-server-off";
     pub const SETTINGS: &str = "strata-settings";
     pub const SETTINGS_2: &str = "strata-settings-2";
     pub const REFRESH: &str = "strata-refresh";
+    pub const SHIELD_ALERT: &str = "strata-shield-alert";
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";

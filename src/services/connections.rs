@@ -170,12 +170,6 @@ impl ConnectionStore {
             .collect()
     }
 
-    pub fn get(&self, id: &str) -> Option<SavedConnection> {
-        self.connections()
-            .into_iter()
-            .find(|connection| connection.id == id)
-    }
-
     pub fn read_only_reason(&self) -> Option<&ConnectionStoreError> {
         self.read_only.as_ref()
     }
@@ -248,7 +242,11 @@ impl ConnectionStore {
         Ok(connection.clone())
     }
 
-    pub fn rename(&mut self, id: &str, name: &str) -> Result<SavedConnection, ConnectionStoreError> {
+    pub fn rename(
+        &mut self,
+        id: &str,
+        name: &str,
+    ) -> Result<SavedConnection, ConnectionStoreError> {
         self.ensure_writable()?;
         let name = validate_name(name)?;
         let connection = self.known_mut(id)?;
@@ -511,9 +509,9 @@ impl ConnectionForm {
     pub fn validate(&self) -> Result<ConnectionDraft, ConnectionFormError> {
         use ConnectionFormField as Field;
 
-        let mut protocol = self.protocol.ok_or_else(|| {
-            ConnectionFormError::new(Field::Server, "Choose a protocol.")
-        })?;
+        let mut protocol = self
+            .protocol
+            .ok_or_else(|| ConnectionFormError::new(Field::Server, "Choose a protocol."))?;
         let mut server = self.server.trim().to_owned();
         let mut endpoint_path = None;
         let mut endpoint_port = None;
@@ -542,7 +540,9 @@ impl ConnectionForm {
                     | glib::UriFlags::HAS_PASSWORD
                     | glib::UriFlags::HAS_AUTH_PARAMS,
             )
-            .map_err(|_| ConnectionFormError::new(Field::Server, "Enter a valid server address."))?;
+            .map_err(|_| {
+                ConnectionFormError::new(Field::Server, "Enter a valid server address.")
+            })?;
             if parsed.password().is_some() || parsed.auth_params().is_some() {
                 return Err(ConnectionFormError::new(
                     Field::Server,
@@ -550,7 +550,10 @@ impl ConnectionForm {
                 ));
             }
             protocol = RemoteProtocol::from_scheme(&parsed.scheme()).unwrap_or(protocol);
-            server = parsed.host().map(|host| host.to_string()).unwrap_or_default();
+            server = parsed
+                .host()
+                .map(|host| host.to_string())
+                .unwrap_or_default();
             endpoint_port = u16::try_from(parsed.port()).ok();
             let path = parsed.path().to_string();
             if path.trim_matches('/').is_empty() {
@@ -560,7 +563,10 @@ impl ConnectionForm {
             }
         }
         if server.is_empty() {
-            return Err(ConnectionFormError::new(Field::Server, "Enter a server name."));
+            return Err(ConnectionFormError::new(
+                Field::Server,
+                "Enter a server name.",
+            ));
         }
         if server.contains(['/', '@', ' ', '\\', '?', '#']) {
             return Err(ConnectionFormError::new(
@@ -592,7 +598,10 @@ impl ConnectionForm {
         let path = if protocol == RemoteProtocol::Smb {
             let share = self.share.trim().trim_matches('/');
             if share.is_empty() {
-                return Err(ConnectionFormError::new(Field::Share, "Enter a share name."));
+                return Err(ConnectionFormError::new(
+                    Field::Share,
+                    "Enter a share name.",
+                ));
             }
             if share.contains('/') {
                 return Err(ConnectionFormError::new(
@@ -634,9 +643,8 @@ impl ConnectionForm {
             "" => destination.default_name(),
             name => name.to_owned(),
         };
-        validate_name(&name).map_err(|error| {
-            ConnectionFormError::new(Field::Name, error.to_string())
-        })?;
+        validate_name(&name)
+            .map_err(|error| ConnectionFormError::new(Field::Name, error.to_string()))?;
         Ok(ConnectionDraft { name, destination })
     }
 }

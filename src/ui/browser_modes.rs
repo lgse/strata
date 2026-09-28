@@ -4479,7 +4479,10 @@ fn show_count(pane: &Pane) {
     }
     if count == 0 {
         pane.status.remove_css_class("error");
-        pane.status.set_label("This directory is empty");
+        pane.status
+            .set_label(&crate::services::remote::directory_empty_message(
+                pane.location.as_ref(),
+            ));
         pane.loading.show("status");
     } else {
         pane.loading.show("content");

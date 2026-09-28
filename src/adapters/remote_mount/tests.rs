@@ -157,7 +157,10 @@ fn cancelled_or_abandoned_prompts_abort_and_resolve_as_cancelled() {
     );
 
     let abandoned = Harness::new(None);
-    abandoned.ask_question("Identity Verification Failed\nkey", &["Log In Anyway", "Cancel Login"]);
+    abandoned.ask_question(
+        "Identity Verification Failed\nkey",
+        &["Log In Anyway", "Cancel Login"],
+    );
     drop(abandoned.take_question());
     assert_eq!(abandoned.replies(), [gio::MountOperationResult::Aborted]);
     assert!(abandoned.session.declined());
@@ -170,7 +173,10 @@ fn trust_questions_require_an_explicit_choice() {
         "Identity Verification Failed\nVerifying the identity of “host” failed.",
         &["Log In Anyway", "Cancel Login"],
     );
-    assert!(harness.replies().is_empty(), "nothing is answered by default");
+    assert!(
+        harness.replies().is_empty(),
+        "nothing is answered by default"
+    );
     let (question, reply) = harness.take_question();
     assert_eq!(question.kind, MountQuestionKind::HostIdentity);
     assert_eq!(question.choices, ["Log In Anyway", "Cancel Login"]);
@@ -178,7 +184,9 @@ fn trust_questions_require_an_explicit_choice() {
     assert_eq!(harness.session.operation().choice(), 1);
     assert_eq!(harness.replies(), [gio::MountOperationResult::Handled]);
     assert_eq!(
-        harness.session.resolve(&rejected(), RemoteErrorContext::Mount),
+        harness
+            .session
+            .resolve(&rejected(), RemoteErrorContext::Mount),
         MountResolution::Cancelled,
         "declining the key is the user's decision, not an error"
     );
@@ -194,7 +202,9 @@ fn trust_questions_require_an_explicit_choice() {
     assert_eq!(accepted.session.operation().choice(), 0);
     assert!(!accepted.session.declined());
     assert_eq!(
-        accepted.session.resolve(&rejected(), RemoteErrorContext::Mount),
+        accepted
+            .session
+            .resolve(&rejected(), RemoteErrorContext::Mount),
         MountResolution::Failed(RemoteFailure::HostKeyRejected)
     );
 }

@@ -327,6 +327,15 @@ them on the host.
 `tests/e2e/requirements.txt`. The environment is created with
 `--system-site-packages` because PyGObject is a system package.
 
+## Remote-location fixtures
+
+The pinned image runs with `GIO_USE_VFS=local`, so E2E scenarios cover remote
+behavior that doesn't need a server: discovery states, missing-backend errors,
+and saved-connection management. Real SFTP, FTP/FTPS, and WebDAV/DAVS
+connections are covered by the opt-in disposable-server tests run with
+`./scripts/remote-fixtures.py test`; see
+[Remote locations and saved connections](remote-locations.md).
+
 ## How a scenario runs
 
 Each scenario gets:

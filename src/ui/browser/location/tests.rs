@@ -31,18 +31,33 @@ fn location_input_credentials_are_one_shot_and_never_saved() {
     assert_eq!(credentials.save, gio::PasswordSave::Never);
 }
 
+fn failure(error: &glib::Error) -> RemoteFailure {
+    crate::services::remote::classify_remote_error(error, RemoteErrorContext::Mount)
+}
+
 #[test]
-fn remote_permission_denials_are_treated_as_authentication_failures() {
-    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
-    let smb_denied = glib::Error::new(
+fn remote_permission_denials_ask_for_credentials_again() {
+    let denied = Err(glib::Error::new(
+        gio::IOErrorEnum::PermissionDenied,
+        "Permission denied",
+    ));
+    let smb_denied = Err(glib::Error::new(
         gio::IOErrorEnum::Failed,
         "Failed to mount Windows share: Permission denied",
-    );
+    ));
     let remote = Location::uri("smb://host/share");
-    assert!(mount_error_is_authentication_failure(&remote, &denied));
-    assert!(mount_error_is_authentication_failure(&remote, &smb_denied,));
-    assert!(!mount_error_is_authentication_failure(
-        &Location::local("/root"),
+    for result in [&denied, &smb_denied] {
+        let error = result.as_ref().expect_err("a failed mount");
+        assert!(mount_failure_needs_credentials(
+            &remote,
+            failure(error),
+            result
+        ));
+    }
+    let local = Location::local("/root");
+    assert!(!mount_failure_needs_credentials(
+        &local,
+        failure(denied.as_ref().expect_err("a failed mount")),
         &denied,
     ));
 }
@@ -51,25 +66,48 @@ fn remote_permission_denials_are_treated_as_authentication_failures() {
 fn cancelling_the_credential_prompt_produces_no_error_message() {
     let location = Location::uri("smb://host/share");
     for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
-        let error = glib::Error::new(kind, "cancelled by the user");
-        assert_eq!(mount_failure_message(&location, &error), None);
+        let result = Err(glib::Error::new(kind, "cancelled by the user"));
+        let error = result.as_ref().expect_err("a failed mount");
+        assert_eq!(
+            mount_failure_message(&location, failure(error), &result),
+            None
+        );
     }
 }
 
 #[test]
 fn a_missing_backend_reports_which_package_to_install() {
     let location = Location::uri("smb://host/share");
-    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler for smb");
-    let message = mount_failure_message(&location, &error).expect("should report a message");
+    let result = Err(glib::Error::new(
+        gio::IOErrorEnum::NotSupported,
+        "no handler for smb",
+    ));
+    let message = mount_failure_message(&location, RemoteFailure::BackendMissing, &result)
+        .expect("should report a message");
     assert!(message.contains("gvfs-smb"));
 }
 
 #[test]
-fn a_genuine_mount_failure_still_reports_an_error() {
-    let location = Location::uri("smb://host/share");
-    let error = glib::Error::new(gio::IOErrorEnum::HostNotFound, "no route to host");
-    let message = mount_failure_message(&location, &error).expect("should report a message");
-    assert!(message.contains("no route to host"));
+fn connection_failures_are_actionable_without_repeating_the_endpoint() {
+    let location = Location::uri("sftp://alice@secret-host/private");
+    let result = Err(glib::Error::new(
+        gio::IOErrorEnum::HostNotFound,
+        "Hostname not known",
+    ));
+    let error = result.as_ref().expect_err("a failed mount");
+    let message =
+        mount_failure_message(&location, failure(error), &result).expect("should report a message");
+    assert!(message.contains("couldn't find that server"));
+    assert!(!message.contains("secret-host") && !message.contains("alice"));
+
+    let unknown = Err(glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Invalid reply from sftp://alice@secret-host/private",
+    ));
+    let message = mount_failure_message(&location, RemoteFailure::Other, &unknown)
+        .expect("should report a message");
+    assert!(message.contains("Invalid reply from sftp://…"));
+    assert!(!message.contains("secret-host"));
 }
 
 #[test]
@@ -86,14 +124,17 @@ fn authentication_failure_without_a_backend_prompt_gets_login_fields() {
 fn volume_cancellation_is_quiet_and_terminal_errors_are_preserved() {
     let volume = Location::local("/mnt/USB");
     for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
+        let result = Err(glib::Error::new(kind, "Password dialog aborted"));
+        let error = result.as_ref().expect_err("a failed mount");
         assert_eq!(
-            mount_failure_message(&volume, &glib::Error::new(kind, "Password dialog aborted")),
+            mount_failure_message(&volume, failure(error), &result),
             None
         );
     }
     let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "Filesystem not supported");
+    let result = Err(error.clone());
     assert_eq!(
-        mount_failure_message(&volume, &error),
+        mount_failure_message(&volume, failure(&error), &result),
         Some(error.to_string())
     );
     assert!(!volume_error_is_authentication_failure(&error));

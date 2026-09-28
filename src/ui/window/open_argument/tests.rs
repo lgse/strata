@@ -25,8 +25,32 @@ fn view() -> BrowserView {
     view
 }
 
+struct NoPrompts;
+
+impl crate::adapters::remote_mount::MountPrompter for NoPrompts {
+    fn ask_password(
+        &self,
+        _: crate::adapters::remote_mount::PasswordRequest,
+        reply: crate::adapters::remote_mount::PasswordReply,
+    ) {
+        reply.cancel();
+    }
+
+    fn ask_question(
+        &self,
+        _: crate::services::remote::MountQuestion,
+        reply: crate::adapters::remote_mount::QuestionReply,
+    ) {
+        reply.cancel();
+    }
+}
+
+fn session() -> MountSession {
+    MountSession::new(gio::MountOperation::new(), None, Rc::new(NoPrompts))
+}
+
 fn request() -> Rc<OpenRequest> {
-    OpenRequest::new(gtk::MountOperation::new(None::<&gtk::Window>))
+    OpenRequest::new(session())
 }
 
 fn wait_until(condition: impl Fn() -> bool) {
@@ -357,11 +381,13 @@ fn window_close_aborts_pending_request_and_releases_the_view() {
                 .root()
                 .and_downcast::<gtk::Window>()
                 .expect("window");
-            let operation = gtk::MountOperation::new(Some(&window));
+            let request = OpenRequest::new(session());
             let replies = Rc::new(RefCell::new(Vec::new()));
             let observed_replies = replies.clone();
-            operation.connect_reply(move |_, reply| observed_replies.borrow_mut().push(reply));
-            let request = OpenRequest::new(operation);
+            request
+                .session
+                .operation()
+                .connect_reply(move |_, reply| observed_replies.borrow_mut().push(reply));
             let timer = glib::timeout_add_local_once(Duration::from_secs(30), || {});
             request.timer.replace(Some(timer));
             let generation = browser.browser().bump_navigation_generation();
@@ -376,7 +402,6 @@ fn window_close_aborts_pending_request_and_releases_the_view() {
 
             assert!(!request.active.get());
             assert!(request.timer.borrow().is_none());
-            assert!(request.operation.parent().is_none());
             assert_eq!(*replies.borrow(), [gio::MountOperationResult::Aborted]);
             assert!(weak.upgrade().is_none());
         },
@@ -390,16 +415,13 @@ fn navigation_aborts_pending_request_and_mount_prompt() {
         || {
             PreferenceManager::seed_saved_preferences_for_test();
             let browser = view();
-            let window = browser
-                .overlay()
-                .root()
-                .and_downcast::<gtk::Window>()
-                .expect("window");
-            let operation = gtk::MountOperation::new(Some(&window));
+            let request = OpenRequest::new(session());
             let replies = Rc::new(RefCell::new(Vec::new()));
             let observed_replies = replies.clone();
-            operation.connect_reply(move |_, reply| observed_replies.borrow_mut().push(reply));
-            let request = OpenRequest::new(operation);
+            request
+                .session
+                .operation()
+                .connect_reply(move |_, reply| observed_replies.borrow_mut().push(reply));
             let timer = glib::timeout_add_local_once(Duration::from_secs(30), || {});
             request.timer.replace(Some(timer));
             let generation = browser.browser().bump_navigation_generation();
@@ -412,7 +434,6 @@ fn navigation_aborts_pending_request_and_mount_prompt() {
 
             assert!(!request.active.get());
             assert!(request.timer.borrow().is_none());
-            assert!(request.operation.parent().is_none());
             assert_eq!(*replies.borrow(), [gio::MountOperationResult::Aborted]);
             assert!(status_widget(&browser.overlay()).is_none());
         },
