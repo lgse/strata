@@ -139,8 +139,10 @@ fn show_authentication_dialog(
     );
     layout.content.add_css_class("wide");
     layout.body.add_css_class("authentication-body");
-    let explanation_text =
-        wrap_dialog_text(message.trim(), AUTHENTICATION_TEXT_WIDTH_CHARS as usize);
+    let explanation_text = wrap_dialog_text(
+        prompt_explanation(message),
+        AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
+    );
     let explanation = gtk::Label::new(Some(&explanation_text));
     explanation.add_css_class("authentication-explanation");
     explanation.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
@@ -149,11 +151,7 @@ fn show_authentication_dialog(
     layout.body.append(&explanation);
     if authentication_failed {
         let error_text = wrap_dialog_text(
-            if passphrase {
-                "That passphrase wasn’t accepted. Check it, then try again."
-            } else {
-                "Those credentials weren’t accepted. Check the username, domain, and password, then try again."
-            },
+            rejected_credentials_text(passphrase, flags),
             AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
         );
         let error = gtk::Label::new(Some(&error_text));
@@ -335,6 +333,35 @@ fn show_authentication_dialog(
         connect.grab_focus();
     }
     Some(layer)
+}
+
+/// GVfs prefixes prompts with a heading that repeats the dialog title.
+fn prompt_explanation(message: &str) -> &str {
+    let message = message.trim();
+    match message.split_once('\n') {
+        Some((first, rest)) if first.trim().eq_ignore_ascii_case("authentication required") => {
+            rest.trim()
+        }
+        _ => message,
+    }
+}
+
+/// Names only the fields the prompt shows, so a retry is actionable.
+fn rejected_credentials_text(passphrase: bool, flags: gio::AskPasswordFlags) -> &'static str {
+    if passphrase {
+        return "That passphrase wasn’t accepted. Check it, then try again.";
+    }
+    let username = flags.contains(gio::AskPasswordFlags::NEED_USERNAME);
+    let domain = flags.contains(gio::AskPasswordFlags::NEED_DOMAIN);
+    match (username, domain) {
+        (true, true) => {
+            "Those credentials weren’t accepted. Check the username, domain, and password, then try again."
+        }
+        (true, false) => {
+            "Those credentials weren’t accepted. Check the username and password, then try again."
+        }
+        _ => "That password wasn’t accepted. Check it, then try again.",
+    }
 }
 
 fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Box) {

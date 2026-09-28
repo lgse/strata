@@ -20,7 +20,9 @@ use crate::{
 };
 
 use super::{
-    controls::{ModalTone, message_dialog_description, message_dialog_layout},
+    controls::{
+        MESSAGE_DIALOG_WIDTH_CHARS, ModalTone, message_dialog_description, message_dialog_layout,
+    },
     modal::{ModalHost, dismiss_modal_layer, modal_layer},
 };
 
@@ -64,9 +66,15 @@ pub(in crate::ui) fn show_mount_question(
     layout.content.add_css_class("mount-question");
     layout.cancel.set_visible(false);
     layout.confirm.set_visible(false);
-    let detail = message_dialog_description(&question.detail);
-    detail.set_selectable(true);
+    // Certificate and key details are line-oriented, so keep the backend's breaks.
+    let detail = gtk::Label::new(Some(&question.detail.replace('\t', "  ")));
+    detail.add_css_class("action-dialog-description");
     detail.add_css_class("mount-question-detail");
+    detail.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
+    detail.set_wrap(true);
+    detail.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    detail.set_xalign(0.0);
+    detail.set_selectable(true);
     layout.body.append(&detail);
 
     let layer = modal_layer(&layout.content, &overlay, blurred_root.clone(), None);

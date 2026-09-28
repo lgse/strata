@@ -748,3 +748,29 @@ fn wait_until(condition: impl Fn() -> bool, message: &str) {
         std::thread::sleep(Duration::from_millis(2));
     }
 }
+
+#[test]
+fn credential_prompts_name_only_the_fields_they_show() {
+    assert_eq!(
+        prompt_explanation("Authentication Required\nEnter password for “alice”:"),
+        "Enter password for “alice”:"
+    );
+    assert_eq!(
+        prompt_explanation("Enter a passphrase"),
+        "Enter a passphrase"
+    );
+    let password = gio::AskPasswordFlags::NEED_PASSWORD;
+    assert!(rejected_credentials_text(false, password).starts_with("That password"));
+    assert!(
+        rejected_credentials_text(false, password | gio::AskPasswordFlags::NEED_USERNAME)
+            .contains("username and password")
+    );
+    assert!(
+        rejected_credentials_text(
+            false,
+            password | gio::AskPasswordFlags::NEED_USERNAME | gio::AskPasswordFlags::NEED_DOMAIN
+        )
+        .contains("domain")
+    );
+    assert!(rejected_credentials_text(true, password).starts_with("That passphrase"));
+}
