@@ -300,10 +300,17 @@ fn assert_place_key_does_not_jump(
     fixture: &KeyboardFixture,
     origin: &Option<crate::model::Location>,
 ) {
-    if !shortcut_reference_visible(fixture) {
+    let reference = shortcut_reference_visible(fixture);
+    if !reference {
         focus_files(fixture);
     }
     fixture.press(Key::d, ModifierType::empty());
+    if !reference {
+        // A bare d asks to delete the focused item.
+        wait_until(|| modal_visible(&fixture.overlay));
+        assert!(click_class(&fixture.overlay, "action-dialog-close"));
+        wait_until(|| !modal_visible(&fixture.overlay));
+    }
     pump(50);
     assert_eq!(fixture.view.browser().active_location(), *origin);
     assert_eq!(fixture.shortcuts.armed_chord(), None);
