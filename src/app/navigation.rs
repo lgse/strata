@@ -1569,8 +1569,6 @@ impl NavigationState {
         self.shift_cursor(direction, page, order, false)
     }
 
-    /// Extends the range from its anchor to the entry one page away, for
-    /// `Shift+Page Up` and `Shift+Page Down`.
     pub fn extend_page_selection(
         &mut self,
         direction: i32,
@@ -1583,7 +1581,6 @@ impl NavigationState {
             .selection_anchor
             .as_ref()
             .is_some_and(|anchor| column.entries.iter().any(|entry| &entry.location == anchor));
-        // A cleared fill keeps a leftover anchor. Start the range at the cursor.
         if column.selected_locations.is_empty() || !anchored {
             column.selection_anchor = column
                 .selected
