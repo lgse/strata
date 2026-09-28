@@ -678,13 +678,11 @@ fn needs_shell_escape(c: char) -> bool {
         )
 }
 
-/// How a listing item shows that it is on this process's file clipboard.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum ClipboardMark {
     #[default]
     None,
     Copy,
-    /// Wins over [`Self::Copy`] when both could apply.
     Cut,
 }
 
@@ -711,8 +709,6 @@ pub(super) fn register_cut_view(state: &Rc<ViewState>) {
     state.refresh_mark_rows();
 }
 
-/// Marks describe this process's payload, so another owner taking the
-/// clipboard clears them.
 fn watch_clipboard_ownership() {
     if WATCHING_OWNERSHIP.with(|watching| watching.replace(true)) {
         return;
@@ -808,8 +804,6 @@ fn clear_shared_marks() {
     set_shared_marks(&[], &[]);
 }
 
-/// Clears copy/cut marks and releases the clipboard only while this process
-/// still owns its file list.
 pub(super) fn unyank() {
     clear_shared_marks();
     let Some(display) = gtk::gdk::Display::default() else {
@@ -827,7 +821,6 @@ pub(super) fn unyank() {
     }
 }
 
-/// Whether the clipboard may hold files or an image to paste.
 pub(super) fn clipboard_may_paste() -> bool {
     gtk::gdk::Display::default().is_some_and(|display| {
         let formats = display.clipboard().formats();
@@ -1017,7 +1010,6 @@ impl ViewState {
         self.paste_preferring(destination, ConflictFocus::Replace, Rc::new(|| {}));
     }
 
-    /// `nothing` runs when the clipboard holds no files or image to paste.
     pub(super) fn paste_preferring(
         self: &Rc<Self>,
         destination: Location,

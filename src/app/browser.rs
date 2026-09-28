@@ -2035,7 +2035,6 @@ impl Browser {
         self.install_operation_load(request_id, load);
     }
 
-    /// Creates `name` exactly, reporting a conflict instead of numbering it.
     pub fn create_exact_entry(self: &Rc<Self>, parent: Location, name: String, directory: bool) {
         if directory {
             self.create_directory_with_naming(parent, name, false);

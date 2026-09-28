@@ -1422,7 +1422,6 @@ impl BrowserView {
         }
     }
 
-    /// The keyboard-focused directory a new item goes into, ignoring the pointer.
     fn new_entry_parent(&self) -> Option<(usize, Location)> {
         let depth = if self.view_mode() == BrowserMode::Columns {
             new_folder_destination_depth(

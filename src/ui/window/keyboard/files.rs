@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer file commands from the listing: yank, cut, unyank, paste, delete,
-//! create, and the **c** copy chord.
-
 use std::rc::Rc;
 
 use gtk::{
@@ -54,7 +51,6 @@ impl Dispatcher {
         }
     }
 
-    /// Paste leaves pointer or keyboard ownership of the destination as it is.
     fn paste(&self, focus: ConflictFocus) {
         let shortcuts = self.shortcuts.clone();
         self.view.paste_preferring(
@@ -78,7 +74,6 @@ impl Dispatcher {
         }
     }
 
-    /// **c c** / **c n**.
     pub(super) fn complete_copy(&self, key: Key) -> bool {
         let names = match key {
             Key::c => false,

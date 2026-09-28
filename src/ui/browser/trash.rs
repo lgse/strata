@@ -710,8 +710,6 @@ impl ViewState {
         }
     }
 
-    /// Confirms Trash as well as permanent deletion, and a permanent
-    /// deletion opens with Cancel focused so Enter cannot approve it.
     pub(super) fn request_confirmed_delete(
         self: &Rc<Self>,
         entries: Vec<FileEntry>,

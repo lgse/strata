@@ -85,7 +85,6 @@ pub(crate) enum Chord {
     Go,
     /// **g** while a document or archive preview owns the keys: only **g g**.
     PreviewTop,
-    /// **c** from the listing: copy paths or names.
     Copy,
 }
 
@@ -129,7 +128,6 @@ pub(crate) enum Prompt {
     Go,
     Jump,
     Recent,
-    /// **a**: create a file, or a folder with a trailing `/`.
     Create,
 }
 

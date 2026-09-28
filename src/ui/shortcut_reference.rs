@@ -418,7 +418,13 @@ const TENXER_SETTINGS: &[Binding] = &[
         category: "Files",
         action: "Yank / cut",
         note: "The selection, or the focused item",
-        keys: "y / x / Ctrl + C / Ctrl + X",
+        keys: "y / x",
+    },
+    Binding {
+        category: "Files",
+        action: "Copy / cut",
+        note: "Default-map selection behavior",
+        keys: "Ctrl + C / Ctrl + X",
     },
     Binding {
         category: "Files",
@@ -1203,9 +1209,8 @@ fn tenxer_hint(hint: ContextHint) -> &'static str {
         ContextHint::Copy => "y",
         ContextHint::Paste => "p",
         ContextHint::Trash => "d",
-        // Menus show letter keys in upper case, so D needs its Shift spelled out.
+        // GTK capitalizes menu accelerators; spell out Shift to distinguish D from d.
         ContextHint::PermanentDelete => "Shift+D",
-        // Menu accelerators cannot show the c c chord.
         ContextHint::None
         | ContextHint::ChooserPreview
         | ContextHint::CopyPath

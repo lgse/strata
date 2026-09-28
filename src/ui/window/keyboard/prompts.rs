@@ -238,7 +238,6 @@ impl Dispatcher {
         show_step(&sink, step);
     }
 
-    /// An invalid or occupied name keeps the prompt open so it can be fixed.
     fn submit_create(&self, browser: &Browser, text: &str) {
         let hint = match self.view.create_typed_entry(text) {
             Ok(()) => return self.return_to_listing(browser),

@@ -81,17 +81,13 @@ fn send_to_display_name(id: &str, root: &Path) -> String {
         .unwrap_or_else(|| root.to_string_lossy().into_owned())
 }
 
-/// The conflict choice focused when the prompt opens. Focus never confirms.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum ConflictFocus {
     #[default]
     Replace,
-    /// Falls back to Replace when Keep Both is not offered.
     KeepBoth,
 }
 
-/// Which non-destructive resolutions a conflict prompt offers, and which
-/// choice it focuses first.
 #[derive(Clone, Copy, Default)]
 struct ConflictActions {
     keep_both: bool,
