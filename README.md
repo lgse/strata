@@ -480,7 +480,7 @@ should be isolated and reversible.
 
 Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share` or `sftp://user@host:2222/path`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Remote protocols need their GVfs backend installed; distributions split these up differently, so check yours for the SMB backend (`gvfs-smb` on Arch) and the SFTP backend (part of `gvfs` on Arch, `gvfs-backends` on Debian and Ubuntu).
 
-SFTP accepts password and SSH-key authentication, asks for an encrypted key's passphrase, and always makes you decide about an unrecognized or changed host key. See [docs/remote-sftp.md](docs/remote-sftp.md), which also documents `scripts/sftp-fixture.sh`, a disposable OpenSSH server for testing.
+SFTP accepts password and SSH-key authentication. Encrypted keys can be unlocked in your SSH agent; if GVfs asks Strata for a key passphrase or host-key decision, Strata presents the request without deciding for you. See [docs/remote-sftp.md](docs/remote-sftp.md), which also documents `scripts/sftp-fixture.sh`, a disposable OpenSSH server for testing.
 
 ## Custom actions and script authoring
 

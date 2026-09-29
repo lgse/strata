@@ -77,6 +77,31 @@ fn directory_logging_respects_default_and_diagnostic_privacy() {
 }
 
 #[test]
+fn remote_backend_failures_hide_uri_user_info_in_views_and_diagnostic_logs() {
+    let location = Location::uri("sftp://alice@host.example/private");
+    let error = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Unable to read sftp://alice:secret@host.example/private?token=hidden#fragment",
+    );
+    let validation = uri_validation_result(&location, Err(error.clone()));
+    let Err(LocationValidationError::Unavailable(validation_message)) = validation else {
+        panic!("remote validation should report a sanitized failure");
+    };
+    let DirectoryEvent::Failed { message, .. } = remote_directory_failure(RequestId(42), &error)
+    else {
+        panic!("remote enumeration should report a sanitized failure");
+    };
+    let diagnostic = capture_logs(|| log_monitor_metadata_error(&location, &error));
+
+    for text in [&validation_message, &message, &diagnostic] {
+        assert!(text.contains("sftp://host.example/private"), "{text}");
+        for secret in ["alice", "secret", "token", "hidden", "fragment"] {
+            assert!(!text.contains(secret), "{text}");
+        }
+    }
+}
+
+#[test]
 fn validation_accepts_readable_directories_and_rejects_files_and_missing_paths()
 -> Result<(), Box<dyn Error>> {
     let unique = SystemTime::now()

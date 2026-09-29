@@ -670,6 +670,103 @@ fn encrypted_volume_presents_unlocking_chrome() {
 }
 
 #[test]
+fn sftp_trust_prompt_requires_a_choice_and_preserves_backend_choice_indexes() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::sftp_trust_prompt_requires_a_choice_and_preserves_backend_choice_indexes",
+        || {
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&gtk::Box::new(gtk::Orientation::Vertical, 0)));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+            let choices = ["Log In Anyway".to_owned(), "Cancel Login".to_owned()];
+            for (label, expected_choice) in [("Cancel Login", 1), ("Log In Anyway", 0)] {
+                let operation = gio::MountOperation::new();
+                let replies = Rc::new(RefCell::new(Vec::new()));
+                let observed = replies.clone();
+                operation.connect_reply(move |operation, reply| {
+                    observed.borrow_mut().push((reply, operation.choice()));
+                });
+                let declined = Rc::new(Cell::new(false));
+                let prompt = show_trust_question_dialog(
+                    &overlay,
+                    &operation,
+                    "Identity Verification Failed\nThe identity of sftp://user:secret@host/path is ???",
+                    &choices,
+                    declined.clone(),
+                )
+                .expect("themed trust question");
+                assert!(
+                    replies.borrow().is_empty(),
+                    "trust must not be answered automatically"
+                );
+                let widgets = descendants(&prompt.clone().upcast());
+                let text: String = widgets
+                    .iter()
+                    .filter_map(|widget| widget.downcast_ref::<gtk::Label>())
+                    .map(|label| label.text().to_string())
+                    .collect();
+                assert!(text.contains("Identity Verification Failed"));
+                assert!(!text.contains("user:secret"));
+                let button = widgets
+                    .iter()
+                    .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                    .find(|button| button.label().as_deref() == Some(label))
+                    .expect("backend choice");
+                button.emit_clicked();
+                assert_eq!(
+                    *replies.borrow(),
+                    vec![(gio::MountOperationResult::Handled, expected_choice)]
+                );
+                assert_eq!(declined.get(), expected_choice == 1);
+                dismiss_authentication_prompt(&overlay, &prompt);
+            }
+
+            let operation = gio::MountOperation::new();
+            let replies = Rc::new(RefCell::new(Vec::new()));
+            let observed = replies.clone();
+            operation.connect_reply(move |_, reply| observed.borrow_mut().push(reply));
+            let declined = Rc::new(Cell::new(false));
+            let prompt = show_trust_question_dialog(
+                &overlay,
+                &operation,
+                "Identity Verification Failed",
+                &choices,
+                declined.clone(),
+            )
+            .expect("themed trust question");
+            let close = descendants(&prompt.clone().upcast())
+                .into_iter()
+                .find_map(|widget| {
+                    widget
+                        .downcast::<gtk::Button>()
+                        .ok()
+                        .filter(|button| button.has_css_class("action-dialog-close"))
+                })
+                .expect("trust dialog close button");
+            close.emit_clicked();
+            assert_eq!(*replies.borrow(), vec![gio::MountOperationResult::Aborted]);
+            assert!(declined.get());
+            dismiss_authentication_prompt(&overlay, &prompt);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn declined_trust_question_never_reports_backend_cancel_as_connection_failure() {
+    let location = Location::uri("sftp://host.example/");
+    let backend_error = glib::Error::new(gio::IOErrorEnum::Failed, "Login cancelled");
+    let error = trust_question_result(Err(backend_error.clone()), true)
+        .expect_err("declined trust question should be cancelled");
+    assert!(error.matches(gio::IOErrorEnum::Cancelled));
+    assert!(mount_failure_message(&location, &error).is_none());
+
+    let genuine_error = trust_question_result(Err(backend_error), false)
+        .expect_err("genuine connection failures must not be suppressed");
+    assert!(mount_failure_message(&location, &genuine_error).is_some());
+}
+
+#[test]
 fn password_only_volume_prompt_submits_and_cancels_the_original_operation() {
     crate::test_support::gtk_test(
         "ui::browser::location::tests::password_only_volume_prompt_submits_and_cancels_the_original_operation",

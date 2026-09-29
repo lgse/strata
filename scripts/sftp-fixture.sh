@@ -125,9 +125,9 @@ Disposable SFTP fixture is listening on 127.0.0.1:$port
   Encrypted key:    $fixture/client_ed25519_encrypted (passphrase: ${STRATA_SFTP_PASSPHRASE:-strata})
   Server log:       $fixture/sshd.log
 
-The fixture host key is new, so the first connection must answer Strata's
-host-key question. To exercise the changed-host-key path, connect once, stop
-the fixture, start it again (it generates a fresh host key), and reconnect.
+The fixture host key is new, but OpenSSH may skip host-key questions for
+127.0.0.1. Test trust decisions through a restricted non-loopback relay.
+To test a changed key, reconnect to the same address after rotating the key.
 
 Press Ctrl-C to stop the server and delete the fixture.
 SUMMARY

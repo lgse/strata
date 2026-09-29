@@ -3,14 +3,16 @@
 use crate::adapters::gio_file_for_location;
 use crate::model::Location;
 use crate::services::{
-    LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
+    LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_failure_message,
+    sanitize_uri_credentials,
 };
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::{BrowserView, ViewState};
 use crate::ui::controls::{
-    form_entry, form_label, form_password_entry, message_dialog_description, modal_layout,
-    segmented_control, wrap_dialog_text,
+    ModalTone, focus_button, form_entry, form_label, form_password_entry,
+    message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
+    wrap_dialog_text,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
@@ -141,6 +143,125 @@ fn authentication_retry_message(flags: gio::AskPasswordFlags, message: &str) -> 
 }
 
 const AUTHENTICATION_TEXT_WIDTH_CHARS: i32 = 64;
+
+fn is_rejection_choice(choice: &str) -> bool {
+    let choice = choice.to_ascii_lowercase();
+    [
+        "cancel",
+        "reject",
+        "deny",
+        "disconnect",
+        "abort",
+        "do not",
+        "don't",
+        "no",
+    ]
+    .iter()
+    .any(|word| choice == *word || choice.starts_with(&format!("{word} ")))
+}
+
+fn show_trust_question_dialog(
+    browser_overlay: &gtk::Overlay,
+    operation: &gio::MountOperation,
+    message: &str,
+    choices: &[String],
+    declined: Rc<Cell<bool>>,
+) -> Option<gtk::Box> {
+    if choices.is_empty() {
+        operation.reply(gio::MountOperationResult::Unhandled);
+        return None;
+    }
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(browser_overlay)
+    else {
+        operation.reply(gio::MountOperationResult::Unhandled);
+        return None;
+    };
+
+    let layout = message_dialog_layout(
+        crate::assets::icons::TRIANGLE_ALERT,
+        "Verify server identity",
+        "Only continue after verifying the SSH host key through a trusted source.",
+        "Continue anyway",
+        ModalTone::Danger,
+    );
+    let backend_message = message_dialog_description(&sanitize_failure_message(message));
+    layout.body.append(&backend_message);
+    let warning = message_dialog_description(
+        "If the server did not provide a fingerprint, verify it outside Strata before continuing.",
+    );
+    layout.body.append(&warning);
+    layout.actions.remove(&layout.cancel);
+    layout.actions.remove(&layout.confirm);
+
+    let layer = modal_layer(
+        &layout.content,
+        &window_overlay,
+        blurred_root.clone(),
+        Some(Rc::new(|| true)),
+    );
+    window_overlay.add_overlay(&layer);
+
+    let close_layer = layer.clone();
+    let close_overlay = window_overlay.clone();
+    let close_root = blurred_root.clone();
+    let close_operation = operation.clone();
+    let close_declined = declined.clone();
+    layout.close.connect_clicked(move |_| {
+        close_declined.set(true);
+        dismiss_modal_layer(&close_layer, &close_overlay, close_root.as_ref());
+        close_operation.reply(gio::MountOperationResult::Aborted);
+    });
+
+    let mut rejection = None;
+    let mut ordered_choices: Vec<_> = choices.iter().enumerate().collect();
+    ordered_choices.sort_by_key(|(_, choice)| !is_rejection_choice(choice));
+    for (index, choice) in ordered_choices {
+        let button = gtk::Button::with_label(choice);
+        if is_rejection_choice(choice) {
+            button.add_css_class("action-dialog-cancel");
+            rejection.get_or_insert_with(|| button.clone());
+        } else {
+            button.add_css_class("action-dialog-confirm");
+            button.add_css_class("danger");
+        }
+        let answer_layer = layer.clone();
+        let answer_overlay = window_overlay.clone();
+        let answer_root = blurred_root.clone();
+        let answer_operation = operation.clone();
+        let answer_declined = declined.clone();
+        let rejects_trust = is_rejection_choice(choice);
+        button.connect_clicked(move |_| {
+            if rejects_trust {
+                answer_declined.set(true);
+            }
+            dismiss_modal_layer(&answer_layer, &answer_overlay, answer_root.as_ref());
+            answer_operation.set_choice(index as i32);
+            answer_operation.reply(gio::MountOperationResult::Handled);
+        });
+        layout.actions.append(&button);
+    }
+    focus_button(rejection.as_ref().unwrap_or(&layout.close));
+
+    let escape = gtk::EventControllerKey::new();
+    let escape_operation = operation.clone();
+    let escape_layer = layer.clone();
+    let escape_overlay = window_overlay.clone();
+    let escape_root = blurred_root;
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key != gtk::gdk::Key::Escape {
+            return glib::Propagation::Proceed;
+        }
+        declined.set(true);
+        dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
+        escape_operation.reply(gio::MountOperationResult::Aborted);
+        glib::Propagation::Stop
+    });
+    layer.add_controller(escape);
+    Some(layer)
+}
 
 fn show_authentication_dialog(
     browser_overlay: &gtk::Overlay,
@@ -477,12 +598,29 @@ fn log_mount_started(location: &Location, strategy: MountStrategy) {
 fn log_mount_finished(location: &Location, result: &Result<(), glib::Error>) {
     match result {
         Ok(()) => tracing::info!(backend = %location.backend_name(), "mount finished"),
+        Err(error) if mount_error_is_cancelled(error) => {
+            tracing::info!(backend = %location.backend_name(), "mount cancelled")
+        }
         Err(error) => tracing::info!(
             backend = %location.backend_name(),
             error_domain = ?error.domain(),
             error_code = error.code(),
             "mount failed"
         ),
+    }
+}
+
+fn trust_question_result(
+    result: Result<(), glib::Error>,
+    user_declined: bool,
+) -> Result<(), glib::Error> {
+    if user_declined {
+        Err(glib::Error::new(
+            gio::IOErrorEnum::Cancelled,
+            "Trust question dismissed",
+        ))
+    } else {
+        result
     }
 }
 
@@ -580,24 +718,6 @@ fn transport_failure_message(error: &glib::Error) -> Option<String> {
         return None;
     };
     Some(format!("{kind} {advice}"))
-}
-
-fn sanitize_failure_message(message: &str) -> String {
-    message
-        .split_inclusive(char::is_whitespace)
-        .map(|token| {
-            let Some((scheme, rest)) = token.split_once("://") else {
-                return token.to_owned();
-            };
-            let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-            let clean_rest = match rest[..authority_end].rfind('@') {
-                Some(userinfo_end) => &rest[userinfo_end + 1..],
-                None => rest,
-            };
-            let end = clean_rest.find(['?', '#']).unwrap_or(clean_rest.len());
-            format!("{scheme}://{}", &clean_rest[..end])
-        })
-        .collect()
 }
 
 fn mount_error_is_cancelled(error: &glib::Error) -> bool {
@@ -1925,14 +2045,50 @@ impl ViewState {
             state: self.clone(),
         }
         .begin_global_activity("Connecting…");
-        // A native gtk::MountOperation (rather than a bare gio::MountOperation)
-        // is required so GTK's own "ask-question" dialog handles host-key and
-        // certificate trust decisions for us; we only override "ask-password"
-        // below with Strata's own dialog, stopping that one signal's default
-        // handler so the two don't both try to reply.
+        // Keep GTK's native question handler for other schemes and devices;
+        // SFTP host-key choices are rendered by Strata without answering automatically.
+        let sftp_question = matches!(
+            &target,
+            MountTarget::Location(location, _) if location.backend_name() == "sftp"
+        );
         let operation = gtk::MountOperation::new(Some(&window));
         let prompt_overlay = self.overlay.clone();
         let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
+        let active_question = Rc::new(RefCell::new(None::<gtk::Box>));
+        let question_declined = Rc::new(Cell::new(false));
+        if sftp_question {
+            let question_operation = operation.clone();
+            let question_overlay = self.overlay.clone();
+            let question_for_signal = active_question.clone();
+            let declined_for_signal = question_declined.clone();
+            operation.connect_local("ask-question", false, move |values| {
+                let (Some(message), Some(choices)) = (
+                    values.get(1).and_then(|value| value.get::<String>().ok()),
+                    values
+                        .get(2)
+                        .and_then(|value| value.get::<glib::StrV>().ok()),
+                ) else {
+                    return None;
+                };
+                if choices.is_empty() {
+                    return None;
+                }
+                question_operation.stop_signal_emission_by_name("ask-question");
+                if let Some(previous) = question_for_signal.borrow_mut().take() {
+                    dismiss_authentication_prompt(&question_overlay, &previous);
+                }
+                let choices: Vec<String> = choices.iter().map(ToString::to_string).collect();
+                let prompt = show_trust_question_dialog(
+                    &question_overlay,
+                    question_operation.upcast_ref(),
+                    &message,
+                    &choices,
+                    declined_for_signal.clone(),
+                );
+                question_for_signal.replace(prompt);
+                None
+            });
+        }
         let prompt_for_signal = active_prompt.clone();
         let prompt_details = Rc::new(RefCell::new(None::<MountPromptDetails>));
         let details_for_signal = prompt_details.clone();
@@ -1947,11 +2103,8 @@ impl ViewState {
         let progress_encrypted = encrypted;
         operation.connect_ask_password(
             move |operation, message, default_user, default_domain, flags| {
-                // Suppress GtkMountOperation's own native password dialog: we
-                // reply ourselves (immediately or via our custom prompt)
-                // below. "ask-question" is deliberately left unconnected so
-                // its native default handler still runs for host-key/cert
-                // trust prompts.
+                // Suppress GtkMountOperation's native password dialog: we reply
+                // ourselves so it cannot race the Strata authentication prompt.
                 operation.stop_signal_emission_by_name("ask-password");
                 details_for_signal.replace(Some(MountPromptDetails {
                     message: message.to_owned(),
@@ -2032,10 +2185,14 @@ impl ViewState {
                     }
                 }
             };
+            let result = trust_question_result(result, question_declined.get());
             if let Some(location) = log_location.as_ref() {
                 log_mount_finished(location, &result);
             }
             if let Some(prompt) = active_prompt.borrow_mut().take() {
+                dismiss_authentication_prompt(&result_overlay, &prompt);
+            }
+            if let Some(prompt) = active_question.borrow_mut().take() {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
             }
             if let Some(state) = weak.upgrade() {

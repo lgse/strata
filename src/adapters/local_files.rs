@@ -26,7 +26,7 @@ use crate::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
         backend_unavailable_message, is_hidden_name, is_image_path, is_media_path,
-        native_hidden_names, native_kind,
+        native_hidden_names, native_kind, sanitize_failure_message,
     },
 };
 
@@ -263,13 +263,20 @@ fn uri_validation_result(
                 location.uri_value().unwrap_or_default(),
             ))
         } else {
-            LocationValidationError::Unavailable(error.to_string())
+            LocationValidationError::Unavailable(sanitize_failure_message(&error.to_string()))
         }
     })?;
     match info.file_type() {
         gio::FileType::Directory => Ok(()),
         gio::FileType::Mountable => Err(LocationValidationError::Mountable(location.clone())),
         _ => Err(LocationValidationError::NotDirectory),
+    }
+}
+
+fn remote_directory_failure(request_id: RequestId, error: &glib::Error) -> DirectoryEvent {
+    DirectoryEvent::Failed {
+        request_id,
+        message: sanitize_failure_message(&error.to_string()),
     }
 }
 
@@ -1037,10 +1044,7 @@ impl FileSource for LocalFileSource {
                         error_code = error.code(),
                         "directory load failed"
                     );
-                    emit(DirectoryEvent::Failed {
-                        request_id,
-                        message: error.to_string(),
-                    });
+                    emit(remote_directory_failure(request_id, &error));
                     return;
                 }
                 Err(_) => {
@@ -1122,10 +1126,7 @@ impl FileSource for LocalFileSource {
                             error_code = error.code(),
                             "directory load interrupted"
                         );
-                        emit(DirectoryEvent::Failed {
-                            request_id,
-                            message: error.to_string(),
-                        });
+                        emit(remote_directory_failure(request_id, &error));
                         break;
                     }
                     Err(_) => {
@@ -1901,6 +1902,14 @@ fn flush_monitor_changes(
     }
 }
 
+fn log_monitor_metadata_error(location: &Location, error: &glib::Error) {
+    tracing::debug!(
+        location = %location.diagnostic_path(),
+        error = %sanitize_failure_message(&error.to_string()),
+        "monitor metadata unavailable"
+    );
+}
+
 fn query_monitored_entry(
     location: Location,
     moved_from: Option<Location>,
@@ -1935,11 +1944,7 @@ fn query_monitored_entry(
                 }
             }
             Err(error) => {
-                tracing::debug!(
-                    location = %location.diagnostic_path(),
-                    error = %error,
-                    "monitor metadata unavailable"
-                );
+                log_monitor_metadata_error(&location, &error);
                 if !cancelled.get() {
                     notify(DirectoryChange::Rescan);
                 }

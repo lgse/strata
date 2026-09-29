@@ -158,6 +158,25 @@ pub fn sanitize_uri_credentials(
     Ok((sanitized, Some(credentials)))
 }
 
+/// Removes URI user-info, query and fragment from backend failure text before display or logging.
+pub(crate) fn sanitize_failure_message(message: &str) -> String {
+    message
+        .split_inclusive(char::is_whitespace)
+        .map(|token| {
+            let Some((scheme, rest)) = token.split_once("://") else {
+                return token.to_owned();
+            };
+            let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+            let clean_rest = match rest[..authority_end].rfind('@') {
+                Some(userinfo_end) => &rest[userinfo_end + 1..],
+                None => rest,
+            };
+            let end = clean_rest.find(['?', '#']).unwrap_or(clean_rest.len());
+            format!("{scheme}://{}", &clean_rest[..end])
+        })
+        .collect()
+}
+
 /// Rejects URI password and authentication-parameter fields, including encoded delimiters.
 pub fn validate_uri_credentials(uri: &str) -> Result<(), LocationValidationError> {
     match sanitize_uri_credentials(uri)? {

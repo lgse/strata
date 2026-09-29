@@ -23,8 +23,10 @@ The SFTP backend decides which credentials it needs and asks Strata for them:
   sign-in dialog with only the fields the backend asked for, so SMB's domain and
   anonymous options do not appear on an SFTP prompt.
 - **SSH key** — the agent or an unencrypted key answers without any prompt.
-- **Encrypted key** — the backend asks for the key's passphrase through the same
-  request, and Strata labels the field "Passphrase" rather than "Password".
+- **Encrypted key** — `ssh-add` can unlock it in your agent before connecting.
+  If GVfs asks Strata for the key's passphrase, Strata labels that field
+  "Passphrase" rather than "Password". Not every GVfs/OpenSSH configuration
+  sends a key-passphrase request to Strata.
 
 Wrong credentials reopen the prompt with a message naming only the fields the
 prompt is showing. Cancelling returns to the previous location without recording
@@ -32,11 +34,13 @@ history.
 
 ## Host keys
 
-An unrecognized or changed host key reaches GTK's native mount-operation trust
-dialog. Review the backend's fingerprint and choices before making a decision;
-Strata does not answer the question automatically. If you decline, the prior
-location remains active and no credential retry is offered. A changed key may
-indicate interception; verify it with the server administrator before accepting.
+When GVfs asks about an unrecognized or changed host key, Strata's themed trust
+dialog presents the backend's question and choices without answering for you.
+The backend may not supply a fingerprint (it can report `???`); verify the
+server's SSH host key through a trusted channel before choosing to continue.
+If you decline, the prior location remains active and no credential retry is
+offered. A changed key may indicate interception; verify it with the server
+administrator before accepting.
 
 ## Failures
 
@@ -70,21 +74,25 @@ set, because `sshd` can only check a password against a real system account.
 
 ### Manual matrix
 
-Run these against the fixture. Each row is a user-visible behaviour that has no
-automated coverage, because the crate is a binary with no library target for
-integration tests and mounting through GVfs needs a live session bus.
+Run these against the fixture. OpenSSH may bypass host-key checks for
+`127.0.0.1`; use a locally restricted non-loopback relay and isolated
+`known_hosts` for trust cases, never an unrestricted LAN listener. Each row is
+a user-visible behaviour that has no automated coverage, because the crate is
+a binary with no library target for integration tests and mounting through
+GVfs needs a live session bus.
 
 | Case | How | Expected |
 | --- | --- | --- |
-| Unknown host key | Connect for the first time | Native GTK host-key dialog; no automatic acceptance |
+| Unknown host key | Connect for the first time | Themed host-key dialog with backend question and choices; no automatic acceptance |
 | Declined host key | Answer Cancel | Returns to the previous location, no sign-in prompt |
-| Accepted host key | Answer the accepting choice | Connection continues |
+| Accepted host key | Verify the fingerprint outside Strata if the backend omits it, then answer the accepting choice | Connection continues |
 | Key authentication | `ssh-add` the client key, reconnect | Browses with no prompt |
-| Encrypted key | `ssh-add` the encrypted key, reconnect | Passphrase prompt, field labelled "Passphrase" |
-| Wrong passphrase | Answer with the wrong one | Prompt reopens with the retry message |
+| Encrypted key via SSH agent | `ssh-add` the encrypted key, then reconnect | `ssh-add` asks for the passphrase; Strata browses without an additional prompt |
+| Backend key-passphrase request | If your GVfs/OpenSSH setup emits one | Strata labels the field "Passphrase" (not observed with this fixture in the isolated local probe) |
+| Wrong backend passphrase | If GVfs requests a passphrase, answer incorrectly | Prompt reopens with the retry message |
 | Cancelled sign-in | Escape the prompt | Previous location, no history entry |
 | Non-default port | Use `sftp://user@127.0.0.1:PORT/path` | Browses normally |
-| Changed host key | Restart the fixture, reconnect | Native trust dialog or a `known_hosts` error; verify the new fingerprint before proceeding |
+| Changed host key | Restart the fixture, reconnect | Themed trust dialog or a `known_hosts` error; verify the new fingerprint before proceeding |
 | Connection refused | Stop the fixture, reconnect | "The host refused the connection…" |
 | Host not found | Use a name that does not resolve | "That host couldn't be found…" |
 | Navigation | Breadcrumbs, history, Miller descent, hover peek | Behave as on local paths |
