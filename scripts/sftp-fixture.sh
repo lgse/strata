@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Runs a disposable OpenSSH server for exercising Strata's sftp:// support.
-#
-# Everything it creates — host keys, the client key pair, the authorized_keys
-# file and the served directory — lives under a single directory that is removed
-# when the server stops, so no state leaks into the developer's ~/.ssh.
 set -euo pipefail
 
 port="${STRATA_SFTP_PORT:-2222}"
@@ -37,6 +32,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ ! "$port" =~ ^[0-9]+$ ]] || (( 10#$port < 1 || 10#$port > 65535 )); then
+  echo "Port must be between 1 and 65535." >&2
+  exit 2
+fi
+
 sshd="$(command -v sshd || true)"
 for candidate in /usr/sbin/sshd /usr/lib/ssh/sshd /usr/libexec/sshd; do
   [[ -n "$sshd" ]] && break
@@ -48,7 +48,7 @@ if [[ -z "$sshd" ]]; then
 fi
 command -v ssh-keygen >/dev/null || { echo "ssh-keygen not found." >&2; exit 1; }
 
-fixture="$(mktemp -d "${TMPDIR:-/tmp}/strata-sftp-XXXXXX")"
+fixture="$(mktemp -d -t strata-sftp-XXXXXX)"
 chmod 700 "$fixture"
 
 cleanup() {
@@ -75,7 +75,6 @@ root="$(cd "$root" && pwd)"
 
 ssh-keygen -q -t ed25519 -N '' -f "$fixture/host_ed25519" -C 'strata-sftp-fixture-host'
 ssh-keygen -q -t ed25519 -N '' -f "$fixture/client_ed25519" -C 'strata-sftp-fixture-client'
-# An encrypted copy of the same key, for exercising the passphrase prompt.
 cp "$fixture/client_ed25519" "$fixture/client_ed25519_encrypted"
 cp "$fixture/client_ed25519.pub" "$fixture/client_ed25519_encrypted.pub"
 ssh-keygen -q -p -P '' -N "${STRATA_SFTP_PASSPHRASE:-strata}" \

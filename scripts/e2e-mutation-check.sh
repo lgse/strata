@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Proves the end-to-end suite would catch a regression.
+#
+# Applies one deliberate defect at a time from tests/e2e/mutations, rebuilds,
+# and asserts that the scenarios covering that workflow fail. The working tree
+# is restored afterwards.
+#
+#   ./scripts/e2e-mutation-check.sh              # every mutation
+#   ./scripts/e2e-mutation-check.sh clipboard    # one of them
+set -euo pipefail
+
+repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mutations="$repository/tests/e2e/mutations"
+
+# Each patch maps to the scenario that hits the mutated line, not the whole
+# workflow file. Shrinking other tests in those files is fine while these fail.
+declare -A SCENARIOS=(
+  [drag-and-drop]="tests/e2e/scenarios/test_drag_and_drop.py::test_dragging_a_file_onto_a_folder_moves_it"
+  [clipboard]="tests/e2e/scenarios/test_clipboard.py::test_copy_leaves_the_source_in_place"
+  [keyboard-navigation]="tests/e2e/scenarios/test_keyboard_navigation.py::test_arrow_keys_move_focus_and_selection"
+  [click-modes]="tests/e2e/scenarios/test_click_modes.py::test_single_click_opens_a_directory"
+  [view-switching]="tests/e2e/scenarios/test_view_switching.py::test_appearance_menu_switches_presentation"
+  [quick-preview]="tests/e2e/scenarios/test_quick_preview.py::test_space_previews_a_filtered_result_without_changing_the_query"
+  [filter-results]="tests/e2e/scenarios/test_filter_results.py::test_query_updates_retain_selection_focus_preview_and_background_menu"
+  [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py::test_panel_wheel_routing"
+  [rename-caret]="tests/e2e/scenarios/test_inline_renaming.py::test_long_rename_keeps_caret_visible"
+)
+
+selected=("$@")
+if ((${#selected[@]} == 0)); then
+  mapfile -t selected < <(printf '%s\n' "${!SCENARIOS[@]}" | sort)
+fi
+
+if [[ -n "$(git -C "$repository" status --porcelain -- src)" ]]; then
+  echo "src/ has uncommitted changes; commit or stash them first" >&2
+  exit 1
+fi
+
+if [[ -n "${STRATA_BINARY:-}" || -n "${STRATA_E2E_BUNDLE:-}" ]]; then
+  echo "STRATA_BINARY and STRATA_E2E_BUNDLE must be unset so mutations exercise the rebuilt binary" >&2
+  exit 1
+fi
+
+cd "$repository"
+reports="target/e2e-mutations"
+mkdir -p "$reports"
+
+restore() {
+  git restore --worktree -- src
+}
+trap restore EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+failures=0
+for name in "${selected[@]}"; do
+  patch="$mutations/$name.patch"
+  scenario="${SCENARIOS[$name]:-}"
+  if [[ -z "$scenario" || ! -f "$patch" ]]; then
+    echo "unknown mutation: $name" >&2
+    exit 2
+  fi
+
+  echo "== $name: checking the unmodified scenario"
+  "$repository/scripts/e2e.sh" -q "$scenario" >"$reports/$name-baseline.log" 2>&1 || {
+    echo "   baseline failed; see $reports/$name-baseline.log" >&2
+    exit 1
+  }
+
+  echo "== $name: applying $patch"
+  git -C "$repository" apply -p1 "$patch"
+  echo "== $name: expecting $scenario to fail"
+  report="$reports/$name.xml"
+  rm -f "$report"
+  result=0
+  # xdist's fail-fast shutdown exits as an interruption, not a test failure.
+  # Finish the selected scenarios so detection still requires exit status 1.
+  "$repository/scripts/e2e.sh" -q --maxfail=0 --junitxml="$report" "$scenario" \
+    >"$reports/$name.log" 2>&1 || result=$?
+  if python3 "$repository/scripts/e2e_mutation_result.py" "$report" "$result"; then
+    echo "   detected"
+  else
+    echo "   NOT DETECTED or infrastructure failure; see $reports/$name.log" >&2
+    failures=$((failures + 1))
+  fi
+  restore
+done
+
+if ((failures)); then
+  echo "$failures mutation(s) went undetected" >&2
+  exit 1
+fi
+echo "every mutation was detected"

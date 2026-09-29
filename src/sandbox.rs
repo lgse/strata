@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     fs,
@@ -8,7 +8,6 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
-        mpsc,
     },
     thread,
     time::{Duration, Instant},
@@ -16,16 +15,27 @@ use std::{
 
 use rustix::process::{Pid, Signal, kill_process_group};
 
+use crate::services::{
+    ArchiveFormat, MediaPreviewSize, ModelFormat, ModelRender, SecretString,
+    model_preview::MAX_MODEL_INPUT_BYTES,
+};
+
+pub(crate) mod archive;
+pub(crate) mod browser;
+pub(crate) mod media;
+pub(crate) mod metadata;
+pub(crate) mod raw_metadata;
+
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
-const MEDIA_WALL_TIME_LIMIT: Duration = Duration::from_secs(30);
 const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
+pub(crate) const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const TEMPORARY_STORAGE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_RASTER_INPUT_BYTES: u64 = 512 * 1024 * 1024;
 pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
+pub(crate) const MAX_TEXT_LAYER_BYTES: u64 = 8 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum MediaPreviewBackend {
     Automatic,
     VaApi,
@@ -54,66 +64,207 @@ impl MediaPreviewBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct PdfRenderSize {
+    pub(crate) width: i32,
+    pub(crate) height: i32,
+}
+
+impl PdfRenderSize {
+    const MAX_WIDTH: i32 = 1_400;
+    const MAX_HEIGHT: i32 = 1_800;
+    const MAX_PIXELS: u64 = 2_500_000;
+
+    pub(crate) fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.clamp(16, Self::MAX_WIDTH),
+            height: height.clamp(16, Self::MAX_HEIGHT),
+        }
+    }
+
+    pub(crate) fn for_viewport_width(width: i32) -> Self {
+        Self::new(width, Self::MAX_HEIGHT)
+    }
+
+    pub(crate) fn image_limits(self) -> (u32, u32, u64) {
+        let size = Self::new(self.width, self.height);
+        let width = size.width as u32;
+        let height = size.height as u32;
+        (
+            width,
+            height,
+            (u64::from(width) * u64::from(height)).min(Self::MAX_PIXELS),
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CoverFormat {
+    Cbz,
+    Cbr,
+    Epub,
+}
+
+impl CoverFormat {
+    pub(crate) fn for_name(name: &std::ffi::OsStr) -> Option<Self> {
+        let extension = Path::new(name).extension()?.to_str()?;
+        Self::from_argument(&extension.to_ascii_lowercase())
+    }
+
+    pub(crate) fn argument(self) -> &'static str {
+        match self {
+            Self::Cbz => "cbz",
+            Self::Cbr => "cbr",
+            Self::Epub => "epub",
+        }
+    }
+
+    pub(crate) fn from_argument(value: &str) -> Option<Self> {
+        match value {
+            "cbz" => Some(Self::Cbz),
+            "cbr" => Some(Self::Cbr),
+            "epub" => Some(Self::Epub),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
     ThumbnailImage,
     ThumbnailRaw,
     ThumbnailPdf,
     ThumbnailVideo,
+    ThumbnailAppImage,
+    ThumbnailModel(ModelFormat),
+    ThumbnailCover(CoverFormat),
+    PreviewCover(CoverFormat),
     PreviewImage,
-    PreviewPdf,
-    PreviewMedia,
+    DocumentImage,
+    DocumentMermaid,
+    DocumentMath {
+        display: bool,
+    },
+    MediaMetadata,
+    RawMetadata,
+    PreviewWorkbook,
+    PreviewDocument,
+    PreviewPdf(PdfRenderSize),
+    PreviewModel(ModelRender),
+    PreviewMedia(MediaPreviewSize),
+    ArchiveList {
+        format: ArchiveFormat,
+        password: Option<SecretString>,
+    },
 }
 
 impl ParseOperation {
-    fn argument(self) -> &'static str {
+    fn argument(&self) -> &'static str {
         match self {
             Self::ThumbnailImage => "thumbnail-image",
             Self::ThumbnailRaw => "thumbnail-raw",
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
+            Self::ThumbnailAppImage => "thumbnail-appimage",
+            Self::ThumbnailModel(_) => "thumbnail-model",
+            Self::ThumbnailCover(_) => "thumbnail-cover",
+            Self::PreviewCover(_) => "preview-cover",
             Self::PreviewImage => "preview-image",
-            Self::PreviewPdf => "preview-pdf",
-            Self::PreviewMedia => "preview-media",
+            Self::DocumentImage => "document-image",
+            Self::DocumentMermaid => "document-mermaid",
+            Self::DocumentMath { display: true } => "document-math",
+            Self::DocumentMath { display: false } => "document-inline-math",
+            Self::MediaMetadata => "media-metadata",
+            Self::RawMetadata => "raw-metadata",
+            Self::PreviewWorkbook => "preview-workbook",
+            Self::PreviewDocument => "preview-document",
+            Self::PreviewPdf(_) => "preview-pdf",
+            Self::PreviewModel(_) => "preview-model",
+            Self::PreviewMedia(_) => "preview-media",
+            Self::ArchiveList { .. } => "archive-list",
         }
     }
 
-    fn output_name(self) -> &'static str {
-        if self == Self::PreviewMedia {
+    fn is_media(&self) -> bool {
+        matches!(self, Self::PreviewMedia(_))
+    }
+
+    fn needs_media_libraries(&self) -> bool {
+        matches!(
+            self,
+            Self::ThumbnailVideo | Self::PreviewMedia(_) | Self::MediaMetadata
+        )
+    }
+
+    fn output_name(&self) -> &'static str {
+        if matches!(
+            self,
+            Self::MediaMetadata | Self::RawMetadata | Self::PreviewWorkbook | Self::PreviewDocument
+        ) {
+            "result.json"
+        } else if self.is_media() {
             "result.media"
+        } else if matches!(self, Self::ArchiveList { .. }) {
+            "result.archive.json"
         } else {
             "result.png"
         }
     }
 
-    fn wall_time_limit(self) -> Duration {
-        if self == Self::PreviewMedia {
-            MEDIA_WALL_TIME_LIMIT
-        } else {
-            WALL_TIME_LIMIT
-        }
-    }
-
-    fn image_limits(self) -> Option<(u32, u32, u64)> {
+    fn image_limits(&self) -> Option<(u32, u32, u64)> {
         match self {
             Self::ThumbnailImage
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
-            | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
-            Self::PreviewImage => Some((1_400, 1_400, 1_400 * 1_400)),
-            Self::PreviewPdf => Some((1_400, 1_800, 2_500_000)),
-            Self::PreviewMedia => None,
+            | Self::ThumbnailVideo
+            | Self::ThumbnailAppImage
+            | Self::ThumbnailModel(_)
+            | Self::ThumbnailCover(_) => Some((256, 256, 256 * 256)),
+            Self::PreviewCover(_) => Some((800, 800, 800 * 800)),
+            Self::PreviewImage
+            | Self::DocumentImage
+            | Self::DocumentMermaid
+            | Self::DocumentMath { .. } => Some((800, 800, 800 * 800)),
+            Self::PreviewPdf(size) => Some(size.image_limits()),
+            Self::PreviewModel(render) => {
+                let size = MediaPreviewSize::new(render.size.width, render.size.height);
+                Some((size.width as u32, size.height as u32, 1280 * 1280))
+            }
+            Self::PreviewMedia(_)
+            | Self::MediaMetadata
+            | Self::RawMetadata
+            | Self::PreviewWorkbook
+            | Self::PreviewDocument
+            | Self::ArchiveList { .. } => None,
         }
     }
 
-    fn input_size_limit(self) -> Option<u64> {
+    fn input_size_limit(&self) -> Option<u64> {
         match self {
             Self::ThumbnailImage
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::PreviewImage
-            | Self::PreviewPdf => Some(MAX_RASTER_INPUT_BYTES),
-            Self::ThumbnailVideo | Self::PreviewMedia => None,
+            | Self::RawMetadata
+            | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
+            Self::PreviewModel(_) | Self::ThumbnailModel(_) => Some(MAX_MODEL_INPUT_BYTES),
+            Self::ThumbnailCover(_) | Self::PreviewCover(_) => {
+                Some(crate::sandbox_helper::archive_cover::MAX_INPUT_BYTES)
+            }
+            Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
+            Self::PreviewDocument => Some(crate::services::docx::DOCX_BYTE_LIMIT),
+            Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
+            Self::DocumentMermaid => {
+                Some(crate::services::document_media::DIAGRAM_INPUT_LIMIT as u64)
+            }
+            Self::DocumentMath { .. } => {
+                Some(crate::services::document_media::MATH_INPUT_LIMIT as u64)
+            }
+            Self::ThumbnailVideo
+            | Self::ThumbnailAppImage
+            | Self::PreviewMedia(_)
+            | Self::MediaMetadata
+            | Self::ArchiveList { .. } => None,
         }
     }
 }
@@ -135,6 +286,7 @@ pub(crate) struct ParseOutput {
     pub(crate) data: Vec<u8>,
     pub(crate) page: i32,
     pub(crate) pages: i32,
+    pub(crate) text_layer: Option<crate::services::PdfTextLayer>,
 }
 
 pub(crate) fn parse(
@@ -144,8 +296,62 @@ pub(crate) fn parse(
     media_backend: MediaPreviewBackend,
     cancellation: &Cancellation,
 ) -> Result<ParseOutput, String> {
+    parse_with_progress(
+        input,
+        operation,
+        value,
+        media_backend,
+        cancellation,
+        &|_| {},
+    )
+}
+
+pub(crate) fn parse_with_progress(
+    input: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    cancellation: &Cancellation,
+    progress: &dyn Fn(crate::services::ModelPreviewStage),
+) -> Result<ParseOutput, String> {
+    let archive = matches!(operation, ParseOperation::ArchiveList { .. });
+    let result = parse_sandboxed(
+        input,
+        operation,
+        value,
+        media_backend,
+        cancellation,
+        progress,
+    );
+    match result {
+        Err(error)
+            if archive && !cancellation.is_cancelled() && !is_archive_contract_message(&error) =>
+        {
+            Err(crate::adapters::ARCHIVE_PREVIEW_FAILED_MESSAGE.to_owned())
+        }
+        result => result,
+    }
+}
+
+fn is_archive_contract_message(message: &str) -> bool {
+    message == crate::adapters::INVALID_ARCHIVE
+        || message == crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE
+        || message == "Preview cancelled"
+}
+
+fn parse_sandboxed(
+    input: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    cancellation: &Cancellation,
+    progress: &dyn Fn(crate::services::ModelPreviewStage),
+) -> Result<ParseOutput, String> {
     if cancellation.is_cancelled() {
         return Err("Preview cancelled".to_owned());
+    }
+    if operation.is_media() {
+        return Err("Media previews require a decoded-frame session".into());
     }
     let input = input
         .canonicalize()
@@ -159,74 +365,168 @@ pub(crate) fn parse(
         .input_size_limit()
         .is_some_and(|limit| input_metadata.len() > limit)
     {
-        return Err("Preview input exceeds the supported size limit".to_owned());
+        return Err(if matches!(operation, ParseOperation::PreviewModel(_)) {
+            format!(
+                "This model file exceeds the {} MiB preview limit. Try a smaller or lower-detail version.",
+                MAX_MODEL_INPUT_BYTES / (1024 * 1024)
+            )
+        } else {
+            "Preview input exceeds the supported size limit".to_owned()
+        });
+    }
+    if let Some(result) = browser::preview(&input, &operation, cancellation) {
+        return result.map(|data| ParseOutput {
+            data,
+            page: 0,
+            pages: 0,
+            text_layer: None,
+        });
     }
 
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
-    let executable = std::env::current_exe()
-        .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
-    let devices = if operation == ParseOperation::PreviewMedia {
-        gpu_devices(Path::new("/dev"), media_backend)
+    let secret = if let ParseOperation::ArchiveList {
+        password: Some(password),
+        ..
+    } = &operation
+    {
+        Some(stage_secret_anon(password.expose().as_bytes())?)
     } else {
-        Vec::new()
+        None
     };
+    let current_executable = std::env::current_exe()
+        .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
+    let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
+    let executable =
+        resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
+    let bwrap = crate::trusted_command::resolve("bwrap")
+        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    let devices = Vec::new();
     let mut command = sandbox_command(
+        &bwrap,
         &executable,
         &input,
         output.path(),
-        operation,
+        operation.clone(),
         value,
         media_backend,
         &devices,
     );
-    command.stderr(Stdio::null());
-    if operation == ParseOperation::PreviewMedia {
-        command.stdout(Stdio::piped());
-    } else {
-        command.stdout(Stdio::null());
+    if let Some(secret) = secret {
+        // Command duplicates only this child's stdin; concurrent spawns cannot inherit the secret.
+        command.stdin(Stdio::from(fs::File::from(secret)));
+        command.arg("0");
     }
+    command.stderr(Stdio::null());
+    command.stdout(Stdio::null());
     let mut child = spawn_renderer(&mut command)
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
-    if operation == ParseOperation::PreviewMedia {
-        let (status, data) = wait_for_renderer_output(
-            &mut child,
-            cancellation,
-            operation.wall_time_limit(),
-            MAX_OUTPUT_BYTES,
-        )?;
-        if !status.success() {
-            return Err("The sandboxed preview renderer failed".to_owned());
+    drop(command);
+    let timeout = if matches!(
+        operation,
+        ParseOperation::DocumentImage
+            | ParseOperation::DocumentMermaid
+            | ParseOperation::DocumentMath { .. }
+    ) {
+        Duration::from_secs(3)
+    } else {
+        WALL_TIME_LIMIT
+    };
+    let mut previous = None;
+    let mut poll_progress = || {
+        if matches!(operation, ParseOperation::PreviewModel(_))
+            && let Ok(bytes) = read_private_output(&output.path().join("result.progress"), 128)
+            && let Ok(stage) = serde_json::from_slice::<crate::services::ModelPreviewStage>(&bytes)
+            && !matches!(stage, crate::services::ModelPreviewStage::Rendering { triangles } if triangles > crate::services::model_preview::MAX_MODEL_TRIANGLES)
+            && previous != Some(stage)
+        {
+            previous = Some(stage);
+            progress(stage);
         }
-        if data.is_empty() {
-            return Err("The preview renderer produced no output".to_owned());
-        }
-        if !valid_output(operation, &data) {
-            return Err("The preview renderer produced invalid media data".to_owned());
-        }
-        return Ok(ParseOutput {
-            data,
-            page: 0,
-            pages: 0,
-        });
-    }
-
-    let status = wait_for_renderer(&mut child, cancellation, operation.wall_time_limit())?;
+    };
+    let status =
+        wait_for_renderer_reporting(&mut child, cancellation, timeout, &mut poll_progress)?;
     if !status.success() {
+        if matches!(operation, ParseOperation::PreviewModel(_))
+            && let Ok(data) = read_private_output(&output.path().join("result.error"), 512)
+            && let Ok(message) = String::from_utf8(data)
+        {
+            return Err(message);
+        }
         return Err("The sandboxed preview renderer failed".to_owned());
     }
 
     let result_path = output.path().join(operation.output_name());
-    let metadata = fs::metadata(&result_path)
-        .map_err(|_| "The preview renderer produced no output".to_owned())?;
-    if metadata.len() == 0 || metadata.len() > MAX_OUTPUT_BYTES {
-        return Err("The preview renderer produced an invalid output size".to_owned());
-    }
-    let data = fs::read(result_path).map_err(|error| error.to_string())?;
-    if !valid_output(operation, &data) {
-        return Err("The preview renderer produced invalid image data".to_owned());
+    let limit = if matches!(
+        operation,
+        ParseOperation::MediaMetadata | ParseOperation::RawMetadata
+    ) {
+        metadata::MAX_METADATA_BYTES
+    } else {
+        MAX_OUTPUT_BYTES
+    };
+    let data = read_private_output(&result_path, limit).map_err(|error| {
+        if matches!(operation, ParseOperation::ArchiveList { .. }) {
+            archive_output_error(&error)
+        } else {
+            error.message()
+        }
+    })?;
+    if !valid_output(operation.clone(), &data) {
+        return Err(if matches!(operation, ParseOperation::ArchiveList { .. }) {
+            crate::adapters::INVALID_ARCHIVE.to_owned()
+        } else {
+            "The preview renderer produced invalid image data".to_owned()
+        });
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
-    Ok(ParseOutput { data, page, pages })
+    // A page without an extractable text layer (scanned images, malformed layout)
+    // still previews; selection just stays unavailable there.
+    let text_layer = if matches!(operation, ParseOperation::PreviewPdf(_)) {
+        read_private_output(&output.path().join("result.text"), MAX_TEXT_LAYER_BYTES)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    } else {
+        None
+    };
+    Ok(ParseOutput {
+        data,
+        page,
+        pages,
+        text_layer,
+    })
+}
+
+// A memfd avoids named-file residue and dependence on TMPDIR's O_TMPFILE support.
+// CLOEXEC prevents unrelated children from inheriting it before the renderer spawns.
+pub(crate) fn stage_secret_anon(secret: &[u8]) -> Result<rustix::fd::OwnedFd, String> {
+    use rustix::fs::{MemfdFlags, Mode, fchmod, memfd_create};
+    use std::io::{Seek, Write};
+
+    let fd = memfd_create(c"strata-preview-password", MemfdFlags::CLOEXEC)
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    fchmod(&fd, Mode::from_bits_truncate(0o600))
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    let mut file = std::fs::File::from(fd);
+    file.write_all(secret)
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    file.seek(std::io::SeekFrom::Start(0))
+        .map_err(|error| format!("Unable to stage the preview secret: {error}"))?;
+    Ok(file.into())
+}
+
+fn resolve_renderer_executable(
+    current: &Path,
+    running: &Path,
+    private_output: &Path,
+) -> Result<PathBuf, String> {
+    if current.is_file() {
+        return Ok(current.to_path_buf());
+    }
+
+    let snapshot = private_output.join("strata-preview-helper");
+    fs::copy(running, &snapshot)
+        .map_err(|error| format!("Unable to preserve the running Strata executable: {error}"))?;
+    Ok(snapshot)
 }
 
 fn spawn_renderer(command: &mut Command) -> io::Result<Child> {
@@ -235,24 +535,62 @@ fn spawn_renderer(command: &mut Command) -> io::Result<Child> {
     command.process_group(0).spawn()
 }
 
+/// `None` on kernels without pidfd support; wait loops fall back to interval polling.
+fn child_pidfd(child: &Child) -> Option<rustix::fd::OwnedFd> {
+    let pid = rustix::process::Pid::from_raw(i32::try_from(child.id()).ok()?)?;
+    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
+}
+
+/// A pidfd wakes on child exit; poll errors degrade to a short sleep, and the
+/// deadline bounds every path.
+fn wait_step(pidfd: Option<&rustix::fd::OwnedFd>, deadline: Instant) {
+    use rustix::event::{PollFd, PollFlags, Timespec, poll};
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let quantum = remaining.min(Duration::from_millis(20));
+    let Some(pidfd) = pidfd else {
+        thread::sleep(quantum);
+        return;
+    };
+    let timespec = Timespec {
+        tv_sec: quantum.as_secs() as i64,
+        tv_nsec: i64::from(quantum.subsec_nanos()),
+    };
+    let mut fds = [PollFd::new(pidfd, PollFlags::IN)];
+    if poll(&mut fds, Some(&timespec)).is_err() {
+        thread::sleep(Duration::from_millis(1));
+    }
+}
+
 fn wait_for_renderer(
     child: &mut Child,
     cancellation: &Cancellation,
     wall_time_limit: Duration,
 ) -> Result<ExitStatus, String> {
+    wait_for_renderer_reporting(child, cancellation, wall_time_limit, &mut || {})
+}
+
+fn wait_for_renderer_reporting(
+    child: &mut Child,
+    cancellation: &Cancellation,
+    wall_time_limit: Duration,
+    progress: &mut dyn FnMut(),
+) -> Result<ExitStatus, String> {
     let started = Instant::now();
+    let deadline = started + wall_time_limit;
+    let pidfd = child_pidfd(child);
     loop {
         if cancellation.is_cancelled() {
             terminate(child);
             return Err("Preview cancelled".to_owned());
         }
-        if started.elapsed() >= wall_time_limit {
+        if Instant::now() >= deadline {
             terminate(child);
             return Err("The preview renderer timed out".to_owned());
         }
+        progress();
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
-            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Ok(None) => wait_step(pidfd.as_ref(), deadline),
             Err(error) => {
                 terminate(child);
                 return Err(format!("Unable to monitor the preview renderer: {error}"));
@@ -261,90 +599,8 @@ fn wait_for_renderer(
     }
 }
 
-fn wait_for_renderer_output(
-    child: &mut Child,
-    cancellation: &Cancellation,
-    wall_time_limit: Duration,
-    max_bytes: u64,
-) -> Result<(ExitStatus, Vec<u8>), String> {
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "Unable to capture preview renderer output".to_owned())?;
-    let (sender, receiver) = mpsc::sync_channel(1);
-    let reader = thread::spawn(move || {
-        let mut data = Vec::new();
-        let result = stdout
-            .take(max_bytes.saturating_add(1))
-            .read_to_end(&mut data)
-            .map(|_| data);
-        let _sent = sender.send(result);
-    });
-    let started = Instant::now();
-    let mut status = None;
-    let mut output = None;
-    loop {
-        if cancellation.is_cancelled() {
-            terminate(child);
-            let _joined = reader.join();
-            return Err("Preview cancelled".to_owned());
-        }
-        if started.elapsed() >= wall_time_limit {
-            terminate(child);
-            let _joined = reader.join();
-            return Err("The preview renderer timed out".to_owned());
-        }
-        if status.is_none() {
-            match child.try_wait() {
-                Ok(current) => status = current,
-                Err(error) => {
-                    terminate(child);
-                    let _joined = reader.join();
-                    return Err(format!("Unable to monitor the preview renderer: {error}"));
-                }
-            }
-        }
-        if output.is_none() {
-            match receiver.try_recv() {
-                Ok(Ok(data)) if data.len() as u64 > max_bytes => {
-                    terminate(child);
-                    let _joined = reader.join();
-                    return Err("Preview provider output exceeded its limit".to_owned());
-                }
-                Ok(Ok(data)) => output = Some(data),
-                Ok(Err(error)) => {
-                    terminate(child);
-                    let _joined = reader.join();
-                    return Err(format!("Unable to read preview renderer output: {error}"));
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    terminate(child);
-                    let _joined = reader.join();
-                    return Err("Unable to read preview renderer output".to_owned());
-                }
-                Err(mpsc::TryRecvError::Empty) => {}
-            }
-        }
-        if let Some(status) = status
-            && let Some(output) = output.take()
-        {
-            let _joined = reader.join();
-            return Ok((status, output));
-        }
-        thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn sandbox_command(
-    executable: &Path,
-    input: &Path,
-    output: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    devices: &[PathBuf],
-) -> Command {
-    let mut command = Command::new("bwrap");
+fn runtime_command(bwrap: &Path, needs_media_libraries: bool) -> Command {
+    let mut command = Command::new(bwrap);
     command.args([
         "--unshare-all",
         "--die-with-parent",
@@ -384,6 +640,9 @@ fn sandbox_command(
         "/etc/fonts",
         "/etc/fonts",
         "--ro-bind-try",
+        "/var/cache/fontconfig",
+        "/var/cache/fontconfig",
+        "--ro-bind-try",
         "/etc/ld.so.cache",
         "/etc/ld.so.cache",
         "--ro-bind-try",
@@ -392,32 +651,66 @@ fn sandbox_command(
         "--ro-bind-try",
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
-        "--ro-bind",
     ]);
+    if needs_media_libraries {
+        // Debian-family FFmpeg libraries resolve BLAS/LAPACK through these links.
+        // Expose only the runtime files, not the system alternatives directory.
+        for architecture in ["x86_64-linux-gnu", "aarch64-linux-gnu"] {
+            for library in ["libblas.so.3", "liblapack.so.3"] {
+                let path = format!("/etc/alternatives/{library}-{architecture}");
+                command.arg("--ro-bind-try").arg(&path).arg(&path);
+            }
+        }
+    }
+    command
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "explicit executable path permits testing without installed bubblewrap"
+)]
+fn sandbox_command(
+    bwrap: &Path,
+    executable: &Path,
+    input: &Path,
+    output: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    devices: &[PathBuf],
+) -> Command {
+    let mut command = runtime_command(bwrap, operation.needs_media_libraries());
     let sandbox_input = sandbox_input_path(input);
-    command.arg(executable).arg("/app/strata");
+    command.arg("--ro-bind").arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
-    if operation != ParseOperation::PreviewMedia {
+    if !operation.is_media() {
         command.arg("--bind").arg(output).arg("/output");
     }
-    if operation == ParseOperation::PreviewMedia && media_backend != MediaPreviewBackend::Software {
+    if operation.is_media() && media_backend != MediaPreviewBackend::Software {
         // Hardware media drivers need selected render nodes plus read-only sysfs discovery data.
         for device in devices {
             command.arg("--dev-bind-try").arg(device).arg(device);
         }
         command.args(["--ro-bind", "/sys", "/sys"]);
     }
-    if operation != ParseOperation::PreviewMedia {
+    if !operation.is_media() {
         // Keep CPU-scaled glibc arenas within the helper's address-space limit.
         command.args(["--setenv", "MALLOC_ARENA_MAX", "1"]);
     }
     command.arg("--");
-    if operation != ParseOperation::PreviewMedia {
+    if !operation.is_media() {
         command
             .arg("/usr/bin/prlimit")
             .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
             .arg("--cpu=10")
-            .arg(format!("--fsize={FILE_SIZE_LIMIT_BYTES}"))
+            .arg(format!(
+                "--fsize={}",
+                if matches!(operation, ParseOperation::ThumbnailVideo) {
+                    MAX_OUTPUT_BYTES
+                } else {
+                    FILE_SIZE_LIMIT_BYTES
+                }
+            ))
             .arg("--");
     }
     command.args([
@@ -426,12 +719,33 @@ fn sandbox_command(
         operation.argument(),
         &sandbox_input,
     ]);
-    if operation == ParseOperation::PreviewMedia {
+    if let ParseOperation::PreviewMedia(size) = operation {
+        let size = MediaPreviewSize::new(size.width, size.height);
         command.arg("/dev/stdout");
+        command.arg(format!("{}x{}", size.width, size.height));
     } else {
         command.arg(format!("/output/{}", operation.output_name()));
+        let value = match operation {
+            ParseOperation::PreviewPdf(size) => {
+                let size = PdfRenderSize::new(size.width, size.height);
+                format!("{value}:{}x{}", size.width, size.height)
+            }
+            ParseOperation::PreviewModel(render) => format!(
+                "{}:{}x{}:{:06x}:{:06x}",
+                render.format.argument(),
+                render.size.width,
+                render.size.height,
+                render.palette.accent,
+                render.palette.surface,
+            ),
+            ParseOperation::ThumbnailModel(format) => format.argument().to_owned(),
+            ParseOperation::ThumbnailCover(format) => format.argument().to_owned(),
+            ParseOperation::PreviewCover(format) => format.argument().to_owned(),
+            ParseOperation::ArchiveList { format, .. } => format.extension().to_owned(),
+            _ => value.to_string(),
+        };
+        command.arg(value);
     }
-    command.arg(value.to_string());
     command.arg(media_backend.argument());
     command
 }
@@ -514,9 +828,22 @@ pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
 }
 
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
-    if operation == ParseOperation::PreviewMedia {
-        data.starts_with(b"\x1a\x45\xdf\xa3")
-            || data.get(4..8).is_some_and(|signature| signature == b"ftyp")
+    if matches!(operation, ParseOperation::PreviewWorkbook) {
+        return crate::services::table::TableData::from_json(data).is_ok();
+    }
+    if matches!(operation, ParseOperation::PreviewDocument) {
+        return crate::services::docx::RichTextData::from_json(data).is_ok();
+    }
+    if matches!(operation, ParseOperation::RawMetadata) {
+        return raw_metadata::RawMetadata::from_json(data).is_ok();
+    }
+    if matches!(operation, ParseOperation::MediaMetadata) {
+        data.len() as u64 <= metadata::MAX_METADATA_BYTES
+            && serde_json::from_slice::<serde_json::Value>(data).is_ok()
+    } else if matches!(operation, ParseOperation::ArchiveList { .. }) {
+        crate::adapters::archive_payload_valid(data)
+    } else if operation.is_media() {
+        false
     } else {
         let Some((width, height)) = png_dimensions(data) else {
             return false;
@@ -532,7 +859,7 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
     }
 }
 
-fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+pub(crate) fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
     if !data.starts_with(b"\x89PNG\r\n\x1a\n")
         || data.get(8..12)? != 13u32.to_be_bytes()
         || data.get(12..16)? != b"IHDR"
@@ -556,8 +883,76 @@ fn terminate(child: &mut Child) {
     let _waited = child.wait();
 }
 
+fn read_private_output(path: &Path, max_bytes: u64) -> Result<Vec<u8>, OutputError> {
+    use rustix::fs::{FileType, Mode, OFlags, fstat, open};
+
+    // The renderer controls the final entry, but not the host directory ancestors.
+    // NONBLOCK lets us reject a FIFO without waiting for a writer at open time.
+    let fd = open(
+        path,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
+        Mode::empty(),
+    )
+    .map_err(|_| OutputError::Missing)?;
+    let stat = fstat(&fd).map_err(|error| OutputError::Io(error.to_string()))?;
+    if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
+        return Err(OutputError::NonRegular);
+    }
+    let len = u64::try_from(stat.st_size).unwrap_or(0);
+    if len == 0 {
+        return Err(OutputError::Empty);
+    }
+    if len > max_bytes {
+        return Err(OutputError::Oversize);
+    }
+    let mut data = Vec::new();
+    fs::File::from(fd)
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut data)
+        .map_err(|error| OutputError::Io(error.to_string()))?;
+    if data.is_empty() {
+        return Err(OutputError::Empty);
+    }
+    if data.len() as u64 > max_bytes {
+        return Err(OutputError::Oversize);
+    }
+    Ok(data)
+}
+
+#[derive(Debug, PartialEq)]
+enum OutputError {
+    Missing,
+    NonRegular,
+    Empty,
+    Oversize,
+    Io(String),
+}
+
+impl OutputError {
+    fn message(&self) -> String {
+        match self {
+            Self::Missing => "The preview renderer produced no output".to_owned(),
+            Self::NonRegular => "The preview renderer produced a non-regular output".to_owned(),
+            Self::Empty | Self::Oversize => {
+                "The preview renderer produced an invalid output size".to_owned()
+            }
+            Self::Io(message) => message.clone(),
+        }
+    }
+}
+
+fn archive_output_error(error: &OutputError) -> String {
+    match error {
+        OutputError::Oversize => crate::adapters::ARCHIVE_TOO_LARGE_MESSAGE.to_owned(),
+        _ => crate::adapters::INVALID_ARCHIVE.to_owned(),
+    }
+}
+
 fn read_metadata(path: &Path) -> (i32, i32) {
-    let Ok(value) = fs::read_to_string(path) else {
+    let Ok(bytes) = read_private_output(path, 256) else {
+        return (0, 0);
+    };
+    let Ok(value) = std::str::from_utf8(&bytes) else {
         return (0, 0);
     };
     let mut values = value

@@ -1,30 +1,80 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
+pub(crate) mod actions;
+pub(crate) mod camera_preview;
+mod document;
+pub(crate) mod document_media;
+pub(crate) mod docx;
 mod file_source;
+mod install_source;
+pub(crate) mod jobs;
+mod listeners;
+mod mime_type;
+pub(crate) mod model_preview;
+mod native_fs;
+mod navigation_history;
 mod operations;
 mod preview;
 mod release_channel;
+pub(crate) mod rtf;
 mod search;
+pub(crate) mod table;
+mod transfer_action;
 mod update_check;
 mod update_install;
 
+pub use actions::{
+    ActionAvailability, ActionHandle, ActionLoadFailure, ActionProgram, ActionRegistry,
+    ActionScript, ActionWriteRequest, MatchedAction,
+};
+pub(crate) use document::{
+    DocumentBlock, DocumentLayout, DocumentListChildKind, DocumentMedia, DocumentSpan,
+    DocumentSpanStyle, DocumentTableCellLayout, DocumentUnit, DocumentUnitKind, document_kind,
+    has_web_scheme, layout_document, parse_document, parse_markdown,
+};
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-    LocationValidationError, RequestId, UriCredentials, backend_unavailable_message,
-    sanitize_uri_credentials, validate_uri_credentials,
+    LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
+    UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
+    validate_uri_credentials,
 };
+pub(crate) use install_source::ensure_self_managed;
+pub use install_source::{InstallSource, ManagedInstall};
+pub use jobs::{
+    ActionEventSink, ActionRunEvent, ActionRunRequest, ActionRunner, CancelHandle,
+    InvocationSource, JobId, JobRequest, JobService, JobSnapshot, JobStatus, ScriptProgress,
+    expand_command_arguments,
+};
+pub(crate) use listeners::ListenerGuard;
+pub use mime_type::{
+    BROKEN_LINK_TYPE_NAME, EntryType, FOLDER_TYPE_NAME, OTHER_TYPE_NAME, entry_type,
+    entry_type_description, mime_description_for_name,
+};
+pub(crate) use model_preview::ModelRender;
+pub use model_preview::{ModelFormat, ModelPalette};
+pub(crate) use native_fs::{is_hidden_name, native_hidden_names, native_kind};
+pub(crate) use navigation_history::NavigationHistory;
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
-    DeleteRequest, ExtractRequest, OperationEvent, OperationProvider, OperationRequestId,
-    PasteItem, PasteRequest, RenameRequest, RestoreRequest, RestoreSource, TransferConflict,
-    validate_basename,
+    DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
+    OperationRequestId, PasteItem, PasteRequest, RenameRecord, RenameRequest, RestoreRequest,
+    RestoreSource, RestoreTrashItem, TransferConflict, TrashedOriginal, UndoCopyRequest,
+    UndoMergeRequest, UndoMoveItem, UndoMoveRequest, UndoRenameRequest, validate_basename,
 };
 pub use preview::{
-    Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+    ArchiveDirectory, ArchiveFileEntry, ArchiveNode, ArchivePreviewTree, MediaPreviewSize,
+    ModelPreviewStage, PdfTextLayer, Preview, PreviewContent, PreviewEvent, PreviewProvider,
+    PreviewRequest, PreviewRequestId, SandboxedMedia, SecretString, archive_preview_tree,
 };
 pub(crate) use preview::{
-    content_family, has_plain_text_extension, is_extensionless_dotfile,
-    is_non_executable_extensionless_dotfile,
+    INCORRECT_ARCHIVE_PASSWORD, archive_preview_format, content_family, has_plain_text_extension,
+    is_extensionless_dotfile, is_image_path, is_media_path, is_model,
+    is_non_executable_extensionless_dotfile, normalize_preview_text, split_archive_name,
+    supports_remote_video,
+};
+pub(crate) use transfer_action::{
+    CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
+    VolumeIdentity, VolumeRelation, drop_commit, transferable_drop_sources, volume_relation,
 };
 // `best_update`, `rollback_target`, and `ReleaseSummary` are deliberately not
 // re-exported here: `rollback_target` is the never-downgrade bypass, and only
@@ -32,10 +82,13 @@ pub(crate) use preview::{
 // business calling it. Widening this re-export would make that bypass
 // reachable from UI code.
 pub(crate) use release_channel::{BuildKind, Channel, Version};
-pub(crate) use search::{SearchEvent, SearchHandle, SearchItem, index_tree};
+pub(crate) use search::{RESULT_LIMIT as SEARCH_RESULT_LIMIT, refresh_search_indexes_for_rename};
+pub(crate) use search::{
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, filter_name_matches,
+    filter_query_allows_typos, fold_for_search, index_filter, index_tree, index_trees,
+};
 pub(crate) use update_check::{
-    ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,
-    fetch_release_notes,
+    ReleaseMetadata, ReleaseNotes, UpdateCheck, check_for_updates, fetch_release_notes,
 };
 pub(crate) use update_install::{
     InstallRequest, UpdateInstall, UpdateMethod, install_update, update_method,

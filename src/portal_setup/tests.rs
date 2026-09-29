@@ -1,0 +1,595 @@
+// SPDX-License-Identifier: MIT
+
+use std::{
+    cell::Cell,
+    fs,
+    os::unix::{ffi::OsStrExt as _, fs::PermissionsExt as _},
+    path::{Path, PathBuf},
+};
+
+use super::{
+    SetupContext, disable_config, enable_config, install_at, install_file_manager_at,
+    refresh_configured_portal_at, refresh_stale_portal_at, secure_executable, uninstall_at,
+    uninstall_file_manager_at,
+};
+
+const FILE_CHOOSER: &str = "org.freedesktop.impl.portal.FileChooser";
+
+#[test]
+fn chooser_preference_uses_existing_backends_and_round_trips() {
+    let original = "[preferred]\ndefault=hyprland;gtk;\norg.example.Other=gtk;\n";
+    let enabled = enable_config(original).expect("enable Strata");
+
+    assert!(enabled.contains(&format!("{FILE_CHOOSER}=strata;hyprland;gtk;")));
+    assert_eq!(enable_config(&enabled).expect("enable again"), enabled);
+    assert_eq!(disable_config(&enabled).expect("disable Strata"), original);
+}
+
+#[test]
+fn chooser_preference_preserves_explicit_fallbacks() {
+    let original = format!("[preferred]\ndefault=gnome;gtk;\n{FILE_CHOOSER}=kde;gtk;\n");
+    let enabled = enable_config(&original).expect("enable Strata");
+
+    assert!(enabled.contains(&format!("{FILE_CHOOSER}=strata;kde;gtk;")));
+    assert_eq!(disable_config(&enabled).expect("disable Strata"), original);
+}
+
+#[test]
+fn update_refreshes_an_opted_in_portal() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    install_at(&context, &executable(fixture.path())).expect("install portal");
+    let refreshed = Cell::new(false);
+
+    refresh_configured_portal_at(&context, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("refresh configured portal");
+
+    assert!(refreshed.get());
+}
+
+#[test]
+fn update_leaves_an_unconfigured_portal_alone() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let refreshed = Cell::new(false);
+
+    refresh_configured_portal_at(&context, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("ignore unconfigured portal");
+
+    assert!(!refreshed.get());
+}
+
+#[test]
+fn update_reports_a_configured_portal_refresh_failure() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    install_at(&context, &executable(fixture.path())).expect("install portal");
+
+    let error = refresh_configured_portal_at(&context, || "\nportal restart failed")
+        .expect_err("report refresh failure");
+
+    assert_eq!(error, "portal restart failed");
+}
+
+#[test]
+fn startup_refreshes_a_configured_portal_running_an_old_executable() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let executable = executable(fixture.path());
+    install_at(&context, &executable).expect("install portal");
+    let proc_root = fixture.path().join("proc");
+    portal_process(
+        &proc_root,
+        123,
+        &executable,
+        &fixture.path().join("old-strata"),
+    );
+    let refreshed = Cell::new(false);
+
+    refresh_stale_portal_at(&context, &executable, &proc_root, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("refresh stale portal");
+
+    assert!(refreshed.get());
+}
+
+#[test]
+fn startup_keeps_a_current_portal_running() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let executable = executable(fixture.path());
+    install_at(&context, &executable).expect("install portal");
+    let proc_root = fixture.path().join("proc");
+    portal_process(&proc_root, 123, &executable, &executable);
+    let refreshed = Cell::new(false);
+
+    refresh_stale_portal_at(&context, &executable, &proc_root, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("keep current portal");
+
+    assert!(!refreshed.get());
+}
+
+fn portal_process(proc_root: &Path, pid: u32, command: &Path, running: &Path) {
+    use std::os::unix::fs::symlink;
+
+    if !running.exists() {
+        fs::write(running, b"old binary").expect("write running executable");
+    }
+    let process = proc_root.join(pid.to_string());
+    fs::create_dir_all(&process).expect("create fake process");
+    let mut cmdline = command.as_os_str().as_bytes().to_vec();
+    cmdline.extend_from_slice(b"\0--portal\0");
+    fs::write(process.join("cmdline"), cmdline).expect("write fake command line");
+    symlink(running, process.join("exe")).expect("link running executable");
+}
+
+#[test]
+fn install_and_uninstall_restore_an_existing_user_configuration() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let config = context.portal_directory().join("portals.conf");
+    fs::create_dir_all(config.parent().expect("config parent")).expect("config directory");
+    let original = "[preferred]\ndefault=gtk;\n";
+    fs::write(&config, original).expect("portal config");
+
+    let executable = executable(fixture.path());
+    let installed_path = install_at(&context, &executable).expect("install portal");
+
+    assert_eq!(installed_path, config);
+    assert!(
+        fs::read_to_string(&config)
+            .expect("installed config")
+            .contains("strata;gtk;")
+    );
+    assert!(
+        context
+            .data_home
+            .join("xdg-desktop-portal/portals/strata.portal")
+            .is_file()
+    );
+    assert!(
+        fs::read_to_string(
+            context
+                .data_home
+                .join("dbus-1/services/org.freedesktop.impl.portal.desktop.strata.service")
+        )
+        .expect("D-Bus service")
+        .contains(&format!(
+            "Exec={}/bin/strata --portal",
+            fixture.path().display()
+        ))
+    );
+
+    install_at(&context, &executable).expect("install portal again");
+
+    assert!(!uninstall_at(&context).expect("uninstall portal"));
+    assert_eq!(
+        fs::read_to_string(config).expect("restored config"),
+        original
+    );
+}
+
+#[test]
+fn uninstall_keeps_later_configuration_edits() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let config = context.portal_directory().join("portals.conf");
+    fs::create_dir_all(config.parent().expect("config parent")).expect("config directory");
+    fs::write(&config, "[preferred]\ndefault=gtk;\n").expect("portal config");
+    install_at(&context, &executable(fixture.path())).expect("install portal");
+    fs::write(
+        &config,
+        format!(
+            "[preferred]\ndefault=gtk;\n{FILE_CHOOSER}=strata;gtk;\norg.example.Other=custom;\n"
+        ),
+    )
+    .expect("edit portal config");
+
+    assert!(uninstall_at(&context).expect("uninstall portal"));
+    let remaining = fs::read_to_string(config).expect("preserved config");
+    assert!(!remaining.contains("strata"));
+    assert!(remaining.contains("org.example.Other=custom;"));
+}
+
+#[test]
+fn generated_override_is_removed_on_uninstall() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let system_config = context.search_roots[1].join("xdg-desktop-portal/hyprland-portals.conf");
+    fs::create_dir_all(system_config.parent().expect("system config parent"))
+        .expect("system config directory");
+    fs::write(&system_config, "[preferred]\ndefault=hyprland;gtk;\n").expect("system config");
+
+    let generated = install_at(&context, &executable(fixture.path())).expect("install portal");
+
+    assert!(generated.ends_with("hyprland-portals.conf"));
+    assert!(
+        fs::read_to_string(&generated)
+            .expect("generated config")
+            .contains("strata;")
+    );
+    assert!(!uninstall_at(&context).expect("uninstall portal"));
+    assert!(!generated.exists());
+}
+
+#[test]
+fn portal_activation_rejects_replaceable_executables() {
+    let fixture = fixture();
+    let executable = executable(fixture.path());
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o775))
+        .expect("group-writable executable");
+    assert!(secure_executable(&executable).is_err());
+
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).expect("safe executable");
+    fs::set_permissions(
+        executable.parent().expect("executable parent"),
+        fs::Permissions::from_mode(0o777),
+    )
+    .expect("world-writable executable directory");
+    assert!(secure_executable(&executable).is_err());
+
+    fs::set_permissions(
+        executable.parent().expect("executable parent"),
+        fs::Permissions::from_mode(0o755),
+    )
+    .expect("safe executable directory");
+    fs::set_permissions(fixture.path(), fs::Permissions::from_mode(0o777))
+        .expect("world-writable executable ancestor");
+    assert!(secure_executable(&executable).is_err());
+}
+
+#[test]
+fn the_one_time_offer_never_changes_the_current_chooser() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let config = context.portal_directory().join("portals.conf");
+    fs::create_dir_all(config.parent().expect("config parent")).expect("config directory");
+    let original = "[preferred]\ndefault=gtk;\n";
+    fs::write(&config, original).expect("portal config");
+
+    assert!(super::take_prompt_offer_at(&context).expect("first offer"));
+    assert!(!super::take_prompt_offer_at(&context).expect("later launch"));
+    assert_eq!(
+        fs::read_to_string(config).expect("unchanged config"),
+        original
+    );
+    assert!(!context.data_home.exists());
+    assert!(!context.state_directory().exists());
+}
+
+#[test]
+fn dismissing_the_offer_does_not_prevent_later_explicit_installation() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    super::dismiss_prompt_at(&context).expect("installer declines offer");
+    assert!(!super::take_prompt_offer_at(&context).expect("no duplicate app offer"));
+    install_at(&context, &executable(fixture.path())).expect("enable from Settings");
+    let status = super::status_at(&context).expect("configured status");
+    assert!(status.configured);
+    assert!(status.has_installation);
+    uninstall_at(&context).expect("restore previous chooser");
+    assert!(
+        !super::status_at(&context)
+            .expect("restored status")
+            .configured
+    );
+    assert!(!super::take_prompt_offer_at(&context).expect("still dismissed"));
+}
+
+#[test]
+fn an_existing_configured_chooser_is_not_offered_again() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    install_at(&context, &executable(fixture.path())).expect("existing CLI integration");
+    assert!(!super::take_prompt_offer_at(&context).expect("already configured"));
+    uninstall_at(&context).expect("uninstall");
+    assert!(!super::take_prompt_offer_at(&context).expect("remember prior opt-in"));
+}
+
+#[test]
+fn status_uses_the_active_configuration_and_requires_activation_files() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let config = install_at(&context, &executable(fixture.path())).expect("install");
+    fs::write(&config, "[preferred]\ndefault=gtk;\n").expect("change chooser externally");
+    let status = super::status_at(&context).expect("external preference");
+    assert!(!status.configured);
+    assert!(status.has_installation);
+    fs::write(&config, "[preferred]\ndefault=strata;gtk;\n").expect("prefer Strata");
+    assert!(
+        super::status_at(&context)
+            .expect("default preference")
+            .configured
+    );
+    fs::remove_file(
+        context
+            .data_home
+            .join("dbus-1/services")
+            .join(super::SERVICE_FILE),
+    )
+    .expect("remove activation");
+    assert!(
+        !super::status_at(&context)
+            .expect("incomplete integration")
+            .configured
+    );
+}
+
+#[test]
+fn concurrent_launches_claim_only_one_offer() {
+    let fixture = fixture();
+    let workers = (0..8)
+        .map(|_| {
+            let root = fixture.path().to_owned();
+            std::thread::spawn(move || {
+                super::take_prompt_offer_at(&context(&root)).expect("claim offer")
+            })
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        workers
+            .into_iter()
+            .map(|worker| usize::from(worker.join().expect("offer worker")))
+            .sum::<usize>(),
+        1
+    );
+}
+
+fn context(root: &std::path::Path) -> SetupContext {
+    let data_home = root.join("data");
+    let config_home = root.join("config");
+    SetupContext {
+        search_roots: vec![config_home.clone(), root.join("system")],
+        data_home,
+        config_home,
+        config_names: vec![
+            "hyprland-portals.conf".to_owned(),
+            "portals.conf".to_owned(),
+        ],
+    }
+}
+
+fn executable(root: &std::path::Path) -> PathBuf {
+    let path = root.join("bin/strata");
+    fs::create_dir_all(path.parent().expect("executable parent")).expect("executable directory");
+    fs::write(&path, b"binary").expect("executable file");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).expect("executable permissions");
+    path
+}
+
+fn fixture() -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix("strata-portal-")
+        .tempdir_in("target")
+        .expect("fixture directory")
+}
+
+#[test]
+fn file_manager_service_installs_and_reports_status() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install file manager");
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(super::FILE_MANAGER_SERVICE);
+    assert!(service.is_file());
+    let contents = fs::read_to_string(&service).expect("service contents");
+    assert!(contents.contains("Name=org.freedesktop.FileManager1"));
+    assert!(contents.contains(&exe.display().to_string()));
+    let state = super::read_file_manager_state(
+        &context.data_home.join(super::FILE_MANAGER_STATE_DIRECTORY),
+    )
+    .expect("read state")
+    .expect("state exists");
+    assert_eq!(state.previous_default.as_deref(), Some("thunar.desktop"));
+}
+
+#[test]
+fn file_manager_repair_preserves_restore_state() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install");
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(super::FILE_MANAGER_SERVICE);
+    fs::remove_file(&service).expect("simulate drift");
+    install_file_manager_at(&context, &exe, None).expect("repair");
+    assert!(service.exists());
+    assert_eq!(
+        uninstall_file_manager_at(&context)
+            .expect("restore")
+            .as_deref(),
+        Some("thunar.desktop")
+    );
+}
+
+#[test]
+fn file_manager_restore_failure_keeps_recovery_state() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install");
+    let result = super::restore_file_manager_at(&context, |previous| {
+        assert_eq!(previous, Some("thunar.desktop"));
+        Err("association failure".into())
+    });
+    assert_eq!(
+        result.expect_err("restore must fail"),
+        "association failure"
+    );
+    assert!(
+        context
+            .data_home
+            .join("dbus-1/services")
+            .join(super::FILE_MANAGER_SERVICE)
+            .exists()
+    );
+    assert_eq!(
+        uninstall_file_manager_at(&context)
+            .expect("retry")
+            .as_deref(),
+        Some("thunar.desktop")
+    );
+}
+
+#[test]
+fn folder_restore_uses_nautilus_only_without_a_saved_handler() {
+    for (current, previous, detected, expected) in [
+        (
+            Some(super::DESKTOP_ID),
+            Some("thunar.desktop"),
+            Some("org.gnome.Nautilus.desktop"),
+            Some("thunar.desktop"),
+        ),
+        (
+            Some(super::DESKTOP_ID),
+            None,
+            Some("org.gnome.Nautilus.desktop"),
+            Some("org.gnome.Nautilus.desktop"),
+        ),
+        (
+            None,
+            None,
+            Some("nautilus.desktop"),
+            Some("nautilus.desktop"),
+        ),
+        (
+            Some("dolphin.desktop"),
+            None,
+            Some("org.gnome.Nautilus.desktop"),
+            None,
+        ),
+        (Some("dolphin.desktop"), Some("thunar.desktop"), None, None),
+    ] {
+        let mut applied = None;
+        let result = super::restore_folder_handler(
+            current,
+            previous,
+            || {
+                assert!(previous.is_none());
+                detected.map(str::to_owned)
+            },
+            |id| {
+                applied = Some(id.to_owned());
+                Ok(())
+            },
+        )
+        .expect("restore");
+        assert_eq!(result.as_deref(), expected);
+        assert_eq!(applied.as_deref(), expected);
+    }
+}
+
+#[test]
+fn nautilus_fallback_failure_preserves_recovery_until_retry() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, None).expect("install without previous handler");
+    for detected in [None, Some("org.gnome.Nautilus.desktop")] {
+        let result = super::restore_file_manager_at(&context, |previous| {
+            super::restore_folder_handler(
+                Some(super::DESKTOP_ID),
+                previous,
+                || detected.map(str::to_owned),
+                |_| Err("association failure".into()),
+            )
+        });
+        assert!(result.is_err());
+        assert!(
+            super::read_file_manager_state(
+                &context.data_home.join(super::FILE_MANAGER_STATE_DIRECTORY)
+            )
+            .expect("valid test fixture")
+            .is_some()
+        );
+        assert!(
+            context
+                .data_home
+                .join("dbus-1/services")
+                .join(super::FILE_MANAGER_SERVICE)
+                .exists()
+        );
+    }
+    let restored = super::restore_file_manager_at(&context, |previous| {
+        super::restore_folder_handler(
+            Some(super::DESKTOP_ID),
+            previous,
+            || Some("org.gnome.Nautilus.desktop".into()),
+            |id| {
+                assert_eq!(id, "org.gnome.Nautilus.desktop");
+                Ok(())
+            },
+        )
+    })
+    .expect("retry with Nautilus");
+    assert_eq!(restored.as_deref(), Some("org.gnome.Nautilus.desktop"));
+    assert!(
+        !context
+            .data_home
+            .join("dbus-1/services")
+            .join(super::FILE_MANAGER_SERVICE)
+            .exists()
+    );
+    assert!(
+        super::read_file_manager_state(
+            &context.data_home.join(super::FILE_MANAGER_STATE_DIRECTORY)
+        )
+        .expect("valid test fixture")
+        .is_none()
+    );
+}
+
+#[test]
+fn file_manager_conflict_is_rejected() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    let service_dir = context.data_home.join("dbus-1/services");
+    fs::create_dir_all(&service_dir).expect("service dir");
+    let other = service_dir.join("org.other.FileManager1.service");
+    fs::write(
+        &other,
+        "[D-BUS Service]\nName=org.freedesktop.FileManager1\nExec=/usr/bin/other\n",
+    )
+    .expect("conflicting service");
+    let error = install_file_manager_at(&context, &exe, None).expect_err("conflict rejected");
+    assert!(error.contains("Another per-user FileManager1 provider"));
+}
+
+#[test]
+fn file_manager_uninstall_removes_service_and_state() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let exe = executable(fixture.path());
+    install_file_manager_at(&context, &exe, Some("thunar.desktop")).expect("install");
+    let service = context
+        .data_home
+        .join("dbus-1/services")
+        .join(super::FILE_MANAGER_SERVICE);
+    assert!(service.is_file());
+    uninstall_file_manager_at(&context).expect("uninstall");
+    assert!(!service.exists());
+    assert!(
+        !context
+            .data_home
+            .join(super::FILE_MANAGER_STATE_DIRECTORY)
+            .join(super::FILE_MANAGER_STATE_FILE)
+            .exists()
+    );
+}

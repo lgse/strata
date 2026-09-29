@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: MIT
+
+use super::*;
+
+#[cfg(test)]
+mod tests;
+
+pub(super) fn build_index(
+    index: &SharedIndex,
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    max_entries: usize,
+    time_budget: Duration,
+) {
+    let start = Instant::now();
+    let mut last_publish = start;
+    let mut count = 0;
+    let mut pending = Vec::with_capacity(256);
+    let mut coverage = SearchCoverage::default();
+    // Depth-limited recursive walkers can still open child directories. A plain
+    // directory iterator also keeps immediate ignored/generated entries eligible.
+    'roots: for root in roots {
+        let entries = match std::fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(_) => {
+                coverage.unreadable = true;
+                continue;
+            }
+        };
+        let hidden_names = native_hidden_names(&root);
+        for entry in entries {
+            if index.indexing_cancelled() {
+                return;
+            }
+            if start.elapsed() >= time_budget {
+                coverage.time_limit = true;
+                break 'roots;
+            }
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => {
+                    coverage.unreadable = true;
+                    continue;
+                }
+            };
+            if !show_hidden && is_hidden_name(&entry.file_name(), &hidden_names) {
+                continue;
+            }
+            if count >= max_entries {
+                coverage.entry_limit = true;
+                break 'roots;
+            }
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
+                Err(_) => {
+                    coverage.unreadable = true;
+                    continue;
+                }
+            };
+            let path = entry.path();
+            let kind = native_kind(file_type, &path);
+            let is_directory = matches!(
+                kind,
+                EntryKind::Directory | EntryKind::DirectorySymbolicLink
+            );
+            let mode = if is_directory {
+                MetadataValue::Unknown
+            } else {
+                use std::os::unix::fs::MetadataExt;
+                // Executability follows the target, not DirEntry's symlink mode.
+                let metadata = if file_type.is_symlink() {
+                    std::fs::metadata(&path).ok()
+                } else {
+                    entry.metadata().ok()
+                };
+                metadata
+                    .map(|metadata| MetadataValue::Known(metadata.mode()))
+                    .unwrap_or(MetadataValue::Unknown)
+            };
+            pending.push(SearchItem::with_metadata(
+                path,
+                &root,
+                is_directory,
+                kind,
+                mode,
+            ));
+            count += 1;
+            if pending.len() >= 256 {
+                append_index_items(index, &mut pending, true, coverage);
+            }
+            if last_publish.elapsed() >= PUBLISH_INTERVAL {
+                append_index_items(index, &mut pending, true, coverage);
+                index.broadcast_change();
+                last_publish = Instant::now();
+            }
+        }
+    }
+    append_index_items(index, &mut pending, false, coverage);
+    index.broadcast_change();
+}

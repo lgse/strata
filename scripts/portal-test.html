@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strata File Chooser</title>
+<style>
+  :root { color-scheme: dark; --bg: #101316; --surface: #1c2126; --border: #343b44; --text: #e6e9ef; --muted: #a3abb8; --accent: #82aaff; --success: #a6d5a1; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px system-ui, sans-serif; }
+  main { max-width: 800px; margin: 44px auto; padding: 0 20px; }
+  h1 { margin: 0 0 10px; font-size: 28px; }
+  p { color: var(--muted); font-size: 12px; line-height: 1.7; }
+  #tests { display: grid; gap: 8px; margin: 22px 0 18px; }
+  article { display: grid; grid-template-columns: 180px 1fr auto; align-items: center; gap: 16px; padding: 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  button { padding: 12px 10px; border: 1px solid transparent; border-radius: 5px; background: var(--accent); color: var(--bg); font: 600 12px system-ui, sans-serif; cursor: pointer; }
+  button:hover { filter: brightness(1.1); }
+  button:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  button:disabled { opacity: .5; cursor: wait; }
+  h2 { margin: 0 0 4px; font-size: 15px; }
+  article p { margin: 0; font-size: 11px; }
+  output { color: var(--success); font-size: 10px; max-width: 120px; overflow-wrap: anywhere; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font: 12px monospace; }
+  @media (max-width: 620px) { article { grid-template-columns: 1fr; } output { max-width: none; } }
+</style>
+<main>
+  <h1>Strata File Chooser</h1>
+  <p>XDG FileChooser v4 portal test page</p>
+  <div id="tests"></div>
+  <p>Chromium exposes OpenFile and SaveFile. SaveFiles requires the dedicated portal client.<br>
+  Serve this page on localhost and use a portal-aware Chromium build with Strata configured as its FileChooser backend.</p>
+  <pre id="result" aria-live="polite"></pre>
+</main>
+<script>
+  const types = [
+    {description: 'Images', accept: {'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg']}},
+    {description: 'Text files', accept: {'text/plain': ['.txt', '.md']}}
+  ];
+  const cases = [
+    ['Open one file', 'OpenFile · single', 'Select exactly one local file.', async () => (await showOpenFilePicker()).map(file => file.name)],
+    ['Open several files', 'OpenFile · multiple', 'Use Ctrl or Shift to select several files.', async () => (await showOpenFilePicker({multiple: true})).map(file => file.name)],
+    ['Select a folder', 'OpenFile · directory', 'Select a folder or accept the current folder.', async () => [(await showDirectoryPicker()).name]],
+    ['Open with filters', 'OpenFile · filters', 'Switch between image and text filters.', async () => (await showOpenFilePicker({types})).map(file => file.name)],
+    ['Save demo file', 'SaveFile', 'Tests a suggested name, filter, writing, and overwrite confirmation.', async () => {
+      const file = await showSaveFilePicker({suggestedName: 'strata-portal-demo.txt', types: [types[1]]});
+      const stream = await file.createWritable();
+      await stream.write('Strata FileChooser portal test\n');
+      await stream.close();
+      return [`Wrote ${file.name}`];
+    }]
+  ];
+  for (const [label, title, description, run] of cases) {
+    const row = document.createElement('article');
+    const button = document.createElement('button');
+    button.textContent = label;
+    const details = document.createElement('div');
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    const hint = document.createElement('p');
+    hint.textContent = description;
+    details.append(heading, hint);
+    const status = document.createElement('output');
+    status.textContent = 'Ready';
+    row.append(button, details, status);
+    document.querySelector('#tests').append(row);
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      status.textContent = 'Waiting…';
+      try {
+        if (!window.showOpenFilePicker) throw new Error('Use Chromium on http://localhost; this browser does not expose the File System Access API.');
+        const result = await run();
+        status.textContent = 'Success';
+        document.querySelector('#result').textContent = `${title}\n${result.join('\n')}`;
+      } catch (error) {
+        status.textContent = error.name === 'AbortError' ? 'Cancelled' : 'Error';
+        document.querySelector('#result').textContent = `${title}\n${error.message}`;
+      } finally { button.disabled = false; }
+    });
+  }
+</script>
+</html>

@@ -1,21 +1,27 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     fs,
     io::{Read, Write},
+    os::unix::fs::MetadataExt as _,
     path::{Path, PathBuf},
     process::Command,
     sync::mpsc::{self, Receiver, Sender},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use gtk::glib;
+use serde::Deserialize;
+
+use crate::services::{InstallSource, ensure_self_managed};
 
 use super::release_channel::Version;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
 const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
+const AUR_RPC: &str = "https://aur.archlinux.org/rpc/v5/info";
+const AUR_RESPONSE_LIMIT: u64 = 1024 * 1024;
 const PACMAN: &str = "/usr/bin/pacman";
 const PACMAN_CONF: &str = "/usr/bin/pacman-conf";
 const OS_RELEASE: &str = "/etc/os-release";
@@ -25,6 +31,7 @@ const REPOSITORY_DATABASE_LIMIT: u64 = 4 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UpdateMethod {
     InPlace,
+    Aur,
     Omarchy,
     Pacman,
 }
@@ -63,6 +70,9 @@ pub struct InstallRequest {
 /// Determines whether the running executable may be updated in place or is
 /// owned by pacman and must be updated through the operating system.
 pub fn update_method() -> UpdateMethod {
+    if InstallSource::detect().is_managed() {
+        return UpdateMethod::Aur;
+    }
     let Ok(executable) = std::env::current_exe() else {
         return UpdateMethod::InPlace;
     };
@@ -108,6 +118,85 @@ fn os_release_has_id(contents: &str, expected: &str) -> bool {
 /// actually install it.
 pub(super) fn package_repository_version() -> Result<Version, String> {
     package_repository_version_for(Path::new(PACMAN), PACKAGE_NAME)
+}
+
+#[derive(Deserialize)]
+struct AurResponse {
+    #[serde(default)]
+    results: Vec<AurPackage>,
+}
+
+#[derive(Deserialize)]
+struct AurPackage {
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Version")]
+    version: String,
+}
+
+pub(super) fn aur_repository_version() -> Result<Version, String> {
+    let package = InstallSource::detect()
+        .managed()
+        .and_then(|managed| managed.package())
+        .ok_or_else(|| "the AUR packaging marker does not name a package".to_owned())?;
+    if !package
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"@._+-".contains(&byte))
+    {
+        return Err("the AUR packaging marker contains an invalid package name".to_owned());
+    }
+
+    let url = format!("{AUR_RPC}?arg[]={package}");
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(10)))
+        .build()
+        .into();
+    let mut response = agent
+        .get(&url)
+        .call()
+        .map_err(|error| format!("could not query the AUR: {error}"))?;
+    let mut contents = String::new();
+    response
+        .body_mut()
+        .as_reader()
+        .take(AUR_RESPONSE_LIMIT + 1)
+        .read_to_string(&mut contents)
+        .map_err(|error| format!("could not read the AUR response: {error}"))?;
+    if contents.len() as u64 > AUR_RESPONSE_LIMIT {
+        return Err("the AUR response exceeded the size limit".to_owned());
+    }
+    aur_repository_version_from_response(&contents, package)
+}
+
+fn aur_repository_version_from_response(contents: &str, package: &str) -> Result<Version, String> {
+    let response: AurResponse = serde_json::from_str(contents)
+        .map_err(|error| format!("the AUR returned an invalid response: {error}"))?;
+    response
+        .results
+        .into_iter()
+        .find(|result| result.name == package)
+        .and_then(|result| parse_aur_package_version(&result.version))
+        .ok_or_else(|| format!("{package} is not available in the AUR"))
+}
+
+fn parse_aur_package_version(value: &str) -> Option<Version> {
+    let value = value.lines().find(|line| !line.trim().is_empty())?.trim();
+    let value = value.split_once(':').map_or(value, |(_, version)| version);
+    let (upstream, package_release) = value.rsplit_once('-')?;
+    if package_release.is_empty() {
+        return None;
+    }
+    if let Some(version) = Version::parse(upstream) {
+        return Some(version);
+    }
+    for kind in ["alpha", "beta", "rc", "nightly"] {
+        if let Some(index) = upstream.find(kind) {
+            let mut release = upstream.to_owned();
+            release.insert(index, '-');
+            return Version::parse(&release);
+        }
+    }
+    None
 }
 
 /// Reads the live Omarchy repository database selected by this installation,
@@ -253,8 +342,12 @@ pub fn install_update(request: InstallRequest) -> Receiver<UpdateInstall> {
 }
 
 fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Result<(), String> {
+    ensure_self_managed(InstallSource::detect())?;
     match update_method() {
         UpdateMethod::InPlace => {}
+        UpdateMethod::Aur => {
+            return Err("This installation is managed by its package manager.".to_owned());
+        }
         UpdateMethod::Omarchy => {
             return Err(
                 "This installation is managed by Omarchy; install updates with `omarchy update`."
@@ -329,7 +422,7 @@ fn try_install(
 
     let extract_dir = workdir.join("extracted");
     fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
-    run(Command::new("tar")
+    run(crate::trusted_command::command("tar")?
         .arg("-xzf")
         .arg(&archive_path)
         .arg("-C")
@@ -339,6 +432,8 @@ fn try_install(
     let binary_path = binary_paths
         .first()
         .ok_or_else(|| "Could not find the strata binary in the downloaded archive".to_owned())?;
+    let old_executable = fs::metadata(current_exe)
+        .map_err(|error| format!("Could not inspect the installed binary: {error}"))?;
     let staged = stage_binary_path(exe_dir)?;
     fs::copy(binary_path, staged.path())
         .map_err(|error| format!("Could not stage the new binary: {error}"))?;
@@ -350,8 +445,114 @@ fn try_install(
     if let Some(package_dir) = binary_path.parent() {
         refresh_desktop_metadata(package_dir, current_exe, &glib::user_data_dir());
     }
+    if let Err(error) = crate::portal_setup::refresh_after_in_place_update() {
+        tracing::warn!(%error, "could not refresh the configured Strata portal after updating");
+    }
+    retire_old_instances(Path::new("/proc"), current_exe, &old_executable);
 
     Ok(())
+}
+
+/// Retire only our old executable's chooser and file-manager instances. Leave the
+/// updating instance alive to report success and relaunch the replacement.
+fn retire_old_instances(proc_root: &Path, install_path: &Path, old_executable: &fs::Metadata) {
+    let Ok(entries) = fs::read_dir(proc_root) else {
+        tracing::warn!("could not enumerate old Strata processes after updating");
+        return;
+    };
+    let mut retirees = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<i32>().ok())
+            .and_then(rustix::process::Pid::from_raw)
+        else {
+            continue;
+        };
+        if pid.as_raw_pid() as u32 == std::process::id() {
+            continue;
+        }
+        let path = entry.path();
+        if !is_old_instance(&path, install_path, old_executable) {
+            continue;
+        }
+        // A pidfd pins the process identity across the final /proc check and
+        // SIGTERM; a reused numeric PID must never be signalled by the updater.
+        let fd = match rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()) {
+            Ok(fd) => fd,
+            Err(error) => {
+                tracing::warn!(%error, pid = pid.as_raw_pid(), "could not identify old Strata process safely");
+                continue;
+            }
+        };
+        if is_old_instance(&path, install_path, old_executable) {
+            match rustix::process::pidfd_send_signal(&fd, rustix::process::Signal::TERM) {
+                Ok(()) => retirees.push((pid, fd)),
+                Err(error) => {
+                    tracing::warn!(%error, pid = pid.as_raw_pid(), "could not stop old Strata instance")
+                }
+            }
+        }
+    }
+    let deadline = Instant::now() + Duration::from_secs(5);
+    for (pid, fd) in retirees {
+        if pidfd_exited(&fd, deadline) {
+            continue;
+        }
+        // A lingering old instance could still own the GApplication bus name.
+        // Do not relaunch into it after the replacement has been installed.
+        if let Err(error) = rustix::process::pidfd_send_signal(&fd, rustix::process::Signal::KILL) {
+            tracing::warn!(%error, pid = pid.as_raw_pid(), "could not terminate old Strata instance");
+        } else if !pidfd_exited(&fd, Instant::now() + Duration::from_secs(2)) {
+            tracing::warn!(pid = pid.as_raw_pid(), "old Strata instance has not exited");
+        }
+    }
+}
+
+fn pidfd_exited(fd: &rustix::fd::OwnedFd, deadline: Instant) -> bool {
+    use rustix::event::{PollFd, PollFlags, Timespec, poll};
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let timeout = Timespec {
+        tv_sec: remaining.as_secs() as i64,
+        tv_nsec: i64::from(remaining.subsec_nanos()),
+    };
+    poll(&mut [PollFd::new(fd, PollFlags::IN)], Some(&timeout)).is_ok_and(|ready| ready > 0)
+}
+
+fn is_old_instance(proc_entry: &Path, install_path: &Path, old_executable: &fs::Metadata) -> bool {
+    let Ok(executable) = fs::metadata(proc_entry.join("exe")) else {
+        return false;
+    };
+    if !fs::metadata(proc_entry)
+        .is_ok_and(|process| process.uid() == rustix::process::getuid().as_raw())
+    {
+        return false;
+    }
+    // An instance left behind by an earlier update has an older inode, but
+    // /proc still exposes the original install path with " (deleted)".
+    let mut deleted_path = install_path.as_os_str().to_os_string();
+    deleted_path.push(" (deleted)");
+    let same_binary =
+        (executable.dev(), executable.ino()) == (old_executable.dev(), old_executable.ino());
+    if !same_binary
+        && !fs::read_link(proc_entry.join("exe")).is_ok_and(|path| path.as_os_str() == deleted_path)
+    {
+        return false;
+    }
+    let Ok(arguments) = fs::read(proc_entry.join("cmdline")) else {
+        return false;
+    };
+    let mut arguments = arguments.split(|byte| *byte == 0);
+    let Some(program) = arguments.next() else {
+        return false;
+    };
+    if program.is_empty() {
+        return false;
+    }
+    arguments
+        .next()
+        .is_none_or(|argument| !argument.starts_with(b"--") || argument == b"--portal")
 }
 
 /// Rewrites an already installed desktop entry and application icon from the
@@ -369,19 +570,22 @@ fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &P
         tracing::warn!("could not refresh the desktop entry: {error}");
     }
     match write_application_icon(package_dir, data_home) {
-        Ok(()) => {
-            if let Err(error) = run(Command::new("gtk-update-icon-cache")
-                .arg("-qtf")
-                .arg(data_home.join("icons/hicolor")))
-            {
+        Ok(()) => match crate::trusted_command::command("gtk-update-icon-cache") {
+            Ok(mut command) => {
+                if let Err(error) = run(command.arg("-qtf").arg(data_home.join("icons/hicolor"))) {
+                    tracing::warn!("could not refresh the application icon cache: {error}");
+                }
+            }
+            Err(error) => {
                 tracing::warn!("could not refresh the application icon cache: {error}");
             }
-        }
+        },
         Err(error) => tracing::warn!("could not refresh the application icon: {error}"),
     }
 
-    let _refreshed =
-        run(Command::new("update-desktop-database").arg(data_home.join("applications")));
+    if let Ok(mut command) = crate::trusted_command::command("update-desktop-database") {
+        let _refreshed = run(command.arg(data_home.join("applications")));
+    }
 }
 
 fn write_desktop_entry(
@@ -413,12 +617,7 @@ fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), St
 /// Points the packaged entry's `Exec` line at the running install path, keeping
 /// the packaged field codes so the entry still receives directory arguments.
 fn desktop_entry_with_exec(template: &str, executable: &Path) -> String {
-    let program = executable.display().to_string();
-    let program = if program.contains(char::is_whitespace) {
-        format!("\"{program}\"")
-    } else {
-        program
-    };
+    let program = desktop_exec_argument(&executable.display().to_string());
 
     let mut entry = String::with_capacity(template.len() + program.len());
     for line in template.lines() {
@@ -437,6 +636,33 @@ fn desktop_entry_with_exec(template: &str, executable: &Path) -> String {
         entry.push('\n');
     }
     entry
+}
+
+/// Encodes an Exec argument, then applies desktop-entry string-value escaping.
+fn desktop_exec_argument(argument: &str) -> String {
+    const RESERVED: &[char] = &[
+        ' ', '\t', '\n', '"', '\'', '\\', '>', '<', '~', '|', '&', ';', '$', '*', '?', '#', '(',
+        ')', '`',
+    ];
+    let argument = argument.replace('%', "%%");
+    if !argument.contains(RESERVED) && !argument.contains('\r') {
+        return argument;
+    }
+    let mut quoted = String::with_capacity(argument.len() + 2);
+    quoted.push('"');
+    for character in argument.chars() {
+        if matches!(character, '"' | '`' | '$' | '\\') {
+            quoted.push('\\');
+        }
+        quoted.push(character);
+    }
+    quoted.push('"');
+    // String-value escapes are decoded before Exec argument quoting.
+    quoted
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\t', "\\t")
+        .replace('\r', "\\r")
 }
 
 fn download_to_file(
@@ -491,18 +717,47 @@ fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String
         .call()
         .and_then(|mut response| response.body_mut().read_to_string())
         .map_err(|error| format!("Could not verify the update: {error}"))?;
+    verify_archive_checksum(archive_path, &expected)
+}
+
+fn verify_archive_checksum(archive_path: &Path, published: &str) -> Result<(), String> {
     let expected_hash =
-        first_hash_token(&expected).ok_or_else(|| "The published checksum was empty".to_owned())?;
-
-    let output = run(Command::new("sha256sum").arg(archive_path))?;
-    let actual_hash =
-        first_hash_token(&output).ok_or_else(|| "sha256sum produced no output".to_owned())?;
-
+        first_hash_token(published).ok_or_else(|| "The published checksum was empty".to_owned())?;
+    let actual_hash = file_sha256_hex(archive_path)?;
     if actual_hash == expected_hash {
         Ok(())
     } else {
         Err("Downloaded update failed checksum verification".to_owned())
     }
+}
+
+fn file_sha256_hex(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let mut file =
+        fs::File::open(path).map_err(|error| format!("Could not read the update: {error}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let count = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Could not read the update: {error}"))?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hex_lower(&hasher.finalize()))
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        hex.push(HEX[(byte >> 4) as usize] as char);
+        hex.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    hex
 }
 
 fn first_hash_token(text: &str) -> Option<String> {

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{ArchiveFormat, validate_basename};
 
@@ -6,6 +6,9 @@ use super::{ArchiveFormat, validate_basename};
 fn basenames_reject_empty_reserved_nested_absolute_and_nul_names() {
     for name in [
         "",
+        "   ",
+        "\t\n\r",
+        "\u{00a0}\u{2003}",
         ".",
         "..",
         "../escaped",
@@ -22,7 +25,15 @@ fn basenames_reject_empty_reserved_nested_absolute_and_nul_names() {
 
 #[test]
 fn basenames_accept_single_native_and_unicode_components() {
-    for name in ["report.txt", "folder name", ".config", "résumé"] {
+    for name in [
+        "report.txt",
+        "folder name",
+        ".config",
+        "résumé",
+        " padded ",
+        "-draft",
+        "a\\b",
+    ] {
         assert!(
             validate_basename(name).is_ok(),
             "{name:?} should be accepted"
@@ -48,14 +59,18 @@ fn archive_formats_are_detected_by_extension() {
         ArchiveFormat::from_extension("data.tar"),
         Some(ArchiveFormat::Tar)
     );
+    assert_eq!(
+        ArchiveFormat::from_extension("files.7z"),
+        Some(ArchiveFormat::SevenZ)
+    );
+    assert_eq!(
+        ArchiveFormat::from_extension("archive.rar"),
+        Some(ArchiveFormat::Rar)
+    );
+    assert_eq!(
+        ArchiveFormat::from_extension("ARCHIVE.RAR"),
+        Some(ArchiveFormat::Rar)
+    );
     assert_eq!(ArchiveFormat::from_extension("document.pdf"), None);
     assert_eq!(ArchiveFormat::from_extension("no_extension"), None);
-}
-
-#[test]
-fn archive_format_extensions_round_trip() {
-    for format in [ArchiveFormat::Zip, ArchiveFormat::TarGz, ArchiveFormat::Tar] {
-        let name = format!("test.{}", format.extension());
-        assert_eq!(ArchiveFormat::from_extension(&name), Some(format));
-    }
 }

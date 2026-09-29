@@ -1,6 +1,40 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
+
+#[test]
+fn only_camera_mount_roots_present_as_flat_photo_libraries() {
+    for uri in ["gphoto2://camera/", "gphoto2://Apple_Inc._iPhone_fixture/"] {
+        let root = Location::uri(uri);
+        assert!(root.is_camera_photo_root());
+        assert_eq!(root.display_name(), "Photos");
+        assert_eq!(root.uri_value(), Some(uri));
+        let child = root
+            .child(std::ffi::OsStr::new("202409_a"))
+            .expect("child folder");
+        assert!(!child.is_camera_photo_root());
+        assert_eq!(child.display_name(), "202409_a");
+        assert!(root.contains_camera_photo_location(&child));
+        assert!(root.contains_camera_photo_location(
+            &child.child(std::ffi::OsStr::new("IMG.JPG")).expect("photo")
+        ));
+        assert!(
+            !root.contains_camera_photo_location(&Location::uri(
+                "gphoto2://different-device/IMG.JPG"
+            ))
+        );
+    }
+    for uri in [
+        "mtp://phone/",
+        "afc://phone/",
+        "sftp://server/",
+        "file:///",
+        "trash:///",
+    ] {
+        assert!(!Location::uri(uri).is_camera_photo_root());
+    }
+    assert!(!Location::local("/camera").is_camera_photo_root());
+}
 
 #[test]
 fn breadcrumbs_preserve_each_native_ancestor() {
@@ -30,10 +64,74 @@ fn uri_locations_remain_explicit_and_have_one_breadcrumb() {
 }
 
 #[test]
+fn recent_root_is_named_and_has_no_product_parent() {
+    let recent = Location::uri("recent:///");
+
+    assert!(recent.is_recent_root());
+    assert_eq!(recent.display_name(), "Recent");
+    assert_eq!(recent.parent(), None);
+    assert_eq!(recent.breadcrumbs(), vec![recent.clone()]);
+}
+
+#[test]
+fn every_recent_root_spelling_is_treated_as_the_collection_root() {
+    for uri in ["recent:///", "recent://", "RECENT:///"] {
+        let location = Location::uri(uri);
+        assert!(location.is_recent_root(), "{uri} should be the Recent root");
+        assert!(
+            location.is_recent_location(),
+            "{uri} should be a Recent URI"
+        );
+        assert_eq!(location.display_name(), "Recent");
+        assert_eq!(location.parent(), None);
+    }
+}
+
+#[test]
+fn a_recent_child_is_a_recent_location_but_never_the_root() {
+    let child = Location::uri("recent:///entry-id");
+
+    assert!(child.is_recent_location());
+    assert!(!child.is_recent_root());
+}
+
+#[test]
+fn non_recent_locations_are_not_mistaken_for_the_collection() {
+    for location in [
+        Location::uri("trash:///"),
+        Location::uri("sftp://host/recent"),
+        Location::local("/home/user/recent"),
+    ] {
+        assert!(!location.is_recent_location());
+        assert!(!location.is_recent_root());
+    }
+}
+
+#[test]
+fn uri_display_names_are_percent_decoded() {
+    assert_eq!(
+        Location::uri("smb://server/share/My%20Share").display_name(),
+        "My Share"
+    );
+    assert_eq!(
+        Location::uri("sftp://host/caf%C3%A9/").display_name(),
+        "café"
+    );
+    assert_eq!(Location::uri("sftp://host/").display_name(), "host");
+}
+
+#[test]
 fn remote_locations_keep_uri_parents_and_breadcrumbs() {
     let location = Location::uri("smb://server/share/folder");
 
     assert_eq!(location.parent(), Some(Location::uri("smb://server/share")));
+    for (uri, parent) in [
+        ("sftp://host/share/a%2Fb", "sftp://host/share"),
+        ("sftp://host/share/a%2Fb/child", "sftp://host/share/a%2Fb"),
+        ("sftp://host/share/100%25/child", "sftp://host/share/100%25"),
+    ] {
+        assert_eq!(Location::uri(uri).parent(), Some(Location::uri(parent)));
+    }
     let breadcrumbs = location.breadcrumbs();
     assert_eq!(breadcrumbs.last(), Some(&location));
     assert!(breadcrumbs.contains(&Location::uri("smb://server/share")));
@@ -42,6 +140,77 @@ fn remote_locations_keep_uri_parents_and_breadcrumbs() {
             .iter()
             .all(|crumb| crumb.native_path().is_none())
     );
+}
+
+#[test]
+fn rebasing_preserves_uri_descendants_and_rejects_unrelated_or_mixed_locations() {
+    for scheme in ["smb", "sftp"] {
+        let from = Location::uri(format!("{scheme}://host/share/old"));
+        let to = Location::uri(format!("{scheme}://host/share/new%20folder"));
+        for suffix in ["", "/nested/report%20%231.txt"] {
+            let original = Location::uri(format!("{scheme}://host/share/old{suffix}"));
+            let rebased = original.rebase(&from, &to).expect("rebased URI");
+            let expected =
+                gio::File::for_uri(&format!("{scheme}://host/share/new%20folder{suffix}"));
+            assert!(gio::File::for_uri(rebased.uri_value().expect("rebased URI")).equal(&expected));
+            assert!(rebased.native_path().is_none());
+        }
+        for unrelated in [
+            format!("{scheme}://host/share/older/nested"),
+            format!("{scheme}://other/share/old/nested"),
+            format!("{scheme}://host/elsewhere/old"),
+        ] {
+            assert!(Location::uri(unrelated).rebase(&from, &to).is_none());
+        }
+        assert!(
+            from.rebase(&from, &Location::local("/fixture/new"))
+                .is_none()
+        );
+    }
+    let from = Location::local("/fixture/old");
+    let to = Location::local("/fixture/new");
+    assert_eq!(from.rebase(&from, &to), Some(to.clone()));
+    assert_eq!(
+        Location::local("/fixture/old/nested").rebase(&from, &to),
+        Some(Location::local("/fixture/new/nested"))
+    );
+    assert!(
+        Location::local("/fixture/older")
+            .rebase(&from, &to)
+            .is_none()
+    );
+}
+
+#[test]
+fn is_within_matches_native_descendants() {
+    let child = Location::local("/home/user/project/src");
+    let parent = Location::local("/home/user/project");
+    let unrelated = Location::local("/home/other");
+
+    assert!(child.is_within(&parent));
+    assert!(!parent.is_within(&child));
+    assert!(!child.is_within(&unrelated));
+}
+
+#[test]
+fn is_within_matches_remote_descendants() {
+    let child = Location::uri("sftp://user@host/mnt/share/folder");
+    let parent = Location::uri("sftp://user@host/mnt/share");
+    let unrelated = Location::uri("sftp://user@host/other");
+
+    assert!(child.is_within(&parent));
+    assert!(parent.is_within(&parent));
+    assert!(!parent.is_within(&child));
+    assert!(!child.is_within(&unrelated));
+}
+
+#[test]
+fn is_within_never_crosses_native_and_remote_locations() {
+    let native = Location::local("/mnt/share/folder");
+    let remote = Location::uri("sftp://user@host/mnt/share");
+
+    assert!(!native.is_within(&remote));
+    assert!(!remote.is_within(&native));
 }
 
 #[test]
@@ -103,5 +272,64 @@ fn root_has_one_breadcrumb() {
     assert_eq!(
         Location::local("/").breadcrumbs(),
         vec![Location::local("/")]
+    );
+}
+
+#[test]
+fn folder_colors_parse_names_and_resolve_hex() {
+    assert_eq!(FolderColor::from_name("red"), Some(FolderColor::Red));
+    assert_eq!(FolderColor::from_name("Blue"), Some(FolderColor::Blue));
+    assert_eq!(FolderColor::from_name("green"), Some(FolderColor::Green));
+    assert_eq!(FolderColor::from_name("grey"), Some(FolderColor::Gray));
+    assert_eq!(FolderColor::from_name("unknown"), None);
+}
+
+#[test]
+fn folder_color_values_parse_and_resolve_hex() {
+    assert_eq!(
+        FolderColorValue::parse("red"),
+        Some(FolderColorValue::Preset(FolderColor::Red))
+    );
+    assert_eq!(
+        FolderColorValue::parse("#34d399"),
+        Some(FolderColorValue::Custom("#34d399".to_owned()))
+    );
+    assert_eq!(
+        FolderColorValue::parse("#FFF"),
+        Some(FolderColorValue::Custom("#fff".to_owned()))
+    );
+    assert_eq!(FolderColorValue::parse("not-a-color"), None);
+    assert_eq!(FolderColorValue::parse("#invalid"), None);
+}
+
+#[test]
+fn transfer_targets_keep_the_item_name_under_the_destination() {
+    assert_eq!(
+        Location::local("/home/user/report.txt")
+            .transfer_target(&Location::local("/home/user/archive")),
+        Some(Location::local("/home/user/archive/report.txt"))
+    );
+    assert_eq!(
+        Location::uri("smb://host/share/notes/report.txt")
+            .transfer_target(&Location::uri("smb://host/share/archive")),
+        Some(Location::uri("smb://host/share/archive/report.txt"))
+    );
+    assert_eq!(
+        Location::local("/home/user/a b.txt").transfer_target(&Location::uri("smb://host/share")),
+        Some(Location::uri("smb://host/share/a%20b.txt"))
+    );
+}
+
+#[test]
+fn children_reject_names_that_would_escape_the_parent() {
+    let parent = Location::local("/home/user");
+
+    for name in ["", ".", "..", "nested/child"] {
+        assert_eq!(parent.child(std::ffi::OsStr::new(name)), None);
+    }
+    assert_eq!(
+        Location::local("/").transfer_target(&parent),
+        None,
+        "a root has no name to carry into a destination"
     );
 }

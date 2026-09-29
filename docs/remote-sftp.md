@@ -32,18 +32,11 @@ history.
 
 ## Host keys
 
-An unrecognized or changed host key reaches Strata as a `GMountOperation`
-question, and is always answered by the user:
-
-- The dialog shows the backend's own text, including the key fingerprint, and one
-  button per choice the backend offered.
-- The declining choice is focused, so pressing Enter never trusts a key.
-- Escape, the close button, and a click on the backdrop do not silently accept:
-  the backdrop is inert and the other two decline explicitly.
-- A changed host key is styled as a warning, since it can mean interception.
-
-Declining ends the attempt where a cancelled sign-in ends: back at the previous
-location, with no retry prompt.
+An unrecognized or changed host key reaches GTK's native mount-operation trust
+dialog. Review the backend's fingerprint and choices before making a decision;
+Strata does not answer the question automatically. If you decline, the prior
+location remains active and no credential retry is offered. A changed key may
+indicate interception; verify it with the server administrator before accepting.
 
 ## Failures
 
@@ -83,7 +76,7 @@ integration tests and mounting through GVfs needs a live session bus.
 
 | Case | How | Expected |
 | --- | --- | --- |
-| Unknown host key | Connect for the first time | Host-key dialog, declining choice focused |
+| Unknown host key | Connect for the first time | Native GTK host-key dialog; no automatic acceptance |
 | Declined host key | Answer Cancel | Returns to the previous location, no sign-in prompt |
 | Accepted host key | Answer the accepting choice | Connection continues |
 | Key authentication | `ssh-add` the client key, reconnect | Browses with no prompt |
@@ -91,7 +84,7 @@ integration tests and mounting through GVfs needs a live session bus.
 | Wrong passphrase | Answer with the wrong one | Prompt reopens with the retry message |
 | Cancelled sign-in | Escape the prompt | Previous location, no history entry |
 | Non-default port | Use `sftp://user@127.0.0.1:PORT/path` | Browses normally |
-| Changed host key | Restart the fixture, reconnect | Warning-styled dialog, or a `known_hosts` message |
+| Changed host key | Restart the fixture, reconnect | Native trust dialog or a `known_hosts` error; verify the new fingerprint before proceeding |
 | Connection refused | Stop the fixture, reconnect | "The host refused the connection…" |
 | Host not found | Use a name that does not resolve | "That host couldn't be found…" |
 | Navigation | Breadcrumbs, history, Miller descent, hover peek | Behave as on local paths |

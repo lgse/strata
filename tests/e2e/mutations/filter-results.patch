@@ -1,0 +1,10 @@
+--- a/src/ui/inline_search.rs
++++ b/src/ui/inline_search.rs
+@@ -283,4 +283,7 @@
+ fn update_rows(state: &State, items: Vec<SearchItem>, root: &Path, recursive: bool) {
++    clear_rows(&state.list);
++    state.items.borrow_mut().clear();
++    state.positions.borrow_mut().clear();
+     let selected = state.list.selected_row().map(|row| row.index() as usize);
+     let focused = state.list.root().and_then(|root| root.focus());
+     let old = state.items.replace(items);

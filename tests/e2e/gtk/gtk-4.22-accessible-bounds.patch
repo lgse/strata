@@ -1,0 +1,38 @@
+From: Strata maintainers <noreply@lgse.com>
+Subject: [PATCH] a11y: express widget bounds from the parent border origin
+
+GtkWidget's bounds relative to its parent use the parent's content coordinate
+space. AT-SPI composes the result as though it used the parent's border origin,
+losing the parent's padding and border. Translate the bounds before exposing
+them through GtkAccessible.
+
+This test-image-only patch is licensed under LGPL-2.1-or-later, matching
+gtk/gtkwidget.c.
+---
+ gtk/gtkwidget.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/gtk/gtkwidget.c b/gtk/gtkwidget.c
+index d71b480d26..a80be006d1 100644
+--- a/gtk/gtkwidget.c
++++ b/gtk/gtkwidget.c
+@@ -8861,6 +8861,17 @@ gtk_widget_accessible_get_bounds (GtkAccessible *self,
+     }
+   else
+     {
++      if (parent != NULL)
++        {
++          graphene_rect_t parent_bounds;
++
++          if (gtk_widget_compute_bounds (parent, parent, &parent_bounds))
++            {
++              bounds.origin.x -= parent_bounds.origin.x;
++              bounds.origin.y -= parent_bounds.origin.y;
++            }
++        }
++
+       *x = floorf (graphene_rect_get_x (&bounds));
+       *y = floorf (graphene_rect_get_y (&bounds));
+       *width = ceil (*x + graphene_rect_get_width (&bounds)) - *x;
+--
+2.51.0

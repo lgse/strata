@@ -1,11 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
 
 use std::{fmt, rc::Rc, time::Duration};
 
-use crate::model::{FileEntry, Location, uri_contains_credentials};
+use crate::model::{FileEntry, Location, MetadataValue, uri_contains_credentials};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RequestId(pub u64);
@@ -15,10 +15,15 @@ pub struct DirectoryRequest {
     pub id: RequestId,
     pub location: Location,
     pub batch_size: usize,
+    /// When true, entries arrive with size and modification time. Size/date sorts set it;
+    /// other sorts stream identity only and fill the visible window afterwards.
+    pub include_metadata: bool,
     /// Caps how many entries a single load will retain/render, bounding worst-case time and
     /// memory on an adversarially large or unbounded directory.
     pub max_entries: usize,
     /// Caps how long a single load may run before it is reported as truncated.
+    /// Complete camera Photos scans use `Duration::MAX` to disable the deadline;
+    /// their `max_entries` is `usize::MAX`. Bounded peeks retain finite limits.
     pub time_budget: Duration,
 }
 
@@ -67,9 +72,6 @@ impl fmt::Display for LocationValidationError {
     }
 }
 
-/// Names the packages a URI scheme's GVfs backend is commonly shipped in.
-/// Distributions split GVfs differently, so this lists the usual candidates
-/// rather than asserting one universal package name.
 fn backend_package_hint(scheme: &str) -> Option<&'static str> {
     match scheme.to_ascii_lowercase().as_str() {
         "smb" => Some("gvfs-smb or gvfs-backends"),
@@ -78,9 +80,6 @@ fn backend_package_hint(scheme: &str) -> Option<&'static str> {
     }
 }
 
-/// Builds a "this backend isn't installed" message naming the scheme and, when
-/// known, the packages that usually provide it, without repeating the
-/// host/share/path.
 pub fn backend_unavailable_message(uri: &str) -> String {
     let scheme = uri.split("://").next().unwrap_or(uri);
     match backend_package_hint(scheme) {
@@ -186,11 +185,75 @@ pub enum DirectoryEvent {
         /// `true` if the load stopped short of covering the full directory, because it hit the
         /// entry or time budget; already-emitted `Batch` entries are then a lower bound.
         truncated: bool,
+        /// Whether this location supports moving entries to Trash, resolved from an
+        /// entry in the directory. `None` when the location is empty or the capability
+        /// couldn't be answered; treated as "assume trashable" by consumers, since that
+        /// matches offering Trash and letting the operation itself fail if unsupported.
+        can_trash: Option<bool>,
+        /// Whether entries here can be permanently deleted, resolved the same way as
+        /// `can_trash`. `None` carries the same "assume deletable" meaning.
+        can_delete: Option<bool>,
     },
+    /// Consumers must not present these partial values as a completed sort.
+    MetadataIncomplete { request_id: RequestId },
     Failed {
         request_id: RequestId,
         message: String,
     },
+    /// Size/mtime arrivals for already-listed entries, positioned by the receiver
+    /// against stable locations. Zero or more chunks, then exactly one `MetadataFinished`
+    /// (dropping the `LoadHandle` first cancels the fill with no terminal event).
+    MetadataFilled {
+        request_id: RequestId,
+        updates: Vec<MetadataUpdate>,
+    },
+    /// Terminal outcome for a metadata fill: exactly one per fill, including empty fills.
+    /// Sorts wait for this event, never for a chunk, so a partial pass can never be
+    /// mistaken for a complete one.
+    MetadataFinished {
+        request_id: RequestId,
+        outcome: MetadataOutcome,
+    },
+}
+
+/// Terminal outcome for a metadata fill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetadataOutcome {
+    Complete,
+    /// The budget expired partway; emitted chunks still apply, the rest keep placeholders.
+    Truncated,
+    /// The provider cannot stat these entries; rows keep their placeholders.
+    Unsupported,
+    /// No trustworthy pass; rows keep placeholders and waiting sorts are abandoned.
+    Failed,
+    /// The fill was dropped before finishing. Providers never emit this; owners synthesize
+    /// it when they discard a fill's handle while a sort still waits on it.
+    Cancelled,
+}
+
+/// Fresh metadata for one listed entry. Fields may stay `Unknown`/`Unavailable`
+/// when the stat failed; the row keeps its placeholder for a later retry.
+#[derive(Clone, Debug)]
+pub struct MetadataUpdate {
+    pub location: Location,
+    pub size: MetadataValue<u64>,
+    pub modified_unix_seconds: MetadataValue<i64>,
+    pub mode: MetadataValue<u32>,
+    pub image_dimensions: MetadataValue<(u32, u32)>,
+    pub child_count: MetadataValue<u64>,
+    pub duration_seconds: MetadataValue<u64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MetadataRequest {
+    /// Fills for a superseded load are dropped, never applied to a reloaded column.
+    pub id: RequestId,
+    pub entries: Vec<Location>,
+    /// When true, stat the whole list (a sort's full pass); otherwise a viewport window.
+    pub full: bool,
+    /// Keep false for full sort passes to avoid probing off-screen media.
+    pub include_icon_details: bool,
+    pub time_budget: Duration,
 }
 
 /// A cancellable directory load. Dropping it cancels any unfinished provider work.
@@ -215,6 +278,12 @@ impl Drop for LoadHandle {
 }
 
 pub trait FileSource {
+    /// Applies source-specific visibility to entries found outside directory enumeration.
+    /// This runs on the caller's thread, including for indexed search results.
+    fn allows_entry(&self, _entry: &FileEntry) -> bool {
+        true
+    }
+
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;
 
     /// Validates a location without blocking the caller. Providers should override this when
@@ -229,6 +298,24 @@ pub trait FileSource {
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle;
+    fn supports_metadata_fill(&self, _location: &Location) -> bool {
+        false
+    }
+
+    /// Overrides must emit zero or more `MetadataFilled` chunks followed by exactly one
+    /// `MetadataFinished` terminal outcome, including for empty fills. Dropping the
+    /// returned `LoadHandle` aborts the fill without any terminal event.
+    fn fill_metadata(
+        &self,
+        request: MetadataRequest,
+        emit: Rc<dyn Fn(DirectoryEvent)>,
+    ) -> LoadHandle {
+        emit(DirectoryEvent::MetadataFinished {
+            request_id: request.id,
+            outcome: MetadataOutcome::Unsupported,
+        });
+        LoadHandle::new(|| {})
+    }
 
     fn watch(
         &self,

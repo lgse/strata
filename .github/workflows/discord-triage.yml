@@ -1,0 +1,29 @@
+name: Discord report triage
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
+
+concurrency:
+  group: discord-report-triage
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage:
+    name: Check Discord reports
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check reports and create approved issues
+        env:
+          DISCORD_TRIAGE_BOT_TOKEN: ${{ secrets.DISCORD_TRIAGE_BOT_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/discord_triage.py

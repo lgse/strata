@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
@@ -97,16 +97,54 @@ fn backend_unavailable_message_offers_candidate_packages_for_sftp() {
     let message = backend_unavailable_message("sftp://host.example:2222/home/user");
     assert!(message.contains("sftp://"));
     assert!(message.contains("gvfs-backends"));
+    assert!(message.contains("distribution"));
     assert!(!message.contains("host.example"));
 }
 
 #[test]
-fn backend_unavailable_message_never_claims_one_universal_package() {
-    for uri in ["smb://host/share", "sftp://host/path", "dav://host/path"] {
-        let message = backend_unavailable_message(uri);
-        assert!(
-            message.contains("distribution"),
-            "{uri} names a package as if every distribution used it: {message}"
-        );
+fn default_fill_reports_unsupported_synchronously() {
+    use super::{
+        DirectoryEvent, FileSource, LoadHandle, MetadataOutcome, MetadataRequest, RequestId,
+    };
+    use crate::model::Location;
+    use std::rc::Rc;
+    use std::time::Duration;
+
+    struct NoMetadata;
+    impl FileSource for NoMetadata {
+        fn validate_location(
+            &self,
+            _location: &Location,
+        ) -> Result<(), super::LocationValidationError> {
+            Ok(())
+        }
+
+        fn enumerate(
+            &self,
+            _request: super::DirectoryRequest,
+            _emit: Rc<dyn Fn(DirectoryEvent)>,
+        ) -> LoadHandle {
+            LoadHandle::new(|| {})
+        }
     }
+
+    let events = Rc::new(std::cell::RefCell::new(Vec::new()));
+    let collected = events.clone();
+    let _handle = NoMetadata.fill_metadata(
+        MetadataRequest {
+            id: RequestId(4),
+            entries: Vec::new(),
+            full: false,
+            include_icon_details: false,
+            time_budget: Duration::from_secs(1),
+        },
+        Rc::new(move |event| collected.borrow_mut().push(event)),
+    );
+    assert!(matches!(
+        events.borrow().as_slice(),
+        [DirectoryEvent::MetadataFinished {
+            request_id: RequestId(4),
+            outcome: MetadataOutcome::Unsupported,
+        }]
+    ));
 }

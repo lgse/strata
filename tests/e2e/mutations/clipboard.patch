@@ -1,0 +1,14 @@
+diff --git a/src/ui/browser.rs b/src/ui/browser.rs
+index 11f9f7b..26b2f24 100644
+--- a/src/ui/browser.rs
++++ b/src/ui/browser.rs
+@@ -890,6 +890,9 @@ impl BrowserView {
+     }
+ 
+     pub fn paste(&self) {
++        if true {
++            return;
++        }
+         self.state.sync_mode_selection();
+         let selected = self.state.browser.selected_entries();
+         let column = self

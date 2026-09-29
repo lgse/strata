@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #![cfg(test)]
 
@@ -65,21 +65,12 @@ impl LogWriter {
     }
 }
 
-/// Serializes log captures, since each installs its subscriber for one thread but
-/// asserts on events the whole binary can emit.
 static LOG_CAPTURE: TestMutex = TestMutex::new();
 
 static GLOBAL_SINK: Once = Once::new();
 
-/// Installs a discarding global subscriber, once per test binary.
-///
-/// `tracing` caches a callsite's interest the first time it is reached, and a
-/// callsite first reached while the current thread has no subscriber is cached as
-/// uninteresting for every thread. Tests run in parallel, so an unrelated test
-/// logging from the same callsite can silence it inside a capture running beside
-/// it. Keeping a permissive global subscriber installed means no thread is ever
-/// without one, so callsites stay interesting and each event is resolved against
-/// whichever subscriber its own thread has.
+// A global sink keeps callsites interesting even when another test logs before a
+// thread-local capture installs its subscriber.
 fn install_global_sink() {
     GLOBAL_SINK.call_once(|| {
         let sink = tracing_subscriber::fmt()
@@ -90,9 +81,6 @@ fn install_global_sink() {
     });
 }
 
-/// Runs `action` against a private subscriber and returns everything it logged,
-/// so privacy assertions can read the rendered events rather than trusting the
-/// call sites.
 pub(crate) fn capture_logs(action: impl FnOnce()) -> String {
     install_global_sink();
     let _guard = LOG_CAPTURE.lock();
@@ -107,11 +95,84 @@ pub(crate) fn capture_logs(action: impl FnOnce()) -> String {
     writer.output()
 }
 
-/// Finds the rendered event carrying `message`, panicking with the whole
-/// capture when it is missing so a failure shows what was logged instead.
 pub(crate) fn captured_event<'a>(output: &'a str, message: &str) -> &'a str {
     output
         .lines()
         .find(|line| line.contains(message))
         .unwrap_or_else(|| panic!("missing {message:?} event in:\n{output}"))
+}
+
+/// GTK initialization is thread-affine; each UI test gets a process and disposable preferences.
+pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
+    gtk_test_with_env(name, std::iter::empty::<(&str, &std::ffi::OsStr)>(), run);
+}
+
+pub(crate) fn gtk_test_with_env(
+    name: &str,
+    extra_env: impl IntoIterator<Item = (impl AsRef<std::ffi::OsStr>, impl AsRef<std::ffi::OsStr>)>,
+    run: impl FnOnce(),
+) {
+    const CHILD: &str = "STRATA_ISOLATED_GTK_TEST";
+    if std::env::var(CHILD).as_deref() == Ok(name) {
+        if let Err(error) = gtk::init() {
+            assert!(
+                std::env::var_os("STRATA_REQUIRE_GTK_TESTS").is_none(),
+                "GTK display required: {error}"
+            );
+            eprintln!("Skipping {name}: {error}");
+            return;
+        }
+        crate::assets::prepare().expect("bundled assets");
+        crate::assets::register_icon_theme();
+        run();
+        return;
+    }
+    let extra_env: Vec<(std::ffi::OsString, std::ffi::OsString)> = extra_env
+        .into_iter()
+        .map(|(key, value)| (key.as_ref().to_owned(), value.as_ref().to_owned()))
+        .collect();
+    // Child processes still share the display's clipboard and pointer grabs.
+    static DISPLAY: TestMutex = TestMutex::new();
+    let _display = DISPLAY.lock().expect("GTK display lock");
+    let sandbox = tempfile::tempdir().expect("isolated preferences");
+    let home = sandbox.path().join("home");
+    std::fs::create_dir_all(&home).expect("isolated home");
+    let mut command = std::process::Command::new(std::env::current_exe().expect("test executable"));
+    command
+        // The parent already selected this exact case, including explicit --ignored runs.
+        .args(["--exact", name, "--nocapture", "--include-ignored"])
+        .env(CHILD, name)
+        .env("HOME", home)
+        .env("XDG_STATE_HOME", sandbox.path().join("state"))
+        .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
+        .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
+        .env("XDG_DATA_HOME", sandbox.path().join("data"));
+    for (key, value) in extra_env {
+        command.env(key, value);
+    }
+    let status = command.status().expect("isolated GTK test starts");
+    assert!(status.success(), "{name} failed");
+}
+
+pub(crate) fn distinct_device_dirs(name: &str) -> Option<(tempfile::TempDir, tempfile::TempDir)> {
+    use std::os::unix::fs::MetadataExt;
+    let dirs = (|| {
+        let first = tempfile::tempdir().ok()?;
+        let shm = std::path::Path::new("/dev/shm");
+        if !shm.is_dir() {
+            return None;
+        }
+        let second = tempfile::TempDir::new_in(shm).ok()?;
+        let first_dev = std::fs::metadata(first.path()).ok()?.dev();
+        let second_dev = std::fs::metadata(second.path()).ok()?.dev();
+        (first_dev != second_dev).then_some((first, second))
+    })();
+    if dirs.is_none() {
+        assert!(
+            std::env::var_os("STRATA_REQUIRE_DEVICE_TESTS").is_none(),
+            "{name} requires two filesystems: /dev/shm must be a distinct device from the temp dir"
+        );
+        eprintln!("Skipping {name}: /dev/shm is not a distinct device from the temp dir");
+    }
+    dirs
 }

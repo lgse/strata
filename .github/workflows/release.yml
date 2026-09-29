@@ -209,9 +209,10 @@ jobs:
           PY
 
       - name: Install native development libraries
-        run: >-
-          sudo apt-get update &&
-          sudo apt-get install --yes libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev libpoppler-glib-dev
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update
+          sudo apt-get install --yes libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev libpoppler-glib-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
@@ -242,15 +243,21 @@ jobs:
           strip --strip-unneeded "dist/$package/strata"
           objcopy --add-gnu-debuglink="dist/$package.debug" "dist/$package/strata"
           printf '%s\n' "$SOURCE_SHA" > "dist/$package/SOURCE_COMMIT"
-          cp README.md LICENSE THIRD_PARTY_LICENSES.md "dist/$package/"
+          cp README.md LICENSE THIRD_PARTY_LICENSES.md data/licenses/UnRAR.txt "dist/$package/"
+          mkdir -p "dist/$package/docs" "dist/$package/portal"
+          cp docs/portal-file-chooser.md "dist/$package/docs/"
+          cp data/portal/* "dist/$package/portal/"
+          mkdir -p "dist/$package/udiskie"
+          cp data/udiskie/* "dist/$package/udiskie/"
           install -m 644 data/io.github.lgse.Strata.desktop "dist/$package/"
+          install -m 644 data/io.github.lgse.Strata.FileManager1.service "dist/$package/"
           install -m 644 data/icons/scalable/apps/io.github.lgse.Strata.svg "dist/$package/"
           tar -C dist -czf "dist/$package.tar.gz" "$package"
           (cd dist && sha256sum "$package.tar.gz" > "$package.tar.gz.sha256")
           (cd dist && sha256sum "$package.debug" > "$package.debug.sha256")
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: strata-${{ matrix.target }}
           path: |
@@ -283,7 +290,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Download binaries
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
           merge-multiple: true
@@ -362,3 +369,188 @@ jobs:
           else
             gh release create "v$VERSION" dist/* --verify-tag --generate-notes --title "Strata v$VERSION"
           fi
+
+  announce:
+    name: Announce release on Discord
+    needs: [prepare, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Publish Discord announcement
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_TRIAGE_BOT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          version = os.environ["VERSION"]
+          mode = os.environ["MODE"]
+          tag = f"v{version}"
+          release_api = f"https://api.github.com/repos/{repository}/releases/tags/{tag}"
+          request = urllib.request.Request(
+              release_api,
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "User-Agent": "strata-release-workflow",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              release = json.load(response)
+
+          if mode == "stable":
+              channel = "Stable"
+              color = 0x9ECE6A
+          elif mode == "rc":
+              channel = "Release Candidate"
+              color = 0xE0AF68
+          else:
+              channel = f"Preview · {mode.title()}"
+              color = 0x7AA2F7
+
+          notes = (release.get("body") or "See GitHub for release notes.").strip()
+          if len(notes) > 3000:
+              notes = notes[:2997].rstrip() + "..."
+          announcement = {
+              "allowed_mentions": {"parse": []},
+              "embeds": [
+                  {
+                      "title": f"Strata {tag} is available",
+                      "url": release["html_url"],
+                      "description": notes,
+                      "color": color,
+                      "fields": [
+                          {"name": "Channel", "value": channel, "inline": True},
+                          {"name": "Version", "value": tag, "inline": True},
+                      ],
+                      "footer": {"text": "Strata · Navigate every layer."},
+                  }
+              ],
+          }
+
+          def post(channel_id, payload):
+              request = urllib.request.Request(
+                  f"https://discord.com/api/v10/channels/{channel_id}/messages",
+                  data=json.dumps(payload).encode(),
+                  headers={
+                      "Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}",
+                      "Content-Type": "application/json",
+                      "User-Agent": "strata-release-workflow",
+                  },
+                  method="POST",
+              )
+              with urllib.request.urlopen(request) as response:
+                  return json.load(response)
+
+          announcements_channel = "1546247479870226472"
+          message = post(announcements_channel, announcement)
+          announcement_url = (
+              "https://discord.com/channels/1546233919609774181/"
+              f"{announcements_channel}/{message['id']}"
+          )
+          post(
+              "1546233920926916630",
+              {
+                  "content": f"**Strata {tag}** ({channel}) is available. Read the announcement: {announcement_url}",
+                  "allowed_mentions": {"parse": []},
+              },
+          )
+          PY
+
+  package:
+    name: Prepare AUR package update
+    needs: [prepare, release]
+    if: inputs.mode != 'nightly' && vars.AUR_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    environment: package-automation
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Install automation tools
+        run: |
+          pacman -Syu --noconfirm --needed github-cli python
+          useradd --create-home builder
+
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.PACKAGE_PR_TOKEN }}
+
+      - name: Regenerate packages and open a pull request
+        env:
+          BRANCH: build/aur-v${{ needs.prepare.outputs.version }}
+          GH_TOKEN: ${{ secrets.PACKAGE_PR_TOKEN }}
+          MODE: ${{ inputs.mode }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          args=()
+          if [[ "$MODE" == stable ]]; then
+            args+=(--stable "$VERSION")
+          fi
+
+          candidate=$(python3 -c 'import sys; from scripts.update_aur import package_version; print(package_version(sys.argv[1]))' "$VERSION")
+          current=$(grep -m1 '^pkgver=' packaging/aur/strata-rc-bin/PKGBUILD | cut -d= -f2)
+          if (( $(vercmp "$candidate" "$current") >= 0 )); then
+            args+=(--preview "$VERSION")
+          fi
+
+          if (( ${#args[@]} == 0 )); then
+            echo "v$VERSION is older than the packaged Preview release."
+            exit 0
+          fi
+          chown -R builder:builder packaging/aur
+          runuser -u builder -- python3 scripts/update_aur.py "${args[@]}"
+
+          if git diff --quiet -- packaging/aur; then
+            echo "AUR packages already describe v$VERSION."
+            exit 0
+          fi
+
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add packaging/aur
+          git commit -m "build(arch): update AUR packages for v$VERSION"
+          if remote_sha=$(git ls-remote --exit-code --heads origin "$BRANCH" | cut -f1); then
+            git push --force-with-lease="$BRANCH:$remote_sha" origin "HEAD:$BRANCH"
+          else
+            git push origin "HEAD:$BRANCH"
+          fi
+
+          if gh pr view "$BRANCH" >/dev/null 2>&1; then
+            exit 0
+          fi
+          cat > /tmp/aur-package-pr.md <<EOF
+          ## Description
+
+          Updates the reviewed AUR package sources for Strata v$VERSION.
+
+          ## How to test
+
+          Install either generated package and confirm its version is v$VERSION.
+
+          ## Visual evidence
+
+          N/A — generated package metadata only.
+          EOF
+          gh pr create \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "$BRANCH" \
+            --title "build(arch): update AUR packages for v$VERSION" \
+            --body-file /tmp/aur-package-pr.md

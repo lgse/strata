@@ -4,9 +4,23 @@ extend-exclude = [
   "data/icons/**",
   "data/licenses/**",
   "Cargo.lock",
+  # Reproducible upstream MathJax bundle and npm dependency lock.
+  "data/math-renderer.js",
+  "packaging/math-renderer/package-lock.json",
+]
+
+[default]
+extend-ignore-re = [
+  "`crypted\\.rar`",
+  # Deliberately misspelled input in the Settings closest-match regression.
+  '"relase chanel"',
 ]
 
 [default.extend-words]
+# RTF control words, spelled as the format defines them.
+pard = "pard"
+headerr = "headerr"
+falt = "falt"
 Omarchy = "Omarchy"
 Hyprland = "Hyprland"
 JetBrains = "JetBrains"
@@ -14,3 +28,4 @@ Darcula = "Darcula"
 darcula = "darcula"
 Strata = "Strata"
 WRONLY = "WRONLY"
+gir = "gir"

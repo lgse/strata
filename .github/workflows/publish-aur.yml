@@ -1,0 +1,67 @@
+name: Publish AUR packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/aur/strata-bin/PKGBUILD'
+      - 'packaging/aur/strata-bin/.SRCINFO'
+      - 'packaging/aur/strata-rc-bin/PKGBUILD'
+      - 'packaging/aur/strata-rc-bin/.SRCINFO'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-aur
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Push reviewed packages to the AUR
+    if: vars.AUR_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    environment: aur-production
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AUR SSH access
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          # Published AUR Ed25519 host key, SHA256:RFzBCUItH9LZS0cKB5UE6ceAYhBD5C8GeOBip8Z11+4.
+          printf '%s\n' 'aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' > ~/.ssh/known_hosts
+          cat >> ~/.ssh/config <<'EOF'
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            IdentitiesOnly yes
+          EOF
+          chmod 600 ~/.ssh/config ~/.ssh/known_hosts
+
+      - name: Publish packages
+        run: |
+          git config --global user.name "strata-release-bot"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for package in strata-bin strata-rc-bin; do
+            checkout=$(mktemp -d)
+            git clone "ssh://aur@aur.archlinux.org/${package}.git" "$checkout"
+            install -m 644 "packaging/aur/$package/PKGBUILD" "$checkout/PKGBUILD"
+            install -m 644 "packaging/aur/$package/.SRCINFO" "$checkout/.SRCINFO"
+            git -C "$checkout" add PKGBUILD .SRCINFO
+            if git -C "$checkout" diff --cached --quiet; then
+              echo "$package is already current in the AUR."
+              continue
+            fi
+            version=$(grep -m1 '^pkgver=' "$checkout/PKGBUILD" | cut -d= -f2)
+            release=$(grep -m1 '^pkgrel=' "$checkout/PKGBUILD" | cut -d= -f2)
+            git -C "$checkout" commit -m "upgpkg: $package $version-$release"
+            git -C "$checkout" push origin HEAD:master
+          done
