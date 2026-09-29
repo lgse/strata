@@ -85,6 +85,15 @@ fn run_streams_the_version_fixture_in_wire_format() {
 }
 
 #[test]
+fn cover_image_fails_for_a_rar_without_images() {
+    let (_dir, archive) = write_fixture(RAR_VERSION_FIXTURE);
+    assert_eq!(
+        cover_image(&archive).expect_err("archive has no cover"),
+        "Comic archive has no bounded image"
+    );
+}
+
+#[test]
 fn run_reports_a_missing_password_as_a_file_trailer_failure() {
     let (_dir, archive) = write_fixture(RAR_ENCRYPTED_FIXTURE);
     let mut buffer = Vec::new();

@@ -556,6 +556,7 @@ pub(in crate::ui) fn install_folder_context_menu(
         crate::ui::open_with::show(
             &state.overlay,
             vec![file],
+            vec!["inode/directory".to_string()],
             recommended_apps,
             other_apps,
             crate::ui::open_with::OpenWithContext::Explicit,
@@ -1189,6 +1190,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             crate::ui::open_with::show(
                 &state.overlay,
                 selection.files,
+                selection.content_types,
                 selection.recommended_apps,
                 selection.other_apps,
                 crate::ui::open_with::OpenWithContext::Explicit,
@@ -1219,6 +1221,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             crate::ui::open_with::show(
                 &state.overlay,
                 selection.files,
+                selection.content_types,
                 selection.recommended_apps,
                 selection.other_apps,
                 crate::ui::open_with::OpenWithContext::Explicit,
@@ -1955,6 +1958,7 @@ pub(super) fn permanently_delete_is_visible(in_trash: bool, can_delete: Option<b
 struct OpenWithSelection {
     locations: Vec<Location>,
     files: Vec<gio::File>,
+    content_types: Vec<String>,
     recommended_apps: Vec<gio::AppInfo>,
     other_apps: Vec<gio::AppInfo>,
     default: Option<gio::AppInfo>,
@@ -2022,6 +2026,7 @@ fn prepare_open_with(
         result.replace(Some(OpenWithSelection {
             locations,
             files,
+            content_types: applications.content_types,
             recommended_apps: applications.recommended,
             other_apps: applications.other,
             default: applications.default,

@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Folder completion for the 10xer **go ›** prompt. **Tab** / **Shift+Tab**
-//! cycle matching folders. Text without a slash completes from the loaded
-//! listing; text with a slash, or `~`, enumerates that folder in the background.
-//! Any edit or dismissal discards older work, so a late answer can never
-//! replace newer text. URI-like input is never completed, mounted, or probed.
-
 use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
@@ -17,32 +11,26 @@ use std::{
 
 use gtk::{gio, glib, prelude::*};
 
-/// Enumeration stops with [`Hint::TooMany`] past this many entries.
 pub(crate) const MAX_SCANNED_ENTRIES: usize = 16_384;
-/// A prefix matching more folders than this is too broad to cycle.
 pub(crate) const MAX_MATCHING_FOLDERS: usize = 1_024;
 const BATCH_SIZE: i32 = 256;
 
 pub(crate) type LocalFuture<T> = Pin<Box<dyn Future<Output = T>>>;
 
-/// The folder could not be listed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Unreadable;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Child {
     pub(crate) name: OsString,
-    /// A folder, or a link to one.
     pub(crate) folder: bool,
 }
 
-/// Lists a native folder's children in batches.
 pub(crate) trait FolderSource {
     fn open(&self, directory: &Path) -> LocalFuture<Result<Box<dyn Enumeration>, Unreadable>>;
 }
 
 pub(crate) trait Enumeration {
-    /// The next batch; an empty batch ends the listing.
     fn next_batch(&self) -> LocalFuture<Result<Vec<Child>, Unreadable>>;
 }
 
@@ -87,11 +75,11 @@ impl Enumeration for GioEnumeration {
     }
 }
 
-/// Where **Tab** looks for folders.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Scope {
-    /// Folders in the loaded listing whose names start with `prefix`.
-    Listing { prefix: String },
+    Listing {
+        prefix: String,
+    },
     /// Folders in `directory` whose names start with `prefix`. A completion
     /// is `stem` + name + `/`, so the typed form (relative, `~`) is kept.
     Folder {
@@ -101,8 +89,6 @@ pub(crate) enum Scope {
     },
 }
 
-/// Resolves what `text` completes, or `None` when it must not be completed.
-/// A relative path with a slash needs the native `current` folder.
 pub(crate) fn scope(text: &str, current: Option<&Path>, home: &Path) -> Option<Scope> {
     if looks_like_uri(text) {
         return None;
@@ -137,7 +123,6 @@ pub(crate) fn scope(text: &str, current: Option<&Path>, home: &Path) -> Option<S
     })
 }
 
-/// Anything with a scheme, UNC, or network shorthand is treated as a URI.
 pub(crate) fn looks_like_uri(text: &str) -> bool {
     text.starts_with("//")
         || text.starts_with('\\')
@@ -147,13 +132,13 @@ pub(crate) fn looks_like_uri(text: &str) -> bool {
             .is_some_and(|first| first.contains(':'))
 }
 
-/// Why **Tab** left the text as it was.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Hint {
     NoMatch,
     Unreadable,
     TooMany,
     Uri,
+    OtherHome,
 }
 
 impl Hint {
@@ -163,24 +148,22 @@ impl Hint {
             Self::Unreadable => "Can\u{2019}t read that folder \u{2014} check the path",
             Self::TooMany => "Too many entries \u{2014} refine the path",
             Self::Uri => "URIs are not completed",
+            Self::OtherHome => "Only ~ and ~/ are supported",
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Step {
-    /// Replace the text with `text`, match `index` of `count`.
     Complete {
         text: String,
         index: usize,
         count: usize,
     },
-    /// Background enumeration is running; its answer arrives later.
     Pending,
     Hint(Hint),
 }
 
-/// Matching folder names, bounded while they are collected.
 struct Matches {
     prefix: String,
     include_hidden: bool,
@@ -254,14 +237,13 @@ async fn enumerate(
     }
 }
 
-/// What **Tab** needs from the window.
 pub(crate) struct Context<'a> {
-    /// The open folder, when it is native.
     pub(crate) current: Option<&'a Path>,
     pub(crate) home: &'a Path,
     pub(crate) show_hidden: bool,
-    /// The folder names the open listing shows.
-    pub(crate) listing: &'a dyn Fn() -> Vec<OsString>,
+    /// The folder names the open listing shows, plus its hidden folders when
+    /// asked.
+    pub(crate) listing: &'a dyn Fn(bool) -> Vec<OsString>,
 }
 
 struct Cycle {
@@ -312,7 +294,6 @@ impl State {
     }
 }
 
-/// One window's go-prompt completion.
 #[derive(Clone)]
 pub(crate) struct GoCompletion {
     source: Rc<dyn FolderSource>,
@@ -356,6 +337,8 @@ impl GoCompletion {
         let Some(scope) = scope(text, context.current, context.home) else {
             return Step::Hint(if looks_like_uri(text) {
                 Hint::Uri
+            } else if text.starts_with('~') {
+                Hint::OtherHome
             } else {
                 Hint::NoMatch
             });
@@ -363,7 +346,7 @@ impl GoCompletion {
         match scope {
             Scope::Listing { prefix } => {
                 let mut matches = Matches::new(&prefix, true, None);
-                for name in (context.listing)() {
+                for name in (context.listing)(prefix.starts_with('.')) {
                     if let Err(hint) = matches.offer(&name, true) {
                         return Step::Hint(hint);
                     }
@@ -400,7 +383,6 @@ impl GoCompletion {
         }
     }
 
-    /// Forgets the cycle and cancels pending enumeration; its answer is dropped.
     pub(crate) fn invalidate(&self) {
         self.state
             .generation

@@ -306,3 +306,129 @@ fn extract(
         }
     }
 }
+
+pub(super) fn cover_image(path: &Path) -> Result<Vec<u8>, String> {
+    use crate::sandbox_helper::archive_cover::{
+        MAX_ENTRIES, MAX_IMAGE_BYTES, compare_names, image_name,
+    };
+
+    let path = CString::new(path.as_os_str().as_bytes()).map_err(|error| error.to_string())?;
+    let mut selected: Option<String> = None;
+    for scanning in [true, false] {
+        let mut handle = ptr::null();
+        let opened = call(None, None, |user| {
+            let mut data = native::OpenArchiveDataEx::new(path.as_ptr(), native::RAR_OM_EXTRACT);
+            data.callback = Some(callback);
+            data.user_data = user;
+            // SAFETY: The path and synchronous callback state outlive this call.
+            unsafe {
+                handle = native::RAROpenArchiveEx(&raw mut data);
+            }
+            data.open_result as i32
+        });
+        let archive = (!handle.is_null()).then_some(Archive(handle));
+        if let Some(archive) = &archive {
+            // SAFETY: The handle is live; remove the expired callback state.
+            unsafe {
+                native::RARSetCallback(archive.0, None, 0);
+            }
+        }
+        decode_result(opened?, None)?;
+        let archive = archive.ok_or("Unable to open RAR archive")?;
+        let mut complete = false;
+        for _ in 0..MAX_ENTRIES {
+            let mut header = native::HeaderDataEx::default();
+            let code = read_cover_header(&archive, &mut header)?;
+            if code == native::ERAR_END_ARCHIVE {
+                if scanning {
+                    complete = true;
+                    break;
+                }
+                return Err("Comic cover is missing".into());
+            }
+            decode_result(code, None)?;
+            let name: String = header
+                .filename_w
+                .iter()
+                .take_while(|c| **c != 0)
+                .map(|c| char::from_u32(*c as u32).unwrap_or(char::REPLACEMENT_CHARACTER))
+                .collect();
+            let size = u64::from(header.unp_size) | (u64::from(header.unp_size_high) << 32);
+            let candidate = header.flags & native::RHDF_DIRECTORY == 0 && image_name(&name);
+            if scanning
+                && candidate
+                && selected
+                    .as_deref()
+                    .is_none_or(|best| compare_names(&name, best).is_lt())
+            {
+                selected = Some(name.clone());
+            }
+            let chosen = !scanning && selected.as_deref() == Some(&name);
+            if chosen && size > MAX_IMAGE_BYTES {
+                return Err("Comic cover exceeds the size limit".into());
+            }
+            let mut bytes = Vec::new();
+            let code = call(
+                None,
+                Some(&mut |chunk: &[u8]| {
+                    if bytes.len() as u64 + chunk.len() as u64 > MAX_IMAGE_BYTES {
+                        return Err("Comic cover exceeds the size limit".into());
+                    }
+                    bytes.extend_from_slice(chunk);
+                    Ok(())
+                }),
+                |user| {
+                    // SAFETY: The handle and callback state remain live throughout this call.
+                    unsafe { native::RARSetCallback(archive.0, Some(callback), user) };
+                    // SAFETY: The handle and callback state remain live until processing returns.
+                    let code = unsafe {
+                        native::RARProcessFile(
+                            archive.0,
+                            if chosen {
+                                native::RAR_TEST
+                            } else {
+                                native::RAR_SKIP
+                            },
+                            ptr::null(),
+                            ptr::null(),
+                        )
+                    };
+                    // SAFETY: The handle is live; clear the callback before its state expires.
+                    unsafe { native::RARSetCallback(archive.0, None, 0) };
+                    code
+                },
+            )?;
+            decode_result(code, None)?;
+            if chosen {
+                if bytes.len() as u64 != size {
+                    return Err("Comic cover size mismatch".into());
+                }
+                return Ok(bytes);
+            }
+        }
+        if scanning && selected.is_none() {
+            return Err("Comic archive has no bounded image".into());
+        }
+        if scanning && !complete {
+            // A bounded scan may stop before the end; reject rather than choose a partial listing.
+            let mut header = native::HeaderDataEx::default();
+            let code = read_cover_header(&archive, &mut header)?;
+            if code != native::ERAR_END_ARCHIVE {
+                return Err("Comic archive entry limit exceeded".into());
+            }
+        }
+    }
+    Err("Comic cover is missing".into())
+}
+
+fn read_cover_header(archive: &Archive, header: &mut native::HeaderDataEx) -> Result<i32, String> {
+    call(None, None, |user| {
+        // SAFETY: The handle, header and callback state remain live for this call.
+        unsafe { native::RARSetCallback(archive.0, Some(callback), user) };
+        // SAFETY: The handle and exclusive header remain live until this read returns.
+        let code = unsafe { native::RARReadHeaderEx(archive.0, header) };
+        // SAFETY: The handle is live; clear the callback before its state expires.
+        unsafe { native::RARSetCallback(archive.0, None, 0) };
+        code
+    })
+}

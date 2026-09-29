@@ -668,7 +668,7 @@ pub(super) fn build_collection(
         });
     }
     let sorted_for_activate = sorted.clone();
-    // Pointer activation is handled on release; GTK's double-click activation would repeat it.
+    // Ignore GTK activation after a pointer release; it would dispatch a second open.
     let dispatch_activate: Rc<dyn Fn(u32)> = Rc::new(move |position| {
         if pointer_activation.activation().is_some() {
             return;

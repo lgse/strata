@@ -85,7 +85,7 @@ pub(super) struct Applications {
     pub(super) recommended: Vec<gio::AppInfo>,
     pub(super) other: Vec<gio::AppInfo>,
     pub(super) default: Option<gio::AppInfo>,
-    mixed_types: bool,
+    pub(super) content_types: Vec<String>,
 }
 
 impl Applications {
@@ -93,7 +93,7 @@ impl Applications {
     pub(super) fn unavailable_reason(&self) -> Option<&'static str> {
         if !self.recommended.is_empty() || !self.other.is_empty() {
             None
-        } else if self.mixed_types {
+        } else if self.content_types.len() > 1 {
             Some("No application can open all selected file types")
         } else {
             Some("No compatible applications were found")
@@ -150,7 +150,7 @@ pub(super) async fn resolve(
         recommended,
         other,
         default,
-        mixed_types: content_types.len() > 1,
+        content_types,
     }))
 }
 
@@ -254,6 +254,7 @@ fn install_list_tab_navigation(
     content: &gtk::Box,
     search_entry: &gtk::SearchEntry,
     list: &gtk::ListBox,
+    always_use: &gtk::CheckButton,
     close: &gtk::Button,
     cancel: &gtk::Button,
 ) {
@@ -261,6 +262,7 @@ fn install_list_tab_navigation(
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let search = search_entry.downgrade();
     let list = list.downgrade();
+    let always = always_use.downgrade();
     let close = close.downgrade();
     let cancel = cancel.downgrade();
     keys.connect_key_pressed(move |_, key, _, modifiers| {
@@ -273,9 +275,10 @@ fn install_list_tab_navigation(
         {
             return glib::Propagation::Proceed;
         }
-        let (Some(search), Some(list), Some(close), Some(cancel)) = (
+        let (Some(search), Some(list), Some(always), Some(close), Some(cancel)) = (
             search.upgrade(),
             list.upgrade(),
+            always.upgrade(),
             close.upgrade(),
             cancel.upgrade(),
         ) else {
@@ -293,10 +296,12 @@ fn install_list_tab_navigation(
                 false
             }
         };
+        // A hidden widget still accepts focus grabs, so gate on visibility like the list.
+        let focus_always = || always.is_visible() && always.grab_focus();
         let moved = if focus == search || focus.is_ancestor(&search) {
             if backward {
                 close.grab_focus()
-            } else if focus_selected_row() {
+            } else if focus_selected_row() || focus_always() {
                 true
             } else {
                 cancel.grab_focus()
@@ -309,10 +314,10 @@ fn install_list_tab_navigation(
                     close.grab_focus()
                 }
             } else {
-                cancel.grab_focus()
+                focus_always() || cancel.grab_focus()
             }
         } else if backward && focus == cancel {
-            if focus_selected_row() {
+            if focus_always() || focus_selected_row() {
                 true
             } else if search.is_visible() {
                 search.grab_focus()
@@ -322,7 +327,7 @@ fn install_list_tab_navigation(
         } else if !backward && focus == close {
             if search.is_visible() {
                 search.grab_focus()
-            } else if focus_selected_row() {
+            } else if focus_selected_row() || focus_always() {
                 true
             } else {
                 cancel.grab_focus()
@@ -414,6 +419,7 @@ fn create_app_row(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::ListB
 pub(super) fn show(
     parent: &impl IsA<gtk::Widget>,
     files: Vec<gio::File>,
+    content_types: Vec<String>,
     recommended_apps: Vec<gio::AppInfo>,
     other_apps: Vec<gio::AppInfo>,
     context: OpenWithContext,
@@ -457,10 +463,20 @@ pub(super) fn show(
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
     list.update_property(&[gtk::accessible::Property::Label("Applications")]);
+
+    let always_use = super::controls::form_check_button(if content_types.len() > 1 {
+        "Always use for these file types"
+    } else {
+        "Always use for this file type"
+    });
+    always_use.set_visible(false);
+    layout.actions.prepend(&always_use);
+
     install_list_tab_navigation(
         &layout.content,
         &search_entry,
         &list,
+        &always_use,
         &layout.close,
         &layout.cancel,
     );
@@ -545,6 +561,7 @@ pub(super) fn show(
     layout.body.append(&empty_search);
 
     let has_apps = !entries.is_empty();
+    always_use.set_visible(has_apps && !content_types.is_empty());
     if !has_apps {
         search_entry.set_visible(false);
         list_scroll.set_visible(false);
@@ -773,6 +790,7 @@ pub(super) fn show(
 
     let open_dismiss = dismiss.clone();
     let open_files = files;
+    let open_content_types = content_types;
     let entries_for_open = entries_rc;
     let open_parent = parent.as_ref().downgrade();
     let selected_list = list.downgrade();
@@ -786,6 +804,13 @@ pub(super) fn show(
         let Some(entry) = entries_for_open.iter().find(|e| e.row == row) else {
             return;
         };
+        if always_use.is_active() {
+            for content_type in &open_content_types {
+                if let Err(error) = entry.app.set_as_default_for_type(content_type) {
+                    tracing::warn!(%content_type, %error, "unable to set default application");
+                }
+            }
+        }
         let context = list.display().app_launch_context();
         if let Err(error) = launch(&entry.app, &open_files, Some(&context)) {
             let detail = error.to_string();

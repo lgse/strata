@@ -2,6 +2,8 @@
 
 use std::{fs, time::Duration};
 
+mod cover_preview;
+mod model_preview;
 mod remote_preview;
 
 use super::*;
@@ -156,6 +158,7 @@ fn cold_previews_with_shared_thumbnails_match_rendered_cache_hits() {
                     render_document: false,
                     pdf_page: 0,
                     media_size: MediaPreviewSize::new(640, 800),
+                    model_palette: crate::services::ModelPalette::default(),
                     archive_password: None,
                 };
                 let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -220,6 +223,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("test1.png"),
         modified: 100,
         pdf_page: None,
+        model: None,
     };
     let content1 = PreviewContent::Rasterized {
         png: vec![1, 2, 3, 4],
@@ -232,6 +236,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("test2.txt"),
         modified: 200,
         pdf_page: None,
+        model: None,
     };
     let content2 = PreviewContent::Text {
         content: "hello world".to_owned(),
@@ -245,11 +250,13 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some((0, PdfRenderSize::new(640, 800))),
+        model: None,
     };
     let pdf_page_1 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some((1, PdfRenderSize::new(640, 800))),
+        model: None,
     };
     let page0_content = PreviewContent::Pdf {
         png: vec![10, 20],
@@ -272,6 +279,7 @@ fn preview_cache_stores_and_retrieves_entries() {
             path: PathBuf::from("doc.pdf"),
             modified: 300,
             pdf_page: Some((0, PdfRenderSize::new(800, 1_800))),
+            model: None,
         }),
         None,
         "a page rendered for a smaller viewport must not poison a larger preview"
@@ -282,12 +290,12 @@ fn preview_cache_stores_and_retrieves_entries() {
 fn pdf_renders_wait_for_the_active_renderer_and_resume_in_order() {
     let context = glib::MainContext::new();
     context.block_on(async {
-        let first = request_pdf_render_permit()
+        let first = request_heavy_preview_permit()
             .acquire()
             .await
             .expect("first PDF render permit");
-        let mut second = request_pdf_render_permit();
-        let mut third = request_pdf_render_permit();
+        let mut second = request_heavy_preview_permit();
+        let mut third = request_heavy_preview_permit();
 
         assert!(
             second
@@ -323,7 +331,7 @@ fn pdf_renders_wait_for_the_active_renderer_and_resume_in_order() {
         drop(third.acquire().await.expect("third PDF render permit"));
     });
 
-    PDF_RENDER_QUEUE.with(|queue| {
+    HEAVY_PREVIEW_QUEUE.with(|queue| {
         let queue = queue.borrow();
         assert_eq!(queue.running, 0);
         assert!(queue.queued.is_empty());
@@ -334,16 +342,16 @@ fn pdf_renders_wait_for_the_active_renderer_and_resume_in_order() {
 fn dropping_a_queued_pdf_render_removes_it_without_consuming_a_slot() {
     let context = glib::MainContext::new();
     context.block_on(async {
-        let first = request_pdf_render_permit()
+        let first = request_heavy_preview_permit()
             .acquire()
             .await
             .expect("first PDF render permit");
-        let cancelled = request_pdf_render_permit();
+        let cancelled = request_heavy_preview_permit();
         drop(cancelled);
         drop(first);
     });
 
-    PDF_RENDER_QUEUE.with(|queue| {
+    HEAVY_PREVIEW_QUEUE.with(|queue| {
         let queue = queue.borrow();
         assert_eq!(queue.running, 0);
         assert!(queue.queued.is_empty());
@@ -369,6 +377,8 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
         ("cancelled.pdf", true),
         ("cancelled.xlsx", false),
         ("cancelled.xlsx", true),
+        ("cancelled.stl", false),
+        ("cancelled.stl", true),
     ] {
         let events = Rc::new(RefCell::new(Vec::new()));
         let events_for_emit = events.clone();
@@ -396,6 +406,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
                 render_document: false,
                 pdf_page: 1,
                 media_size: MediaPreviewSize::new(640, 800),
+                model_palette: crate::services::ModelPalette::default(),
                 archive_password: None,
             },
             Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
@@ -420,7 +431,7 @@ fn cancelled_in_flight_document_renders_keep_the_permit_and_emit_no_stale_events
         context.block_on(async {
             receive_started.await.expect("renderer started");
             drop(handle);
-            let mut next = request_pdf_render_permit();
+            let mut next = request_heavy_preview_permit();
             assert!(
                 next.receive
                     .as_mut()
@@ -479,6 +490,7 @@ fn cancelled_archive_listings_emit_no_stale_events() {
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
+            model_palette: crate::services::ModelPalette::default(),
             archive_password: None,
         },
         Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
@@ -520,6 +532,7 @@ fn preview_cache_evicts_the_least_recent_entry() {
             path: PathBuf::from(format!("image-{index}.png")),
             modified: index as i64,
             pdf_page: None,
+            model: None,
         })
         .collect();
 
@@ -549,6 +562,7 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
         path: PathBuf::from("image.png"),
         modified: 1,
         pdf_page: None,
+        model: None,
     };
 
     cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0; 8] });
@@ -569,6 +583,7 @@ fn active_media_requests_are_never_retained_by_the_preview_cache() {
         path: PathBuf::from("clip.mp4"),
         modified: 1,
         pdf_page: None,
+        model: None,
     };
     let content = PreviewContent::SandboxedMedia {
         media: SandboxedMedia {
@@ -674,6 +689,7 @@ fn uncertain_file_names_resolve_their_preview_from_the_content() {
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
+            model_palette: crate::services::ModelPalette::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -747,6 +763,7 @@ fn text_subclassed_names_resolve_their_preview_from_the_type_hierarchy() {
             render_document: false,
             pdf_page: 0,
             media_size: MediaPreviewSize::new(640, 800),
+            model_palette: crate::services::ModelPalette::default(),
             archive_password: None,
         };
         let events = Rc::new(RefCell::new(Vec::new()));
@@ -824,6 +841,7 @@ fn archives_list_member_trees_as_preview_content() {
                 render_document: false,
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(640, 800),
+                model_palette: crate::services::ModelPalette::default(),
                 archive_password: None,
             };
             let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
@@ -931,6 +949,7 @@ fn preview_archive_with_password(
         render_document: false,
         pdf_page: 0,
         media_size: MediaPreviewSize::new(640, 800),
+        model_palette: crate::services::ModelPalette::default(),
         archive_password: password
             .map(|password| crate::services::SecretString::new(password.to_owned())),
     };
@@ -1227,6 +1246,7 @@ fn unsupported_archive_preview_reports_unsupported_format() {
                 render_document: false,
                 pdf_page: 0,
                 media_size: MediaPreviewSize::new(640, 800),
+                model_palette: crate::services::ModelPalette::default(),
                 archive_password: None,
             };
             let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));

@@ -85,11 +85,8 @@ pub(crate) enum Chord {
     Go,
     /// **g** while a document or archive preview owns the keys: only **g g**.
     PreviewTop,
-    /// **c** from the listing: copy paths or names.
     Copy,
-    /// **,** from the listing: sort the focused pane.
     Sort,
-    /// **;** from the listing: run one of the first ten matching custom actions.
     Action,
 }
 
@@ -103,8 +100,6 @@ impl Chord {
         }
     }
 
-    /// The second keys this chord accepts, with what each does. **;** lists
-    /// the actions matching its targets instead.
     pub(crate) fn options(self) -> &'static [(&'static str, &'static str)] {
         match self {
             Self::Go => &[
@@ -136,26 +131,16 @@ impl Chord {
     }
 }
 
-/// A footer text prompt. Its label replaces the footer while it is open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Prompt {
-    /// **/**: find forward in this listing.
     Find,
-    /// **?**: find backward in this listing.
     FindBackward,
-    /// **f**: filter this listing as you type.
     Filter,
-    /// **s**: search names below this folder as you type.
     Search,
-    /// **g Space**: go to a typed path or URI.
     Go,
-    /// **z**: jump to a visited folder ranked by match and frecency.
     Jump,
-    /// **Z**: jump to a visited folder, most recent first.
     Recent,
-    /// **a**: create a file, or a folder with a trailing `/`.
     Create,
-    /// **r** / **F2**: rename the focused item.
     Rename,
 }
 
@@ -174,7 +159,6 @@ impl Prompt {
         }
     }
 
-    /// Prompts that pick a folder from Strata's navigation history.
     pub(crate) fn picks_history(self) -> bool {
         matches!(self, Self::Jump | Self::Recent)
     }

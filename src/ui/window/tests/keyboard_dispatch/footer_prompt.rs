@@ -164,7 +164,6 @@ fn tenxer_find_moves_between_matches_and_keeps_rows_visible() {
                     assert_eq!(focused_name(&browser), expected, "{mode:?} {key:?}");
                 }
 
-                // A monitor rescan reloads the listing; the find stays live.
                 browser.reload_active();
                 wait_loaded(&browser, 0);
                 pump(100);
@@ -455,6 +454,22 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                 let inverted = selected_result_names(&fixture);
                 assert_eq!(inverted.len(), 2, "{mode:?}: Ctrl+R inverts the results");
                 assert!(!inverted.contains(&second[0]), "{mode:?}");
+                assert!(fixture.press(Key::j, none));
+                assert_eq!(
+                    selected_result_names(&fixture),
+                    inverted,
+                    "{mode:?}: motion preserves the inverted result selection"
+                );
+                assert!(fixture.press(Key::a, ModifierType::CONTROL_MASK));
+                pump(20);
+                let all = selected_result_names(&fixture);
+                assert_eq!(all.len(), 3, "{mode:?}: Ctrl+A selects the results");
+                assert!(fixture.press(Key::k, none));
+                assert_eq!(
+                    selected_result_names(&fixture),
+                    all,
+                    "{mode:?}: motion preserves select all"
+                );
                 assert_eq!(
                     fill_names(&browser),
                     ["beta.txt"],
@@ -482,8 +497,8 @@ fn tenxer_filter_commits_results_without_touching_the_hidden_directory() {
                     None,
                     "{mode:?}: prompt Esc clears"
                 );
-                assert_eq!(fixture.shortcuts.filter_mark(), None);
-                assert_eq!(fixture.shortcuts.count_text(), directory_count, "{mode:?}");
+                wait_until(|| fixture.shortcuts.filter_mark().is_none());
+                wait_until(|| fixture.shortcuts.count_text() == directory_count);
                 assert!(fixture.view.item_view_has_focus(), "{mode:?}");
 
                 commit_filter(&fixture, "report");
@@ -579,7 +594,6 @@ fn tenxer_filter_follows_live_scope_and_survives_view_rebuilds() {
                 wait_until(|| fixture.view.item_view_has_focus());
             }
 
-            // The rebuild lands while the typed query still waits on its debounce.
             assert!(first.press(Key::f, ModifierType::empty()));
             first.shortcuts.prompt().set_text("gamma");
             assert!(first.press(Key::Return, ModifierType::empty()));
@@ -591,18 +605,13 @@ fn tenxer_filter_follows_live_scope_and_survives_view_rebuilds() {
                     Some("gamma"),
                     "{mode:?}"
                 );
-                assert_eq!(
-                    first.shortcuts.filter_mark().as_deref(),
-                    Some("filter: gamma"),
-                    "{mode:?}"
-                );
+                wait_until(|| first.shortcuts.filter_mark().as_deref() == Some("filter: gamma"));
                 assert_eq!(
                     revealed_filter_funnels(&first.view.widget()),
                     0,
                     "{mode:?}: a rebuild keeps the funnel closed"
                 );
 
-                // A monitor rescan reloads the filtered folder; its filter stays.
                 let browser = first.view.browser();
                 browser.reload_active();
                 wait_loaded(&browser, 0);
@@ -716,6 +725,20 @@ fn tenxer_search_covers_the_current_tree_and_restores_the_filter() {
                     highlighted_names(&fixture.view.widget()),
                     Vec::<String>::new()
                 );
+
+                type_and_submit(&fixture, Key::slash, "deep-report");
+                assert_eq!(
+                    fixture
+                        .view
+                        .selected_search_result()
+                        .expect("find focuses a visible hit")
+                        .display_name,
+                    "deep-report.txt",
+                    "{mode:?}: find searches visible hits, not the hidden directory"
+                );
+                wait_until(|| highlighted_names(&fixture.view.widget()) == ["deep-report.txt"]);
+                assert!(fixture.press(Key::Escape, none));
+                wait_until(|| highlighted_names(&fixture.view.widget()).is_empty());
 
                 let selected = selected_result_names(&fixture);
                 assert!(fixture.press(Key::r, ModifierType::CONTROL_MASK));
@@ -846,7 +869,6 @@ fn tenxer_search_caps_hits_and_retires_stale_queries() {
                 pump(300);
                 assert_eq!(result_names(&fixture), ["gamma-report.md"], "{mode:?}");
 
-                // Nor does it reopen the search once dismissed.
                 fixture.shortcuts.prompt().set_text("hit-");
                 fixture.shortcuts.prompt().set_text("");
                 assert!(fixture.press(Key::Escape, none));
@@ -878,7 +900,6 @@ fn tenxer_search_survives_view_rebuilds_and_ends_with_the_mode() {
                 wait_results(fixture, &ALL_REPORTS);
             }
 
-            // A live scope change elsewhere neither narrows nor ends the search.
             preferences.set_filter_include_subfolders(true);
             preferences.set_filter_include_subfolders(false);
             pump(200);
@@ -888,14 +909,9 @@ fn tenxer_search_survives_view_rebuilds_and_ends_with_the_mode() {
                 first.view.set_view_mode(mode);
                 wait_results(&first, &ALL_REPORTS);
                 assert!(first.view.listing_search_active(), "{mode:?}");
-                assert_eq!(
-                    first.shortcuts.filter_mark().as_deref(),
-                    Some("search: report"),
-                    "{mode:?}"
-                );
+                wait_until(|| first.shortcuts.filter_mark().as_deref() == Some("search: report"));
                 assert_eq!(revealed_filter_funnels(&first.view.widget()), 0, "{mode:?}");
 
-                // A monitor rescan reloads the searched folder; its hits stay.
                 let browser = first.view.browser();
                 browser.reload_active();
                 wait_loaded(&browser, 0);
@@ -915,7 +931,7 @@ fn tenxer_search_survives_view_rebuilds_and_ends_with_the_mode() {
                 wait_until(|| fixture.view.selected_search_results().is_none());
                 assert!(!fixture.view.listing_search_active());
                 assert_eq!(fixture.view.listing_filter(), None);
-                assert_eq!(fixture.shortcuts.filter_mark(), None);
+                wait_until(|| fixture.shortcuts.filter_mark().is_none());
             }
             assert!(!preferences.filter_include_subfolders());
         },
@@ -960,7 +976,7 @@ fn tenxer_go_hit_folder_reveals_the_cursor_hit() {
                     });
                     wait_until(|| !fixture.view.listing_search_active());
                     assert_eq!(fixture.view.listing_filter(), None, "{mode:?} {query}");
-                    assert_eq!(fixture.shortcuts.filter_mark(), None, "{mode:?} {query}");
+                    wait_until(|| fixture.shortcuts.filter_mark().is_none());
                     if folder == "reports" {
                         browser.back();
                         wait_until(|| {
@@ -1042,8 +1058,16 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                 select_named(&fixture, "beta.txt");
                 let hidden = hidden_selection(&fixture);
                 assert_eq!(hidden, ["beta.txt"], "{mode:?}");
+                assert!(fixture.press(Key::v, none));
+                wait_until(|| fixture.shortcuts.visual_text().as_deref() == Some("VISUAL"));
                 commit_search(&fixture, "report");
                 wait_results(&fixture, &ALL_REPORTS);
+                wait_until(|| fixture.shortcuts.filter_mark().as_deref() == Some("search: report"));
+                assert_eq!(
+                    fixture.shortcuts.visual_text(),
+                    None,
+                    "{mode:?}: hits end the hidden directory's range"
+                );
                 let order = fixture.view.filter_result_names();
                 let at = |position: usize| Some(order[position].clone());
                 wait_until(|| hit_cursor(&fixture) == at(0));
@@ -1118,7 +1142,6 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                         hit_names(&order, &[0, 1, 2])
                     );
 
-                    // Esc leaves the range before it dismisses the hits.
                     assert!(fixture.press(Key::Escape, none));
                     wait_until(|| fixture.shortcuts.visual_text().is_none());
                     assert!(fixture.view.listing_search_active(), "{mode:?}");
@@ -1136,6 +1159,24 @@ fn tenxer_search_hits_fill_and_range_apart_from_the_hidden_directory() {
                     wait_until(|| fixture.shortcuts.visual_text().is_none());
                     assert_eq!(selected_result_names(&fixture), hit_names(&order, &[0, 2]));
                 }
+                let cursor = hit_cursor(&fixture).expect("a cursor hit");
+                let mut expected = selected_result_names(&fixture);
+                let extra = order
+                    .iter()
+                    .position(|name| *name != cursor && !expected.contains(name))
+                    .expect("an unselected hit");
+                expected.push(order[extra].clone());
+                match expected.iter().position(|name| *name == cursor) {
+                    Some(at) => {
+                        expected.remove(at);
+                    }
+                    None => expected.push(cursor),
+                }
+                expected.sort();
+                assert!(fixture.view.extend_result_selection(extra as u32));
+                assert!(fixture.press(Key::space, none));
+                wait_until(|| selected_result_names(&fixture) == expected);
+
                 assert_eq!(
                     hidden_selection(&fixture),
                     hidden,
@@ -1219,10 +1260,8 @@ fn tenxer_search_hit_keys_peek_preview_and_yield_to_chords() {
                     wait_results(&fixture, &ALL_REPORTS);
                 }
 
-                // An armed chord owns its second key over the hits.
-                pump(50);
+                wait_until(|| hit_cursor(&fixture).is_some());
                 let cursor = hit_cursor(&fixture);
-                assert!(cursor.is_some(), "{mode:?}");
                 assert!(fixture.press(Key::g, none));
                 assert!(fixture.press(Key::j, none));
                 assert_eq!(fixture.shortcuts.feedback_text(), "Unknown chord");

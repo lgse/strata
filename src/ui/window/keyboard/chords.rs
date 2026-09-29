@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 
 //! Armed 10xer chords. Once a chord's mark shows in the footer, the next key
-//! completes or cancels that chord and reaches no other handler.
+//! completes or cancels that chord and reaches no other handler. Text-size
+//! shortcuts, shortcut-reference keys, and Escape while autoscroll is running
+//! are earlier capture handlers: they drop the mark first, then run, the same
+//! way Ctrl+, opens Settings over a canceled chord.
 
 use std::rc::Rc;
 
@@ -25,7 +28,6 @@ pub(in crate::ui::window) enum GoTarget {
     FirstItem,
     /// The folder holding the search hit under the cursor.
     HitFolder,
-    /// The footer **go ›** prompt for a typed path or URI.
     Prompt,
     /// `validate` routes URI places through mount-aware validation.
     Place {
@@ -44,7 +46,7 @@ pub(in crate::ui::window) fn go_target(key: Key, pins: &[Location]) -> Option<Go
         Key::f => Some(GoTarget::HitFolder),
         Key::space | Key::KP_Space => Some(GoTarget::Prompt),
         Key::h => place(Location::local(home_directory()), false),
-        Key::c => place(Location::local(home_directory().join(".config")), true),
+        Key::c => config_folder(),
         Key::t => place(Location::uri("trash:///"), false),
         Key::n => place(Location::uri("network:///"), true),
         Key::r => place(Location::uri("recent:///"), false),
@@ -63,6 +65,18 @@ pub(in crate::ui::window) fn go_target(key: Key, pins: &[Location]) -> Option<Go
             })
         }
     }
+}
+
+fn config_folder() -> Option<GoTarget> {
+    let path = home_directory().join(".config");
+    Some(if path.is_dir() {
+        GoTarget::Place {
+            location: Location::local(path),
+            validate: false,
+        }
+    } else {
+        GoTarget::Missing("No .config folder".into())
+    })
 }
 
 fn user_folder(directory: glib::UserDirectory, name: &str) -> Option<GoTarget> {

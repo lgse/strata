@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: MIT
 
+from configparser import ConfigParser
+
 import pytest
 from gi.repository import Gio
 
@@ -49,8 +51,9 @@ def empty_application_data(test_environment, monkeypatch):
     )
 
 
+@pytest.mark.parametrize("always_use", [False, True])
 def test_activation_without_default_opens_with_visible_application(
-    activation_fallback_app, strata
+    activation_fallback_app, strata, always_use
 ):
     output, associations, contents = activation_fallback_app
     expected = strata.fixture.path("todo.txt")
@@ -60,7 +63,13 @@ def test_activation_without_default_opens_with_visible_application(
     dialog = strata.wait_for_dialog()
     assert "Review Text Viewer" in dialog.dump()
     strata.keyboard.type_text("Review Text Viewer")
-    strata.keyboard.press("Return")
+    if always_use:
+        toggle = dialog.find(role="check box", name="Always use for this file type")
+        strata.pointer.click(toggle)
+        strata.wait(lambda: "checked" in toggle.states, "the default toggle to check")
+        strata.pointer.click(strata.dialog_button("Open"))
+    else:
+        strata.keyboard.press("Return")
     strata.wait(
         lambda: output.exists() and output.read_text(),
         "the selected application to receive the activated file",
@@ -71,9 +80,22 @@ def test_activation_without_default_opens_with_visible_application(
     assert Gio.File.new_for_commandline_arg(received[0]).equal(
         Gio.File.new_for_path(str(expected))
     )
-    assert associations.read_text() == contents
+    if always_use:
+        defaults = ConfigParser()
+        defaults.read(associations)
+        content_type = Gio.File.new_for_path(str(expected)).query_info(
+            "standard::content-type", Gio.FileQueryInfoFlags.NONE, None
+        ).get_content_type()
+        assert defaults["Default Applications"][content_type].split(";")[0] == "strata-review.desktop"
+    else:
+        assert associations.read_text() == contents
     strata.wait(lambda: strata.dialog() is None, "the chooser to close")
     strata.wait_for_focused_entry("todo.txt")
+    if always_use:
+        output.unlink()
+        strata.keyboard.press("Return")
+        strata.wait(lambda: output.exists() and output.read_text(), "the new default to open directly")
+        assert strata.dialog() is None
 
 
 def test_activation_without_selectable_application_shows_specific_empty_state(
@@ -92,6 +114,15 @@ def test_activation_without_selectable_application_shows_specific_empty_state(
         timeout=3.0,
     )
     assert "sensitive" not in strata.dialog_button("Open").states
+
+    # The hidden "Always use" toggle must stay out of the focus cycle.
+    for chord in ["shift+Tab", "Tab"]:
+        strata.keyboard.press(chord)
+        strata.wait(
+            lambda: strata.focused_node() is not None
+            and "visible" in strata.focused_node().states,
+            f"{chord} to keep focus on a visible control",
+        )
 
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "the empty chooser to close")
@@ -124,6 +155,82 @@ def test_open_with_launches_without_changing_default(open_with_app, strata, targ
     )
     assert associations.read_text() == contents
     strata.wait(lambda: strata.dialog() is None, "the chooser to close")
+
+
+@pytest.mark.parametrize("target", ["todo.txt", "mixed", "documents", "background"])
+def test_open_with_always_use_updates_the_default(chooser_apps, strata, target):
+    output, associations, _ = chooser_apps
+    if target == "background":
+        expected = [strata.fixture.root]
+        strata.pointer.right_click(strata.pane(), at=strata.background_point())
+        strata.wait(lambda: "Open With…" in strata.menu_items(), "folder menu")
+    else:
+        names = ["todo.txt", "readme.md"] if target == "mixed" else [target]
+        expected = [strata.fixture.path(name) for name in names]
+        if target == "mixed":
+            strata.select_entry("todo.txt")
+            strata.pointer.click(strata.entry("readme.md"), modifiers=["ctrl"])
+            strata.wait_for_selection(sorted(names))
+        strata.open_context_menu(names[0])
+        strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
+    strata.choose_menu_item("Open With…")
+    dialog = strata.wait_for_dialog()
+    strata.keyboard.type_text("Alternative")
+    strata.keyboard.press("Tab")
+    strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "row focus")
+    strata.keyboard.press("Tab")
+    label = (
+        "Always use for these file types"
+        if target == "mixed"
+        else "Always use for this file type"
+    )
+    strata.wait(
+        lambda: strata.focused_node().name == label,
+        "default toggle focus",
+    )
+    strata.keyboard.press("space")
+    strata.wait(
+        lambda: "checked" in dialog.find(role="check box", name=label).states,
+        "the default toggle to check",
+    )
+    strata.keyboard.press("Tab")
+    strata.keyboard.press("Tab")
+    strata.wait(lambda: strata.focused_node().name == "Open", "Open focus")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: output.exists() and output.read_text(),
+        "the selected application to receive the file",
+    )
+    received = [Gio.File.new_for_commandline_arg(value) for value in output.read_text().splitlines()]
+    assert len(received) == len(expected)
+    defaults = ConfigParser()
+    defaults.read(associations)
+    for path in expected:
+        file = Gio.File.new_for_path(str(path))
+        assert any(file.equal(opened) for opened in received)
+        content_type = file.query_info(
+            "standard::content-type", Gio.FileQueryInfoFlags.NONE, None
+        ).get_content_type()
+        assert defaults["Default Applications"][content_type].split(";")[0] == "strata-alternative.desktop"
+    strata.wait(lambda: strata.dialog() is None, "the chooser to close")
+
+
+def test_open_with_cancel_does_not_save_a_checked_default(chooser_apps, strata):
+    output, associations, contents = chooser_apps
+    for attempt in range(2):
+        strata.open_context_menu("todo.txt")
+        strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
+        strata.choose_menu_item("Open With…")
+        dialog = strata.wait_for_dialog()
+        toggle = dialog.find(role="check box", name="Always use for this file type")
+        assert "checked" not in toggle.states
+        if attempt == 0:
+            strata.pointer.click(toggle)
+            strata.wait(lambda: "checked" in toggle.states, "the default toggle to check")
+        strata.pointer.click(strata.dialog_button("Cancel"))
+        strata.wait(lambda: strata.dialog() is None, "the chooser to close")
+        assert associations.read_text() == contents
+        assert not output.exists()
 
 
 def test_open_with_launch_failure_shows_an_error(open_with_app, strata):
@@ -206,9 +313,20 @@ def test_open_with_names_rows_and_tabs_out_of_the_list(chooser_apps, strata):
     strata.keyboard.press("Tab")
     strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "Tab into list")
     strata.keyboard.press("Tab")
-    strata.wait(lambda: strata.focused_node().name == "Cancel", "Tab to leave the list")
+    strata.wait(
+        lambda: strata.focused_node().name == "Always use for this file type",
+        "Tab to the default toggle",
+    )
+    strata.keyboard.press("Tab")
+    strata.wait(lambda: strata.focused_node().name == "Cancel", "Tab to leave the toggle")
+    strata.keyboard.press("shift+Tab")
+    strata.wait(
+        lambda: strata.focused_node().name == "Always use for this file type",
+        "Shift+Tab returns to the toggle",
+    )
     strata.keyboard.press("shift+Tab")
     strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "selected row focus")
+    strata.keyboard.press("Tab")
     strata.keyboard.press("Tab")
     strata.keyboard.press("Tab")
     strata.wait(lambda: strata.focused_node().name == "Open", "Tab to reach Open")

@@ -13,6 +13,7 @@ use crate::ui::{
 
 const MIN_COLUMN_MULTIPLIER: i32 = 2;
 const MIN_SPLIT_PREVIEW_WIDTH: i32 = 240;
+const RAIL_RELEASE_MARGIN: i32 = 24;
 
 #[derive(Default)]
 pub(super) struct SplitSizing {
@@ -70,13 +71,14 @@ struct Geometry {
     available: i32,
     occupied: i32,
     start_minimum: i32,
+    show_minimum: i32,
     separator: i32,
     columns: bool,
 }
 
 impl Geometry {
     fn can_show_preview(self) -> bool {
-        self.available - self.separator - self.start_minimum >= MIN_SPLIT_PREVIEW_WIDTH
+        self.available - self.separator - self.show_minimum >= MIN_SPLIT_PREVIEW_WIDTH
     }
 
     fn maximum_width(self) -> i32 {
@@ -103,7 +105,9 @@ impl Geometry {
                 free.saturating_mul(9).saturating_div(10).min(MAX_WIDTH)
             }
         });
-        desired.clamp(self.minimum_width(manual.is_some()), self.maximum_width())
+        desired
+            .clamp(self.minimum_width(manual.is_some()), self.maximum_width())
+            .max(MIN_SPLIT_PREVIEW_WIDTH)
     }
 
     fn position(self, manual: Option<i32>) -> i32 {
@@ -249,6 +253,7 @@ impl PreviewState {
             available,
             occupied: available.saturating_sub(DEFAULT_WIDTH),
             start_minimum: 0,
+            show_minimum: 0,
             separator: separator_width(split),
             columns: false,
         };
@@ -264,8 +269,13 @@ impl PreviewState {
                 geometry.start_minimum = sidebar.saturating_add(browser.preview_navigation_width(
                     (available - sidebar - geometry.separator - MIN_SPLIT_PREVIEW_WIDTH).max(0),
                 ));
+                geometry.show_minimum =
+                    sidebar.saturating_add(browser.preview_standard_navigation_width(
+                        (available - sidebar - geometry.separator - MIN_SPLIT_PREVIEW_WIDTH).max(0),
+                    ));
             } else {
                 geometry.start_minimum = sidebar.saturating_add(COLUMN_WIDTH);
+                geometry.show_minimum = geometry.start_minimum;
             }
         }
         geometry
@@ -296,7 +306,7 @@ impl PreviewState {
         self.revealer.set_reveal_child(true);
     }
 
-    fn release_sidebar_rail(&self) {
+    pub(super) fn release_sidebar_rail(&self) {
         if !self.sizing.sidebar_railed.replace(false) {
             return;
         }
@@ -338,7 +348,6 @@ impl PreviewState {
     }
 
     pub(super) fn hide_panel(&self) {
-        self.release_sidebar_rail();
         let restore_browser_focus =
             self.pane
                 .root()
@@ -426,14 +435,19 @@ impl PreviewState {
             let full = if sidebar.is_none() {
                 0
             } else if is_railed || !visible {
-                saved_width
+                saved_width.max(preferred_sidebar_width())
             } else {
-                content.position().max(MIN_SIDEBAR_WIDTH)
+                // A manually narrowed sidebar must not prevent railing.
+                content.position().max(preferred_sidebar_width())
             };
             let content_sep = separator_width(&content);
+            let resizing_columns = binding
+                .browser
+                .upgrade()
+                .is_some_and(|browser| browser.is_resizing_columns());
             let occupied = if let Some(browser) = binding.browser.upgrade() {
                 if geometry.columns {
-                    browser.preview_navigation_width(
+                    browser.preview_standard_navigation_width(
                         (geometry.available
                             - full
                             - content_sep
@@ -447,44 +461,71 @@ impl PreviewState {
             } else {
                 COLUMN_WIDTH
             };
+            // A previously clamped manual width must not defeat the preview minimum.
             let preview_needed = self
                 .sizing
                 .manual_width
                 .get()
-                .unwrap_or(MIN_SPLIT_PREVIEW_WIDTH);
+                .unwrap_or(MIN_SPLIT_PREVIEW_WIDTH)
+                .max(MIN_SPLIT_PREVIEW_WIDTH);
             let needs = full + content_sep + occupied + geometry.separator + preview_needed;
             let content_has_room = content.width() <= 0 || content.width() >= full + COLUMN_WIDTH;
-            if is_railed && geometry.available >= needs && content_has_room {
-                if let Some(sidebar) = sidebar.as_ref() {
-                    sidebar.set_rail(false);
-                }
-                if visible {
-                    content.set_position(saved_width);
-                }
-                self.sizing.sidebar_railed.set(false);
-                geometry = self.geometry(split);
-            } else if !is_railed && sidebar.is_some() && geometry.available < needs {
-                if visible {
-                    let width = content.position().max(MIN_SIDEBAR_WIDTH);
-                    self.sizing.sidebar_saved_width.set(width);
-                    if let Some(sidebar) = sidebar.as_ref() {
-                        sidebar.saved_width.set(Some(width));
+            // Measure outside the split so railing cannot change its own threshold.
+            let available = split
+                .parent()
+                .map(|parent| parent.width())
+                .filter(|width| *width > 0)
+                .unwrap_or(geometry.available);
+            // Hysteresis prevents toggling at the threshold.
+            let wants_rail = if is_railed {
+                available < needs + RAIL_RELEASE_MARGIN
+            } else {
+                available < needs
+            };
+            let change_applies = !resizing_columns
+                && !self.sizing.resizing.get()
+                && if wants_rail {
+                    !is_railed && sidebar.is_some()
+                } else {
+                    is_railed && content_has_room
+                };
+            if change_applies {
+                if wants_rail {
+                    if visible {
+                        let width = content.position().max(MIN_SIDEBAR_WIDTH);
+                        self.sizing.sidebar_saved_width.set(width);
+                        if let Some(sidebar) = sidebar.as_ref() {
+                            sidebar.saved_width.set(Some(width));
+                        }
                     }
+                    if let Some(sidebar) = sidebar.as_ref() {
+                        sidebar.set_rail(true);
+                    }
+                    if visible {
+                        content.set_position(sidebar_rail_width());
+                    }
+                    self.sizing.sidebar_railed.set(true);
+                } else {
+                    if let Some(sidebar) = sidebar.as_ref() {
+                        sidebar.set_rail(false);
+                    }
+                    if visible {
+                        content.set_position(saved_width);
+                    }
+                    self.sizing.sidebar_railed.set(false);
                 }
-                if let Some(sidebar) = sidebar.as_ref() {
-                    sidebar.set_rail(true);
-                }
-                if visible {
-                    content.set_position(sidebar_rail_width());
-                }
-                self.sizing.sidebar_railed.set(true);
                 geometry = self.geometry(split);
             }
         }
         if self.current.borrow().is_none() {
-            if !self.reserves_empty_preview() || !geometry.can_show_preview() {
+            let reserves_empty_preview = self.reserves_empty_preview();
+            if !reserves_empty_preview || !geometry.can_show_preview() {
                 if self.revealer.reveals_child() {
                     self.hide_panel();
+                }
+                if !reserves_empty_preview {
+                    self.release_sidebar_rail();
+                    self.sizing.suspended.set(false);
                 }
                 return;
             }

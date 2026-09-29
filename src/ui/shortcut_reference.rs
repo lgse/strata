@@ -319,78 +319,6 @@ const TENXER_SETTINGS: &[Binding] = &[
         keys: "Alt + Home",
     },
     Binding {
-        category: "Places",
-        action: "First item",
-        note: "",
-        keys: "g g",
-    },
-    Binding {
-        category: "Places",
-        action: "Follow search result",
-        note: "Selects the hit and ends the search",
-        keys: "g f",
-    },
-    Binding {
-        category: "Places",
-        action: "Home / ~/.config",
-        note: "",
-        keys: "g h / g c",
-    },
-    Binding {
-        category: "Places",
-        action: "Downloads / Documents / Pictures / Videos",
-        note: "",
-        keys: "g d / g k / g p / g v",
-    },
-    Binding {
-        category: "Places",
-        action: "Trash / Network / Recent",
-        note: "",
-        keys: "g t / g n / g r",
-    },
-    Binding {
-        category: "Places",
-        action: "Pinned place",
-        note: "Visible PINNED rows in sidebar order",
-        keys: "g 1–9",
-    },
-    Binding {
-        category: "Places",
-        action: "Go to a typed path or URI",
-        note: "Opens the footer go prompt",
-        keys: "g Space",
-    },
-    Binding {
-        category: "Places",
-        action: "Cycle matching folders",
-        note: "In the go prompt",
-        keys: "Tab / Shift + Tab",
-    },
-    Binding {
-        category: "Places",
-        action: "Jump to a visited folder",
-        note: "Ranked by match, visit count, and recency",
-        keys: "z",
-    },
-    Binding {
-        category: "Places",
-        action: "Jump to a recent folder",
-        note: "Most recent visit first",
-        keys: "Z",
-    },
-    Binding {
-        category: "Places",
-        action: "Choose a visited folder",
-        note: "In the jump or recent prompt",
-        keys: "↑ / ↓",
-    },
-    Binding {
-        category: "Places",
-        action: "Cancel a pending chord",
-        note: "",
-        keys: "Esc",
-    },
-    Binding {
         category: "Find",
         action: "Find the next / previous name in this listing",
         note: "Highlights matches without hiding rows",
@@ -490,7 +418,13 @@ const TENXER_SETTINGS: &[Binding] = &[
         category: "Files",
         action: "Yank / cut",
         note: "The selection, or the focused item",
-        keys: "y / x / Ctrl + C / Ctrl + X",
+        keys: "y / x",
+    },
+    Binding {
+        category: "Files",
+        action: "Copy / cut",
+        note: "Default-map selection behavior",
+        keys: "Ctrl + C / Ctrl + X",
     },
     Binding {
         category: "Files",
@@ -740,9 +674,183 @@ const TENXER_SETTINGS: &[Binding] = &[
     },
 ];
 
+/// One catalog for Settings → Keybindings and the footer shortcut reference.
+/// `reference_keys` / `reference_label` are the footer row; an empty key uses
+/// `binding.keys`. The label is the binding action, or its note when that note
+/// is the footer wording (pinned places).
+struct PlaceChord {
+    binding: Binding,
+    reference_keys: &'static str,
+    reference_label: &'static str,
+}
+
+const TENXER_PLACE_CHORDS: &[PlaceChord] = &[
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "First item",
+            note: "",
+            keys: "g g",
+        },
+        reference_keys: "",
+        reference_label: "First item",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Follow search result",
+            note: "Selects the hit and ends the search",
+            keys: "g f",
+        },
+        reference_keys: "",
+        reference_label: "Follow search result",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Home / ~/.config",
+            note: "",
+            keys: "g h / g c",
+        },
+        reference_keys: "",
+        reference_label: "Home / ~/.config",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Downloads / Documents / Pictures / Videos",
+            note: "",
+            keys: "g d / g k / g p / g v",
+        },
+        reference_keys: "",
+        reference_label: "Downloads / Documents / Pictures / Videos",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Trash / Network / Recent",
+            note: "",
+            keys: "g t / g n / g r",
+        },
+        reference_keys: "",
+        reference_label: "Trash / Network / Recent",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Pinned place",
+            note: "Visible PINNED rows in sidebar order",
+            keys: "g 1–9",
+        },
+        reference_keys: "",
+        reference_label: "Visible PINNED rows in sidebar order",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Go to a typed path or URI",
+            note: "Opens the footer go prompt",
+            keys: "g Space",
+        },
+        reference_keys: "",
+        reference_label: "Go to a typed path or URI",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Cycle matching folders",
+            note: "In the go prompt",
+            keys: "Tab / Shift + Tab",
+        },
+        reference_keys: "Tab / Shift + Tab in go ›",
+        reference_label: "Cycle matching folders",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Jump to a visited folder",
+            note: "Ranked by match, visit count, and recency",
+            keys: "z",
+        },
+        reference_keys: "",
+        reference_label: "Jump to a visited folder",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Jump to a recent folder",
+            note: "Most recent visit first",
+            keys: "Z",
+        },
+        reference_keys: "",
+        reference_label: "Jump to a recent folder",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Choose a visited folder",
+            note: "In the jump or recent prompt",
+            keys: "↑ / ↓",
+        },
+        reference_keys: "↑ / ↓ in jump › / recent ›",
+        reference_label: "Choose a visited folder",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Top of the document or first archive member",
+            note: "Preview",
+            keys: "g g",
+        },
+        reference_keys: "g g in the preview",
+        reference_label: "Top of the document or first archive member",
+    },
+    PlaceChord {
+        binding: Binding {
+            category: "Places",
+            action: "Cancel a pending chord",
+            note: "",
+            keys: "Esc",
+        },
+        reference_keys: "Esc after g",
+        reference_label: "Cancel a pending chord",
+    },
+];
+
+fn tenxer_settings() -> &'static [Binding] {
+    use std::sync::OnceLock;
+    static ALL: OnceLock<Vec<Binding>> = OnceLock::new();
+    ALL.get_or_init(|| {
+        let mut bindings = TENXER_SETTINGS.to_vec();
+        let insert_at = bindings
+            .iter()
+            .position(|binding| binding.action == "Move half a page")
+            .expect("10xer place chords sit before half-page movement");
+        for (offset, place) in TENXER_PLACE_CHORDS.iter().enumerate() {
+            bindings.insert(insert_at + offset, place.binding);
+        }
+        bindings
+    })
+    .as_slice()
+}
+
+fn tenxer_place_rows() -> Vec<(&'static str, &'static str)> {
+    TENXER_PLACE_CHORDS
+        .iter()
+        .map(|place| {
+            let keys = if place.reference_keys.is_empty() {
+                place.binding.keys
+            } else {
+                place.reference_keys
+            };
+            (keys, place.reference_label)
+        })
+        .collect()
+}
+
 pub(crate) fn settings_bindings(tenxer: bool) -> &'static [Binding] {
     if tenxer {
-        TENXER_SETTINGS
+        tenxer_settings()
     } else {
         DEFAULT_SETTINGS
     }
@@ -805,7 +913,7 @@ fn tenxer_sections(mode: BrowserMode) -> Vec<ReferenceSection> {
         },
         ReferenceSection {
             title: "Places",
-            rows: TENXER_PLACES.to_vec(),
+            rows: tenxer_place_rows(),
         },
         ReferenceSection {
             title: "Files and selection",
@@ -986,31 +1094,10 @@ const DEFAULT_FILES: &[(&str, &str)] = &[
     ("Ctrl+Shift+N", "Create a folder"),
     ("Ctrl+A", "Select all items in the focused pane"),
     ("Shift+↑ / ↓", "Extend selection"),
+    ("Shift+PgUp / PgDn", "Extend selection by one page"),
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
     ("y / p", "Copy path / pin a folder (type-to-search off)"),
-];
-
-const TENXER_PLACES: &[(&str, &str)] = &[
-    ("g g", "First item"),
-    ("g f", "Follow search result"),
-    ("g h / g c", "Home / ~/.config"),
-    (
-        "g d / g k / g p / g v",
-        "Downloads / Documents / Pictures / Videos",
-    ),
-    ("g t / g n / g r", "Trash / Network / Recent"),
-    ("g 1–9", "Visible PINNED rows in sidebar order"),
-    ("g Space", "Go to a typed path or URI"),
-    ("Tab / Shift+Tab in go ›", "Cycle matching folders"),
-    ("z", "Jump to a visited folder by match and frecency"),
-    ("Z", "Jump to a recently visited folder"),
-    ("↑ / ↓ in jump › / recent ›", "Choose a visited folder"),
-    (
-        "g g in the preview",
-        "Top of the document or first archive member",
-    ),
-    ("Esc after g", "Cancel the chord"),
 ];
 
 const TENXER_FILES: &[(&str, &str)] = &[
@@ -1039,6 +1126,7 @@ const TENXER_FILES: &[(&str, &str)] = &[
     ("Ctrl+A", "Select all items in the focused pane"),
     ("Ctrl+R", "Invert the selection"),
     ("Shift+↑ / ↓", "Extend selection"),
+    ("Shift+PgUp / PgDn", "Extend selection by one page"),
     ("Alt+Enter", "Show item properties"),
     ("Menu / Shift+F10", "Open the context menu"),
 ];
@@ -1150,9 +1238,8 @@ fn tenxer_hint(hint: ContextHint) -> &'static str {
         ContextHint::Copy => "y",
         ContextHint::Paste => "p",
         ContextHint::Trash => "d",
-        // Menus show letter keys in upper case, so D needs its Shift spelled out.
+        // GTK capitalizes menu accelerators; spell out Shift to distinguish D from d.
         ContextHint::PermanentDelete => "Shift+D",
-        // Menu accelerators cannot show the c c chord.
         ContextHint::None
         | ContextHint::ChooserPreview
         | ContextHint::CopyPath

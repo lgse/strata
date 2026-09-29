@@ -40,6 +40,10 @@ fn column_width(column: &ColumnView) -> i32 {
 }
 
 impl BrowserView {
+    pub(in crate::ui) fn is_resizing_columns(&self) -> bool {
+        self.state.column_resizing.get()
+    }
+
     pub(in crate::ui) fn preview_occupied_width(&self, available: i32) -> i32 {
         if self.view_mode() != BrowserMode::Columns {
             return single_pane_preview_reservation(available);
@@ -57,6 +61,15 @@ impl BrowserView {
             .focused_column_span()
             .map_or(COLUMN_WIDTH, |span| {
                 (span.width() + span.peek_space(f64::from(available))) as i32
+            })
+    }
+
+    pub(in crate::ui) fn preview_standard_navigation_width(&self, available: i32) -> i32 {
+        self.state
+            .focused_column_span()
+            .map_or(COLUMN_WIDTH, |span| {
+                (span.width().min(f64::from(COLUMN_WIDTH)) + span.peek_space(f64::from(available)))
+                    as i32
             })
     }
 

@@ -13,7 +13,6 @@ fn enable_tenxer(fixture: &KeyboardFixture) {
     fixture.shortcuts.bind_preferences(&preferences);
     preferences.set_tenxer_mode(true);
     pump(50);
-    // Start from a bare cursor so the fill-or-cursor rule is exercised.
     fixture.view.browser().clear_active_selection();
 }
 
@@ -32,7 +31,6 @@ fn clipboard() -> gtk::gdk::Clipboard {
     gtk::gdk::Display::default().expect("display").clipboard()
 }
 
-/// This process owns every payload these tests read, so its provider answers directly.
 fn clipboard_value(kind: glib::Type) -> Option<glib::Value> {
     clipboard().content()?.value(kind).ok()
 }
@@ -86,7 +84,6 @@ fn contents(path: &Path) -> String {
     std::fs::read_to_string(path).expect("fixture contents")
 }
 
-/// Fills b.txt and c.txt with **Space** and leaves the cursor on a.txt.
 fn fill_b_and_c(fixture: &KeyboardFixture) {
     let browser = fixture.view.browser();
     browser.clear_active_selection();
@@ -314,7 +311,6 @@ fn tenxer_paste_focuses_the_preferred_conflict_choice() {
             assert!(clipboard_files().is_empty(), "a completed cut consumes it");
 
             focus_files(&fixture);
-            // Undo becomes available once the operation's completion is recorded.
             wait_until(|| fixture.press(Key::z, ModifierType::CONTROL_MASK));
             wait_until(|| directory.join("c.txt").exists() && !destination.join("c.txt").exists());
 
@@ -355,7 +351,6 @@ fn tenxer_delete_confirms_trash_and_permanent_deletion() {
             wait_until(|| !directory.join("a.txt").exists());
             assert!(directory.join("b.txt").exists());
             focus_files(&fixture);
-            // Undo becomes available once the operation's completion is recorded.
             wait_until(|| fixture.press(Key::z, ModifierType::CONTROL_MASK));
             wait_until(|| directory.join("a.txt").exists());
 

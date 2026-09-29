@@ -4,7 +4,8 @@
 //! own selection, apart from the hidden directory's, so a fill made with
 //! **Space** or **v** / **V** is the results' selection. Motion over a fill
 //! moves only the keyboard cursor. A selection changed any other way, such as
-//! by the pointer or a new query, ends the fill and its range.
+//! by the pointer or a new query, ends the fill and its range; the next fill
+//! starts from that selection unless it is only the cursor.
 
 use std::cell::RefCell;
 
@@ -25,7 +26,6 @@ struct Range {
 
 struct Fill {
     owner: glib::WeakRef<gtk::Entry>,
-    /// The selection this fill last wrote.
     written: gtk::Bitset,
     range: Option<Range>,
 }
@@ -35,10 +35,16 @@ pub(super) struct ResultSelection {
     fill: RefCell<Option<Fill>>,
 }
 
-fn same(left: &gtk::Bitset, right: &gtk::Bitset) -> bool {
-    let difference = left.copy();
-    difference.difference(right);
-    difference.is_empty()
+/// The selection a new fill starts from. Outside a fill the cursor alone is
+/// selected without being part of any fill.
+fn adopted(hits: &Hits) -> gtk::Bitset {
+    let selected = hits.selection.selection();
+    let cursor_only = selected.size() == 1 && hits.cursor.is_some_and(|at| selected.contains(at));
+    if cursor_only {
+        gtk::Bitset::new_empty()
+    } else {
+        selected.copy()
+    }
 }
 
 fn focus_hit(hits: &Hits, position: u32) {
@@ -49,7 +55,8 @@ fn focus_hit(hits: &Hits, position: u32) {
 fn write(hits: &Hits, fill: &mut Fill, selected: gtk::Bitset) {
     hits.selection
         .set_selection(&selected, &gtk::Bitset::new_range(0, hits.count()));
-    fill.written = selected;
+    // GTK may mutate its selection bitset in place; keep an independent snapshot.
+    fill.written = selected.copy();
 }
 
 /// Rewrites the range from its anchor to `cursor` over its base fill.
@@ -77,8 +84,25 @@ impl ViewState {
         let target = self.filter_target()?;
         let hits = target.hits()?;
         let live = fill.owner.upgrade().as_ref() == Some(target.entry())
-            && same(&fill.written, &hits.selection.selection());
+            && fill.written.equals(&hits.selection.selection());
         live.then_some((target, hits, fill))
+    }
+
+    fn take_or_adopt_result_fill(&self) -> Option<(Target, Hits, Fill)> {
+        if let Some(fill) = self.take_result_fill() {
+            return Some(fill);
+        }
+        let target = self.filter_target()?;
+        let hits = target.hits()?;
+        let selected = adopted(&hits);
+        (!selected.is_empty()).then(|| {
+            let fill = Fill {
+                owner: target.entry().downgrade(),
+                written: selected,
+                range: None,
+            };
+            (target, hits, fill)
+        })
     }
 
     fn keep_result_fill(&self, fill: Fill) {
@@ -100,6 +124,16 @@ impl ViewState {
         self.result_selection.fill.take();
     }
 
+    pub(super) fn remember_result_selection(&self, target: &Target) {
+        if let Some(hits) = target.hits() {
+            self.keep_result_fill(Fill {
+                owner: target.entry().downgrade(),
+                written: hits.selection.selection().copy(),
+                range: None,
+            });
+        }
+    }
+
     pub(super) fn result_visual_kind(&self) -> Option<VisualKind> {
         let (_, _, fill) = self.take_result_fill()?;
         let kind = fill.range.as_ref().map(|range| range.kind);
@@ -112,7 +146,7 @@ impl BrowserView {
     /// Moves the cursor over a filled result list without rewriting its fill,
     /// extending a range. Returns `false` without a fill.
     pub(super) fn step_filled_results(&self, direction: i32, steps: usize) -> bool {
-        let Some((_, hits, mut fill)) = self.state.take_result_fill() else {
+        let Some((_, hits, mut fill)) = self.state.take_or_adopt_result_fill() else {
             return false;
         };
         if let Some(cursor) = results_step_target(hits.cursor, hits.count(), direction, steps) {
@@ -126,10 +160,11 @@ impl BrowserView {
     /// Runs a native grid move that selects the cell it reaches, then puts
     /// back the fill, extending a range to the new cursor.
     pub(in crate::ui) fn keep_result_fill(&self, motion: impl FnOnce()) {
-        let Some((_, _, mut fill)) = self.state.take_result_fill() else {
+        let Some((_, _, mut fill)) = self.state.take_or_adopt_result_fill() else {
             motion();
             return;
         };
+        fill.written = fill.written.copy();
         motion();
         let Some(hits) = self.filter_target().and_then(|target| target.hits()) else {
             return;
@@ -156,20 +191,17 @@ impl BrowserView {
             return Some(false);
         }
         let cursor = hits.cursor.unwrap_or(0).min(count - 1);
-        let (live, mut fill) = match self.state.take_result_fill() {
-            Some((_, _, fill)) => (true, fill),
-            None => (
-                false,
-                Fill {
-                    owner: self.filter_target()?.entry().downgrade(),
-                    written: gtk::Bitset::new_empty(),
-                    range: None,
-                },
-            ),
+        let mut fill = match self.state.take_result_fill() {
+            Some((_, _, fill)) => fill,
+            None => Fill {
+                owner: self.filter_target()?.entry().downgrade(),
+                written: adopted(&hits),
+                range: None,
+            },
         };
         let toggled = |selected: &gtk::Bitset| {
             let selected = selected.copy();
-            if live && selected.contains(cursor) {
+            if selected.contains(cursor) {
                 selected.remove(cursor);
             } else {
                 selected.add(cursor);
@@ -215,8 +247,7 @@ impl BrowserView {
                 }
                 fill.written
             }
-            // A cursor-only selection is not part of the fill.
-            None => gtk::Bitset::new_empty(),
+            None => adopted(&hits),
         };
         let mut fill = Fill {
             owner: target.entry().downgrade(),
@@ -234,7 +265,6 @@ impl BrowserView {
         Some(true)
     }
 
-    /// Ends a range over results and keeps its fill.
     pub(in crate::ui) fn leave_result_visual(&self) -> bool {
         let Some((_, _, mut fill)) = self.state.take_result_fill() else {
             return false;

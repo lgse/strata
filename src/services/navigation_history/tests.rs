@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::*;
 
@@ -108,7 +108,7 @@ fn recent_orders_matches_by_last_visit_not_frequency() {
 
     let paths = |query| {
         history
-            .recent(query)
+            .recent_excluding(query, None)
             .into_iter()
             .map(|item| item.path)
             .collect::<Vec<_>>()
@@ -119,4 +119,31 @@ fn recent_orders_matches_by_last_visit_not_frequency() {
     );
     assert_eq!(paths("alpha"), vec![latest, frequent]);
     assert!(paths("zzz").is_empty());
+}
+
+#[test]
+fn excluded_folder_does_not_consume_a_result_slot() {
+    let directory = tempfile::tempdir().expect("history directory");
+    let history = NavigationHistory::open(directory.path().join("history.json"));
+    let excluded = PathBuf::from("/work/current");
+    for index in 0..MAX_RESULTS {
+        history.record_at(
+            &PathBuf::from(format!("/work/other-{index:03}")),
+            index as u64,
+        );
+    }
+    history.record_at(&excluded, MAX_RESULTS as u64);
+
+    for paths in [
+        history.search_excluding("", Some(&excluded)),
+        history.recent_excluding("", Some(&excluded)),
+    ] {
+        assert_eq!(paths.len(), MAX_RESULTS);
+        assert!(paths.iter().all(|item| item.path != excluded));
+        assert!(
+            paths
+                .iter()
+                .any(|item| item.path == Path::new("/work/other-000"))
+        );
+    }
 }

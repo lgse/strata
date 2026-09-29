@@ -27,9 +27,7 @@ fn plain(modifiers: Modifiers) -> bool {
 }
 
 impl Dispatcher {
-    /// **/**, **?**, **n**, **N**, **f**, **s**, **z**, and **Z** from the
-    /// listing. Shift is ignored because some layouts type **/** with it and
-    /// **?** / **N** always need it.
+    /// Shift is ignored because some layouts type **/** with it and **?** / **N** need it.
     pub(super) fn tenxer_prompt_keys(&self, key: Key, modifiers: Modifiers) -> KeyResult {
         if !plain(modifiers) || !self.view.item_view_has_focus() {
             return None;
@@ -120,7 +118,6 @@ impl Dispatcher {
                     return Propagation::Stop;
                 }
                 if self.shortcuts.open_prompt_kind() == Some(Prompt::Search) {
-                    // A nonempty search keeps its hits; an empty one cancels.
                     let text = self.shortcuts.prompt_text();
                     self.shortcuts.dismiss_prompt();
                     self.view.commit_listing_search(&text);
@@ -173,7 +170,6 @@ impl Dispatcher {
                 return;
             }
             Some(Prompt::Jump | Prompt::Recent) => {
-                // Closing clears the candidates, so only this one can open.
                 let Some(path) = self.shortcuts.chosen_candidate() else {
                     show_candidate_hint(&self.shortcuts);
                     return;
@@ -206,18 +202,16 @@ impl Dispatcher {
         }
     }
 
-    /// **Tab** / **Shift+Tab** in **go ›**. The prompt keeps focus and its text
-    /// whether or not a folder matches.
     fn complete_folder(&self, browser: &Browser, backward: bool) {
         let text = self.shortcuts.prompt_text();
         let current = browser
             .active_location()
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
         let home = gtk::glib::home_dir();
-        let listing = || {
+        let listing = |include_hidden| {
             browser
                 .active_depth()
-                .map(|depth| browser.visible_folder_names(depth))
+                .map(|depth| browser.folder_names(depth, include_hidden))
                 .unwrap_or_default()
         };
         let context = Context {
@@ -234,7 +228,6 @@ impl Dispatcher {
         show_step(&sink, step);
     }
 
-    /// An invalid or occupied name keeps the prompt open so it can be fixed.
     fn submit_create(&self, browser: &Browser, text: &str) {
         let hint = match self.view.create_typed_entry(text) {
             Ok(()) => return self.return_to_listing(browser),
@@ -279,12 +272,12 @@ impl Dispatcher {
 
     fn return_to_listing(&self, browser: &Browser) {
         self.shortcuts.dismiss_prompt();
-        browser.focus_active();
+        if !self.view.focus_visible_results() {
+            browser.focus_active();
+        }
     }
 }
 
-/// Lists the history folders for the open **jump ›** or **recent ›** text,
-/// leaving out the folder already open.
 pub(super) fn show_history_candidates(
     shortcuts: &ShortcutFooter,
     history: &NavigationHistory,
@@ -295,19 +288,14 @@ pub(super) fn show_history_candidates(
         return;
     }
     let text = shortcuts.prompt_text();
+    let current = browser.active_location();
+    let excluded = current.as_ref().and_then(Location::native_path);
     let items = if kind == Prompt::Jump {
-        history.search(&text)
+        history.search_excluding(&text, excluded)
     } else {
-        history.recent(&text)
+        history.recent_excluding(&text, excluded)
     };
-    let current = browser
-        .active_location()
-        .and_then(|location| location.native_path().map(std::path::Path::to_path_buf));
-    let paths = items
-        .into_iter()
-        .map(|item| item.path)
-        .filter(|path| Some(path) != current.as_ref())
-        .collect();
+    let paths = items.into_iter().map(|item| item.path).collect();
     shortcuts.show_candidates(paths);
     show_candidate_hint(shortcuts);
 }

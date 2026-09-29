@@ -106,12 +106,26 @@ impl NavigationHistory {
         self.search_at(query, unix_time())
     }
 
+    pub(crate) fn search_excluding(&self, query: &str, excluded: Option<&Path>) -> Vec<SearchItem> {
+        self.search_at_excluding(query, unix_time(), excluded)
+    }
+
     fn search_at(&self, query: &str, now: u64) -> Vec<SearchItem> {
+        self.search_at_excluding(query, now, None)
+    }
+
+    fn search_at_excluding(
+        &self,
+        query: &str,
+        now: u64,
+        excluded: Option<&Path>,
+    ) -> Vec<SearchItem> {
         let query = fold_for_search(query.trim());
         let mut matches = self
             .entries
             .borrow()
             .iter()
+            .filter(|entry| Some(entry.path.as_path()) != excluded)
             .filter_map(|entry| {
                 let item = SearchItem::for_history(entry.path.clone());
                 let text_score = if query.is_empty() {
@@ -143,13 +157,13 @@ impl NavigationHistory {
             .collect()
     }
 
-    /// Folders matching `query`, most recently visited first.
-    pub(crate) fn recent(&self, query: &str) -> Vec<SearchItem> {
+    pub(crate) fn recent_excluding(&self, query: &str, excluded: Option<&Path>) -> Vec<SearchItem> {
         let query = fold_for_search(query.trim());
         let mut matches = self
             .entries
             .borrow()
             .iter()
+            .filter(|entry| Some(entry.path.as_path()) != excluded)
             .filter_map(|entry| {
                 let item = SearchItem::for_history(entry.path.clone());
                 (query.is_empty() || item.fuzzy_score(&query).is_some())

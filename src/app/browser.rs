@@ -1753,9 +1753,12 @@ impl Browser {
         Some(read(entries.get(range)?))
     }
 
-    /// Names of the folders `depth` shows, honoring its hidden-file setting.
-    pub(crate) fn visible_folder_names(&self, depth: usize) -> Vec<std::ffi::OsString> {
-        self.state.borrow().visible_folder_names(depth)
+    pub(crate) fn folder_names(
+        &self,
+        depth: usize,
+        include_hidden: bool,
+    ) -> Vec<std::ffi::OsString> {
+        self.state.borrow().folder_names(depth, include_hidden)
     }
 
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
@@ -2037,7 +2040,6 @@ impl Browser {
         self.install_operation_load(request_id, load);
     }
 
-    /// Creates `name` exactly, reporting a conflict instead of numbering it.
     pub fn create_exact_entry(self: &Rc<Self>, parent: Location, name: String, directory: bool) {
         if directory {
             self.create_directory_with_naming(parent, name, false);
@@ -2881,6 +2883,21 @@ impl Browser {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
+            });
+        }
+    }
+
+    pub fn extend_page_selection(&self, direction: i32, page: usize, order: Option<&[usize]>) {
+        let extended = self
+            .state
+            .borrow_mut()
+            .extend_page_selection(direction, page, order);
+        if let Some((depth, focused, positions)) = extended {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions,
+                focused,
+                take_focus: true,
             });
         }
     }

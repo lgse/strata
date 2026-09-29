@@ -1153,6 +1153,64 @@ fn paging_moves_by_a_page_and_stops_at_the_ends() {
 }
 
 #[test]
+fn shift_paging_extends_from_the_anchor_and_contracts_back() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    let entries = (0..12)
+        .map(|index| entry(&format!("/home/item-{index:02}")))
+        .collect();
+    state.apply_batch(RequestId(1), entries);
+    assert!(state.select(0, 4));
+
+    let range = |state: &mut NavigationState, direction| {
+        state
+            .extend_page_selection(direction, 5, None)
+            .map(|(_, focused, positions)| (focused, positions))
+    };
+    assert_eq!(range(&mut state, 1), Some((9, (4..=9).collect())));
+    assert_eq!(range(&mut state, 1), Some((11, (4..=11).collect())));
+    assert_eq!(range(&mut state, -1), Some((6, (4..=6).collect())));
+    assert_eq!(
+        range(&mut state, -1),
+        Some((1, (1..=4).collect())),
+        "crossing the anchor flips the range"
+    );
+    assert_eq!(state.selected_entries().len(), 4);
+
+    assert!(state.clear_active_selection().is_some());
+    assert_eq!(
+        range(&mut state, 1),
+        Some((6, (1..=6).collect())),
+        "a cleared fill restarts the range at the cursor"
+    );
+}
+
+#[test]
+fn shift_paging_follows_display_order_and_skips_hidden_entries() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/a.txt", "a.txt"),
+            hidden_entry("/home/b.txt", "b.txt"),
+            named_entry("/home/c.json", "c.json"),
+            named_entry("/home/d.txt", "d.txt"),
+        ],
+    );
+    assert!(state.select(0, 0));
+    assert_eq!(
+        state.extend_page_selection(1, 1, None),
+        Some((0, 2, vec![0, 2]))
+    );
+    assert!(state.select(0, 0));
+    assert_eq!(
+        state.extend_page_selection(1, 1, Some(&[0, 3, 2])),
+        Some((0, 3, vec![0, 3]))
+    );
+}
+
+#[test]
 fn paging_skips_hidden_entries_when_hidden_files_are_not_shown() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));

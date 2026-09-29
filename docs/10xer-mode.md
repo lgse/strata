@@ -172,6 +172,7 @@ peek.
 | **Ctrl+A** | Select all in the focused pane |
 | **Ctrl+R** | Invert the selection |
 | **Shift+↑** / **Shift+↓** | Extend the selection |
+| **Shift+PgUp** / **Shift+PgDn** | Extend the selection by one page |
 | **Esc** | Dismiss the current interaction, one step per press; see the precedence below |
 
 On a cursor-only row, **Space** adds that item and moves down; it does not
@@ -197,6 +198,9 @@ tag and ends at the next key that is not **Shift+↑** / **Shift+↓**, keeping 
 fill; a later run starts at the new cursor. During a visual range they extend
 that range like **j** / **k**.
 
+**Shift+PgUp** / **Shift+PgDn** move the cursor one page and belong to the same
+run.
+
 ### Escape precedence
 
 Dialogs, the shortcut reference, text editors, and an open folder-peek popover
@@ -208,9 +212,10 @@ listing action.
 
 With no prompt or chord, each press takes the first applicable step:
 
-- **Recursive `s` results:** leave visual mode (keep the fill), close an open
-  preview, then dismiss the results. Dismissal restores an earlier committed
-  **f** filter if one existed; otherwise it restores the directory listing.
+- **Recursive `s` results:** leave visual mode (keep the fill), dismiss find
+  highlights, close an open preview, then dismiss the results. Dismissal
+  restores an earlier committed **f** filter if one existed; otherwise it
+  restores the directory listing.
 - **Ordinary listing or `f` results:** leave visual mode over the `f` results
   (keep the fill), dismiss the hidden filter, dismiss find highlights, leave
   visual mode (keep the fill), close an open preview, then clear the selection.
@@ -218,8 +223,9 @@ With no prompt or chord, each press takes the first applicable step:
 
 While the preview owns keys, **Esc** closes the drawer before any other step
 and returns keys to the listing. Unlike **h** while the preview owns keys, the
-preview-close step actually closes the drawer. Leaving visual mode or closing a preview can therefore require an
-extra **Esc** before retained search results disappear. Once nothing is left to
+preview-close step actually closes the drawer. Leaving visual mode or closing a
+preview can therefore require an extra **Esc** before retained search results
+disappear. Once nothing is left to
 dismiss, **Esc** does nothing: it never closes a Miller column or the window.
 The sidebar and header controls take the same steps; clearing a filter or
 closing the preview from there returns focus to the file list.
@@ -383,7 +389,8 @@ and hidden folders appear when the listing shows them or the prefix starts with
 `.`. A completion keeps the typed form (relative, `~/`, or absolute) and ends in
 `/`, so the next **Tab** after typing more descends. Beside the entry the footer
 shows the position in the cycle (`2 of 5`) or why nothing changed. No match
-keeps the typed text and focus with `No matching folders`.
+keeps the typed text and focus with `No matching folders`; another user's
+home (`~name`) shows `Only ~ and ~/ are supported`.
 
 Slash-containing and home-folder completion uses cancellable background GIO
 work and shows `Listing folders…` while it runs; the prompt keeps accepting
@@ -447,8 +454,8 @@ on the first hit when there is one. It does not open that hit. A following
 **Enter** opens it through ordinary item activation, not **Open search results
 directly**. **Ctrl+K** global search is unchanged. **Esc** from the prompt keeps
 the hits so **v** / **V** / Space / **i** can use them (and **→** in List and
-Columns). From those results, **Esc** dismisses visual mode and an open preview
-before dismissing search, as described above. In List and Columns, **h** dismisses
+Columns). From those results, **Esc** dismisses visual mode, find highlights, and an open
+preview before dismissing search, as described above. In List and Columns, **h** dismisses
 search directly unless the preview owns keys, in which case it first returns to
 the hits without closing the preview. In Icons, **h** / **j** / **k** / **l** and
 arrows move among the result icons and do not dismiss search or open an item.

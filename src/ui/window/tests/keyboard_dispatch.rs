@@ -916,6 +916,12 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
                     for name in ["a.txt", "c.txt", focused.as_str()] {
                         assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
                     }
+                    assert!(fixture.press(Key::Page_Down, shift));
+                    let fill = fill_names(&browser);
+                    let focused = focused_name(&browser);
+                    for name in ["a.txt", "c.txt", focused.as_str()] {
+                        assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
+                    }
                 } else {
                     assert!(fixture.press(Key::Down, shift));
                     fixture.press(Key::Down, shift);
@@ -943,6 +949,22 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
                         fill_names(&browser),
                         ["a.txt", "b.txt", "c.txt", "d.txt"],
                         "{mode:?} the next run anchors at the cursor"
+                    );
+                    assert!(fixture.press(Key::Page_Down, shift));
+                    let fill = fill_names(&browser);
+                    let focused = focused_name(&browser);
+                    for name in ["a.txt", "c.txt", "d.txt", focused.as_str()] {
+                        assert!(fill.iter().any(|filled| filled == name), "{fill:?}");
+                    }
+                    assert!(
+                        !fill.iter().any(|filled| filled == "b.txt"),
+                        "{mode:?} Shift+Page Down continues the run: {fill:?}"
+                    );
+                    fixture.press(Key::Page_Up, shift);
+                    assert_eq!(
+                        fill_names(&browser),
+                        ["a.txt", "b.txt", "c.txt", "d.txt"],
+                        "{mode:?} Shift+Page Up reverses it"
                     );
                 }
                 assert_eq!(fixture.shortcuts.visual_text(), None, "{mode:?}");
@@ -1000,6 +1022,9 @@ fn tenxer_visual_ranges_select_unset_and_keep_the_fill() {
             assert_eq!(fixture.shortcuts.visual_text(), None);
             wait_until(|| fixture.shortcuts.feedback_text().is_empty());
             fixture.press(Key::Down, ModifierType::SHIFT_MASK);
+            assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
+            wait_until(|| fixture.shortcuts.feedback_text().is_empty());
+            fixture.press(Key::Page_Down, ModifierType::SHIFT_MASK);
             assert_eq!(fixture.shortcuts.feedback_text(), "Nothing to select");
         },
     );
@@ -1611,6 +1636,53 @@ fn tenxer_entries_menus_and_reference_keep_their_keys() {
 }
 
 #[test]
+fn shift_page_keys_extend_the_selection_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::shift_page_keys_extend_the_selection_in_every_view",
+        || {
+            let fixture = KeyboardFixture::new();
+            PreferenceManager::shared().set_group_by_type(false);
+            let browser = fixture.view.browser();
+            for index in 0..40 {
+                std::fs::write(
+                    fixture._directory.path().join(format!("n{index:02}.txt")),
+                    b"n",
+                )
+                .expect("page file");
+            }
+            fixture.view.refresh();
+            wait_until(|| entry_count(&browser) == 43);
+            let none = ModifierType::empty();
+            let shift = ModifierType::SHIFT_MASK;
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                fixture.view.set_view_mode(mode);
+                browser.select(0, 0);
+                focus_files(&fixture);
+
+                assert!(fixture.press(Key::Page_Down, shift), "{mode:?}");
+                let paged = focused_index(&browser);
+                assert!(paged > 0, "{mode:?} Shift+Page Down moves the cursor");
+                assert_eq!(
+                    fixture.selected(),
+                    (0..=paged).collect::<Vec<_>>(),
+                    "{mode:?} Shift+Page Down extends from the anchor"
+                );
+                assert!(fixture.press(Key::Page_Up, shift), "{mode:?}");
+                assert_eq!(fixture.selected(), [0], "{mode:?} Shift+Page Up contracts");
+
+                assert!(fixture.press(Key::Page_Down, shift), "{mode:?}");
+                assert!(fixture.press(Key::Page_Down, none), "{mode:?}");
+                assert_eq!(
+                    fixture.selected(),
+                    [focused_index(&browser)],
+                    "{mode:?} a plain Page Down still replaces the selection"
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn tenxer_list_and_columns_move_enter_and_traverse_history() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::tenxer_list_and_columns_move_enter_and_traverse_history",
@@ -2028,7 +2100,11 @@ fn tenxer_icons_move_spatially_open_explicitly_and_peek() {
             fixture.view.set_icons_thumbnail_size(48);
             fixture.view.set_view_mode(BrowserMode::Icons);
             focus_files(&fixture);
-            wait_until(|| rendered_name(&fixture.view.widget(), "tile-00.txt"));
+            wait_until(|| {
+                source_names(&browser)
+                    .iter()
+                    .any(|name| name == "tile-00.txt")
+            });
 
             let origin = browser.active_location();
             let aliases = [

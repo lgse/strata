@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer file commands from the listing: yank, cut, unyank, paste, delete,
-//! create, rename, sort, hidden files, Open With, and the **c**, **,**, and
-//! **;** chords.
-
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
@@ -135,7 +131,6 @@ impl Dispatcher {
         }
     }
 
-    /// Paste leaves pointer or keyboard ownership of the destination as it is.
     fn paste(&self, focus: ConflictFocus) {
         let shortcuts = self.shortcuts.clone();
         self.view.paste_preferring(
@@ -184,7 +179,6 @@ impl Dispatcher {
         }
     }
 
-    /// **c c** / **c n**.
     pub(super) fn complete_copy(&self, key: Key) -> bool {
         let names = match key {
             Key::c => false,

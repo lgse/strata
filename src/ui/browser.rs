@@ -193,6 +193,7 @@ pub(super) struct ViewState {
     /// True only while a column row gesture is writing the selection model.
     /// Focus echoes of the cursor are not pointer-owned.
     pointer_owns_selection: Cell<bool>,
+    column_resizing: Cell<bool>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     suppress_focus_scroll: Cell<bool>,
     /// Set while a footer prompt moves the cursor; the prompt keeps the keys.
@@ -581,6 +582,7 @@ impl BrowserView {
             context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             pointer_owns_selection: Cell::new(false),
+            column_resizing: Cell::new(false),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             suppress_focus_scroll: Cell::new(false),
             cursor_keeps_focus: Cell::new(false),
@@ -669,9 +671,8 @@ impl BrowserView {
         state.install_input_ownership();
         state.install_column_peek_targets();
         state.install_drag_autoscroll();
-        if interactive {
-            columns::install_resize_edges(&state);
-        }
+        // Resize edges are mode-agnostic; only transfers stay interactive-only.
+        columns::install_resize_edges(&state);
 
         let weak_state = Rc::downgrade(&state);
         columns::install_horizontal_scroll(&state);
@@ -1425,7 +1426,6 @@ impl BrowserView {
         }
     }
 
-    /// The keyboard-focused directory a new item goes into, ignoring the pointer.
     fn new_entry_parent(&self) -> Option<(usize, Location)> {
         let depth = if self.view_mode() == BrowserMode::Columns {
             new_folder_destination_depth(
@@ -2016,7 +2016,7 @@ impl BrowserView {
             })
     }
 
-    pub fn page_selection(&self, direction: i32) -> bool {
+    pub fn page_selection(&self, direction: i32, extend: bool) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let Some((view, scroll)) = focused
             .as_ref()
@@ -2026,6 +2026,25 @@ impl BrowserView {
         };
         let page = super::scrolling::page(&view, &scroll);
         self.state.mode_views.borrow().suppress_focus_scroll();
+        if extend {
+            let order = self
+                .state
+                .browser
+                .active_depth()
+                .and_then(|depth| self.displayed_order(depth));
+            self.state
+                .browser
+                .extend_page_selection(direction, page.items, order.as_deref());
+            let position = self.cursor_view_position(&view);
+            super::scrolling::reveal_cursor(
+                &view,
+                &scroll,
+                direction,
+                super::scrolling::CursorMotion::Page,
+                position,
+            );
+            return true;
+        }
         let target = self.state.browser.active_depth().and_then(|depth| {
             self.state
                 .mode_views
