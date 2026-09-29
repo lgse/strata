@@ -36,7 +36,7 @@ const FILE_MANAGER_STATE_FILE: &str = "state.toml";
 const INODE_DIRECTORY: &str = "inode/directory";
 
 pub(crate) fn install() -> Result<String, String> {
-    let executable = env::current_exe()
+    let executable = crate::services::installed_executable()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
     let context = SetupContext::from_environment()?;
     let config = install_at(&context, &executable)?;
@@ -65,7 +65,7 @@ pub(crate) fn uninstall() -> Result<String, String> {
 }
 
 pub(crate) fn install_file_manager() -> Result<String, String> {
-    let executable = env::current_exe()
+    let executable = crate::services::installed_executable()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
     let context = SetupContext::from_environment()?;
     let previous = query_default_file_manager().filter(|id| id != DESKTOP_ID);
@@ -221,7 +221,7 @@ fn file_manager_status_at(context: &SetupContext) -> Result<FileManagerStatus, S
             .string("D-BUS Service", "Name")
             .is_ok_and(|name| name == "org.freedesktop.FileManager1")
             && config.string("D-BUS Service", "Exec").is_ok_and(|exec| {
-                env::current_exe()
+                crate::services::installed_executable()
                     .is_ok_and(|path| exec == format!("{} --gapplication-service", path.display()))
             })
     } else {
@@ -397,7 +397,7 @@ pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
 
 pub(crate) fn refresh_stale_portal() -> Result<(), String> {
     let context = SetupContext::from_environment()?;
-    let executable = env::current_exe()
+    let executable = crate::services::installed_executable()
         .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
     refresh_stale_portal_at(&context, &executable, Path::new("/proc"), || {
         refresh_portals()

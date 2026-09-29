@@ -38,8 +38,8 @@ pub use file_source::{
     UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
     validate_uri_credentials,
 };
-pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
+pub(crate) use install_source::{ensure_self_managed, installed_executable};
 pub use jobs::{
     ActionEventSink, ActionRunEvent, ActionRunRequest, ActionRunner, CancelHandle,
     InvocationSource, JobId, JobRequest, JobService, JobSnapshot, JobStatus, ScriptProgress,

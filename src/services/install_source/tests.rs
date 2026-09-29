@@ -2,7 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{InstallSource, ManagedInstall, ensure_self_managed, marker_path_for_executable};
+use super::{
+    InstallSource, ManagedInstall, ensure_self_managed, marker_path_for_executable,
+    replaced_executable_path,
+};
 use crate::services::Channel;
 
 const PACKAGED_MARKER: &str = r#"
@@ -259,4 +262,27 @@ fn a_packaged_install_refuses_to_replace_its_own_binary() {
             "Installed by pacman as strata-bin. Update Strata with: yay -Syu strata-bin".to_owned()
         )
     );
+}
+
+#[test]
+fn replaced_executable_resolves_to_its_install_path() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let installed = directory.path().join("strata");
+    let deleted = directory.path().join("strata (deleted)");
+    std::fs::write(&installed, b"").expect("the installed executable to be written");
+
+    assert_eq!(replaced_executable_path(&deleted), installed);
+    assert_eq!(replaced_executable_path(&installed), installed);
+}
+
+#[test]
+fn deleted_suffix_is_kept_when_it_is_not_a_replaced_executable() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let deleted = directory.path().join("strata (deleted)");
+
+    assert_eq!(replaced_executable_path(&deleted), deleted);
+
+    std::fs::write(&deleted, b"").expect("the suffixed executable to be written");
+    std::fs::write(directory.path().join("strata"), b"").expect("a sibling to be written");
+    assert_eq!(replaced_executable_path(&deleted), deleted);
 }

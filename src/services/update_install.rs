@@ -13,7 +13,7 @@ use std::{
 use gtk::glib;
 use serde::Deserialize;
 
-use crate::services::{InstallSource, ensure_self_managed};
+use crate::services::{InstallSource, ensure_self_managed, installed_executable};
 
 use super::release_channel::Version;
 
@@ -73,7 +73,7 @@ pub fn update_method() -> UpdateMethod {
     if InstallSource::detect().is_managed() {
         return UpdateMethod::Aur;
     }
-    let Ok(executable) = std::env::current_exe() else {
+    let Ok(executable) = installed_executable() else {
         return UpdateMethod::InPlace;
     };
     update_method_for(&executable, Path::new(PACMAN), Path::new(OS_RELEASE))
@@ -362,7 +362,7 @@ fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Resu
         }
     }
 
-    let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
+    let current_exe = installed_executable().map_err(|error| error.to_string())?;
     let exe_dir = current_exe
         .parent()
         .ok_or_else(|| "Could not determine the install directory".to_owned())?;

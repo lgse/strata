@@ -2006,20 +2006,9 @@ fn restart_waiter(current_exe: &std::path::Path, parent_pid: u32) -> Option<Comm
 }
 
 fn restart(application: Option<&gtk::Application>) {
-    let Ok(mut current_exe) = std::env::current_exe() else {
+    let Ok(current_exe) = crate::services::installed_executable() else {
         return;
     };
-    // On Linux, replacing the running executable makes /proc/self/exe resolve to
-    // the old path with " (deleted)" appended. Relaunch the replacement at the
-    // original path instead of treating that suffix as part of the filename.
-    if !current_exe.exists()
-        && let Some(path) = current_exe
-            .to_str()
-            .and_then(|path| path.strip_suffix(" (deleted)"))
-        && std::path::Path::new(path).is_file()
-    {
-        current_exe = path.into();
-    }
     // Wait for this process to exit completely before relaunching. A fixed
     // delay could overlap the old and new GTK/Wayland clients and rapidly hand
     // keyboard focus through an underlying terminal. Besides re-activating the
