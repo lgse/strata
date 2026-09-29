@@ -7,9 +7,7 @@ use super::footer_prompt::{
 };
 use super::*;
 
-/// What a single **Esc** may end. While search results show, `fill` is the
-/// hits a file verb would take (the fill, else the cursor hit); otherwise it is
-/// the directory fill, and `hits` is the same for **f** results.
+// Search fills use selected hits (or the cursor hit), not the directory fill.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 struct Held {
     chord: bool,
@@ -85,7 +83,6 @@ fn clear_fill(fixture: &KeyboardFixture) {
     focus_files(fixture);
 }
 
-/// Fills `name` with Space, leaving the cursor on the next item.
 fn fill_one(fixture: &KeyboardFixture, name: &str) {
     select_named(fixture, name);
     clear_fill(fixture);
@@ -103,9 +100,7 @@ fn open_peek(fixture: &KeyboardFixture) {
     wait_until(|| fixture.view.widget().has_css_class("peek-open"));
 }
 
-/// Directory fill b.txt, highlights on "report", filter "alpha" leaving
-/// alpha-report.txt, and its preview. Find moves the directory cursor, so it
-/// runs before the filter.
+// Find moves the directory cursor, so set it up before filtering.
 fn listing_with_filter(fixture: &KeyboardFixture) -> Held {
     fill_one(fixture, "b.txt");
     type_and_submit(fixture, Key::slash, "report");
@@ -125,9 +120,7 @@ fn listing_with_filter(fixture: &KeyboardFixture) -> Held {
 struct Case {
     name: &'static str,
     modes: &'static [BrowserMode],
-    /// Sets the states up and returns what they hold before the first press.
     setup: Box<dyn Fn(&KeyboardFixture) -> Held>,
-    /// What survives each press, in order; one more press then changes nothing.
     steps: Vec<Held>,
 }
 

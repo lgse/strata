@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: MIT
 
-//! 10xer listing **Esc**: each press ends exactly one interaction, in the
-//! order documented under "Escape precedence" in `docs/10xer-mode.md`.
-
 use gtk::glib::Propagation;
 
 use super::{Dispatcher, KeyResult};
 use crate::app::Browser;
 
 impl Dispatcher {
-    /// Runs once no modal, prompt, chord, or preview owns the key. Always
-    /// consumes it: with nothing left to dismiss, **Esc** neither closes a
-    /// Miller column nor reaches the window.
     pub(super) fn tenxer_escape(&self, browser: &Browser) -> KeyResult {
         self.dismiss_one_interaction(browser);
         Some(Propagation::Stop)
